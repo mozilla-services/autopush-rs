@@ -1,6 +1,31 @@
-language: rust
+language: python
+python:
+  - "2.7"
+cache:
+  - cargo
+  - pip
+sudo: required
+dist: trusty
 
-rust:
-    - stable
-
-cache: cargo
+install:
+- make ddb
+- pip install --upgrade pip
+- pip install -r requirements.txt
+- pip install -r test-requirements.txt
+- WITH_RUST=false pip install -e git+https://github.com/mozilla-services/autopush.git#egg=autopush
+- |
+    curl https://sh.rustup.rs | sh -s -- -y || travis_terminate 1;
+    export PATH=$PATH:$HOME/.cargo/bin
+    # Build here instead of within tox's pip install -e. It hides the output
+    # which can kill the job on slower travis runs
+    if [ ${WITH_RUST} == "release" ]; then
+        cargo build --release || travis_terminate 1
+    else
+        cargo build || travis_terminate 1
+    fi
+script:
+- py.test -v
+- cargo test
+notifications:
+  slack:
+    secure: vT9sWtUuxk28g6xYKAsQmiPZllErOYVfx5lcL+/jo1eRFrmbpYnyndT6s+FxGI1547oizZ0IqZbHVvB7BUoSJixXJyQJYXW2MchwN1UeHrey8mYpF1GNEaJT7FMfqSkxUU9gvAZ3IU7zstNeTLbfG1GkLuzybp0WAiHl/ocUTz8=
