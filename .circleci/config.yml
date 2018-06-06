@@ -1,0 +1,88 @@
+# These environment variables must be set in CircleCI UI
+#
+# DOCKERHUB_REPO - docker hub repo, format: <username>/<repo>
+# DOCKER_EMAIL   - login info for docker hub
+# DOCKER_USER
+# DOCKER_PASS
+#
+version: 2
+jobs:
+  build:
+    docker:
+      - image: docker:18.03.0-ce
+    working_directory: /dockerflow
+    steps:
+      - run:
+          name: Install Docker build dependencies
+          command: apk add --no-cache openssh-client git
+      - checkout
+      - setup_remote_docker
+
+      - run:
+          name: Create a version.json
+          command: |
+            # create a version.json per https://github.com/mozilla-services/Dockerflow/blob/master/docs/version_object.md
+            printf '{"commit":"%s","version":"%s","source":"https://github.com/%s/%s","build":"%s"}\n' \
+            "$CIRCLE_SHA1" \
+            "$CIRCLE_TAG" \
+            "$CIRCLE_PROJECT_USERNAME" \
+            "$CIRCLE_PROJECT_REPONAME" \
+            "$CIRCLE_BUILD_URL" > version.json
+      - run:
+          name: Build Docker image
+          command: docker build -t app:build .
+
+      # save the built docker container into CircleCI's cache. This is
+      # required since Workflows do not have the same remote docker instance.
+      - run:
+          name: docker save app:build
+          command: mkdir -p /cache; docker save -o /cache/docker.tar "app:build"
+      - save_cache:
+          key: v1-{{ .Branch }}-{{epoch}}
+          paths:
+            - /cache/docker.tar
+
+  deploy:
+    docker:
+      - image: docker:18.03.0-ce
+    steps:
+      - setup_remote_docker
+      - restore_cache:
+          key: v1-{{.Branch}}
+      - run:
+          name: Restore Docker image cache
+          command: docker load -i /cache/docker.tar
+
+      - run:
+          name: Deploy to Dockerhub
+          command: |
+            # deploy master
+            if [ "${CIRCLE_BRANCH}" == "master" ]; then
+              docker login -u $DOCKER_USER -p $DOCKER_PASS
+              docker tag app:build ${DOCKERHUB_REPO}:latest
+              docker push ${DOCKERHUB_REPO}:latest
+            elif  [ ! -z "${CIRCLE_TAG}" ]; then
+            # deploy a release tag...
+              docker login -u $DOCKER_USER -p $DOCKER_PASS
+              echo "${DOCKERHUB_REPO}:${CIRCLE_TAG}"
+              docker tag app:build "${DOCKERHUB_REPO}:${CIRCLE_TAG}"
+              docker images
+              docker push "${DOCKERHUB_REPO}:${CIRCLE_TAG}"
+            fi
+workflows:
+  version: 2
+  build-test-deploy:
+    jobs:
+      - build:
+          filters:
+            tags:
+              only: /.*/
+
+      - deploy:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /.*/
+            branches:
+only: master

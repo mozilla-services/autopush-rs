@@ -19,7 +19,7 @@
 //! ```
 //!
 //! And you can also use the `MyFuture` type alias for "nice" uses of futures
-//! 
+//!
 //! ```ignore
 //!     fn add(a: i32) -> MyFuture<u32> {
 //!         // ..

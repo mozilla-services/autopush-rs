@@ -1,0 +1,14 @@
+coverage
+ecdsa==0.13
+factory_boy==2.8.1
+flake8==3.3.0
+funcsigs==1.0.2
+mock>=1.0.1
+-e git+https://github.com/bbangert/moto.git@3bdb75a961148ea5aa526f0e88d9e7835a30df3a#egg=moto
+nose
+pbr==1.10.0
+psutil
+pympler==0.5
+pytest
+pytest-cov
+websocket-client
