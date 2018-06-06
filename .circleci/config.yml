@@ -15,6 +15,7 @@ jobs:
       - run:
           name: Install Docker build dependencies
           command: apk add --no-cache openssh-client git
+
       - checkout
       - setup_remote_docker
 
@@ -28,6 +29,7 @@ jobs:
             "$CIRCLE_PROJECT_USERNAME" \
             "$CIRCLE_PROJECT_REPONAME" \
             "$CIRCLE_BUILD_URL" > version.json
+
       - run:
           name: Build Docker image
           command: docker build -t app:build .
@@ -69,6 +71,7 @@ jobs:
               docker images
               docker push "${DOCKERHUB_REPO}:${CIRCLE_TAG}"
             fi
+
 workflows:
   version: 2
   build-test-deploy:
@@ -85,4 +88,4 @@ workflows:
             tags:
               only: /.*/
             branches:
-only: master
+              only: master
