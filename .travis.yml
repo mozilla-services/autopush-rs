@@ -2,8 +2,10 @@ language: python
 python:
   - "2.7"
 cache:
-  - cargo
-  - pip
+  pip: true
+  directories:
+    - $HOME/.cargo
+    - $TRAVIS_BUILD_DIR/target
 sudo: required
 dist: trusty
 
@@ -12,13 +14,11 @@ install:
 - pip install --upgrade pip
 - pip install -r requirements.txt
 - pip install -r test-requirements.txt
-- WITH_RUST=false pip install -e git+https://github.com/mozilla-services/autopush.git#egg=autopush
+- pip install -e git+https://github.com/mozilla-services/autopush.git#egg=autopush
 - |
     curl https://sh.rustup.rs | sh -s -- -y || travis_terminate 1;
     export PATH=$PATH:$HOME/.cargo/bin
-    # Build here instead of within tox's pip install -e. It hides the output
-    # which can kill the job on slower travis runs
-    if [ ${WITH_RUST} == "release" ]; then
+    if [ "${WITH_RUST}" == "release" ]; then
         cargo build --release || travis_terminate 1
     else
         cargo build || travis_terminate 1
