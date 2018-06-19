@@ -23,6 +23,7 @@ RUN \
     rm -rf /var/lib/apt/lists
 
 COPY --from=builder /app/bin /app/bin
+COPY --from=builder /app/version.json /app
 
 WORKDIR /app
 USER app
