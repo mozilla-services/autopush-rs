@@ -1,28 +1,13 @@
 //! WIP: Implementation of Web Push ("autopush" as well) in Rust
-//!
-//! This crate currently provides an implementation of an asynchronous Web Push
-//! server which is intended to be interfaced with from Python. The crate mostly
-//! has a C API which is driven from `__init__.py` in Python and orchestrated
-//! from Python. This is currently done to help ease the transition from the old
-//! Python implementation to the new Rust implementation. Currently there's a
-//! good bit of API calls to remote services still implemented in Python, but
-//! the thinking is that over time these services will be rewritten in to Rust
-//! and the Python codebase will shrink.
-//!
-//! In any case though, this'll focus mainly on the Rust bits rather than the
-//! Python bits! It's worth nothing though that this crate is intended to be
-//! used with `cffi` in Python, which is "seamlessly" worked with through the
-//! `snaek` Python dependency. That basically just means that Python "headers"
-//! for this Rust crate are generated automatically.
+//! 
+//! This crate currently provides the connection node functionality for a Web
+//! Push server, and is a replacement for the 
+//! [`autopush`](https://github.com/mozilla-services/autopush) server. The older
+//! python handler still manages the HTTP endpoint calls, since those require
+//! less overhead to process. Eventually, those functions will be moved to 
+//! rust as well.
 //!
 //! # High level overview
-//!
-//! At 10,000 feet the general architecture here is that the main Python thread
-//! spins up a Rust thread which actually does all the relevant I/O. The one
-//! Rust thread uses a `Core` from `tokio-core` to perform all I/O and schedule
-//! asynchronous tasks. The `tungstenite` crate is used to parse and manage the
-//! WebSocket protocol, with `tokio_tungstenite` being a nicer wrapper for
-//! futures-style APIs.
 //!
 //! The entire server is written in an asynchronous fashion using the `futures`
 //! crate in Rust. This basically just means that everything is exposed as a
@@ -33,10 +18,7 @@
 //! webpush protocol (see `states.dot` at the root of this repository). Note
 //! that not all states are implemented yet, this is a work in progress! All I/O
 //! is managed by Rust and various state transitions are managed by Rust as
-//! well. Movement between states happens typically as a result of calls into
-//! Python. The various operations here will call into Python to do things like
-//! db/HTTP requests and then the results are interpreted in Rust to progress
-//! the state machine.
+//! well. 
 //!
 //! # Module index
 //!
