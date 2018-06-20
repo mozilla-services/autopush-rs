@@ -24,7 +24,7 @@ use errors::*;
 use protocol::{ClientMessage, Notification, ServerMessage, ServerNotification};
 use server::Server;
 use db::{CheckStorageResponse, HelloResponse, RegisterResponse};
-use util::megaphone::{ClientServices, Service, ServiceClientInit};
+use util::megaphone::{ClientBroadcasts, Broadcast, BroadcastClientInit};
 use util::{ms_since_epoch, parse_user_agent, sec_since_epoch};
 
 // Created and handed to the AutopushServer
@@ -42,7 +42,7 @@ pub struct Client<T>
 {
     state_machine: UnAuthClientStateFuture<T>,
     srv: Rc<Server>,
-    broadcast_services: Rc<RefCell<ClientServices>>,
+    broadcast_broadcasts: Rc<RefCell<ClientBroadcasts>>,
     tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
@@ -80,14 +80,14 @@ where
             }
         };
 
-        let broadcast_services = Rc::new(RefCell::new(Default::default()));
+        let broadcast_broadcasts = Rc::new(RefCell::new(Default::default()));
         let sm = UnAuthClientState::start(
             UnAuthClientData {
                 srv: srv.clone(),
                 ws,
                 user_agent: uastr,
                 host,
-                broadcast_services: broadcast_services.clone(),
+                broadcast_broadcasts: broadcast_broadcasts.clone(),
             },
             timeout,
             tx.clone(),
@@ -97,14 +97,14 @@ where
         Self {
             state_machine: sm,
             srv: srv.clone(),
-            broadcast_services,
+            broadcast_broadcasts,
             tx,
         }
     }
 
-    pub fn broadcast_delta(&mut self) -> Option<Vec<Service>> {
-        let mut broadcast_services = self.broadcast_services.borrow_mut();
-        self.srv.broadcast_delta(&mut broadcast_services)
+    pub fn broadcast_delta(&mut self) -> Option<Vec<Broadcast>> {
+        let mut broadcast_broadcasts = self.broadcast_broadcasts.borrow_mut();
+        self.srv.broadcast_delta(&mut broadcast_broadcasts)
     }
 
     pub fn shutdown(&mut self) {
@@ -212,7 +212,7 @@ pub struct UnAuthClientData<T> {
     ws: T,
     user_agent: String,
     host: String,
-    broadcast_services: Rc<RefCell<ClientServices>>,
+    broadcast_broadcasts: Rc<RefCell<ClientBroadcasts>>,
 }
 
 impl<T> UnAuthClientData<T>
@@ -238,7 +238,7 @@ pub struct AuthClientData<T> {
     srv: Rc<Server>,
     ws: T,
     webpush: Rc<RefCell<WebPushClient>>,
-    broadcast_services: Rc<RefCell<ClientServices>>,
+    broadcast_broadcasts: Rc<RefCell<ClientBroadcasts>>,
 }
 
 impl<T> AuthClientData<T>
@@ -282,7 +282,7 @@ where
     AwaitProcessHello {
         response: MyFuture<HelloResponse>,
         data: UnAuthClientData<T>,
-        interested_broadcasts: Vec<Service>,
+        interested_broadcasts: Vec<Broadcast>,
         tx: mpsc::UnboundedSender<ServerNotification>,
         rx: mpsc::UnboundedReceiver<ServerNotification>,
     },
@@ -312,7 +312,7 @@ where
         hello: &'a mut RentToOwn<'a, AwaitHello<T>>,
     ) -> Poll<AfterAwaitHello<T>, Error> {
         trace!("State: AwaitHello");
-        let (uaid, services) = {
+        let (uaid, broadcasts) = {
             let AwaitHello {
                 ref mut data,
                 ref mut timeout,
@@ -326,7 +326,7 @@ where
                     ..
                 } => (
                     uaid.and_then(|uaid| Uuid::parse_str(uaid.as_str()).ok()),
-                    Service::from_hashmap(broadcasts.unwrap_or_default()),
+                    Broadcast::from_hashmap(broadcasts.unwrap_or_default()),
                 ),
                 _ => return Err("Invalid message, must be hello".into()),
             }
@@ -346,7 +346,7 @@ where
         transition!(AwaitProcessHello {
             response,
             data,
-            interested_broadcasts: services,
+            interested_broadcasts: broadcasts,
             tx,
             rx,
         })
@@ -393,7 +393,7 @@ where
             ws,
             user_agent,
             host,
-            broadcast_services,
+            broadcast_broadcasts,
         } = data;
 
         // Setup the objects and such needed for a WebPushClient
@@ -401,9 +401,9 @@ where
         flags.check = check_storage;
         flags.reset_uaid = reset_uaid;
         flags.rotate_message_table = rotate_message_table;
-        let ServiceClientInit(client_services, broadcasts) =
+        let BroadcastClientInit(client_broadcasts, broadcasts) =
             srv.broadcast_init(&interested_broadcasts);
-        broadcast_services.replace(client_services);
+        broadcast_broadcasts.replace(client_broadcasts);
         let uid = Uuid::new_v4();
         let webpush = Rc::new(RefCell::new(WebPushClient {
             uaid,
@@ -428,7 +428,7 @@ where
             uaid: uaid.simple().to_string(),
             status: 200,
             use_webpush: Some(true),
-            broadcasts: Service::into_hashmap(broadcasts),
+            broadcasts: Broadcast::into_hashmap(broadcasts),
         };
         let auth_state_machine = AuthClientState::start(
             vec![response],
@@ -437,7 +437,7 @@ where
                 srv: srv.clone(),
                 ws,
                 webpush: webpush.clone(),
-                broadcast_services: broadcast_services.clone(),
+                broadcast_broadcasts: broadcast_broadcasts.clone(),
             },
         );
         transition!(AwaitSessionComplete {
@@ -719,18 +719,18 @@ where
         let mut webpush = webpush_rc.borrow_mut();
         match input {
             Either::A(ClientMessage::BroadcastSubscribe { broadcasts }) => {
-                let service_delta = {
-                    let mut broadcast_services = data.broadcast_services.borrow_mut();
-                    data.srv.client_service_add_service(
-                        &mut broadcast_services,
-                        &Service::from_hashmap(broadcasts),
+                let broadcast_delta = {
+                    let mut broadcast_broadcasts = data.broadcast_broadcasts.borrow_mut();
+                    data.srv.client_broadcast_add_broadcast(
+                        &mut broadcast_broadcasts,
+                        &Broadcast::from_hashmap(broadcasts),
                     )
                 };
-                if let Some(delta) = service_delta {
+                if let Some(delta) = broadcast_delta {
                     transition!(SendThenWait {
                         remaining_data: vec![
                             ServerMessage::Broadcast {
-                                broadcasts: Service::into_hashmap(delta),
+                                broadcasts: Broadcast::into_hashmap(delta),
                             },
                         ],
                         poll_complete: false,
