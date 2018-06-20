@@ -8,9 +8,9 @@ use reqwest;
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 struct BroadcastKey(u32);
 
-// A list of broadcasts that a client is interested in and the last change seen
+// Broadcasts a client is subscribed to and the last change seen
 #[derive(Debug, Default)]
-pub struct ClientBroadcasts {
+pub struct BroadcastSubs {
     broadcast_list: Vec<BroadcastKey>,
     change_count: u32,
 }
@@ -21,9 +21,10 @@ struct BroadcastRegistry {
     table: Vec<String>,
 }
 
-// Return result of the first delta call for a client given a full list of broadcast id's and versions
+// Return result of the first delta call for a client given a full list of broadcast id's and
+// versions
 #[derive(Debug)]
-pub struct BroadcastClientInit(pub ClientBroadcasts, pub Vec<Broadcast>);
+pub struct BroadcastSubsInit(pub BroadcastSubs, pub Vec<Broadcast>);
 
 impl BroadcastRegistry {
     fn new() -> BroadcastRegistry {
@@ -61,8 +62,8 @@ struct BroadcastRevision {
     broadcast: BroadcastKey,
 }
 
-// A provided Broadcast/Version used for `ChangeList` initialization, client comparisons, and
-// outgoing deltas
+// A provided Broadcast/Version used for `BroadcastSubsInit`, client comparisons, and outgoing
+// deltas
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Broadcast {
     broadcast_id: String,
@@ -80,8 +81,8 @@ impl From<(String, String)> for Broadcast {
 }
 
 impl From<Broadcast> for (String, String) {
-    fn from(svc: Broadcast) -> (String, String) {
-        (svc.broadcast_id, svc.version)
+    fn from(bcast: Broadcast) -> (String, String) {
+        (bcast.broadcast_id, bcast.version)
     }
 }
 
@@ -90,12 +91,13 @@ impl Broadcast {
         val.into_iter().map(|v| v.into()).collect()
     }
 
-    pub fn into_hashmap(broadcast_vec: Vec<Broadcast>) -> HashMap<String, String> {
-        broadcast_vec.into_iter().map(|v| v.into()).collect()
+    pub fn into_hashmap(broadcasts: Vec<Broadcast>) -> HashMap<String, String> {
+        broadcasts.into_iter().map(|v| v.into()).collect()
     }
 }
 
-// BroadcastChangeTracker tracks the broadcasts, their change_count, and the broadcast lookup registry
+// BroadcastChangeTracker tracks the broadcasts, their change_count, and the broadcast lookup
+// registry
 #[derive(Debug)]
 pub struct BroadcastChangeTracker {
     broadcast_list: Vec<BroadcastRevision>,
@@ -112,19 +114,19 @@ pub struct MegaphoneAPIResponse {
 impl BroadcastChangeTracker {
     /// Creates a new `BroadcastChangeTracker` initialized with the provided `broadcasts`.
     pub fn new(broadcasts: Vec<Broadcast>) -> BroadcastChangeTracker {
-        let mut svc_change_tracker = BroadcastChangeTracker {
+        let mut tracker = BroadcastChangeTracker {
             broadcast_list: Vec::new(),
             broadcast_registry: BroadcastRegistry::new(),
             broadcast_versions: HashMap::new(),
             change_count: 0,
         };
         for srv in broadcasts {
-            let key = svc_change_tracker
+            let key = tracker
                 .broadcast_registry
                 .add_broadcast(srv.broadcast_id);
-            svc_change_tracker.broadcast_versions.insert(key, srv.version);
+            tracker.broadcast_versions.insert(key, srv.version);
         }
-        svc_change_tracker
+        tracker
     }
 
     /// Creates a new `BroadcastChangeTracker` initialized from a Megaphone API server version set
@@ -179,16 +181,16 @@ impl BroadcastChangeTracker {
         }
 
         // Check to see if this broadcast has been updated since initialization
-        let svc_index = self.broadcast_list
+        let bcast_index = self.broadcast_list
             .iter()
             .enumerate()
-            .filter_map(|(i, svc)| if svc.broadcast == key { Some(i) } else { None })
+            .filter_map(|(i, bcast)| if bcast.broadcast == key { Some(i) } else { None })
             .nth(0);
         self.change_count += 1;
-        if let Some(svc_index) = svc_index {
-            let mut svc = self.broadcast_list.remove(svc_index);
-            svc.change_count = self.change_count;
-            self.broadcast_list.push(svc);
+        if let Some(bcast_index) = bcast_index {
+            let mut bcast = self.broadcast_list.remove(bcast_index);
+            bcast.change_count = self.change_count;
+            self.broadcast_list.push(bcast);
         } else {
             self.broadcast_list.push(BroadcastRevision {
                 change_count: self.change_count,
@@ -199,89 +201,89 @@ impl BroadcastChangeTracker {
     }
 
     /// Returns the new broadcast versions since the provided `client_set`.
-    pub fn change_count_delta(&self, client_set: &mut ClientBroadcasts) -> Option<Vec<Broadcast>> {
+    pub fn change_count_delta(&self, client_set: &mut BroadcastSubs) -> Option<Vec<Broadcast>> {
         if self.change_count <= client_set.change_count {
             return None;
         }
-        let mut svc_delta = Vec::new();
-        for svc in self.broadcast_list.iter().rev() {
-            if svc.change_count <= client_set.change_count {
+        let mut bcast_delta = Vec::new();
+        for bcast in self.broadcast_list.iter().rev() {
+            if bcast.change_count <= client_set.change_count {
                 break;
             }
-            if !client_set.broadcast_list.contains(&svc.broadcast) {
+            if !client_set.broadcast_list.contains(&bcast.broadcast) {
                 continue;
             }
-            if let Some(ver) = self.broadcast_versions.get(&svc.broadcast) {
-                if let Some(svc_id) = self.broadcast_registry.lookup_id(svc.broadcast) {
-                    svc_delta.push(Broadcast {
-                        broadcast_id: svc_id,
+            if let Some(ver) = self.broadcast_versions.get(&bcast.broadcast) {
+                if let Some(bcast_id) = self.broadcast_registry.lookup_id(bcast.broadcast) {
+                    bcast_delta.push(Broadcast {
+                        broadcast_id: bcast_id,
                         version: (*ver).clone(),
                     });
                 }
             }
         }
         client_set.change_count = self.change_count;
-        if svc_delta.is_empty() {
+        if bcast_delta.is_empty() {
             None
         } else {
-            Some(svc_delta)
+            Some(bcast_delta)
         }
     }
 
-    /// Returns a delta for `broadcasts` that are out of date with the latest version and a new
-    /// `ClientSet``.
-    pub fn broadcast_delta(&self, broadcasts: &[Broadcast]) -> BroadcastClientInit {
-        let mut svc_list = Vec::new();
-        let mut svc_delta = Vec::new();
-        for svc in broadcasts.iter() {
-            if let Some(svc_key) = self.broadcast_registry.lookup_key(&svc.broadcast_id) {
-                if let Some(ver) = self.broadcast_versions.get(&svc_key) {
-                    if *ver != svc.version {
-                        svc_delta.push(Broadcast {
-                            broadcast_id: svc.broadcast_id.clone(),
+    /// Returns a delta for `broadcasts` that are out of date with the latest version and a
+    /// the collection of broadcast subscriptions.
+    pub fn broadcast_delta(&self, broadcasts: &[Broadcast]) -> BroadcastSubsInit {
+        let mut bcast_list = Vec::new();
+        let mut bcast_delta = Vec::new();
+        for bcast in broadcasts.iter() {
+            if let Some(bcast_key) = self.broadcast_registry.lookup_key(&bcast.broadcast_id) {
+                if let Some(ver) = self.broadcast_versions.get(&bcast_key) {
+                    if *ver != bcast.version {
+                        bcast_delta.push(Broadcast {
+                            broadcast_id: bcast.broadcast_id.clone(),
                             version: (*ver).clone(),
                         });
                     }
                 }
-                svc_list.push(svc_key);
+                bcast_list.push(bcast_key);
             }
         }
-        BroadcastClientInit(
-            ClientBroadcasts {
-                broadcast_list: svc_list,
+        BroadcastSubsInit(
+            BroadcastSubs {
+                broadcast_list: bcast_list,
                 change_count: self.change_count,
             },
-            svc_delta,
+            bcast_delta,
         )
     }
 
-    /// Update a `ClientBroadcasts` to account for a new broadcast.
+    /// Update a `BroadcastSubs` to account for new broadcasts.
     ///
     /// Returns broadcasts that have changed.
-    pub fn client_broadcast_add_broadcast(
+    pub fn subscribe_to_broadcasts(
         &self,
-        client_broadcast: &mut ClientBroadcasts,
+        broadcast_subs: &mut BroadcastSubs,
         broadcasts: &[Broadcast],
     ) -> Option<Vec<Broadcast>> {
-        let mut svc_delta = self.change_count_delta(client_broadcast)
+        let mut bcast_delta = self.change_count_delta(broadcast_subs)
             .unwrap_or_default();
-        for svc in broadcasts.iter() {
-            if let Some(svc_key) = self.broadcast_registry.lookup_key(&svc.broadcast_id) {
-                if let Some(ver) = self.broadcast_versions.get(&svc_key) {
-                    if *ver != svc.version {
-                        svc_delta.push(Broadcast {
-                            broadcast_id: svc.broadcast_id.clone(),
+        for bcast in broadcasts.iter() {
+            if let Some(bcast_key) = self.broadcast_registry.lookup_key(&bcast.broadcast_id) {
+                if let Some(ver) = self.broadcast_versions.get(&bcast_key) {
+                    if *ver != bcast.version {
+                        bcast_delta.push(Broadcast {
+                            broadcast_id: bcast.broadcast_id.clone(),
                             version: (*ver).clone(),
                         });
                     }
                 }
-                client_broadcast.broadcast_list.push(svc_key)
+                broadcast_subs.broadcast_list.push(bcast_key)
             }
         }
-        if svc_delta.is_empty() {
+        if bcast_delta.is_empty() {
             None
         } else {
-            Some(svc_delta)
+            Some(bcast_delta)
         }
     }
 }
@@ -293,11 +295,11 @@ mod tests {
     fn make_broadcast_base() -> Vec<Broadcast> {
         vec![
             Broadcast {
-                broadcast_id: String::from("svca"),
+                broadcast_id: String::from("bcasta"),
                 version: String::from("rev1"),
             },
             Broadcast {
-                broadcast_id: String::from("svcb"),
+                broadcast_id: String::from("bcastb"),
                 version: String::from("revalha"),
             },
         ]
@@ -306,21 +308,21 @@ mod tests {
     #[test]
     fn test_broadcast_change_tracker() {
         let broadcasts = make_broadcast_base();
-        let client_broadcasts = broadcasts.clone();
-        let mut svc_chg_tracker = BroadcastChangeTracker::new(broadcasts);
-        let BroadcastClientInit(mut client_svc, delta) =
-            svc_chg_tracker.broadcast_delta(&client_broadcasts);
+        let desired_broadcasts = broadcasts.clone();
+        let mut tracker = BroadcastChangeTracker::new(broadcasts);
+        let BroadcastSubsInit(mut broadcast_subs, delta) =
+            tracker.broadcast_delta(&desired_broadcasts);
         assert_eq!(delta.len(), 0);
-        assert_eq!(client_svc.change_count, 0);
-        assert_eq!(client_svc.broadcast_list.len(), 2);
+        assert_eq!(broadcast_subs.change_count, 0);
+        assert_eq!(broadcast_subs.broadcast_list.len(), 2);
 
-        svc_chg_tracker
+        tracker
             .update_broadcast(Broadcast {
-                broadcast_id: String::from("svca"),
+                broadcast_id: String::from("bcasta"),
                 version: String::from("rev2"),
             })
             .ok();
-        let delta = svc_chg_tracker.change_count_delta(&mut client_svc);
+        let delta = tracker.change_count_delta(&mut broadcast_subs);
         assert!(delta.is_some());
         let delta = delta.unwrap();
         assert_eq!(delta.len(), 1);
@@ -329,23 +331,23 @@ mod tests {
     #[test]
     fn test_broadcast_change_handles_new_broadcasts() {
         let broadcasts = make_broadcast_base();
-        let client_broadcasts = broadcasts.clone();
-        let mut svc_chg_tracker = BroadcastChangeTracker::new(broadcasts);
-        let BroadcastClientInit(mut client_svc, _) = svc_chg_tracker.broadcast_delta(&client_broadcasts);
+        let desired_broadcasts = broadcasts.clone();
+        let mut tracker = BroadcastChangeTracker::new(broadcasts);
+        let BroadcastSubsInit(mut broadcast_subs, _) = tracker.broadcast_delta(&desired_broadcasts);
 
-        svc_chg_tracker.add_broadcast(Broadcast {
-            broadcast_id: String::from("svcc"),
+        tracker.add_broadcast(Broadcast {
+            broadcast_id: String::from("bcastc"),
             version: String::from("revmega"),
         });
-        let delta = svc_chg_tracker.change_count_delta(&mut client_svc);
+        let delta = tracker.change_count_delta(&mut broadcast_subs);
         assert!(delta.is_none());
 
-        let delta = svc_chg_tracker
-            .client_broadcast_add_broadcast(
-                &mut client_svc,
+        let delta = tracker
+            .subscribe_to_broadcasts(
+                &mut broadcast_subs,
                 &vec![
                     Broadcast {
-                        broadcast_id: String::from("svcc"),
+                        broadcast_id: String::from("bcastc"),
                         version: String::from("revision_alpha"),
                     },
                 ],
@@ -353,7 +355,7 @@ mod tests {
             .unwrap();
         assert_eq!(delta.len(), 1);
         assert_eq!(delta[0].version, String::from("revmega"));
-        assert_eq!(client_svc.change_count, 1);
-        assert_eq!(svc_chg_tracker.broadcast_list.len(), 1);
+        assert_eq!(broadcast_subs.change_count, 1);
+        assert_eq!(tracker.broadcast_list.len(), 1);
     }
 }

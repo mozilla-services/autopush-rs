@@ -47,7 +47,7 @@ use server::metrics::metrics_from_opts;
 use server::webpush_io::WebpushIo;
 use settings::Settings;
 use util::megaphone::{
-    ClientBroadcasts, MegaphoneAPIResponse, Broadcast, BroadcastChangeTracker, BroadcastClientInit,
+    Broadcast, BroadcastChangeTracker, BroadcastSubs, BroadcastSubsInit, MegaphoneAPIResponse,
 };
 use util::{timeout, RcObject};
 
@@ -529,28 +529,28 @@ impl Server {
         }
     }
 
-    /// Generate a new broadcast client list for a newly connected client
-    pub fn broadcast_init(&self, broadcasts: &[Broadcast]) -> BroadcastClientInit {
-        debug!("Initialized broadcast broadcasts");
-        self.broadcaster.borrow().broadcast_delta(broadcasts)
+    /// Initialize broadcasts for a newly connected client
+    pub fn broadcast_init(&self, desired_broadcasts: &[Broadcast]) -> BroadcastSubsInit {
+        debug!("Initialized broadcasts");
+        self.broadcaster
+            .borrow()
+            .broadcast_delta(desired_broadcasts)
     }
 
     /// Calculate whether there's new broadcast versions to go out
-    pub fn broadcast_delta(&self, client_broadcasts: &mut ClientBroadcasts) -> Option<Vec<Broadcast>> {
-        self.broadcaster
-            .borrow()
-            .change_count_delta(client_broadcasts)
+    pub fn broadcast_delta(&self, broadcast_subs: &mut BroadcastSubs) -> Option<Vec<Broadcast>> {
+        self.broadcaster.borrow().change_count_delta(broadcast_subs)
     }
 
-    /// Add broadcasts to be tracked by a client
-    pub fn client_broadcast_add_broadcast(
+    /// Add new broadcasts to be tracked by a client
+    pub fn subscribe_to_broadcasts(
         &self,
-        client_broadcasts: &mut ClientBroadcasts,
+        broadcast_subs: &mut BroadcastSubs,
         broadcasts: &[Broadcast],
     ) -> Option<Vec<Broadcast>> {
         self.broadcaster
             .borrow()
-            .client_broadcast_add_broadcast(client_broadcasts, broadcasts)
+            .subscribe_to_broadcasts(broadcast_subs, broadcasts)
     }
 }
 

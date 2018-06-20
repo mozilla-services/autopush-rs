@@ -24,7 +24,7 @@ use errors::*;
 use protocol::{ClientMessage, Notification, ServerMessage, ServerNotification};
 use server::Server;
 use db::{CheckStorageResponse, HelloResponse, RegisterResponse};
-use util::megaphone::{ClientBroadcasts, Broadcast, BroadcastClientInit};
+use util::megaphone::{Broadcast, BroadcastSubs, BroadcastSubsInit};
 use util::{ms_since_epoch, parse_user_agent, sec_since_epoch};
 
 // Created and handed to the AutopushServer
@@ -42,7 +42,7 @@ pub struct Client<T>
 {
     state_machine: UnAuthClientStateFuture<T>,
     srv: Rc<Server>,
-    broadcast_broadcasts: Rc<RefCell<ClientBroadcasts>>,
+    broadcast_subs: Rc<RefCell<BroadcastSubs>>,
     tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
@@ -80,14 +80,14 @@ where
             }
         };
 
-        let broadcast_broadcasts = Rc::new(RefCell::new(Default::default()));
+        let broadcast_subs = Rc::new(RefCell::new(Default::default()));
         let sm = UnAuthClientState::start(
             UnAuthClientData {
                 srv: srv.clone(),
                 ws,
                 user_agent: uastr,
                 host,
-                broadcast_broadcasts: broadcast_broadcasts.clone(),
+                broadcast_subs: broadcast_subs.clone(),
             },
             timeout,
             tx.clone(),
@@ -97,14 +97,14 @@ where
         Self {
             state_machine: sm,
             srv: srv.clone(),
-            broadcast_broadcasts,
+            broadcast_subs,
             tx,
         }
     }
 
     pub fn broadcast_delta(&mut self) -> Option<Vec<Broadcast>> {
-        let mut broadcast_broadcasts = self.broadcast_broadcasts.borrow_mut();
-        self.srv.broadcast_delta(&mut broadcast_broadcasts)
+        let mut broadcast_subs = self.broadcast_subs.borrow_mut();
+        self.srv.broadcast_delta(&mut broadcast_subs)
     }
 
     pub fn shutdown(&mut self) {
@@ -212,7 +212,7 @@ pub struct UnAuthClientData<T> {
     ws: T,
     user_agent: String,
     host: String,
-    broadcast_broadcasts: Rc<RefCell<ClientBroadcasts>>,
+    broadcast_subs: Rc<RefCell<BroadcastSubs>>,
 }
 
 impl<T> UnAuthClientData<T>
@@ -238,7 +238,7 @@ pub struct AuthClientData<T> {
     srv: Rc<Server>,
     ws: T,
     webpush: Rc<RefCell<WebPushClient>>,
-    broadcast_broadcasts: Rc<RefCell<ClientBroadcasts>>,
+    broadcast_subs: Rc<RefCell<BroadcastSubs>>,
 }
 
 impl<T> AuthClientData<T>
@@ -282,7 +282,7 @@ where
     AwaitProcessHello {
         response: MyFuture<HelloResponse>,
         data: UnAuthClientData<T>,
-        interested_broadcasts: Vec<Broadcast>,
+        desired_broadcasts: Vec<Broadcast>,
         tx: mpsc::UnboundedSender<ServerNotification>,
         rx: mpsc::UnboundedReceiver<ServerNotification>,
     },
@@ -312,7 +312,7 @@ where
         hello: &'a mut RentToOwn<'a, AwaitHello<T>>,
     ) -> Poll<AfterAwaitHello<T>, Error> {
         trace!("State: AwaitHello");
-        let (uaid, broadcasts) = {
+        let (uaid, desired_broadcasts) = {
             let AwaitHello {
                 ref mut data,
                 ref mut timeout,
@@ -346,7 +346,7 @@ where
         transition!(AwaitProcessHello {
             response,
             data,
-            interested_broadcasts: broadcasts,
+            desired_broadcasts,
             tx,
             rx,
         })
@@ -381,7 +381,7 @@ where
 
         let AwaitProcessHello {
             data,
-            interested_broadcasts,
+            desired_broadcasts,
             tx,
             rx,
             ..
@@ -393,7 +393,7 @@ where
             ws,
             user_agent,
             host,
-            broadcast_broadcasts,
+            broadcast_subs,
         } = data;
 
         // Setup the objects and such needed for a WebPushClient
@@ -401,9 +401,9 @@ where
         flags.check = check_storage;
         flags.reset_uaid = reset_uaid;
         flags.rotate_message_table = rotate_message_table;
-        let BroadcastClientInit(client_broadcasts, broadcasts) =
-            srv.broadcast_init(&interested_broadcasts);
-        broadcast_broadcasts.replace(client_broadcasts);
+        let BroadcastSubsInit(initialized_subs, broadcasts) =
+            srv.broadcast_init(&desired_broadcasts);
+        broadcast_subs.replace(initialized_subs);
         let uid = Uuid::new_v4();
         let webpush = Rc::new(RefCell::new(WebPushClient {
             uaid,
@@ -437,7 +437,7 @@ where
                 srv: srv.clone(),
                 ws,
                 webpush: webpush.clone(),
-                broadcast_broadcasts: broadcast_broadcasts.clone(),
+                broadcast_subs: broadcast_subs.clone(),
             },
         );
         transition!(AwaitSessionComplete {
@@ -720,9 +720,9 @@ where
         match input {
             Either::A(ClientMessage::BroadcastSubscribe { broadcasts }) => {
                 let broadcast_delta = {
-                    let mut broadcast_broadcasts = data.broadcast_broadcasts.borrow_mut();
-                    data.srv.client_broadcast_add_broadcast(
-                        &mut broadcast_broadcasts,
+                    let mut broadcast_subs = data.broadcast_subs.borrow_mut();
+                    data.srv.subscribe_to_broadcasts(
+                        &mut broadcast_subs,
                         &Broadcast::from_hashmap(broadcasts),
                     )
                 };
