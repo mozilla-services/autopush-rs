@@ -144,13 +144,18 @@ pub struct ServerOptions {
 
 impl ServerOptions {
     pub fn from_settings(settings: Settings) -> Result<Self> {
-        let fernets: Vec<Fernet> = settings
-            .crypto_key
+        let crypto_key = &settings.crypto_key;
+        if !(crypto_key.starts_with("[") && crypto_key.ends_with("]")) {
+            return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
+        }
+        let crypto_key = &crypto_key[1..crypto_key.len() - 1];
+        let fernets: Vec<Fernet> = crypto_key
             .split(',')
             .map(|s| s.trim().to_string())
-            .map(|key| Fernet::new(&key).expect("Invalid key supplied"))
+            .map(|key| Fernet::new(&key).expect("Invalid AUTOPUSH_CRYPTO_KEY"))
             .collect();
         let fernet = MultiFernet::new(fernets);
+
         let ddb = DynamoStorage::new();
         let message_table_names = ddb
             .list_message_tables(&settings.message_tablename)

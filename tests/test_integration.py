@@ -113,7 +113,7 @@ def setup_module():
         statsd_host="",
         router_tablename=ROUTER_TABLE,
         message_tablename=MESSAGE_TABLE,
-        crypto_key=CRYPTO_KEY,
+        crypto_key="[{}]".format(CRYPTO_KEY),
         auto_ping_interval=60.0,
         auto_ping_timeout=10.0,
         close_handshake_timeout=5,
