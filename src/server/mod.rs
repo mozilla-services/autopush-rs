@@ -220,7 +220,7 @@ pub struct Server {
 }
 
 impl Server {
-    /// Creates a new server handle to send to python.
+    /// Creates a new server handle used by Megaphone and other services.
     ///
     /// This will spawn a new server with the `opts` specified, spinning up a
     /// separate thread for the tokio reactor. The returned ShutdownHandles can
