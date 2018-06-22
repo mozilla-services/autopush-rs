@@ -13,9 +13,11 @@ fn get_resolved_hostname() -> String {
     let hostname = get_hostname().expect("Can't get hostname");
     hostname
         .to_socket_addrs()
-        .expect("Failed to resolve hostnames")
+        .expect(
+            &format!("Failed to resolve hostname: {}", hostname)
+        )
         .last()
-        .expect("No hostnames found")
+        .expect("No IP's found for get_resolved_hostname")
         .to_string()
 }
 
@@ -114,9 +116,11 @@ impl Settings {
             if self.resolve_hostname {
                 return hostname
                     .to_socket_addrs()
-                    .expect("Failed to resolve hostnames")
+                    .expect(
+                        &format!("Failed to resolve provided hostname: {}", hostname)
+                    )
                     .last()
-                    .expect("No hostnames found")
+                    .expect("No IP's found for provided hostname")
                     .to_string();
             } else {
                 return hostname.clone();
