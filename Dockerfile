@@ -26,6 +26,7 @@ COPY --from=builder /app/bin /app/bin
 COPY --from=builder /app/version.json /app
 
 WORKDIR /app
-USER app
+# XXX: ensure we no longer bind to privileged ports and re-enable this later
+#USER app
 
 CMD ["/app/bin/autopush_rs"]
