@@ -1,24 +1,22 @@
+use std::io;
 use std::net::ToSocketAddrs;
 
 use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
-use mozsvc_common::get_hostname;
+use mozsvc_common;
 
 lazy_static! {
-    static ref HOSTNAME: String = get_hostname().unwrap();
-    static ref RESOLVED_HOSTNAME: String = get_resolved_hostname();
+    static ref HOSTNAME: String = mozsvc_common::get_hostname().expect("Couldn't get_hostname");
+    static ref RESOLVED_HOSTNAME: String =
+        resolve_ip(&HOSTNAME).expect(&format!("Failed to resolve hostname: {}", *HOSTNAME));
 }
 
-fn get_resolved_hostname() -> String {
-    let hostname = get_hostname().expect("Can't get hostname");
-    hostname
-        .to_socket_addrs()
-        .expect(
-            &format!("Failed to resolve hostname: {}", hostname)
-        )
-        .last()
-        .expect("No IP's found for get_resolved_hostname")
-        .to_string()
+/// Resolve a hostname to its IP if possible
+fn resolve_ip(hostname: &str) -> io::Result<String> {
+    Ok((hostname, 0)
+        .to_socket_addrs()?
+        .next()
+        .map_or_else(|| hostname.to_owned(), |addr| addr.ip().to_string()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,11 +89,12 @@ impl Settings {
         } else {
             "https"
         };
-        let hostname = self.host_name();
         format!(
             "{}://{}:{}",
             router_scheme,
-            self.router_hostname.as_ref().unwrap_or(&hostname),
+            self.router_hostname
+                .as_ref()
+                .map_or_else(|| self.get_hostname(), String::clone),
             self.router_port
         )
     }
@@ -111,22 +110,17 @@ impl Settings {
         )
     }
 
-    fn host_name(&self) -> String {
+    fn get_hostname(&self) -> String {
         if let Some(ref hostname) = self.hostname {
             if self.resolve_hostname {
-                return hostname
-                    .to_socket_addrs()
-                    .expect(
-                        &format!("Failed to resolve provided hostname: {}", hostname)
-                    )
-                    .last()
-                    .expect("No IP's found for provided hostname")
-                    .to_string();
+                resolve_ip(hostname).expect(&format!(
+                    "Failed to resolve provided hostname: {}",
+                    hostname
+                ))
             } else {
-                return hostname.clone();
+                hostname.clone()
             }
-        }
-        if self.resolve_hostname {
+        } else if self.resolve_hostname {
             RESOLVED_HOSTNAME.clone()
         } else {
             HOSTNAME.clone()
