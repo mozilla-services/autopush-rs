@@ -1080,8 +1080,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         # Send in a notification, verify it landed in last months notification
         # table
         data = uuid.uuid4().hex
-        with self.legacy_endpoint():
-            yield client.send_notification(data=data)
+        yield client.send_notification(data=data)
         ts, notifs = yield deferToThread(lm_message.fetch_timestamp_messages,
                                          uuid.UUID(client.uaid),
                                          " ")
@@ -1178,8 +1177,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         # Send in a notification, verify it landed in last months notification
         # table
         data = uuid.uuid4().hex
-        with self.legacy_endpoint():
-            yield client.send_notification(data=data)
+        yield client.send_notification(data=data)
         _, notifs = yield deferToThread(lm_message.fetch_timestamp_messages,
                                         uuid.UUID(client.uaid),
                                         " ")
