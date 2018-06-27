@@ -47,7 +47,7 @@ use server::metrics::metrics_from_opts;
 use server::webpush_io::WebpushIo;
 use settings::Settings;
 use util::megaphone::{
-    ClientServices, MegaphoneAPIResponse, Service, ServiceChangeTracker, ServiceClientInit,
+    Broadcast, BroadcastChangeTracker, BroadcastSubs, BroadcastSubsInit, MegaphoneAPIResponse,
 };
 use util::{timeout, RcObject};
 
@@ -210,7 +210,7 @@ impl ServerOptions {
 
 pub struct Server {
     uaids: RefCell<HashMap<Uuid, RegisteredClient>>,
-    broadcaster: RefCell<ServiceChangeTracker>,
+    broadcaster: RefCell<BroadcastChangeTracker>,
     pub ddb: DynamoStorage,
     open_connections: Cell<u32>,
     tls_acceptor: Option<SslAcceptor>,
@@ -307,10 +307,10 @@ impl Server {
                 .megaphone_api_token
                 .as_ref()
                 .expect("Megaphone API requires a Megaphone API Token to be set");
-            ServiceChangeTracker::with_api_services(megaphone_url, megaphone_token)
+            BroadcastChangeTracker::with_api_broadcasts(megaphone_url, megaphone_token)
                 .expect("Unable to initialize megaphone with provided URL")
         } else {
-            ServiceChangeTracker::new(Vec::new())
+            BroadcastChangeTracker::new(Vec::new())
         };
         let srv = Rc::new(Server {
             opts: opts.clone(),
@@ -529,28 +529,28 @@ impl Server {
         }
     }
 
-    /// Generate a new service client list for a newly connected client
-    pub fn broadcast_init(&self, services: &[Service]) -> ServiceClientInit {
-        debug!("Initialized broadcast services");
-        self.broadcaster.borrow().service_delta(services)
-    }
-
-    /// Calculate whether there's new service versions to go out
-    pub fn broadcast_delta(&self, client_services: &mut ClientServices) -> Option<Vec<Service>> {
+    /// Initialize broadcasts for a newly connected client
+    pub fn broadcast_init(&self, desired_broadcasts: &[Broadcast]) -> BroadcastSubsInit {
+        debug!("Initialized broadcasts");
         self.broadcaster
             .borrow()
-            .change_count_delta(client_services)
+            .broadcast_delta(desired_broadcasts)
     }
 
-    /// Add services to be tracked by a client
-    pub fn client_service_add_service(
+    /// Calculate whether there's new broadcast versions to go out
+    pub fn broadcast_delta(&self, broadcast_subs: &mut BroadcastSubs) -> Option<Vec<Broadcast>> {
+        self.broadcaster.borrow().change_count_delta(broadcast_subs)
+    }
+
+    /// Add new broadcasts to be tracked by a client
+    pub fn subscribe_to_broadcasts(
         &self,
-        client_services: &mut ClientServices,
-        services: &[Service],
-    ) -> Option<Vec<Service>> {
+        broadcast_subs: &mut BroadcastSubs,
+        broadcasts: &[Broadcast],
+    ) -> Option<Vec<Broadcast>> {
         self.broadcaster
             .borrow()
-            .client_service_add_service(client_services, services)
+            .subscribe_to_broadcasts(broadcast_subs, broadcasts)
     }
 }
 
@@ -618,8 +618,8 @@ impl Future for MegaphoneUpdater {
                         Ok(Async::Ready(MegaphoneAPIResponse { broadcasts })) => {
                             debug!("Fetched broadcasts: {:?}", broadcasts);
                             let mut broadcaster = self.srv.broadcaster.borrow_mut();
-                            for srv in Service::from_hashmap(broadcasts) {
-                                broadcaster.add_service(srv);
+                            for srv in Broadcast::from_hashmap(broadcasts) {
+                                broadcaster.add_broadcast(srv);
                             }
                         }
                         Ok(Async::NotReady) => return Ok(Async::NotReady),
@@ -809,7 +809,7 @@ struct WebpushSocket<T> {
     pong_received: bool,
     ping: bool,
     pong_timeout: bool,
-    broadcast_delta: Option<Vec<Service>>,
+    broadcast_delta: Option<Vec<Broadcast>>,
 }
 
 impl<T> WebpushSocket<T> {
@@ -832,7 +832,7 @@ impl<T> WebpushSocket<T> {
             let msg = if let Some(broadcasts) = self.broadcast_delta.clone() {
                 debug!("sending a broadcast delta");
                 let server_msg = ServerMessage::Broadcast {
-                    broadcasts: Service::into_hashmap(broadcasts),
+                    broadcasts: Broadcast::into_hashmap(broadcasts),
                 };
                 let s = serde_json::to_string(&server_msg).chain_err(|| "failed to serialize")?;
                 Message::Text(s)
