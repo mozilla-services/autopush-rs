@@ -547,6 +547,23 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    def test_topic_expired(self):
+        data = str(uuid.uuid4())
+        client = yield self.quick_register()
+        yield client.disconnect()
+        assert client.channels
+        yield client.send_notification(data=data, ttl=1, topic="test")
+        yield client.sleep(2)
+        yield client.connect()
+        yield client.hello()
+        result = yield client.get_notification(timeout=0.5)
+        assert result is None
+        result = yield client.send_notification(data=data, topic="test")
+        assert result != {}
+        assert result["data"] == base64url_encode(data)
+        yield self.shut_down(client)
+
+    @inlineCallbacks
     def test_multiple_delivery_with_single_ack(self):
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
