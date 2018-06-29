@@ -207,7 +207,7 @@ impl DynamoDbNotification {
         Ok(Notification {
             channel_id: key.channel_id,
             version,
-            ttl: self.ttl.ok_or("No TTL found")?,
+            ttl: self.ttl.unwrap_or(0),
             timestamp: self.timestamp.ok_or("No timestamp found")?,
             topic: key.topic,
             data: self.data,

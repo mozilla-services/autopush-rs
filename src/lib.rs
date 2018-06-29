@@ -1,10 +1,10 @@
 //! WIP: Implementation of Web Push ("autopush" as well) in Rust
-//! 
+//!
 //! This crate currently provides the connection node functionality for a Web
-//! Push server, and is a replacement for the 
+//! Push server, and is a replacement for the
 //! [`autopush`](https://github.com/mozilla-services/autopush) server. The older
 //! python handler still manages the HTTP endpoint calls, since those require
-//! less overhead to process. Eventually, those functions will be moved to 
+//! less overhead to process. Eventually, those functions will be moved to
 //! rust as well.
 //!
 //! # High level overview
@@ -18,7 +18,7 @@
 //! webpush protocol (see `states.dot` at the root of this repository). Note
 //! that not all states are implemented yet, this is a work in progress! All I/O
 //! is managed by Rust and various state transitions are managed by Rust as
-//! well. 
+//! well.
 //!
 //! # Module index
 //!

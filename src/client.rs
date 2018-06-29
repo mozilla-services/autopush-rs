@@ -9,10 +9,10 @@ use std::mem;
 use std::rc::Rc;
 
 use cadence::{prelude::*, StatsdClient};
-use futures::AsyncSink;
 use futures::future::Either;
 use futures::sync::mpsc;
 use futures::sync::oneshot::Receiver;
+use futures::AsyncSink;
 use futures::{Async, Future, Poll, Sink, Stream};
 use rusoto_dynamodb::UpdateItemOutput;
 use state_machine_future::RentToOwn;
@@ -20,10 +20,10 @@ use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 use woothee::parser::Parser;
 
+use db::{CheckStorageResponse, HelloResponse, RegisterResponse};
 use errors::*;
 use protocol::{ClientMessage, Notification, ServerMessage, ServerNotification};
 use server::Server;
-use db::{CheckStorageResponse, HelloResponse, RegisterResponse};
 use util::megaphone::{Broadcast, BroadcastSubs, BroadcastSubsInit};
 use util::{ms_since_epoch, parse_user_agent, sec_since_epoch};
 
@@ -35,9 +35,9 @@ pub struct RegisteredClient {
 }
 
 pub struct Client<T>
-    where
-        T: Stream<Item=ClientMessage, Error=Error>
-        + Sink<SinkItem=ServerMessage, SinkError=Error>
+where
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
         + 'static,
 {
     state_machine: UnAuthClientStateFuture<T>,
@@ -556,12 +556,16 @@ where
         data: AuthClientData<T>,
     },
 
-    #[state_machine_future(transitions(IncrementStorage, CheckStorage, AwaitDropUser,
-                                       AwaitMigrateUser, AwaitInput))]
+    #[state_machine_future(
+        transitions(IncrementStorage, CheckStorage, AwaitDropUser, AwaitMigrateUser, AwaitInput)
+    )]
     DetermineAck { data: AuthClientData<T> },
 
-    #[state_machine_future(transitions(DetermineAck, SendThenWait, AwaitInput, AwaitRegister,
-                                       AwaitUnregister, AwaitDelete))]
+    #[state_machine_future(
+        transitions(
+            DetermineAck, SendThenWait, AwaitInput, AwaitRegister, AwaitUnregister, AwaitDelete
+        )
+    )]
     AwaitInput { data: AuthClientData<T> },
 
     #[state_machine_future(transitions(AwaitIncrementStorage))]
@@ -702,7 +706,7 @@ where
             let response = Box::new(
                 data.srv
                     .ddb
-                    .drop_uaid(&data.srv.opts.router_table_name, &webpush.uaid)
+                    .drop_uaid(&data.srv.opts.router_table_name, &webpush.uaid),
             );
             transition!(AwaitDropUser { response, data });
         }
@@ -728,11 +732,9 @@ where
                 };
                 if let Some(delta) = broadcast_delta {
                     transition!(SendThenWait {
-                        remaining_data: vec![
-                            ServerMessage::Broadcast {
-                                broadcasts: Broadcast::into_hashmap(delta),
-                            },
-                        ],
+                        remaining_data: vec![ServerMessage::Broadcast {
+                            broadcasts: Broadcast::into_hashmap(delta),
+                        }],
                         poll_complete: false,
                         data,
                     });
@@ -926,7 +928,29 @@ where
         if !messages.is_empty() {
             // Filter out TTL expired messages
             let now = sec_since_epoch() as u32;
-            messages.retain(|ref msg| now < msg.ttl + msg.timestamp);
+            let srv = data.srv.clone();
+            messages = messages
+                .into_iter()
+                .filter_map(|n| {
+                    if now >= n.ttl + n.timestamp {
+                        if n.sortkey_timestamp.is_none() {
+                            srv.handle.spawn(
+                                srv.ddb
+                                    .delete_message(&webpush.message_month, &webpush.uaid, &n)
+                                    .then(|_| {
+                                        debug!(
+                                            "Deleting expired message without sortkey_timestamp"
+                                        );
+                                        Ok(())
+                                    }),
+                            );
+                        }
+                        None
+                    } else {
+                        Some(n)
+                    }
+                })
+                .collect();
             webpush.flags.increment_storage = !include_topic && timestamp.is_some();
             // If there's still messages send them out
             if !messages.is_empty() {
@@ -1040,7 +1064,7 @@ where
         transition!(SendThenWait {
             remaining_data: vec![msg],
             poll_complete: false,
-            data
+            data,
         })
     }
 
