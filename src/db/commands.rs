@@ -352,8 +352,11 @@ pub fn lookup_user(
     let router_url = router_url.to_string();
     let metrics = metrics.clone();
     let response = response.and_then(move |data| -> MyFuture<_> {
-        let mut hello_response: HelloResponse = Default::default();
-        hello_response.message_month = cur_month.clone();
+        let mut hello_response = HelloResponse {
+            message_month: cur_month.clone(),
+            connected_at,
+            ..Default::default()
+        };
         let user = handle_user_result(
             &cur_month,
             &messages_tables,

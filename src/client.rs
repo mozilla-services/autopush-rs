@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
 
-use cadence::prelude::*;
+use cadence::{prelude::*, StatsdClient};
 use futures::AsyncSink;
 use futures::future::Either;
 use futures::sync::mpsc;
@@ -834,6 +834,7 @@ where
                     webpush.unacked_direct_notifs.push(notif.clone());
                 }
                 debug!("Got a notification to send, sending!");
+                emit_metrics_for_send(&data.srv.metrics, &notif, "Direct");
                 transition!(SendThenWait {
                     remaining_data: vec![ServerMessage::Notification(notif)],
                     poll_complete: false,
@@ -935,6 +936,7 @@ where
                 transition!(SendThenWait {
                     remaining_data: messages
                         .into_iter()
+                        .inspect(|msg| emit_metrics_for_send(&data.srv.metrics, &msg, "Stored"))
                         .map(ServerMessage::Notification)
                         .collect(),
                     poll_complete: false,
@@ -1051,4 +1053,17 @@ where
             data: await_delete.take().data,
         })
     }
+}
+
+fn emit_metrics_for_send(metrics: &StatsdClient, notif: &Notification, source: &'static str) {
+    if notif.topic.is_some() {
+        metrics.incr("ua.notification.topic").ok();
+    }
+    metrics
+        .count_with_tags(
+            "ua.message_data",
+            notif.data.as_ref().map_or(0, |data| data.len() as i64),
+        )
+        .with_tag("source", source)
+        .send();
 }
