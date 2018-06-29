@@ -158,6 +158,7 @@ impl DynamoStorage {
             Box::new(future::ok((
                 HelloResponse {
                     message_month: current_message_month.to_string(),
+                    connected_at: *connected_at,
                     ..Default::default()
                 },
                 None,
