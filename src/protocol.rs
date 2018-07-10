@@ -151,6 +151,10 @@ impl Notification {
             format!("{}:{}", chid, self.version)
         }
     }
+
+    pub fn expired(&self, at_sec: u64) -> bool {
+        at_sec >= self.timestamp as u64 + self.ttl as u64
+    }
 }
 
 fn default_ttl() -> u32 {

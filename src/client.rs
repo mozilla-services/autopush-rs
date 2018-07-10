@@ -188,9 +188,13 @@ impl WebPushClient {
 
 #[derive(Default)]
 pub struct ClientFlags {
+    /// Whether check_storage queries for topic (not "timestamped") messages
     include_topic: bool,
+    /// Flags the need to increment the last read for timestamp for timestamped messages
     increment_storage: bool,
+    /// Whether this client needs to check storage for messages
     check: bool,
+    /// Flags the need to drop the user record
     reset_uaid: bool,
     rotate_message_table: bool,
 }
@@ -432,7 +436,6 @@ where
         };
         let auth_state_machine = AuthClientState::start(
             vec![response],
-            false,
             AuthClientData {
                 srv: srv.clone(),
                 ws,
@@ -549,10 +552,15 @@ where
         + Sink<SinkItem = ServerMessage, SinkError = Error>
         + 'static,
 {
-    #[state_machine_future(start, transitions(DetermineAck, SendThenWait))]
-    SendThenWait {
-        remaining_data: Vec<ServerMessage>,
-        poll_complete: bool,
+    #[state_machine_future(start, transitions(AwaitSend, DetermineAck))]
+    Send {
+        smessages: Vec<ServerMessage>,
+        data: AuthClientData<T>,
+    },
+
+    #[state_machine_future(transitions(DetermineAck, Send))]
+    AwaitSend {
+        smessages: Vec<ServerMessage>,
         data: AuthClientData<T>,
     },
 
@@ -562,9 +570,7 @@ where
     DetermineAck { data: AuthClientData<T> },
 
     #[state_machine_future(
-        transitions(
-            DetermineAck, SendThenWait, AwaitInput, AwaitRegister, AwaitUnregister, AwaitDelete
-        )
+        transitions(DetermineAck, Send, AwaitInput, AwaitRegister, AwaitUnregister, AwaitDelete)
     )]
     AwaitInput { data: AuthClientData<T> },
 
@@ -580,7 +586,7 @@ where
     #[state_machine_future(transitions(AwaitCheckStorage))]
     CheckStorage { data: AuthClientData<T> },
 
-    #[state_machine_future(transitions(SendThenWait, DetermineAck))]
+    #[state_machine_future(transitions(Send, DetermineAck))]
     AwaitCheckStorage {
         response: MyFuture<CheckStorageResponse>,
         data: AuthClientData<T>,
@@ -598,14 +604,14 @@ where
         data: AuthClientData<T>,
     },
 
-    #[state_machine_future(transitions(SendThenWait))]
+    #[state_machine_future(transitions(Send))]
     AwaitRegister {
         channel_id: Uuid,
         response: MyFuture<RegisterResponse>,
         data: AuthClientData<T>,
     },
 
-    #[state_machine_future(transitions(SendThenWait))]
+    #[state_machine_future(transitions(Send))]
     AwaitUnregister {
         channel_id: Uuid,
         code: u32,
@@ -632,27 +638,21 @@ where
         + Sink<SinkItem = ServerMessage, SinkError = Error>
         + 'static,
 {
-    fn poll_send_then_wait<'a>(
-        send: &'a mut RentToOwn<'a, SendThenWait<T>>,
-    ) -> Poll<AfterSendThenWait<T>, Error> {
-        trace!("State: SendThenWait");
-        let start_send = {
-            let SendThenWait {
-                ref mut remaining_data,
-                poll_complete,
+    fn poll_send<'a>(send: &'a mut RentToOwn<'a, Send<T>>) -> Poll<AfterSend<T>, Error> {
+        trace!("State: Send");
+        let sent = {
+            let Send {
+                ref mut smessages,
                 ref mut data,
                 ..
             } = **send;
-            if poll_complete {
-                try_ready!(data.ws.poll_complete());
-                false
-            } else if !remaining_data.is_empty() {
-                let item = remaining_data.remove(0);
+            if !smessages.is_empty() {
+                let item = smessages.remove(0);
                 let ret = data.ws.start_send(item).chain_err(|| "unable to send")?;
                 match ret {
                     AsyncSink::Ready => true,
                     AsyncSink::NotReady(returned) => {
-                        remaining_data.insert(0, returned);
+                        smessages.insert(0, returned);
                         return Ok(Async::NotReady);
                     }
                 }
@@ -661,23 +661,22 @@ where
             }
         };
 
-        let SendThenWait {
-            data,
-            remaining_data,
-            ..
-        } = send.take();
-        if start_send {
-            transition!(SendThenWait {
-                remaining_data,
-                poll_complete: true,
-                data,
-            });
-        } else if !remaining_data.is_empty() {
-            transition!(SendThenWait {
-                remaining_data,
-                poll_complete: false,
-                data,
-            });
+        let Send { smessages, data } = send.take();
+        if sent {
+            transition!(AwaitSend { smessages, data });
+        }
+        transition!(DetermineAck { data })
+    }
+
+    fn poll_await_send<'a>(
+        await_send: &'a mut RentToOwn<'a, AwaitSend<T>>,
+    ) -> Poll<AfterAwaitSend<T>, Error> {
+        trace!("State: AwaitSend");
+        try_ready!(await_send.data.ws.poll_complete());
+
+        let AwaitSend { smessages, data } = await_send.take();
+        if !smessages.is_empty() {
+            transition!(Send { smessages, data });
         }
         transition!(DetermineAck { data })
     }
@@ -731,11 +730,10 @@ where
                     )
                 };
                 if let Some(delta) = broadcast_delta {
-                    transition!(SendThenWait {
-                        remaining_data: vec![ServerMessage::Broadcast {
+                    transition!(Send {
+                        smessages: vec![ServerMessage::Broadcast {
                             broadcasts: Broadcast::into_hashmap(delta),
                         }],
-                        poll_complete: false,
                         data,
                     });
                 } else {
@@ -757,7 +755,8 @@ where
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
                 let srv = data.srv.clone();
-                let fut = data.srv
+                let fut = data
+                    .srv
                     .ddb
                     .register(&srv, &uaid, &channel_id, &message_month, key);
                 transition!(AwaitRegister {
@@ -837,9 +836,8 @@ where
                 }
                 debug!("Got a notification to send, sending!");
                 emit_metrics_for_send(&data.srv.metrics, &notif, "Direct");
-                transition!(SendThenWait {
-                    remaining_data: vec![ServerMessage::Notification(notif)],
-                    poll_complete: false,
+                transition!(Send {
+                    smessages: vec![ServerMessage::Notification(notif)],
                     data,
                 });
             }
@@ -925,53 +923,49 @@ where
         webpush.flags.include_topic = include_topic;
         debug!("Setting unacked stored highest to {:?}", timestamp);
         webpush.unacked_stored_highest = timestamp;
-        if !messages.is_empty() {
-            // Filter out TTL expired messages
-            let now = sec_since_epoch() as u32;
-            let srv = data.srv.clone();
-            messages = messages
-                .into_iter()
-                .filter_map(|n| {
-                    if now >= n.ttl + n.timestamp {
-                        if n.sortkey_timestamp.is_none() {
-                            srv.handle.spawn(
-                                srv.ddb
-                                    .delete_message(&webpush.message_month, &webpush.uaid, &n)
-                                    .then(|_| {
-                                        debug!(
-                                            "Deleting expired message without sortkey_timestamp"
-                                        );
-                                        Ok(())
-                                    }),
-                            );
-                        }
-                        None
-                    } else {
-                        Some(n)
-                    }
-                })
-                .collect();
-            webpush.flags.increment_storage = !include_topic && timestamp.is_some();
-            // If there's still messages send them out
-            if !messages.is_empty() {
-                webpush
-                    .unacked_stored_notifs
-                    .extend(messages.iter().cloned());
-                transition!(SendThenWait {
-                    remaining_data: messages
-                        .into_iter()
-                        .inspect(|msg| emit_metrics_for_send(&data.srv.metrics, &msg, "Stored"))
-                        .map(ServerMessage::Notification)
-                        .collect(),
-                    poll_complete: false,
-                    data,
-                })
-            } else {
-                // No messages remaining
-                transition!(DetermineAck { data })
-            }
-        } else {
+        if messages.is_empty() {
             webpush.flags.check = false;
+            transition!(DetermineAck { data });
+        }
+
+        // Filter out TTL expired messages
+        let now = sec_since_epoch();
+        let srv = data.srv.clone();
+        messages = messages
+            .into_iter()
+            .filter_map(|n| {
+                if !n.expired(now) {
+                    return Some(n);
+                }
+                if n.sortkey_timestamp.is_none() {
+                    srv.handle.spawn(
+                        srv.ddb
+                            .delete_message(&webpush.message_month, &webpush.uaid, &n)
+                            .then(|_| {
+                                debug!("Deleting expired message without sortkey_timestamp");
+                                Ok(())
+                            }),
+                    );
+                }
+                None
+            })
+            .collect();
+        webpush.flags.increment_storage = !include_topic && timestamp.is_some();
+        // If there's still messages send them out
+        if !messages.is_empty() {
+            webpush
+                .unacked_stored_notifs
+                .extend(messages.iter().cloned());
+            transition!(Send {
+                smessages: messages
+                    .into_iter()
+                    .inspect(|msg| emit_metrics_for_send(&data.srv.metrics, &msg, "Stored"))
+                    .map(ServerMessage::Notification)
+                    .collect(),
+                data,
+            })
+        } else {
+            // No messages remaining
             transition!(DetermineAck { data })
         }
     }
@@ -1028,9 +1022,8 @@ where
             }
         };
 
-        transition!(SendThenWait {
-            remaining_data: vec![msg],
-            poll_complete: false,
+        transition!(Send {
+            smessages: vec![msg],
             data: await_register.take().data,
         })
     }
@@ -1061,9 +1054,8 @@ where
             .incr_with_tags("ua.command.unregister")
             .with_tag("code", &code.to_string())
             .send();
-        transition!(SendThenWait {
-            remaining_data: vec![msg],
-            poll_complete: false,
+        transition!(Send {
+            smessages: vec![msg],
             data,
         })
     }
