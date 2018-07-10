@@ -61,6 +61,7 @@ twisted.internet.base.DelayedCall.debug = True
 
 ROUTER_TABLE = os.environ.get("ROUTER_TABLE", "router_int_test")
 MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
+MSG_LIMIT = 20
 
 CRYPTO_KEY = Fernet.generate_key()
 CONNECTION_PORT = 9150
@@ -119,6 +120,7 @@ def setup_module():
         close_handshake_timeout=5,
         max_connections=5000,
         human_logs="true",
+        msg_limit=MSG_LIMIT,
     )
     rust_bin = root_dir + "/target/release/autopush_rs"
     possible_paths = ["/target/debug/autopush_rs",
@@ -859,6 +861,26 @@ class TestRustWebPush(unittest.TestCase):
                                        status=400)
         assert result["status"] == 400
 
+        yield self.shut_down(client)
+
+    @inlineCallbacks
+    def test_msg_limit(self):
+        client = yield self.quick_register()
+        uaid = client.uaid
+        yield client.disconnect()
+        for i in range(MSG_LIMIT + 1):
+            yield client.send_notification()
+        yield client.connect()
+        yield client.hello()
+        assert client.uaid == uaid
+        for i in range(MSG_LIMIT):
+            result = yield client.get_notification()
+            assert result is not None
+            yield client.ack(result["channelID"], result["version"])
+        yield client.disconnect()
+        yield client.connect()
+        yield client.hello()
+        assert client.uaid != uaid
         yield self.shut_down(client)
 
 

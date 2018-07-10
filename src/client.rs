@@ -159,6 +159,7 @@ pub struct WebPushClient {
     // when all the unacked storeds are ack'd
     unacked_stored_highest: Option<u64>,
     connected_at: u64,
+    sent_from_storage: u32,
     stats: SessionStatistics,
 }
 
@@ -175,6 +176,7 @@ impl Default for WebPushClient {
             unacked_stored_notifs: Default::default(),
             unacked_stored_highest: Default::default(),
             connected_at: Default::default(),
+            sent_from_storage: Default::default(),
             stats: Default::default(),
         }
     }
@@ -558,7 +560,7 @@ where
         data: AuthClientData<T>,
     },
 
-    #[state_machine_future(transitions(DetermineAck, Send))]
+    #[state_machine_future(transitions(DetermineAck, Send, AwaitDropUser))]
     AwaitSend {
         smessages: Vec<ServerMessage>,
         data: AuthClientData<T>,
@@ -675,7 +677,19 @@ where
         try_ready!(await_send.data.ws.poll_complete());
 
         let AwaitSend { smessages, data } = await_send.take();
-        if !smessages.is_empty() {
+        let webpush_rc = data.webpush.clone();
+        let webpush = webpush_rc.borrow();
+        if webpush.sent_from_storage > data.srv.opts.msg_limit {
+            // Exceeded the max limit of stored messages: drop the user to trigger a
+            // re-register
+            debug!("Dropping user: exceeded msg_limit");
+            let response = Box::new(
+                data.srv
+                    .ddb
+                    .drop_uaid(&data.srv.opts.router_table_name, &webpush.uaid),
+            );
+            transition!(AwaitDropUser { response, data });
+        } else if !smessages.is_empty() {
             transition!(Send { smessages, data });
         }
         transition!(DetermineAck { data })
@@ -702,6 +716,7 @@ where
             ));
             transition!(AwaitMigrateUser { response, data });
         } else if all_acked && webpush.flags.reset_uaid {
+            debug!("Dropping user: flagged reset_uaid");
             let response = Box::new(
                 data.srv
                     .ddb
@@ -925,6 +940,7 @@ where
         webpush.unacked_stored_highest = timestamp;
         if messages.is_empty() {
             webpush.flags.check = false;
+            webpush.sent_from_storage = 0;
             transition!(DetermineAck { data });
         }
 
@@ -956,14 +972,13 @@ where
             webpush
                 .unacked_stored_notifs
                 .extend(messages.iter().cloned());
-            transition!(Send {
-                smessages: messages
-                    .into_iter()
-                    .inspect(|msg| emit_metrics_for_send(&data.srv.metrics, &msg, "Stored"))
-                    .map(ServerMessage::Notification)
-                    .collect(),
-                data,
-            })
+            let smessages: Vec<_> = messages
+                .into_iter()
+                .inspect(|msg| emit_metrics_for_send(&data.srv.metrics, &msg, "Stored"))
+                .map(ServerMessage::Notification)
+                .collect();
+            webpush.sent_from_storage += smessages.len() as u32;
+            transition!(Send { smessages, data })
         } else {
             // No messages remaining
             transition!(DetermineAck { data })
