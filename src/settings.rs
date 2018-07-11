@@ -47,6 +47,7 @@ pub struct Settings {
     pub megaphone_api_token: Option<String>,
     pub megaphone_poll_interval: u32,
     pub human_logs: bool,
+    pub msg_limit: u32,
 }
 
 impl Settings {
@@ -72,6 +73,7 @@ impl Settings {
         s.set_default("statsd_port", 8125)?;
         s.set_default("megaphone_poll_interval", 30)?;
         s.set_default("human_logs", false)?;
+        s.set_default("msg_limit", 100)?;
 
         // Merge the configs from the files
         for filename in filenames {

@@ -140,6 +140,7 @@ pub struct ServerOptions {
     pub megaphone_api_token: Option<String>,
     pub megaphone_poll_interval: Duration,
     pub human_logs: bool,
+    pub msg_limit: u32,
 }
 
 impl ServerOptions {
@@ -197,6 +198,7 @@ impl ServerOptions {
             megaphone_poll_interval: ito_dur(settings.megaphone_poll_interval)
                 .expect("megaphone poll interval cannot be 0"),
             human_logs: settings.human_logs,
+            msg_limit: settings.msg_limit,
         };
         opts.message_table_names.sort_unstable();
         opts.current_message_month = opts
