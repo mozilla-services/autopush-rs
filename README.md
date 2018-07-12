@@ -1,6 +1,5 @@
 [![Build](https://travis-ci.org/mozilla-services/autopush-rs.svg?branch=master)](https://travis-ci.org/mozilla-services/autopush-rs)
-[![License: MPL 2.0]][MPL 2.0] [![Build Status]][travis]
-[![Latest Version]][crates.io] [![Api Rustdoc]][rustdoc]
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 
 # Autopush-rs
 
@@ -21,7 +20,7 @@ MDN has information about [how to use
 WebPush](https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
 
 ***Note*** while `rust-doc` style comments are used prolifically
-through the source, only pubic structures are rendered automatically.
+through the source, only public structures are rendered automatically.
 For those curious about the inner workings, You may wish to read the
 code files directly.
 
