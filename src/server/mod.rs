@@ -381,6 +381,8 @@ impl Server {
                 let client = request.and_then(move |(socket, request)| -> MyFuture<_> {
                     match request {
                         RequestType::Status => write_status(socket),
+                        RequestType::LBHeartBeat => write_json(socket, StatusCode::Ok, serde_json::Value::from("")),
+                        RequestType::Version => write_version_file(socket),
                         RequestType::LogCheck => write_log_check(socket),
                         RequestType::Websocket => {
                             // Perform the websocket handshake on each
@@ -944,6 +946,14 @@ fn write_status(socket: WebpushIo) -> MyFuture<()> {
             "version": env!("CARGO_PKG_VERSION"),
     }),
     )
+}
+
+/// Return a static copy of `version.json` from compile time.
+pub fn write_version_file(socket: WebpushIo) -> MyFuture<()> {
+    write_json(
+        socket, 
+        StatusCode::Ok, 
+        serde_json::Value::from(include_str!("../../version.json")))
 }
 
 fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
