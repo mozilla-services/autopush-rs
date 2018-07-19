@@ -22,7 +22,7 @@ mod commands;
 mod models;
 use errors::*;
 use protocol::Notification;
-use server::Server;
+use server::{Server, ServerOptions};
 mod util;
 use util::timing::sec_since_epoch;
 
@@ -62,10 +62,13 @@ pub enum RegisterResponse {
 
 pub struct DynamoStorage {
     ddb: Rc<Box<DynamoDb>>,
+    router_table_name: String,
+    message_table_names: Vec<String>,
+    pub current_message_month: String,
 }
 
 impl DynamoStorage {
-    pub fn new() -> Self {
+    pub fn from_opts(opts: &ServerOptions) -> Result<Self> {
         let ddb: Box<DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             Box::new(DynamoDbClient::new(
                 RequestDispatcher::default(),
@@ -78,27 +81,22 @@ impl DynamoStorage {
         } else {
             Box::new(DynamoDbClient::simple(Region::default()))
         };
-        Self { ddb: Rc::new(ddb) }
-    }
+        let ddb = Rc::new(ddb);
 
-    pub fn list_message_tables(&self, prefix: &str) -> Result<Vec<String>> {
-        let mut names: Vec<String> = Vec::new();
-        let mut start_key = None;
-        loop {
-            let result = commands::list_tables(self.ddb.clone(), start_key).wait()?;
-            start_key = result.last_evaluated_table_name;
-            if let Some(table_names) = result.table_names {
-                names.extend(table_names);
-            }
-            if start_key.is_none() {
-                break;
-            }
-        }
-        let names = names
-            .into_iter()
-            .filter(|name| name.starts_with(prefix))
-            .collect();
-        Ok(names)
+        let mut message_table_names = list_message_tables(&ddb, &opts._message_table_name)
+            .map_err(|_| "Failed to locate message tables")?;
+        message_table_names.sort_unstable();
+        let current_message_month = message_table_names
+            .last()
+            .ok_or("No last message month found")?
+            .to_string();
+
+        Ok(Self {
+            ddb,
+            router_table_name: opts._router_table_name.clone(),
+            message_table_names,
+            current_message_month,
+        })
     }
 
     pub fn increment_storage(
@@ -136,28 +134,24 @@ impl DynamoStorage {
         &self,
         connected_at: &u64,
         uaid: Option<&Uuid>,
-        router_table_name: &str,
         router_url: &str,
-        message_table_names: &[String],
-        current_message_month: &str,
         metrics: &StatsdClient,
     ) -> impl Future<Item = HelloResponse, Error = Error> {
-        let router_table_name = router_table_name.to_string();
         let response: MyFuture<(HelloResponse, Option<DynamoDbUser>)> = if let Some(uaid) = uaid {
             commands::lookup_user(
                 self.ddb.clone(),
                 &uaid,
                 connected_at,
                 router_url,
-                &router_table_name,
-                message_table_names,
-                current_message_month,
+                &self.router_table_name,
+                &self.message_table_names,
+                &self.current_message_month,
                 metrics,
             )
         } else {
             Box::new(future::ok((
                 HelloResponse {
-                    message_month: current_message_month.to_string(),
+                    message_month: self.current_message_month.clone(),
                     connected_at: *connected_at,
                     ..Default::default()
                 },
@@ -166,6 +160,7 @@ impl DynamoStorage {
         };
         let ddb = self.ddb.clone();
         let router_url = router_url.to_string();
+        let router_table_name = self.router_table_name.clone();
         let connected_at = *connected_at;
 
         response.and_then(move |(mut hello_response, user_opt)| {
@@ -179,7 +174,7 @@ impl DynamoStorage {
             let uaid = user.uaid;
             let mut err_response = hello_response.clone();
             err_response.connected_at = connected_at;
-            commands::register_user(ddb, &user, router_table_name.as_ref())
+            commands::register_user(ddb, &user, &router_table_name)
                 .and_then(move |result| {
                     debug!("Success adding user, item output: {:?}", result);
                     hello_response.uaid = Some(uaid);
@@ -223,12 +218,8 @@ impl DynamoStorage {
         Box::new(response)
     }
 
-    pub fn drop_uaid(
-        &self,
-        table_name: &str,
-        uaid: &Uuid,
-    ) -> impl Future<Item = (), Error = Error> {
-        commands::drop_user(self.ddb.clone(), uaid, table_name)
+    pub fn drop_uaid(&self, uaid: &Uuid) -> impl Future<Item = (), Error = Error> {
+        commands::drop_user(self.ddb.clone(), uaid, &self.router_table_name)
             .and_then(|_| future::ok(()))
             .chain_err(|| "Unable to drop user record")
     }
@@ -249,15 +240,13 @@ impl DynamoStorage {
         &self,
         uaid: &Uuid,
         message_month: &str,
-        current_message_month: &str,
-        router_table_name: &str,
     ) -> impl Future<Item = (), Error = Error> {
         let uaid = *uaid;
         let ddb = self.ddb.clone();
         let ddb2 = self.ddb.clone();
-        let cur_month = current_message_month.to_string();
+        let cur_month = self.current_message_month.to_string();
         let cur_month2 = cur_month.clone();
-        let router_table_name = router_table_name.to_string();
+        let router_table_name = self.router_table_name.clone();
 
         commands::all_channels(self.ddb.clone(), &uaid, message_month)
             .and_then(move |channels| -> MyFuture<_> {
@@ -403,4 +392,24 @@ impl DynamoStorage {
             Box::new(next_query)
         })
     }
+}
+
+pub fn list_message_tables(ddb: &Rc<Box<DynamoDb>>, prefix: &str) -> Result<Vec<String>> {
+    let mut names: Vec<String> = Vec::new();
+    let mut start_key = None;
+    loop {
+        let result = commands::list_tables(Rc::clone(ddb), start_key).wait()?;
+        start_key = result.last_evaluated_table_name;
+        if let Some(table_names) = result.table_names {
+            names.extend(table_names);
+        }
+        if start_key.is_none() {
+            break;
+        }
+    }
+    let names = names
+        .into_iter()
+        .filter(|name| name.starts_with(prefix))
+        .collect();
+    Ok(names)
 }

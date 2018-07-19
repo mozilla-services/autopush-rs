@@ -343,10 +343,7 @@ where
         let response = Box::new(data.srv.ddb.hello(
             &connected_at,
             uaid.as_ref(),
-            &data.srv.opts.router_table_name,
             &data.srv.opts.router_url,
-            &data.srv.opts.message_table_names,
-            &data.srv.opts.current_message_month,
             &data.srv.metrics,
         ));
         transition!(AwaitProcessHello {
@@ -567,12 +564,25 @@ where
     },
 
     #[state_machine_future(
-        transitions(IncrementStorage, CheckStorage, AwaitDropUser, AwaitMigrateUser, AwaitInput)
+        transitions(
+            IncrementStorage,
+            CheckStorage,
+            AwaitDropUser,
+            AwaitMigrateUser,
+            AwaitInput
+        )
     )]
     DetermineAck { data: AuthClientData<T> },
 
     #[state_machine_future(
-        transitions(DetermineAck, Send, AwaitInput, AwaitRegister, AwaitUnregister, AwaitDelete)
+        transitions(
+            DetermineAck,
+            Send,
+            AwaitInput,
+            AwaitRegister,
+            AwaitUnregister,
+            AwaitDelete
+        )
     )]
     AwaitInput { data: AuthClientData<T> },
 
@@ -683,11 +693,7 @@ where
             // Exceeded the max limit of stored messages: drop the user to trigger a
             // re-register
             debug!("Dropping user: exceeded msg_limit");
-            let response = Box::new(
-                data.srv
-                    .ddb
-                    .drop_uaid(&data.srv.opts.router_table_name, &webpush.uaid),
-            );
+            let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
             transition!(AwaitDropUser { response, data });
         } else if !smessages.is_empty() {
             transition!(Send { smessages, data });
@@ -708,20 +714,15 @@ where
             transition!(CheckStorage { data });
         } else if all_acked && webpush.flags.rotate_message_table {
             debug!("Triggering migration");
-            let response = Box::new(data.srv.ddb.migrate_user(
-                &webpush.uaid,
-                &webpush.message_month,
-                &data.srv.opts.current_message_month,
-                &data.srv.opts.router_table_name,
-            ));
-            transition!(AwaitMigrateUser { response, data });
-        } else if all_acked && webpush.flags.reset_uaid {
-            debug!("Dropping user: flagged reset_uaid");
             let response = Box::new(
                 data.srv
                     .ddb
-                    .drop_uaid(&data.srv.opts.router_table_name, &webpush.uaid),
+                    .migrate_user(&webpush.uaid, &webpush.message_month),
             );
+            transition!(AwaitMigrateUser { response, data });
+        } else if all_acked && webpush.flags.reset_uaid {
+            debug!("Dropping user: flagged reset_uaid");
+            let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
             transition!(AwaitDropUser { response, data });
         }
         transition!(AwaitInput { data })
@@ -1006,7 +1007,7 @@ where
         let AwaitMigrateUser { data, .. } = await_migrate_user.take();
         {
             let mut webpush = data.webpush.borrow_mut();
-            webpush.message_month = data.srv.opts.current_message_month.clone();
+            webpush.message_month = data.srv.ddb.current_message_month.clone();
             webpush.flags.rotate_message_table = false;
         }
         transition!(DetermineAck { data })
