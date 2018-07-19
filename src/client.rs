@@ -795,8 +795,21 @@ where
                     data,
                 });
             }
-            Either::A(ClientMessage::Nack { .. }) => {
-                data.srv.metrics.incr("ua.command.nack").ok();
+            Either::A(ClientMessage::Nack { code, .. }) => {
+                // only metric codes expected from the client (or 0)
+                let mcode =
+                    code.and_then(|code| {
+                        if code >= 301 && code <= 303 {
+                            Some(code)
+                        } else {
+                            None
+                        }
+                    }).unwrap_or(0);
+                data.srv
+                    .metrics
+                    .incr_with_tags("ua.command.nack")
+                    .with_tag("code", &mcode.to_string())
+                    .send();
                 webpush.stats.nacks += 1;
                 transition!(AwaitInput { data });
             }
