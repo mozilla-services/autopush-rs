@@ -301,15 +301,17 @@ impl Server {
         } else {
             BroadcastChangeTracker::new(Vec::new())
         };
+        let metrics = metrics_from_opts(opts)?;
+
         let srv = Rc::new(Server {
             opts: opts.clone(),
             broadcaster: RefCell::new(broadcaster),
-            ddb: DynamoStorage::from_opts(opts)?,
+            ddb: DynamoStorage::from_opts(opts, metrics.clone())?,
             uaids: RefCell::new(HashMap::new()),
             open_connections: Cell::new(0),
             handle: core.handle(),
             tls_acceptor: tls::configure(opts),
-            metrics: metrics_from_opts(opts)?,
+            metrics,
         });
         let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.port));
         let ws_listener = TcpListener::bind(&addr, &srv.handle)?;

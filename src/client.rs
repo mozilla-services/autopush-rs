@@ -344,7 +344,6 @@ where
             &connected_at,
             uaid.as_ref(),
             &data.srv.opts.router_url,
-            &data.srv.metrics,
         ));
         transition!(AwaitProcessHello {
             response,

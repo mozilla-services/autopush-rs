@@ -62,13 +62,14 @@ pub enum RegisterResponse {
 
 pub struct DynamoStorage {
     ddb: Rc<Box<DynamoDb>>,
+    metrics: Rc<StatsdClient>,
     router_table_name: String,
     message_table_names: Vec<String>,
     pub current_message_month: String,
 }
 
 impl DynamoStorage {
-    pub fn from_opts(opts: &ServerOptions) -> Result<Self> {
+    pub fn from_opts(opts: &ServerOptions, metrics: StatsdClient) -> Result<Self> {
         let ddb: Box<DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             Box::new(DynamoDbClient::new(
                 RequestDispatcher::default(),
@@ -93,6 +94,7 @@ impl DynamoStorage {
 
         Ok(Self {
             ddb,
+            metrics: Rc::new(metrics),
             router_table_name: opts._router_table_name.clone(),
             message_table_names,
             current_message_month,
@@ -135,18 +137,17 @@ impl DynamoStorage {
         connected_at: &u64,
         uaid: Option<&Uuid>,
         router_url: &str,
-        metrics: &StatsdClient,
     ) -> impl Future<Item = HelloResponse, Error = Error> {
         let response: MyFuture<(HelloResponse, Option<DynamoDbUser>)> = if let Some(uaid) = uaid {
             commands::lookup_user(
                 self.ddb.clone(),
+                &self.metrics,
                 &uaid,
                 connected_at,
                 router_url,
                 &self.router_table_name,
                 &self.message_table_names,
                 &self.current_message_month,
-                metrics,
             )
         } else {
             Box::new(future::ok((
@@ -339,6 +340,7 @@ impl DynamoStorage {
         let response: MyFuture<FetchMessageResponse> = if include_topic {
             Box::new(commands::fetch_messages(
                 self.ddb.clone(),
+                &self.metrics,
                 table_name,
                 uaid,
                 11 as u32,
@@ -349,6 +351,7 @@ impl DynamoStorage {
         let uaid = *uaid;
         let table_name = table_name.to_string();
         let ddb = self.ddb.clone();
+        let metrics = Rc::clone(&self.metrics);
 
         response.and_then(move |resp| -> MyFuture<_> {
             // Return now from this future if we have messages
@@ -370,6 +373,7 @@ impl DynamoStorage {
                 if resp.messages.is_empty() || resp.timestamp.is_some() {
                     Box::new(commands::fetch_timestamp_messages(
                         ddb,
+                        &metrics,
                         table_name.as_ref(),
                         &uaid,
                         timestamp,

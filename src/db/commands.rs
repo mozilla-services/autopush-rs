@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::rc::Rc;
 use std::result::Result as StdResult;
 use uuid::Uuid;
@@ -49,6 +50,7 @@ pub fn list_tables(
 
 pub fn fetch_messages(
     ddb: Rc<Box<DynamoDb>>,
+    metrics: &Rc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
@@ -66,19 +68,22 @@ pub fn fetch_messages(
         ..Default::default()
     };
 
+    let metrics = Rc::clone(metrics);
     let cond = |err: &QueryError| matches!(err, &QueryError::ProvisionedThroughputExceeded(_));
     retry_if(move || ddb.query(&input), cond)
         .chain_err(|| "Error fetching messages")
-        .and_then(|output| {
+        .and_then(move |output| {
             let mut notifs: Vec<DynamoDbNotification> =
                 output.items.map_or_else(Vec::new, |items| {
                     debug!("Got response of: {:?}", items);
-                    // TODO: Capture translation errors and report them as we shouldn't
-                    // have corrupt data
                     items
                         .into_iter()
                         .inspect(|i| debug!("Item: {:?}", i))
-                        .filter_map(|item| serde_dynamodb::from_hashmap(item).ok())
+                        .filter_map(|item| {
+                            ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                                conversion_err(&metrics, e, "serde_dynamodb_from_hashmap")
+                            })
+                        })
                         .collect()
                 });
             if notifs.is_empty() {
@@ -89,10 +94,13 @@ pub fn fetch_messages(
             // the first DynamoDbNotification and remove it from the vec.
             let timestamp = notifs.remove(0).current_timestamp;
             // Convert any remaining DynamoDbNotifications to Notification's
-            // TODO: Capture translation errors and report them as we shouldn't have corrupt data
             let messages = notifs
                 .into_iter()
-                .filter_map(|ddb_notif| ddb_notif.into_notif().ok())
+                .filter_map(|ddb_notif| {
+                    ok_or_inspect(ddb_notif.into_notif(), |e| {
+                        conversion_err(&metrics, e, "into_notif")
+                    })
+                })
                 .collect();
             Ok(FetchMessageResponse {
                 timestamp,
@@ -103,6 +111,7 @@ pub fn fetch_messages(
 
 pub fn fetch_timestamp_messages(
     ddb: Rc<Box<DynamoDb>>,
+    metrics: &Rc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
     timestamp: Option<u64>,
@@ -126,17 +135,25 @@ pub fn fetch_timestamp_messages(
         ..Default::default()
     };
 
+    let metrics = Rc::clone(metrics);
     let cond = |err: &QueryError| matches!(err, &QueryError::ProvisionedThroughputExceeded(_));
     retry_if(move || ddb.query(&input), cond)
         .chain_err(|| "Error fetching messages")
-        .and_then(|output| {
+        .and_then(move |output| {
             let messages = output.items.map_or_else(Vec::new, |items| {
                 debug!("Got response of: {:?}", items);
-                // TODO: Capture translation errors and report them as we shouldn't have corrupt data
                 items
                     .into_iter()
-                    .filter_map(|item| serde_dynamodb::from_hashmap(item).ok())
-                    .filter_map(|ddb_notif: DynamoDbNotification| ddb_notif.into_notif().ok())
+                    .filter_map(|item| {
+                        ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                            conversion_err(&metrics, e, "serde_dynamodb_from_hashmap")
+                        })
+                    })
+                    .filter_map(|ddb_notif: DynamoDbNotification| {
+                        ok_or_inspect(ddb_notif.into_notif(), |e| {
+                            conversion_err(&metrics, e, "into_notif")
+                        })
+                    })
                     .collect()
             });
             let timestamp = messages.iter().filter_map(|m| m.sortkey_timestamp).max();
@@ -334,13 +351,13 @@ pub fn unregister_channel_id(
 
 pub fn lookup_user(
     ddb: Rc<Box<DynamoDb>>,
+    metrics: &Rc<StatsdClient>,
     uaid: &Uuid,
     connected_at: &u64,
     router_url: &str,
     router_table_name: &str,
     message_table_names: &[String],
     current_message_month: &str,
-    metrics: &StatsdClient,
 ) -> MyFuture<(HelloResponse, Option<DynamoDbUser>)> {
     let response = get_uaid(ddb.clone(), uaid, router_table_name);
     // Prep all these for the move into the static closure capture
@@ -350,7 +367,7 @@ pub fn lookup_user(
     let messages_tables = message_table_names.to_vec();
     let connected_at = *connected_at;
     let router_url = router_url.to_string();
-    let metrics = metrics.clone();
+    let metrics = Rc::clone(metrics);
     let response = response.and_then(move |data| -> MyFuture<_> {
         let mut hello_response = HelloResponse {
             message_month: cur_month.clone(),
@@ -416,4 +433,31 @@ fn handle_user_result(
     user.node_id = Some(router_url);
     user.connected_at = connected_at;
     Ok(user)
+}
+
+/// Like Result::ok, convert from Result<T, E> to Option<T> but applying a
+/// function to the Err value
+fn ok_or_inspect<T, E, F>(result: StdResult<T, E>, op: F) -> Option<T>
+where
+    F: FnOnce(E),
+{
+    match result {
+        Ok(t) => Some(t),
+        Err(e) => {
+            op(e);
+            None
+        }
+    }
+}
+
+/// Log/metric errors during conversions to Notification
+fn conversion_err<E>(metrics: &StatsdClient, err: E, name: &'static str)
+where
+    E: Display,
+{
+    error!("Failed {} conversion: {}", name, err);
+    metrics
+        .incr_with_tags("ua.notification_read.error")
+        .with_tag("conversion", name)
+        .send();
 }
