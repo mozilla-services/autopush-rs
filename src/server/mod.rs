@@ -129,9 +129,8 @@ pub struct ServerOptions {
     pub auto_ping_timeout: Duration,
     pub max_connections: Option<u32>,
     pub close_handshake_timeout: Option<Duration>,
-    pub message_table_names: Vec<String>,
-    pub current_message_month: String,
-    pub router_table_name: String,
+    pub _message_table_name: String,
+    pub _router_table_name: String,
     pub router_url: String,
     pub endpoint_url: String,
     pub statsd_host: Option<String>,
@@ -157,13 +156,9 @@ impl ServerOptions {
             .collect();
         let fernet = MultiFernet::new(fernets);
 
-        let ddb = DynamoStorage::new();
-        let message_table_names = ddb
-            .list_message_tables(&settings.message_tablename)
-            .expect("Failed to locate message tables");
         let router_url = settings.router_url();
         let endpoint_url = settings.endpoint_url();
-        let mut opts = Self {
+        Ok(Self {
             debug: settings.debug,
             port: settings.port,
             fernet,
@@ -174,9 +169,8 @@ impl ServerOptions {
                 Some(settings.statsd_host)
             },
             statsd_port: settings.statsd_port,
-            message_table_names,
-            current_message_month: "".to_string(),
-            router_table_name: settings.router_tablename,
+            _message_table_name: settings.message_tablename,
+            _router_table_name: settings.router_tablename,
             router_url,
             endpoint_url,
             ssl_key: settings.router_ssl_key.map(PathBuf::from),
@@ -199,14 +193,7 @@ impl ServerOptions {
                 .expect("megaphone poll interval cannot be 0"),
             human_logs: settings.human_logs,
             msg_limit: settings.msg_limit,
-        };
-        opts.message_table_names.sort_unstable();
-        opts.current_message_month = opts
-            .message_table_names
-            .last()
-            .expect("No last message month found")
-            .to_string();
-        Ok(opts)
+        })
     }
 }
 
@@ -314,15 +301,17 @@ impl Server {
         } else {
             BroadcastChangeTracker::new(Vec::new())
         };
+        let metrics = metrics_from_opts(opts)?;
+
         let srv = Rc::new(Server {
             opts: opts.clone(),
             broadcaster: RefCell::new(broadcaster),
-            ddb: DynamoStorage::new(),
+            ddb: DynamoStorage::from_opts(opts, metrics.clone())?,
             uaids: RefCell::new(HashMap::new()),
             open_connections: Cell::new(0),
             handle: core.handle(),
             tls_acceptor: tls::configure(opts),
-            metrics: metrics_from_opts(opts)?,
+            metrics,
         });
         let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.port));
         let ws_listener = TcpListener::bind(&addr, &srv.handle)?;
