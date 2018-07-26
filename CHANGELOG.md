@@ -1,3 +1,13 @@
+<a name="1.49.1"></a>
+## 1.49.1 (2018-07-26)
+
+
+#### Features
+
+*   log out failed conversion items and use histogram for timers ([05a71d9b](https://github.com/mozilla-services/autopush-rs/commit/05a71d9b83592b2672cdd04fdb66829a64e0c95f))
+
+
+
 <a name="1.49.0"></a>
 ## 1.49.0 (2018-07-20)
 
