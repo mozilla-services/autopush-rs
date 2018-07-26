@@ -124,13 +124,13 @@ pub struct DynamoDbNotification {
     pub chids: Option<HashSet<String>>,
     // Time in seconds from epoch
     #[serde(skip_serializing_if = "Option::is_none")]
-    timestamp: Option<u32>,
+    timestamp: Option<u64>,
     // DynamoDB expiration timestamp per
     //    https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
-    expiry: u32,
+    expiry: u64,
     // TTL value provided by application server for the message
     #[serde(skip_serializing_if = "Option::is_none")]
-    ttl: Option<u32>,
+    ttl: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -221,7 +221,7 @@ impl DynamoDbNotification {
             uaid: *uaid,
             chidmessageid: val.sort_key(),
             timestamp: Some(val.timestamp),
-            expiry: sec_since_epoch() as u32 + min(val.ttl, MAX_EXPIRY as u32),
+            expiry: sec_since_epoch() + min(val.ttl, MAX_EXPIRY),
             ttl: Some(val.ttl),
             data: val.data,
             headers: val.headers.map(|h| h.into()),

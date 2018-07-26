@@ -86,7 +86,10 @@ impl DynamoStorage {
 
         let mut message_table_names = list_message_tables(&ddb, &opts._message_table_name)
             .map_err(|_| "Failed to locate message tables")?;
-        message_table_names.sort_unstable();
+        // Valid message months are the current and last 2 months
+        message_table_names.sort_unstable_by(|a, b| b.cmp(a));
+        message_table_names.truncate(3);
+        message_table_names.reverse();
         let current_message_month = message_table_names
             .last()
             .ok_or("No last message month found")?

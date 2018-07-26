@@ -109,10 +109,10 @@ pub struct Notification {
     pub channel_id: Uuid,
     pub version: String,
     #[serde(default = "default_ttl", skip_serializing)]
-    pub ttl: u32,
+    pub ttl: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
-    pub timestamp: u32,
+    pub timestamp: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
     #[serde(skip_serializing)]
@@ -157,6 +157,6 @@ impl Notification {
     }
 }
 
-fn default_ttl() -> u32 {
+fn default_ttl() -> u64 {
     0
 }
