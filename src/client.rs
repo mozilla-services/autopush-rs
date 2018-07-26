@@ -485,8 +485,9 @@ where
         let elapsed = (now - webpush.connected_at) / 1_000;
         let parser = Parser::new();
         let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&parser, &user_agent);
+        // dogstatsd doesn't support timers: use histogram instead
         srv.metrics
-            .time_with_tags("ua.connection.lifespan", elapsed)
+            .histogram_with_tags("ua.connection.lifespan", elapsed)
             .with_tag("ua_os_family", metrics_os)
             .with_tag("ua_browser_family", metrics_browser)
             .with_tag("host", &webpush.stats.host)

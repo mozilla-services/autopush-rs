@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::rc::Rc;
 use std::result::Result as StdResult;
 use uuid::Uuid;
@@ -80,8 +80,9 @@ pub fn fetch_messages(
                         .into_iter()
                         .inspect(|i| debug!("Item: {:?}", i))
                         .filter_map(|item| {
+                            let item2 = item.clone();
                             ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                                conversion_err(&metrics, e, "serde_dynamodb_from_hashmap")
+                                conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
                             })
                         })
                         .collect()
@@ -97,8 +98,9 @@ pub fn fetch_messages(
             let messages = notifs
                 .into_iter()
                 .filter_map(|ddb_notif| {
+                    let ddb_notif2 = ddb_notif.clone();
                     ok_or_inspect(ddb_notif.into_notif(), |e| {
-                        conversion_err(&metrics, e, "into_notif")
+                        conversion_err(&metrics, e, ddb_notif2, "into_notif")
                     })
                 })
                 .collect();
@@ -145,13 +147,15 @@ pub fn fetch_timestamp_messages(
                 items
                     .into_iter()
                     .filter_map(|item| {
+                        let item2 = item.clone();
                         ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                            conversion_err(&metrics, e, "serde_dynamodb_from_hashmap")
+                            conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
                         })
                     })
                     .filter_map(|ddb_notif: DynamoDbNotification| {
+                        let ddb_notif2 = ddb_notif.clone();
                         ok_or_inspect(ddb_notif.into_notif(), |e| {
-                            conversion_err(&metrics, e, "into_notif")
+                            conversion_err(&metrics, e, ddb_notif2, "into_notif")
                         })
                     })
                     .collect()
@@ -451,11 +455,12 @@ where
 }
 
 /// Log/metric errors during conversions to Notification
-fn conversion_err<E>(metrics: &StatsdClient, err: E, name: &'static str)
+fn conversion_err<E, F>(metrics: &StatsdClient, err: E, item: F, name: &'static str)
 where
     E: Display,
+    F: Debug,
 {
-    error!("Failed {} conversion: {}", name, err);
+    error!("Failed {}, item: {:?}, conversion: {}", name, item, err);
     metrics
         .incr_with_tags("ua.notification_read.error")
         .with_tag("conversion", name)
