@@ -1,3 +1,13 @@
+<a name="1.49.2"></a>
+## 1.49.2 (2018-07-27)
+
+
+#### Bug Fixes
+
+*   limit valid message tables to the last 3 ([69adfb4e](https://github.com/mozilla-services/autopush-rs/commit/69adfb4e434fd66ad53196e6eae2b6666d5cfaf8))
+
+
+
 <a name="1.49.1"></a>
 ## 1.49.1 (2018-07-26)
 
