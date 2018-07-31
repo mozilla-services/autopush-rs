@@ -417,14 +417,13 @@ fn handle_user_result(
     let item = data.item.ok_or((false, 104))?;
     let mut user: DynamoDbUser = serde_dynamodb::from_hashmap(item).map_err(|_| (true, 104))?;
 
-    let user_month = user.current_month.clone();
-    let month = user_month.ok_or((true, 104))?;
-    if !messages_tables.contains(cur_month) {
+    let user_month = user.current_month.clone().ok_or((true, 104))?;
+    if !messages_tables.contains(&user_month) {
         return Err((true, 105));
     }
     hello_response.check_storage = true;
-    hello_response.message_month = month.clone();
-    hello_response.rotate_message_table = *cur_month != month;
+    hello_response.rotate_message_table = user_month != *cur_month;
+    hello_response.message_month = user_month;
     hello_response.reset_uaid = user
         .record_version
         .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION);
