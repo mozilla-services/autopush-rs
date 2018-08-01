@@ -1,3 +1,13 @@
+<a name="1.49.4"></a>
+## 1.49.4 (2018-08-01)
+
+
+#### Bug Fixes
+
+*   oops, check the user's actual month for validity ([8b4eb87a](https://github.com/mozilla-services/autopush-rs/commit/8b4eb87acad89de11c5218ae9dce7191c113c5cc), closes [#47](https://github.com/mozilla-services/autopush-rs/issues/47))
+
+
+
 <a name="1.49.3"></a>
 ## 1.49.3 (2018-07-30)
 
