@@ -37,6 +37,7 @@ from autopush.config import AutopushConfig
 from autopush.db import (
     get_month,
     has_connected_this_month,
+    make_rotating_tablename,
     Message,
 )
 from autopush.logging import begin_or_register
@@ -1056,7 +1057,6 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_webpush_monthly_rotation(self):
-        from autopush.db import make_rotating_tablename
         client = yield self.quick_register()
         yield client.disconnect()
 
@@ -1169,7 +1169,6 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_webpush_monthly_rotation_prior_record_exists(self):
-        from autopush.db import make_rotating_tablename
         client = yield self.quick_register()
         yield client.disconnect()
 
@@ -1264,7 +1263,6 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_webpush_monthly_rotation_no_channels(self):
-        from autopush.db import make_rotating_tablename
         client = Client("ws://localhost:{}/".format(MP_CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
@@ -1314,6 +1312,32 @@ class TestRustWebPushBroadcast(unittest.TestCase):
                                 client.uaid)
         assert c["current_month"] == self.conn.db.current_msg_month
         yield self.shut_down(client)
+
+    @inlineCallbacks
+    def test_webpush_monthly_rotation_old_user_dropped(self):
+        client = yield self.quick_register()
+        uaid = client.uaid
+        yield client.disconnect()
+
+        # Move the client back 2 months to the past
+        old_month = make_rotating_tablename(
+            prefix=self.conn.conf.message_table.tablename, delta=-3)
+        yield deferToThread(
+            self.conn.db.router.update_message_month,
+            client.uaid,
+            old_month
+        )
+        old_message = Message(old_month,
+                              boto_resource=autopush.tests.boto_resource)
+
+        # Verify the move
+        c = yield deferToThread(self.conn.db.router.get_uaid, client.uaid)
+        assert c["current_month"] == old_month
+
+        # Connect the client and verify its uaid was dropped
+        yield client.connect()
+        yield client.hello()
+        assert client.uaid != uaid
 
 
 class TestRustAndPythonWebPush(unittest.TestCase):
