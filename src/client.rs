@@ -62,7 +62,7 @@ where
     /// the various state behind the server. This provides transitive access to
     /// various configuration options of the server as well as the ability to
     /// call back into Python.
-    pub fn new(ws: T, srv: &Rc<Server>, mut uarx: Receiver<String>, host: String) -> Client<T> {
+    pub fn new(ws: T, srv: &Rc<Server>, mut uarx: Receiver<String>) -> Client<T> {
         let srv = srv.clone();
         let timeout = Timeout::new(srv.opts.open_handshake_timeout.unwrap(), &srv.handle).unwrap();
         let (tx, rx) = mpsc::unbounded();
@@ -86,7 +86,6 @@ where
                 srv: srv.clone(),
                 ws,
                 user_agent: uastr,
-                host,
                 broadcast_subs: broadcast_subs.clone(),
             },
             timeout,
@@ -134,7 +133,6 @@ struct SessionStatistics {
     uaid_reset: bool,
     existing_uaid: bool,
     connection_type: String,
-    host: String,
 
     // Usage data
     direct_acked: i32,
@@ -217,7 +215,6 @@ pub struct UnAuthClientData<T> {
     srv: Rc<Server>,
     ws: T,
     user_agent: String,
-    host: String,
     broadcast_subs: Rc<RefCell<BroadcastSubs>>,
 }
 
@@ -394,7 +391,6 @@ where
             srv,
             ws,
             user_agent,
-            host,
             broadcast_subs,
         } = data;
 
@@ -419,7 +415,6 @@ where
                 uaid_reset: reset_uaid,
                 existing_uaid: check_storage,
                 connection_type: String::from("webpush"),
-                host: host.clone(),
                 ..Default::default()
             },
             ..Default::default()
@@ -487,10 +482,9 @@ where
         let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&parser, &user_agent);
         // dogstatsd doesn't support timers: use histogram instead
         srv.metrics
-            .histogram_with_tags("ua.connection.lifespan", elapsed)
+            .time_with_tags("ua.connection.lifespan", elapsed)
             .with_tag("ua_os_family", metrics_os)
             .with_tag("ua_browser_family", metrics_browser)
-            .with_tag("host", &webpush.stats.host)
             .send();
 
         // If there's direct unack'd messages, they need to be saved out without blocking
@@ -524,7 +518,6 @@ where
         "uaid_reset" => stats.uaid_reset,
         "existing_uaid" => stats.existing_uaid,
         "connection_type" => &stats.connection_type,
-        "host" => &stats.host,
         "ua_name" => ua_result.name,
         "ua_os_family" => metrics_os,
         "ua_os_ver" => ua_result.os_version,
