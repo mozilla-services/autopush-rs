@@ -40,7 +40,7 @@ jobs:
           name: docker save app:build
           command: mkdir -p /cache; docker save -o /cache/docker.tar "app:build"
       - save_cache:
-          key: v1-{{ .Branch }}-{{epoch}}
+          key: v1-{{ .Branch }}-{{ .Environment.CIRCLE_TAG }}-{{ epoch }}
           paths:
             - /cache/docker.tar
 
@@ -50,7 +50,7 @@ jobs:
     steps:
       - setup_remote_docker
       - restore_cache:
-          key: v1-{{.Branch}}
+          key: v1-{{ .Branch }}-{{ .Environment.CIRCLE_TAG }}
       - run:
           name: Restore Docker image cache
           command: docker load -i /cache/docker.tar
