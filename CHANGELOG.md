@@ -1,3 +1,13 @@
+<a name="1.49.5"></a>
+## 1.49.5 (2018-08-02)
+
+
+#### Bug Fixes
+
+*   remove the host tag/log field ([7425749c](https://github.com/mozilla-services/autopush-rs/commit/7425749c4503b2e4858a67c8e4e2d4c16c9937f8), closes [#41](https://github.com/mozilla-services/autopush-rs/issues/41))
+
+
+
 <a name="1.49.4"></a>
 ## 1.49.4 (2018-08-01)
 
