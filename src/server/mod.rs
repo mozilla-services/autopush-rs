@@ -349,8 +349,6 @@ impl Server {
                 let srv2 = srv.clone();
                 let handle2 = handle.clone();
 
-                let host = format!("{}", addr.ip());
-
                 // Setup oneshot to extract the user-agent from the header callback
                 let (uatx, uarx) = oneshot::channel();
                 let callback = |req: &Request| {
@@ -386,7 +384,7 @@ impl Server {
                             // the internal state machine.
                             Box::new(
                                 ws.and_then(move |ws| {
-                                    PingManager::new(&srv2, ws, uarx, host)
+                                    PingManager::new(&srv2, ws, uarx)
                                         .chain_err(|| "failed to make ping handler")
                                 }).flatten(),
                             )
@@ -654,7 +652,6 @@ impl PingManager {
         srv: &Rc<Server>,
         socket: WebSocketStream<WebpushIo>,
         uarx: oneshot::Receiver<String>,
-        host: String,
     ) -> io::Result<PingManager> {
         // The `socket` is itself a sink and a stream, and we've also got a sink
         // (`tx`) and a stream (`rx`) to send messages. Half of our job will be
@@ -675,7 +672,7 @@ impl PingManager {
             timeout: Timeout::new(srv.opts.auto_ping_interval, &srv.handle)?,
             waiting: WaitingFor::SendPing,
             socket: socket.clone(),
-            client: CloseState::Exchange(Client::new(socket, srv, uarx, host)),
+            client: CloseState::Exchange(Client::new(socket, srv, uarx)),
             srv: srv.clone(),
         })
     }
