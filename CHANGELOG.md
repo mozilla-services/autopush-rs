@@ -1,3 +1,13 @@
+<a name="1.49.6"></a>
+## 1.49.6 (2018-08-02)
+
+
+#### Chore
+
+*   include CIRCLE_TAG in the cache key ([d85cee70](https://github.com/mozilla-services/autopush-rs/commit/d85cee709558b1f80ba4d2cce91ad17b49627acb))
+
+
+
 <a name="1.49.5"></a>
 ## 1.49.5 (2018-08-02)
 
