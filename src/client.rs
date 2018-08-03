@@ -9,6 +9,7 @@ use std::mem;
 use std::rc::Rc;
 
 use cadence::{prelude::*, StatsdClient};
+use error_chain::ChainedError;
 use futures::future::Either;
 use futures::sync::mpsc;
 use futures::sync::oneshot::Receiver;
@@ -17,6 +18,7 @@ use futures::{Async, Future, Poll, Sink, Stream};
 use rusoto_dynamodb::UpdateItemOutput;
 use state_machine_future::RentToOwn;
 use tokio_core::reactor::Timeout;
+use tungstenite::error::Error as ConnectionError;
 use uuid::Uuid;
 use woothee::parser::Parser;
 
@@ -447,12 +449,12 @@ where
     fn poll_await_session_complete<'a>(
         session_complete: &'a mut RentToOwn<'a, AwaitSessionComplete<T>>,
     ) -> Poll<AfterAwaitSessionComplete, Error> {
-        // xxx: handle error cases with maybe a log message?
-        let _error = {
+        let error = {
             match session_complete.auth_state_machine.poll() {
                 Ok(Async::Ready(_)) => None,
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Err(e) => Some(e),
+                Err(Error(ErrorKind::Ws(ConnectionError::ConnectionClosed(_)), _)) => None,
+                Err(e) => Some(e.display_chain().to_string()),
             }
         };
 
@@ -532,6 +534,7 @@ where
         "nacks" => stats.nacks,
         "registers" => stats.registers,
         "unregisters" => stats.unregisters,
+        "disconnect_reason" => error.unwrap_or("".to_string()),
         );
         transition!(UnAuthDone(()))
     }
