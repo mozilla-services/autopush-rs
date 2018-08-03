@@ -6,8 +6,10 @@
 //! are used to generate the ability to serialize these structures to JSON,
 //! using the `serde` crate. More docs for serde can be found at
 //! https://serde.rs
-
 use std::collections::HashMap;
+use std::str::FromStr;
+
+use serde_json;
 use uuid::Uuid;
 
 use util::ms_since_epoch;
@@ -62,6 +64,19 @@ pub enum ClientMessage {
         code: Option<i32>,
         version: String,
     },
+
+    Ping,
+}
+
+impl FromStr for ClientMessage {
+    type Err = serde_json::error::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // parse empty object "{}" as a Ping
+        serde_json::from_str::<HashMap<(), ()>>(s)
+            .map(|_| ClientMessage::Ping)
+            .or_else(|_| serde_json::from_str(s))
+    }
 }
 
 #[derive(Deserialize)]
@@ -101,6 +116,19 @@ pub enum ServerMessage {
     },
 
     Notification(Notification),
+
+    Ping,
+}
+
+impl ServerMessage {
+    pub fn to_json(&self) -> Result<String, serde_json::error::Error> {
+        match self {
+            // clients recognize {"messageType": "ping"} but traditionally both
+            // client/server send the empty object version
+            ServerMessage::Ping => Ok("{}".to_owned()),
+            _ => serde_json::to_string(self),
+        }
+    }
 }
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]

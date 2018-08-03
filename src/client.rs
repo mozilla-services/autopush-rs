@@ -160,6 +160,7 @@ pub struct WebPushClient {
     unacked_stored_highest: Option<u64>,
     connected_at: u64,
     sent_from_storage: u32,
+    last_ping: u64,
     stats: SessionStatistics,
 }
 
@@ -177,6 +178,7 @@ impl Default for WebPushClient {
             unacked_stored_highest: Default::default(),
             connected_at: Default::default(),
             sent_from_storage: Default::default(),
+            last_ping: Default::default(),
             stats: Default::default(),
         }
     }
@@ -853,6 +855,21 @@ where
                     });
                 } else {
                     transition!(DetermineAck { data });
+                }
+            }
+            Either::A(ClientMessage::Ping) => {
+                // Clients shouldn't ping > than once per minute or we
+                // disconnect them
+                if sec_since_epoch() - webpush.last_ping >= 55 {
+                    debug!("Got a ping, sending pong");
+                    webpush.last_ping = sec_since_epoch();
+                    transition!(Send {
+                        smessages: vec![ServerMessage::Ping],
+                        data
+                    })
+                } else {
+                    debug!("Got a ping too quickly, disconnecting");
+                    Err("code=4774".into())
                 }
             }
             Either::B(ServerNotification::Notification(notif)) => {
