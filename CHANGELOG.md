@@ -1,3 +1,14 @@
+<a name="1.49.7"></a>
+## 1.49.7 (2018-08-07)
+
+
+#### Features
+
+*   support webpush API pings ([2366efe4](https://github.com/mozilla-services/autopush-rs/commit/2366efe4e1132aec66e0992e98616084937c49e7), closes [#55](https://github.com/mozilla-services/autopush-rs/issues/55))
+*   log out disconnect reason with session statistics ([1109aa2f](https://github.com/mozilla-services/autopush-rs/commit/1109aa2fe194a94771fc8a0df049d228bc6cf728))
+
+
+
 <a name="1.49.6"></a>
 ## 1.49.6 (2018-08-02)
 
