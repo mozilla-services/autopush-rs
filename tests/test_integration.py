@@ -884,6 +884,20 @@ class TestRustWebPush(unittest.TestCase):
         assert client.uaid != uaid
         yield self.shut_down(client)
 
+    @inlineCallbacks
+    def test_can_ping(self):
+        client = yield self.quick_register()
+        yield client.ping()
+        assert client.ws.connected
+        try:
+            yield client.ping()
+        except AssertionError:
+            # pinging too quickly should disconnect without a valid ping
+            # repsonse
+            pass
+        assert not client.ws.connected
+        yield self.shut_down(client)
+
 
 class TestRustWebPushBroadcast(unittest.TestCase):
     _endpoint_defaults = dict(
