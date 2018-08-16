@@ -1,3 +1,13 @@
+<a name="1.50.0"></a>
+## 1.50.0 (2018-08-16)
+
+
+#### Bug Fixes
+
+*   don't render topic/timestamp to the ua ([8aa47af4](https://github.com/mozilla-services/autopush-rs/commit/8aa47af440bc962aadc7ca0092789e8936574363))
+
+
+
 <a name="1.49.7"></a>
 ## 1.49.7 (2018-08-07)
 
