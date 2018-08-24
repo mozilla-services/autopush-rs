@@ -184,7 +184,7 @@ pub fn drop_user(
     ).chain_err(|| "Error dropping user")
 }
 
-fn get_uaid(
+pub fn get_uaid(
     ddb: Rc<Box<DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
