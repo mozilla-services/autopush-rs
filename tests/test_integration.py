@@ -1027,6 +1027,23 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    def test_broadcast_update_on_connect_with_errors(self):
+        self.mock_megaphone.services = {"kinto:123": "ver1"}
+        self.mock_megaphone.polled.clear()
+        self.mock_megaphone.polled.wait(timeout=5)
+
+        old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
+        client = Client(self._ws_url)
+        yield client.connect()
+        result = yield client.hello(services=old_ver)
+        assert result != {}
+        assert result["use_webpush"] is True
+        assert result["broadcasts"]["kinto:123"] == "ver1"
+        assert result["broadcasts"]["errors"][
+                   "kinto:456"] == "Broadcast not found"
+        yield self.shut_down(client)
+
+    @inlineCallbacks
     def test_broadcast_subscribe(self):
         self.mock_megaphone.services = {"kinto:123": "ver1"}
         self.mock_megaphone.polled.clear()
@@ -1050,6 +1067,28 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
         result = yield client.get_broadcast(2)
         assert result["broadcasts"]["kinto:123"] == "ver2"
+
+        yield self.shut_down(client)
+
+    @inlineCallbacks
+    def test_broadcast_subscribe_with_errors(self):
+        self.mock_megaphone.services = {"kinto:123": "ver1"}
+        self.mock_megaphone.polled.clear()
+        self.mock_megaphone.polled.wait(timeout=5)
+
+        old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
+        client = Client(self._ws_url)
+        yield client.connect()
+        result = yield client.hello()
+        assert result != {}
+        assert result["use_webpush"] is True
+        assert result["broadcasts"] == {}
+
+        client.broadcast_subscribe(old_ver)
+        result = yield client.get_broadcast()
+        assert result["broadcasts"]["kinto:123"] == "ver1"
+        assert result["broadcasts"]["errors"][
+                   "kinto:456"] == "Broadcast not found"
 
         yield self.shut_down(client)
 

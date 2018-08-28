@@ -87,6 +87,13 @@ pub struct ClientAck {
 }
 
 #[derive(Serialize)]
+#[serde(untagged)]
+pub enum BroadcastValue {
+    Value(String),
+    Nested(HashMap<String, BroadcastValue>),
+}
+
+#[derive(Serialize)]
 #[serde(tag = "messageType", rename_all = "snake_case")]
 pub enum ServerMessage {
     Hello {
@@ -94,7 +101,7 @@ pub enum ServerMessage {
         status: u32,
         #[serde(skip_serializing_if = "Option::is_none")]
         use_webpush: Option<bool>,
-        broadcasts: HashMap<String, String>,
+        broadcasts: HashMap<String, BroadcastValue>,
     },
 
     Register {
@@ -112,7 +119,7 @@ pub enum ServerMessage {
     },
 
     Broadcast {
-        broadcasts: HashMap<String, String>,
+        broadcasts: HashMap<String, BroadcastValue>,
     },
 
     Notification(Notification),

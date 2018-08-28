@@ -2,6 +2,8 @@ use errors::Result;
 use std::collections::HashMap;
 use std::time::Duration;
 
+use protocol::BroadcastValue;
+
 use reqwest;
 
 // A Broadcast entry Key in a BroadcastRegistry
@@ -70,6 +72,16 @@ pub struct Broadcast {
     version: String,
 }
 
+impl Broadcast {
+    /// Errors out a broadcast for broadcasts that weren't found
+    pub fn error(self) -> Broadcast {
+        Broadcast {
+            broadcast_id: self.broadcast_id,
+            version: "Broadcast not found".to_string(),
+        }
+    }
+}
+
 // Handy From impls for common hashmap to/from conversions
 impl From<(String, String)> for Broadcast {
     fn from(val: (String, String)) -> Broadcast {
@@ -80,9 +92,9 @@ impl From<(String, String)> for Broadcast {
     }
 }
 
-impl From<Broadcast> for (String, String) {
-    fn from(bcast: Broadcast) -> (String, String) {
-        (bcast.broadcast_id, bcast.version)
+impl From<Broadcast> for (String, BroadcastValue) {
+    fn from(bcast: Broadcast) -> (String, BroadcastValue) {
+        (bcast.broadcast_id, BroadcastValue::Value(bcast.version))
     }
 }
 
@@ -91,7 +103,7 @@ impl Broadcast {
         val.into_iter().map(|v| v.into()).collect()
     }
 
-    pub fn into_hashmap(broadcasts: Vec<Broadcast>) -> HashMap<String, String> {
+    pub fn into_hashmap(broadcasts: Vec<Broadcast>) -> HashMap<String, BroadcastValue> {
         broadcasts.into_iter().map(|v| v.into()).collect()
     }
 }
@@ -121,9 +133,7 @@ impl BroadcastChangeTracker {
             change_count: 0,
         };
         for srv in broadcasts {
-            let key = tracker
-                .broadcast_registry
-                .add_broadcast(srv.broadcast_id);
+            let key = tracker.broadcast_registry.add_broadcast(srv.broadcast_id);
             tracker.broadcast_versions.insert(key, srv.version);
         }
         tracker
@@ -154,7 +164,9 @@ impl BroadcastChangeTracker {
             return change_count;
         }
         self.change_count += 1;
-        let key = self.broadcast_registry.add_broadcast(broadcast.broadcast_id);
+        let key = self
+            .broadcast_registry
+            .add_broadcast(broadcast.broadcast_id);
         self.broadcast_versions.insert(key, broadcast.version);
         self.broadcast_list.push(BroadcastRevision {
             change_count: self.change_count,
@@ -167,7 +179,8 @@ impl BroadcastChangeTracker {
     ///
     /// Returns an error if the `broadcast` was never initialized/added.
     pub fn update_broadcast(&mut self, broadcast: Broadcast) -> Result<u32> {
-        let key = self.broadcast_registry
+        let key = self
+            .broadcast_registry
             .lookup_key(&broadcast.broadcast_id)
             .ok_or("Broadcast not found")?;
 
@@ -181,10 +194,17 @@ impl BroadcastChangeTracker {
         }
 
         // Check to see if this broadcast has been updated since initialization
-        let bcast_index = self.broadcast_list
+        let bcast_index = self
+            .broadcast_list
             .iter()
             .enumerate()
-            .filter_map(|(i, bcast)| if bcast.broadcast == key { Some(i) } else { None })
+            .filter_map(|(i, bcast)| {
+                if bcast.broadcast == key {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
             .nth(0);
         self.change_count += 1;
         if let Some(bcast_index) = bcast_index {
@@ -265,8 +285,7 @@ impl BroadcastChangeTracker {
         broadcast_subs: &mut BroadcastSubs,
         broadcasts: &[Broadcast],
     ) -> Option<Vec<Broadcast>> {
-        let mut bcast_delta = self.change_count_delta(broadcast_subs)
-            .unwrap_or_default();
+        let mut bcast_delta = self.change_count_delta(broadcast_subs).unwrap_or_default();
         for bcast in broadcasts.iter() {
             if let Some(bcast_key) = self.broadcast_registry.lookup_key(&bcast.broadcast_id) {
                 if let Some(ver) = self.broadcast_versions.get(&bcast_key) {
@@ -285,6 +304,24 @@ impl BroadcastChangeTracker {
         } else {
             Some(bcast_delta)
         }
+    }
+
+    /// Check a broadcast list and return unknown broadcast id's with their appropriate error
+    pub fn missing_broadcasts(&self, broadcasts: &[Broadcast]) -> Vec<Broadcast> {
+        broadcasts
+            .iter()
+            .filter_map(|b| {
+                if self
+                    .broadcast_registry
+                    .lookup_key(&b.broadcast_id)
+                    .is_none()
+                {
+                    Some(b.clone().error())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -345,12 +382,10 @@ mod tests {
         let delta = tracker
             .subscribe_to_broadcasts(
                 &mut broadcast_subs,
-                &vec![
-                    Broadcast {
-                        broadcast_id: String::from("bcastc"),
-                        version: String::from("revision_alpha"),
-                    },
-                ],
+                &vec![Broadcast {
+                    broadcast_id: String::from("bcastc"),
+                    version: String::from("revision_alpha"),
+                }],
             )
             .unwrap();
         assert_eq!(delta.len(), 1);
