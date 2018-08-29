@@ -41,7 +41,7 @@ use errors::*;
 use errors::{Error, Result};
 use http;
 use logging;
-use protocol::{ClientMessage, Notification, ServerMessage, ServerNotification};
+use protocol::{BroadcastValue, ClientMessage, Notification, ServerMessage, ServerNotification};
 use server::dispatch::{Dispatch, RequestType};
 use server::metrics::metrics_from_opts;
 use server::webpush_io::WebpushIo;
@@ -368,7 +368,9 @@ impl Server {
                 let client = request.and_then(move |(socket, request)| -> MyFuture<_> {
                     match request {
                         RequestType::Status => write_status(socket),
-                        RequestType::LBHeartBeat => write_json(socket, StatusCode::Ok, serde_json::Value::from("")),
+                        RequestType::LBHeartBeat => {
+                            write_json(socket, StatusCode::Ok, serde_json::Value::from(""))
+                        }
                         RequestType::Version => write_version_file(socket),
                         RequestType::LogCheck => write_log_check(socket),
                         RequestType::Websocket => {
@@ -521,11 +523,22 @@ impl Server {
     }
 
     /// Initialize broadcasts for a newly connected client
-    pub fn broadcast_init(&self, desired_broadcasts: &[Broadcast]) -> BroadcastSubsInit {
+    pub fn broadcast_init(
+        &self,
+        desired_broadcasts: &[Broadcast],
+    ) -> (BroadcastSubs, HashMap<String, BroadcastValue>) {
         debug!("Initialized broadcasts");
-        self.broadcaster
-            .borrow()
-            .broadcast_delta(desired_broadcasts)
+        let bc = self.broadcaster.borrow();
+        let BroadcastSubsInit(broadcast_subs, broadcasts) = bc.broadcast_delta(desired_broadcasts);
+        let mut response = Broadcast::into_hashmap(broadcasts);
+        let missing = bc.missing_broadcasts(desired_broadcasts);
+        if !missing.is_empty() {
+            response.insert(
+                "errors".to_string(),
+                BroadcastValue::Nested(Broadcast::into_hashmap(missing)),
+            );
+        }
+        (broadcast_subs, response)
     }
 
     /// Calculate whether there's new broadcast versions to go out
@@ -533,15 +546,30 @@ impl Server {
         self.broadcaster.borrow().change_count_delta(broadcast_subs)
     }
 
-    /// Add new broadcasts to be tracked by a client
-    pub fn subscribe_to_broadcasts(
+    /// Process a broadcast list, adding new broadcasts to be tracked and locating missing ones
+    /// Returns an appropriate response for use by the prototocol
+    pub fn process_broadcasts(
         &self,
         broadcast_subs: &mut BroadcastSubs,
         broadcasts: &[Broadcast],
-    ) -> Option<Vec<Broadcast>> {
-        self.broadcaster
-            .borrow()
-            .subscribe_to_broadcasts(broadcast_subs, broadcasts)
+    ) -> Option<HashMap<String, BroadcastValue>> {
+        let bc = self.broadcaster.borrow();
+        let mut response: HashMap<String, BroadcastValue> = HashMap::new();
+        let missing = bc.missing_broadcasts(broadcasts);
+        if !missing.is_empty() {
+            response.insert(
+                "errors".to_string(),
+                BroadcastValue::Nested(Broadcast::into_hashmap(missing)),
+            );
+        }
+        if let Some(delta) = bc.subscribe_to_broadcasts(broadcast_subs, broadcasts) {
+            response.extend(Broadcast::into_hashmap(delta));
+        };
+        if response.is_empty() {
+            None
+        } else {
+            Some(response)
+        }
     }
 }
 
@@ -937,9 +965,10 @@ fn write_status(socket: WebpushIo) -> MyFuture<()> {
 /// Return a static copy of `version.json` from compile time.
 pub fn write_version_file(socket: WebpushIo) -> MyFuture<()> {
     write_json(
-        socket, 
-        StatusCode::Ok, 
-        serde_json::Value::from(include_str!("../../version.json")))
+        socket,
+        StatusCode::Ok,
+        serde_json::Value::from(include_str!("../../version.json")),
+    )
 }
 
 fn write_log_check(socket: WebpushIo) -> MyFuture<()> {

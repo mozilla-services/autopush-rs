@@ -29,7 +29,7 @@ use db::{CheckStorageResponse, HelloResponse, RegisterResponse};
 use errors::*;
 use protocol::{ClientMessage, Notification, ServerMessage, ServerNotification};
 use server::Server;
-use util::megaphone::{Broadcast, BroadcastSubs, BroadcastSubsInit};
+use util::megaphone::{Broadcast, BroadcastSubs};
 use util::{ms_since_epoch, parse_user_agent, sec_since_epoch};
 
 // Created and handed to the AutopushServer
@@ -406,7 +406,7 @@ where
         flags.check = check_storage;
         flags.reset_uaid = reset_uaid;
         flags.rotate_message_table = rotate_message_table;
-        let BroadcastSubsInit(initialized_subs, broadcasts) =
+        let (initialized_subs, broadcasts) =
             srv.broadcast_init(&desired_broadcasts);
         broadcast_subs.replace(initialized_subs);
         let uid = Uuid::new_v4();
@@ -432,7 +432,7 @@ where
             uaid: uaid.simple().to_string(),
             status: 200,
             use_webpush: Some(true),
-            broadcasts: Broadcast::into_hashmap(broadcasts),
+            broadcasts,
         };
         let auth_state_machine = AuthClientState::start(
             vec![response],
@@ -771,15 +771,16 @@ where
             Either::A(ClientMessage::BroadcastSubscribe { broadcasts }) => {
                 let broadcast_delta = {
                     let mut broadcast_subs = data.broadcast_subs.borrow_mut();
-                    data.srv.subscribe_to_broadcasts(
+                    data.srv.process_broadcasts(
                         &mut broadcast_subs,
                         &Broadcast::from_hashmap(broadcasts),
                     )
                 };
-                if let Some(delta) = broadcast_delta {
+
+                if let Some(response) = broadcast_delta {
                     transition!(Send {
                         smessages: vec![ServerMessage::Broadcast {
-                            broadcasts: Broadcast::into_hashmap(delta),
+                            broadcasts: response,
                         }],
                         data,
                     });
