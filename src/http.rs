@@ -74,7 +74,7 @@ impl Service for Push {
                     response.set_status(StatusCode::BadGateway);
                     response.set_body("Client not available.");
                 }
-            },
+            }
             (_, "push", _) | (_, "notif", _) => response.set_status(StatusCode::MethodNotAllowed),
             _ => response.set_status(StatusCode::NotFound),
         };

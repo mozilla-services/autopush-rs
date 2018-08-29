@@ -402,18 +402,17 @@ impl DynamoStorage {
 
     pub fn get_user(&self, uaid: &Uuid) -> impl Future<Item = DynamoDbUser, Error = Error> {
         let ddb = self.ddb.clone();
-        let result = commands::get_uaid(ddb, uaid, &self.router_table_name)
-            .and_then(|result| {
-                future::result(
-                    result
-                        .item
-                        .ok_or_else(|| "No user record found".into())
-                        .and_then(|item| {
-                            let user = serde_dynamodb::from_hashmap(item);
-                            user.chain_err(|| "Error deserializing")
-                        }),
-                )
-            });
+        let result = commands::get_uaid(ddb, uaid, &self.router_table_name).and_then(|result| {
+            future::result(
+                result
+                    .item
+                    .ok_or_else(|| "No user record found".into())
+                    .and_then(|item| {
+                        let user = serde_dynamodb::from_hashmap(item);
+                        user.chain_err(|| "Error deserializing")
+                    }),
+            )
+        });
         Box::new(result)
     }
 }

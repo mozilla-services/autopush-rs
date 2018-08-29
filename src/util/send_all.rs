@@ -39,10 +39,12 @@ where
     }
 
     fn take_result(&mut self) -> (T, U) {
-        let sink = self.sink
+        let sink = self
+            .sink
             .take()
             .expect("Attempted to poll MySendAll after completion");
-        let fuse = self.stream
+        let fuse = self
+            .stream
             .take()
             .expect("Attempted to poll MySendAll after completion");
         (fuse.into_inner(), sink)
