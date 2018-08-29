@@ -38,7 +38,6 @@ use cadence;
 use config;
 use futures::Future;
 use httparse;
-use sentry;
 use serde_json;
 use tungstenite;
 use uuid;
@@ -50,7 +49,6 @@ error_chain! {
         Json(serde_json::Error);
         Httparse(httparse::Error);
         MetricError(cadence::MetricError);
-        SentryError(sentry::Error);
         UuidParseError(uuid::ParseError);
         ParseIntError(num::ParseIntError);
         ConfigError(config::ConfigError);
@@ -59,6 +57,14 @@ error_chain! {
     errors {
         Thread(payload: Box<Any + Send>) {
             description("thread panicked")
+        }
+
+        PongTimeout {
+            description("websocket pong timeout")
+        }
+
+        RepeatUaidDisconnect {
+            description("repeat uaid disconnected")
         }
     }
 }

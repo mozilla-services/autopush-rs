@@ -19,9 +19,9 @@ use futures::AsyncSink;
 use futures::{Async, Future, Poll, Sink, Stream};
 use reqwest::unstable::async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
+use sentry::integrations::error_chain::capture_error_chain;
 use state_machine_future::RentToOwn;
 use tokio_core::reactor::Timeout;
-use tungstenite::error::Error as ConnectionError;
 use uuid::Uuid;
 use woothee::parser::Parser;
 
@@ -455,10 +455,16 @@ where
     ) -> Poll<AfterAwaitSessionComplete, Error> {
         let error = {
             match session_complete.auth_state_machine.poll() {
-                Ok(Async::Ready(_)) => None,
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Err(Error(ErrorKind::Ws(ConnectionError::ConnectionClosed(_)), _)) => None,
-                Err(e) => Some(e.display_chain().to_string()),
+                Ok(Async::Ready(_))
+                | Err(Error(ErrorKind::Ws(_), _))
+                | Err(Error(ErrorKind::Io(_), _))
+                | Err(Error(ErrorKind::PongTimeout, _))
+                | Err(Error(ErrorKind::RepeatUaidDisconnect, _)) => None,
+                Err(e) => {
+                    capture_error_chain(&e);
+                    Some(e.display_chain().to_string())
+                }
             }
         };
 
@@ -923,7 +929,7 @@ where
             }
             Either::B(ServerNotification::Disconnect) => {
                 debug!("Got told to disconnect, connecting client has our uaid");
-                Err("Repeat UAID disconnect".into())
+                Err(ErrorKind::RepeatUaidDisconnect.into())
             }
             _ => Err("Invalid message".into()),
         }

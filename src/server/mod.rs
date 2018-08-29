@@ -1,11 +1,9 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::default::Default;
 use std::env;
 use std::io;
 use std::net::SocketAddr;
 use std::panic;
-use std::panic::PanicInfo;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -25,6 +23,7 @@ use openssl::hash;
 use openssl::ssl::SslAcceptor;
 use reqwest;
 use sentry;
+use sentry::integrations::panic::register_panic_handler;
 use serde_json;
 use time;
 use tokio_core::net::TcpListener;
@@ -216,9 +215,7 @@ impl Server {
     /// be used to interact with it (e.g. shut it down).
     fn start(opts: &Arc<ServerOptions>) -> Result<Vec<ShutdownHandle>> {
         let mut shutdown_handles = vec![];
-        if let Some(handle) = Server::start_sentry()? {
-            shutdown_handles.push(handle);
-        }
+        let _guard = Server::start_sentry();
 
         let (inittx, initrx) = oneshot::channel();
         let (donetx, donerx) = oneshot::channel();
@@ -252,7 +249,6 @@ impl Server {
                     Ok(())
                 }));
             }
-
             core.run(donerx).expect("Main Core run error");
         });
 
@@ -267,26 +263,14 @@ impl Server {
     }
 
     /// Setup Sentry logging if a SENTRY_DSN exists
-    fn start_sentry() -> Result<Option<ShutdownHandle>> {
-        let creds = match env::var("SENTRY_DSN") {
-            Ok(dsn) => dsn.parse::<sentry::SentryCredential>()?,
-            Err(_) => return Ok(None),
-        };
-
-        // Spin up a new thread with a new reactor core for the sentry handler
-        let (donetx, donerx) = oneshot::channel();
-        let thread = thread::spawn(move || {
-            let mut core = Core::new().expect("Unable to create core");
-            let sentry = sentry::Sentry::from_settings(core.handle(), Default::default(), creds);
-            // Get the prior panic hook
-            let hook = panic::take_hook();
-            sentry.register_panic_handler(Some(move |info: &PanicInfo| -> () {
-                hook(info);
-            }));
-            core.run(donerx).expect("Sentry Core run error");
-        });
-
-        Ok(Some(ShutdownHandle(donetx, thread)))
+    fn start_sentry() -> Option<sentry::internals::ClientInitGuard> {
+        if let Ok(dsn) = env::var("SENTRY_DSN") {
+            let guard = sentry::init(dsn);
+            register_panic_handler();
+            Some(guard)
+        } else {
+            None
+        }
     }
 
     fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Core)> {
@@ -891,7 +875,7 @@ where
                     // elapsed (set above) then this is where we start
                     // triggering errors.
                     if self.ws_pong_timeout {
-                        return Err("failed to receive a ws pong in time".into());
+                        return Err(ErrorKind::PongTimeout.into());
                     }
                     return Ok(Async::NotReady);
                 }
