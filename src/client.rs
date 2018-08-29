@@ -406,8 +406,7 @@ where
         flags.check = check_storage;
         flags.reset_uaid = reset_uaid;
         flags.rotate_message_table = rotate_message_table;
-        let (initialized_subs, broadcasts) =
-            srv.broadcast_init(&desired_broadcasts);
+        let (initialized_subs, broadcasts) = srv.broadcast_init(&desired_broadcasts);
         broadcast_subs.replace(initialized_subs);
         let uid = Uuid::new_v4();
         let webpush = Rc::new(RefCell::new(WebPushClient {
