@@ -44,7 +44,6 @@ rusoto_core = "0.32.0"
 rusoto_credential = "0.11.0"
 rusoto_dynamodb = "0.32.0"
 # XXX: pinned until server side's upgraded
-sentry = "0.2.0"
 serde = "1.0.70"
 serde_derive = "1.0.70"
 serde_dynamodb = "0.1.2"
@@ -71,3 +70,8 @@ woothee = "0.7.3"
 [dependencies.config]
 git = "https://github.com/mehcode/config-rs"
 rev = "e8fa9fee96185ddd18ebcef8a925c75459111edb"
+
+[dependencies.sentry]
+features = ["with_error_chain"]
+git = "https://github.com/getsentry/sentry-rust/"
+rev = "9656b8b9bd1fd65f3d8be744ede1c9089019e087"

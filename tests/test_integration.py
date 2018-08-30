@@ -22,6 +22,7 @@ from threading import Thread, Event
 from queue import Queue, Empty
 from unittest.case import SkipTest
 
+import bottle
 import ecdsa
 import psutil
 import requests
@@ -76,6 +77,7 @@ RP_ROUTER_PORT = 9074
 CN_SERVER = None
 CN_MP_SERVER = None
 MOCK_SERVER_THREAD = None
+MOCK_SENTRY_THREAD = None
 CN_QUEUES = []
 
 
@@ -88,6 +90,8 @@ def get_free_port():
 
 
 MOCK_MP_SERVER_PORT = get_free_port()
+MOCK_SENTRY_PORT = get_free_port()
+MOCK_SENTRY_QUEUE = Queue()
 
 
 def enqueue_output(out, queue):
@@ -97,7 +101,8 @@ def enqueue_output(out, queue):
 
 
 def setup_module():
-    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD
+    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
+        MOCK_SENTRY_THREAD
     ap_tests.ddb_jar = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
     ap_tests.ddb_lib_dir = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
     ap_tests.setUp()
@@ -151,9 +156,22 @@ def setup_module():
     t.start()
     CN_QUEUES.extend([out_q, err_q])
 
+    # Sentry API mock
+    os.environ["SENTRY_DSN"] = 'http://foo:bar@localhost:{}/1'.format(
+        MOCK_SENTRY_PORT
+    )
+    MOCK_SENTRY_THREAD = Thread(
+        target=bottle.run,
+        kwargs=dict(
+            port=MOCK_SENTRY_PORT, debug=True
+        ))
+    MOCK_SENTRY_THREAD.setDaemon(True)
+    MOCK_SENTRY_THREAD.start()
+
     # Megaphone API mock
     MockMegaphoneRequestHandler.services = {}
     MockMegaphoneRequestHandler.polled.clear()
+
     mock_server = HTTPServer(('localhost', MOCK_MP_SERVER_PORT),
                              MockMegaphoneRequestHandler)
     MOCK_SERVER_THREAD = Thread(target=mock_server.serve_forever)
@@ -183,7 +201,7 @@ def setup_module():
 
     cmd = [rust_bin]
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
-    time.sleep(1)
+    time.sleep(5)
 
 
 def teardown_module():
@@ -221,6 +239,17 @@ class MockMegaphoneRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(response_content.encode('utf-8'))
             self.polled.set()
             return
+
+
+@bottle.route("<path:re:.*>")
+def sentry_handler(path):
+    global MOCK_SENTRY_QUEUE
+    log.critical("Got a request!")
+    content = bottle.request.json
+    MOCK_SENTRY_QUEUE.put(content)
+    return {
+        "id": "fc6d8c0c43fc4630ad850ee518f1b9d0"
+    }
 
 
 class TestRustWebPush(unittest.TestCase):
@@ -267,6 +296,8 @@ class TestRustWebPush(unittest.TestCase):
                     is_empty = True
                 else:
                     print(line)
+        while not MOCK_SENTRY_QUEUE.empty():
+            MOCK_SENTRY_QUEUE.get_nowait()
 
     def endpoint_kwargs(self):
         return self._endpoint_defaults
@@ -294,6 +325,18 @@ class TestRustWebPush(unittest.TestCase):
     @property
     def _ws_url(self):
         return "ws://localhost:{}/".format(CONNECTION_PORT)
+
+    @inlineCallbacks
+    def test_sentry_output(self):
+        raise SkipTest("Skip until we know why locally sentry fails")
+        client = Client(self._ws_url)
+        yield client.connect()
+        yield client.hello()
+        # Send unsolicited ack and drop
+        yield client.ack("garbage", "data")
+        yield self.shut_down(client)
+        data = MOCK_SENTRY_QUEUE.get(timeout=1)
+        assert data == "Fred"
 
     @inlineCallbacks
     def test_hello_echo(self):
