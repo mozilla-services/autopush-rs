@@ -13,7 +13,7 @@ click==6.7
 configargparse==0.13.0
 constantly==15.1.0        # via twisted
 contextlib2==0.5.5        # via raven
-cryptography==2.2.2
+cryptography==2.3.1
 cyclone==1.1
 datadog==0.20.0
 decorator==4.2.1          # via datadog
@@ -39,11 +39,11 @@ objgraph==3.4.0
 pyasn1-modules==0.2.1     # via service-identity
 pyasn1==0.4.2
 pycparser==2.18           # via cffi
-pycryptodome==3.5.1       # via python-jose
+pycryptodome==3.6.6       # via python-jose
 pyfcm==1.4.5
 pyopenssl==17.5.0
 python-dateutil==2.6.1    # via botocore
-python-jose==2.0.2
+python-jose==3.0.1
 raven==6.6.0
 requests-toolbelt==0.8.0  # via pyfcm
 requests==2.18.4

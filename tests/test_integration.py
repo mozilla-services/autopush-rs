@@ -77,7 +77,6 @@ RP_ROUTER_PORT = 9074
 CN_SERVER = None
 CN_MP_SERVER = None
 MOCK_SERVER_THREAD = None
-MOCK_SENTRY_THREAD = None
 CN_QUEUES = []
 
 
@@ -89,8 +88,10 @@ def get_free_port():
     return port
 
 
-MOCK_MP_SERVER_PORT = get_free_port()
-MOCK_SENTRY_PORT = get_free_port()
+MOCK_SERVER_PORT = get_free_port()
+MOCK_MP_SERVICES = {}
+MOCK_MP_TOKEN = "Bearer {}".format(uuid.uuid4().hex)
+MOCK_MP_POLLED = Event()
 MOCK_SENTRY_QUEUE = Queue()
 
 
@@ -100,9 +101,24 @@ def enqueue_output(out, queue):
     out.close()
 
 
+@bottle.get("/v1/broadcasts")
+def broadcast_handler():
+    assert bottle.request.headers["Authorization"] == MOCK_MP_TOKEN
+    MOCK_MP_POLLED.set()
+    return dict(broadcasts=MOCK_MP_SERVICES)
+
+
+@bottle.post("/api/1/store/")
+def sentry_handler():
+    content = bottle.request.json
+    MOCK_SENTRY_QUEUE.put(content)
+    return {
+        "id": "fc6d8c0c43fc4630ad850ee518f1b9d0"
+    }
+
+
 def setup_module():
-    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
-        MOCK_SENTRY_THREAD
+    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD
     ap_tests.ddb_jar = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
     ap_tests.ddb_lib_dir = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
     ap_tests.setUp()
@@ -139,6 +155,10 @@ def setup_module():
     for key, val in conn_conf.items():
         key = "autopush_" + key
         os.environ[key.upper()] = str(val)
+    # Sentry API mock
+    os.environ["SENTRY_DSN"] = 'http://foo:bar@localhost:{}/1'.format(
+        MOCK_SERVER_PORT
+    )
 
     cmd = [rust_bin]
     CN_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ,
@@ -156,31 +176,17 @@ def setup_module():
     t.start()
     CN_QUEUES.extend([out_q, err_q])
 
-    # Sentry API mock
-    os.environ["SENTRY_DSN"] = 'http://foo:bar@localhost:{}/1'.format(
-        MOCK_SENTRY_PORT
-    )
-    MOCK_SENTRY_THREAD = Thread(
+    MOCK_SERVER_THREAD = Thread(
         target=bottle.run,
         kwargs=dict(
-            port=MOCK_SENTRY_PORT, debug=True
+            port=MOCK_SERVER_PORT, debug=True
         ))
-    MOCK_SENTRY_THREAD.setDaemon(True)
-    MOCK_SENTRY_THREAD.start()
-
-    # Megaphone API mock
-    MockMegaphoneRequestHandler.services = {}
-    MockMegaphoneRequestHandler.polled.clear()
-
-    mock_server = HTTPServer(('localhost', MOCK_MP_SERVER_PORT),
-                             MockMegaphoneRequestHandler)
-    MOCK_SERVER_THREAD = Thread(target=mock_server.serve_forever)
     MOCK_SERVER_THREAD.setDaemon(True)
     MOCK_SERVER_THREAD.start()
 
     # Setup the megaphone connection node
     megaphone_api_url = 'http://localhost:{port}/v1/broadcasts'.format(
-        port=MOCK_MP_SERVER_PORT)
+        port=MOCK_SERVER_PORT)
     conn_conf.update(dict(
         port=MP_CONNECTION_PORT,
         endpoint_port=ENDPOINT_PORT,
@@ -190,7 +196,7 @@ def setup_module():
         close_handshake_timeout=5,
         max_connections=5000,
         megaphone_api_url=megaphone_api_url,
-        megaphone_api_token=MockMegaphoneRequestHandler.token,
+        megaphone_api_token=MOCK_MP_TOKEN,
         megaphone_poll_interval=1,
     ))
 
@@ -201,7 +207,7 @@ def setup_module():
 
     cmd = [rust_bin]
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
-    time.sleep(5)
+    time.sleep(2)
 
 
 def teardown_module():
@@ -219,37 +225,6 @@ def teardown_module():
     for p in [proc] + child_procs:
         os.kill(p.pid, signal.SIGTERM)
         CN_MP_SERVER.wait()
-
-
-class MockMegaphoneRequestHandler(BaseHTTPRequestHandler):
-    API_PATTERN = re.compile(r'/v1/broadcasts')
-    services = {}
-    polled = Event()
-    token = "Bearer {}".format(uuid.uuid4().hex)
-
-    def do_GET(self):
-        if re.search(self.API_PATTERN, self.path):
-            assert self.headers.getheader("Authorization") == self.token
-            self.send_response(requests.codes.ok)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.end_headers()
-            response_content = json.dumps(
-                {"broadcasts": self.services}
-            )
-            self.wfile.write(response_content.encode('utf-8'))
-            self.polled.set()
-            return
-
-
-@bottle.route("<path:re:.*>")
-def sentry_handler(path):
-    global MOCK_SENTRY_QUEUE
-    log.critical("Got a request!")
-    content = bottle.request.json
-    MOCK_SENTRY_QUEUE.put(content)
-    return {
-        "id": "fc6d8c0c43fc4630ad850ee518f1b9d0"
-    }
 
 
 class TestRustWebPush(unittest.TestCase):
@@ -328,7 +303,6 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_sentry_output(self):
-        raise SkipTest("Skip until we know why locally sentry fails")
         client = Client(self._ws_url)
         yield client.connect()
         yield client.hello()
@@ -336,7 +310,7 @@ class TestRustWebPush(unittest.TestCase):
         yield client.ack("garbage", "data")
         yield self.shut_down(client)
         data = MOCK_SENTRY_QUEUE.get(timeout=1)
-        assert data == "Fred"
+        assert data["exception"]["values"][0]["value"] == "invalid json text"
 
     @inlineCallbacks
     def test_hello_echo(self):
@@ -979,9 +953,6 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         self.addCleanup(ep.stopService)
 
     def setUp(self):
-        self.mock_server_thread = MOCK_SERVER_THREAD
-        self.mock_megaphone = MockMegaphoneRequestHandler
-
         self.logs = TestingLogObserver()
         begin_or_register(self.logs)
         self.addCleanup(globalLogPublisher.removeObserver, self.logs)
@@ -1048,9 +1019,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_update_on_connect(self):
-        self.mock_megaphone.services = {"kinto:123": "ver1"}
-        self.mock_megaphone.polled.clear()
-        self.mock_megaphone.polled.wait(timeout=5)
+        global MOCK_MP_SERVICES
+        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+        MOCK_MP_POLLED.clear()
+        MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0"}
         client = Client(self._ws_url)
@@ -1060,9 +1032,9 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
 
-        self.mock_megaphone.services = {"kinto:123": "ver2"}
-        self.mock_megaphone.polled.clear()
-        self.mock_megaphone.polled.wait(timeout=5)
+        MOCK_MP_SERVICES = {"kinto:123": "ver2"}
+        MOCK_MP_POLLED.clear()
+        MOCK_MP_POLLED.wait(timeout=5)
 
         result = yield client.get_broadcast(2)
         assert result["broadcasts"]["kinto:123"] == "ver2"
@@ -1071,9 +1043,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_update_on_connect_with_errors(self):
-        self.mock_megaphone.services = {"kinto:123": "ver1"}
-        self.mock_megaphone.polled.clear()
-        self.mock_megaphone.polled.wait(timeout=5)
+        global MOCK_MP_SERVICES
+        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+        MOCK_MP_POLLED.clear()
+        MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
         client = Client(self._ws_url)
@@ -1088,9 +1061,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_subscribe(self):
-        self.mock_megaphone.services = {"kinto:123": "ver1"}
-        self.mock_megaphone.polled.clear()
-        self.mock_megaphone.polled.wait(timeout=5)
+        global MOCK_MP_SERVICES
+        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+        MOCK_MP_POLLED.clear()
+        MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0"}
         client = Client(self._ws_url)
@@ -1104,9 +1078,9 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         result = yield client.get_broadcast()
         assert result["broadcasts"]["kinto:123"] == "ver1"
 
-        self.mock_megaphone.services = {"kinto:123": "ver2"}
-        self.mock_megaphone.polled.clear()
-        self.mock_megaphone.polled.wait(timeout=5)
+        MOCK_MP_SERVICES = {"kinto:123": "ver2"}
+        MOCK_MP_POLLED.clear()
+        MOCK_MP_POLLED.wait(timeout=5)
 
         result = yield client.get_broadcast(2)
         assert result["broadcasts"]["kinto:123"] == "ver2"
@@ -1115,9 +1089,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_subscribe_with_errors(self):
-        self.mock_megaphone.services = {"kinto:123": "ver1"}
-        self.mock_megaphone.polled.clear()
-        self.mock_megaphone.polled.wait(timeout=5)
+        global MOCK_MP_SERVICES
+        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+        MOCK_MP_POLLED.clear()
+        MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
         client = Client(self._ws_url)
@@ -1137,9 +1112,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_no_changes(self):
-        self.mock_megaphone.services = {"kinto:123": "ver1"}
-        self.mock_megaphone.polled.clear()
-        self.mock_megaphone.polled.wait(timeout=5)
+        global MOCK_MP_SERVICES
+        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+        MOCK_MP_POLLED.clear()
+        MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver1"}
         client = Client(self._ws_url)

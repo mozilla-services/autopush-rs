@@ -68,6 +68,7 @@ extern crate reqwest;
 extern crate rusoto_core;
 extern crate rusoto_credential;
 extern crate rusoto_dynamodb;
+#[macro_use]
 extern crate sentry;
 extern crate serde;
 #[macro_use]
