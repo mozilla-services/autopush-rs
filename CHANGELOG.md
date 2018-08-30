@@ -1,3 +1,19 @@
+<a name="1.51.0"></a>
+## 1.51.0 (2018-08-30)
+
+
+#### Features
+
+*   upgrade sentry to 0.8.0 and log out errors ([3ec1d3c8](https://github.com/mozilla-services/autopush-rs/commit/3ec1d3c87218e9cfe5aafe6bbfb0363fc89da526), closes [#5](https://github.com/mozilla-services/autopush-rs/issues/5))
+*   return broadcast errors for invalid broadcast id's ([ee7cb913](https://github.com/mozilla-services/autopush-rs/commit/ee7cb913ea61a4000147b3ac0a8346c1709bb7b0), closes [#59](https://github.com/mozilla-services/autopush-rs/issues/59))
+*   notify other nodes if user has reconnected for missed messages ([10152fcb](https://github.com/mozilla-services/autopush-rs/commit/10152fcb44696a8e99091d102624c4a9b33749c3), closes [#58](https://github.com/mozilla-services/autopush-rs/issues/58))
+
+#### Chore
+
+*   rustfmt update ([583d07a7](https://github.com/mozilla-services/autopush-rs/commit/583d07a7ff15c544811909aadb7b9727fb180691))
+
+
+
 <a name="1.50.0"></a>
 ## 1.50.0 (2018-08-16)
 
