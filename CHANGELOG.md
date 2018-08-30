@@ -1,3 +1,13 @@
+<a name="1.51.1"></a>
+## 1.51.1 (2018-08-30)
+
+
+#### Features
+
+*   fix sentry test and add release data to sentry errors ([8e59c674](https://github.com/mozilla-services/autopush-rs/commit/8e59c674bfdfbd19eb4cacbc8477d49f84b02fd3), closes [#66](https://github.com/mozilla-services/autopush-rs/issues/66))
+
+
+
 <a name="1.51.0"></a>
 ## 1.51.0 (2018-08-30)
 
