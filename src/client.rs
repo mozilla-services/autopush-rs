@@ -19,7 +19,8 @@ use futures::AsyncSink;
 use futures::{Async, Future, Poll, Sink, Stream};
 use reqwest::unstable::async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
-use sentry::integrations::error_chain::capture_error_chain;
+use sentry;
+use sentry::integrations::error_chain::event_from_error_chain;
 use state_machine_future::RentToOwn;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
@@ -461,10 +462,7 @@ where
                 | Err(Error(ErrorKind::Io(_), _))
                 | Err(Error(ErrorKind::PongTimeout, _))
                 | Err(Error(ErrorKind::RepeatUaidDisconnect, _)) => None,
-                Err(e) => {
-                    capture_error_chain(&e);
-                    Some(e.display_chain().to_string())
-                }
+                Err(e) => Some(e),
             }
         };
 
@@ -502,6 +500,15 @@ where
         // If there's direct unack'd messages, they need to be saved out without blocking
         // here
         srv.disconnet_client(&webpush.uaid, &webpush.uid);
+
+        // Log out the sentry message if applicable and convert to error msg
+        let error = if let Some(ref err) = error {
+            let mut event = event_from_error_chain(err);
+            sentry::capture_event(event);
+            err.display_chain().to_string()
+        } else {
+            "".to_string()
+        };
         let mut stats = webpush.stats.clone();
         let unacked_direct_notifs = webpush.unacked_direct_notifs.len();
         if unacked_direct_notifs > 0 {
@@ -538,7 +545,7 @@ where
         "nacks" => stats.nacks,
         "registers" => stats.registers,
         "unregisters" => stats.unregisters,
-        "disconnect_reason" => error.unwrap_or("".to_string()),
+        "disconnect_reason" => error,
         );
         transition!(UnAuthDone(()))
     }

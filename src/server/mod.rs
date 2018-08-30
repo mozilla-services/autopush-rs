@@ -265,7 +265,13 @@ impl Server {
     /// Setup Sentry logging if a SENTRY_DSN exists
     fn start_sentry() -> Option<sentry::internals::ClientInitGuard> {
         if let Ok(dsn) = env::var("SENTRY_DSN") {
-            let guard = sentry::init(dsn);
+            let guard = sentry::init((
+                dsn,
+                sentry::ClientOptions {
+                    release: sentry_crate_release!(),
+                    ..Default::default()
+                }
+            ));
             register_panic_handler();
             Some(guard)
         } else {
