@@ -461,7 +461,8 @@ where
                 | Err(Error(ErrorKind::Ws(_), _))
                 | Err(Error(ErrorKind::Io(_), _))
                 | Err(Error(ErrorKind::PongTimeout, _))
-                | Err(Error(ErrorKind::RepeatUaidDisconnect, _)) => None,
+                | Err(Error(ErrorKind::RepeatUaidDisconnect, _))
+                | Err(Error(ErrorKind::ExcessivePing, _)) => None,
                 Err(e) => Some(e),
             }
         };
@@ -504,6 +505,15 @@ where
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {
             let mut event = event_from_error_chain(err);
+            event.user = Some(sentry::User {
+                id: Some(webpush.uaid.simple().to_string()),
+                ..Default::default()
+            });
+            event.tags.insert("ua_name".to_string(), ua_result.name.to_string());
+            event.tags.insert("ua_os_family".to_string(), metrics_os.to_string());
+            event.tags.insert("ua_os_ver".to_string(), ua_result.os_version.to_string());
+            event.tags.insert("ua_browser_family".to_string(), metrics_browser.to_string());
+            event.tags.insert("ua_browser_ver".to_string(), ua_result.version.to_string());
             sentry::capture_event(event);
             err.display_chain().to_string()
         } else {
@@ -780,6 +790,9 @@ where
         let webpush_rc = data.webpush.clone();
         let mut webpush = webpush_rc.borrow_mut();
         match input {
+            Either::A(ClientMessage::Hello { .. }) => {
+                Err(ErrorKind::InvalidStateTransition("AwaitInput".to_string(), "Hello".to_string()).into())
+            }
             Either::A(ClientMessage::BroadcastSubscribe { broadcasts }) => {
                 let broadcast_delta = {
                     let mut broadcast_subs = data.broadcast_subs.borrow_mut();
@@ -906,7 +919,7 @@ where
             Either::A(ClientMessage::Ping) => {
                 // Clients shouldn't ping > than once per minute or we
                 // disconnect them
-                if sec_since_epoch() - webpush.last_ping >= 55 {
+                if sec_since_epoch() - webpush.last_ping >= 45 {
                     debug!("Got a ping, sending pong");
                     webpush.last_ping = sec_since_epoch();
                     transition!(Send {
@@ -915,7 +928,7 @@ where
                     })
                 } else {
                     debug!("Got a ping too quickly, disconnecting");
-                    Err("code=4774".into())
+                    Err(ErrorKind::ExcessivePing.into())
                 }
             }
             Either::B(ServerNotification::Notification(notif)) => {
@@ -938,7 +951,6 @@ where
                 debug!("Got told to disconnect, connecting client has our uaid");
                 Err(ErrorKind::RepeatUaidDisconnect.into())
             }
-            _ => Err("Invalid message".into()),
         }
     }
 

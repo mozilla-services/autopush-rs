@@ -41,6 +41,8 @@
 //! aren't as relevant to the Web Push implementation.
 //!
 //! Otherwise be sure to check out each module for more documentation!
+// `error_chain!` can recurse deeply
+#![recursion_limit = "1024"]
 extern crate base64;
 extern crate bytes;
 extern crate cadence;

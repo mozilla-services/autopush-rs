@@ -306,11 +306,14 @@ class TestRustWebPush(unittest.TestCase):
         client = Client(self._ws_url)
         yield client.connect()
         yield client.hello()
-        # Send unsolicited ack and drop
-        yield client.ack("garbage", "data")
+        # Send a duplicate hello
+        try:
+            yield client.hello()
+        except ValueError:
+            pass
         yield self.shut_down(client)
         data = MOCK_SENTRY_QUEUE.get(timeout=1)
-        assert data["exception"]["values"][0]["value"] == "invalid json text"
+        assert data["exception"]["values"][0]["value"].startswith("invalid")
 
     @inlineCallbacks
     def test_hello_echo(self):
