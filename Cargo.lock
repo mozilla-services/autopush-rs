@@ -73,7 +73,7 @@ dependencies = [
  "rusoto_core 0.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_credential 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_dynamodb 0.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "sentry 0.8.0 (git+https://github.com/getsentry/sentry-rust/?rev=0e99cdd6bc5377ce151084e432a66af91e4b5d17)",
+ "sentry 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_dynamodb 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1330,8 +1330,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "sentry"
-version = "0.8.0"
-source = "git+https://github.com/getsentry/sentry-rust/?rev=0e99cdd6bc5377ce151084e432a66af91e4b5d17#0e99cdd6bc5377ce151084e432a66af91e4b5d17"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "backtrace 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.5.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2274,7 +2274,7 @@ dependencies = [
 "checksum security-framework-sys 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)" = "5421621e836278a0b139268f36eee0dc7e389b784dc3f79d8f11aabadf41bead"
 "checksum semver 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
 "checksum semver-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
-"checksum sentry 0.8.0 (git+https://github.com/getsentry/sentry-rust/?rev=0e99cdd6bc5377ce151084e432a66af91e4b5d17)" = "<none>"
+"checksum sentry 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "14e82466efe89eee77f9571419eb46d7333ffc64150ae394d33ff6a1d5ec604b"
 "checksum sentry-types 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)" = "63ec44abb8ae8afcb83575e623bac74ca3bc8359d3fc002027f13eb292e08d2b"
 "checksum serde 0.8.23 (registry+https://github.com/rust-lang/crates.io-index)" = "9dad3f759919b92c3068c696c15c3d17238234498bbdcc80f2c469606f948ac8"
 "checksum serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)" = "0c3adf19c07af6d186d91dae8927b83b0553d07ca56cbf7f2f32560455c91920"
