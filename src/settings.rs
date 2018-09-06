@@ -19,7 +19,18 @@ fn resolve_ip(hostname: &str) -> io::Result<String> {
         .map_or_else(|| hostname.to_owned(), |addr| addr.ip().to_string()))
 }
 
-#[derive(Debug, Deserialize)]
+/// Indicate whether the port should be included for the given scheme
+fn include_port(scheme: &str, port: &u16) -> bool {
+    if scheme == "http" && port == &80 {
+        false
+    } else if scheme == "https" && port == &443 {
+        false
+    } else {
+        true
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
 pub struct Settings {
     pub debug: bool,
     pub port: u16,
@@ -91,25 +102,33 @@ impl Settings {
         } else {
             "https"
         };
-        format!(
-            "{}://{}:{}",
+        let url = format!(
+            "{}://{}",
             router_scheme,
             self.router_hostname
                 .as_ref()
                 .map_or_else(|| self.get_hostname(), String::clone),
-            self.router_port
-        )
+        );
+        if include_port(router_scheme, &self.router_port) {
+            format!("{}:{}", url, self.router_port)
+        } else {
+            url
+        }
     }
 
     pub fn endpoint_url(&self) -> String {
-        format!(
-            "{}://{}:{}",
+        let url = format!(
+            "{}://{}",
             self.endpoint_scheme,
             self.endpoint_hostname
                 .as_ref()
                 .expect("Endpoint hostname must be supplied"),
-            self.endpoint_port
-        )
+        );
+        if include_port(&self.endpoint_scheme, &self.endpoint_port) {
+            format!("{}:{}", url, self.endpoint_port)
+        } else {
+            url
+        }
     }
 
     fn get_hostname(&self) -> String {
@@ -127,5 +146,55 @@ impl Settings {
         } else {
             HOSTNAME.clone()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_router_url() {
+        let mut settings: Settings = Default::default();
+        settings.router_hostname = Some("testname".to_string());
+        settings.router_port = 80;
+        let url = settings.router_url();
+        assert_eq!("http://testname", url);
+
+        settings.router_port = 8080;
+        let url = settings.router_url();
+        assert_eq!("http://testname:8080", url);
+
+        settings.router_port = 443;
+        settings.router_ssl_key = Some("key".to_string());
+        let url = settings.router_url();
+        assert_eq!("https://testname", url);
+
+        settings.router_port = 8080;
+        let url = settings.router_url();
+        assert_eq!("https://testname:8080", url);
+    }
+
+    #[test]
+    fn test_endpoint_url() {
+        let mut settings: Settings = Default::default();
+        settings.endpoint_hostname = Some("testname".to_string());
+        settings.endpoint_port = 80;
+        settings.endpoint_scheme = "http".to_string();
+        let url = settings.endpoint_url();
+        assert_eq!("http://testname", url);
+
+        settings.endpoint_port = 8080;
+        let url = settings.endpoint_url();
+        assert_eq!("http://testname:8080", url);
+
+        settings.endpoint_port = 443;
+        settings.endpoint_scheme = "https".to_string();
+        let url = settings.endpoint_url();
+        assert_eq!("https://testname", url);
+
+        settings.endpoint_port = 8080;
+        let url = settings.endpoint_url();
+        assert_eq!("https://testname:8080", url);
     }
 }
