@@ -43,7 +43,7 @@ reqwest = { version = "0.8.6", features = ["unstable"] }
 rusoto_core = "0.32.0"
 rusoto_credential = "0.11.0"
 rusoto_dynamodb = "0.32.0"
-# sentry = { version = "0.9.0", features = ["with_error_chain"] }
+sentry = { version = "0.9.0", features = ["with_error_chain"] }
 # XXX: pinned until server side's upgraded
 serde = "1.0.70"
 serde_derive = "1.0.70"
@@ -71,9 +71,3 @@ woothee = "0.7.3"
 [dependencies.config]
 git = "https://github.com/mehcode/config-rs"
 rev = "e8fa9fee96185ddd18ebcef8a925c75459111edb"
-
-[dependencies.sentry]
-features = ["with_error_chain"]
-git = "https://github.com/getsentry/sentry-rust/"
-# Sentry 0.9.0 is broken, this is the last commit that works before 0.9.0
-rev = "0e99cdd6bc5377ce151084e432a66af91e4b5d17"

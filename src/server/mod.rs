@@ -82,13 +82,28 @@ struct ShutdownHandle(oneshot::Sender<()>, thread::JoinHandle<()>);
 pub struct AutopushServer {
     opts: Arc<ServerOptions>,
     shutdown_handles: Cell<Option<Vec<ShutdownHandle>>>,
+    _guard: Option<sentry::internals::ClientInitGuard>,
 }
 
 impl AutopushServer {
     pub fn new(opts: ServerOptions) -> Self {
+        let guard = if let Ok(dsn) = env::var("SENTRY_DSN") {
+            let guard = sentry::init((
+                dsn,
+                sentry::ClientOptions {
+                    release: sentry_crate_release!(),
+                    ..Default::default()
+                }
+            ));
+            register_panic_handler();
+            Some(guard)
+        } else {
+            None
+        };
         Self {
             opts: Arc::new(opts),
             shutdown_handles: Cell::new(None),
+            _guard: guard,
         }
     }
 
@@ -215,7 +230,6 @@ impl Server {
     /// be used to interact with it (e.g. shut it down).
     fn start(opts: &Arc<ServerOptions>) -> Result<Vec<ShutdownHandle>> {
         let mut shutdown_handles = vec![];
-        let _guard = Server::start_sentry();
 
         let (inittx, initrx) = oneshot::channel();
         let (donetx, donerx) = oneshot::channel();
@@ -259,23 +273,6 @@ impl Server {
                 Ok(shutdown_handles)
             }
             Err(_) => panic::resume_unwind(thread.join().unwrap_err()),
-        }
-    }
-
-    /// Setup Sentry logging if a SENTRY_DSN exists
-    fn start_sentry() -> Option<sentry::internals::ClientInitGuard> {
-        if let Ok(dsn) = env::var("SENTRY_DSN") {
-            let guard = sentry::init((
-                dsn,
-                sentry::ClientOptions {
-                    release: sentry_crate_release!(),
-                    ..Default::default()
-                }
-            ));
-            register_panic_handler();
-            Some(guard)
-        } else {
-            None
         }
     }
 
