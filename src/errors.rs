@@ -28,7 +28,6 @@
 //!
 //! You can find some more documentation about this in the `error-chain` crate
 //! online.
-
 use std::any::Any;
 use std::error;
 use std::io;
@@ -65,6 +64,15 @@ error_chain! {
 
         RepeatUaidDisconnect {
             description("repeat uaid disconnected")
+        }
+
+        ExcessivePing {
+            description("pings are not far enough apart")
+        }
+
+        InvalidStateTransition(from: String, to: String) {
+            description("invalid state transition")
+            display("invalid state transition, from: {}, to: {}", from, to)
         }
     }
 }
