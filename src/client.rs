@@ -462,7 +462,8 @@ where
                 | Err(Error(ErrorKind::Io(_), _))
                 | Err(Error(ErrorKind::PongTimeout, _))
                 | Err(Error(ErrorKind::RepeatUaidDisconnect, _))
-                | Err(Error(ErrorKind::ExcessivePing, _)) => None,
+                | Err(Error(ErrorKind::ExcessivePing, _))
+                | Err(Error(ErrorKind::InvalidStateTransition(_, _), _)) => None,
                 Err(e) => Some(e),
             }
         };
