@@ -117,6 +117,11 @@ def sentry_handler():
     }
 
 
+class CustomClient(Client):
+    def send_bad_data(self):
+        self.ws.send("bad-data")
+
+
 def setup_module():
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD
     ap_tests.ddb_jar = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
@@ -303,14 +308,10 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_sentry_output(self):
-        client = Client(self._ws_url)
+        client = CustomClient(self._ws_url)
         yield client.connect()
         yield client.hello()
-        # Send a duplicate hello
-        try:
-            yield client.hello()
-        except ValueError:
-            pass
+        yield client.send_bad_data()
         yield self.shut_down(client)
         data = MOCK_SENTRY_QUEUE.get(timeout=1)
         assert data["exception"]["values"][0]["value"].startswith("invalid")
