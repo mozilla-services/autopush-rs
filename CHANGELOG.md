@@ -1,3 +1,19 @@
+<a name="1.51.2"></a>
+## 1.51.2 (2018-09-14)
+
+
+#### Features
+
+*   clean-up sentry error reporting and reduce spurious reporting ([f0bb4e0e](https://github.com/mozilla-services/autopush-rs/commit/f0bb4e0e7c517e93f17686c12655e88761306caa), closes [#71](https://github.com/mozilla-services/autopush-rs/issues/71))
+
+#### Bug Fixes
+
+*   ignore invalid state transitions ([464e5f93](https://github.com/mozilla-services/autopush-rs/commit/464e5f93ff0e61ba1a04cd52c32a05e7cac11c9c))
+*   don't include ports for schemes they aren't needed for ([4698f06f](https://github.com/mozilla-services/autopush-rs/commit/4698f06fc353a18d7f7cdf22073648730515de66))
+*   use latest sentry ([79b0fedb](https://github.com/mozilla-services/autopush-rs/commit/79b0fedb109b76dd005ce355f933dc957bd4e4e6))
+
+
+
 <a name="1.51.1"></a>
 ## 1.51.1 (2018-08-30)
 
