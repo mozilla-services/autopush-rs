@@ -18,7 +18,7 @@ use futures::task;
 use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
 use hex;
 use hyper::server::Http;
-use hyper::{self, header, StatusCode};
+use hyper::{self, StatusCode};
 use openssl::hash;
 use openssl::ssl::SslAcceptor;
 use reqwest;
@@ -429,8 +429,8 @@ impl Server {
     //  v2 is the uaid + chid + sha256(key).bytes
     pub fn make_endpoint(&self, uaid: &Uuid, chid: &Uuid, key: Option<String>) -> Result<String> {
         let root = format!("{}/wpush/", self.opts.endpoint_url);
-        let mut base = hex::decode(uaid.simple().to_string()).chain_err(|| "Error decoding")?;
-        base.extend(hex::decode(chid.simple().to_string()).chain_err(|| "Error decoding")?);
+        let mut base = hex::decode(uaid.to_simple().to_string()).chain_err(|| "Error decoding")?;
+        base.extend(hex::decode(chid.to_simple().to_string()).chain_err(|| "Error decoding")?);
         if let Some(k) = key {
             let raw_key = base64::decode_config(&k, base64::URL_SAFE)
                 .chain_err(|| "Error encrypting payload")?;
@@ -572,7 +572,7 @@ struct MegaphoneUpdater {
     state: MegaphoneState,
     timeout: Timeout,
     poll_interval: Duration,
-    client: reqwest::unstable::async::Client,
+    client: reqwest::async::Client,
 }
 
 impl MegaphoneUpdater {
@@ -582,9 +582,9 @@ impl MegaphoneUpdater {
         poll_interval: Duration,
         srv: &Rc<Server>,
     ) -> io::Result<MegaphoneUpdater> {
-        let client = reqwest::unstable::async::Client::builder()
+        let client = reqwest::async::Client::builder()
             .timeout(Duration::from_secs(1))
-            .build(&srv.handle)
+            .build()
             .expect("Unable to build reqwest client");
         Ok(MegaphoneUpdater {
             srv: srv.clone(),
@@ -611,7 +611,7 @@ impl Future for MegaphoneUpdater {
                     let fut = self
                         .client
                         .get(&self.api_url)
-                        .header(header::Authorization(self.api_token.clone()))
+                        .header("Authorization", self.api_token.clone())
                         .send()
                         .and_then(|response| response.error_for_status())
                         .and_then(|mut response| response.json())

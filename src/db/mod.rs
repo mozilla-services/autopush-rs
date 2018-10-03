@@ -6,8 +6,7 @@ use uuid::Uuid;
 use cadence::StatsdClient;
 use futures::{future, Future};
 use futures_backoff::retry_if;
-use rusoto_core::reactor::RequestDispatcher;
-use rusoto_core::Region;
+use rusoto_core::{HttpClient, Region};
 use rusoto_credential::StaticProvider;
 use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemError, BatchWriteItemInput, DeleteItemError, DeleteItemInput,
@@ -71,8 +70,8 @@ pub struct DynamoStorage {
 impl DynamoStorage {
     pub fn from_opts(opts: &ServerOptions, metrics: StatsdClient) -> Result<Self> {
         let ddb: Box<DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
-            Box::new(DynamoDbClient::new(
-                RequestDispatcher::default(),
+            Box::new(DynamoDbClient::new_with(
+                HttpClient::new().chain_err(|| "TLS initialization error")?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
                 Region::Custom {
                     name: "us-east-1".to_string(),
@@ -80,7 +79,7 @@ impl DynamoStorage {
                 },
             ))
         } else {
-            Box::new(DynamoDbClient::simple(Region::default()))
+            Box::new(DynamoDbClient::new(Region::default()))
         };
         let ddb = Rc::new(ddb);
 
@@ -118,7 +117,7 @@ impl DynamoStorage {
         };
         let update_input = UpdateItemInput {
             key: ddb_item! {
-                uaid: s => uaid.simple().to_string(),
+                uaid: s => uaid.to_simple().to_string(),
                 chidmessageid: s => " ".to_string()
             },
             update_expression: Some("SET current_timestamp=:timestamp, expiry=:expiry".to_string()),
@@ -128,7 +127,7 @@ impl DynamoStorage {
         };
 
         retry_if(
-            move || ddb.update_item(&update_input),
+            move || { ddb.update_item(update_input.clone()) },
             |err: &UpdateItemError| {
                 matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_))
             },
@@ -210,7 +209,7 @@ impl DynamoStorage {
             }
         };
         let mut chids = HashSet::new();
-        chids.insert(channel_id.hyphenated().to_string());
+        chids.insert(channel_id.to_hyphenated().to_string());
         let response = commands::save_channels(ddb, uaid, chids, message_month)
             .and_then(move |_| future::ok(RegisterResponse::Success { endpoint }))
             .or_else(move |_| {
@@ -294,7 +293,7 @@ impl DynamoStorage {
         let cond = |err: &BatchWriteItemError| {
             matches!(err, &BatchWriteItemError::ProvisionedThroughputExceeded(_))
         };
-        retry_if(move || ddb.batch_write_item(&batch_input), cond)
+        retry_if(move || ddb.batch_write_item(batch_input.clone()), cond)
         .and_then(|_| future::ok(()))
         .map_err(|err| {
             debug!("Error saving notification: {:?}", err);
@@ -319,7 +318,7 @@ impl DynamoStorage {
         let delete_input = DeleteItemInput {
             table_name: table_name.to_string(),
             key: ddb_item! {
-               uaid: s => uaid.simple().to_string(),
+               uaid: s => uaid.to_simple().to_string(),
                chidmessageid: s => notif.sort_key()
             },
             ..Default::default()
@@ -328,7 +327,7 @@ impl DynamoStorage {
         let cond = |err: &DeleteItemError| {
             matches!(err, &DeleteItemError::ProvisionedThroughputExceeded(_))
         };
-        retry_if(move || ddb.delete_item(&delete_input), cond)
+        retry_if(move || ddb.delete_item(delete_input.clone()), cond)
             .and_then(|_| future::ok(()))
             .chain_err(|| "Error deleting notification")
     }

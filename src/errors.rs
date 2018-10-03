@@ -48,7 +48,7 @@ error_chain! {
         Json(serde_json::Error);
         Httparse(httparse::Error);
         MetricError(cadence::MetricError);
-        UuidParseError(uuid::ParseError);
+        UuidParseError(uuid::parser::ParseError);
         ParseIntError(num::ParseIntError);
         ConfigError(config::ConfigError);
     }
