@@ -36,15 +36,18 @@ fn has_connected_this_month(user: &DynamoDbUser) -> bool {
     })
 }
 
-pub fn list_tables(
+/// A blocking list_tables call only called during initialization
+/// (prior to an any active tokio executor)
+pub fn list_tables_sync(
     ddb: Rc<Box<DynamoDb>>,
     start_key: Option<String>,
-) -> impl Future<Item = ListTablesOutput, Error = Error> {
+) -> Result<ListTablesOutput> {
     let input = ListTablesInput {
         exclusive_start_table_name: start_key,
         limit: Some(100),
     };
     ddb.list_tables(input)
+        .sync()
         .chain_err(|| "Unable to list tables")
 }
 

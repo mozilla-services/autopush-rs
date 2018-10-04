@@ -420,7 +420,7 @@ pub fn list_message_tables(ddb: &Rc<Box<DynamoDb>>, prefix: &str) -> Result<Vec<
     let mut names: Vec<String> = Vec::new();
     let mut start_key = None;
     loop {
-        let result = commands::list_tables(Rc::clone(ddb), start_key).wait()?;
+        let result = commands::list_tables_sync(Rc::clone(ddb), start_key)?;
         start_key = result.last_evaluated_table_name;
         if let Some(table_names) = result.table_names {
             names.extend(table_names);
