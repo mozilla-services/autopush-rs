@@ -17,7 +17,7 @@ use futures::sync::mpsc;
 use futures::sync::oneshot::Receiver;
 use futures::AsyncSink;
 use futures::{Async, Future, Poll, Sink, Stream};
-use reqwest::unstable::async::Client as AsyncClient;
+use reqwest::async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
 use sentry;
 use sentry::integrations::error_chain::event_from_error_chain;
@@ -418,7 +418,7 @@ where
             message_month,
             connected_at,
             stats: SessionStatistics {
-                uaid: uaid.simple().to_string(),
+                uaid: uaid.to_simple().to_string(),
                 uaid_reset: reset_uaid,
                 existing_uaid: check_storage,
                 connection_type: String::from("webpush"),
@@ -429,7 +429,7 @@ where
         srv.connect_client(RegisteredClient { uaid, uid, tx });
 
         let response = ServerMessage::Hello {
-            uaid: uaid.simple().to_string(),
+            uaid: uaid.to_simple().to_string(),
             status: 200,
             use_webpush: Some(true),
             broadcasts,
@@ -507,7 +507,7 @@ where
         let error = if let Some(ref err) = error {
             let mut event = event_from_error_chain(err);
             event.user = Some(sentry::User {
-                id: Some(webpush.uaid.simple().to_string()),
+                id: Some(webpush.uaid.to_simple().to_string()),
                 ..Default::default()
             });
             event.tags.insert("ua_name".to_string(), ua_result.name.to_string());
@@ -568,7 +568,6 @@ fn save_and_notify_undelivered_messages(
     notifs: Vec<Notification>,
 ) {
     let srv2 = srv.clone();
-    let srv3 = srv.clone();
     let uaid = webpush.uaid.clone();
     let connected_at = webpush.connected_at.clone();
     srv.handle.spawn(
@@ -586,7 +585,7 @@ fn save_and_notify_undelivered_messages(
                 } else if let Some(node_id) = user.node_id {
                     let result = AsyncClient::builder()
                         .timeout(Duration::from_secs(1))
-                        .build(&srv3.handle);
+                        .build();
                     if let Ok(client) = result {
                         future::ok((client, user.uaid, node_id))
                     } else {
@@ -598,7 +597,7 @@ fn save_and_notify_undelivered_messages(
             })
             .and_then(|(client, uaid, node_id)| {
                 // Send the notify to the user
-                let notify_url = format!("{}/notif/{}", node_id, uaid.simple());
+                let notify_url = format!("{}/notif/{}", node_id, uaid.to_simple());
                 client
                     .put(&notify_url)
                     .send()
@@ -822,7 +821,7 @@ where
                        "channel_id" => &channel_id_str);
                 let channel_id =
                     Uuid::parse_str(&channel_id_str).chain_err(|| "Invalid channelID")?;
-                if channel_id.hyphenated().to_string() != channel_id_str {
+                if channel_id.to_hyphenated().to_string() != channel_id_str {
                     return Err("Bad UUID format, use lower case, dashed format".into());
                 }
 

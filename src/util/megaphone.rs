@@ -149,7 +149,7 @@ impl BroadcastChangeTracker {
             .build()?;
         let MegaphoneAPIResponse { broadcasts } = client
             .get(url)
-            .header(reqwest::header::Authorization(token.to_string()))
+            .header("Authorization", token.to_string())
             .send()?
             .error_for_status()?
             .json()?;

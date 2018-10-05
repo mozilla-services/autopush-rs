@@ -36,15 +36,18 @@ fn has_connected_this_month(user: &DynamoDbUser) -> bool {
     })
 }
 
-pub fn list_tables(
+/// A blocking list_tables call only called during initialization
+/// (prior to an any active tokio executor)
+pub fn list_tables_sync(
     ddb: Rc<Box<DynamoDb>>,
     start_key: Option<String>,
-) -> impl Future<Item = ListTablesOutput, Error = Error> {
+) -> Result<ListTablesOutput> {
     let input = ListTablesInput {
         exclusive_start_table_name: start_key,
         limit: Some(100),
     };
-    ddb.list_tables(&input)
+    ddb.list_tables(input)
+        .sync()
         .chain_err(|| "Unable to list tables")
 }
 
@@ -56,7 +59,7 @@ pub fn fetch_messages(
     limit: u32,
 ) -> impl Future<Item = FetchMessageResponse, Error = Error> {
     let attr_values = hashmap! {
-        ":uaid".to_string() => val!(S => uaid.simple().to_string()),
+        ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
         ":cmi".to_string() => val!(S => "02"),
     };
     let input = QueryInput {
@@ -70,7 +73,7 @@ pub fn fetch_messages(
 
     let metrics = Rc::clone(metrics);
     let cond = |err: &QueryError| matches!(err, &QueryError::ProvisionedThroughputExceeded(_));
-    retry_if(move || ddb.query(&input), cond)
+    retry_if(move || ddb.query(input.clone()), cond)
         .chain_err(|| "Error fetching messages")
         .and_then(move |output| {
             let mut notifs: Vec<DynamoDbNotification> =
@@ -125,7 +128,7 @@ pub fn fetch_timestamp_messages(
         "01;".to_string()
     };
     let attr_values = hashmap! {
-        ":uaid".to_string() => val!(S => uaid.simple().to_string()),
+        ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
         ":cmi".to_string() => val!(S => range_key),
     };
     let input = QueryInput {
@@ -139,7 +142,7 @@ pub fn fetch_timestamp_messages(
 
     let metrics = Rc::clone(metrics);
     let cond = |err: &QueryError| matches!(err, &QueryError::ProvisionedThroughputExceeded(_));
-    retry_if(move || ddb.query(&input), cond)
+    retry_if(move || ddb.query(input.clone()), cond)
         .chain_err(|| "Error fetching messages")
         .and_then(move |output| {
             let messages = output.items.map_or_else(Vec::new, |items| {
@@ -175,11 +178,11 @@ pub fn drop_user(
 ) -> impl Future<Item = DeleteItemOutput, Error = Error> {
     let input = DeleteItemInput {
         table_name: router_table_name.to_string(),
-        key: ddb_item! { uaid: s => uaid.simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         ..Default::default()
     };
     retry_if(
-        move || ddb.delete_item(&input),
+        move || ddb.delete_item(input.clone()),
         |err: &DeleteItemError| matches!(err, &DeleteItemError::ProvisionedThroughputExceeded(_)),
     ).chain_err(|| "Error dropping user")
 }
@@ -192,11 +195,11 @@ pub fn get_uaid(
     let input = GetItemInput {
         table_name: router_table_name.to_string(),
         consistent_read: Some(true),
-        key: ddb_item! { uaid: s => uaid.simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         ..Default::default()
     };
     retry_if(
-        move || ddb.get_item(&input),
+        move || ddb.get_item(input.clone()),
         |err: &GetItemError| matches!(err, &GetItemError::ProvisionedThroughputExceeded(_)),
     ).chain_err(|| "Error fetching user")
 }
@@ -219,7 +222,7 @@ pub fn register_user(
     retry_if(
         move || {
             debug!("Registering user: {:?}", item);
-            ddb.put_item(&PutItemInput {
+            ddb.put_item(PutItemInput {
                 item: item.clone(),
                 table_name: router_table.clone(),
                 expression_attribute_values: Some(attr_values.clone()),
@@ -251,7 +254,7 @@ pub fn update_user_message_month(
         ":lastconnect".to_string() => val!(N => generate_last_connect().to_string()),
     };
     let update_item = UpdateItemInput {
-        key: ddb_item! { uaid: s => uaid.simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         update_expression: Some(
             "SET current_month=:curmonth, last_connect=:lastconnect".to_string(),
         ),
@@ -261,7 +264,7 @@ pub fn update_user_message_month(
     };
 
     retry_if(
-        move || ddb.update_item(&update_item).and_then(|_| future::ok(())),
+        move || ddb.update_item(update_item.clone()).and_then(|_| future::ok(())),
         |err: &UpdateItemError| matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_)),
     ).chain_err(|| "Error updating user message month")
 }
@@ -275,14 +278,14 @@ pub fn all_channels(
         table_name: message_table_name.to_string(),
         consistent_read: Some(true),
         key: ddb_item! {
-            uaid: s => uaid.simple().to_string(),
+            uaid: s => uaid.to_simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         ..Default::default()
     };
 
     let cond = |err: &GetItemError| matches!(err, &GetItemError::ProvisionedThroughputExceeded(_));
-    retry_if(move || ddb.get_item(&input), cond)
+    retry_if(move || ddb.get_item(input.clone()), cond)
         .and_then(|output| {
             let channels = output
                 .item
@@ -311,7 +314,7 @@ pub fn save_channels(
     };
     let update_item = UpdateItemInput {
         key: ddb_item! {
-            uaid: s => uaid.simple().to_string(),
+            uaid: s => uaid.to_simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         update_expression: Some("ADD chids :chids SET expiry=:expiry".to_string()),
@@ -321,7 +324,7 @@ pub fn save_channels(
     };
 
     retry_if(
-        move || ddb.update_item(&update_item).and_then(|_| future::ok(())),
+        move || ddb.update_item(update_item.clone()).and_then(|_| future::ok(())),
         |err: &UpdateItemError| matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_)),
     ).chain_err(|| "Error saving channels")
 }
@@ -332,13 +335,13 @@ pub fn unregister_channel_id(
     channel_id: &Uuid,
     message_table_name: &str,
 ) -> impl Future<Item = UpdateItemOutput, Error = Error> {
-    let chid = channel_id.hyphenated().to_string();
+    let chid = channel_id.to_hyphenated().to_string();
     let attr_values = hashmap! {
         ":channel_id".to_string() => val!(SS => vec![chid]),
     };
     let update_item = UpdateItemInput {
         key: ddb_item! {
-            uaid: s => uaid.simple().to_string(),
+            uaid: s => uaid.to_simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         update_expression: Some("DELETE chids :channel_id".to_string()),
@@ -348,7 +351,7 @@ pub fn unregister_channel_id(
     };
 
     retry_if(
-        move || ddb.update_item(&update_item),
+        move || ddb.update_item(update_item.clone()),
         |err: &UpdateItemError| matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_)),
     ).chain_err(|| "Error unregistering channel")
 }
