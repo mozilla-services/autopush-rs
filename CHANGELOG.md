@@ -1,3 +1,19 @@
+<a name="1.52.0"></a>
+## 1.52.0 (2018-10-12)
+
+
+#### Bug Fixes
+
+*   quick workaround for rusoto's hyper upgrade ([06eff39b](https://github.com/mozilla-services/autopush-rs/commit/06eff39b845167fa331b23e1a8d841c394772045))
+
+#### Chore
+
+*   upgrade to latest rust ([4230d0cf](https://github.com/mozilla-services/autopush-rs/commit/4230d0cfc93ecd41d8500ed3186e0c23e861e2ab))
+*   upgrade test_integrations deps ([93a5df21](https://github.com/mozilla-services/autopush-rs/commit/93a5df21896dd8ae5084f62cb888b20d270200a5))
+*   upgrade dependencies minus hyper and woothee ([790ebdbb](https://github.com/mozilla-services/autopush-rs/commit/790ebdbb921014edbcf32525fa25ccc3cc41050b))
+
+
+
 <a name="1.51.2"></a>
 ## 1.51.2 (2018-09-14)
 
