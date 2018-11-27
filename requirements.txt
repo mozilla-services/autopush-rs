@@ -46,7 +46,7 @@ python-dateutil==2.7.3    # via botocore
 python-jose==3.0.1
 raven==6.9.0
 requests-toolbelt==0.8.0  # via pyfcm
-requests==2.19.1
+requests==2.20.1
 rsa==4.0                  # via python-jose
 s3transfer==0.1.13        # via boto3
 service-identity==17.0.0
