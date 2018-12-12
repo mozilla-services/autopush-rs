@@ -93,7 +93,7 @@ impl AutopushServer {
                 sentry::ClientOptions {
                     release: sentry_crate_release!(),
                     ..Default::default()
-                }
+                },
             ));
             register_panic_handler();
             Some(guard)
@@ -375,7 +375,8 @@ impl Server {
                                 ws.and_then(move |ws| {
                                     PingManager::new(&srv2, ws, uarx)
                                         .chain_err(|| "failed to make ping handler")
-                                }).flatten(),
+                                })
+                                .flatten(),
                             )
                         }
                     }
@@ -408,7 +409,8 @@ impl Server {
                 megaphone_token,
                 opts.megaphone_poll_interval,
                 &srv2,
-            ).expect("Unable to start megaphone updater");
+            )
+            .expect("Unable to start megaphone updater");
             core.handle().spawn(fut.then(|res| {
                 debug!("megaphone result: {:?}", res.map(drop));
                 Ok(())
@@ -943,9 +945,9 @@ fn write_status(socket: WebpushIo) -> MyFuture<()> {
         socket,
         StatusCode::Ok,
         json!({
-            "status": "OK",
-            "version": env!("CARGO_PKG_VERSION"),
-    }),
+                "status": "OK",
+                "version": env!("CARGO_PKG_VERSION"),
+        }),
     )
 }
 
@@ -974,11 +976,11 @@ fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
         socket,
         StatusCode::ImATeapot,
         json!({
-            "code": code,
-            "errno": 999,
-            "error": "Test Failure",
-            "mesage": "FAILURE:Success",
-    }),
+                "code": code,
+                "errno": 999,
+                "error": "Test Failure",
+                "mesage": "FAILURE:Success",
+        }),
     )
 }
 
