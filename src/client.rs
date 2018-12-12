@@ -510,11 +510,21 @@ where
                 id: Some(webpush.uaid.to_simple().to_string()),
                 ..Default::default()
             });
-            event.tags.insert("ua_name".to_string(), ua_result.name.to_string());
-            event.tags.insert("ua_os_family".to_string(), metrics_os.to_string());
-            event.tags.insert("ua_os_ver".to_string(), ua_result.os_version.to_string());
-            event.tags.insert("ua_browser_family".to_string(), metrics_browser.to_string());
-            event.tags.insert("ua_browser_ver".to_string(), ua_result.version.to_string());
+            event
+                .tags
+                .insert("ua_name".to_string(), ua_result.name.to_string());
+            event
+                .tags
+                .insert("ua_os_family".to_string(), metrics_os.to_string());
+            event
+                .tags
+                .insert("ua_os_ver".to_string(), ua_result.os_version.to_string());
+            event
+                .tags
+                .insert("ua_browser_family".to_string(), metrics_browser.to_string());
+            event
+                .tags
+                .insert("ua_browser_ver".to_string(), ua_result.version.to_string());
             sentry::capture_event(event);
             err.display_chain().to_string()
         } else {
@@ -629,14 +639,23 @@ where
         data: AuthClientData<T>,
     },
 
-    #[state_machine_future(
-        transitions(IncrementStorage, CheckStorage, AwaitDropUser, AwaitMigrateUser, AwaitInput)
-    )]
+    #[state_machine_future(transitions(
+        IncrementStorage,
+        CheckStorage,
+        AwaitDropUser,
+        AwaitMigrateUser,
+        AwaitInput
+    ))]
     DetermineAck { data: AuthClientData<T> },
 
-    #[state_machine_future(
-        transitions(DetermineAck, Send, AwaitInput, AwaitRegister, AwaitUnregister, AwaitDelete)
-    )]
+    #[state_machine_future(transitions(
+        DetermineAck,
+        Send,
+        AwaitInput,
+        AwaitRegister,
+        AwaitUnregister,
+        AwaitDelete
+    ))]
     AwaitInput { data: AuthClientData<T> },
 
     #[state_machine_future(transitions(AwaitIncrementStorage))]
@@ -790,9 +809,11 @@ where
         let webpush_rc = data.webpush.clone();
         let mut webpush = webpush_rc.borrow_mut();
         match input {
-            Either::A(ClientMessage::Hello { .. }) => {
-                Err(ErrorKind::InvalidStateTransition("AwaitInput".to_string(), "Hello".to_string()).into())
-            }
+            Either::A(ClientMessage::Hello { .. }) => Err(ErrorKind::InvalidStateTransition(
+                "AwaitInput".to_string(),
+                "Hello".to_string(),
+            )
+            .into()),
             Either::A(ClientMessage::BroadcastSubscribe { broadcasts }) => {
                 let broadcast_delta = {
                     let mut broadcast_subs = data.broadcast_subs.borrow_mut();
@@ -855,14 +876,15 @@ where
             }
             Either::A(ClientMessage::Nack { code, .. }) => {
                 // only metric codes expected from the client (or 0)
-                let mcode =
-                    code.and_then(|code| {
+                let mcode = code
+                    .and_then(|code| {
                         if code >= 301 && code <= 303 {
                             Some(code)
                         } else {
                             None
                         }
-                    }).unwrap_or(0);
+                    })
+                    .unwrap_or(0);
                 data.srv
                     .metrics
                     .incr_with_tags("ua.command.nack")

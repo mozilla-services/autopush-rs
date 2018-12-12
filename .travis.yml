@@ -23,7 +23,10 @@ install:
     else
         cargo build || travis_terminate 1
     fi
+    rustup component add rustfmt-preview
+
 script:
+- cargo fmt -- --check
 - py.test -v
 - cargo test
 notifications:

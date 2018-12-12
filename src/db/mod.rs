@@ -127,11 +127,12 @@ impl DynamoStorage {
         };
 
         retry_if(
-            move || { ddb.update_item(update_input.clone()) },
+            move || ddb.update_item(update_input.clone()),
             |err: &UpdateItemError| {
                 matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_))
             },
-        ).chain_err(|| "Error incrementing storage")
+        )
+        .chain_err(|| "Error incrementing storage")
     }
 
     pub fn hello(
@@ -290,10 +291,12 @@ impl DynamoStorage {
             ..Default::default()
         };
 
-        let cond = |err: &BatchWriteItemError| {
-            matches!(err, &BatchWriteItemError::ProvisionedThroughputExceeded(_))
-        };
-        retry_if(move || ddb.batch_write_item(batch_input.clone()), cond)
+        retry_if(
+            move || ddb.batch_write_item(batch_input.clone()),
+            |err: &BatchWriteItemError| {
+                matches!(err, &BatchWriteItemError::ProvisionedThroughputExceeded(_))
+            },
+        )
         .and_then(|_| future::ok(()))
         .map_err(|err| {
             debug!("Error saving notification: {:?}", err);
@@ -324,12 +327,14 @@ impl DynamoStorage {
             ..Default::default()
         };
 
-        let cond = |err: &DeleteItemError| {
-            matches!(err, &DeleteItemError::ProvisionedThroughputExceeded(_))
-        };
-        retry_if(move || ddb.delete_item(delete_input.clone()), cond)
-            .and_then(|_| future::ok(()))
-            .chain_err(|| "Error deleting notification")
+        retry_if(
+            move || ddb.delete_item(delete_input.clone()),
+            |err: &DeleteItemError| {
+                matches!(err, &DeleteItemError::ProvisionedThroughputExceeded(_))
+            },
+        )
+        .and_then(|_| future::ok(()))
+        .chain_err(|| "Error deleting notification")
     }
 
     pub fn check_storage(
