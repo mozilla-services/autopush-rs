@@ -11,7 +11,10 @@ dist: trusty
 
 install:
 - make ddb
+- curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
+- curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
 - pip install --upgrade pip
+- pip install bottle
 - pip install -r requirements.txt
 - pip install -r test-requirements.txt
 - pip install -e git+https://github.com/mozilla-services/autopush.git#egg=autopush

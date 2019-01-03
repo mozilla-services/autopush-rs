@@ -57,7 +57,7 @@ impl Service for Push {
                             Ok(hyper::Response::new().with_status(StatusCode::Ok))
                         } else {
                             Ok(hyper::Response::new()
-                                .with_status(StatusCode::BadGateway)
+                                .with_status(StatusCode::NotFound)
                                 .with_body("Client not available."))
                         }
                     } else {
@@ -71,7 +71,7 @@ impl Service for Push {
                 if srv.check_client_storage(uaid).is_ok() {
                     response.set_status(StatusCode::Ok)
                 } else {
-                    response.set_status(StatusCode::BadGateway);
+                    response.set_status(StatusCode::NotFound);
                     response.set_body("Client not available.");
                 }
             }
