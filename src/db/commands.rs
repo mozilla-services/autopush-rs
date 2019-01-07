@@ -18,9 +18,9 @@ use serde_dynamodb;
 use super::models::{DynamoDbNotification, DynamoDbUser};
 use super::util::generate_last_connect;
 use super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
-use errors::*;
-use protocol::Notification;
-use util::timing::sec_since_epoch;
+use crate::errors::*;
+use crate::protocol::Notification;
+use crate::util::timing::sec_since_epoch;
 
 #[derive(Default)]
 pub struct FetchMessageResponse {

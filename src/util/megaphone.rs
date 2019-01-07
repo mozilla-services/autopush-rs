@@ -1,8 +1,8 @@
-use errors::Result;
+use crate::errors::Result;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use protocol::BroadcastValue;
+use crate::protocol::BroadcastValue;
 
 use reqwest;
 

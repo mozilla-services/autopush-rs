@@ -18,7 +18,7 @@ use serde_json;
 use tokio_service::Service;
 use uuid::Uuid;
 
-use server::Server;
+use crate::server::Server;
 
 pub struct Push(pub Rc<Server>);
 

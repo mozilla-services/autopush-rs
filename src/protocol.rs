@@ -12,7 +12,7 @@ use std::str::FromStr;
 use serde_json;
 use uuid::Uuid;
 
-use util::ms_since_epoch;
+use crate::util::ms_since_epoch;
 
 // Used for the server to flag a webpush client to deliver a Notification or Check storage
 pub enum ServerNotification {

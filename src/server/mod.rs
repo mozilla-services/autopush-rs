@@ -34,21 +34,21 @@ use tungstenite::handshake::server::Request;
 use tungstenite::Message;
 use uuid::Uuid;
 
-use client::{Client, RegisteredClient};
-use db::DynamoStorage;
-use errors::*;
-use errors::{Error, Result};
-use http;
-use logging;
-use protocol::{BroadcastValue, ClientMessage, Notification, ServerMessage, ServerNotification};
-use server::dispatch::{Dispatch, RequestType};
-use server::metrics::metrics_from_opts;
-use server::webpush_io::WebpushIo;
-use settings::Settings;
-use util::megaphone::{
+use crate::client::{Client, RegisteredClient};
+use crate::db::DynamoStorage;
+use crate::errors::*;
+use crate::errors::{Error, Result};
+use crate::http;
+use crate::logging;
+use crate::protocol::{BroadcastValue, ClientMessage, Notification, ServerMessage, ServerNotification};
+use crate::server::dispatch::{Dispatch, RequestType};
+use crate::server::metrics::metrics_from_opts;
+use crate::server::webpush_io::WebpushIo;
+use crate::settings::Settings;
+use crate::util::megaphone::{
     Broadcast, BroadcastChangeTracker, BroadcastSubs, BroadcastSubsInit, MegaphoneAPIResponse,
 };
-use util::{timeout, RcObject};
+use crate::util::{timeout, RcObject};
 
 mod dispatch;
 mod metrics;
@@ -574,7 +574,7 @@ struct MegaphoneUpdater {
     state: MegaphoneState,
     timeout: Timeout,
     poll_interval: Duration,
-    client: reqwest::async::Client,
+    client: reqwest::r#async::Client,
 }
 
 impl MegaphoneUpdater {
@@ -584,7 +584,7 @@ impl MegaphoneUpdater {
         poll_interval: Duration,
         srv: &Rc<Server>,
     ) -> io::Result<MegaphoneUpdater> {
-        let client = reqwest::async::Client::builder()
+        let client = reqwest::r#async::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()
             .expect("Unable to build reqwest client");

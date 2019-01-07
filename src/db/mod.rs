@@ -19,11 +19,11 @@ use serde_dynamodb;
 mod macros;
 mod commands;
 mod models;
-use errors::*;
-use protocol::Notification;
-use server::{Server, ServerOptions};
+use crate::errors::*;
+use crate::protocol::Notification;
+use crate::server::{Server, ServerOptions};
 mod util;
-use util::timing::sec_since_epoch;
+use crate::util::timing::sec_since_epoch;
 
 use self::commands::FetchMessageResponse;
 use self::models::{DynamoDbNotification, DynamoDbUser};

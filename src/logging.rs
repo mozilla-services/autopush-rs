@@ -1,6 +1,6 @@
 use std::io;
 
-use errors::Result;
+use crate::errors::Result;
 
 use mozsvc_common::{aws::get_ec2_instance_id, get_hostname};
 use slog::{self, Drain};

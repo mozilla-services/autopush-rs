@@ -4,8 +4,8 @@ use std::net::UdpSocket;
 
 use cadence::{BufferedUdpMetricSink, NopMetricSink, QueuingMetricSink, StatsdClient};
 
-use errors::*;
-use server::ServerOptions;
+use crate::errors::*;
+use crate::server::ServerOptions;
 
 /// Create a cadence StatsdClient from the given options
 pub fn metrics_from_opts(opts: &ServerOptions) -> Result<StatsdClient> {
