@@ -3,7 +3,9 @@ use std::net::ToSocketAddrs;
 
 use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
+use lazy_static::lazy_static;
 use mozsvc_common;
+use serde_derive::Deserialize;
 
 lazy_static! {
     static ref HOSTNAME: String = mozsvc_common::get_hostname().expect("Couldn't get_hostname");

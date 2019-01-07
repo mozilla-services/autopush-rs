@@ -43,63 +43,13 @@
 //! Otherwise be sure to check out each module for more documentation!
 // `error_chain!` can recurse deeply
 #![recursion_limit = "1024"]
-use base64;
-
-use cadence;
-
-
-use config;
-
-
-#[macro_use]
-extern crate futures;
-
-use hex;
-use httparse;
-use hyper;
-#[macro_use]
-extern crate lazy_static;
-
-#[macro_use]
-extern crate matches;
-use mozsvc_common;
-
-
-
-use reqwest;
-
-
-
-#[macro_use]
-extern crate sentry;
-
-#[macro_use]
-extern crate serde_derive;
-use serde_dynamodb;
-#[macro_use]
-extern crate serde_json;
-#[macro_use]
-extern crate slog;
-use slog_async;
-
-#[macro_use]
-extern crate slog_scope;
-use slog_stdlog;
-use slog_term;
-#[macro_use]
-extern crate state_machine_future;
-use time;
-
-use tokio_io;
-
-
-
-use tungstenite;
-use uuid;
-
 
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
+extern crate slog;
+#[macro_use]
+extern crate slog_scope;
 
 #[macro_use]
 mod db;

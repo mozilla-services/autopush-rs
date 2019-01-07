@@ -8,6 +8,7 @@ use cadence::{Counted, StatsdClient};
 use chrono::Utc;
 use futures::{future, Future};
 use futures_backoff::retry_if;
+use matches::matches;
 use rusoto_dynamodb::{
     AttributeValue, DeleteItemError, DeleteItemInput, DeleteItemOutput, DynamoDb, GetItemError,
     GetItemInput, GetItemOutput, ListTablesInput, ListTablesOutput, PutItemError, PutItemInput,

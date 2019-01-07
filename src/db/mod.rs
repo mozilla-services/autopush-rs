@@ -6,6 +6,7 @@ use uuid::Uuid;
 use cadence::StatsdClient;
 use futures::{future, Future};
 use futures_backoff::retry_if;
+use matches::matches;
 use rusoto_core::{HttpClient, Region};
 use rusoto_credential::StaticProvider;
 use rusoto_dynamodb::{
@@ -19,10 +20,11 @@ use serde_dynamodb;
 mod macros;
 mod commands;
 mod models;
+mod util;
+
 use crate::errors::*;
 use crate::protocol::Notification;
 use crate::server::{Server, ServerOptions};
-mod util;
 use crate::util::timing::sec_since_epoch;
 
 use self::commands::FetchMessageResponse;

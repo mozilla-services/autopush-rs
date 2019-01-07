@@ -22,7 +22,7 @@
 //! many other options for now!
 
 use bytes::BytesMut;
-use futures::{Future, Poll};
+use futures::{try_ready, Future, Poll};
 use httparse;
 use tokio_core::net::TcpStream;
 use tokio_io::AsyncRead;

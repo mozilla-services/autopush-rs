@@ -1,10 +1,11 @@
-use crate::errors::Result;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::protocol::BroadcastValue;
-
 use reqwest;
+use serde_derive::{Deserialize, Serialize};
+
+use crate::errors::Result;
+use crate::protocol::BroadcastValue;
 
 // A Broadcast entry Key in a BroadcastRegistry
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]

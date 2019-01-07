@@ -3,7 +3,6 @@ extern crate serde_derive;
 
 use chan_signal;
 
-
 use std::env;
 
 use chan_signal::Signal;
