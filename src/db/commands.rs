@@ -303,9 +303,9 @@ pub fn all_channels(
         let channels = output
             .item
             .and_then(|item| {
-                serde_dynamodb::from_hashmap::<DynamoDbNotification>(item)
+                serde_dynamodb::from_hashmap(item)
                     .ok()
-                    .and_then(|notif| notif.chids)
+                    .and_then(|notif: DynamoDbNotification| notif.chids)
             })
             .unwrap_or_else(HashSet::new);
         future::ok(channels)
