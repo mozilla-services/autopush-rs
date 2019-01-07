@@ -43,60 +43,60 @@
 //! Otherwise be sure to check out each module for more documentation!
 // `error_chain!` can recurse deeply
 #![recursion_limit = "1024"]
-extern crate base64;
-extern crate bytes;
-extern crate cadence;
-extern crate chan_signal;
-extern crate chrono;
-extern crate config;
-extern crate docopt;
-extern crate fernet;
+use base64;
+
+use cadence;
+
+
+use config;
+
+
 #[macro_use]
 extern crate futures;
-extern crate futures_backoff;
-extern crate hex;
-extern crate httparse;
-extern crate hyper;
+
+use hex;
+use httparse;
+use hyper;
 #[macro_use]
 extern crate lazy_static;
-extern crate libc;
+
 #[macro_use]
 extern crate matches;
-extern crate mozsvc_common;
-extern crate openssl;
-extern crate rand;
-extern crate regex;
-extern crate reqwest;
-extern crate rusoto_core;
-extern crate rusoto_credential;
-extern crate rusoto_dynamodb;
+use mozsvc_common;
+
+
+
+use reqwest;
+
+
+
 #[macro_use]
 extern crate sentry;
-extern crate serde;
+
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_dynamodb;
+use serde_dynamodb;
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate slog;
-extern crate slog_async;
-extern crate slog_mozlog_json;
+use slog_async;
+
 #[macro_use]
 extern crate slog_scope;
-extern crate slog_stdlog;
-extern crate slog_term;
+use slog_stdlog;
+use slog_term;
 #[macro_use]
 extern crate state_machine_future;
-extern crate time;
-extern crate tokio_core;
-extern crate tokio_io;
-extern crate tokio_openssl;
-extern crate tokio_service;
-extern crate tokio_tungstenite;
-extern crate tungstenite;
-extern crate uuid;
-extern crate woothee;
+use time;
+
+use tokio_io;
+
+
+
+use tungstenite;
+use uuid;
+
 
 #[macro_use]
 extern crate error_chain;

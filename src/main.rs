@@ -1,8 +1,8 @@
 #[macro_use]
 extern crate serde_derive;
-extern crate autopush;
-extern crate chan_signal;
-extern crate docopt;
+
+use chan_signal;
+
 
 use std::env;
 

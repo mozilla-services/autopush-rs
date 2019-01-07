@@ -26,7 +26,7 @@ impl Service for Push {
     type Request = hyper::Request;
     type Response = hyper::Response;
     type Error = hyper::Error;
-    type Future = Box<Future<Item = hyper::Response, Error = hyper::Error>>;
+    type Future = Box<dyn Future<Item = hyper::Response, Error = hyper::Error>>;
 
     fn call(&self, req: hyper::Request) -> Self::Future {
         let mut response = hyper::Response::new();

@@ -60,7 +60,7 @@ pub enum RegisterResponse {
 }
 
 pub struct DynamoStorage {
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     metrics: Rc<StatsdClient>,
     router_table_name: String,
     message_table_names: Vec<String>,
@@ -69,7 +69,7 @@ pub struct DynamoStorage {
 
 impl DynamoStorage {
     pub fn from_opts(opts: &ServerOptions, metrics: StatsdClient) -> Result<Self> {
-        let ddb: Box<DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
+        let ddb: Box<dyn DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             Box::new(DynamoDbClient::new_with(
                 HttpClient::new().chain_err(|| "TLS initialization error")?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
@@ -421,7 +421,7 @@ impl DynamoStorage {
     }
 }
 
-pub fn list_message_tables(ddb: &Rc<Box<DynamoDb>>, prefix: &str) -> Result<Vec<String>> {
+pub fn list_message_tables(ddb: &Rc<Box<dyn DynamoDb>>, prefix: &str) -> Result<Vec<String>> {
     let mut names: Vec<String> = Vec::new();
     let mut start_key = None;
     loop {

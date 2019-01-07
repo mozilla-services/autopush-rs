@@ -39,7 +39,7 @@ fn has_connected_this_month(user: &DynamoDbUser) -> bool {
 /// A blocking list_tables call only called during initialization
 /// (prior to an any active tokio executor)
 pub fn list_tables_sync(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     start_key: Option<String>,
 ) -> Result<ListTablesOutput> {
     let input = ListTablesInput {
@@ -52,7 +52,7 @@ pub fn list_tables_sync(
 }
 
 pub fn fetch_messages(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     metrics: &Rc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
@@ -116,7 +116,7 @@ pub fn fetch_messages(
 }
 
 pub fn fetch_timestamp_messages(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     metrics: &Rc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
@@ -175,7 +175,7 @@ pub fn fetch_timestamp_messages(
 }
 
 pub fn drop_user(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
 ) -> impl Future<Item = DeleteItemOutput, Error = Error> {
@@ -192,7 +192,7 @@ pub fn drop_user(
 }
 
 pub fn get_uaid(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
 ) -> impl Future<Item = GetItemOutput, Error = Error> {
@@ -210,7 +210,7 @@ pub fn get_uaid(
 }
 
 pub fn register_user(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     user: &DynamoDbUser,
     router_table: &str,
 ) -> impl Future<Item = PutItemOutput, Error = Error> {
@@ -251,7 +251,7 @@ pub fn register_user(
 }
 
 pub fn update_user_message_month(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
     message_month: &str,
@@ -281,7 +281,7 @@ pub fn update_user_message_month(
 }
 
 pub fn all_channels(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     message_table_name: &str,
 ) -> impl Future<Item = HashSet<String>, Error = Error> {
@@ -314,7 +314,7 @@ pub fn all_channels(
 }
 
 pub fn save_channels(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     channels: HashSet<String>,
     message_table_name: &str,
@@ -347,7 +347,7 @@ pub fn save_channels(
 }
 
 pub fn unregister_channel_id(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     channel_id: &Uuid,
     message_table_name: &str,
@@ -375,7 +375,7 @@ pub fn unregister_channel_id(
 }
 
 pub fn lookup_user(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     metrics: &Rc<StatsdClient>,
     uaid: &Uuid,
     connected_at: &u64,
