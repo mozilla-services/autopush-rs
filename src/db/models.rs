@@ -1,15 +1,17 @@
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
-use uuid::Uuid;
 
+use lazy_static::lazy_static;
 use regex::RegexSet;
 use serde::Serializer;
+use serde_derive::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use db::util::generate_last_connect;
-use errors::*;
-use protocol::Notification;
-use util::timing::{ms_since_epoch, sec_since_epoch};
+use crate::db::util::generate_last_connect;
+use crate::errors::*;
+use crate::protocol::Notification;
+use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 
 use super::{MAX_EXPIRY, USER_RECORD_VERSION};
 
@@ -241,7 +243,7 @@ struct RangeKey {
 #[cfg(test)]
 mod tests {
     use super::DynamoDbNotification;
-    use util::us_since_epoch;
+    use crate::util::us_since_epoch;
     use uuid::Uuid;
 
     #[test]

@@ -54,7 +54,7 @@ error_chain! {
     }
 
     errors {
-        Thread(payload: Box<Any + Send>) {
+        Thread(payload: Box<dyn Any + Send>) {
             description("thread panicked")
         }
 
@@ -77,7 +77,7 @@ error_chain! {
     }
 }
 
-pub type MyFuture<T> = Box<Future<Item = T, Error = Error>>;
+pub type MyFuture<T> = Box<dyn Future<Item = T, Error = Error>>;
 
 pub trait FutureChainErr<T> {
     fn chain_err<F, E>(self, callback: F) -> MyFuture<T>

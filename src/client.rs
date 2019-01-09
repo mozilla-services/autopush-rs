@@ -11,27 +11,27 @@ use std::time::Duration;
 
 use cadence::{prelude::*, StatsdClient};
 use error_chain::ChainedError;
-use futures::future;
 use futures::future::Either;
 use futures::sync::mpsc;
 use futures::sync::oneshot::Receiver;
 use futures::AsyncSink;
+use futures::{future, try_ready};
 use futures::{Async, Future, Poll, Sink, Stream};
-use reqwest::async::Client as AsyncClient;
+use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
 use sentry;
 use sentry::integrations::error_chain::event_from_error_chain;
-use state_machine_future::RentToOwn;
+use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 use woothee::parser::Parser;
 
-use db::{CheckStorageResponse, HelloResponse, RegisterResponse};
-use errors::*;
-use protocol::{ClientMessage, Notification, ServerMessage, ServerNotification};
-use server::Server;
-use util::megaphone::{Broadcast, BroadcastSubs};
-use util::{ms_since_epoch, parse_user_agent, sec_since_epoch};
+use crate::db::{CheckStorageResponse, HelloResponse, RegisterResponse};
+use crate::errors::*;
+use crate::protocol::{ClientMessage, Notification, ServerMessage, ServerNotification};
+use crate::server::Server;
+use crate::util::megaphone::{Broadcast, BroadcastSubs};
+use crate::util::{ms_since_epoch, parse_user_agent, sec_since_epoch};
 
 // Created and handed to the AutopushServer
 pub struct RegisteredClient {
@@ -801,11 +801,11 @@ where
     }
 
     fn poll_await_input<'a>(
-        await: &'a mut RentToOwn<'a, AwaitInput<T>>,
+        r#await: &'a mut RentToOwn<'a, AwaitInput<T>>,
     ) -> Poll<AfterAwaitInput<T>, Error> {
         trace!("State: AwaitInput");
-        let input = try_ready!(await.data.input_or_notif());
-        let AwaitInput { data } = await.take();
+        let input = try_ready!(r#await.data.input_or_notif());
+        let AwaitInput { data } = r#await.take();
         let webpush_rc = data.webpush.clone();
         let mut webpush = webpush_rc.borrow_mut();
         match input {

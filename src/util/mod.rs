@@ -4,7 +4,7 @@ use std::time::Duration;
 use futures::future::{Either, Future, IntoFuture};
 use tokio_core::reactor::{Handle, Timeout};
 
-use errors::*;
+use crate::errors::*;
 
 pub mod megaphone;
 mod rc;

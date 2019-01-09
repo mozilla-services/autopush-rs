@@ -18,7 +18,7 @@ use serde_json;
 use tokio_service::Service;
 use uuid::Uuid;
 
-use server::Server;
+use crate::server::Server;
 
 pub struct Push(pub Rc<Server>);
 
@@ -26,7 +26,7 @@ impl Service for Push {
     type Request = hyper::Request;
     type Response = hyper::Response;
     type Error = hyper::Error;
-    type Future = Box<Future<Item = hyper::Response, Error = hyper::Error>>;
+    type Future = Box<dyn Future<Item = hyper::Response, Error = hyper::Error>>;
 
     fn call(&self, req: hyper::Request) -> Self::Future {
         let mut response = hyper::Response::new();

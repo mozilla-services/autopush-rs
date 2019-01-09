@@ -8,6 +8,7 @@ use cadence::{Counted, StatsdClient};
 use chrono::Utc;
 use futures::{future, Future};
 use futures_backoff::retry_if;
+use matches::matches;
 use rusoto_dynamodb::{
     AttributeValue, DeleteItemError, DeleteItemInput, DeleteItemOutput, DynamoDb, GetItemError,
     GetItemInput, GetItemOutput, ListTablesInput, ListTablesOutput, PutItemError, PutItemInput,
@@ -18,9 +19,9 @@ use serde_dynamodb;
 use super::models::{DynamoDbNotification, DynamoDbUser};
 use super::util::generate_last_connect;
 use super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
-use errors::*;
-use protocol::Notification;
-use util::timing::sec_since_epoch;
+use crate::errors::*;
+use crate::protocol::Notification;
+use crate::util::timing::sec_since_epoch;
 
 #[derive(Default)]
 pub struct FetchMessageResponse {
@@ -39,7 +40,7 @@ fn has_connected_this_month(user: &DynamoDbUser) -> bool {
 /// A blocking list_tables call only called during initialization
 /// (prior to an any active tokio executor)
 pub fn list_tables_sync(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     start_key: Option<String>,
 ) -> Result<ListTablesOutput> {
     let input = ListTablesInput {
@@ -52,7 +53,7 @@ pub fn list_tables_sync(
 }
 
 pub fn fetch_messages(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     metrics: &Rc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
@@ -116,7 +117,7 @@ pub fn fetch_messages(
 }
 
 pub fn fetch_timestamp_messages(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     metrics: &Rc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
@@ -175,7 +176,7 @@ pub fn fetch_timestamp_messages(
 }
 
 pub fn drop_user(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
 ) -> impl Future<Item = DeleteItemOutput, Error = Error> {
@@ -192,7 +193,7 @@ pub fn drop_user(
 }
 
 pub fn get_uaid(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
 ) -> impl Future<Item = GetItemOutput, Error = Error> {
@@ -210,7 +211,7 @@ pub fn get_uaid(
 }
 
 pub fn register_user(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     user: &DynamoDbUser,
     router_table: &str,
 ) -> impl Future<Item = PutItemOutput, Error = Error> {
@@ -251,7 +252,7 @@ pub fn register_user(
 }
 
 pub fn update_user_message_month(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
     message_month: &str,
@@ -281,7 +282,7 @@ pub fn update_user_message_month(
 }
 
 pub fn all_channels(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     message_table_name: &str,
 ) -> impl Future<Item = HashSet<String>, Error = Error> {
@@ -303,9 +304,9 @@ pub fn all_channels(
         let channels = output
             .item
             .and_then(|item| {
-                serde_dynamodb::from_hashmap::<DynamoDbNotification>(item)
+                serde_dynamodb::from_hashmap(item)
                     .ok()
-                    .and_then(|notif| notif.chids)
+                    .and_then(|notif: DynamoDbNotification| notif.chids)
             })
             .unwrap_or_else(HashSet::new);
         future::ok(channels)
@@ -314,7 +315,7 @@ pub fn all_channels(
 }
 
 pub fn save_channels(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     channels: HashSet<String>,
     message_table_name: &str,
@@ -347,7 +348,7 @@ pub fn save_channels(
 }
 
 pub fn unregister_channel_id(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     channel_id: &Uuid,
     message_table_name: &str,
@@ -375,7 +376,7 @@ pub fn unregister_channel_id(
 }
 
 pub fn lookup_user(
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     metrics: &Rc<StatsdClient>,
     uaid: &Uuid,
     connected_at: &u64,

@@ -6,6 +6,7 @@ use uuid::Uuid;
 use cadence::StatsdClient;
 use futures::{future, Future};
 use futures_backoff::retry_if;
+use matches::matches;
 use rusoto_core::{HttpClient, Region};
 use rusoto_credential::StaticProvider;
 use rusoto_dynamodb::{
@@ -19,11 +20,12 @@ use serde_dynamodb;
 mod macros;
 mod commands;
 mod models;
-use errors::*;
-use protocol::Notification;
-use server::{Server, ServerOptions};
 mod util;
-use util::timing::sec_since_epoch;
+
+use crate::errors::*;
+use crate::protocol::Notification;
+use crate::server::{Server, ServerOptions};
+use crate::util::timing::sec_since_epoch;
 
 use self::commands::FetchMessageResponse;
 use self::models::{DynamoDbNotification, DynamoDbUser};
@@ -60,7 +62,7 @@ pub enum RegisterResponse {
 }
 
 pub struct DynamoStorage {
-    ddb: Rc<Box<DynamoDb>>,
+    ddb: Rc<Box<dyn DynamoDb>>,
     metrics: Rc<StatsdClient>,
     router_table_name: String,
     message_table_names: Vec<String>,
@@ -69,7 +71,7 @@ pub struct DynamoStorage {
 
 impl DynamoStorage {
     pub fn from_opts(opts: &ServerOptions, metrics: StatsdClient) -> Result<Self> {
-        let ddb: Box<DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
+        let ddb: Box<dyn DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             Box::new(DynamoDbClient::new_with(
                 HttpClient::new().chain_err(|| "TLS initialization error")?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
@@ -421,7 +423,7 @@ impl DynamoStorage {
     }
 }
 
-pub fn list_message_tables(ddb: &Rc<Box<DynamoDb>>, prefix: &str) -> Result<Vec<String>> {
+pub fn list_message_tables(ddb: &Rc<Box<dyn DynamoDb>>, prefix: &str) -> Result<Vec<String>> {
     let mut names: Vec<String> = Vec::new();
     let mut start_key = None;
     loop {

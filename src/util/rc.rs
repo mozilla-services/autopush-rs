@@ -15,7 +15,7 @@ impl<T> RcObject<T> {
         RcObject(Rc::new(RefCell::new(t)))
     }
 
-    pub fn borrow_mut(&self) -> RefMut<T> {
+    pub fn borrow_mut(&self) -> RefMut<'_, T> {
         self.0.borrow_mut()
     }
 }

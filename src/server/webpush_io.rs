@@ -13,7 +13,7 @@ use futures::Poll;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 
-use server::tls::MaybeTlsStream;
+use crate::server::tls::MaybeTlsStream;
 
 pub struct WebpushIo {
     tcp: MaybeTlsStream<TcpStream>,
