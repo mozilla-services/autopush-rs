@@ -8,7 +8,6 @@ use cadence::{Counted, StatsdClient};
 use chrono::Utc;
 use futures::{future, Future};
 use futures_backoff::retry_if;
-use matches::matches;
 use rusoto_dynamodb::{
     AttributeValue, DeleteItemError, DeleteItemInput, DeleteItemOutput, DynamoDb, GetItemError,
     GetItemInput, GetItemOutput, ListTablesInput, ListTablesOutput, PutItemError, PutItemInput,
@@ -22,6 +21,25 @@ use super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
 use crate::errors::*;
 use crate::protocol::Notification;
 use crate::util::timing::sec_since_epoch;
+
+macro_rules! retryable_error {
+    ($name:ident, $type:ty, $property:ident) => {
+        fn $name(err: &$type) -> bool {
+            match err {
+                $property::InternalServerError(_) | $property::ProvisionedThroughputExceeded(_) => {
+                    true
+                }
+                _ => false,
+            }
+        }
+    };
+}
+
+retryable_error!(retryable_query_error, QueryError, QueryError);
+retryable_error!(retryable_delete_error, DeleteItemError, DeleteItemError);
+retryable_error!(retryable_getitem_error, GetItemError, GetItemError);
+retryable_error!(retryable_putitem_error, PutItemError, PutItemError);
+retryable_error!(retryable_updateitem_error, UpdateItemError, UpdateItemError);
 
 #[derive(Default)]
 pub struct FetchMessageResponse {
@@ -73,47 +91,45 @@ pub fn fetch_messages(
     };
 
     let metrics = Rc::clone(metrics);
-    retry_if(
-        move || ddb.query(input.clone()),
-        |err: &QueryError| matches!(err, &QueryError::ProvisionedThroughputExceeded(_)),
-    )
-    .chain_err(|| "Error fetching messages")
-    .and_then(move |output| {
-        let mut notifs: Vec<DynamoDbNotification> = output.items.map_or_else(Vec::new, |items| {
-            debug!("Got response of: {:?}", items);
-            items
+    retry_if(move || ddb.query(input.clone()), retryable_query_error)
+        .chain_err(|| ErrorKind::MessageFetch)
+        .and_then(move |output| {
+            let mut notifs: Vec<DynamoDbNotification> =
+                output.items.map_or_else(Vec::new, |items| {
+                    debug!("Got response of: {:?}", items);
+                    items
+                        .into_iter()
+                        .inspect(|i| debug!("Item: {:?}", i))
+                        .filter_map(|item| {
+                            let item2 = item.clone();
+                            ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                                conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
+                            })
+                        })
+                        .collect()
+                });
+            if notifs.is_empty() {
+                return Ok(Default::default());
+            }
+
+            // Load the current_timestamp from the subscription registry entry which is
+            // the first DynamoDbNotification and remove it from the vec.
+            let timestamp = notifs.remove(0).current_timestamp;
+            // Convert any remaining DynamoDbNotifications to Notification's
+            let messages = notifs
                 .into_iter()
-                .inspect(|i| debug!("Item: {:?}", i))
-                .filter_map(|item| {
-                    let item2 = item.clone();
-                    ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                        conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
+                .filter_map(|ddb_notif| {
+                    let ddb_notif2 = ddb_notif.clone();
+                    ok_or_inspect(ddb_notif.into_notif(), |e| {
+                        conversion_err(&metrics, e, ddb_notif2, "into_notif")
                     })
                 })
-                .collect()
-        });
-        if notifs.is_empty() {
-            return Ok(Default::default());
-        }
-
-        // Load the current_timestamp from the subscription registry entry which is
-        // the first DynamoDbNotification and remove it from the vec.
-        let timestamp = notifs.remove(0).current_timestamp;
-        // Convert any remaining DynamoDbNotifications to Notification's
-        let messages = notifs
-            .into_iter()
-            .filter_map(|ddb_notif| {
-                let ddb_notif2 = ddb_notif.clone();
-                ok_or_inspect(ddb_notif.into_notif(), |e| {
-                    conversion_err(&metrics, e, ddb_notif2, "into_notif")
-                })
+                .collect();
+            Ok(FetchMessageResponse {
+                timestamp,
+                messages,
             })
-            .collect();
-        Ok(FetchMessageResponse {
-            timestamp,
-            messages,
         })
-    })
 }
 
 pub fn fetch_timestamp_messages(
@@ -143,36 +159,33 @@ pub fn fetch_timestamp_messages(
     };
 
     let metrics = Rc::clone(metrics);
-    retry_if(
-        move || ddb.query(input.clone()),
-        |err: &QueryError| matches!(err, &QueryError::ProvisionedThroughputExceeded(_)),
-    )
-    .chain_err(|| "Error fetching messages")
-    .and_then(move |output| {
-        let messages = output.items.map_or_else(Vec::new, |items| {
-            debug!("Got response of: {:?}", items);
-            items
-                .into_iter()
-                .filter_map(|item| {
-                    let item2 = item.clone();
-                    ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                        conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
+    retry_if(move || ddb.query(input.clone()), retryable_query_error)
+        .chain_err(|| ErrorKind::MessageFetch)
+        .and_then(move |output| {
+            let messages = output.items.map_or_else(Vec::new, |items| {
+                debug!("Got response of: {:?}", items);
+                items
+                    .into_iter()
+                    .filter_map(|item| {
+                        let item2 = item.clone();
+                        ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                            conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
+                        })
                     })
-                })
-                .filter_map(|ddb_notif: DynamoDbNotification| {
-                    let ddb_notif2 = ddb_notif.clone();
-                    ok_or_inspect(ddb_notif.into_notif(), |e| {
-                        conversion_err(&metrics, e, ddb_notif2, "into_notif")
+                    .filter_map(|ddb_notif: DynamoDbNotification| {
+                        let ddb_notif2 = ddb_notif.clone();
+                        ok_or_inspect(ddb_notif.into_notif(), |e| {
+                            conversion_err(&metrics, e, ddb_notif2, "into_notif")
+                        })
                     })
-                })
-                .collect()
-        });
-        let timestamp = messages.iter().filter_map(|m| m.sortkey_timestamp).max();
-        Ok(FetchMessageResponse {
-            timestamp,
-            messages,
+                    .collect()
+            });
+            let timestamp = messages.iter().filter_map(|m| m.sortkey_timestamp).max();
+            Ok(FetchMessageResponse {
+                timestamp,
+                messages,
+            })
         })
-    })
 }
 
 pub fn drop_user(
@@ -187,7 +200,7 @@ pub fn drop_user(
     };
     retry_if(
         move || ddb.delete_item(input.clone()),
-        |err: &DeleteItemError| matches!(err, &DeleteItemError::ProvisionedThroughputExceeded(_)),
+        retryable_delete_error,
     )
     .chain_err(|| "Error dropping user")
 }
@@ -203,11 +216,8 @@ pub fn get_uaid(
         key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         ..Default::default()
     };
-    retry_if(
-        move || ddb.get_item(input.clone()),
-        |err: &GetItemError| matches!(err, &GetItemError::ProvisionedThroughputExceeded(_)),
-    )
-    .chain_err(|| "Error fetching user")
+    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
+        .chain_err(|| "Error fetching user")
 }
 
 pub fn register_user(
@@ -246,7 +256,7 @@ pub fn register_user(
                 ..Default::default()
             })
         },
-        |err: &PutItemError| matches!(err, &PutItemError::ProvisionedThroughputExceeded(_)),
+        retryable_putitem_error,
     )
     .chain_err(|| "Error storing user record")
 }
@@ -276,7 +286,7 @@ pub fn update_user_message_month(
             ddb.update_item(update_item.clone())
                 .and_then(|_| future::ok(()))
         },
-        |err: &UpdateItemError| matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_)),
+        retryable_updateitem_error,
     )
     .chain_err(|| "Error updating user message month")
 }
@@ -296,22 +306,19 @@ pub fn all_channels(
         ..Default::default()
     };
 
-    retry_if(
-        move || ddb.get_item(input.clone()),
-        |err: &GetItemError| matches!(err, &GetItemError::ProvisionedThroughputExceeded(_)),
-    )
-    .and_then(|output| {
-        let channels = output
-            .item
-            .and_then(|item| {
-                serde_dynamodb::from_hashmap(item)
-                    .ok()
-                    .and_then(|notif: DynamoDbNotification| notif.chids)
-            })
-            .unwrap_or_else(HashSet::new);
-        future::ok(channels)
-    })
-    .or_else(|_err| future::ok(HashSet::new()))
+    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
+        .and_then(|output| {
+            let channels = output
+                .item
+                .and_then(|item| {
+                    serde_dynamodb::from_hashmap(item)
+                        .ok()
+                        .and_then(|notif: DynamoDbNotification| notif.chids)
+                })
+                .unwrap_or_else(HashSet::new);
+            future::ok(channels)
+        })
+        .or_else(|_err| future::ok(HashSet::new()))
 }
 
 pub fn save_channels(
@@ -342,7 +349,7 @@ pub fn save_channels(
             ddb.update_item(update_item.clone())
                 .and_then(|_| future::ok(()))
         },
-        |err: &UpdateItemError| matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_)),
+        retryable_updateitem_error,
     )
     .chain_err(|| "Error saving channels")
 }
@@ -370,7 +377,7 @@ pub fn unregister_channel_id(
 
     retry_if(
         move || ddb.update_item(update_item.clone()),
-        |err: &UpdateItemError| matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_)),
+        retryable_updateitem_error,
     )
     .chain_err(|| "Error unregistering channel")
 }

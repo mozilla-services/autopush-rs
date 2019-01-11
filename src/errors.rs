@@ -74,6 +74,19 @@ error_chain! {
             description("invalid state transition")
             display("invalid state transition, from: {}, to: {}", from, to)
         }
+
+        InvalidClientMessage(text: String) {
+            description("invalid json text")
+            display("invalid json: {}", text)
+        }
+
+        MessageFetch {
+            description("server error fetching messages")
+        }
+
+        SendError {
+            description("unable to send to client")
+        }
     }
 }
 

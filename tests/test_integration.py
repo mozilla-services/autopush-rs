@@ -7,52 +7,44 @@ Differences from original integration test:
    last message as production currently uses.
 
 """
-import json
 import logging
 import os
-import re
 import signal
 import socket
 import subprocess
 import time
 import uuid
 from contextlib import contextmanager
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from threading import Thread, Event
-from queue import Queue, Empty
+from threading import Event, Thread
 from unittest.case import SkipTest
 
+import autopush.tests
+import autopush.tests as ap_tests
 import bottle
 import ecdsa
 import psutil
 import requests
 import twisted.internet.base
-from cryptography.fernet import Fernet
-from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet.threads import deferToThread
-from twisted.trial import unittest
-from twisted.logger import globalLogPublisher
-
-import autopush.tests
 from autopush.config import AutopushConfig
-from autopush.db import (
-    get_month,
-    has_connected_this_month,
-    make_rotating_tablename,
-    Message,
-)
+from autopush.db import (Message, get_month, has_connected_this_month,
+                         make_rotating_tablename)
 from autopush.logging import begin_or_register
 from autopush.main import (
     ConnectionApplication,
     EndpointApplication,
 )
-import autopush.tests as ap_tests
-from autopush.utils import base64url_encode
 from autopush.tests.support import TestingLogObserver
 from autopush.tests.test_integration import (
     Client,
     _get_vapid,
 )
+from autopush.utils import base64url_encode
+from cryptography.fernet import Fernet
+from queue import Empty, Queue
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.threads import deferToThread
+from twisted.logger import globalLogPublisher
+from twisted.trial import unittest
 
 log = logging.getLogger(__name__)
 
@@ -308,13 +300,17 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_sentry_output(self):
+        # Ensure bad data doesn't throw errors
         client = CustomClient(self._ws_url)
         yield client.connect()
         yield client.hello()
         yield client.send_bad_data()
         yield self.shut_down(client)
+
+        # LogCheck does throw an error every time
+        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT))
         data = MOCK_SENTRY_QUEUE.get(timeout=1)
-        assert data["exception"]["values"][0]["value"].startswith("invalid")
+        assert data["exception"]["values"][0]["value"] == "LogCheck"
 
     @inlineCallbacks
     def test_hello_echo(self):

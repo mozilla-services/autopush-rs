@@ -889,11 +889,15 @@ where
             match msg {
                 Message::Text(ref s) => {
                     trace!("text message {}", s);
-                    let msg = s.parse().chain_err(|| "invalid json text")?;
+                    let msg = s
+                        .parse()
+                        .chain_err(|| ErrorKind::InvalidClientMessage(s.to_owned()))?;
                     return Ok(Some(msg).into());
                 }
 
-                Message::Binary(_) => return Err("binary messages not accepted".into()),
+                Message::Binary(_) => {
+                    return Err(ErrorKind::InvalidClientMessage("binary content".to_string()).into())
+                }
 
                 // sending a pong is already managed by lower layers, just go to
                 // the next message
