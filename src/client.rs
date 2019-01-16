@@ -463,7 +463,9 @@ where
                 | Err(Error(ErrorKind::PongTimeout, _))
                 | Err(Error(ErrorKind::RepeatUaidDisconnect, _))
                 | Err(Error(ErrorKind::ExcessivePing, _))
-                | Err(Error(ErrorKind::InvalidStateTransition(_, _), _)) => None,
+                | Err(Error(ErrorKind::InvalidStateTransition(_, _), _))
+                | Err(Error(ErrorKind::InvalidClientMessage(_), _))
+                | Err(Error(ErrorKind::SendError, _)) => None,
                 Err(e) => Some(e),
             }
         };
@@ -732,7 +734,10 @@ where
             } = **send;
             if !smessages.is_empty() {
                 let item = smessages.remove(0);
-                let ret = data.ws.start_send(item).chain_err(|| "unable to send")?;
+                let ret = data
+                    .ws
+                    .start_send(item)
+                    .chain_err(|| ErrorKind::SendError)?;
                 match ret {
                     AsyncSink::Ready => true,
                     AsyncSink::NotReady(returned) => {
@@ -843,7 +848,11 @@ where
                 let channel_id =
                     Uuid::parse_str(&channel_id_str).chain_err(|| "Invalid channelID")?;
                 if channel_id.to_hyphenated().to_string() != channel_id_str {
-                    return Err("Bad UUID format, use lower case, dashed format".into());
+                    return Err(ErrorKind::InvalidClientMessage(format!(
+                        "Invalid UUID format, not lower-case/dashed: {}",
+                        channel_id
+                    ))
+                    .into());
                 }
 
                 let uaid = webpush.uaid;
