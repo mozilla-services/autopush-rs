@@ -1,3 +1,23 @@
+<a name="1.53.0"></a>
+## 1.53.0 (2019-01-19)
+
+
+#### Bug Fixes
+
+*   capture additional errors that shouldn't be reported to Sentry ([3f5f24f6](https://github.com/mozilla-services/autopush-rs/commit/3f5f24f6cc08f8ef04aa07116660e526f1ef0d8b), closes [#87](https://github.com/mozilla-services/autopush-rs/issues/87))
+*   return correct not found for disconnected client and fix tests ([5d6d29df](https://github.com/mozilla-services/autopush-rs/commit/5d6d29dfc8c955ef25d810eecb977c992a5f92b4), closes [#89](https://github.com/mozilla-services/autopush-rs/issues/89))
+
+#### Chore
+
+*   some cleanup after cargo fixes ([6c118212](https://github.com/mozilla-services/autopush-rs/commit/6c118212f59edfa99370345752ab1fc5f510bc7f))
+*   cargo fix --edition-idioms ([909965f3](https://github.com/mozilla-services/autopush-rs/commit/909965f32580986a5146f1125d05f8516487c4ee))
+*   cargo fix --edition ([00592dd6](https://github.com/mozilla-services/autopush-rs/commit/00592dd61b62ea6067349ddb2717b261f3fb72e5))
+*   update dependencies ([9244c7fd](https://github.com/mozilla-services/autopush-rs/commit/9244c7fddb9105829f424816a87352a6af4f86af), closes [#91](https://github.com/mozilla-services/autopush-rs/issues/91))
+*   cargo fmt (1.31.0) ([801b1e13](https://github.com/mozilla-services/autopush-rs/commit/801b1e13455a7761859151f77f6aa55a9bb911ff))
+*   update Cargo.lock to bump requests to >= 2.20.0 ([5e837376](https://github.com/mozilla-services/autopush-rs/commit/5e837376e4fff93b7cb841ecb37f9cf4bfb4938c), closes [#84](https://github.com/mozilla-services/autopush-rs/issues/84))
+
+
+
 <a name="1.52.0"></a>
 ## 1.52.0 (2018-10-12)
 
