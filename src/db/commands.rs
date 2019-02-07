@@ -9,9 +9,10 @@ use chrono::Utc;
 use futures::{future, Future};
 use futures_backoff::retry_if;
 use rusoto_dynamodb::{
-    AttributeValue, DeleteItemError, DeleteItemInput, DeleteItemOutput, DynamoDb, GetItemError,
-    GetItemInput, GetItemOutput, ListTablesInput, ListTablesOutput, PutItemError, PutItemInput,
-    PutItemOutput, QueryError, QueryInput, UpdateItemError, UpdateItemInput, UpdateItemOutput,
+    AttributeValue, BatchWriteItemError, DeleteItemError, DeleteItemInput, DeleteItemOutput,
+    DynamoDb, GetItemError, GetItemInput, GetItemOutput, ListTablesInput, ListTablesOutput,
+    PutItemError, PutItemInput, PutItemOutput, QueryError, QueryInput, UpdateItemError,
+    UpdateItemInput, UpdateItemOutput,
 };
 use serde_dynamodb;
 
@@ -24,7 +25,7 @@ use crate::util::timing::sec_since_epoch;
 
 macro_rules! retryable_error {
     ($name:ident, $type:ty, $property:ident) => {
-        fn $name(err: &$type) -> bool {
+        pub fn $name(err: &$type) -> bool {
             match err {
                 $property::InternalServerError(_) | $property::ProvisionedThroughputExceeded(_) => {
                     true
@@ -35,6 +36,11 @@ macro_rules! retryable_error {
     };
 }
 
+retryable_error!(
+    retryable_batchwriteitem_error,
+    BatchWriteItemError,
+    BatchWriteItemError
+);
 retryable_error!(retryable_query_error, QueryError, QueryError);
 retryable_error!(retryable_delete_error, DeleteItemError, DeleteItemError);
 retryable_error!(retryable_getitem_error, GetItemError, GetItemError);

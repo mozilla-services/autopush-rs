@@ -896,7 +896,9 @@ where
                 }
 
                 Message::Binary(_) => {
-                    return Err(ErrorKind::InvalidClientMessage("binary content".to_string()).into())
+                    return Err(
+                        ErrorKind::InvalidClientMessage("binary content".to_string()).into(),
+                    );
                 }
 
                 // sending a pong is already managed by lower layers, just go to

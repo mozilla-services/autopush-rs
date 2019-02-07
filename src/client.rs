@@ -381,7 +381,7 @@ where
                     connected_at,
                 ),
                 HelloResponse { uaid: None, .. } => {
-                    return Err("Already connected elsewhere".into())
+                    return Err("Already connected elsewhere".into());
                 }
             }
         };
@@ -845,8 +845,12 @@ where
             }) => {
                 debug!("Got a register command";
                        "channel_id" => &channel_id_str);
-                let channel_id =
-                    Uuid::parse_str(&channel_id_str).chain_err(|| "Invalid channelID")?;
+                let channel_id = Uuid::parse_str(&channel_id_str).chain_err(|| {
+                    ErrorKind::InvalidClientMessage(format!(
+                        "Invalid channelID: {}",
+                        channel_id_str
+                    ))
+                })?;
                 if channel_id.to_hyphenated().to_string() != channel_id_str {
                     return Err(ErrorKind::InvalidClientMessage(format!(
                         "Invalid UUID format, not lower-case/dashed: {}",

@@ -6,13 +6,11 @@ use uuid::Uuid;
 use cadence::StatsdClient;
 use futures::{future, Future};
 use futures_backoff::retry_if;
-use matches::matches;
 use rusoto_core::{HttpClient, Region};
 use rusoto_credential::StaticProvider;
 use rusoto_dynamodb::{
-    AttributeValue, BatchWriteItemError, BatchWriteItemInput, DeleteItemError, DeleteItemInput,
-    DynamoDb, DynamoDbClient, PutRequest, UpdateItemError, UpdateItemInput, UpdateItemOutput,
-    WriteRequest,
+    AttributeValue, BatchWriteItemInput, DeleteItemInput, DynamoDb, DynamoDbClient, PutRequest,
+    UpdateItemInput, UpdateItemOutput, WriteRequest,
 };
 use serde_dynamodb;
 
@@ -27,7 +25,10 @@ use crate::protocol::Notification;
 use crate::server::{Server, ServerOptions};
 use crate::util::timing::sec_since_epoch;
 
-use self::commands::FetchMessageResponse;
+use self::commands::{
+    retryable_batchwriteitem_error, retryable_delete_error, retryable_updateitem_error,
+    FetchMessageResponse,
+};
 use self::models::{DynamoDbNotification, DynamoDbUser};
 
 const MAX_EXPIRY: u64 = 2_592_000;
@@ -130,9 +131,7 @@ impl DynamoStorage {
 
         retry_if(
             move || ddb.update_item(update_input.clone()),
-            |err: &UpdateItemError| {
-                matches!(err, &UpdateItemError::ProvisionedThroughputExceeded(_))
-            },
+            retryable_updateitem_error,
         )
         .chain_err(|| "Error incrementing storage")
     }
@@ -208,7 +207,7 @@ impl DynamoStorage {
                 return Box::new(future::ok(RegisterResponse::Error {
                     error_msg: "Failed to generate endpoint".to_string(),
                     status: 400,
-                }))
+                }));
             }
         };
         let mut chids = HashSet::new();
@@ -295,9 +294,7 @@ impl DynamoStorage {
 
         retry_if(
             move || ddb.batch_write_item(batch_input.clone()),
-            |err: &BatchWriteItemError| {
-                matches!(err, &BatchWriteItemError::ProvisionedThroughputExceeded(_))
-            },
+            retryable_batchwriteitem_error,
         )
         .and_then(|_| future::ok(()))
         .map_err(|err| {
@@ -331,9 +328,7 @@ impl DynamoStorage {
 
         retry_if(
             move || ddb.delete_item(delete_input.clone()),
-            |err: &DeleteItemError| {
-                matches!(err, &DeleteItemError::ProvisionedThroughputExceeded(_))
-            },
+            retryable_delete_error,
         )
         .and_then(|_| future::ok(()))
         .chain_err(|| "Error deleting notification")
