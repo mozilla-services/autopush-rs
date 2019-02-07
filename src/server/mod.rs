@@ -22,7 +22,7 @@ use hyper::{self, StatusCode};
 use openssl::hash;
 use openssl::ssl::SslAcceptor;
 use reqwest;
-use sentry::{self, integrations::panic::register_panic_handler, sentry_crate_release};
+use sentry::{self, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
 use time;
 use tokio_core::net::TcpListener;
@@ -92,7 +92,7 @@ impl AutopushServer {
             let guard = sentry::init((
                 dsn,
                 sentry::ClientOptions {
-                    release: sentry_crate_release!(),
+                    release: sentry::release_name!(),
                     ..Default::default()
                 },
             ));
