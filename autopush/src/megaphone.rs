@@ -4,8 +4,9 @@ use std::time::Duration;
 use reqwest;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::errors::Result;
-use crate::protocol::BroadcastValue;
+use autopush_common::errors::Result;
+
+use crate::server::protocol::BroadcastValue;
 
 // A Broadcast entry Key in a BroadcastRegistry
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]

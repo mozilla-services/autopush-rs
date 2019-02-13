@@ -1,14 +1,4 @@
 //! Management of connected clients to a WebPush server
-//!
-//! This module is a pretty heavy work in progress. The intention is that
-//! this'll house all the various state machine transitions and state management
-//! of connected clients. Note that it's expected there'll be a lot of connected
-//! clients, so this may appears relatively heavily optimized!
-use std::cell::RefCell;
-use std::mem;
-use std::rc::Rc;
-use std::time::Duration;
-
 use cadence::{prelude::*, StatsdClient};
 use error_chain::ChainedError;
 use futures::future::Either;
@@ -22,16 +12,23 @@ use rusoto_dynamodb::UpdateItemOutput;
 use sentry;
 use sentry::integrations::error_chain::event_from_error_chain;
 use state_machine_future::{transition, RentToOwn, StateMachineFuture};
+use std::cell::RefCell;
+use std::mem;
+use std::rc::Rc;
+use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 use woothee::parser::Parser;
 
-use crate::db::{CheckStorageResponse, HelloResponse, RegisterResponse};
-use crate::errors::*;
-use crate::protocol::{ClientMessage, Notification, ServerMessage, ServerNotification};
+use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse};
+use autopush_common::errors::*;
+use autopush_common::notification::Notification;
+use autopush_common::util::{ms_since_epoch, sec_since_epoch};
+
+use crate::megaphone::{Broadcast, BroadcastSubs};
+use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::server::Server;
-use crate::util::megaphone::{Broadcast, BroadcastSubs};
-use crate::util::{ms_since_epoch, parse_user_agent, sec_since_epoch};
+use crate::user_agent::parse_user_agent;
 
 // Created and handed to the AutopushServer
 pub struct RegisteredClient {
@@ -862,10 +859,17 @@ where
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
                 let srv = data.srv.clone();
-                let fut = data
-                    .srv
-                    .ddb
-                    .register(&srv, &uaid, &channel_id, &message_month, key);
+                let fut = match srv.make_endpoint(&uaid, &channel_id, key.clone()) {
+                    Ok(endpoint) => {
+                        data.srv
+                            .ddb
+                            .register(&uaid, &channel_id, &message_month, &endpoint, key)
+                    }
+                    Err(_) => Box::new(future::ok(RegisterResponse::Error {
+                        error_msg: "Failed to generate endpoint".to_string(),
+                        status: 400,
+                    })),
+                };
                 transition!(AwaitRegister {
                     channel_id,
                     response: fut,

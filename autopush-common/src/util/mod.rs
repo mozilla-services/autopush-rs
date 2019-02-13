@@ -6,16 +6,11 @@ use tokio_core::reactor::{Handle, Timeout};
 
 use crate::errors::*;
 
-pub mod megaphone;
-mod rc;
 mod send_all;
 pub mod timing;
-mod user_agent;
 
-pub use self::rc::RcObject;
 pub use self::send_all::MySendAll;
 pub use self::timing::{ms_since_epoch, sec_since_epoch, us_since_epoch};
-pub use self::user_agent::parse_user_agent;
 
 /// Convenience future to time out the resolution of `f` provided within the
 /// duration provided.

@@ -20,7 +20,7 @@ use super::models::{DynamoDbNotification, DynamoDbUser};
 use super::util::generate_last_connect;
 use super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
 use crate::errors::*;
-use crate::protocol::Notification;
+use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
 macro_rules! retryable_error {

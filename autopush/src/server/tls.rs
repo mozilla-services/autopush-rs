@@ -10,6 +10,7 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 use std::rc::Rc;
 
+use autopush_common::errors::*;
 use futures::future;
 use futures::{Future, Poll};
 use openssl::dh::Dh;
@@ -20,7 +21,6 @@ use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_openssl::{SslAcceptorExt, SslStream};
 
-use crate::errors::*;
 use crate::server::{Server, ServerOptions};
 
 /// Creates an `SslAcceptor`, if needed, ready to accept TLS connections.
