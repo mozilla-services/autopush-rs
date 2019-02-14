@@ -1,3 +1,17 @@
+<a name="1.53.1"></a>
+## 1.53.1 (2019-02-14)
+
+
+#### Features
+
+*   retry all dynamodb errors correctly, hide invalid chids ([58152230](https://github.com/mozilla-services/autopush-rs/commit/581522309725fbfb709b54710bce249adcceedf4), closes [#95](https://github.com/mozilla-services/autopush-rs/issues/95))
+
+#### Chore
+
+*   update dependencies ([b4e159d4](https://github.com/mozilla-services/autopush-rs/commit/b4e159d41b6b0e4876cb1a1606b4b2ddc6687b8a))
+
+
+
 <a name="1.53.0"></a>
 ## 1.53.0 (2019-01-19)
 
