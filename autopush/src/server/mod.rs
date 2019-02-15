@@ -33,26 +33,29 @@ use tungstenite::handshake::server::Request;
 use tungstenite::Message;
 use uuid::Uuid;
 
+use autopush_common::db::DynamoStorage;
+use autopush_common::errors::*;
+use autopush_common::errors::{Error, Result};
+use autopush_common::logging;
+use autopush_common::notification::Notification;
+use autopush_common::util::timeout;
+
 use crate::client::{Client, RegisteredClient};
-use crate::db::DynamoStorage;
-use crate::errors::*;
-use crate::errors::{Error, Result};
 use crate::http;
-use crate::logging;
-use crate::protocol::{
-    BroadcastValue, ClientMessage, Notification, ServerMessage, ServerNotification,
+use crate::megaphone::{
+    Broadcast, BroadcastChangeTracker, BroadcastSubs, BroadcastSubsInit, MegaphoneAPIResponse,
 };
 use crate::server::dispatch::{Dispatch, RequestType};
 use crate::server::metrics::metrics_from_opts;
+use crate::server::protocol::{BroadcastValue, ClientMessage, ServerMessage, ServerNotification};
+use crate::server::rc::RcObject;
 use crate::server::webpush_io::WebpushIo;
 use crate::settings::Settings;
-use crate::util::megaphone::{
-    Broadcast, BroadcastChangeTracker, BroadcastSubs, BroadcastSubsInit, MegaphoneAPIResponse,
-};
-use crate::util::{timeout, RcObject};
 
 mod dispatch;
 mod metrics;
+pub mod protocol;
+mod rc;
 mod tls;
 mod webpush_io;
 
@@ -294,7 +297,11 @@ impl Server {
         let srv = Rc::new(Server {
             opts: opts.clone(),
             broadcaster: RefCell::new(broadcaster),
-            ddb: DynamoStorage::from_opts(opts, metrics.clone())?,
+            ddb: DynamoStorage::from_opts(
+                &opts._message_table_name,
+                &opts._router_table_name,
+                metrics.clone(),
+            )?,
             uaids: RefCell::new(HashMap::new()),
             open_connections: Cell::new(0),
             handle: core.handle(),
@@ -963,7 +970,7 @@ pub fn write_version_file(socket: WebpushIo) -> MyFuture<()> {
     write_json(
         socket,
         StatusCode::Ok,
-        serde_json::Value::from(include_str!("../../version.json")),
+        serde_json::Value::from(include_str!("../../../version.json")),
     )
 }
 

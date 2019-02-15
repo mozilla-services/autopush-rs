@@ -1,4 +1,4 @@
-FROM rust:1.31.1-stretch as builder
+FROM rust:1.32.0-stretch as builder
 
 ADD . /app
 WORKDIR /app
@@ -8,7 +8,7 @@ RUN \
     cargo --version && \
     rustc --version && \
     mkdir -m 755 bin && \
-    cargo install --path . --root /app
+    cargo install --path autopush --root /app
 
 
 FROM debian:stretch-slim

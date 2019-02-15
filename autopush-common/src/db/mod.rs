@@ -21,8 +21,7 @@ mod models;
 mod util;
 
 use crate::errors::*;
-use crate::protocol::Notification;
-use crate::server::{Server, ServerOptions};
+use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
 use self::commands::{
@@ -58,7 +57,6 @@ pub struct CheckStorageResponse {
 
 pub enum RegisterResponse {
     Success { endpoint: String },
-
     Error { error_msg: String, status: u32 },
 }
 
@@ -71,7 +69,11 @@ pub struct DynamoStorage {
 }
 
 impl DynamoStorage {
-    pub fn from_opts(opts: &ServerOptions, metrics: StatsdClient) -> Result<Self> {
+    pub fn from_opts(
+        message_table_name: &str,
+        router_table_name: &str,
+        metrics: StatsdClient,
+    ) -> Result<Self> {
         let ddb: Box<dyn DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             Box::new(DynamoDbClient::new_with(
                 HttpClient::new().chain_err(|| "TLS initialization error")?,
@@ -86,7 +88,7 @@ impl DynamoStorage {
         };
         let ddb = Rc::new(ddb);
 
-        let mut message_table_names = list_message_tables(&ddb, &opts._message_table_name)
+        let mut message_table_names = list_message_tables(&ddb, &message_table_name)
             .map_err(|_| "Failed to locate message tables")?;
         // Valid message months are the current and last 2 months
         message_table_names.sort_unstable_by(|a, b| b.cmp(a));
@@ -100,7 +102,7 @@ impl DynamoStorage {
         Ok(Self {
             ddb,
             metrics: Rc::new(metrics),
-            router_table_name: opts._router_table_name.clone(),
+            router_table_name: router_table_name.to_owned(),
             message_table_names,
             current_message_month,
         })
@@ -194,23 +196,15 @@ impl DynamoStorage {
 
     pub fn register(
         &self,
-        srv: &Rc<Server>,
         uaid: &Uuid,
         channel_id: &Uuid,
         message_month: &str,
+        endpoint: &str,
         key: Option<String>,
     ) -> MyFuture<RegisterResponse> {
         let ddb = self.ddb.clone();
-        let endpoint = match srv.make_endpoint(uaid, channel_id, key) {
-            Ok(result) => result,
-            Err(_) => {
-                return Box::new(future::ok(RegisterResponse::Error {
-                    error_msg: "Failed to generate endpoint".to_string(),
-                    status: 400,
-                }));
-            }
-        };
         let mut chids = HashSet::new();
+        let endpoint = endpoint.to_owned();
         chids.insert(channel_id.to_hyphenated().to_string());
         let response = commands::save_channels(ddb, uaid, chids, message_month)
             .and_then(move |_| future::ok(RegisterResponse::Success { endpoint }))

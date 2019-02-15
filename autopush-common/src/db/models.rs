@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::db::util::generate_last_connect;
 use crate::errors::*;
-use crate::protocol::Notification;
+use crate::notification::Notification;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 
 use super::{MAX_EXPIRY, USER_RECORD_VERSION};

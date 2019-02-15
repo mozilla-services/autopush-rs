@@ -27,7 +27,8 @@ use httparse;
 use tokio_core::net::TcpStream;
 use tokio_io::AsyncRead;
 
-use crate::errors::*;
+use autopush_common::errors::*;
+
 use crate::server::tls::MaybeTlsStream;
 use crate::server::webpush_io::WebpushIo;
 

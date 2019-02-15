@@ -1,16 +1,26 @@
 #[macro_use]
+extern crate slog;
+#[macro_use]
+extern crate slog_scope;
+#[macro_use]
 extern crate serde_derive;
-
-use chan_signal;
 
 use std::env;
 
 use chan_signal::Signal;
 use docopt::Docopt;
 
-use autopush::errors::{Result, ResultExt};
-use autopush::server::{AutopushServer, ServerOptions};
-use autopush::settings::Settings;
+use autopush_common::errors::{Result, ResultExt};
+
+mod client;
+mod http;
+mod megaphone;
+mod server;
+mod settings;
+mod user_agent;
+
+use crate::server::{AutopushServer, ServerOptions};
+use crate::settings::Settings;
 
 const USAGE: &'static str = "
 Usage: autopush_rs [options]
