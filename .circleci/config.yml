@@ -7,6 +7,23 @@
 #
 version: 2
 jobs:
+  audit:
+    docker:
+      - image: circleci/rust:latest
+    steps:
+      - checkout
+      - run:
+          name: Setup rust
+          command: |
+            rustup install stable
+            rustup default stable
+            rustup update
+            cargo install cargo-audit
+            rustc --version
+      - run:
+          name: Do audit
+          command: |
+            cargo audit
   build:
     docker:
       - image: docker:18.03.0-ce
@@ -76,6 +93,10 @@ workflows:
   version: 2
   build-test-deploy:
     jobs:
+      - audit:
+          filters:
+            tags:
+              only: /.*/
       - build:
           filters:
             tags:
