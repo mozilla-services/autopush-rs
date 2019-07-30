@@ -856,13 +856,11 @@ where
 
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
-                let srv = data.srv.clone();
+                let srv = &data.srv;
                 let fut = match srv.make_endpoint(&uaid, &channel_id, key.clone()) {
-                    Ok(endpoint) => {
-                        data.srv
-                            .ddb
-                            .register(&uaid, &channel_id, &message_month, &endpoint)
-                    }
+                    Ok(endpoint) => srv
+                        .ddb
+                        .register(&uaid, &channel_id, &message_month, &endpoint),
                     Err(_) => Box::new(future::ok(RegisterResponse::Error {
                         error_msg: "Failed to generate endpoint".to_string(),
                         status: 400,
