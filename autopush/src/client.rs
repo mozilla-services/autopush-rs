@@ -18,7 +18,6 @@ use std::rc::Rc;
 use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
-use woothee::parser::Parser;
 
 use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse};
 use autopush_common::errors::*;
@@ -489,8 +488,7 @@ where
         }
         let now = ms_since_epoch();
         let elapsed = (now - webpush.connected_at) / 1_000;
-        let parser = Parser::new();
-        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&parser, &user_agent);
+        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&user_agent);
         // dogstatsd doesn't support timers: use histogram instead
         srv.metrics
             .time_with_tags("ua.connection.lifespan", elapsed)
@@ -553,7 +551,7 @@ where
         "connection_type" => &stats.connection_type,
         "ua_name" => ua_result.name,
         "ua_os_family" => metrics_os,
-        "ua_os_ver" => ua_result.os_version,
+        "ua_os_ver" => ua_result.os_version.into_owned(),
         "ua_browser_family" => metrics_browser,
         "ua_browser_ver" => ua_result.version,
         "ua_category" => ua_result.category,
@@ -858,13 +856,11 @@ where
 
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
-                let srv = data.srv.clone();
+                let srv = &data.srv;
                 let fut = match srv.make_endpoint(&uaid, &channel_id, key.clone()) {
-                    Ok(endpoint) => {
-                        data.srv
-                            .ddb
-                            .register(&uaid, &channel_id, &message_month, &endpoint, key)
-                    }
+                    Ok(endpoint) => srv
+                        .ddb
+                        .register(&uaid, &channel_id, &message_month, &endpoint),
                     Err(_) => Box::new(future::ok(RegisterResponse::Error {
                         error_msg: "Failed to generate endpoint".to_string(),
                         status: 400,

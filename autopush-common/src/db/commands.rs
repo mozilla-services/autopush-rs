@@ -8,6 +8,7 @@ use cadence::{Counted, StatsdClient};
 use chrono::Utc;
 use futures::{future, Future};
 use futures_backoff::retry_if;
+use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemError, DeleteItemError, DeleteItemInput, DeleteItemOutput,
     DynamoDb, GetItemError, GetItemInput, GetItemOutput, ListTablesInput, ListTablesOutput,
@@ -25,11 +26,10 @@ use crate::util::timing::sec_since_epoch;
 
 macro_rules! retryable_error {
     ($name:ident, $type:ty, $property:ident) => {
-        pub fn $name(err: &$type) -> bool {
+        pub fn $name(err: &RusotoError<$type>) -> bool {
             match err {
-                $property::InternalServerError(_) | $property::ProvisionedThroughputExceeded(_) => {
-                    true
-                }
+                RusotoError::Service($property::InternalServerError(_))
+                | RusotoError::Service($property::ProvisionedThroughputExceeded(_)) => true,
                 _ => false,
             }
         }

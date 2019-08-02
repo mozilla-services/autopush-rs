@@ -11,17 +11,15 @@ const VALID_UA_BROWSER: &[&str] = &["Chrome", "Firefox", "Safari", "Opera"];
 // field). Windows has many values and we only care that its Windows
 const VALID_UA_OS: &[&str] = &["Firefox OS", "Linux", "Mac OSX"];
 
-pub fn parse_user_agent<'a>(
-    parser: &'a Parser,
-    agent: &str,
-) -> (WootheeResult<'a>, &'a str, &'a str) {
+pub fn parse_user_agent(agent: &str) -> (WootheeResult, &str, &str) {
+    let parser = Parser::new();
     let wresult = parser.parse(&agent).unwrap_or_else(|| WootheeResult {
         name: "",
         category: "",
         os: "",
-        os_version: "".to_string(),
+        os_version: "".into(),
         browser_type: "",
-        version: "".to_string(),
+        version: "",
         vendor: "",
     });
 
@@ -43,15 +41,12 @@ pub fn parse_user_agent<'a>(
 
 #[cfg(test)]
 mod tests {
-    use woothee::parser::Parser;
-
     use super::parse_user_agent;
 
     #[test]
     fn test_linux() {
         let agent = r#"Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.1.2) Gecko/20090807 Mandriva Linux/1.9.1.2-1.1mud2009.1 (2009.1) Firefox/3.5.2 FirePHP/0.3,gzip(gfe),gzip(gfe)"#;
-        let parser = Parser::new();
-        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&parser, &agent);
+        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&agent);
         assert_eq!(metrics_os, "Linux");
         assert_eq!(ua_result.os, "Linux");
         assert_eq!(metrics_browser, "Firefox");
@@ -60,8 +55,7 @@ mod tests {
     #[test]
     fn test_windows() {
         let agent = r#"Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.2.3) Gecko/20100401 Firefox/3.6.3 (.NET CLR 3.5.30729)"#;
-        let parser = Parser::new();
-        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&parser, &agent);
+        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&agent);
         assert_eq!(metrics_os, "Windows");
         assert_eq!(ua_result.os, "Windows 7");
         assert_eq!(metrics_browser, "Firefox");
@@ -71,8 +65,7 @@ mod tests {
     fn test_osx() {
         let agent =
             r#"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.5; rv:2.1.1) Gecko/ Firefox/5.0.1"#;
-        let parser = Parser::new();
-        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&parser, &agent);
+        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&agent);
         assert_eq!(metrics_os, "Mac OSX");
         assert_eq!(ua_result.os, "Mac OSX");
         assert_eq!(metrics_browser, "Firefox");
@@ -82,8 +75,7 @@ mod tests {
     fn test_other() {
         let agent =
             r#"BlackBerry9000/4.6.0.167 Profile/MIDP-2.0 Configuration/CLDC-1.1 VendorID/102"#;
-        let parser = Parser::new();
-        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&parser, &agent);
+        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&agent);
         assert_eq!(metrics_os, "Other");
         assert_eq!(ua_result.os, "BlackBerry");
         assert_eq!(metrics_browser, "Other");

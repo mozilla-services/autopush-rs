@@ -30,7 +30,7 @@ use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_io;
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
-use tungstenite::Message;
+use tungstenite::{self, Message};
 use uuid::Uuid;
 
 use autopush_common::db::DynamoStorage;
@@ -919,6 +919,8 @@ where
                     self.ws_pong_timeout = false;
                     task::current().notify();
                 }
+
+                Message::Close(_) => return Err(tungstenite::Error::ConnectionClosed.into()),
             }
         }
     }

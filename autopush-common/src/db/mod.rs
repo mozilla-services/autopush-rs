@@ -200,7 +200,6 @@ impl DynamoStorage {
         channel_id: &Uuid,
         message_month: &str,
         endpoint: &str,
-        key: Option<String>,
     ) -> MyFuture<RegisterResponse> {
         let ddb = self.ddb.clone();
         let mut chids = HashSet::new();
