@@ -1,3 +1,13 @@
+<a name="1.54.1"></a>
+## 1.54.1 (2019-08-16)
+
+
+#### Chore
+
+*   update to latest rust/debian buster ([9b089fb4](https://github.com/mozilla-services/autopush-rs/commit/9b089fb49d84ac38bbbd069faae4b54abea9006f), closes [#110](https://github.com/mozilla-services/autopush-rs/issues/110))
+
+
+
 <a name="1.54.0"></a>
 ## 1.54.0 (2019-08-06)
 
