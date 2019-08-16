@@ -1,4 +1,4 @@
-FROM rust:1.32.0-stretch as builder
+FROM rust:1.37.0 as builder
 
 ADD . /app
 WORKDIR /app
