@@ -8,6 +8,7 @@ use std::env;
 
 use chan_signal::Signal;
 use docopt::Docopt;
+use env_logger;
 
 use autopush_common::errors::{Result, ResultExt};
 
@@ -37,6 +38,7 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     let signal = chan_signal::notify(&[Signal::INT, Signal::TERM]);
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
