@@ -1,3 +1,13 @@
+<a name="1.54.2"></a>
+## 1.54.2 (2019-09-19)
+
+
+#### Bug Fixes
+
+*   restore the log crate ([8d28c86f](https://github.com/mozilla-services/autopush-rs/commit/8d28c86f1ab02118f0ef2d047ffe50ab9fa76cf9), closes [#115](https://github.com/mozilla-services/autopush-rs/issues/115))
+
+
+
 <a name="1.54.1"></a>
 ## 1.54.1 (2019-08-16)
 
