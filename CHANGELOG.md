@@ -1,3 +1,34 @@
+<a name="1.54.1"></a>
+## 1.54.1 (2019-08-16)
+
+
+#### Chore
+
+*   update to latest rust/debian buster ([9b089fb4](https://github.com/mozilla-services/autopush-rs/commit/9b089fb49d84ac38bbbd069faae4b54abea9006f), closes [#110](https://github.com/mozilla-services/autopush-rs/issues/110))
+
+
+
+<a name="1.54.0"></a>
+## 1.54.0 (2019-08-06)
+
+
+#### Refactor
+
+*   simplify srv usage ([1086de7b](https://github.com/mozilla-services/autopush-rs/commit/1086de7bff281e7d428d5af989cb6e4e0f55a85c))
+*   split connection node from common for later endpoint ([e523d739](https://github.com/mozilla-services/autopush-rs/commit/e523d739ee4377c99c38d30bd6f8ecb582bcbc45), closes [#99](https://github.com/mozilla-services/autopush-rs/issues/99))
+
+#### Features
+
+*   Perform cargo audit ([22766546](https://github.com/mozilla-services/autopush-rs/commit/227665466184a33a333b8685c077bd81742622bb), closes [#107](https://github.com/mozilla-services/autopush-rs/issues/107))
+
+#### Chore
+
+*   force update smallvec 0.6 & crossbeam-epoch (memoffset) ([abbd6257](https://github.com/mozilla-services/autopush-rs/commit/abbd6257e286004582ddd826277f3efbf83679a4), closes [#110](https://github.com/mozilla-services/autopush-rs/issues/110))
+*   adapt to new woothee/tungstenite ([906cc2c5](https://github.com/mozilla-services/autopush-rs/commit/906cc2c57faecacc88ac317ecf83ab0f83e86470), closes [#110](https://github.com/mozilla-services/autopush-rs/issues/110))
+*   update deps minus hyper 0.12 ([eaaccc09](https://github.com/mozilla-services/autopush-rs/commit/eaaccc09c57c80a3b0211c36b6e4e581945fc620))
+
+
+
 <a name="1.53.1"></a>
 ## 1.53.1 (2019-02-14)
 
