@@ -5,8 +5,7 @@
 
 Mozilla Push server built with [Rust](https://rust-lang.org).
 
-This is the fourth generation of the Mozilla Web Push server. This is
-a "work in progress", that currently supports websocket connections
+This is the fourth generation of the Mozilla Web Push server. It currently supports websocket connections
 and support for
 [Megaphone](https://github.com/mozilla-services/megaphone) broadcast.
 
