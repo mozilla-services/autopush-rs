@@ -22,7 +22,7 @@ use hyper::{self, StatusCode};
 use openssl::hash;
 use openssl::ssl::SslAcceptor;
 use reqwest;
-use sentry::{self, integrations::panic::register_panic_handler};
+use sentry::{self, capture_message, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
 use time;
 use tokio_core::net::TcpListener;
@@ -639,9 +639,12 @@ impl Future for MegaphoneUpdater {
                             }
                         }
                         Ok(Async::NotReady) => return Ok(Async::NotReady),
-                        Err(_) => {
-                            // TODO: Flag sentry that we can't poll megaphone API
-                            debug!("Failed to get response, queue again");
+                        Err(error) => {
+                            error!("Failed to get response, queue again {:?}", error);
+                            capture_message(
+                                &format!("Failed to get response, queue again {:?}", error),
+                                sentry::Level::Error,
+                            );
                         }
                     };
                     self.timeout.reset(at);
