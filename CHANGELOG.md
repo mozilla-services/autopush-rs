@@ -1,3 +1,13 @@
+<a name="1.54.3"></a>
+## 1.54.3 (2019-10-11)
+
+
+#### Bug Fixes
+
+*   report Megaphone errors to Sentry ([0b6eed61](https://github.com/mozilla-services/autopush-rs/commit/0b6eed619a45ff0dc2ea2de4907a3762d00749a7))
+
+
+
 <a name="1.54.2"></a>
 ## 1.54.2 (2019-09-19)
 
