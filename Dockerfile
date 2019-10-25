@@ -1,4 +1,4 @@
-FROM rust:1.37.0 as builder
+FROM rust:1.38.0 as builder
 
 ADD . /app
 WORKDIR /app
@@ -11,8 +11,8 @@ RUN \
     cargo install --path autopush --root /app
 
 
-FROM debian:stretch-slim
-# FROM debian:stretch  # for debugging docker build
+FROM debian:buster-slim
+# FROM debian:buster  # for debugging docker build
 MAINTAINER <src+push-dev@mozilla.com>
 RUN \
     groupadd --gid 10001 app && \
