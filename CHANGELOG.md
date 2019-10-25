@@ -1,3 +1,13 @@
+<a name="1.54.4"></a>
+## 1.54.4 (2019-10-25)
+
+
+#### Chore
+
+*   switch to debian buster ([322ee852](https://github.com/mozilla-services/autopush-rs/commit/322ee852a868cb4aa80aae4b2a3bc5e5ab9d177f), closes [#124](https://github.com/mozilla-services/autopush-rs/issues/124))
+
+
+
 <a name="1.54.3"></a>
 ## 1.54.3 (2019-10-11)
 
