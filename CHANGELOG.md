@@ -1,3 +1,33 @@
+<a name="1.54.4"></a>
+## 1.54.4 (2019-10-25)
+
+
+#### Chore
+
+*   switch to debian buster ([322ee852](https://github.com/mozilla-services/autopush-rs/commit/322ee852a868cb4aa80aae4b2a3bc5e5ab9d177f), closes [#124](https://github.com/mozilla-services/autopush-rs/issues/124))
+
+
+
+<a name="1.54.3"></a>
+## 1.54.3 (2019-10-11)
+
+
+#### Bug Fixes
+
+*   report Megaphone errors to Sentry ([0b6eed61](https://github.com/mozilla-services/autopush-rs/commit/0b6eed619a45ff0dc2ea2de4907a3762d00749a7))
+
+
+
+<a name="1.54.2"></a>
+## 1.54.2 (2019-09-19)
+
+
+#### Bug Fixes
+
+*   restore the log crate ([8d28c86f](https://github.com/mozilla-services/autopush-rs/commit/8d28c86f1ab02118f0ef2d047ffe50ab9fa76cf9), closes [#115](https://github.com/mozilla-services/autopush-rs/issues/115))
+
+
+
 <a name="1.54.1"></a>
 ## 1.54.1 (2019-08-16)
 
