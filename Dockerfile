@@ -8,7 +8,7 @@ RUN \
     cargo --version && \
     rustc --version && \
     mkdir -m 755 bin && \
-    cargo install --path autopush --root /app
+    cargo install --path autopush --locked --root /app
 
 
 FROM debian:buster-slim
