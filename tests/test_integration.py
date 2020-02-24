@@ -15,6 +15,7 @@ import subprocess
 import time
 import uuid
 from contextlib import contextmanager
+from functools import wraps
 from threading import Event, Thread
 from unittest.case import SkipTest
 
@@ -33,14 +34,14 @@ from autopush.main import (
     ConnectionApplication,
     EndpointApplication,
 )
-from autopush.tests.support import TestingLogObserver
+from autopush.tests.support import _TestingLogObserver
 from autopush.tests.test_integration import (
     Client,
     _get_vapid,
 )
 from autopush.utils import base64url_encode
 from cryptography.fernet import Fernet
-from queue import Empty, Queue
+from Queue import Empty, Queue
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.threads import deferToThread
 from twisted.logger import globalLogPublisher
@@ -70,6 +71,7 @@ CN_SERVER = None
 CN_MP_SERVER = None
 MOCK_SERVER_THREAD = None
 CN_QUEUES = []
+STRICT_LOG_COUNTS = True
 
 
 def get_free_port():
@@ -91,6 +93,59 @@ def enqueue_output(out, queue):
     for line in iter(out.readline, b''):
         queue.put(line)
     out.close()
+
+
+def process_logs(testcase):
+    """Process (print) the testcase logs (in tearDown).
+
+    Ensures a maximum level of logs allowed to be emitted when running
+    w/ a `--release` mode connection node
+
+    """
+    conn_count = sum(queue.qsize() for queue in CN_QUEUES)
+
+    for queue in CN_QUEUES:
+        is_empty = False
+        while not is_empty:
+            try:
+                line = queue.get_nowait()
+            except Empty:
+                is_empty = True
+            else:
+                print(line)
+
+    if not STRICT_LOG_COUNTS:
+        return
+
+    MSG = "endpoint node emitted excessive log statements, count: {} > max: {}"
+    endpoint_count = len(testcase.logs)
+    # Give an extra to endpoint for potential startup log messages
+    # (e.g. when running tests individually)
+    max_endpoint_logs = testcase.max_endpoint_logs + 1
+    assert endpoint_count <= max_endpoint_logs, MSG.format(
+        endpoint_count, max_endpoint_logs)
+
+    MSG = "conn node emitted excessive log statements, count: {} > max: {}"
+    assert conn_count <= testcase.max_conn_logs, MSG.format(
+        conn_count, testcase.max_conn_logs)
+
+
+def max_logs(endpoint=None, conn=None):
+    """Adjust max_endpoint/conn_logs values for individual test cases.
+
+    They're utilized by the process_logs function
+
+    """
+    def max_logs_decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if endpoint is not None:
+                self.max_endpoint_logs = endpoint
+            if conn is not None:
+                self.max_conn_logs = conn
+            return func(self, *args, **kwargs)
+        return wrapper
+    return max_logs_decorator
 
 
 @bottle.get("/v1/broadcasts")
@@ -115,7 +170,8 @@ class CustomClient(Client):
 
 
 def setup_module():
-    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD
+    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
+        STRICT_LOG_COUNTS
     ap_tests.ddb_jar = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
     ap_tests.ddb_lib_dir = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
     ap_tests.setUp()
@@ -147,6 +203,10 @@ def setup_module():
                       "/autopush_rs/target/debug/autopush_rs"]
     while possible_paths and not os.path.exists(rust_bin):  # pragma: nocover
         rust_bin = root_dir + possible_paths.pop(0)
+
+    if 'release' not in rust_bin:
+        # disable checks for chatty debug mode autopush-rs
+        STRICT_LOG_COUNTS = False
 
     # Setup the environment
     for key, val in conn_conf.items():
@@ -237,6 +297,10 @@ class TestRustWebPush(unittest.TestCase):
         use_cryptography=True,
     )
 
+    # Max log lines allowed to be emitted by each node type
+    max_endpoint_logs = 8
+    max_conn_logs = 3
+
     def start_ep(self, ep_conf):
         # Endpoint HTTP router
         self.ep = ep = EndpointApplication(
@@ -248,7 +312,7 @@ class TestRustWebPush(unittest.TestCase):
         self.addCleanup(ep.stopService)
 
     def setUp(self):
-        self.logs = TestingLogObserver()
+        self.logs = _TestingLogObserver()
         begin_or_register(self.logs)
         self.addCleanup(globalLogPublisher.removeObserver, self.logs)
 
@@ -259,15 +323,7 @@ class TestRustWebPush(unittest.TestCase):
         self.start_ep(self._ep_conf)
 
     def tearDown(self):
-        for queue in CN_QUEUES:
-            is_empty = False
-            while not is_empty:
-                try:
-                    line = queue.get_nowait()
-                except Empty:
-                    is_empty = True
-                else:
-                    print(line)
+        process_logs(self)
         while not MOCK_SENTRY_QUEUE.empty():
             MOCK_SENTRY_QUEUE.get_nowait()
 
@@ -299,6 +355,7 @@ class TestRustWebPush(unittest.TestCase):
         return "ws://localhost:{}/".format(CONNECTION_PORT)
 
     @inlineCallbacks
+    @max_logs(conn=4)
     def test_sentry_output(self):
         # Ensure bad data doesn't throw errors
         client = CustomClient(self._ws_url)
@@ -371,6 +428,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(conn=4)
     def test_topic_no_delivery_on_reconnect(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -584,6 +642,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(conn=4)
     def test_multiple_delivery_with_single_ack(self):
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
@@ -709,6 +768,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(endpoint=28)
     def test_ttl_batch_expired_and_good_one(self):
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
@@ -731,6 +791,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(endpoint=28)
     def test_ttl_batch_partly_expired_and_good_one(self):
         data = str(uuid.uuid4())
         data1 = str(uuid.uuid4())
@@ -882,6 +943,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(endpoint=44)
     def test_msg_limit(self):
         client = yield self.quick_register()
         uaid = client.uaid
@@ -942,6 +1004,9 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         human_logs=False,
     )
 
+    max_endpoint_logs = 4
+    max_conn_logs = 1
+
     def start_ep(self, ep_conf):
         # Endpoint HTTP router
         self.ep = ep = EndpointApplication(
@@ -953,7 +1018,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         self.addCleanup(ep.stopService)
 
     def setUp(self):
-        self.logs = TestingLogObserver()
+        self.logs = _TestingLogObserver()
         begin_or_register(self.logs)
         self.addCleanup(globalLogPublisher.removeObserver, self.logs)
 
@@ -976,15 +1041,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         conn.setup(rotate_tables=True)
 
     def tearDown(self):
-        for queue in CN_QUEUES:
-            is_empty = False
-            while not is_empty:
-                try:
-                    line = queue.get_nowait()
-                except Empty:
-                    is_empty = True
-                else:
-                    print(line)
+        process_logs(self)
 
     def endpoint_kwargs(self):
         return self._endpoint_defaults
@@ -1399,8 +1456,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
             client.uaid,
             old_month
         )
-        old_message = Message(old_month,
-                              boto_resource=autopush.tests.boto_resource)
+        _ = Message(old_month, boto_resource=autopush.tests.boto_resource)
 
         # Verify the move
         c = yield deferToThread(self.conn.db.router.get_uaid, client.uaid)
@@ -1438,6 +1494,9 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         human_logs=False,
     )
 
+    max_endpoint_logs = 1
+    max_conn_logs = 3
+
     def start_ep(self, ep_conf):
         # Endpoint HTTP router
         self.ep = ep = EndpointApplication(
@@ -1460,7 +1519,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         self.addCleanup(conn.stopService)
 
     def setUp(self):
-        self.logs = TestingLogObserver()
+        self.logs = _TestingLogObserver()
         begin_or_register(self.logs)
         self.addCleanup(globalLogPublisher.removeObserver, self.logs)
 
@@ -1477,15 +1536,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         self.start_conn(self._conn_conf)
 
     def tearDown(self):
-        for queue in CN_QUEUES:
-            is_empty = False
-            while not is_empty:
-                try:
-                    line = queue.get_nowait()
-                except Empty:
-                    is_empty = True
-                else:
-                    print(line)
+        process_logs(self)
 
     def endpoint_kwargs(self):
         return self._endpoint_defaults
@@ -1509,6 +1560,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
             yield client.disconnect()
 
     @inlineCallbacks
+    @max_logs(endpoint=41)
     def test_cross_topic_no_delivery_on_reconnect(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register(connection_port=CONNECTION_PORT)
@@ -1534,6 +1586,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(endpoint=41)
     def test_cross_topic_no_delivery_on_reconnect_reverse(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -1559,6 +1612,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(endpoint=10, conn=4)
     def test_cross_multiple_delivery_with_single_ack(self):
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
@@ -1599,6 +1653,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(endpoint=45)
     def test_cross_multiple_delivery_with_single_ack_reverse(self):
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
@@ -1639,6 +1694,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(endpoint=43)
     def test_cross_multiple_delivery_with_multiple_ack(self):
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
@@ -1666,6 +1722,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
+    @max_logs(endpoint=10)
     def test_cross_multiple_delivery_with_multiple_ack_reverse(self):
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
