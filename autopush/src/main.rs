@@ -4,9 +4,8 @@ extern crate slog_scope;
 #[macro_use]
 extern crate serde_derive;
 
-use std::env;
+use std::{env, os::raw::c_int, thread};
 
-use chan_signal::Signal;
 use docopt::Docopt;
 use env_logger;
 
@@ -39,7 +38,7 @@ struct Args {
 
 fn main() -> Result<()> {
     env_logger::init();
-    let signal = chan_signal::notify(&[Signal::INT, Signal::TERM]);
+    let signal = notify(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
@@ -60,4 +59,18 @@ fn main() -> Result<()> {
     server.start();
     signal.recv().unwrap();
     server.stop().chain_err(|| "Failed to shutdown properly")
+}
+
+/// Create a new channel subscribed to the given signals
+fn notify(signals: &[c_int]) -> Result<crossbeam_channel::Receiver<c_int>> {
+    let (s, r) = crossbeam_channel::bounded(100);
+    let signals = signal_hook::iterator::Signals::new(signals)?;
+    thread::spawn(move || {
+        for signal in signals.forever() {
+            if s.send(signal).is_err() {
+                break;
+            }
+        }
+    });
+    Ok(r)
 }
