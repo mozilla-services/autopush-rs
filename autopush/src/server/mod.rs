@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use base64;
 use cadence::StatsdClient;
+use chrono::Utc;
 use fernet::{Fernet, MultiFernet};
 use futures::sync::oneshot;
 use futures::{task, try_ready};
@@ -24,7 +25,6 @@ use openssl::ssl::SslAcceptor;
 use reqwest;
 use sentry::{self, capture_message, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
-use time;
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_io;
@@ -1016,7 +1016,7 @@ fn write_json(socket: WebpushIo, status: StatusCode, body: serde_json::Value) ->
          {body}\
          ",
         status = status,
-        date = time::at(time::get_time()).rfc822(),
+        date = Utc::now().to_rfc2822(),
         len = body.len(),
         body = body,
     );
