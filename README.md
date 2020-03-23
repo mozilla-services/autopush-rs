@@ -1,5 +1,6 @@
 [![Build](https://travis-ci.org/mozilla-services/autopush-rs.svg?branch=master)](https://travis-ci.org/mozilla-services/autopush-rs)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![Connect to Matrix via the Riot webapp][matrix-badge]][matrix]
 
 # Autopush-rs
 
@@ -23,3 +24,5 @@ through the source, only public structures are rendered automatically.
 For those curious about the inner workings, You may wish to read the
 code files directly.
 
+[matrix-badge]: https://img.shields.io/badge/chat%20on%20[m]-%23push%3Amozilla.org-blue
+[matrix]: https://chat.mozilla.org/#/room/#push:mozilla.org
