@@ -63,7 +63,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "autopush"
-version = "1.54.4"
+version = "1.55.0"
 dependencies = [
  "autopush_common 1.0.0",
  "base64 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",

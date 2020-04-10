@@ -1,3 +1,24 @@
+<a name="1.55.0"></a>
+## 1.55.0 (2020-04-10)
+
+
+#### Chore
+
+*   add a badge for the matrix channel ([12e3aa07](https://github.com/mozilla-services/autopush-rs/commit/12e3aa07a392f35afe41c9976114e583755ca308))
+*   update deps ([82cc33ee](https://github.com/mozilla-services/autopush-rs/commit/82cc33ee78c585ee658edf17eab1ddc3e06d9c1e), closes [#131](https://github.com/mozilla-services/autopush-rs/issues/131))
+*   add pr template ([9a083f42](https://github.com/mozilla-services/autopush-rs/commit/9a083f42b2d9aa9b7c108c1dc98e8d70a48cd777))
+*   force cargo install to use cargo.lock ([2bdcd004](https://github.com/mozilla-services/autopush-rs/commit/2bdcd0041187333f085a0c07a0cffafd9e9d53e2))
+
+#### Test
+
+*   ensure sane logging levels ([e68a060d](https://github.com/mozilla-services/autopush-rs/commit/e68a060d3ee92540ef8d954bd49243e45dbf8da2), closes [#117](https://github.com/mozilla-services/autopush-rs/issues/117))
+
+#### Bug Fixes
+
+*   double amount of allowed headers ([67033818](https://github.com/mozilla-services/autopush-rs/commit/6703381888dda87bff29f5f3436b144143bf051e), closes [#136](https://github.com/mozilla-services/autopush-rs/issues/136))
+
+
+
 <a name="1.54.4"></a>
 ## 1.54.4 (2019-10-25)
 
