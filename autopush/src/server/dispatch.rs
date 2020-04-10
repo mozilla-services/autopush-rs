@@ -67,7 +67,7 @@ impl Future for Dispatch {
                 return Err("early eof".into());
             }
             let ty = {
-                let mut headers = [httparse::EMPTY_HEADER; 16];
+                let mut headers = [httparse::EMPTY_HEADER; 32];
                 let mut req = httparse::Request::new(&mut headers);
                 match req.parse(&self.data)? {
                     httparse::Status::Complete(_) => {}
