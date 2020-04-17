@@ -7,77 +7,86 @@
 //!     PUT /push/UAID      - Deliver notification to a client
 //!     PUT /notify/UAID    - Tell a client to check storage
 
-use std::rc::Rc;
-use std::str;
+use std::{str, sync::Arc};
 
 use futures::future::ok;
 use futures::{Future, Stream};
 use hyper;
-use hyper::{Method, StatusCode};
+use hyper::{service::Service, Body, Method, StatusCode};
 use serde_json;
-use tokio_service::Service;
 use uuid::Uuid;
 
-use crate::server::Server;
+use crate::server::registry::ClientRegistry;
 
-pub struct Push(pub Rc<Server>);
+pub struct Push(pub Arc<ClientRegistry>);
 
 impl Service for Push {
-    type Request = hyper::Request;
-    type Response = hyper::Response;
+    type ReqBody = Body;
+    type ResBody = Body;
     type Error = hyper::Error;
-    type Future = Box<dyn Future<Item = hyper::Response, Error = hyper::Error>>;
+    type Future = Box<dyn Future<Item = hyper::Response<Body>, Error = hyper::Error> + Send>;
 
-    fn call(&self, req: hyper::Request) -> Self::Future {
-        let mut response = hyper::Response::new();
-        let req_path = req.path().to_string();
+    fn call(&mut self, req: hyper::Request<Body>) -> Self::Future {
+        let mut response = hyper::Response::builder();
+        let req_path = req.uri().path().to_string();
         let path_vec: Vec<&str> = req_path.split('/').collect();
         if path_vec.len() != 3 {
-            response.set_status(StatusCode::NotFound);
-            return Box::new(ok(response));
+            response.status(StatusCode::NOT_FOUND);
+            return Box::new(ok(response.body(Body::empty()).unwrap()));
         }
         let (method_name, uaid) = (path_vec[1], path_vec[2]);
         let uaid = match Uuid::parse_str(uaid) {
             Ok(id) => id,
             Err(_) => {
                 debug!("uri not uuid: {}", req.uri().to_string());
-                response.set_status(StatusCode::BadRequest);
-                return Box::new(ok(response));
+                response.status(StatusCode::BAD_REQUEST);
+                return Box::new(ok(response.body(Body::empty()).unwrap()));
             }
         };
-        let srv = self.0.clone();
+        let clients = Arc::clone(&self.0);
         match (req.method(), method_name, uaid) {
-            (&Method::Put, "push", uaid) => {
+            (&Method::PUT, "push", uaid) => {
                 // Due to consumption of body as a future we must return here
-                let body = req.body().concat2();
+                let body = req.into_body().concat2();
                 return Box::new(body.and_then(move |body| {
                     let s = String::from_utf8(body.to_vec()).unwrap();
                     if let Ok(msg) = serde_json::from_str(&s) {
-                        if srv.notify_client(uaid, msg).is_ok() {
-                            Ok(hyper::Response::new().with_status(StatusCode::Ok))
+                        if clients.notify(uaid, msg).is_ok() {
+                            Ok(hyper::Response::builder()
+                                .status(StatusCode::OK)
+                                .body(Body::empty())
+                                .unwrap())
                         } else {
-                            Ok(hyper::Response::new()
-                                .with_status(StatusCode::NotFound)
-                                .with_body("Client not available."))
+                            Ok(hyper::Response::builder()
+                                .status(StatusCode::BAD_GATEWAY)
+                                .body(Body::from("Client not available."))
+                                .unwrap())
                         }
                     } else {
-                        Ok(hyper::Response::new()
-                            .with_status(hyper::StatusCode::BadRequest)
-                            .with_body("Unable to decode body payload"))
+                        Ok(hyper::Response::builder()
+                            .status(hyper::StatusCode::BAD_REQUEST)
+                            .body("Unable to decode body payload".into())
+                            .unwrap())
                     }
                 }));
             }
-            (&Method::Put, "notif", uaid) => {
-                if srv.check_client_storage(uaid).is_ok() {
-                    response.set_status(StatusCode::Ok)
+            (&Method::PUT, "notif", uaid) => {
+                if clients.check_storage(uaid).is_ok() {
+                    response.status(StatusCode::OK);
                 } else {
-                    response.set_status(StatusCode::NotFound);
-                    response.set_body("Client not available.");
+                    response.status(StatusCode::BAD_GATEWAY);
+                    return Box::new(ok(response
+                        .body(Body::from("Client not available."))
+                        .unwrap()));
                 }
             }
-            (_, "push", _) | (_, "notif", _) => response.set_status(StatusCode::MethodNotAllowed),
-            _ => response.set_status(StatusCode::NotFound),
+            (_, "push", _) | (_, "notif", _) => {
+                response.status(StatusCode::METHOD_NOT_ALLOWED);
+            }
+            _ => {
+                response.status(StatusCode::NOT_FOUND);
+            }
         };
-        Box::new(ok(response))
+        Box::new(ok(response.body(Body::empty()).unwrap()))
     }
 }

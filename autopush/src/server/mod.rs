@@ -18,8 +18,7 @@ use futures::sync::oneshot;
 use futures::{task, try_ready};
 use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
 use hex;
-use hyper::server::Http;
-use hyper::{self, StatusCode};
+use hyper::{server::conn::Http, StatusCode};
 use openssl::hash;
 use openssl::ssl::SslAcceptor;
 use reqwest;
@@ -40,15 +39,16 @@ use autopush_common::logging;
 use autopush_common::notification::Notification;
 use autopush_common::util::timeout;
 
-use crate::client::{Client, RegisteredClient};
+use crate::client::Client;
 use crate::http;
 use crate::megaphone::{
     Broadcast, BroadcastChangeTracker, BroadcastSubs, BroadcastSubsInit, MegaphoneAPIResponse,
 };
 use crate::server::dispatch::{Dispatch, RequestType};
 use crate::server::metrics::metrics_from_opts;
-use crate::server::protocol::{BroadcastValue, ClientMessage, ServerMessage, ServerNotification};
+use crate::server::protocol::{BroadcastValue, ClientMessage, ServerMessage};
 use crate::server::rc::RcObject;
+use crate::server::registry::ClientRegistry;
 use crate::server::webpush_io::WebpushIo;
 use crate::settings::Settings;
 
@@ -56,6 +56,7 @@ mod dispatch;
 mod metrics;
 pub mod protocol;
 mod rc;
+pub mod registry;
 mod tls;
 mod webpush_io;
 
@@ -216,7 +217,7 @@ impl ServerOptions {
 }
 
 pub struct Server {
-    uaids: RefCell<HashMap<Uuid, RegisteredClient>>,
+    pub clients: Arc<ClientRegistry>,
     broadcaster: RefCell<BroadcastChangeTracker>,
     pub ddb: DynamoStorage,
     open_connections: Cell<u32>,
@@ -253,10 +254,10 @@ impl Server {
                 let handle = core.handle();
                 let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.router_port));
                 let push_listener = TcpListener::bind(&addr, &handle).unwrap();
-                let http = Http::<hyper::Chunk>::new();
+                let http = Http::new();
                 let push_srv = push_listener.incoming().for_each(move |(socket, _)| {
                     handle.spawn(
-                        http.serve_connection(socket, http::Push(srv.clone()))
+                        http.serve_connection(socket, http::Push(Arc::clone(&srv.clients)))
                             .map(|_| ())
                             .map_err(|e| debug!("Http server connection error: {}", e)),
                     );
@@ -302,7 +303,7 @@ impl Server {
                 &opts._router_table_name,
                 metrics.clone(),
             )?,
-            uaids: RefCell::new(HashMap::new()),
+            clients: Arc::new(ClientRegistry::default()),
             open_connections: Cell::new(0),
             handle: core.handle(),
             tls_acceptor: tls::configure(opts),
@@ -364,7 +365,7 @@ impl Server {
                     match request {
                         RequestType::Status => write_status(socket),
                         RequestType::LBHeartBeat => {
-                            write_json(socket, StatusCode::Ok, serde_json::Value::from(""))
+                            write_json(socket, StatusCode::OK, serde_json::Value::from(""))
                         }
                         RequestType::Version => write_version_file(socket),
                         RequestType::LogCheck => write_log_check(socket),
@@ -462,60 +463,6 @@ impl Server {
                 .trim_matches('=')
                 .to_string();
             Ok(format!("{}v1/{}", root, encrypted))
-        }
-    }
-
-    /// Informs this server that a new `client` has connected
-    ///
-    /// For now just registers internal state by keeping track of the `client`,
-    /// namely its channel to send notifications back.
-    pub fn connect_client(&self, client: RegisteredClient) {
-        debug!("Connecting a client!");
-        if let Some(client) = self.uaids.borrow_mut().insert(client.uaid, client) {
-            // Drop existing connection
-            let result = client.tx.unbounded_send(ServerNotification::Disconnect);
-            if result.is_ok() {
-                debug!("Told client to disconnect as a new one wants to connect");
-            }
-        }
-    }
-
-    /// A notification has come for the uaid
-    pub fn notify_client(&self, uaid: Uuid, notif: Notification) -> Result<()> {
-        let uaids = self.uaids.borrow();
-        if let Some(client) = uaids.get(&uaid) {
-            debug!("Found a client to deliver a notification to");
-            let result = client
-                .tx
-                .unbounded_send(ServerNotification::Notification(notif));
-            if result.is_ok() {
-                debug!("Dropped notification in queue");
-                return Ok(());
-            }
-        }
-        Err("User not connected".into())
-    }
-
-    /// A check for notification command has come for the uaid
-    pub fn check_client_storage(&self, uaid: Uuid) -> Result<()> {
-        let uaids = self.uaids.borrow();
-        if let Some(client) = uaids.get(&uaid) {
-            let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
-            if result.is_ok() {
-                debug!("Told client to check storage");
-                return Ok(());
-            }
-        }
-        Err("User not connected".into())
-    }
-
-    /// The client specified by `uaid` has disconnected.
-    pub fn disconnet_client(&self, uaid: &Uuid, uid: &Uuid) {
-        debug!("Disconnecting client!");
-        let mut uaids = self.uaids.borrow_mut();
-        let client_exists = uaids.get(uaid).map_or(false, |client| client.uid == *uid);
-        if client_exists {
-            uaids.remove(uaid).expect("Couldn't remove client?");
         }
     }
 
@@ -962,7 +909,7 @@ where
 fn write_status(socket: WebpushIo) -> MyFuture<()> {
     write_json(
         socket,
-        StatusCode::Ok,
+        StatusCode::OK,
         json!({
                 "status": "OK",
                 "version": env!("CARGO_PKG_VERSION"),
@@ -974,13 +921,13 @@ fn write_status(socket: WebpushIo) -> MyFuture<()> {
 pub fn write_version_file(socket: WebpushIo) -> MyFuture<()> {
     write_json(
         socket,
-        StatusCode::Ok,
+        StatusCode::OK,
         serde_json::Value::from(include_str!("../../../version.json")),
     )
 }
 
 fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
-    let status = StatusCode::ImATeapot;
+    let status = StatusCode::IM_A_TEAPOT;
     let code: u16 = status.into();
 
     error!("Test Critical Message";
@@ -993,7 +940,7 @@ fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
 
     write_json(
         socket,
-        StatusCode::ImATeapot,
+        StatusCode::IM_A_TEAPOT,
         json!({
                 "code": code,
                 "errno": 999,

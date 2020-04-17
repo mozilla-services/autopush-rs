@@ -422,7 +422,7 @@ where
             },
             ..Default::default()
         }));
-        srv.connect_client(RegisteredClient { uaid, uid, tx });
+        srv.clients.connect(RegisteredClient { uaid, uid, tx })?;
 
         let response = ServerMessage::Hello {
             uaid: uaid.to_simple().to_string(),
@@ -496,9 +496,7 @@ where
             .with_tag("ua_browser_family", metrics_browser)
             .send();
 
-        // If there's direct unack'd messages, they need to be saved out without blocking
-        // here
-        srv.disconnet_client(&webpush.uaid, &webpush.uid);
+        let _ = srv.clients.disconnect(&webpush.uaid, &webpush.uid);
 
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {
@@ -527,6 +525,8 @@ where
         } else {
             "".to_string()
         };
+        // If there's direct unack'd messages, they need to be saved out without blocking
+        // here
         let mut stats = webpush.stats.clone();
         let unacked_direct_notifs = webpush.unacked_direct_notifs.len();
         if unacked_direct_notifs > 0 {
