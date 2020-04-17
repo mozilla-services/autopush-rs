@@ -2,10 +2,10 @@ use std::{collections::HashMap, sync::RwLock};
 
 use uuid::Uuid;
 
+use super::protocol::ServerNotification;
+use super::Notification;
 use crate::client::RegisteredClient;
 use autopush_common::errors::Result;
-use super::Notification;
-use super::protocol::ServerNotification;
 
 #[derive(Default)]
 pub struct ClientRegistry {
