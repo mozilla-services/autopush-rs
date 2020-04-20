@@ -11,8 +11,7 @@ use std::{str, sync::Arc};
 
 use futures::future::ok;
 use futures::{Future, Stream};
-use hyper;
-use hyper::{service::Service, Body, Method, StatusCode};
+use hyper::{self, service::Service, Body, Method, StatusCode};
 use serde_json;
 use uuid::Uuid;
 
