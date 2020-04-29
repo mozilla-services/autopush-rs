@@ -90,7 +90,7 @@ error_chain! {
     }
 }
 
-pub type MyFuture<T> = Box<dyn Future<Item = T, Error = Error>>;
+pub type MyFuture<T> = Box<dyn Future<Output = Result<T>>>;
 
 pub trait FutureChainErr<T> {
     fn chain_err<F, E>(self, callback: F) -> MyFuture<T>
@@ -99,12 +99,12 @@ pub trait FutureChainErr<T> {
         E: Into<ErrorKind>;
 }
 
-impl<F> FutureChainErr<F::Item> for F
+impl<F> FutureChainErr<F::Output> for F
 where
     F: Future + 'static,
-    F::Error: error::Error + Send + 'static,
+    F: error::Error + Send + 'static,
 {
-    fn chain_err<C, E>(self, callback: C) -> MyFuture<F::Item>
+    fn chain_err<C, E>(self, callback: C) -> MyFuture<F::Output>
     where
         C: FnOnce() -> E + 'static,
         E: Into<ErrorKind>,

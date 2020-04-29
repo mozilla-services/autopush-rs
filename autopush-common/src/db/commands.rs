@@ -82,7 +82,7 @@ pub fn fetch_messages(
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
-) -> impl Future<Item = FetchMessageResponse, Error = Error> {
+) -> impl Future<Output = Result<FetchMessageResponse>> {
     let attr_values = hashmap! {
         ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
         ":cmi".to_string() => val!(S => "02"),
@@ -145,7 +145,7 @@ pub fn fetch_timestamp_messages(
     uaid: &Uuid,
     timestamp: Option<u64>,
     limit: u32,
-) -> impl Future<Item = FetchMessageResponse, Error = Error> {
+) -> impl Future<Output = Result<FetchMessageResponse>> {
     let range_key = if let Some(ts) = timestamp {
         format!("02:{}:z", ts)
     } else {
@@ -198,7 +198,7 @@ pub fn drop_user(
     ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
-) -> impl Future<Item = DeleteItemOutput, Error = Error> {
+) -> impl Future<Output = Result<DeleteItemOutput>> {
     let input = DeleteItemInput {
         table_name: router_table_name.to_string(),
         key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
@@ -215,7 +215,7 @@ pub fn get_uaid(
     ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
-) -> impl Future<Item = GetItemOutput, Error = Error> {
+) -> impl Future<Output = Result<GetItemOutput>> {
     let input = GetItemInput {
         table_name: router_table_name.to_string(),
         consistent_read: Some(true),
@@ -230,7 +230,7 @@ pub fn register_user(
     ddb: Rc<Box<dyn DynamoDb>>,
     user: &DynamoDbUser,
     router_table: &str,
-) -> impl Future<Item = PutItemOutput, Error = Error> {
+) -> impl Future<Output = Result<PutItemOutput>> {
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
         Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
@@ -272,7 +272,7 @@ pub fn update_user_message_month(
     uaid: &Uuid,
     router_table_name: &str,
     message_month: &str,
-) -> impl Future<Item = (), Error = Error> {
+) -> impl Future<Output = Result<()>> {
     let attr_values = hashmap! {
         ":curmonth".to_string() => val!(S => message_month.to_string()),
         ":lastconnect".to_string() => val!(N => generate_last_connect().to_string()),
@@ -301,7 +301,7 @@ pub fn all_channels(
     ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     message_table_name: &str,
-) -> impl Future<Item = HashSet<String>, Error = Error> {
+) -> impl Future<Output = Result<HashSet<String>>> {
     let input = GetItemInput {
         table_name: message_table_name.to_string(),
         consistent_read: Some(true),
@@ -332,7 +332,7 @@ pub fn save_channels(
     uaid: &Uuid,
     channels: HashSet<String>,
     message_table_name: &str,
-) -> impl Future<Item = (), Error = Error> {
+) -> impl Future<Output = Result<()>> {
     let chids: Vec<String> = channels.into_iter().collect();
     let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
     let attr_values = hashmap! {
@@ -365,7 +365,7 @@ pub fn unregister_channel_id(
     uaid: &Uuid,
     channel_id: &Uuid,
     message_table_name: &str,
-) -> impl Future<Item = UpdateItemOutput, Error = Error> {
+) -> impl Future<Output = Result<UpdateItemOutput>> {
     let chid = channel_id.to_hyphenated().to_string();
     let attr_values = hashmap! {
         ":channel_id".to_string() => val!(SS => vec![chid]),

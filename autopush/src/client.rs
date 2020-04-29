@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
 use std::time::Duration;
-use tokio_core::reactor::Timeout;
+use tokio::timeout::Timeout;
 use uuid::Uuid;
 
 use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse};
