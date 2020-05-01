@@ -457,8 +457,8 @@ pub fn lookup_user(
                 &mut hello_response,
             );
             match user {
-                Ok(user) => future::Either::Left(Ok((hello_response, Some(user)))),
-                Err((false, _)) => future::Either::Left(Ok((hello_response, None))),
+                Ok(user) => future::Either::Left(future::ok((hello_response, Some(user)))),
+                Err((false, _)) => future::Either::Left(future::ok((hello_response, None))),
                 Err((true, code)) => {
                     metrics
                         .incr_with_tags("ua.expiration")
@@ -467,7 +467,8 @@ pub fn lookup_user(
                     future::Either::Right(drop_user(ddb, &uaid2, &router_table).map(|response| {
                         match response {
                             Ok(_) => Ok((hello_response, None)),
-                            Err(_) => Err("Unable to drop user".into())?,
+                            Err(_) => Ok((hello_response, None)),
+                            //Err(_) => Err("Unable to drop user".into())?,
                         }
                     }))
                 }
