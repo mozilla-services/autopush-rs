@@ -1,12 +1,19 @@
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
+use std::io;
 use std::rc::Rc;
 use std::result::Result as StdResult;
 use uuid::Uuid;
 
+use crate::error_chain::ChainedError;
 use cadence::{Counted, StatsdClient};
 use chrono::Utc;
-use futures::{future, Future};
+use futures::{
+    compat::{Compat01As03, Future01CompatExt},
+    future,
+    future::LocalBoxFuture,
+    Future, FutureExt, TryFutureExt,
+};
 use futures_backoff::retry_if;
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
@@ -82,7 +89,7 @@ pub fn fetch_messages(
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
-) -> impl Future<Output = Result<FetchMessageResponse>> {
+) -> LocalBoxFuture<'static, Result<FetchMessageResponse>> {
     let attr_values = hashmap! {
         ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
         ":cmi".to_string() => val!(S => "02"),
@@ -97,45 +104,53 @@ pub fn fetch_messages(
     };
 
     let metrics = Rc::clone(metrics);
-    retry_if(move || ddb.query(input.clone()), retryable_query_error)
-        .chain_err(|| ErrorKind::MessageFetch)
-        .and_then(move |output| {
-            let mut notifs: Vec<DynamoDbNotification> =
-                output.items.map_or_else(Vec::new, |items| {
-                    debug!("Got response of: {:?}", items);
-                    items
-                        .into_iter()
-                        .inspect(|i| debug!("Item: {:?}", i))
-                        .filter_map(|item| {
-                            let item2 = item.clone();
-                            ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                                conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
+    Box::pin(
+        retry_if(move || ddb.query(input.clone()), retryable_query_error)
+            .compat()
+            .map_err(|_| ErrorKind::MessageFetch.into())
+            .and_then(move |output| {
+                let mut notifs: Vec<DynamoDbNotification> =
+                    output.items.map_or_else(Vec::new, |items| {
+                        debug!("Got response of: {:?}", items);
+                        items
+                            .into_iter()
+                            .inspect(|i| debug!("Item: {:?}", i))
+                            .filter_map(|item| {
+                                let item2 = item.clone();
+                                ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                                    conversion_err(
+                                        &metrics,
+                                        e,
+                                        item2,
+                                        "serde_dynamodb_from_hashmap",
+                                    )
+                                })
                             })
-                        })
-                        .collect()
-                });
-            if notifs.is_empty() {
-                return Ok(Default::default());
-            }
+                            .collect()
+                    });
+                if notifs.is_empty() {
+                    return Box::pin(future::ok(Default::default()));
+                }
 
-            // Load the current_timestamp from the subscription registry entry which is
-            // the first DynamoDbNotification and remove it from the vec.
-            let timestamp = notifs.remove(0).current_timestamp;
-            // Convert any remaining DynamoDbNotifications to Notification's
-            let messages = notifs
-                .into_iter()
-                .filter_map(|ddb_notif| {
-                    let ddb_notif2 = ddb_notif.clone();
-                    ok_or_inspect(ddb_notif.into_notif(), |e| {
-                        conversion_err(&metrics, e, ddb_notif2, "into_notif")
+                // Load the current_timestamp from the subscription registry entry which is
+                // the first DynamoDbNotification and remove it from the vec.
+                let timestamp = notifs.remove(0).current_timestamp;
+                // Convert any remaining DynamoDbNotifications to Notification's
+                let messages = notifs
+                    .into_iter()
+                    .filter_map(|ddb_notif| {
+                        let ddb_notif2 = ddb_notif.clone();
+                        ok_or_inspect(ddb_notif.into_notif(), |e| {
+                            conversion_err(&metrics, e, ddb_notif2, "into_notif")
+                        })
                     })
-                })
-                .collect();
-            Ok(FetchMessageResponse {
-                timestamp,
-                messages,
-            })
-        })
+                    .collect();
+                Box::pin(future::ok(FetchMessageResponse {
+                    timestamp,
+                    messages,
+                }))
+            }),
+    )
 }
 
 pub fn fetch_timestamp_messages(
@@ -145,7 +160,7 @@ pub fn fetch_timestamp_messages(
     uaid: &Uuid,
     timestamp: Option<u64>,
     limit: u32,
-) -> impl Future<Output = Result<FetchMessageResponse>> {
+) -> LocalBoxFuture<'static, Result<FetchMessageResponse>> {
     let range_key = if let Some(ts) = timestamp {
         format!("02:{}:z", ts)
     } else {
@@ -165,75 +180,84 @@ pub fn fetch_timestamp_messages(
     };
 
     let metrics = Rc::clone(metrics);
-    retry_if(move || ddb.query(input.clone()), retryable_query_error)
-        .chain_err(|| ErrorKind::MessageFetch)
-        .and_then(move |output| {
-            let messages = output.items.map_or_else(Vec::new, |items| {
-                debug!("Got response of: {:?}", items);
-                items
-                    .into_iter()
-                    .filter_map(|item| {
-                        let item2 = item.clone();
-                        ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                            conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
+    Box::pin(
+        retry_if(move || ddb.query(input.clone()), retryable_query_error)
+            .compat()
+            .map_err(|_| ErrorKind::MessageFetch.into())
+            .and_then(move |output| {
+                let messages = output.items.map_or_else(Vec::new, |items| {
+                    debug!("Got response of: {:?}", items);
+                    items
+                        .into_iter()
+                        .filter_map(|item| {
+                            let item2 = item.clone();
+                            ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                                conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
+                            })
                         })
-                    })
-                    .filter_map(|ddb_notif: DynamoDbNotification| {
-                        let ddb_notif2 = ddb_notif.clone();
-                        ok_or_inspect(ddb_notif.into_notif(), |e| {
-                            conversion_err(&metrics, e, ddb_notif2, "into_notif")
+                        .filter_map(|ddb_notif: DynamoDbNotification| {
+                            let ddb_notif2 = ddb_notif.clone();
+                            ok_or_inspect(ddb_notif.into_notif(), |e| {
+                                conversion_err(&metrics, e, ddb_notif2, "into_notif")
+                            })
                         })
-                    })
-                    .collect()
-            });
-            let timestamp = messages.iter().filter_map(|m| m.sortkey_timestamp).max();
-            Ok(FetchMessageResponse {
-                timestamp,
-                messages,
-            })
-        })
+                        .collect()
+                });
+                let timestamp = messages.iter().filter_map(|m| m.sortkey_timestamp).max();
+                future::ok(FetchMessageResponse {
+                    timestamp,
+                    messages,
+                })
+            }),
+    )
 }
 
 pub fn drop_user(
     ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
-) -> impl Future<Output = Result<DeleteItemOutput>> {
+) -> LocalBoxFuture<'static, Result<DeleteItemOutput>> {
     let input = DeleteItemInput {
         table_name: router_table_name.to_string(),
         key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         ..Default::default()
     };
-    retry_if(
-        move || ddb.delete_item(input.clone()),
-        retryable_delete_error,
+    Box::pin(
+        retry_if(
+            move || ddb.delete_item(input.clone()),
+            retryable_delete_error,
+        )
+        .compat()
+        .map_err(|_| "Error dropping user".into()),
     )
-    .chain_err(|| "Error dropping user")
 }
 
 pub fn get_uaid(
     ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     router_table_name: &str,
-) -> impl Future<Output = Result<GetItemOutput>> {
+) -> LocalBoxFuture<'static, Result<GetItemOutput>> {
     let input = GetItemInput {
         table_name: router_table_name.to_string(),
         consistent_read: Some(true),
         key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         ..Default::default()
     };
-    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
-        .chain_err(|| "Error fetching user")
+    Box::pin(
+        retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
+            .compat()
+            .map_err(|_| "Error fetching user".into()),
+    )
 }
 
 pub fn register_user(
     ddb: Rc<Box<dyn DynamoDb>>,
     user: &DynamoDbUser,
     router_table: &str,
-) -> impl Future<Output = Result<PutItemOutput>> {
+) -> LocalBoxFuture<'static, Result<PutItemOutput>> {
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
-        Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
+        Err(e) => return Box::pin(future::err("Failed to serialize item".into())),
     };
     let router_table = router_table.to_string();
     let attr_values = hashmap! {
@@ -241,30 +265,33 @@ pub fn register_user(
         ":connected_at".to_string() => val!(N => user.connected_at),
     };
 
-    retry_if(
-        move || {
-            debug!("Registering user: {:?}", item);
-            ddb.put_item(PutItemInput {
-                item: item.clone(),
-                table_name: router_table.clone(),
-                expression_attribute_values: Some(attr_values.clone()),
-                condition_expression: Some(
-                    r#"(
+    Box::pin(
+        retry_if(
+            move || {
+                debug!("Registering user: {:?}", item);
+                ddb.put_item(PutItemInput {
+                    item: item.clone(),
+                    table_name: router_table.clone(),
+                    expression_attribute_values: Some(attr_values.clone()),
+                    condition_expression: Some(
+                        r#"(
                             attribute_not_exists(router_type) or
                             (router_type = :router_type)
                         ) and (
                             attribute_not_exists(node_id) or
                             (connected_at < :connected_at)
                         )"#
-                    .to_string(),
-                ),
-                return_values: Some("ALL_OLD".to_string()),
-                ..Default::default()
-            })
-        },
-        retryable_putitem_error,
+                        .to_string(),
+                    ),
+                    return_values: Some("ALL_OLD".to_string()),
+                    ..Default::default()
+                })
+            },
+            retryable_putitem_error,
+        )
+        .compat()
+        .map_err(|_| "Error storing user record".into()),
     )
-    .chain_err(|| "Error storing user record")
 }
 
 pub fn update_user_message_month(
@@ -272,7 +299,7 @@ pub fn update_user_message_month(
     uaid: &Uuid,
     router_table_name: &str,
     message_month: &str,
-) -> impl Future<Output = Result<()>> {
+) -> LocalBoxFuture<'static, Result<()>> {
     let attr_values = hashmap! {
         ":curmonth".to_string() => val!(S => message_month.to_string()),
         ":lastconnect".to_string() => val!(N => generate_last_connect().to_string()),
@@ -287,21 +314,22 @@ pub fn update_user_message_month(
         ..Default::default()
     };
 
-    retry_if(
-        move || {
-            ddb.update_item(update_item.clone())
-                .and_then(|_| future::ok(()))
-        },
-        retryable_updateitem_error,
+    Box::pin(
+        retry_if(
+            move || ddb.update_item(update_item.clone()),
+            retryable_updateitem_error,
+        )
+        .compat()
+        .map_ok(|_| ())
+        .map_err(|_| "Error updating user message month".into()),
     )
-    .chain_err(|| "Error updating user message month")
 }
 
 pub fn all_channels(
     ddb: Rc<Box<dyn DynamoDb>>,
     uaid: &Uuid,
     message_table_name: &str,
-) -> impl Future<Output = Result<HashSet<String>>> {
+) -> LocalBoxFuture<'static, Result<HashSet<String>>> {
     let input = GetItemInput {
         table_name: message_table_name.to_string(),
         consistent_read: Some(true),
@@ -312,19 +340,22 @@ pub fn all_channels(
         ..Default::default()
     };
 
-    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
-        .and_then(|output| {
-            let channels = output
-                .item
-                .and_then(|item| {
-                    serde_dynamodb::from_hashmap(item)
-                        .ok()
-                        .and_then(|notif: DynamoDbNotification| notif.chids)
-                })
-                .unwrap_or_else(HashSet::new);
-            future::ok(channels)
-        })
-        .or_else(|_err| future::ok(HashSet::new()))
+    Box::pin(
+        retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
+            .compat()
+            .and_then(|output| {
+                let channels = output
+                    .item
+                    .and_then(|item| {
+                        serde_dynamodb::from_hashmap(item)
+                            .ok()
+                            .and_then(|notif: DynamoDbNotification| notif.chids)
+                    })
+                    .unwrap_or_else(HashSet::new);
+                future::ok(channels)
+            })
+            .or_else(|_err| future::ok(HashSet::new())),
+    )
 }
 
 pub fn save_channels(
@@ -332,7 +363,7 @@ pub fn save_channels(
     uaid: &Uuid,
     channels: HashSet<String>,
     message_table_name: &str,
-) -> impl Future<Output = Result<()>> {
+) -> LocalBoxFuture<'static, Result<()>> {
     let chids: Vec<String> = channels.into_iter().collect();
     let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
     let attr_values = hashmap! {
@@ -350,14 +381,15 @@ pub fn save_channels(
         ..Default::default()
     };
 
-    retry_if(
-        move || {
-            ddb.update_item(update_item.clone())
-                .and_then(|_| future::ok(()))
-        },
-        retryable_updateitem_error,
+    Box::pin(
+        retry_if(
+            move || ddb.update_item(update_item.clone()),
+            retryable_updateitem_error,
+        )
+        .compat()
+        .map_ok(|_| ())
+        .map_err(|_| "Error saving channels".into()),
     )
-    .chain_err(|| "Error saving channels")
 }
 
 pub fn unregister_channel_id(
@@ -365,7 +397,7 @@ pub fn unregister_channel_id(
     uaid: &Uuid,
     channel_id: &Uuid,
     message_table_name: &str,
-) -> impl Future<Output = Result<UpdateItemOutput>> {
+) -> LocalBoxFuture<'static, Result<UpdateItemOutput>> {
     let chid = channel_id.to_hyphenated().to_string();
     let attr_values = hashmap! {
         ":channel_id".to_string() => val!(SS => vec![chid]),
@@ -381,11 +413,14 @@ pub fn unregister_channel_id(
         ..Default::default()
     };
 
-    retry_if(
-        move || ddb.update_item(update_item.clone()),
-        retryable_updateitem_error,
+    Box::pin(
+        retry_if(
+            move || ddb.update_item(update_item.clone()),
+            retryable_updateitem_error,
+        )
+        .compat()
+        .map_err(|_| "Error unregistering channel".into()),
     )
-    .chain_err(|| "Error unregistering channel")
 }
 
 pub fn lookup_user(
@@ -397,8 +432,7 @@ pub fn lookup_user(
     router_table_name: &str,
     message_table_names: &[String],
     current_message_month: &str,
-) -> MyFuture<(HelloResponse, Option<DynamoDbUser>)> {
-    let response = get_uaid(ddb.clone(), uaid, router_table_name);
+) -> LocalBoxFuture<'static, Result<(HelloResponse, Option<DynamoDbUser>)>> {
     // Prep all these for the move into the static closure capture
     let cur_month = current_message_month.to_string();
     let uaid2 = *uaid;
@@ -407,36 +441,39 @@ pub fn lookup_user(
     let connected_at = *connected_at;
     let router_url = router_url.to_string();
     let metrics = Rc::clone(metrics);
-    let response = response.and_then(move |data| -> MyFuture<_> {
-        let mut hello_response = HelloResponse {
-            message_month: cur_month.clone(),
-            connected_at,
-            ..Default::default()
-        };
-        let user = handle_user_result(
-            &cur_month,
-            &messages_tables,
-            connected_at,
-            router_url,
-            data,
-            &mut hello_response,
-        );
-        match user {
-            Ok(user) => Box::new(future::ok((hello_response, Some(user)))),
-            Err((false, _)) => Box::new(future::ok((hello_response, None))),
-            Err((true, code)) => {
-                metrics
-                    .incr_with_tags("ua.expiration")
-                    .with_tag("code", &code.to_string())
-                    .send();
-                let response = drop_user(ddb, &uaid2, &router_table)
-                    .and_then(|_| future::ok((hello_response, None)))
-                    .chain_err(|| "Unable to drop user");
-                Box::new(response)
+    Box::pin(
+        get_uaid(ddb.clone(), uaid, router_table_name).and_then(move |data| {
+            let mut hello_response = HelloResponse {
+                message_month: cur_month.clone(),
+                connected_at,
+                ..Default::default()
+            };
+            let user = handle_user_result(
+                &cur_month,
+                &messages_tables,
+                connected_at,
+                router_url,
+                data,
+                &mut hello_response,
+            );
+            match user {
+                Ok(user) => future::Either::Left(Ok((hello_response, Some(user)))),
+                Err((false, _)) => future::Either::Left(Ok((hello_response, None))),
+                Err((true, code)) => {
+                    metrics
+                        .incr_with_tags("ua.expiration")
+                        .with_tag("code", &code.to_string())
+                        .send();
+                    future::Either::Right(drop_user(ddb, &uaid2, &router_table).map(|response| {
+                        match response {
+                            Ok(_) => Ok((hello_response, None)),
+                            Err(_) => Err("Unable to drop user".into())?,
+                        }
+                    }))
+                }
             }
-        }
-    });
-    Box::new(response)
+        }),
+    )
 }
 
 /// Helper function for determining if a returned user record is valid for use

@@ -4,7 +4,13 @@ use std::rc::Rc;
 use uuid::Uuid;
 
 use cadence::StatsdClient;
-use futures::{future, Future};
+use futures::{
+    compat::{Compat01As03, Future01CompatExt},
+    future,
+    future::err,
+    future::LocalBoxFuture,
+    Future, FutureExt, TryFutureExt,
+};
 use futures_backoff::retry_if;
 use rusoto_core::{HttpClient, Region};
 use rusoto_credential::StaticProvider;
@@ -131,20 +137,20 @@ impl DynamoStorage {
             ..Default::default()
         };
 
-        retry_if(
+        Compat01As03::new(retry_if(
             move || ddb.update_item(update_input.clone()),
             retryable_updateitem_error,
-        )
-        .chain_err(|| "Error incrementing storage")
+        ))
+        .map_err(|_| "Error incrementing storage".into())
     }
 
-    pub fn hello(
+    pub async fn hello(
         &self,
         connected_at: &u64,
         uaid: Option<&Uuid>,
         router_url: &str,
-    ) -> impl Future<Output = Result<HelloResponse>> {
-        let response: MyFuture<(HelloResponse, Option<DynamoDbUser>)> = if let Some(uaid) = uaid {
+    ) -> Result<HelloResponse> {
+        let resp = if let Some(uaid) = uaid {
             commands::lookup_user(
                 self.ddb.clone(),
                 &self.metrics,
@@ -155,43 +161,49 @@ impl DynamoStorage {
                 &self.message_table_names,
                 &self.current_message_month,
             )
+            .await
         } else {
-            Box::new(future::ok((
+            Ok((
                 HelloResponse {
                     message_month: self.current_message_month.clone(),
                     connected_at: *connected_at,
                     ..Default::default()
                 },
                 None,
-            )))
+            ))
         };
         let ddb = self.ddb.clone();
         let router_url = router_url.to_string();
         let router_table_name = self.router_table_name.clone();
         let connected_at = *connected_at;
 
-        response.and_then(move |(mut hello_response, user_opt)| {
-            let hello_message_month = hello_response.message_month.clone();
-            let user = user_opt.unwrap_or_else(|| DynamoDbUser {
-                current_month: Some(hello_message_month),
-                node_id: Some(router_url),
-                connected_at,
-                ..Default::default()
-            });
-            let uaid = user.uaid;
-            let mut err_response = hello_response.clone();
-            err_response.connected_at = connected_at;
-            commands::register_user(ddb, &user, &router_table_name)
-                .and_then(move |result| {
-                    debug!("Success adding user, item output: {:?}", result);
-                    hello_response.uaid = Some(uaid);
-                    future::ok(hello_response)
-                })
-                .or_else(move |e| {
-                    debug!("Error registering user: {:?}", e);
-                    future::ok(err_response)
-                })
-        })
+        match resp {
+            Ok((mut hello_response, user_opt)) => {
+                let hello_message_month = hello_response.message_month.clone();
+                let user = user_opt.unwrap_or_else(|| DynamoDbUser {
+                    current_month: Some(hello_message_month),
+                    node_id: Some(router_url),
+                    connected_at,
+                    ..Default::default()
+                });
+                let uaid = user.uaid;
+                let mut err_response = hello_response.clone();
+                err_response.connected_at = connected_at;
+                let result = commands::register_user(ddb, &user, &router_table_name).await;
+                match result {
+                    Ok(result) => {
+                        debug!("Success adding user, item output: {:?}", result);
+                        hello_response.uaid = Some(uaid);
+                        Ok(hello_response)
+                    }
+                    Err(e) => {
+                        debug!("Error registering user: {:?}", e);
+                        Ok(err_response)
+                    }
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub fn register(
@@ -200,26 +212,27 @@ impl DynamoStorage {
         channel_id: &Uuid,
         message_month: &str,
         endpoint: &str,
-    ) -> MyFuture<RegisterResponse> {
+    ) -> LocalBoxFuture<'static, Result<RegisterResponse>> {
         let ddb = self.ddb.clone();
         let mut chids = HashSet::new();
         let endpoint = endpoint.to_owned();
         chids.insert(channel_id.to_hyphenated().to_string());
-        let response = commands::save_channels(ddb, uaid, chids, message_month)
-            .and_then(move |_| future::ok(RegisterResponse::Success { endpoint }))
-            .or_else(move |_| {
-                future::ok(RegisterResponse::Error {
+        let response =
+            commands::save_channels(ddb, uaid, chids, message_month).map(move |res| match res {
+                Ok(_) => Ok(RegisterResponse::Success { endpoint }),
+                Err(_) => Ok(RegisterResponse::Error {
                     status: 503,
                     error_msg: "Failed to register channel".to_string(),
-                })
+                }),
             });
-        Box::new(response)
+
+        Box::pin(response)
     }
 
-    pub fn drop_uaid(&self, uaid: &Uuid) -> impl Future<Output = Result<()>>{
+    pub fn drop_uaid(&self, uaid: &Uuid) -> impl Future<Output = Result<()>> {
         commands::drop_user(self.ddb.clone(), uaid, &self.router_table_name)
             .and_then(|_| future::ok(()))
-            .chain_err(|| "Unable to drop user record")
+            .map_err(|_| "Unable to drop user record".into())
     }
 
     pub fn unregister(
@@ -234,7 +247,7 @@ impl DynamoStorage {
     }
 
     /// Migrate a user to a new month table
-    pub fn migrate_user(
+    pub async fn migrate_user(
         &self,
         uaid: &Uuid,
         message_month: &str,
@@ -246,19 +259,15 @@ impl DynamoStorage {
         let cur_month2 = cur_month.clone();
         let router_table_name = self.router_table_name.clone();
 
-        commands::all_channels(self.ddb.clone(), &uaid, message_month)
-            .and_then(move |channels| -> MyFuture<_> {
-                if channels.is_empty() {
-                    Box::new(future::ok(()))
-                } else {
-                    Box::new(commands::save_channels(ddb, &uaid, channels, &cur_month))
-                }
-            })
-            .and_then(move |_| {
-                commands::update_user_message_month(ddb2, &uaid, &router_table_name, &cur_month2)
-            })
+        let channels = commands::all_channels(self.ddb.clone(), &uaid, message_month)
+            .await
+            .unwrap_or(Default::default());
+        if !channels.is_empty() {
+            commands::save_channels(ddb, &uaid, channels, &cur_month).await;
+        }
+        commands::update_user_message_month(ddb2, &uaid, &router_table_name, &cur_month2)
             .and_then(|_| future::ok(()))
-            .chain_err(|| "Unable to migrate user")
+            .map_err(|_| "Unable to migrate user".into())
     }
 
     /// Store a batch of messages when shutting down
@@ -289,13 +298,12 @@ impl DynamoStorage {
             move || ddb.batch_write_item(batch_input.clone()),
             retryable_batchwriteitem_error,
         )
+        .compat()
         .and_then(|_| future::ok(()))
         .map_err(|err| {
             debug!("Error saving notification: {:?}", err);
-            err
+            "Error saving notifications".into()
         })
-        // TODO: Use Sentry to capture/report this error
-        .chain_err(|| "Error saving notifications")
     }
 
     /// Delete a given notification from the database
@@ -323,8 +331,9 @@ impl DynamoStorage {
             move || ddb.delete_item(delete_input.clone()),
             retryable_delete_error,
         )
+        .compat()
         .and_then(|_| future::ok(()))
-        .chain_err(|| "Error deleting notification")
+        .map_err(|_| "Error deleting notification".into())
     }
 
     pub fn check_storage(
@@ -333,65 +342,68 @@ impl DynamoStorage {
         uaid: &Uuid,
         include_topic: bool,
         timestamp: Option<u64>,
-    ) -> impl Future<Output = Result<CheckStorageResponse>> {
-        let response: MyFuture<FetchMessageResponse> = if include_topic {
-            Box::new(commands::fetch_messages(
-                self.ddb.clone(),
-                &self.metrics,
-                table_name,
-                uaid,
-                11 as u32,
-            ))
-        } else {
-            Box::new(future::ok(Default::default()))
-        };
+    ) -> LocalBoxFuture<'static, Result<CheckStorageResponse>> {
         let uaid = *uaid;
         let table_name = table_name.to_string();
         let ddb = self.ddb.clone();
         let metrics = Rc::clone(&self.metrics);
 
-        response.and_then(move |resp| -> MyFuture<_> {
-            // Return now from this future if we have messages
-            if !resp.messages.is_empty() {
-                debug!("Topic message returns: {:?}", resp.messages);
-                return Box::new(future::ok(CheckStorageResponse {
-                    include_topic: true,
-                    messages: resp.messages,
-                    timestamp: resp.timestamp,
-                }));
-            }
-            // Use the timestamp returned by the topic query if we were looking at the topics
-            let timestamp = if include_topic {
-                resp.timestamp
+        Box::pin(
+            if include_topic {
+                future::Either::Left(commands::fetch_messages(
+                    self.ddb.clone(),
+                    &self.metrics,
+                    &table_name,
+                    &uaid,
+                    11 as u32,
+                ))
             } else {
-                timestamp
-            };
-            let next_query: MyFuture<_> = {
-                if resp.messages.is_empty() || resp.timestamp.is_some() {
-                    Box::new(commands::fetch_timestamp_messages(
-                        ddb,
-                        &metrics,
-                        table_name.as_ref(),
-                        &uaid,
-                        timestamp,
-                        10 as u32,
-                    ))
-                } else {
-                    Box::new(future::ok(Default::default()))
+                future::Either::Right(future::ok(Default::default()))
+            }
+            .map_ok(move |resp| {
+                // Return now from this future if we have messages
+                if !resp.messages.is_empty() {
+                    debug!("Topic message returns: {:?}", resp.messages);
+                    return future::Either::Left(future::ok(CheckStorageResponse {
+                        include_topic: true,
+                        messages: resp.messages,
+                        timestamp: resp.timestamp,
+                    }));
                 }
-            };
-            let next_query = next_query.and_then(move |resp: FetchMessageResponse| {
-                // If we didn't get a timestamp off the last query, use the original
-                // value if passed one
-                let timestamp = resp.timestamp.or(timestamp);
-                Ok(CheckStorageResponse {
-                    include_topic: false,
-                    messages: resp.messages,
-                    timestamp,
-                })
-            });
-            Box::new(next_query)
-        })
+                // Use the timestamp returned by the topic query if we were looking at the topics
+                let timestamp = if include_topic {
+                    resp.timestamp
+                } else {
+                    timestamp
+                };
+                future::Either::Right(
+                    {
+                        if resp.messages.is_empty() || resp.timestamp.is_some() {
+                            future::Either::Left(commands::fetch_timestamp_messages(
+                                ddb,
+                                &metrics,
+                                table_name.as_ref(),
+                                &uaid,
+                                timestamp,
+                                10 as u32,
+                            ))
+                        } else {
+                            future::Either::Right(future::ok(Default::default()))
+                        }
+                    }
+                    .and_then(move |resp: FetchMessageResponse| {
+                        // If we didn't get a timestamp off the last query, use the original
+                        // value if passed one
+                        let timestamp = resp.timestamp.or(timestamp);
+                        future::Either::Right(future::ok(CheckStorageResponse {
+                            include_topic: false,
+                            messages: resp.messages,
+                            timestamp,
+                        }))
+                    }),
+                )
+            }),
+        )
     }
 
     pub fn get_user(&self, uaid: &Uuid) -> impl Future<Output = Result<DynamoDbUser>> {

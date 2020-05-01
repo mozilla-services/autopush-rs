@@ -35,7 +35,7 @@ use std::num;
 
 use cadence;
 use config;
-use futures::Future;
+use futures::{future::LocalBoxFuture, Future};
 use httparse;
 use serde_json;
 use tungstenite;
@@ -91,24 +91,3 @@ error_chain! {
 }
 
 pub type MyFuture<T> = Box<dyn Future<Output = Result<T>>>;
-
-pub trait FutureChainErr<T> {
-    fn chain_err<F, E>(self, callback: F) -> MyFuture<T>
-    where
-        F: FnOnce() -> E + 'static,
-        E: Into<ErrorKind>;
-}
-
-impl<F> FutureChainErr<F::Output> for F
-where
-    F: Future + 'static,
-    F: error::Error + Send + 'static,
-{
-    fn chain_err<C, E>(self, callback: C) -> MyFuture<F::Output>
-    where
-        C: FnOnce() -> E + 'static,
-        E: Into<ErrorKind>,
-    {
-        Box::new(self.then(|r| r.chain_err(callback)))
-    }
-}

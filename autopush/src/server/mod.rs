@@ -37,7 +37,6 @@ use autopush_common::errors::*;
 use autopush_common::errors::{Error, Result};
 use autopush_common::logging;
 use autopush_common::notification::Notification;
-use autopush_common::util::timeout;
 
 use crate::client::Client;
 use crate::http;
