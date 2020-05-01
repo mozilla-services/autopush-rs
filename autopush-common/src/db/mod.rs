@@ -336,7 +336,85 @@ impl DynamoStorage {
         .map_err(|_| "Error deleting notification".into())
     }
 
-    pub fn check_storage(
+    fn check_include_topic(&self, include_topic: bool, table_name: String, uaid: &Uuid) -> LocalBoxFuture<'static, Result<FetchMessageResponse>> {
+        Box::pin(if include_topic {
+            future::Either::Left(commands::fetch_messages(
+                self.ddb.clone(),
+                &self.metrics,
+                &table_name,
+                &uaid,
+                11 as u32,
+            ))
+        } else {
+            future::Either::Right(future::ok(Default::default()))
+        })
+    }
+
+    fn check_if_empty(
+        &self,
+        table_name: String,
+        uaid: &Uuid,
+        include_topic: bool,
+        timestamp: Option<u64>,
+        resp: Result<FetchMessageResponse>,
+    ) -> LocalBoxFuture<'static, Result<CheckStorageResponse>> {
+        let resp = resp.unwrap();
+        if !resp.messages.is_empty() {
+            debug!("Topic message returns: {:?}", resp.messages);
+            Box::pin(future::ok(CheckStorageResponse {
+                include_topic: true,
+                messages: resp.messages,
+                timestamp: resp.timestamp,
+            }))
+        } else {
+            self.actually_fetch_messages(&table_name, &uaid, include_topic, timestamp, resp)
+        }
+    }
+
+    fn actually_fetch_messages(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        include_topic: bool,
+        timestamp: Option<u64>,
+        resp: FetchMessageResponse,
+    ) -> LocalBoxFuture<'static, Result<CheckStorageResponse>> {
+        let ddb = self.ddb.clone();
+        let metrics = Rc::clone(&self.metrics);
+
+        // Use the timestamp returned by the topic query if we were looking at the topics
+        let timestamp = if include_topic {
+            resp.timestamp
+        } else {
+            timestamp
+        };
+        Box::pin({
+            if resp.messages.is_empty() || resp.timestamp.is_some() {
+                future::Either::Left(commands::fetch_timestamp_messages(
+                    ddb,
+                    &metrics,
+                    table_name.as_ref(),
+                    &uaid,
+                    timestamp,
+                    10 as u32,
+                ))
+            } else {
+                future::Either::Right(future::ok(Default::default()))
+            }
+        }
+        .and_then(move |resp: FetchMessageResponse| {
+            // If we didn't get a timestamp off the last query, use the original
+            // value if passed one
+            let timestamp = resp.timestamp.or(timestamp);
+            future::ok(CheckStorageResponse {
+                include_topic: false,
+                messages: resp.messages,
+                timestamp,
+            })
+        }))
+    }
+
+    pub async fn check_storage(
         &self,
         table_name: &str,
         uaid: &Uuid,
@@ -344,66 +422,14 @@ impl DynamoStorage {
         timestamp: Option<u64>,
     ) -> LocalBoxFuture<'static, Result<CheckStorageResponse>> {
         let uaid = *uaid;
-        let table_name = table_name.to_string();
-        let ddb = self.ddb.clone();
-        let metrics = Rc::clone(&self.metrics);
+        let table_name = table_name.clone().to_string();
 
-        Box::pin(
-            if include_topic {
-                future::Either::Left(commands::fetch_messages(
-                    self.ddb.clone(),
-                    &self.metrics,
-                    &table_name,
-                    &uaid,
-                    11 as u32,
-                ))
-            } else {
-                future::Either::Right(future::ok(Default::default()))
-            }
-            .map_ok(move |resp| {
-                // Return now from this future if we have messages
-                if !resp.messages.is_empty() {
-                    debug!("Topic message returns: {:?}", resp.messages);
-                    return future::Either::Left(future::ok(CheckStorageResponse {
-                        include_topic: true,
-                        messages: resp.messages,
-                        timestamp: resp.timestamp,
-                    }));
-                }
-                // Use the timestamp returned by the topic query if we were looking at the topics
-                let timestamp = if include_topic {
-                    resp.timestamp
-                } else {
-                    timestamp
-                };
-                future::Either::Right(
-                    {
-                        if resp.messages.is_empty() || resp.timestamp.is_some() {
-                            future::Either::Left(commands::fetch_timestamp_messages(
-                                ddb,
-                                &metrics,
-                                table_name.as_ref(),
-                                &uaid,
-                                timestamp,
-                                10 as u32,
-                            ))
-                        } else {
-                            future::Either::Right(future::ok(Default::default()))
-                        }
-                    }
-                    .and_then(move |resp: FetchMessageResponse| {
-                        // If we didn't get a timestamp off the last query, use the original
-                        // value if passed one
-                        let timestamp = resp.timestamp.or(timestamp);
-                        future::Either::Right(future::ok(CheckStorageResponse {
-                            include_topic: false,
-                            messages: resp.messages,
-                            timestamp,
-                        }))
-                    }),
-                )
-            }),
-        )
+        let resp = self.check_include_topic(
+            include_topic,
+            table_name.clone(),
+            &uaid
+        ).await;
+        self.check_if_empty(table_name, &uaid, include_topic, timestamp, resp)
     }
 
     pub fn get_user(&self, uaid: &Uuid) -> impl Future<Output = Result<DynamoDbUser>> {
