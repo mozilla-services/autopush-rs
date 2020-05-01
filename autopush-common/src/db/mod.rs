@@ -420,7 +420,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         include_topic: bool,
         timestamp: Option<u64>,
-    ) -> LocalBoxFuture<'static, Result<CheckStorageResponse>> {
+    ) -> Result<CheckStorageResponse> {
         let uaid = *uaid;
         let table_name = table_name.clone().to_string();
 
@@ -429,7 +429,7 @@ impl DynamoStorage {
             table_name.clone(),
             &uaid
         ).await;
-        self.check_if_empty(table_name, &uaid, include_topic, timestamp, resp)
+        self.check_if_empty(table_name, &uaid, include_topic, timestamp, resp).await
     }
 
     pub fn get_user(&self, uaid: &Uuid) -> impl Future<Output = Result<DynamoDbUser>> {

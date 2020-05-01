@@ -15,8 +15,8 @@ use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
-use std::time::Duration;
 use std::task::Poll;
+use std::time::Duration;
 
 use tokio::time::Timeout;
 use uuid::Uuid;
