@@ -9,9 +9,9 @@
 use std::io::{self, Read, Write};
 
 use bytes::BytesMut;
-use futures::Poll;
-use tokio_core::net::TcpStream;
-use tokio_io::{AsyncRead, AsyncWrite};
+use futures::task::Poll;
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::TcpStream;
 
 use crate::server::tls::MaybeTlsStream;
 
@@ -59,8 +59,11 @@ impl Write for WebpushIo {
 
 impl AsyncRead for WebpushIo {}
 
+/* XXX
 impl AsyncWrite for WebpushIo {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         AsyncWrite::shutdown(&mut self.tcp)
     }
 }
+
+*/

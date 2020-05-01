@@ -22,12 +22,9 @@
 //! many other options for now!
 
 use bytes::BytesMut;
-use futures::{try_ready, Future, Poll};
+use futures::{ready, task::Poll, Future};
 use httparse;
-use tokio_core::net::TcpStream;
-use tokio_io::AsyncRead;
-
-use autopush_common::errors::*;
+use tokio::net::TcpStream;
 
 use crate::server::tls::MaybeTlsStream;
 use crate::server::webpush_io::WebpushIo;
@@ -55,15 +52,12 @@ impl Dispatch {
 }
 
 impl Future for Dispatch {
-    type Item = (WebpushIo, RequestType);
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<(WebpushIo, RequestType), Error> {
+    fn poll(&mut self) -> Poll<(WebpushIo, RequestType)> {
         loop {
             if self.data.len() == self.data.capacity() {
                 self.data.reserve(16); // get some extra space
             }
-            if try_ready!(self.socket.as_mut().unwrap().read_buf(&mut self.data)) == 0 {
+            if ready!(self.socket.as_mut().unwrap().read_buf(&mut self.data))? == 0 {
                 return Err("early eof".into());
             }
             let ty = {

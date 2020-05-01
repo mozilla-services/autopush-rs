@@ -14,9 +14,12 @@ use base64;
 use cadence::StatsdClient;
 use chrono::Utc;
 use fernet::{Fernet, MultiFernet};
-use futures::sync::oneshot;
-use futures::{task, try_ready};
-use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
+use futures::{
+    channel::oneshot,
+    ready,
+    task::{self, Poll},
+    Future, Sink, Stream,
+};
 use hex;
 use hyper::{server::conn::Http, StatusCode};
 use openssl::hash;
@@ -24,9 +27,7 @@ use openssl::ssl::SslAcceptor;
 use reqwest;
 use sentry::{self, capture_message, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
-use tokio_core::net::TcpListener;
-use tokio_core::reactor::{Core, Handle, Timeout};
-use tokio_io;
+use tokio::{net::TcpListener, runtime::Handle, time::Timeout};
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
@@ -280,8 +281,7 @@ impl Server {
         }
     }
 
-    fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Core)> {
-        let core = Core::new()?;
+    fn new(opts: &Arc<ServerOptions>) -> Result<Rc<Server>> {
         let broadcaster = if let Some(ref megaphone_url) = opts.megaphone_api_url {
             let megaphone_token = opts
                 .megaphone_api_token
@@ -528,7 +528,7 @@ struct MegaphoneUpdater {
     state: MegaphoneState,
     timeout: Timeout,
     poll_interval: Duration,
-    client: reqwest::r#async::Client,
+    client: reqwest::Client,
 }
 
 impl MegaphoneUpdater {
@@ -538,7 +538,7 @@ impl MegaphoneUpdater {
         poll_interval: Duration,
         srv: &Rc<Server>,
     ) -> io::Result<MegaphoneUpdater> {
-        let client = reqwest::r#async::Client::builder()
+        let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()
             .expect("Unable to build reqwest client");
@@ -555,14 +555,11 @@ impl MegaphoneUpdater {
 }
 
 impl Future for MegaphoneUpdater {
-    type Item = ();
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<()> {
         loop {
             let new_state = match self.state {
                 MegaphoneState::Waiting => {
-                    try_ready!(self.timeout.poll());
+                    ready!(self.timeout.poll())?;
                     debug!("Sending megaphone API request");
                     let fut = self
                         .client
@@ -577,14 +574,14 @@ impl Future for MegaphoneUpdater {
                 MegaphoneState::Requesting(ref mut response) => {
                     let at = Instant::now() + self.poll_interval;
                     match response.poll() {
-                        Ok(Async::Ready(MegaphoneAPIResponse { broadcasts })) => {
+                        Ok(Poll::Ready(MegaphoneAPIResponse { broadcasts })) => {
                             debug!("Fetched broadcasts: {:?}", broadcasts);
                             let mut broadcaster = self.srv.broadcaster.borrow_mut();
                             for srv in Broadcast::from_hashmap(broadcasts) {
                                 broadcaster.add_broadcast(srv);
                             }
                         }
-                        Ok(Async::NotReady) => return Ok(Async::NotReady),
+                        Ok(Poll::Pending) => return Ok(Poll::Pending),
                         Err(error) => {
                             error!("Failed to get response, queue again {:?}", error);
                             capture_message(
@@ -653,10 +650,7 @@ impl PingManager {
 }
 
 impl Future for PingManager {
-    type Item = ();
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<()> {
         let mut socket = self.socket.borrow_mut();
         loop {
             if socket.ws_ping {
@@ -692,11 +686,11 @@ impl Future for PingManager {
                     debug_assert!(!socket.ws_pong_timeout);
                     debug_assert!(!socket.ws_pong_received);
                     match self.timeout.poll()? {
-                        Async::Ready(()) => {
+                        Poll::Ready(()) => {
                             debug!("scheduling a ws ping to get sent");
                             socket.ws_ping = true;
                         }
-                        Async::NotReady => break,
+                        Poll::Pending => break,
                     }
                 }
                 WaitingFor::Pong => {
@@ -752,7 +746,7 @@ impl Future for PingManager {
         // closing handshake.
         loop {
             match self.client {
-                CloseState::Exchange(ref mut client) => try_ready!(client.poll()),
+                CloseState::Exchange(ref mut client) => ready!(client.poll())?,
                 CloseState::Closing => return Ok(self.socket.borrow_mut().close()?),
             }
 
@@ -787,10 +781,10 @@ impl<T> WebpushSocket<T> {
         }
     }
 
-    fn send_ws_ping(&mut self) -> Poll<(), Error>
+    fn send_ws_ping(&mut self) -> Poll<()>
     where
-        T: Sink<SinkItem = Message>,
-        Error: From<T::SinkError>,
+        T: Sink<Message>,
+        Error: From<T::Error>,
     {
         if self.ws_ping {
             let msg = if let Some(broadcasts) = self.broadcast_delta.clone() {
@@ -805,41 +799,39 @@ impl<T> WebpushSocket<T> {
                 Message::Ping(Vec::new())
             };
             match self.inner.start_send(msg)? {
-                AsyncSink::Ready => {
+                Poll::Ready(_) => {
                     debug!("ws ping sent");
                     self.ws_ping = false;
                 }
-                AsyncSink::NotReady(_) => {
+                Poll::Pending => {
                     debug!("ws ping not ready to be sent");
-                    return Ok(Async::NotReady);
+                    return Ok(Poll::Pending);
                 }
             }
         }
-        Ok(Async::Ready(()))
+        Ok(Poll::Ready(()))
     }
 }
 
 impl<T> Stream for WebpushSocket<T>
 where
     T: Stream<Item = Message>,
-    Error: From<T::Error>,
 {
     type Item = ClientMessage;
-    type Error = Error;
 
-    fn poll(&mut self) -> Poll<Option<ClientMessage>, Error> {
+    fn poll_next(&mut self) -> Poll<Option<ClientMessage>> {
         loop {
             let msg = match self.inner.poll()? {
-                Async::Ready(Some(msg)) => msg,
-                Async::Ready(None) => return Ok(None.into()),
-                Async::NotReady => {
+                Poll::Ready(Some(msg)) => msg,
+                Poll::Ready(None) => return Ok(None.into()),
+                Poll::Pending => {
                     // If we don't have any more messages and our pong timeout
                     // elapsed (set above) then this is where we start
                     // triggering errors.
                     if self.ws_pong_timeout {
                         return Err(ErrorKind::PongTimeout.into());
                     }
-                    return Ok(Async::NotReady);
+                    return Ok(Poll::Pending);
                 }
             };
             match msg {
@@ -866,7 +858,6 @@ where
                 Message::Pong(_) => {
                     self.ws_pong_received = true;
                     self.ws_pong_timeout = false;
-                    task::current().notify();
                 }
 
                 Message::Close(_) => return Err(tungstenite::Error::ConnectionClosed.into()),
@@ -875,33 +866,30 @@ where
     }
 }
 
-impl<T> Sink for WebpushSocket<T>
+impl<T> Sink<Message> for WebpushSocket<T>
 where
-    T: Sink<SinkItem = Message>,
-    Error: From<T::SinkError>,
+    T: Sink<Message>,
+    Error: From<T::Error>,
 {
-    type SinkItem = ServerMessage;
-    type SinkError = Error;
-
-    fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, Error> {
+    fn start_send(&mut self, msg: ServerMessage) -> Result<ServerMessage> {
         if self.send_ws_ping()?.is_not_ready() {
-            return Ok(AsyncSink::NotReady(msg));
+            return Ok(Poll::Pending(msg));
         }
         let s = msg.to_json().chain_err(|| "failed to serialize")?;
         match self.inner.start_send(Message::Text(s))? {
-            AsyncSink::Ready => Ok(AsyncSink::Ready),
-            AsyncSink::NotReady(_) => Ok(AsyncSink::NotReady(msg)),
+            Poll::Ready(m) => Ok(Poll::Ready(m)),
+            Poll::NotReady(_) => Ok(Poll::NotReady(msg)),
         }
     }
 
-    fn poll_complete(&mut self) -> Poll<(), Error> {
-        try_ready!(self.send_ws_ping());
-        Ok(self.inner.poll_complete()?)
+    fn poll_flush(&mut self) -> Poll<()> {
+        ready!(self.send_ws_ping())?;
+        Ok(self.inner.poll_flush()?)
     }
 
-    fn close(&mut self) -> Poll<(), Error> {
-        try_ready!(self.poll_complete());
-        Ok(self.inner.close()?)
+    fn poll_close(&mut self) -> Poll<()> {
+        ready!(self.poll_close())?;
+        Ok(self.inner.poll_close()?)
     }
 }
 
@@ -967,7 +955,8 @@ fn write_json(socket: WebpushIo, status: StatusCode, body: serde_json::Value) ->
         body = body,
     );
     Box::new(
-        tokio_io::io::write_all(socket, data.into_bytes())
+        socket
+            .write(data.into_bytes())
             .map(|_| ())
             .chain_err(|| "failed to write status response"),
     )

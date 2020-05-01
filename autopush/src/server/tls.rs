@@ -12,14 +12,14 @@ use std::rc::Rc;
 
 use autopush_common::errors::*;
 use futures::future;
-use futures::{Future, Poll};
+use futures::{task::Poll, Future};
 use openssl::dh::Dh;
 use openssl::pkey::PKey;
 use openssl::ssl::{SslAcceptor, SslMethod, SslMode};
 use openssl::x509::X509;
-use tokio_core::net::TcpStream;
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_openssl::{SslAcceptorExt, SslStream};
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::TcpStream;
+use tokio_openssl::SslStream;
 
 use crate::server::{Server, ServerOptions};
 
@@ -128,6 +128,7 @@ impl<T: AsyncRead + AsyncWrite> AsyncRead for MaybeTlsStream<T> {
     }
 }
 
+/* XXX
 impl<T: AsyncWrite + AsyncRead> AsyncWrite for MaybeTlsStream<T> {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         match *self {
@@ -136,3 +137,4 @@ impl<T: AsyncWrite + AsyncRead> AsyncWrite for MaybeTlsStream<T> {
         }
     }
 }
+*/

@@ -10,7 +10,7 @@
 use std::{str, sync::Arc};
 
 use futures::future::ok;
-use futures::{Future, Stream};
+use futures::Future;
 use hyper::{self, service::Service, Body, Method, StatusCode};
 use serde_json;
 use uuid::Uuid;
@@ -19,11 +19,10 @@ use crate::server::registry::ClientRegistry;
 
 pub struct Push(pub Arc<ClientRegistry>);
 
-impl Service for Push {
-    type ReqBody = Body;
-    type ResBody = Body;
+impl Service<http::Request<Body>> for Push {
+    type Response = Body;
     type Error = hyper::Error;
-    type Future = Box<dyn Future<Item = hyper::Response<Body>, Error = hyper::Error> + Send>;
+    type Future = Box<dyn Future<Output = Result<hyper::Response<Body>, hyper::Error>>>;
 
     fn call(&mut self, req: hyper::Request<Body>) -> Self::Future {
         let mut response = hyper::Response::builder();
