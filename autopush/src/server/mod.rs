@@ -311,6 +311,7 @@ impl Server {
         let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.port));
         let ws_listener = TcpListener::bind(&addr, &srv.handle)?;
 
+        // ??? Is this a channel? Can we just gen a channel pair here?
         let handle = core.handle();
         let srv2 = srv.clone();
         let ws_srv = ws_listener

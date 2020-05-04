@@ -259,11 +259,12 @@ where
     }
 }
 
-#[derive(StateMachineFuture)]
+// #[derive(StateMachineFuture)]
 pub enum UnAuthClientState<T>
 where
     T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
 {
+    // TODO: figure out what needs to be implemented here. I think there are future traits that need to be instatiated.
     #[state_machine_future(start, transitions(AwaitProcessHello))]
     AwaitHello {
         data: UnAuthClientData<T>,
@@ -331,13 +332,13 @@ where
             uaid.as_ref(),
             &data.srv.opts.router_url,
         ));
-        transition!(AwaitProcessHello {
+        Ok(task::Poll::Ready(AwaitProcessHello {
             response,
             data,
             desired_broadcasts,
             tx,
             rx,
-        })
+        }))
     }
 
     fn poll_await_process_hello<'a>(
@@ -424,12 +425,15 @@ where
                 broadcast_subs: broadcast_subs.clone(),
             },
         );
-        transition!(AwaitSessionComplete {
-            auth_state_machine,
-            srv,
-            user_agent,
-            webpush,
-        })
+        Ok(task::Poll::Ready(
+            AwaitSessionComplete {
+                auth_state_machine,
+                srv,
+                user_agent,
+                webpush,
+            }
+            .into(),
+        ))
     }
 
     fn poll_await_session_complete<'a>(
@@ -550,7 +554,7 @@ where
         "unregisters" => stats.unregisters,
         "disconnect_reason" => error,
         );
-        transition!(UnAuthDone(()))
+        Ok(task::Poll::Ready(UnAuthDone(()).into()))
     }
 }
 
@@ -729,9 +733,9 @@ where
 
         let Send { smessages, data } = send.take();
         if sent {
-            transition!(AwaitSend { smessages, data });
+            return Ok(task::Poll::Ready(AwaitSend { smessages, data }.into()));
         }
-        transition!(DetermineAck { data })
+        Ok(task::Poll::Ready(DetermineAck { data }.into()));
     }
 
     fn poll_await_send<'a>(
@@ -748,11 +752,11 @@ where
             // re-register
             debug!("Dropping user: exceeded msg_limit");
             let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
-            transition!(AwaitDropUser { response, data });
+            return Ok(task::Poll::Ready(AwaitDropUser { response, data }.into()));
         } else if !smessages.is_empty() {
-            transition!(Send { smessages, data });
+            return Ok(task::Poll::Ready(Send { smessages, data }.into()));
         }
-        transition!(DetermineAck { data })
+        Ok(task::Poll::Ready(DetermineAck { data }.into()))
     }
 
     fn poll_determine_ack<'a>(
@@ -763,9 +767,9 @@ where
         let webpush = webpush_rc.borrow();
         let all_acked = !webpush.unacked_messages();
         if all_acked && webpush.flags.check && webpush.flags.increment_storage {
-            transition!(IncrementStorage { data });
+            return Ok(task::Poll::Ready(IncrementStorage { data }.into()));
         } else if all_acked && webpush.flags.check {
-            transition!(CheckStorage { data });
+            return Ok(task::Poll::Ready(CheckStorage { data }.into()));
         } else if all_acked && webpush.flags.rotate_message_table {
             debug!("Triggering migration");
             let response = Box::new(
@@ -773,13 +777,15 @@ where
                     .ddb
                     .migrate_user(&webpush.uaid, &webpush.message_month),
             );
-            transition!(AwaitMigrateUser { response, data });
+            return Ok(task::Poll::Ready(
+                AwaitMigrateUser { response, data }.into(),
+            ));
         } else if all_acked && webpush.flags.reset_uaid {
             debug!("Dropping user: flagged reset_uaid");
             let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
-            transition!(AwaitDropUser { response, data });
+            return Ok(task::Poll::Ready(AwaitDropUser { response, data }.into()));
         }
-        transition!(AwaitInput { data })
+        Ok(task::Poll::Ready(AwaitInput { data }.into()))
     }
 
     fn poll_await_input<'a>(
@@ -806,14 +812,17 @@ where
                 };
 
                 if let Some(response) = broadcast_delta {
-                    transition!(Send {
-                        smessages: vec![ServerMessage::Broadcast {
-                            broadcasts: response,
-                        }],
-                        data,
-                    });
+                    return Ok(task::Poll::Ready(
+                        Send {
+                            smessages: vec![ServerMessage::Broadcast {
+                                broadcasts: response,
+                            }],
+                            data,
+                        }
+                        .into(),
+                    ));
                 } else {
-                    transition!(AwaitInput { data });
+                    return Ok(task::Poll::Ready(AwaitInput { data }.into()));
                 }
             }
             Either::A(ClientMessage::Register {
@@ -848,11 +857,14 @@ where
                         status: 400,
                     })),
                 };
-                transition!(AwaitRegister {
-                    channel_id,
-                    response: fut,
-                    data,
-                });
+                return Ok(task::Poll::Ready(
+                    AwaitRegister {
+                        channel_id,
+                        response: fut,
+                        data,
+                    }
+                    .into(),
+                ));
             }
             Either::A(ClientMessage::Unregister { channel_id, code }) => {
                 debug!("Got a unregister command");
@@ -862,12 +874,15 @@ where
                 let message_month = webpush.message_month.clone();
                 let response =
                     Box::new(data.srv.ddb.unregister(&uaid, &channel_id, &message_month));
-                transition!(AwaitUnregister {
-                    channel_id,
-                    code: code.unwrap_or(200),
-                    response,
-                    data,
-                });
+                Ok(task::Poll::Ready(
+                    AwaitUnregister {
+                        channel_id,
+                        code: code.unwrap_or(200),
+                        response,
+                        data,
+                    }
+                    .into(),
+                ))
             }
             Either::A(ClientMessage::Nack { code, .. }) => {
                 // only metric codes expected from the client (or 0)
@@ -886,7 +901,7 @@ where
                     .with_tag("code", &mcode.to_string())
                     .send();
                 webpush.stats.nacks += 1;
-                transition!(AwaitInput { data });
+                Ok(task::Poll::Ready(AwaitInput { data }.into()))
             }
             Either::A(ClientMessage::Ack { updates }) => {
                 data.srv.metrics.incr("ua.command.ack").ok();
@@ -925,12 +940,15 @@ where
                     };
                 }
                 if let Some(my_fut) = fut {
-                    transition!(AwaitDelete {
-                        response: my_fut,
-                        data,
-                    });
+                    return Ok(task::Poll::Ready(
+                        AwaitDelete {
+                            response: my_fut,
+                            data,
+                        }
+                        .into(),
+                    ));
                 } else {
-                    transition!(DetermineAck { data });
+                    return Ok(task::Poll::Ready(DetermineAck { data }.into()));
                 }
             }
             Either::A(ClientMessage::Ping) => {
@@ -939,10 +957,13 @@ where
                 if sec_since_epoch() - webpush.last_ping >= 45 {
                     debug!("Got a ping, sending pong");
                     webpush.last_ping = sec_since_epoch();
-                    transition!(Send {
-                        smessages: vec![ServerMessage::Ping],
-                        data,
-                    })
+                    return Ok(task::Poll::Ready(
+                        Send {
+                            smessages: vec![ServerMessage::Ping],
+                            data,
+                        }
+                        .into(),
+                    ));
                 } else {
                     debug!("Got a ping too quickly, disconnecting");
                     Err(ErrorKind::ExcessivePing.into())
@@ -954,15 +975,18 @@ where
                 }
                 debug!("Got a notification to send, sending!");
                 emit_metrics_for_send(&data.srv.metrics, &notif, "Direct");
-                transition!(Send {
-                    smessages: vec![ServerMessage::Notification(notif)],
-                    data,
-                });
+                Ok(task::Poll::Ready(
+                    Send {
+                        smessages: vec![ServerMessage::Notification(notif)],
+                        data,
+                    }
+                    .into(),
+                ))
             }
             Either::B(ServerNotification::CheckStorage) => {
                 webpush.flags.include_topic = true;
                 webpush.flags.check = true;
-                transition!(DetermineAck { data });
+                Ok(task::Poll::Ready(DetermineAck { data }.into()))
             }
             Either::B(ServerNotification::Disconnect) => {
                 debug!("Got told to disconnect, connecting client has our uaid");
@@ -986,10 +1010,13 @@ where
             &webpush.uaid,
             &timestamp,
         ));
-        transition!(AwaitIncrementStorage {
-            response,
-            data: increment_storage.take().data,
-        })
+        Ok(task::Poll::Ready(
+            AwaitIncrementStorage {
+                response,
+                data: increment_storage.take().data,
+            }
+            .into(),
+        ))
     }
 
     fn poll_await_increment_storage<'a>(
@@ -1000,7 +1027,7 @@ where
         let AwaitIncrementStorage { data, .. } = await_increment_storage.take();
         let webpush = data.webpush.clone();
         webpush.borrow_mut().flags.increment_storage = false;
-        transition!(DetermineAck { data })
+        Ok(task::Poll::Ready(DetermineAck { data }.into()))
     }
 
     fn poll_check_storage<'a>(
@@ -1017,7 +1044,9 @@ where
                 webpush.unacked_stored_highest,
             )
         });
-        transition!(AwaitCheckStorage { response, data })
+        Ok(task::Poll::Ready(
+            AwaitCheckStorage { response, data }.into(),
+        ))
     }
 
     fn poll_await_check_storage<'a>(
@@ -1043,7 +1072,7 @@ where
         if messages.is_empty() {
             webpush.flags.check = false;
             webpush.sent_from_storage = 0;
-            transition!(DetermineAck { data });
+            return Ok(task::Poll::Ready(DetermineAck { data }.into()));
         }
 
         // Filter out TTL expired messages
@@ -1080,10 +1109,10 @@ where
                 .map(ServerMessage::Notification)
                 .collect();
             webpush.sent_from_storage += smessages.len() as u32;
-            transition!(Send { smessages, data })
+            return Ok(task::Poll::Ready(Send { smessages, data }.into()));
         } else {
             // No messages remaining
-            transition!(DetermineAck { data })
+            return Ok(task::Poll::Ready(DetermineAck { data }.into()));
         }
     }
 
@@ -1098,7 +1127,7 @@ where
             webpush.message_month = data.srv.ddb.current_message_month.clone();
             webpush.flags.rotate_message_table = false;
         }
-        transition!(DetermineAck { data })
+        Ok(task::Poll::Ready(DetermineAck { data }.into()))
     }
 
     fn poll_await_drop_user<'a>(
@@ -1106,7 +1135,7 @@ where
     ) -> task::Poll<AfterAwaitDropUser> {
         trace!("State: AwaitDropUser");
         ready!(await_drop_user.response.poll())?;
-        transition!(AuthDone(()))
+        Ok(task::Poll::Ready(AuthDone(()).into()))
     }
 
     fn poll_await_register<'a>(
@@ -1139,10 +1168,13 @@ where
             }
         };
 
-        transition!(Send {
-            smessages: vec![msg],
-            data: await_register.take().data,
-        })
+        Ok(task::Poll::Ready(
+            Send {
+                smessages: vec![msg],
+                data: await_register.take().data,
+            }
+            .into(),
+        ))
     }
 
     fn poll_await_unregister<'a>(
@@ -1171,10 +1203,13 @@ where
             .incr_with_tags("ua.command.unregister")
             .with_tag("code", &code.to_string())
             .send();
-        transition!(Send {
-            smessages: vec![msg],
-            data,
-        })
+        Ok(task::Poll::Ready(
+            Send {
+                smessages: vec![msg],
+                data,
+            }
+            .into(),
+        ))
     }
 
     fn poll_await_delete<'a>(
@@ -1182,9 +1217,12 @@ where
     ) -> task::Poll<AfterAwaitDelete<T>> {
         trace!("State: AwaitDelete");
         ready!(await_delete.response.poll())?;
-        transition!(DetermineAck {
-            data: await_delete.take().data,
-        })
+        Ok(task::Poll::Ready(
+            DetermineAck {
+                data: await_delete.take().data,
+            }
+            .into(),
+        ))
     }
 }
 
