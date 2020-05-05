@@ -27,7 +27,7 @@ use openssl::ssl::SslAcceptor;
 use reqwest;
 use sentry::{self, capture_message, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
-use tokio::{net::TcpListener, runtime::Handle, time::Timeout};
+use tokio::{net::TcpListener, runtime::{Handle, Runtime}, time::Timeout};
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
@@ -234,6 +234,7 @@ impl Server {
     /// separate thread for the tokio reactor. The returned ShutdownHandles can
     /// be used to interact with it (e.g. shut it down).
     fn start(opts: &Arc<ServerOptions>) -> Result<Vec<ShutdownHandle>> {
+        let core = Runtime::new()?;
         let mut shutdown_handles = vec![];
 
         let (inittx, initrx) = oneshot::channel();
@@ -281,7 +282,8 @@ impl Server {
         }
     }
 
-    fn new(opts: &Arc<ServerOptions>) -> Result<Rc<Server>> {
+    fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Runtime)> {
+        let core = Runtime::new()?;
         let broadcaster = if let Some(ref megaphone_url) = opts.megaphone_api_url {
             let megaphone_token = opts
                 .megaphone_api_token
