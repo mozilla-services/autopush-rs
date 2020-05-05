@@ -1,12 +1,20 @@
 //! Management of connected clients to a WebPush server
 use cadence::{prelude::*, StatsdClient};
 use error_chain::ChainedError;
+/*
 use futures::channel::mpsc;
 use futures::channel::oneshot::Receiver;
+use futures::compat::Compat01As03;
 use futures::future;
 use futures::future::Either;
 use futures::ready;
 use futures::{task, Future, Sink, Stream};
+*/
+use futures01::{
+    future::{self, Either},
+    sync::{mpsc, oneshot::Receiver},
+    try_ready, Async, AsyncSink, Future, Poll, Sink, Stream,
+};
 use reqwest::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
 use sentry;
@@ -15,10 +23,11 @@ use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
-use std::task::Poll;
+// use std::task::Poll;
 use std::time::Duration;
 
-use tokio::time::Timeout;
+//use tokio::time::Timeout;
+use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
 use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse};
@@ -40,7 +49,9 @@ pub struct RegisteredClient {
 
 pub struct Client<T>
 where
-    T: Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
     state_machine: UnAuthClientStateFuture<T>,
     srv: Rc<Server>,
@@ -50,7 +61,9 @@ where
 
 impl<T> Client<T>
 where
-    T: Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
     /// Spins up a new client communicating over the websocket `ws` specified.
     ///
@@ -69,8 +82,8 @@ where
 
         // Pull out the user-agent, which we should have by now
         let uastr = match uarx.poll() {
-            Ok(task::Poll::Ready(ua)) => ua,
-            Ok(task::Poll::Pending) => {
+            Ok(Async::Ready(ua)) => ua,
+            Ok(Async::NotReady) => {
                 error!("Failed to parse the user-agent");
                 String::from("")
             }
@@ -113,9 +126,14 @@ where
 
 impl<T> Future for Client<T>
 where
-    T: Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
-    fn poll(&mut self) -> task::Poll<()> {
+    type Item = ();
+    // type Error = Error;
+
+    fn poll(&mut self) -> Poll<(), Error> {
         self.state_machine.poll()
     }
 }
@@ -217,15 +235,17 @@ pub struct UnAuthClientData<T> {
 
 impl<T> UnAuthClientData<T>
 where
-    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
-    fn input_with_timeout(&mut self, timeout: &mut Timeout<T>) -> task::Poll<ClientMessage> {
+    fn input_with_timeout(&mut self, timeout: &mut Timeout) -> Poll<ClientMessage, Error> {
         let item = match timeout.poll()? {
-            task::Poll::Ready(_) => return Err("Client timed out".into()),
-            task::Poll::Pending => match self.ws.poll()? {
-                task::Poll::Ready(None) => return Err("Client dropped".into()),
-                task::Poll::Ready(Some(msg)) => task::Poll::Ready(msg),
-                task::Poll::Pending => task::Poll::Pending,
+            Async::Ready(_) => return Err("Client timed out".into()),
+            Async::NotReady => match self.ws.poll()? {
+                Async::Ready(None) => return Err("Client dropped".into()),
+                Async::Ready(Some(msg)) => Async::Ready(msg),
+                Async::NotReady => Async::NotReady,
             },
         };
         Ok(item)
@@ -241,17 +261,20 @@ pub struct AuthClientData<T> {
 
 impl<T> AuthClientData<T>
 where
-    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
+    //T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
-    fn input_or_notif(&mut self) -> task::Poll<Either<ClientMessage, ServerNotification>> {
+    fn input_or_notif(&mut self) -> Poll<Either<ClientMessage, ServerNotification>, Error> {
         let mut webpush = self.webpush.borrow_mut();
         let item = match webpush.rx.poll() {
-            Ok(task::Poll::Ready(Some(notif))) => Either::B(notif),
-            Ok(task::Poll::Ready(None)) => return Err("Sending side dropped".into()),
-            Ok(task::Poll::Pending) => match self.ws.poll()? {
-                task::Poll::Ready(None) => return Err("Client dropped".into()),
-                task::Poll::Ready(Some(msg)) => Either::A(msg),
-                task::Poll::Pending => return Ok(task::Poll::Pending),
+            Ok(Async::Ready(Some(notif))) => Either::B(notif),
+            Ok(Async::Ready(None)) => return Err("Sending side dropped".into()),
+            Ok(Async::NotReady) => match self.ws.poll()? {
+                Async::Ready(None) => return Err("Client dropped".into()),
+                Async::Ready(Some(msg)) => Either::A(msg),
+                Async::NotReady => return Ok(Async::NotReady),
             },
             Err(_) => return Err("Unexpected error".into()),
         };
@@ -259,16 +282,18 @@ where
     }
 }
 
-// #[derive(StateMachineFuture)]
+#[derive(StateMachineFuture)]
 pub enum UnAuthClientState<T>
 where
-    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
     // TODO: figure out what needs to be implemented here. I think there are future traits that need to be instatiated.
     #[state_machine_future(start, transitions(AwaitProcessHello))]
     AwaitHello {
         data: UnAuthClientData<T>,
-        timeout: Timeout<T>,
+        timeout: Timeout,
         tx: mpsc::UnboundedSender<ServerNotification>,
         rx: mpsc::UnboundedReceiver<ServerNotification>,
     },
@@ -299,11 +324,13 @@ where
 
 impl<T> PollUnAuthClientState<T> for UnAuthClientState<T>
 where
-    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
     fn poll_await_hello<'a>(
         hello: &'a mut RentToOwn<'a, AwaitHello<T>>,
-    ) -> task::Poll<AfterAwaitHello<T>> {
+    ) -> Poll<AfterAwaitHello<T>, Error> {
         trace!("State: AwaitHello");
         let (uaid, desired_broadcasts) = {
             let AwaitHello {
@@ -311,7 +338,7 @@ where
                 ref mut timeout,
                 ..
             } = **hello;
-            match ready!(data.input_with_timeout(timeout)) {
+            match try_ready!(data.input_with_timeout(timeout)) {
                 ClientMessage::Hello {
                     uaid,
                     use_webpush: Some(true),
@@ -332,7 +359,7 @@ where
             uaid.as_ref(),
             &data.srv.opts.router_url,
         ));
-        Ok(task::Poll::Ready(AwaitProcessHello {
+        Ok(Poll::Ready(AwaitProcessHello {
             response,
             data,
             desired_broadcasts,
@@ -343,10 +370,10 @@ where
 
     fn poll_await_process_hello<'a>(
         process_hello: &'a mut RentToOwn<'a, AwaitProcessHello<T>>,
-    ) -> task::Poll<AfterAwaitProcessHello<T>> {
+    ) -> Poll<AfterAwaitProcessHello<T>, Error> {
         trace!("State: AwaitProcessHello");
         let (uaid, message_month, check_storage, reset_uaid, rotate_message_table, connected_at) = {
-            match ready!(process_hello.response.poll()) {
+            match try_ready!(process_hello.response.poll()) {
                 HelloResponse {
                     uaid: Some(uaid),
                     message_month,
@@ -408,7 +435,7 @@ where
             },
             ..Default::default()
         }));
-        srv.clients.connect(RegisteredClient { uaid, uid, tx })?;
+        srv.connect_client(RegisteredClient { uaid, uid, tx });
 
         let response = ServerMessage::Hello {
             uaid: uaid.to_simple().to_string(),
@@ -425,7 +452,7 @@ where
                 broadcast_subs: broadcast_subs.clone(),
             },
         );
-        Ok(task::Poll::Ready(
+        Ok(Poll::Ready(
             AwaitSessionComplete {
                 auth_state_machine,
                 srv,
@@ -438,11 +465,11 @@ where
 
     fn poll_await_session_complete<'a>(
         session_complete: &'a mut RentToOwn<'a, AwaitSessionComplete<T>>,
-    ) -> task::Poll<AfterAwaitSessionComplete> {
+    ) -> Poll<AfterAwaitSessionComplete, Error> {
         let error = {
             match session_complete.auth_state_machine.poll() {
-                Ok(task::Poll::Pending) => return Ok(task::Poll::Pending),
-                Ok(task::Poll::Ready(_))
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Ok(Async::Ready(_))
                 | Err(Error(ErrorKind::Ws(_), _))
                 | Err(Error(ErrorKind::Io(_), _))
                 | Err(Error(ErrorKind::PongTimeout, _))
@@ -466,13 +493,13 @@ where
         webpush.rx.close();
         loop {
             match webpush.rx.poll() {
-                Ok(task::Poll::Ready(Some(msg))) => match msg {
+                Ok(Async::Ready(Some(msg))) => match msg {
                     ServerNotification::CheckStorage | ServerNotification::Disconnect => continue,
                     ServerNotification::Notification(notif) => {
                         webpush.unacked_direct_notifs.push(notif)
                     }
                 },
-                Ok(task::Poll::Ready(None)) | Ok(task::Poll::Pending) | Err(_) => break,
+                Ok(Async::Ready(None)) | Ok(Async::NotReady) | Err(_) => break,
             }
         }
         let now = ms_since_epoch();
@@ -485,7 +512,9 @@ where
             .with_tag("ua_browser_family", metrics_browser)
             .send();
 
-        let _ = srv.clients.disconnect(&webpush.uaid, &webpush.uid);
+        // If there's direct unack'd messages, they need to be saved out without blocking
+        // here
+        srv.disconnet_client(&webpush.uaid, &webpush.uid);
 
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {
@@ -514,8 +543,6 @@ where
         } else {
             "".to_string()
         };
-        // If there's direct unack'd messages, they need to be saved out without blocking
-        // here
         let mut stats = webpush.stats.clone();
         let unacked_direct_notifs = webpush.unacked_direct_notifs.len();
         if unacked_direct_notifs > 0 {
@@ -554,7 +581,7 @@ where
         "unregisters" => stats.unregisters,
         "disconnect_reason" => error,
         );
-        Ok(task::Poll::Ready(UnAuthDone(()).into()))
+        Ok(Poll::Ready(UnAuthDone(()).into()))
     }
 }
 
@@ -609,7 +636,9 @@ fn save_and_notify_undelivered_messages(
 #[derive(StateMachineFuture)]
 pub enum AuthClientState<T>
 where
-    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
     #[state_machine_future(start, transitions(AwaitSend, DetermineAck))]
     Send {
@@ -702,9 +731,11 @@ where
 
 impl<T> PollAuthClientState<T> for AuthClientState<T>
 where
-    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
+    T: Stream<Item = ClientMessage, Error = Error>
+        + Sink<SinkItem = ServerMessage, SinkError = Error>
+        + 'static,
 {
-    fn poll_send<'a>(send: &'a mut RentToOwn<'a, Send<T>>) -> task::Poll<AfterSend<T>> {
+    fn poll_send<'a>(send: &'a mut RentToOwn<'a, Send<T>>) -> Poll<AfterSend<T>, Error> {
         trace!("State: Send");
         let sent = {
             let Send {
@@ -719,11 +750,10 @@ where
                     .start_send(item)
                     .chain_err(|| ErrorKind::SendError)?;
                 match ret {
-                    task::Poll::Ready(_) => true,
-                    task::Poll::Pending => {
-                        // XXX: This was accepting a message parameter as "returned".
-                        smessages.insert(0, item);
-                        return Ok(task::Poll::Pending);
+                    AsyncSink::Ready => true,
+                    AsyncSink::NotReady(returned) => {
+                        smessages.insert(0, returned);
+                        return Ok(Async::NotReady);
                     }
                 }
             } else {
@@ -733,16 +763,16 @@ where
 
         let Send { smessages, data } = send.take();
         if sent {
-            return Ok(task::Poll::Ready(AwaitSend { smessages, data }.into()));
+            return Ok(Poll::Ready(AwaitSend { smessages, data }.into()));
         }
-        Ok(task::Poll::Ready(DetermineAck { data }.into()));
+        Ok(Poll::Ready(DetermineAck { data }.into()));
     }
 
     fn poll_await_send<'a>(
         await_send: &'a mut RentToOwn<'a, AwaitSend<T>>,
-    ) -> task::Poll<AfterAwaitSend<T>> {
+    ) -> Poll<AfterAwaitSend<T>, Error> {
         trace!("State: AwaitSend");
-        ready!(await_send.data.ws.poll_complete())?;
+        try_ready!(await_send.data.ws.poll_complete());
 
         let AwaitSend { smessages, data } = await_send.take();
         let webpush_rc = data.webpush.clone();
@@ -752,24 +782,24 @@ where
             // re-register
             debug!("Dropping user: exceeded msg_limit");
             let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
-            return Ok(task::Poll::Ready(AwaitDropUser { response, data }.into()));
+            return Ok(Poll::Ready(AwaitDropUser { response, data }.into()));
         } else if !smessages.is_empty() {
-            return Ok(task::Poll::Ready(Send { smessages, data }.into()));
+            return Ok(Poll::Ready(Send { smessages, data }.into()));
         }
-        Ok(task::Poll::Ready(DetermineAck { data }.into()))
+        Ok(Poll::Ready(DetermineAck { data }.into()))
     }
 
     fn poll_determine_ack<'a>(
         detack: &'a mut RentToOwn<'a, DetermineAck<T>>,
-    ) -> task::Poll<AfterDetermineAck<T>> {
+    ) -> Poll<AfterDetermineAck<T>, Error> {
         let DetermineAck { data } = detack.take();
         let webpush_rc = data.webpush.clone();
         let webpush = webpush_rc.borrow();
         let all_acked = !webpush.unacked_messages();
         if all_acked && webpush.flags.check && webpush.flags.increment_storage {
-            return Ok(task::Poll::Ready(IncrementStorage { data }.into()));
+            return Ok(Poll::Ready(IncrementStorage { data }.into()));
         } else if all_acked && webpush.flags.check {
-            return Ok(task::Poll::Ready(CheckStorage { data }.into()));
+            return Ok(Poll::Ready(CheckStorage { data }.into()));
         } else if all_acked && webpush.flags.rotate_message_table {
             debug!("Triggering migration");
             let response = Box::new(
@@ -777,22 +807,20 @@ where
                     .ddb
                     .migrate_user(&webpush.uaid, &webpush.message_month),
             );
-            return Ok(task::Poll::Ready(
-                AwaitMigrateUser { response, data }.into(),
-            ));
+            return Ok(Poll::Ready(AwaitMigrateUser { response, data }.into()));
         } else if all_acked && webpush.flags.reset_uaid {
             debug!("Dropping user: flagged reset_uaid");
             let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
-            return Ok(task::Poll::Ready(AwaitDropUser { response, data }.into()));
+            return Ok(Poll::Ready(AwaitDropUser { response, data }.into()));
         }
-        Ok(task::Poll::Ready(AwaitInput { data }.into()))
+        Ok(Poll::Ready(AwaitInput { data }.into()))
     }
 
     fn poll_await_input<'a>(
         r#await: &'a mut RentToOwn<'a, AwaitInput<T>>,
-    ) -> task::Poll<AfterAwaitInput<T>> {
+    ) -> Poll<AfterAwaitInput<T>, Error> {
         trace!("State: AwaitInput");
-        let input = ready!(r#await.data.input_or_notif())?;
+        let input = try_ready!(r#await.data.input_or_notif());
         let AwaitInput { data } = r#await.take();
         let webpush_rc = data.webpush.clone();
         let mut webpush = webpush_rc.borrow_mut();
@@ -812,7 +840,7 @@ where
                 };
 
                 if let Some(response) = broadcast_delta {
-                    return Ok(task::Poll::Ready(
+                    return Ok(Poll::Ready(
                         Send {
                             smessages: vec![ServerMessage::Broadcast {
                                 broadcasts: response,
@@ -822,7 +850,7 @@ where
                         .into(),
                     ));
                 } else {
-                    return Ok(task::Poll::Ready(AwaitInput { data }.into()));
+                    return Ok(Poll::Ready(AwaitInput { data }.into()));
                 }
             }
             Either::A(ClientMessage::Register {
@@ -857,7 +885,7 @@ where
                         status: 400,
                     })),
                 };
-                return Ok(task::Poll::Ready(
+                return Ok(Poll::Ready(
                     AwaitRegister {
                         channel_id,
                         response: fut,
@@ -874,7 +902,7 @@ where
                 let message_month = webpush.message_month.clone();
                 let response =
                     Box::new(data.srv.ddb.unregister(&uaid, &channel_id, &message_month));
-                Ok(task::Poll::Ready(
+                Ok(Poll::Ready(
                     AwaitUnregister {
                         channel_id,
                         code: code.unwrap_or(200),
@@ -901,7 +929,7 @@ where
                     .with_tag("code", &mcode.to_string())
                     .send();
                 webpush.stats.nacks += 1;
-                Ok(task::Poll::Ready(AwaitInput { data }.into()))
+                Ok(Poll::Ready(AwaitInput { data }.into()))
             }
             Either::A(ClientMessage::Ack { updates }) => {
                 data.srv.metrics.incr("ua.command.ack").ok();
@@ -940,7 +968,7 @@ where
                     };
                 }
                 if let Some(my_fut) = fut {
-                    return Ok(task::Poll::Ready(
+                    return Ok(Poll::Ready(
                         AwaitDelete {
                             response: my_fut,
                             data,
@@ -948,7 +976,7 @@ where
                         .into(),
                     ));
                 } else {
-                    return Ok(task::Poll::Ready(DetermineAck { data }.into()));
+                    return Ok(Poll::Ready(DetermineAck { data }.into()));
                 }
             }
             Either::A(ClientMessage::Ping) => {
@@ -957,7 +985,7 @@ where
                 if sec_since_epoch() - webpush.last_ping >= 45 {
                     debug!("Got a ping, sending pong");
                     webpush.last_ping = sec_since_epoch();
-                    return Ok(task::Poll::Ready(
+                    return Ok(Poll::Ready(
                         Send {
                             smessages: vec![ServerMessage::Ping],
                             data,
@@ -975,7 +1003,7 @@ where
                 }
                 debug!("Got a notification to send, sending!");
                 emit_metrics_for_send(&data.srv.metrics, &notif, "Direct");
-                Ok(task::Poll::Ready(
+                Ok(Poll::Ready(
                     Send {
                         smessages: vec![ServerMessage::Notification(notif)],
                         data,
@@ -986,7 +1014,7 @@ where
             Either::B(ServerNotification::CheckStorage) => {
                 webpush.flags.include_topic = true;
                 webpush.flags.check = true;
-                Ok(task::Poll::Ready(DetermineAck { data }.into()))
+                Ok(Poll::Ready(DetermineAck { data }.into()))
             }
             Either::B(ServerNotification::Disconnect) => {
                 debug!("Got told to disconnect, connecting client has our uaid");
@@ -997,7 +1025,7 @@ where
 
     fn poll_increment_storage<'a>(
         increment_storage: &'a mut RentToOwn<'a, IncrementStorage<T>>,
-    ) -> task::Poll<AfterIncrementStorage<T>> {
+    ) -> Poll<AfterIncrementStorage<T>, Error> {
         trace!("State: IncrementStorage");
         let webpush_rc = increment_storage.data.webpush.clone();
         let webpush = webpush_rc.borrow();
@@ -1010,7 +1038,7 @@ where
             &webpush.uaid,
             &timestamp,
         ));
-        Ok(task::Poll::Ready(
+        Ok(Poll::Ready(
             AwaitIncrementStorage {
                 response,
                 data: increment_storage.take().data,
@@ -1021,18 +1049,18 @@ where
 
     fn poll_await_increment_storage<'a>(
         await_increment_storage: &'a mut RentToOwn<'a, AwaitIncrementStorage<T>>,
-    ) -> task::Poll<AfterAwaitIncrementStorage<T>> {
+    ) -> Poll<AfterAwaitIncrementStorage<T>, Error> {
         trace!("State: AwaitIncrementStorage");
-        ready!(await_increment_storage.response.poll())?;
+        try_ready!(await_increment_storage.response.poll());
         let AwaitIncrementStorage { data, .. } = await_increment_storage.take();
         let webpush = data.webpush.clone();
         webpush.borrow_mut().flags.increment_storage = false;
-        Ok(task::Poll::Ready(DetermineAck { data }.into()))
+        Ok(Poll::Ready(DetermineAck { data }.into()))
     }
 
     fn poll_check_storage<'a>(
         check_storage: &'a mut RentToOwn<'a, CheckStorage<T>>,
-    ) -> task::Poll<AfterCheckStorage<T>> {
+    ) -> Poll<AfterCheckStorage<T>, Error> {
         trace!("State: CheckStorage");
         let CheckStorage { data } = check_storage.take();
         let response = Box::new({
@@ -1044,17 +1072,15 @@ where
                 webpush.unacked_stored_highest,
             )
         });
-        Ok(task::Poll::Ready(
-            AwaitCheckStorage { response, data }.into(),
-        ))
+        Ok(Poll::Ready(AwaitCheckStorage { response, data }.into()))
     }
 
     fn poll_await_check_storage<'a>(
         await_check_storage: &'a mut RentToOwn<'a, AwaitCheckStorage<T>>,
-    ) -> task::Poll<AfterAwaitCheckStorage<T>> {
+    ) -> Poll<AfterAwaitCheckStorage<T>, Error> {
         trace!("State: AwaitCheckStorage");
         let (include_topic, mut messages, timestamp) =
-            match ready!(await_check_storage.response.poll())? {
+            match try_ready!(await_check_storage.response.poll()) {
                 CheckStorageResponse {
                     include_topic,
                     messages,
@@ -1072,7 +1098,7 @@ where
         if messages.is_empty() {
             webpush.flags.check = false;
             webpush.sent_from_storage = 0;
-            return Ok(task::Poll::Ready(DetermineAck { data }.into()));
+            return Ok(Poll::Ready(DetermineAck { data }.into()));
         }
 
         // Filter out TTL expired messages
@@ -1109,40 +1135,40 @@ where
                 .map(ServerMessage::Notification)
                 .collect();
             webpush.sent_from_storage += smessages.len() as u32;
-            return Ok(task::Poll::Ready(Send { smessages, data }.into()));
+            return Ok(Poll::Ready(Send { smessages, data }.into()));
         } else {
             // No messages remaining
-            return Ok(task::Poll::Ready(DetermineAck { data }.into()));
+            return Ok(Poll::Ready(DetermineAck { data }.into()));
         }
     }
 
     fn poll_await_migrate_user<'a>(
         await_migrate_user: &'a mut RentToOwn<'a, AwaitMigrateUser<T>>,
-    ) -> task::Poll<AfterAwaitMigrateUser<T>> {
+    ) -> Poll<AfterAwaitMigrateUser<T>, Error> {
         trace!("State: AwaitMigrateUser");
-        ready!(await_migrate_user.response.poll())?;
+        try_ready!(await_migrate_user.response.poll());
         let AwaitMigrateUser { data, .. } = await_migrate_user.take();
         {
             let mut webpush = data.webpush.borrow_mut();
             webpush.message_month = data.srv.ddb.current_message_month.clone();
             webpush.flags.rotate_message_table = false;
         }
-        Ok(task::Poll::Ready(DetermineAck { data }.into()))
+        Ok(Poll::Ready(DetermineAck { data }.into()))
     }
 
     fn poll_await_drop_user<'a>(
         await_drop_user: &'a mut RentToOwn<'a, AwaitDropUser<T>>,
-    ) -> task::Poll<AfterAwaitDropUser> {
+    ) -> Poll<AfterAwaitDropUser, Error> {
         trace!("State: AwaitDropUser");
-        ready!(await_drop_user.response.poll())?;
-        Ok(task::Poll::Ready(AuthDone(()).into()))
+        try_ready!(await_drop_user.response.poll())?;
+        Ok(Poll::Ready(AuthDone(()).into()))
     }
 
     fn poll_await_register<'a>(
         await_register: &'a mut RentToOwn<'a, AwaitRegister<T>>,
-    ) -> task::Poll<AfterAwaitRegister<T>> {
+    ) -> Poll<AfterAwaitRegister<T>, Error> {
         trace!("State: AwaitRegister");
-        let msg = match ready!(await_register.response.poll())? {
+        let msg = match try_ready!(await_register.response.poll())? {
             RegisterResponse::Success { endpoint } => {
                 let mut webpush = await_register.data.webpush.borrow_mut();
                 await_register
@@ -1168,7 +1194,7 @@ where
             }
         };
 
-        Ok(task::Poll::Ready(
+        Ok(Poll::Ready(
             Send {
                 smessages: vec![msg],
                 data: await_register.take().data,
@@ -1179,9 +1205,9 @@ where
 
     fn poll_await_unregister<'a>(
         await_unregister: &'a mut RentToOwn<'a, AwaitUnregister<T>>,
-    ) -> task::Poll<AfterAwaitUnregister<T>> {
+    ) -> Poll<AfterAwaitUnregister<T>, Error> {
         trace!("State: AwaitUnRegister");
-        let msg = if ready!(await_unregister.response.poll())? {
+        let msg = if try_ready!(await_unregister.response.poll()) {
             debug!("Got the unregister response");
             let mut webpush = await_unregister.data.webpush.borrow_mut();
             webpush.stats.unregisters += 1;
@@ -1203,7 +1229,7 @@ where
             .incr_with_tags("ua.command.unregister")
             .with_tag("code", &code.to_string())
             .send();
-        Ok(task::Poll::Ready(
+        Ok(Poll::Ready(
             Send {
                 smessages: vec![msg],
                 data,
@@ -1214,10 +1240,10 @@ where
 
     fn poll_await_delete<'a>(
         await_delete: &'a mut RentToOwn<'a, AwaitDelete<T>>,
-    ) -> task::Poll<AfterAwaitDelete<T>> {
+    ) -> Poll<AfterAwaitDelete<T>, Error> {
         trace!("State: AwaitDelete");
-        ready!(await_delete.response.poll())?;
-        Ok(task::Poll::Ready(
+        try_ready!(await_delete.response.poll())?;
+        Ok(Poll::Ready(
             DetermineAck {
                 data: await_delete.take().data,
             }

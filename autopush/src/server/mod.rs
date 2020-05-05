@@ -14,12 +14,7 @@ use base64;
 use cadence::StatsdClient;
 use chrono::Utc;
 use fernet::{Fernet, MultiFernet};
-use futures::{
-    channel::oneshot,
-    ready,
-    task::{self, Poll},
-    Future, Sink, Stream,
-};
+use futures::{channel::oneshot, ready, task::Poll, Future, Sink, Stream};
 use hex;
 use hyper::{server::conn::Http, StatusCode};
 use openssl::hash;
@@ -27,7 +22,11 @@ use openssl::ssl::SslAcceptor;
 use reqwest;
 use sentry::{self, capture_message, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
-use tokio::{net::TcpListener, runtime::{Handle, Runtime}, time::{Delay, delay_until, timeout}};
+use tokio::{
+    net::TcpListener,
+    runtime::{Handle, Runtime},
+    time::{delay_until, timeout, Delay},
+};
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};

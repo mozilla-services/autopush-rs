@@ -7,6 +7,7 @@
 //!     PUT /push/UAID      - Deliver notification to a client
 //!     PUT /notify/UAID    - Tell a client to check storage
 
+use std::pin::Pin;
 use std::{str, sync::Arc};
 
 use futures::future::ok;
@@ -22,7 +23,7 @@ pub struct Push(pub Arc<ClientRegistry>);
 impl Service<http::Request<Body>> for Push {
     type Response = Body;
     type Error = hyper::Error;
-    type Future = Box<dyn Future<Output = Result<hyper::Response<Body>, hyper::Error>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Body, hyper::Error>>>>;
 
     fn call(&mut self, req: hyper::Request<Body>) -> Self::Future {
         let mut response = hyper::Response::builder();
