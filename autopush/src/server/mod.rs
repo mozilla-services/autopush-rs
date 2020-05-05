@@ -27,7 +27,7 @@ use openssl::ssl::SslAcceptor;
 use reqwest;
 use sentry::{self, capture_message, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
-use tokio::{net::TcpListener, runtime::{Handle, Runtime}, time::Timeout};
+use tokio::{net::TcpListener, runtime::{Handle, Runtime}, time::{Delay, delay_until, timeout}};
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
@@ -342,7 +342,7 @@ impl Server {
 
                 // Time out both the TLS accept (if any) along with the dispatch
                 // to figure out where we're going.
-                let request = timeout(request, srv.opts.open_handshake_timeout, &handle);
+                let request = timeout(srv.opts.open_handshake_timeout, request);
                 let srv2 = srv.clone();
                 let handle2 = handle.clone();
 
@@ -375,7 +375,7 @@ impl Server {
                             // connection, but don't let it take too long.
                             let ws = accept_hdr_async(socket, callback)
                                 .chain_err(|| "failed to accept client");
-                            let ws = timeout(ws, srv2.opts.open_handshake_timeout, &handle2);
+                            let ws = timeout(srv2.opts.open_handshake_timeout, ws);
 
                             // Once the handshake is done we'll start the main
                             // communication with the client, managing pings
@@ -528,7 +528,7 @@ struct MegaphoneUpdater {
     api_url: String,
     api_token: String,
     state: MegaphoneState,
-    timeout: Timeout,
+    timeout: Delay,
     poll_interval: Duration,
     client: reqwest::Client,
 }
@@ -549,7 +549,7 @@ impl MegaphoneUpdater {
             api_url: uri.to_string(),
             api_token: token.to_string(),
             state: MegaphoneState::Waiting,
-            timeout: Timeout::new(poll_interval, &srv.handle)?,
+            timeout: delay_until(poll_interval),
             poll_interval,
             client,
         })
@@ -614,7 +614,7 @@ enum CloseState<T> {
 
 struct PingManager {
     socket: RcObject<WebpushSocket<WebSocketStream<WebpushIo>>>,
-    timeout: Timeout,
+    timeout: Delay,
     waiting: WaitingFor,
     srv: Rc<Server>,
     client: CloseState<Client<RcObject<WebpushSocket<WebSocketStream<WebpushIo>>>>>,
@@ -642,7 +642,7 @@ impl PingManager {
         // management and message shuffling.
         let socket = RcObject::new(WebpushSocket::new(socket));
         Ok(PingManager {
-            timeout: Timeout::new(srv.opts.auto_ping_interval, &srv.handle)?,
+            timeout: delay_until(srv.opts.auto_ping_interval),
             waiting: WaitingFor::SendPing,
             socket: socket.clone(),
             client: CloseState::Exchange(Client::new(socket, srv, uarx)),
