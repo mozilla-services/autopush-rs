@@ -23,11 +23,8 @@ use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
-// use std::task::Poll;
 use std::time::Duration;
-
-//use tokio::time::Timeout;
-use tokio_core::reactor::Timeout;
+use tokio::time::{Delay, delay_until, timeout};
 use uuid::Uuid;
 
 use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse};
@@ -77,7 +74,7 @@ where
     /// call back into Python.
     pub fn new(ws: T, srv: &Rc<Server>, mut uarx: Receiver<String>) -> Client<T> {
         let srv = srv.clone();
-        let timeout = Timeout::new(srv.opts.open_handshake_timeout.unwrap(), &srv.handle).unwrap();
+        let timeout = timeout(srv.opts.open_handshake_timeout.unwrap(), &srv.handle).unwrap();
         let (tx, rx) = mpsc::unbounded();
 
         // Pull out the user-agent, which we should have by now
@@ -239,7 +236,7 @@ where
         + Sink<SinkItem = ServerMessage, SinkError = Error>
         + 'static,
 {
-    fn input_with_timeout(&mut self, timeout: &mut Timeout) -> Poll<ClientMessage, Error> {
+    fn input_with_timeout(&mut self, timeout: &mut Delay) -> Poll<ClientMessage, Error> {
         let item = match timeout.poll()? {
             Async::Ready(_) => return Err("Client timed out".into()),
             Async::NotReady => match self.ws.poll()? {
@@ -293,7 +290,7 @@ where
     #[state_machine_future(start, transitions(AwaitProcessHello))]
     AwaitHello {
         data: UnAuthClientData<T>,
-        timeout: Timeout,
+        timeout: Delay,
         tx: mpsc::UnboundedSender<ServerNotification>,
         rx: mpsc::UnboundedReceiver<ServerNotification>,
     },
