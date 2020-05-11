@@ -1,7 +1,11 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
+use std::pin::Pin;
 
-use futures01::{Poll, Sink, StartSend, Stream};
+use futures::task::{Context, Poll};
+use futures::sink::Sink;
+use futures::stream::Stream;
+use crate::server::protocol::{ServerMessage};
 
 /// Helper object to turn `Rc<RefCell<T>>` into a `Stream` and `Sink`
 ///
@@ -22,28 +26,38 @@ impl<T> RcObject<T> {
 
 impl<T: Stream> Stream for RcObject<T> {
     type Item = T::Item;
-    type Error = T::Error;
 
-    fn poll(&mut self) -> Poll<Option<T::Item>, T::Error> {
-        self.0.borrow_mut().poll()
+    fn poll_next(&mut self) -> Poll<Option<T::Item>> {
+        self.0.borrow_mut().poll_next()
     }
 }
 
+impl<T: Sink<ServerMessage>> Sink<ServerMessage> for RcObject<T> {
+    type Error = T::Error;
 
-impl<T: Sink> Sink for RcObject<T> {
-    type SinkItem = T::SinkItem;
-    type SinkError = T::SinkError;
+    fn poll_ready(
+        self: Pin<&mut Self>,
+        cx: &mut Context
+    ) -> Poll<Result<(), Self::Error>> {
+        self.0.borrow_mut().poll_ready(cx)
+    }
 
-    fn start_send(&mut self, msg: T::SinkItem) -> StartSend<T::SinkItem, T::SinkError> {
+    fn start_send(self: Pin<&mut Self>, msg: ServerMessage) -> Result<(), Self::Error> {
         self.0.borrow_mut().start_send(msg)
     }
 
-    fn poll_complete(&mut self) -> Poll<(), T::SinkError> {
-        self.0.borrow_mut().poll_complete()
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut Context
+    ) -> Poll<Result<(), Self::Error>> {
+        self.0.borrow_mut().poll_flush(cx)
     }
 
-    fn close(&mut self) -> Poll<(), T::SinkError> {
-        self.0.borrow_mut().close()
+    fn poll_close(
+        self: Pin<&mut Self>,
+        cx: &mut Context
+    ) -> Poll<Result<(), Self::Error>> {
+        self.0.borrow_mut().poll_close(cx)
     }
 }
 

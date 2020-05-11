@@ -5,6 +5,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::panic;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
@@ -14,20 +15,8 @@ use base64;
 use cadence::StatsdClient;
 use chrono::Utc;
 use fernet::{Fernet, MultiFernet};
-// use futures::{channel::oneshot, ready, task::Poll, Future}; // futures 0.3
-use futures01::{
-    // futures 0.1
-    sync::oneshot,
-    task,
-    try_ready,
-    Async,
-    AsyncSink,
-    Future,
-    Poll,
-    Sink,
-    StartSend,
-    Stream,
-};
+use futures::{channel::oneshot, compat::{ CompatSink }, ready, task::{Context, Poll}, Future, sink::Sink, stream::Stream}; // futures 0.3
+
 use hex;
 use hyper::{server::conn::Http, StatusCode};
 use openssl::hash;
@@ -570,11 +559,11 @@ impl MegaphoneUpdater {
 }
 
 impl Future for MegaphoneUpdater {
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<Result<()>> {
         loop {
             let new_state = match self.state {
                 MegaphoneState::Waiting => {
-                    try_ready!(self.timeout.poll())?;
+                    ready!(self.timeout.poll())?;
                     debug!("Sending megaphone API request");
                     let fut = self
                         .client
@@ -589,14 +578,14 @@ impl Future for MegaphoneUpdater {
                 MegaphoneState::Requesting(ref mut response) => {
                     let at = Instant::now() + self.poll_interval;
                     match response.poll() {
-                        Ok(Async::Ready(MegaphoneAPIResponse { broadcasts })) => {
+                        Ok(Poll::Ready(MegaphoneAPIResponse { broadcasts })) => {
                             debug!("Fetched broadcasts: {:?}", broadcasts);
                             let mut broadcaster = self.srv.broadcaster.borrow_mut();
                             for srv in Broadcast::from_hashmap(broadcasts) {
                                 broadcaster.add_broadcast(srv);
                             }
                         }
-                        Ok(Async::NotReady) => return Ok(Async::NotReady),
+                        Ok(Poll::Pending) => return Ok(Poll::Pending),
                         Err(error) => {
                             error!("Failed to get response, queue again {:?}", error);
                             capture_message(
@@ -665,7 +654,7 @@ impl PingManager {
 }
 
 impl Future for PingManager {
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<Result<()>> {
         let mut socket = self.socket.borrow_mut();
         loop {
             if socket.ws_ping {
@@ -701,11 +690,11 @@ impl Future for PingManager {
                     debug_assert!(!socket.ws_pong_timeout);
                     debug_assert!(!socket.ws_pong_received);
                     match self.timeout.poll()? {
-                        Async::Ready(()) => {
+                        Poll::Ready(()) => {
                             debug!("scheduling a ws ping to get sent");
                             socket.ws_ping = true;
                         }
-                        Async::NotReady => break,
+                        Poll::Pending => break,
                     }
                 }
                 WaitingFor::Pong => {
@@ -761,7 +750,7 @@ impl Future for PingManager {
         // closing handshake.
         loop {
             match self.client {
-                CloseState::Exchange(ref mut client) => try_ready!(client.poll())?,
+                CloseState::Exchange(ref mut client) => ready!(client.poll())?,
                 CloseState::Closing => return Ok(self.socket.borrow_mut().close()?),
             }
 
@@ -796,10 +785,10 @@ impl<T> WebpushSocket<T> {
         }
     }
 
-    fn send_ws_ping(&mut self) -> Poll<(), Error>
+    fn send_ws_ping(&mut self) -> Poll<()>
     where
-        T: Sink<SinkItem = Message>,
-        Error: From<T::SinkError>,
+        T: Sink<Message>,
+        Error: From<T::Error>,
     {
         if self.ws_ping {
             let msg = if let Some(broadcasts) = self.broadcast_delta.clone() {
@@ -814,41 +803,40 @@ impl<T> WebpushSocket<T> {
                 Message::Ping(Vec::new())
             };
             match self.inner.start_send(msg)? {
-                AsyncSink::Ready => {
+                Poll::Ready(_) => {
                     debug!("ws ping sent");
                     self.ws_ping = false;
                 }
-                AsyncSink::NotReady(_) => {
+                Poll::Pending => {
                     debug!("ws ping not ready to be sent");
-                    return Ok(Async::NotReady);
+                    return Poll::Pending;
                 }
             }
         }
-        Ok(Async::Ready(()))
+        Poll::Ready(())
     }
 }
 
 impl<T> Stream for WebpushSocket<T>
-where
-    T: Stream<Item = Message>,
-    Error: From<T::Error>,
+//where
+//    T: Stream<Item = Message>,
+    //Error: From<T::Error>,
 {
-    type Item = ClientMessage;
-    type Error = Error;
+    type Item = Result<ClientMessage>;
 
-    fn poll(&mut self) -> Poll<Option<ClientMessage>, Error> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         loop {
             let msg = match self.inner.poll()? {
-                Async::Ready(Some(msg)) => msg,
-                Async::Ready(None) => return Ok(None.into()),
-                Async::NotReady => {
+                Poll::Ready(Some(msg)) => Poll::Ready(Some(Ok(msg))),
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => {
                     // If we don't have any more messages and our pong timeout
                     // elapsed (set above) then this is where we start
                     // triggering errors.
                     if self.ws_pong_timeout {
-                        return Err(ErrorKind::PongTimeout.into());
+                        return Poll::Ready(Some(Err(ErrorKind::PongTimeout.into())));
                     }
-                    return Ok(Async::NotReady);
+                    return Poll::Pending;
                 }
             };
             match msg {
@@ -857,13 +845,13 @@ where
                     let msg = s
                         .parse()
                         .chain_err(|| ErrorKind::InvalidClientMessage(s.to_owned()))?;
-                    return Ok(Some(msg).into());
+                    return Poll::Ready(Some(Ok(Some(msg).into())));
                 }
 
                 Message::Binary(_) => {
-                    return Err(
+                    return Poll::Ready(Some(Err(
                         ErrorKind::InvalidClientMessage("binary content".to_string()).into(),
-                    );
+                    )));
                 }
 
                 // sending a pong is already managed by lower layers, just go to
@@ -883,30 +871,41 @@ where
     }
 }
 
-impl<T> Sink for WebpushSocket<T>
-where
-    T: Sink<SinkItem = Message>,
-    Error: From<T::SinkError>,
+impl<T> Sink<ServerMessage> for WebpushSocket<T>
 {
-    fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, Error> {
+    fn poll_ready(self: Pin<&mut Self>,
+        cx: &mut Context
+    ) -> Poll<Result<()>> {
         if self.send_ws_ping()?.is_not_ready() {
-            return Ok(Async::NotReady(msg));
+            Poll::Pending
+        } else {
+            Poll::Ready(())
         }
+    }
+
+    fn start_send(self: Pin<&mut Self>, msg: ServerMessage) -> Result<()> {
         let s = msg.to_json().chain_err(|| "failed to serialize")?;
-        match self.inner.start_send(Message::Text(s))? {
-            AsyncSink::Ready => Ok(AsyncSink::Ready),
-            AsyncSink::NotReady(_) => Ok(AsyncSink::NotReady(msg)),
+        self.inner.start_send(Message::Text(s))
+    }
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        cx: &mut Context
+    ) -> Poll<Result<()>> {
+        if let Err(e) = ready!(self.send_ws_ping()) {
+            Poll::Ready(e)
+        } else if let Err(e) = self.inner.poll_close(cx) {
+            Poll::Ready(e)
+        } else {
+            Poll::Ready(())
         }
     }
 
-    fn poll_complete(&mut self) -> Poll<(), Error> {
-        try_ready!(self.send_ws_ping())?;
-        Ok(self.inner.poll_complete()?)
-    }
-
-    fn close(&mut self) -> Poll<(), Error> {
-        try_ready!(self.poll_complete())?;
-        Ok(self.inner.close()?)
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut Context
+    ) -> Poll<Result<()>> {
+        self.inner.poll_flush(cx)
     }
 }
 

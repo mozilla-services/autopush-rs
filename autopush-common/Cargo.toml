@@ -44,5 +44,5 @@ slog-scope = "4.3.0"
 slog-stdlog = "4.0.0"
 tokio = "0.2"
 # XXX: pin to < 0.10 until hyper 0.13
-tungstenite = { version = "0.9.2", default-features = false }
+tungstenite = { version = "0.10", default-features = false }
 uuid = { version = "0.8.1", features = ["serde", "v4"] }

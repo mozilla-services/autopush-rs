@@ -6,11 +6,12 @@
 //! data we already read as there's no ability to pass this in currently. That
 //! means we'll parse headers twice, but alas!
 
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Write, Error};
 
 use bytes::BytesMut;
 use futures::task::Poll;
-use tokio::io::{AsyncRead, AsyncWrite};
+use futures::stream::Stream;
+use futures::sink::Sink;
 use tokio::net::TcpStream;
 
 use crate::server::tls::MaybeTlsStream;
@@ -56,14 +57,3 @@ impl Write for WebpushIo {
         self.tcp.flush()
     }
 }
-
-impl AsyncRead for WebpushIo {}
-
-/* XXX
-impl AsyncWrite for WebpushIo {
-    fn shutdown(&mut self) -> Poll<(), io::Error> {
-        AsyncWrite::shutdown(&mut self.tcp)
-    }
-}
-
-*/
