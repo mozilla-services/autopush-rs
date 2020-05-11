@@ -22,12 +22,16 @@
 //! many other options for now!
 
 use bytes::BytesMut;
-use futures::{ready, task::Poll, Future};
+use futures::{task::{Context, Poll}, Future};
 use httparse;
+use std::pin::Pin;
 use tokio::net::TcpStream;
+use tokio::io::AsyncReadExt;
 
 use crate::server::tls::MaybeTlsStream;
 use crate::server::webpush_io::WebpushIo;
+
+use autopush_common::errors::Result;
 
 pub struct Dispatch {
     socket: Option<MaybeTlsStream<TcpStream>>,
@@ -52,14 +56,17 @@ impl Dispatch {
 }
 
 impl Future for Dispatch {
-    fn poll(&mut self) -> Poll<(WebpushIo, RequestType)> {
+    type Output = Result<(WebpushIo, RequestType)>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//    fn poll(&mut self) -> Poll<(WebpushIo, RequestType)> {
         loop {
             if self.data.len() == self.data.capacity() {
                 self.data.reserve(16); // get some extra space
             }
-            if ready!(self.socket.as_mut().unwrap().read_buf(&mut self.data))? == 0 {
-                return Err("early eof".into());
-            }
+            //if let Poll::Pending = self.socket.as_mut().unwrap().read_buf(&mut self.data).poll(cx) {
+            //    return Poll::Ready(Err("early eof".into()).into());
+            //}
             let ty = {
                 let mut headers = [httparse::EMPTY_HEADER; 32];
                 let mut req = httparse::Request::new(&mut headers);
@@ -82,14 +89,14 @@ impl Future for Dispatch {
                         Some(ref path) if path.starts_with("/v1/err/crit") => RequestType::LogCheck,
                         _ => {
                             debug!("unknown http request {:?}", req);
-                            return Err("unknown http request".into());
+                            return Poll::Ready(Err("unknown http request".into()));
                         }
                     }
                 }
             };
 
             let tcp = self.socket.take().unwrap();
-            return Ok((WebpushIo::new(tcp, self.data.take()), ty).into());
+            return Poll::Ready(Ok((WebpushIo::new(tcp, String::from_utf8(self.data.take(u64::MAX).into_inner().into()).unwrap()), ty).into()));
         }
     }
 }

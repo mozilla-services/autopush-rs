@@ -51,7 +51,7 @@ slog-mozlog-json = "0.1.0"
 slog-scope = "4.3.0"
 #state_machine_future = { git = "https://github.com/fitzgen/state_machine_future.git", rev = "6bceb8c", features = ["debug_code_generation"] }
 state_machine_future = { git = "https://github.com/fitzgen/state_machine_future.git", rev = "6bceb8c", features = ["debug_code_generation"] }
-tokio = "0.2"
+tokio = { version = "0.2", features = ["io-util"] }
 tokio-openssl = "0.4.0"
 tower-service = "0.3.0"
 tokio-tungstenite = { version = "0.10", default-features = false }

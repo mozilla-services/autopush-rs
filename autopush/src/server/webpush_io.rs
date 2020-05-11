@@ -18,11 +18,11 @@ use crate::server::tls::MaybeTlsStream;
 
 pub struct WebpushIo {
     tcp: MaybeTlsStream<TcpStream>,
-    header_to_read: Option<BytesMut>,
+    header_to_read: Option<String>,
 }
 
 impl WebpushIo {
-    pub fn new(tcp: MaybeTlsStream<TcpStream>, header: BytesMut) -> Self {
+    pub fn new(tcp: MaybeTlsStream<TcpStream>, header: String) -> Self {
         Self {
             tcp: tcp,
             header_to_read: Some(header),
