@@ -12,7 +12,6 @@ use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemInput, DeleteItemInput, DynamoDb, DynamoDbClient, PutRequest,
     UpdateItemInput, UpdateItemOutput, WriteRequest,
 };
-use serde_dynamodb;
 
 #[macro_use]
 mod macros;

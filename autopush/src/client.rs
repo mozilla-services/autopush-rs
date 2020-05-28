@@ -422,29 +422,32 @@ where
             },
             ..Default::default()
         }));
-        srv.clients.connect(RegisteredClient { uaid, uid, tx })?;
-
-        let response = ServerMessage::Hello {
-            uaid: uaid.to_simple().to_string(),
-            status: 200,
-            use_webpush: Some(true),
-            broadcasts,
-        };
-        let auth_state_machine = AuthClientState::start(
-            vec![response],
-            AuthClientData {
-                srv: srv.clone(),
-                ws,
-                webpush: webpush.clone(),
-                broadcast_subs: broadcast_subs.clone(),
-            },
-        );
-        transition!(AwaitSessionComplete {
-            auth_state_machine,
-            srv,
-            user_agent,
-            webpush,
-        })
+        srv.clients
+            .connect(RegisteredClient { uaid, uid, tx })
+            .and_then(|_| {
+                let response = ServerMessage::Hello {
+                    uaid: uaid.to_simple().to_string(),
+                    status: 200,
+                    use_webpush: Some(true),
+                    broadcasts,
+                };
+                let auth_state_machine = AuthClientState::start(
+                    vec![response],
+                    AuthClientData {
+                        srv: srv.clone(),
+                        ws,
+                        webpush: webpush.clone(),
+                        broadcast_subs: broadcast_subs.clone(),
+                    },
+                );
+                transition!(AwaitSessionComplete {
+                    auth_state_machine,
+                    srv,
+                    user_agent,
+                    webpush,
+                })
+            })
+            .wait()
     }
 
     fn poll_await_session_complete<'a>(

@@ -15,7 +15,6 @@ use rusoto_dynamodb::{
     PutItemError, PutItemInput, PutItemOutput, QueryError, QueryInput, UpdateItemError,
     UpdateItemInput, UpdateItemOutput,
 };
-use serde_dynamodb;
 
 use super::models::{DynamoDbNotification, DynamoDbUser};
 use super::util::generate_last_connect;

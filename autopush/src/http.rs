@@ -50,7 +50,7 @@ impl Service for Push {
                 return Box::new(body.and_then(move |body| {
                     let s = String::from_utf8(body.to_vec()).unwrap();
                     if let Ok(msg) = serde_json::from_str(&s) {
-                        if clients.notify(uaid, msg).is_ok() {
+                        if clients.notify(uaid, msg).wait().is_ok() {
                             Ok(hyper::Response::builder()
                                 .status(StatusCode::OK)
                                 .body(Body::empty())
@@ -70,7 +70,7 @@ impl Service for Push {
                 }));
             }
             (&Method::PUT, "notif", uaid) => {
-                if clients.check_storage(uaid).is_ok() {
+                if clients.check_storage(uaid).wait().is_ok() {
                     response.status(StatusCode::OK);
                 } else {
                     response.status(StatusCode::BAD_GATEWAY);
