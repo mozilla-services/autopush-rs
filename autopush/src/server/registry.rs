@@ -45,13 +45,12 @@ impl ClientRegistry {
 
     /// A notification has come for the uaid
     pub fn notify(&self, uaid: Uuid, notif: Notification) -> MyFuture<()> {
-        let uaidc = uaid.clone();
         let fut = self
             .clients
             .read()
             .and_then(move |clients| {
                 debug!("Sending notification");
-                if let Some(client) = clients.get(&uaidc) {
+                if let Some(client) = clients.get(&uaid) {
                     debug!("Found a client to deliver a notification to");
                     let result = client
                         .tx
@@ -87,6 +86,7 @@ impl ClientRegistry {
     }
 
     /// The client specified by `uaid` has disconnected.
+    #[allow(clippy::clone_on_copy)]
     pub fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> MyFuture<()> {
         debug!("Disconnecting client!");
         let uaidc = uaid.clone();

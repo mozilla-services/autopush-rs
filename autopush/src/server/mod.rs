@@ -470,12 +470,12 @@ impl Server {
         debug!("Initialized broadcasts");
         let bc = self.broadcaster.borrow();
         let BroadcastSubsInit(broadcast_subs, broadcasts) = bc.broadcast_delta(desired_broadcasts);
-        let mut response = Broadcast::into_hashmap(broadcasts);
+        let mut response = Broadcast::vec_into_hashmap(broadcasts);
         let missing = bc.missing_broadcasts(desired_broadcasts);
         if !missing.is_empty() {
             response.insert(
                 "errors".to_string(),
-                BroadcastValue::Nested(Broadcast::into_hashmap(missing)),
+                BroadcastValue::Nested(Broadcast::vec_into_hashmap(missing)),
             );
         }
         (broadcast_subs, response)
@@ -499,11 +499,11 @@ impl Server {
         if !missing.is_empty() {
             response.insert(
                 "errors".to_string(),
-                BroadcastValue::Nested(Broadcast::into_hashmap(missing)),
+                BroadcastValue::Nested(Broadcast::vec_into_hashmap(missing)),
             );
         }
         if let Some(delta) = bc.subscribe_to_broadcasts(broadcast_subs, broadcasts) {
-            response.extend(Broadcast::into_hashmap(delta));
+            response.extend(Broadcast::vec_into_hashmap(delta));
         };
         if response.is_empty() {
             None
@@ -793,7 +793,7 @@ impl<T> WebpushSocket<T> {
             let msg = if let Some(broadcasts) = self.broadcast_delta.clone() {
                 debug!("sending a broadcast delta");
                 let server_msg = ServerMessage::Broadcast {
-                    broadcasts: Broadcast::into_hashmap(broadcasts),
+                    broadcasts: Broadcast::vec_into_hashmap(broadcasts),
                 };
                 let s = server_msg.to_json().chain_err(|| "failed to serialize")?;
                 Message::Text(s)

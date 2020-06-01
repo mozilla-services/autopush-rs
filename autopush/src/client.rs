@@ -1040,14 +1040,12 @@ where
         await_check_storage: &'a mut RentToOwn<'a, AwaitCheckStorage<T>>,
     ) -> Poll<AfterAwaitCheckStorage<T>, Error> {
         trace!("State: AwaitCheckStorage");
-        let (include_topic, mut messages, timestamp) =
-            match try_ready!(await_check_storage.response.poll()) {
-                CheckStorageResponse {
-                    include_topic,
-                    messages,
-                    timestamp,
-                } => (include_topic, messages, timestamp),
-            };
+        let CheckStorageResponse {
+            include_topic,
+            mut messages,
+            timestamp,
+        } =
+            try_ready!(await_check_storage.response.poll());
         debug!("Got checkstorage response");
 
         let AwaitCheckStorage { data, .. } = await_check_storage.take();
@@ -1067,9 +1065,9 @@ where
         let srv = data.srv.clone();
         messages = messages
             .into_iter()
-            .filter_map(|n| {
+            .filter(|n| {
                 if !n.expired(now) {
-                    return Some(n);
+                    return true;
                 }
                 if n.sortkey_timestamp.is_none() {
                     srv.handle.spawn(
@@ -1081,7 +1079,7 @@ where
                             }),
                     );
                 }
-                None
+                false
             })
             .collect();
         webpush.flags.increment_storage = !include_topic && timestamp.is_some();
