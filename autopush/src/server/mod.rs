@@ -10,23 +10,19 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use base64;
 use cadence::StatsdClient;
 use chrono::Utc;
 use fernet::{Fernet, MultiFernet};
 use futures::sync::oneshot;
 use futures::{task, try_ready};
 use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
-use hex;
 use hyper::{server::conn::Http, StatusCode};
 use openssl::hash;
 use openssl::ssl::SslAcceptor;
-use reqwest;
 use sentry::{self, capture_message, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::{Core, Handle, Timeout};
-use tokio_io;
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
@@ -164,7 +160,7 @@ pub struct ServerOptions {
 impl ServerOptions {
     pub fn from_settings(settings: Settings) -> Result<Self> {
         let crypto_key = &settings.crypto_key;
-        if !(crypto_key.starts_with("[") && crypto_key.ends_with("]")) {
+        if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
             return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];

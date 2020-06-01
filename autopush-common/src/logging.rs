@@ -4,11 +4,7 @@ use crate::errors::Result;
 
 use mozsvc_common::{aws::get_ec2_instance_id, get_hostname};
 use slog::{self, Drain};
-use slog_async;
 use slog_mozlog_json::MozLogJson;
-use slog_scope;
-use slog_stdlog;
-use slog_term;
 
 pub fn init_logging(json: bool) -> Result<()> {
     let logger = if json {

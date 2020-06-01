@@ -387,11 +387,12 @@ pub fn unregister_channel_id(
     .chain_err(|| "Error unregistering channel")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn lookup_user(
     ddb: Rc<Box<dyn DynamoDb>>,
     metrics: &Rc<StatsdClient>,
     uaid: &Uuid,
-    connected_at: &u64,
+    connected_at: u64,
     router_url: &str,
     router_table_name: &str,
     message_table_names: &[String],
@@ -403,7 +404,7 @@ pub fn lookup_user(
     let uaid2 = *uaid;
     let router_table = router_table_name.to_string();
     let messages_tables = message_table_names.to_vec();
-    let connected_at = *connected_at;
+    let connected_at = connected_at;
     let router_url = router_url.to_string();
     let metrics = Rc::clone(metrics);
     let response = response.and_then(move |data| -> MyFuture<_> {
@@ -441,7 +442,7 @@ pub fn lookup_user(
 /// Helper function for determining if a returned user record is valid for use
 /// or if it should be dropped and a new one created.
 fn handle_user_result(
-    cur_month: &String,
+    cur_month: &str,
     messages_tables: &[String],
     connected_at: u64,
     router_url: String,

@@ -61,7 +61,7 @@ impl ClientRegistry {
                         return ok(());
                     }
                 }
-                return err(());
+                err(())
             })
             .map_err(|_| Error::from("User not connected"));
         Box::new(fut)

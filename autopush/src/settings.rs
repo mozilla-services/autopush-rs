@@ -4,7 +4,6 @@ use std::net::ToSocketAddrs;
 use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
 use lazy_static::lazy_static;
-use mozsvc_common;
 use serde_derive::Deserialize;
 
 lazy_static! {
@@ -22,14 +21,8 @@ fn resolve_ip(hostname: &str) -> io::Result<String> {
 }
 
 /// Indicate whether the port should be included for the given scheme
-fn include_port(scheme: &str, port: &u16) -> bool {
-    if scheme == "http" && port == &80 {
-        false
-    } else if scheme == "https" && port == &443 {
-        false
-    } else {
-        true
-    }
+fn include_port(scheme: &str, port: u16) -> bool {
+    !((scheme == "http" && port == 80) || (scheme == "https" && port == 443))
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -111,7 +104,7 @@ impl Settings {
                 .as_ref()
                 .map_or_else(|| self.get_hostname(), String::clone),
         );
-        if include_port(router_scheme, &self.router_port) {
+        if include_port(router_scheme, self.router_port) {
             format!("{}:{}", url, self.router_port)
         } else {
             url
@@ -126,7 +119,7 @@ impl Settings {
                 .as_ref()
                 .expect("Endpoint hostname must be supplied"),
         );
-        if include_port(&self.endpoint_scheme, &self.endpoint_port) {
+        if include_port(&self.endpoint_scheme, self.endpoint_port) {
             format!("{}:{}", url, self.endpoint_port)
         } else {
             url

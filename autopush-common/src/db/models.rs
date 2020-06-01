@@ -45,6 +45,7 @@ fn insert_to_map(map: &mut HashMap<String, String>, name: &str, val: Option<Stri
     }
 }
 
+#[allow(clippy::implicit_hasher)]
 impl From<NotificationHeaders> for HashMap<String, String> {
     fn from(val: NotificationHeaders) -> Self {
         let mut map = Self::new();

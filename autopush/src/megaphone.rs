@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use reqwest;
 use serde_derive::{Deserialize, Serialize};
 
 use autopush_common::errors::Result;

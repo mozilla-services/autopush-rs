@@ -9,7 +9,6 @@ use futures::{future, try_ready};
 use futures::{Async, Future, Poll, Sink, Stream};
 use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
-use sentry;
 use sentry::integrations::error_chain::event_from_error_chain;
 use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use std::cell::RefCell;
@@ -97,7 +96,7 @@ where
 
         Self {
             state_machine: sm,
-            srv: srv.clone(),
+            srv,
             broadcast_subs,
             tx,
         }
@@ -342,7 +341,7 @@ where
         let AwaitHello { data, tx, rx, .. } = hello.take();
         let connected_at = ms_since_epoch();
         let response = Box::new(data.srv.ddb.hello(
-            &connected_at,
+            connected_at,
             uaid.as_ref(),
             &data.srv.opts.router_url,
         ));
@@ -408,7 +407,7 @@ where
         let uid = Uuid::new_v4();
         let webpush = Rc::new(RefCell::new(WebPushClient {
             uaid,
-            uid: uid,
+            uid,
             flags,
             rx,
             message_month,
@@ -478,15 +477,12 @@ where
         let mut webpush = webpush.borrow_mut();
         // If there's any notifications in the queue, move them to our unacked direct notifs
         webpush.rx.close();
-        loop {
-            match webpush.rx.poll() {
-                Ok(Async::Ready(Some(msg))) => match msg {
-                    ServerNotification::CheckStorage | ServerNotification::Disconnect => continue,
-                    ServerNotification::Notification(notif) => {
-                        webpush.unacked_direct_notifs.push(notif)
-                    }
-                },
-                Ok(Async::Ready(None)) | Ok(Async::NotReady) | Err(_) => break,
+        while let Ok(Async::Ready(Some(msg))) = webpush.rx.poll() {
+            match msg {
+                ServerNotification::CheckStorage | ServerNotification::Disconnect => continue,
+                ServerNotification::Notification(notif) => {
+                    webpush.unacked_direct_notifs.push(notif)
+                }
             }
         }
         let now = ms_since_epoch();
@@ -542,8 +538,7 @@ where
             for notif in &mut notifs {
                 notif.sortkey_timestamp = Some(0);
             }
-            let srv1 = srv.clone();
-            save_and_notify_undelivered_messages(&webpush, srv1, notifs);
+            save_and_notify_undelivered_messages(&webpush, srv, notifs);
         }
 
         // Log out the final stats message
@@ -578,8 +573,8 @@ fn save_and_notify_undelivered_messages(
     notifs: Vec<Notification>,
 ) {
     let srv2 = srv.clone();
-    let uaid = webpush.uaid.clone();
-    let connected_at = webpush.connected_at.clone();
+    let uaid = webpush.uaid;
+    let connected_at = webpush.connected_at;
     srv.handle.spawn(
         srv.ddb
             .store_messages(&webpush.uaid, &webpush.message_month, notifs)
@@ -860,7 +855,7 @@ where
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
                 let srv = &data.srv;
-                let fut = match srv.make_endpoint(&uaid, &channel_id, key.clone()) {
+                let fut = match srv.make_endpoint(&uaid, &channel_id, key) {
                     Ok(endpoint) => srv
                         .ddb
                         .register(&uaid, &channel_id, &message_month, &endpoint),

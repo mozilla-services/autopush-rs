@@ -23,7 +23,7 @@ pub struct WebpushIo {
 impl WebpushIo {
     pub fn new(tcp: MaybeTlsStream<TcpStream>, header: BytesMut) -> Self {
         Self {
-            tcp: tcp,
+            tcp,
             header_to_read: Some(header),
         }
     }

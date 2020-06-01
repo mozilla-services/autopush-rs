@@ -64,9 +64,9 @@ pub fn configure(opts: &ServerOptions) -> Option<SslAcceptor> {
     fn read(path: &Path) -> Vec<u8> {
         let mut out = Vec::new();
         File::open(path)
-            .expect(&format!("failed to open {:?}", path))
+            .unwrap_or_else(|_| panic!("failed to open {:?}", path))
             .read_to_end(&mut out)
-            .expect(&format!("failed to read {:?}", path));
+            .unwrap_or_else(|_| panic!("failed to read {:?}", path));
         out
     }
 }

@@ -12,7 +12,6 @@ use std::{str, sync::Arc};
 use futures::future::ok;
 use futures::{Future, Stream};
 use hyper::{self, service::Service, Body, Method, StatusCode};
-use serde_json;
 use uuid::Uuid;
 
 use crate::server::registry::ClientRegistry;
