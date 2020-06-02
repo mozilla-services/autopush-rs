@@ -6,10 +6,11 @@ cache:
   directories:
     - $HOME/.cargo
     - $TRAVIS_BUILD_DIR/target
-sudo: required
 dist: trusty
+os: linux
 
 install:
+- echo "Starting install"
 - make ddb
 - curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
 - curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt

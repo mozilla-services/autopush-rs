@@ -1044,8 +1044,7 @@ where
             include_topic,
             mut messages,
             timestamp,
-        } =
-            try_ready!(await_check_storage.response.poll());
+        } = try_ready!(await_check_storage.response.poll());
         debug!("Got checkstorage response");
 
         let AwaitCheckStorage { data, .. } = await_check_storage.take();
