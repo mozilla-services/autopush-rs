@@ -9,14 +9,14 @@ version: 2
 jobs:
   test:
     docker:
-      - image: circleci/python:2.7.1
+      - image: circleci/python:2.7
+      - image: circleci/dynamodb
     steps:
       - checkout
       - run:
           # can this be saved? The python integration tests generally don't change.
           name: Setup python
           command: |
-            make ddb
             curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
             curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
             pip install --upgrade pip
@@ -24,17 +24,29 @@ jobs:
             pip install -r test-requirements.txt
             pip install -r requirements.txt
             pip install -e git+https://github.com/mozilla-services/autopush.git#egg=autopush
+            echo "### `pwd`"
+            echo "### `which py.test`"
       - run:
           name: Setup rust
           command: |
             curl https://sh.rustup.rs | sh -s -- -y
             export PATH=$PATH:$HOME/.cargo/bin
             cargo build
+            cargo install cargo-audit
+            rustc --version
       - run:
           name: Running tests
-          command:
+          command: |
+            export PATH=$PATH:$HOME/.cargo/bin:$HOME/.local/bin
+            echo "+++ `pwd`"
+            echo "+++ `which py.test`"
+            echo "+++ `which cargo`"
             cargo test
-            py.test -v
+            pytest -v tests
+      #- run:
+      #    name: Auditing
+      #    command: |
+      #      cargo audit
   audit:
     docker:
       - image: circleci/rust:latest
