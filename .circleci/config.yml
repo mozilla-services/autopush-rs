@@ -12,8 +12,8 @@ jobs:
       - image: circleci/python:2.7.1
     steps:
       - checkout
-      -run:
-        # can this be saved? The python integration tests generally don't change. 
+      - run:
+        # can this be saved? The python integration tests generally don't change.
         name: Setup python
         command: |
           make ddb
@@ -24,13 +24,13 @@ jobs:
           pip install -r test-requirements.txt
           pip install -r requirements.txt
           pip install -e git+https://github.com/mozilla-services/autopush.git#egg=autopush
-      -run:
+      - run:
         name: Setup rust
         command: |
           curl https://sh.rustup.rs | sh -s -- -y
           export PATH=$PATH:$HOME/.cargo/bin
           cargo build
-      -run:
+      - run:
         name: Running tests
         command:
           cargo test
