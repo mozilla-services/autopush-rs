@@ -8,8 +8,8 @@ use serde_derive::Deserialize;
 
 lazy_static! {
     static ref HOSTNAME: String = mozsvc_common::get_hostname().expect("Couldn't get_hostname");
-    static ref RESOLVED_HOSTNAME: String =
-        resolve_ip(&HOSTNAME).unwrap_or_else(|_| panic!("Failed to resolve hostname: {}", *HOSTNAME));
+    static ref RESOLVED_HOSTNAME: String = resolve_ip(&HOSTNAME)
+        .unwrap_or_else(|_| panic!("Failed to resolve hostname: {}", *HOSTNAME));
 }
 
 /// Resolve a hostname to its IP if possible
@@ -129,10 +129,8 @@ impl Settings {
     fn get_hostname(&self) -> String {
         if let Some(ref hostname) = self.hostname {
             if self.resolve_hostname {
-                resolve_ip(hostname).unwrap_or_else(|_| panic!(
-                    "Failed to resolve provided hostname: {}",
-                    hostname
-                ))
+                resolve_ip(hostname)
+                    .unwrap_or_else(|_| panic!("Failed to resolve provided hostname: {}", hostname))
             } else {
                 hostname.clone()
             }
