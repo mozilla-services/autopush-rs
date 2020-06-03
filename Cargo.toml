@@ -2,4 +2,5 @@
 members = [
     "autopush-common",
     "autopush",
+    "autoendpoint",
 ]
