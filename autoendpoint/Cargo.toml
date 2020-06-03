@@ -13,7 +13,6 @@ autopush_common = { path = "../autopush-common" }
 cadence = "0.19.1"
 config = "0.10.1"
 docopt = "1.1.0"
-failure = "0.1" # TODO: replace with anyhow or thiserror
 futures = { version = "0.3", features = ["compat"] }
 lazy_static = "1.4.0"
 sentry = { version = "0.18", features = ["with_curl_transport"] }
@@ -27,4 +26,5 @@ slog-mozlog-json = "0.1"
 slog-scope = "4.3"
 slog-stdlog = "4.0"
 slog-term = "2.5"
+thiserror = "1.0"
 url = "2.1"
