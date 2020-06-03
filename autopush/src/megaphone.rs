@@ -195,7 +195,6 @@ impl BroadcastChangeTracker {
         }
 
         // Check to see if this broadcast has been updated since initialization
-        #[allow(clippy::iter_nth_zero)] // TODO: replace with non .nth()
         let bcast_index = self
             .broadcast_list
             .iter()
@@ -207,7 +206,7 @@ impl BroadcastChangeTracker {
                     None
                 }
             })
-            .nth(0);
+            .next();
         self.change_count += 1;
         if let Some(bcast_index) = bcast_index {
             let mut bcast = self.broadcast_list.remove(bcast_index);
