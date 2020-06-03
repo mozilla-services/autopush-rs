@@ -62,7 +62,7 @@ impl From<&HttpRequest> for Metrics {
         let tags = exts.get::<Tags>().unwrap_or_else(|| &def_tags);
         Metrics {
             client: match req.app_data::<Data<ServerState>>() {
-                Some(v) => Some(*v.metrics.clone()),
+                Some(v) => Some(v.metrics.clone()),
                 None => {
                     warn!("⚠️ metric error: No App State");
                     None
@@ -87,7 +87,7 @@ impl From<&StatsdClient> for Metrics {
 impl From<&actix_web::web::Data<ServerState>> for Metrics {
     fn from(state: &actix_web::web::Data<ServerState>) -> Self {
         Metrics {
-            client: Some(*state.metrics.clone()),
+            client: Some(state.metrics.clone()),
             tags: None,
             timer: None,
         }
@@ -151,7 +151,7 @@ impl Metrics {
     }
 }
 
-pub fn metrics_from_req(req: &HttpRequest) -> Result<Box<StatsdClient>, Error> {
+pub fn metrics_from_req(req: &HttpRequest) -> Result<StatsdClient, Error> {
     Ok(req
         .app_data::<Data<ServerState>>()
         .ok_or_else(|| ErrorInternalServerError("Could not get state"))

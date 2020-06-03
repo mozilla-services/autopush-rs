@@ -14,7 +14,7 @@ use crate::settings::Settings;
 #[derive(Clone, Debug)]
 pub struct ServerState {
     /// Server Data
-    pub metrics: Box<StatsdClient>,
+    pub metrics: StatsdClient,
     pub port: u16,
 }
 
@@ -24,10 +24,7 @@ impl Server {
     pub fn with_settings(settings: Settings) -> Result<dev::Server, ApiError> {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let port = settings.port;
-        let state = ServerState {
-            metrics: Box::new(metrics),
-            port,
-        };
+        let state = ServerState { metrics, port };
 
         let server = HttpServer::new(move || {
             App::new()
