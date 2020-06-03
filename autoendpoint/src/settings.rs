@@ -8,6 +8,7 @@ const DEFAULT_PORT: u16 = 8000;
 const ENV_PREFIX: &str = "autoend_";
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub debug: bool,
     pub port: u16,
