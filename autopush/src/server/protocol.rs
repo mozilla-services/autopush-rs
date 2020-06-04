@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use serde_derive::{Deserialize, Serialize};
-use serde_json;
 use uuid::Uuid;
 
 use autopush_common::notification::Notification;

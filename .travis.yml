@@ -6,8 +6,8 @@ cache:
   directories:
     - $HOME/.cargo
     - $TRAVIS_BUILD_DIR/target
-sudo: required
-dist: trusty
+dist: xenial
+os: linux
 
 install:
 - make ddb
@@ -32,6 +32,7 @@ script:
 - cargo fmt -- --check
 - py.test -v
 - cargo test
+
 notifications:
   slack:
     secure: vT9sWtUuxk28g6xYKAsQmiPZllErOYVfx5lcL+/jo1eRFrmbpYnyndT6s+FxGI1547oizZ0IqZbHVvB7BUoSJixXJyQJYXW2MchwN1UeHrey8mYpF1GNEaJT7FMfqSkxUU9gvAZ3IU7zstNeTLbfG1GkLuzybp0WAiHl/ocUTz8=

@@ -12,7 +12,6 @@ use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemInput, DeleteItemInput, DynamoDb, DynamoDbClient, PutRequest,
     UpdateItemInput, UpdateItemOutput, WriteRequest,
 };
-use serde_dynamodb;
 
 #[macro_use]
 mod macros;
@@ -140,7 +139,7 @@ impl DynamoStorage {
 
     pub fn hello(
         &self,
-        connected_at: &u64,
+        connected_at: u64,
         uaid: Option<&Uuid>,
         router_url: &str,
     ) -> impl Future<Item = HelloResponse, Error = Error> {
@@ -159,7 +158,7 @@ impl DynamoStorage {
             Box::new(future::ok((
                 HelloResponse {
                     message_month: self.current_message_month.clone(),
-                    connected_at: *connected_at,
+                    connected_at,
                     ..Default::default()
                 },
                 None,
@@ -168,7 +167,7 @@ impl DynamoStorage {
         let ddb = self.ddb.clone();
         let router_url = router_url.to_string();
         let router_table_name = self.router_table_name.clone();
-        let connected_at = *connected_at;
+        let connected_at = connected_at;
 
         response.and_then(move |(mut hello_response, user_opt)| {
             let hello_message_month = hello_response.message_month.clone();

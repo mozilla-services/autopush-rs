@@ -33,13 +33,7 @@ use std::error;
 use std::io;
 use std::num;
 
-use cadence;
-use config;
 use futures::Future;
-use httparse;
-use serde_json;
-use tungstenite;
-use uuid;
 
 error_chain! {
     foreign_links {

@@ -9,7 +9,6 @@ use futures::{future, try_ready};
 use futures::{Async, Future, Poll, Sink, Stream};
 use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
-use sentry;
 use sentry::integrations::error_chain::event_from_error_chain;
 use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use std::cell::RefCell;
@@ -97,7 +96,7 @@ where
 
         Self {
             state_machine: sm,
-            srv: srv.clone(),
+            srv,
             broadcast_subs,
             tx,
         }
@@ -285,7 +284,7 @@ where
         rx: mpsc::UnboundedReceiver<ServerNotification>,
     },
 
-    #[state_machine_future(transitions(AwaitSessionComplete))]
+    #[state_machine_future(transitions(AwaitRegistryConnect))]
     AwaitProcessHello {
         response: MyFuture<HelloResponse>,
         data: UnAuthClientData<T>,
@@ -294,12 +293,31 @@ where
         rx: mpsc::UnboundedReceiver<ServerNotification>,
     },
 
-    #[state_machine_future(transitions(UnAuthDone))]
+    #[state_machine_future(transitions(AwaitSessionComplete))]
+    AwaitRegistryConnect {
+        response: MyFuture<ServerMessage>,
+        srv: Rc<Server>,
+        ws: T,
+        user_agent: String,
+        webpush: Rc<RefCell<WebPushClient>>,
+        broadcast_subs: Rc<RefCell<BroadcastSubs>>,
+    },
+
+    #[state_machine_future(transitions(AwaitRegistryDisconnect))]
     AwaitSessionComplete {
         auth_state_machine: AuthClientStateFuture<T>,
         srv: Rc<Server>,
         user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
+    },
+
+    #[state_machine_future(transitions(UnAuthDone))]
+    AwaitRegistryDisconnect {
+        response: MyFuture<()>,
+        srv: Rc<Server>,
+        user_agent: String,
+        webpush: Rc<RefCell<WebPushClient>>,
+        error: Option<Error>,
     },
 
     #[state_machine_future(ready)]
@@ -342,7 +360,7 @@ where
         let AwaitHello { data, tx, rx, .. } = hello.take();
         let connected_at = ms_since_epoch();
         let response = Box::new(data.srv.ddb.hello(
-            &connected_at,
+            connected_at,
             uaid.as_ref(),
             &data.srv.opts.router_url,
         ));
@@ -408,7 +426,7 @@ where
         let uid = Uuid::new_v4();
         let webpush = Rc::new(RefCell::new(WebPushClient {
             uaid,
-            uid: uid,
+            uid,
             flags,
             rx,
             message_month,
@@ -422,23 +440,55 @@ where
             },
             ..Default::default()
         }));
-        srv.connect_client(RegisteredClient { uaid, uid, tx });
 
-        let response = ServerMessage::Hello {
-            uaid: uaid.to_simple().to_string(),
-            status: 200,
-            use_webpush: Some(true),
-            broadcasts,
-        };
+        let response = Box::new(
+            srv.clients
+                .connect(RegisteredClient { uaid, uid, tx })
+                .and_then(move |_| {
+                    // generate the response message back to the client.
+                    Ok(ServerMessage::Hello {
+                        uaid: uaid.to_simple().to_string(),
+                        status: 200,
+                        use_webpush: Some(true),
+                        broadcasts,
+                    })
+                }),
+        );
+
+        transition!(AwaitRegistryConnect {
+            response,
+            srv,
+            ws,
+            user_agent,
+            webpush,
+            broadcast_subs,
+        })
+    }
+
+    fn poll_await_registry_connect<'a>(
+        registry_connect: &'a mut RentToOwn<'a, AwaitRegistryConnect<T>>,
+    ) -> Poll<AfterAwaitRegistryConnect<T>, Error> {
+        let hello_response = try_ready!(registry_connect.response.poll());
+
+        let AwaitRegistryConnect {
+            srv,
+            ws,
+            user_agent,
+            webpush,
+            broadcast_subs,
+            ..
+        } = registry_connect.take();
+
         let auth_state_machine = AuthClientState::start(
-            vec![response],
+            vec![hello_response],
             AuthClientData {
                 srv: srv.clone(),
                 ws,
                 webpush: webpush.clone(),
-                broadcast_subs: broadcast_subs.clone(),
+                broadcast_subs,
             },
         );
+
         transition!(AwaitSessionComplete {
             auth_state_machine,
             srv,
@@ -472,18 +522,42 @@ where
             webpush,
             ..
         } = session_complete.take();
+
+        let response = srv
+            .clients
+            .disconnect(&webpush.borrow().uaid, &webpush.borrow().uid);
+
+        transition!(AwaitRegistryDisconnect {
+            response,
+            srv,
+            user_agent,
+            webpush,
+            error,
+        })
+    }
+
+    fn poll_await_registry_disconnect<'a>(
+        registry_disconnect: &'a mut RentToOwn<'a, AwaitRegistryDisconnect>,
+    ) -> Poll<AfterAwaitRegistryDisconnect, Error> {
+        try_ready!(registry_disconnect.response.poll());
+
+        let AwaitRegistryDisconnect {
+            srv,
+            user_agent,
+            webpush,
+            error,
+            ..
+        } = registry_disconnect.take();
+
         let mut webpush = webpush.borrow_mut();
         // If there's any notifications in the queue, move them to our unacked direct notifs
         webpush.rx.close();
-        loop {
-            match webpush.rx.poll() {
-                Ok(Async::Ready(Some(msg))) => match msg {
-                    ServerNotification::CheckStorage | ServerNotification::Disconnect => continue,
-                    ServerNotification::Notification(notif) => {
-                        webpush.unacked_direct_notifs.push(notif)
-                    }
-                },
-                Ok(Async::Ready(None)) | Ok(Async::NotReady) | Err(_) => break,
+        while let Ok(Async::Ready(Some(msg))) = webpush.rx.poll() {
+            match msg {
+                ServerNotification::CheckStorage | ServerNotification::Disconnect => continue,
+                ServerNotification::Notification(notif) => {
+                    webpush.unacked_direct_notifs.push(notif)
+                }
             }
         }
         let now = ms_since_epoch();
@@ -495,10 +569,6 @@ where
             .with_tag("ua_os_family", metrics_os)
             .with_tag("ua_browser_family", metrics_browser)
             .send();
-
-        // If there's direct unack'd messages, they need to be saved out without blocking
-        // here
-        srv.disconnet_client(&webpush.uaid, &webpush.uid);
 
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {
@@ -527,6 +597,8 @@ where
         } else {
             "".to_string()
         };
+        // If there's direct unack'd messages, they need to be saved out without blocking
+        // here
         let mut stats = webpush.stats.clone();
         let unacked_direct_notifs = webpush.unacked_direct_notifs.len();
         if unacked_direct_notifs > 0 {
@@ -539,8 +611,7 @@ where
             for notif in &mut notifs {
                 notif.sortkey_timestamp = Some(0);
             }
-            let srv1 = srv.clone();
-            save_and_notify_undelivered_messages(&webpush, srv1, notifs);
+            save_and_notify_undelivered_messages(&webpush, srv, notifs);
         }
 
         // Log out the final stats message
@@ -575,8 +646,8 @@ fn save_and_notify_undelivered_messages(
     notifs: Vec<Notification>,
 ) {
     let srv2 = srv.clone();
-    let uaid = webpush.uaid.clone();
-    let connected_at = webpush.connected_at.clone();
+    let uaid = webpush.uaid;
+    let connected_at = webpush.connected_at;
     srv.handle.spawn(
         srv.ddb
             .store_messages(&webpush.uaid, &webpush.message_month, notifs)
@@ -857,7 +928,7 @@ where
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
                 let srv = &data.srv;
-                let fut = match srv.make_endpoint(&uaid, &channel_id, key.clone()) {
+                let fut = match srv.make_endpoint(&uaid, &channel_id, key) {
                     Ok(endpoint) => srv
                         .ddb
                         .register(&uaid, &channel_id, &message_month, &endpoint),
@@ -1042,14 +1113,11 @@ where
         await_check_storage: &'a mut RentToOwn<'a, AwaitCheckStorage<T>>,
     ) -> Poll<AfterAwaitCheckStorage<T>, Error> {
         trace!("State: AwaitCheckStorage");
-        let (include_topic, mut messages, timestamp) =
-            match try_ready!(await_check_storage.response.poll()) {
-                CheckStorageResponse {
-                    include_topic,
-                    messages,
-                    timestamp,
-                } => (include_topic, messages, timestamp),
-            };
+        let CheckStorageResponse {
+            include_topic,
+            mut messages,
+            timestamp,
+        } = try_ready!(await_check_storage.response.poll());
         debug!("Got checkstorage response");
 
         let AwaitCheckStorage { data, .. } = await_check_storage.take();
@@ -1069,9 +1137,9 @@ where
         let srv = data.srv.clone();
         messages = messages
             .into_iter()
-            .filter_map(|n| {
+            .filter(|n| {
                 if !n.expired(now) {
-                    return Some(n);
+                    return true;
                 }
                 if n.sortkey_timestamp.is_none() {
                     srv.handle.spawn(
@@ -1083,7 +1151,7 @@ where
                             }),
                     );
                 }
-                None
+                false
             })
             .collect();
         webpush.flags.increment_storage = !include_topic && timestamp.is_some();

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use reqwest;
 use serde_derive::{Deserialize, Serialize};
 
 use autopush_common::errors::Result;
@@ -105,7 +104,7 @@ impl Broadcast {
         val.into_iter().map(|v| v.into()).collect()
     }
 
-    pub fn into_hashmap(broadcasts: Vec<Broadcast>) -> HashMap<String, BroadcastValue> {
+    pub fn vec_into_hashmap(broadcasts: Vec<Broadcast>) -> HashMap<String, BroadcastValue> {
         broadcasts.into_iter().map(|v| v.into()).collect()
     }
 }
@@ -207,7 +206,7 @@ impl BroadcastChangeTracker {
                     None
                 }
             })
-            .nth(0);
+            .next();
         self.change_count += 1;
         if let Some(bcast_index) = bcast_index {
             let mut bcast = self.broadcast_list.remove(bcast_index);

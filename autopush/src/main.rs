@@ -7,7 +7,6 @@ extern crate serde_derive;
 use std::{env, os::raw::c_int, thread};
 
 use docopt::Docopt;
-use env_logger;
 
 use autopush_common::errors::{Result, ResultExt};
 
@@ -21,7 +20,7 @@ mod user_agent;
 use crate::server::{AutopushServer, ServerOptions};
 use crate::settings::Settings;
 
-const USAGE: &'static str = "
+const USAGE: &str = "
 Usage: autopush_rs [options]
 
 Options:
