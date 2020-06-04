@@ -82,6 +82,8 @@ impl ResponseError for ApiError {
     }
 }
 
+// TODO: Use the same schema as documented here?
+//       https://autopush.readthedocs.io/en/latest/http.html#response
 impl Serialize for ApiError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
