@@ -21,9 +21,9 @@ pub async fn status_route() -> Json<serde_json::Value> {
 }
 
 /// Handle the `/__lbheartbeat__` route
-pub async fn lb_heartbeat_route() -> &'static str {
+pub fn lb_heartbeat_route() -> HttpResponse {
     // Used by the load balancers, just return OK.
-    ""
+    HttpResponse::Ok().finish()
 }
 
 /// Handle the `/__version__` route
