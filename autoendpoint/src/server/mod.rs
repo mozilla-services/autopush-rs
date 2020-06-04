@@ -11,6 +11,7 @@ use crate::metrics;
 use crate::server::routes::health::{
     health_route, lb_heartbeat_route, status_route, version_route,
 };
+use crate::server::routes::webpush::webpush_route;
 use crate::settings::Settings;
 
 mod routes;
@@ -35,8 +36,11 @@ impl Server {
                 .data(state.clone())
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 .wrap(Cors::default())
-                // TODO: Add endpoints and handlers here.
-                //
+                // Endpoints
+                .service(
+                    web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])
+                        .route(web::post().to(webpush_route)),
+                )
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))
                 .service(web::resource("/health").route(web::get().to(health_route)))
