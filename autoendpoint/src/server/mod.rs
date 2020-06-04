@@ -2,14 +2,18 @@
 
 use actix_cors::Cors;
 use actix_web::{
-    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, HttpRequest,
-    HttpResponse, HttpServer,
+    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, HttpServer,
 };
 use cadence::StatsdClient;
 
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
+use crate::server::routes::health::{
+    health_route, lb_heartbeat_route, status_route, version_route,
+};
 use crate::settings::Settings;
+
+mod routes;
 
 #[derive(Clone, Debug)]
 pub struct ServerState {
@@ -33,26 +37,13 @@ impl Server {
                 .wrap(Cors::default())
                 // TODO: Add endpoints and handlers here.
                 //
+                // Health checks
+                .service(web::resource("/status").route(web::get().to(status_route)))
+                .service(web::resource("/health").route(web::get().to(health_route)))
                 // Dockerflow
-                //.service(web::resource("/__heartbeat__").route(web::get().to(handlers::heartbeat)))
-                .service(web::resource("/__lbheartbeat__").route(web::get().to(
-                    |_: HttpRequest| {
-                        // used by the load balancers, just return OK.
-                        HttpResponse::Ok()
-                            .content_type("application/json")
-                            .body("{}")
-                    },
-                )))
-                .service(
-                    web::resource("/__version__").route(web::get().to(|_: HttpRequest| {
-                        // return the contents of the version.json file created by circleci
-                        // and stored in the docker root
-                        HttpResponse::Ok()
-                            .content_type("application/json")
-                            .body(include_str!("../../../version.json"))
-                    })),
-                )
-            //.service(web::resource("/__error__").route(web::get().to(handlers::test_error)))
+                .service(web::resource("/__heartbeat__").route(web::get().to(status_route)))
+                .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
+                .service(web::resource("/__version__").route(web::get().to(version_route)))
         })
         .bind(format!("{}:{}", settings.host, settings.port))?
         .run();
