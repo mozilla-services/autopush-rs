@@ -87,25 +87,19 @@ impl Serialize for ApiError {
     where
         S: Serializer,
     {
-        let size = if self.status() == StatusCode::UNAUTHORIZED {
+        let status = self.status();
+        let size = if status == StatusCode::UNAUTHORIZED {
             2
         } else {
             3
         };
-        let status = self.status();
 
         let mut map = serializer.serialize_map(Some(size))?;
         map.serialize_entry("status", &status.as_u16())?;
         map.serialize_entry("reason", status.canonical_reason().unwrap_or(""))?;
 
         if status != StatusCode::UNAUTHORIZED {
-            let description = match self {
-                ApiError::Io(error) => error.to_string(),
-                ApiError::Metrics(error) => error.to_string(),
-                ApiError::Internal(description) => description.clone(),
-            };
-
-            map.serialize_entry("errors", &description)?;
+            map.serialize_entry("errors", &self.to_string())?;
         }
 
         map.end()
