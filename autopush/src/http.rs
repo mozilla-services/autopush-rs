@@ -56,14 +56,14 @@ impl Service for Push {
                                 response.status(StatusCode::OK);
                                 Body::empty()
                             } else {
-                                response.status(StatusCode::BAD_GATEWAY);
+                                response.status(StatusCode::NOT_FOUND);
                                 Body::from("Client not available.")
                             };
                             Ok(response.body(body).unwrap())
                         }))
                     } else {
                         Either::B(ok(response
-                            .status(hyper::StatusCode::BAD_REQUEST)
+                            .status(hyper::StatusCode::NOT_FOUND)
                             .body("Unable to decode body payload".into())
                             .unwrap()))
                     }

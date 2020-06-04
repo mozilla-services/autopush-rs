@@ -284,13 +284,23 @@ where
         rx: mpsc::UnboundedReceiver<ServerNotification>,
     },
 
-    #[state_machine_future(transitions(AwaitSessionComplete))]
+    #[state_machine_future(transitions(AwaitRegistryConnect))]
     AwaitProcessHello {
         response: MyFuture<HelloResponse>,
         data: UnAuthClientData<T>,
         desired_broadcasts: Vec<Broadcast>,
         tx: mpsc::UnboundedSender<ServerNotification>,
         rx: mpsc::UnboundedReceiver<ServerNotification>,
+    },
+
+    #[state_machine_future(transitions(AwaitSessionComplete))]
+    AwaitRegistryConnect {
+        response: MyFuture<ServerMessage>,
+        srv: Rc<Server>,
+        ws: T,
+        user_agent: String,
+        webpush: Rc<RefCell<WebPushClient>>,
+        broadcast_subs: Rc<RefCell<BroadcastSubs>>,
     },
 
     #[state_machine_future(transitions(AwaitRegistryDisconnect))]
@@ -430,32 +440,61 @@ where
             },
             ..Default::default()
         }));
-        srv.clients
-            .connect(RegisteredClient { uaid, uid, tx })
-            .and_then(|_| {
-                let response = ServerMessage::Hello {
-                    uaid: uaid.to_simple().to_string(),
-                    status: 200,
-                    use_webpush: Some(true),
-                    broadcasts,
-                };
-                let auth_state_machine = AuthClientState::start(
-                    vec![response],
-                    AuthClientData {
-                        srv: srv.clone(),
-                        ws,
-                        webpush: webpush.clone(),
-                        broadcast_subs: broadcast_subs.clone(),
-                    },
-                );
-                transition!(AwaitSessionComplete {
-                    auth_state_machine,
-                    srv,
-                    user_agent,
-                    webpush,
-                })
-            })
-            .wait()
+
+        let response = Box::new(
+            srv.clients
+                .connect(RegisteredClient { uaid, uid, tx })
+                .and_then(move |_| {
+                    // generate the response message back to the client.
+                    Ok(ServerMessage::Hello {
+                        uaid: uaid.to_simple().to_string(),
+                        status: 200,
+                        use_webpush: Some(true),
+                        broadcasts,
+                    })
+                }),
+        );
+
+        transition!(AwaitRegistryConnect {
+            response,
+            srv,
+            ws,
+            user_agent,
+            webpush,
+            broadcast_subs,
+        })
+    }
+
+    fn poll_await_registry_connect<'a>(
+        registry_connect: &'a mut RentToOwn<'a, AwaitRegistryConnect<T>>,
+    ) -> Poll<AfterAwaitRegistryConnect<T>, Error> {
+        let hello_response = try_ready!(registry_connect.response.poll());
+
+        let AwaitRegistryConnect {
+            srv,
+            ws,
+            user_agent,
+            webpush,
+            broadcast_subs,
+            ..
+        } = registry_connect.take();
+
+        let auth_state_machine = AuthClientState::start(
+            vec![hello_response],
+            AuthClientData {
+                srv: srv.clone(),
+                ws,
+                webpush: webpush.clone(),
+                broadcast_subs,
+            },
+        );
+
+        transition!(AwaitSessionComplete {
+            auth_state_machine,
+            srv,
+            user_agent,
+            webpush,
+        })
     }
 
     fn poll_await_session_complete<'a>(
