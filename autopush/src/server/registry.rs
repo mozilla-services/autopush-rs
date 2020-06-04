@@ -10,7 +10,14 @@ use uuid::Uuid;
 use super::protocol::ServerNotification;
 use super::Notification;
 use crate::client::RegisteredClient;
-use autopush_common::errors::{Error, MyFuture};
+use autopush_common::errors::Error;
+
+/// `notify` + `check_storage` are used under hyper (http.rs) which `Send`
+/// futures.
+///
+/// `MySendFuture` is `Send` for this, similar to modern futures `BoxFuture`.
+/// `MyFuture` isn't, similar to modern futures `BoxLocalFuture`
+pub type MySendFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send>;
 
 #[derive(Default)]
 pub struct ClientRegistry {
@@ -22,7 +29,7 @@ impl ClientRegistry {
     ///
     /// For now just registers internal state by keeping track of the `client`,
     /// namely its channel to send notifications back.
-    pub fn connect(&self, client: RegisteredClient) -> MyFuture<()> {
+    pub fn connect(&self, client: RegisteredClient) -> MySendFuture<()> {
         debug!("Connecting a client!");
         Box::new(
             self.clients
@@ -44,7 +51,7 @@ impl ClientRegistry {
     }
 
     /// A notification has come for the uaid
-    pub fn notify(&self, uaid: Uuid, notif: Notification) -> MyFuture<()> {
+    pub fn notify(&self, uaid: Uuid, notif: Notification) -> MySendFuture<()> {
         let fut = self
             .clients
             .read()
@@ -67,7 +74,7 @@ impl ClientRegistry {
     }
 
     /// A check for notification command has come for the uaid
-    pub fn check_storage(&self, uaid: Uuid) -> MyFuture<()> {
+    pub fn check_storage(&self, uaid: Uuid) -> MySendFuture<()> {
         let fut = self
             .clients
             .read()
@@ -87,7 +94,7 @@ impl ClientRegistry {
 
     /// The client specified by `uaid` has disconnected.
     #[allow(clippy::clone_on_copy)]
-    pub fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> MyFuture<()> {
+    pub fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> MySendFuture<()> {
         debug!("Disconnecting client!");
         let uaidc = uaid.clone();
         let uidc = uid.clone();

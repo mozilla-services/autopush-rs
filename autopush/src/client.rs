@@ -293,12 +293,21 @@ where
         rx: mpsc::UnboundedReceiver<ServerNotification>,
     },
 
-    #[state_machine_future(transitions(UnAuthDone))]
+    #[state_machine_future(transitions(AwaitRegistryDisconnect))]
     AwaitSessionComplete {
         auth_state_machine: AuthClientStateFuture<T>,
         srv: Rc<Server>,
         user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
+    },
+
+    #[state_machine_future(transitions(UnAuthDone))]
+    AwaitRegistryDisconnect {
+        response: MyFuture<()>,
+        srv: Rc<Server>,
+        user_agent: String,
+        webpush: Rc<RefCell<WebPushClient>>,
+        error: Option<Error>,
     },
 
     #[state_machine_future(ready)]
@@ -474,6 +483,33 @@ where
             webpush,
             ..
         } = session_complete.take();
+
+        let response = srv
+            .clients
+            .disconnect(&webpush.borrow().uaid, &webpush.borrow().uid);
+
+        transition!(AwaitRegistryDisconnect {
+            response,
+            srv,
+            user_agent,
+            webpush,
+            error,
+        })
+    }
+
+    fn poll_await_registry_disconnect<'a>(
+        registry_disconnect: &'a mut RentToOwn<'a, AwaitRegistryDisconnect>,
+    ) -> Poll<AfterAwaitRegistryDisconnect, Error> {
+        try_ready!(registry_disconnect.response.poll());
+
+        let AwaitRegistryDisconnect {
+            srv,
+            user_agent,
+            webpush,
+            error,
+            ..
+        } = registry_disconnect.take();
+
         let mut webpush = webpush.borrow_mut();
         // If there's any notifications in the queue, move them to our unacked direct notifs
         webpush.rx.close();
@@ -494,8 +530,6 @@ where
             .with_tag("ua_os_family", metrics_os)
             .with_tag("ua_browser_family", metrics_browser)
             .send();
-
-        let _ = srv.clients.disconnect(&webpush.uaid, &webpush.uid);
 
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {

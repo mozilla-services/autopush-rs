@@ -9,6 +9,8 @@
 
 use std::{str, sync::Arc};
 
+use futures::future::Either;
+
 use futures::future::ok;
 use futures::{Future, Stream};
 use hyper::{self, service::Service, Body, Method, StatusCode};
@@ -49,34 +51,35 @@ impl Service for Push {
                 return Box::new(body.and_then(move |body| {
                     let s = String::from_utf8(body.to_vec()).unwrap();
                     if let Ok(msg) = serde_json::from_str(&s) {
-                        if clients.notify(uaid, msg).wait().is_ok() {
-                            Ok(hyper::Response::builder()
-                                .status(StatusCode::OK)
-                                .body(Body::empty())
-                                .unwrap())
-                        } else {
-                            Ok(hyper::Response::builder()
-                                .status(StatusCode::BAD_GATEWAY)
-                                .body(Body::from("Client not available."))
-                                .unwrap())
-                        }
+                        Either::A(clients.notify(uaid, msg).then(move |result| {
+                            let body = if result.is_ok() {
+                                response.status(StatusCode::OK);
+                                Body::empty()
+                            } else {
+                                response.status(StatusCode::BAD_GATEWAY);
+                                Body::from("Client not available.")
+                            };
+                            Ok(response.body(body).unwrap())
+                        }))
                     } else {
-                        Ok(hyper::Response::builder()
+                        Either::B(ok(response
                             .status(hyper::StatusCode::BAD_REQUEST)
                             .body("Unable to decode body payload".into())
-                            .unwrap())
+                            .unwrap()))
                     }
                 }));
             }
             (&Method::PUT, "notif", uaid) => {
-                if clients.check_storage(uaid).wait().is_ok() {
-                    response.status(StatusCode::OK);
-                } else {
-                    response.status(StatusCode::BAD_GATEWAY);
-                    return Box::new(ok(response
-                        .body(Body::from("Client not available."))
-                        .unwrap()));
-                }
+                return Box::new(clients.check_storage(uaid).then(move |result| {
+                    let body = if result.is_ok() {
+                        response.status(StatusCode::OK);
+                        Body::empty()
+                    } else {
+                        response.status(StatusCode::BAD_GATEWAY);
+                        Body::from("Client not available.")
+                    };
+                    Ok(response.body(body).unwrap())
+                }));
             }
             (_, "push", _) | (_, "notif", _) => {
                 response.status(StatusCode::METHOD_NOT_ALLOWED);
