@@ -49,6 +49,9 @@ pub enum ApiErrorKind {
     Metrics(#[from] cadence::MetricError),
 
     #[error("{0}")]
+    Validation(#[from] validator::ValidationErrors),
+
+    #[error("{0}")]
     Internal(String),
 }
 
@@ -56,6 +59,7 @@ impl ApiErrorKind {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
+            ApiErrorKind::Validation(_) => StatusCode::BAD_REQUEST,
             ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
