@@ -16,6 +16,7 @@ use crate::settings::Settings;
 use fernet::MultiFernet;
 use std::sync::Arc;
 
+mod extractors;
 mod routes;
 
 #[derive(Clone)]
