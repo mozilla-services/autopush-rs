@@ -18,7 +18,7 @@ use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
-use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse};
+use autopush_common::db::{CheckStorageResponse, DynamoDbUser, HelloResponse, RegisterResponse};
 use autopush_common::errors::*;
 use autopush_common::notification::Notification;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
@@ -161,6 +161,7 @@ pub struct WebPushClient {
     sent_from_storage: u32,
     last_ping: u64,
     stats: SessionStatistics,
+    deferred_user_registration: Option<DynamoDbUser>,
 }
 
 impl Default for WebPushClient {
@@ -179,6 +180,7 @@ impl Default for WebPushClient {
             sent_from_storage: Default::default(),
             last_ping: Default::default(),
             stats: Default::default(),
+            deferred_user_registration: Default::default(),
         }
     }
 }
@@ -359,10 +361,18 @@ where
 
         let AwaitHello { data, tx, rx, .. } = hello.take();
         let connected_at = ms_since_epoch();
+        trace!("### AwaitHello UAID: {:?}", uaid);
+        // Defer registration (don't write the user to the router table yet)
+        // when no uaid was specified. We'll get back a pending DynamoDbUser
+        // from the HelloResponse. It'll be potentially written to the db later
+        // whenever the user first subscribes to a channel_id
+        // (ClientMessage::Register).
+        let defer_registration = uaid.is_none();
         let response = Box::new(data.srv.ddb.hello(
             connected_at,
             uaid.as_ref(),
             &data.srv.opts.router_url,
+            defer_registration,
         ));
         transition!(AwaitProcessHello {
             response,
@@ -377,8 +387,17 @@ where
         process_hello: &'a mut RentToOwn<'a, AwaitProcessHello<T>>,
     ) -> Poll<AfterAwaitProcessHello<T>, Error> {
         trace!("State: AwaitProcessHello");
-        let (uaid, message_month, check_storage, reset_uaid, rotate_message_table, connected_at) = {
-            match try_ready!(process_hello.response.poll()) {
+        let (
+            uaid,
+            message_month,
+            check_storage,
+            reset_uaid,
+            rotate_message_table,
+            connected_at,
+            deferred_user_registration,
+        ) = {
+            let res = try_ready!(process_hello.response.poll());
+            match res {
                 HelloResponse {
                     uaid: Some(uaid),
                     message_month,
@@ -386,19 +405,27 @@ where
                     reset_uaid,
                     rotate_message_table,
                     connected_at,
-                } => (
-                    uaid,
-                    message_month,
-                    check_storage,
-                    reset_uaid,
-                    rotate_message_table,
-                    connected_at,
-                ),
+                    deferred_user_registration,
+                } => {
+                    trace!("### AfterAwaitProcessHello: uaid = {:?}", uaid);
+                    (
+                        uaid,
+                        message_month,
+                        check_storage,
+                        reset_uaid,
+                        rotate_message_table,
+                        connected_at,
+                        deferred_user_registration,
+                    )
+                }
                 HelloResponse { uaid: None, .. } => {
+                    trace!("UAID undefined");
                     return Err("Already connected elsewhere".into());
                 }
             }
         };
+
+        trace!("### post hello: {:?}", &uaid);
 
         let AwaitProcessHello {
             data,
@@ -407,6 +434,12 @@ where
             rx,
             ..
         } = process_hello.take();
+        let user_is_registered = deferred_user_registration.is_none();
+        trace!(
+            "### Taken hello. user_is_registered: {}, {:?}",
+            user_is_registered,
+            uaid
+        );
         data.srv.metrics.incr("ua.command.hello").ok();
 
         let UnAuthClientData {
@@ -438,6 +471,7 @@ where
                 connection_type: String::from("webpush"),
                 ..Default::default()
             },
+            deferred_user_registration,
             ..Default::default()
         }));
 
@@ -468,6 +502,7 @@ where
     fn poll_await_registry_connect<'a>(
         registry_connect: &'a mut RentToOwn<'a, AwaitRegistryConnect<T>>,
     ) -> Poll<AfterAwaitRegistryConnect<T>, Error> {
+        trace!("State: AwaitRegistryConnect");
         let hello_response = try_ready!(registry_connect.response.poll());
 
         let AwaitRegistryConnect {
@@ -500,6 +535,7 @@ where
     fn poll_await_session_complete<'a>(
         session_complete: &'a mut RentToOwn<'a, AwaitSessionComplete<T>>,
     ) -> Poll<AfterAwaitSessionComplete, Error> {
+        trace!("State: AwaitSessionComplete");
         let error = {
             match session_complete.auth_state_machine.poll() {
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
@@ -539,6 +575,7 @@ where
     fn poll_await_registry_disconnect<'a>(
         registry_disconnect: &'a mut RentToOwn<'a, AwaitRegistryDisconnect>,
     ) -> Poll<AfterAwaitRegistryDisconnect, Error> {
+        trace!("State: AwaitRegistryDisconnect");
         try_ready!(registry_disconnect.response.poll());
 
         let AwaitRegistryDisconnect {
@@ -799,6 +836,7 @@ where
                 ..
             } = **send;
             if !smessages.is_empty() {
+                trace!("Sending {} {:#?}", smessages.len(), smessages);
                 let item = smessages.remove(0);
                 let ret = data
                     .ws
@@ -910,7 +948,9 @@ where
                 key,
             }) => {
                 debug!("Got a register command";
-                       "channel_id" => &channel_id_str);
+                       "uaid" => &webpush.uaid.to_string(),
+                       "channel_id" => &channel_id_str,
+                );
                 let channel_id = Uuid::parse_str(&channel_id_str).chain_err(|| {
                     ErrorKind::InvalidClientMessage(format!(
                         "Invalid channelID: {}",
@@ -929,9 +969,13 @@ where
                 let message_month = webpush.message_month.clone();
                 let srv = &data.srv;
                 let fut = match srv.make_endpoint(&uaid, &channel_id, key) {
-                    Ok(endpoint) => srv
-                        .ddb
-                        .register(&uaid, &channel_id, &message_month, &endpoint),
+                    Ok(endpoint) => srv.ddb.register(
+                        &uaid,
+                        &channel_id,
+                        &message_month,
+                        &endpoint,
+                        webpush.deferred_user_registration.as_ref(),
+                    ),
                     Err(_) => Box::new(future::ok(RegisterResponse::Error {
                         error_msg: "Failed to generate endpoint".to_string(),
                         status: 400,
@@ -1225,9 +1269,17 @@ where
             }
         };
 
+        let data = await_register.take().data;
+        {
+            let mut webpush = data.webpush.borrow_mut();
+            // If we completed a deferred user registration during a channel
+            // subscription (Client::Register), we're now all done with it
+            webpush.deferred_user_registration = None;
+        }
+
         transition!(Send {
             smessages: vec![msg],
-            data: await_register.take().data,
+            data,
         })
     }
 

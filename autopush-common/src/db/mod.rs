@@ -27,7 +27,7 @@ use self::commands::{
     retryable_batchwriteitem_error, retryable_delete_error, retryable_updateitem_error,
     FetchMessageResponse,
 };
-use self::models::{DynamoDbNotification, DynamoDbUser};
+pub use self::models::{DynamoDbNotification, DynamoDbUser};
 
 const MAX_EXPIRY: u64 = 2_592_000;
 const USER_RECORD_VERSION: u8 = 1;
@@ -46,6 +46,8 @@ pub struct HelloResponse {
     pub reset_uaid: bool,
     pub rotate_message_table: bool,
     pub connected_at: u64,
+    // Exists when we didn't register this user during HELLO
+    pub deferred_user_registration: Option<DynamoDbUser>,
 }
 
 pub struct CheckStorageResponse {
@@ -142,7 +144,13 @@ impl DynamoStorage {
         connected_at: u64,
         uaid: Option<&Uuid>,
         router_url: &str,
+        defer_registration: bool,
     ) -> impl Future<Item = HelloResponse, Error = Error> {
+        trace!(
+            "### uaid {:?}, defer_registration: {:?}",
+            &uaid,
+            &defer_registration
+        );
         let response: MyFuture<(HelloResponse, Option<DynamoDbUser>)> = if let Some(uaid) = uaid {
             commands::lookup_user(
                 self.ddb.clone(),
@@ -170,6 +178,11 @@ impl DynamoStorage {
         let connected_at = connected_at;
 
         response.and_then(move |(mut hello_response, user_opt)| {
+            trace!(
+                "### Hello Response: {:?}, {:?}",
+                hello_response.uaid,
+                user_opt
+            );
             let hello_message_month = hello_response.message_month.clone();
             let user = user_opt.unwrap_or_else(|| DynamoDbUser {
                 current_month: Some(hello_message_month),
@@ -178,18 +191,28 @@ impl DynamoStorage {
                 ..Default::default()
             });
             let uaid = user.uaid;
+            trace!("### UAID = {:?}", &uaid);
             let mut err_response = hello_response.clone();
             err_response.connected_at = connected_at;
-            commands::register_user(ddb, &user, &router_table_name)
-                .and_then(move |result| {
-                    debug!("Success adding user, item output: {:?}", result);
-                    hello_response.uaid = Some(uaid);
-                    future::ok(hello_response)
-                })
-                .or_else(move |e| {
-                    debug!("Error registering user: {:?}", e);
-                    future::ok(err_response)
-                })
+            if !defer_registration {
+                future::Either::A(
+                    commands::register_user(ddb, &user, &router_table_name)
+                        .and_then(move |result| {
+                            debug!("Success adding user, item output: {:?}", result);
+                            hello_response.uaid = Some(uaid);
+                            future::ok(hello_response)
+                        })
+                        .or_else(move |e| {
+                            debug!("Error registering user: {:?}", e);
+                            future::ok(err_response)
+                        }),
+                )
+            } else {
+                debug!("Deferring user registration {:?}", &uaid);
+                hello_response.uaid = Some(uaid);
+                hello_response.deferred_user_registration = Some(user);
+                future::Either::B(Box::new(future::ok(hello_response)))
+            }
         })
     }
 
@@ -199,12 +222,40 @@ impl DynamoStorage {
         channel_id: &Uuid,
         message_month: &str,
         endpoint: &str,
+        register_user: Option<&DynamoDbUser>,
     ) -> MyFuture<RegisterResponse> {
         let ddb = self.ddb.clone();
         let mut chids = HashSet::new();
         let endpoint = endpoint.to_owned();
         chids.insert(channel_id.to_hyphenated().to_string());
-        let response = commands::save_channels(ddb, uaid, chids, message_month)
+
+        if let Some(user) = register_user {
+            trace!(
+                "### Endpoint Request: User not yet registered... {:?}",
+                &user.uaid
+            );
+            let uaid2 = *uaid;
+            let message_month2 = message_month.to_owned();
+            let response = commands::register_user(ddb.clone(), user, &self.router_table_name)
+                .and_then(move |_| {
+                    trace!("### Saving channels: {:#?}", chids);
+                    commands::save_channels(ddb, &uaid2, chids, &message_month2)
+                        .and_then(move |_| {
+                            trace!("### sending endpoint: {}", endpoint);
+                            future::ok(RegisterResponse::Success { endpoint })
+                        })
+                        .or_else(move |r| {
+                            trace!("--- failed to register channel. {:?}", r);
+                            future::ok(RegisterResponse::Error {
+                                status: 503,
+                                error_msg: "Failed to register channel".to_string(),
+                            })
+                        })
+                });
+            return Box::new(response);
+        };
+        trace!("### Continuing...");
+        let response = commands::save_channels(ddb, &uaid, chids, &message_month)
             .and_then(move |_| future::ok(RegisterResponse::Success { endpoint }))
             .or_else(move |_| {
                 future::ok(RegisterResponse::Error {

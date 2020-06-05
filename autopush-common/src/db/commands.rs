@@ -230,6 +230,7 @@ pub fn register_user(
     user: &DynamoDbUser,
     router_table: &str,
 ) -> impl Future<Item = PutItemOutput, Error = Error> {
+    trace!("### Registering User...");
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
         Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
@@ -422,9 +423,16 @@ pub fn lookup_user(
             &mut hello_response,
         );
         match user {
-            Ok(user) => Box::new(future::ok((hello_response, Some(user)))),
-            Err((false, _)) => Box::new(future::ok((hello_response, None))),
+            Ok(user) => {
+                trace!("### returning user: {:?}", user.uaid);
+                Box::new(future::ok((hello_response, Some(user))))
+            }
+            Err((false, _)) => {
+                trace!("### handle_user_result false, _: {:?}", uaid2);
+                Box::new(future::ok((hello_response, None)))
+            }
             Err((true, code)) => {
+                trace!("### handle_user_result true, {}: {:?}", uaid2, code);
                 metrics
                     .incr_with_tags("ua.expiration")
                     .with_tag("code", &code.to_string())

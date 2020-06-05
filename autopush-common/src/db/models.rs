@@ -93,8 +93,10 @@ pub struct DynamoDbUser {
 
 impl Default for DynamoDbUser {
     fn default() -> Self {
+        let uaid = Uuid::new_v4();
+        //trace!(">>> Setting default uaid: {:?}", &uaid);
         Self {
-            uaid: Uuid::new_v4(),
+            uaid,
             connected_at: ms_since_epoch(),
             router_type: "webpush".to_string(),
             last_connect: Some(generate_last_connect()),

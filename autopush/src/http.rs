@@ -46,6 +46,7 @@ impl Service for Push {
         let clients = Arc::clone(&self.0);
         match (req.method(), method_name, uaid) {
             (&Method::PUT, "push", uaid) => {
+                trace!("## PUT /push/ {}", uaid);
                 // Due to consumption of body as a future we must return here
                 let body = req.into_body().concat2();
                 return Box::new(body.and_then(move |body| {
@@ -70,6 +71,7 @@ impl Service for Push {
                 }));
             }
             (&Method::PUT, "notif", uaid) => {
+                trace!("## PUT /notif/ {}", uaid);
                 return Box::new(clients.check_storage(uaid).then(move |result| {
                     let body = if result.is_ok() {
                         response.status(StatusCode::OK);
