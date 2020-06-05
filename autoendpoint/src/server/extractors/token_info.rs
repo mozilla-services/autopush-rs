@@ -1,4 +1,5 @@
 use crate::error::ApiError;
+use crate::server::header_util::get_owned_header;
 use actix_http::{Payload, PayloadStream};
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
@@ -29,23 +30,11 @@ impl FromRequest for TokenInfo {
             .expect("{token} must be part of the webpush path")
             .to_string();
 
-        // Headers
-        let crypto_key_header = req
-            .headers()
-            .get("crypto-key")
-            .and_then(|h| h.to_str().ok())
-            .map(str::to_string);
-        let auth_header = req
-            .headers()
-            .get("authorization")
-            .and_then(|h| h.to_str().ok())
-            .map(str::to_string);
-
         future::ok(TokenInfo {
             api_version,
             token,
-            crypto_key_header,
-            auth_header,
+            crypto_key_header: get_owned_header(req, "crypto-key"),
+            auth_header: get_owned_header(req, "authorization"),
         })
     }
 }
