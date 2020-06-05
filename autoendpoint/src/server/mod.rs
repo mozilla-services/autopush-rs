@@ -13,14 +13,17 @@ use crate::server::routes::health::{
 };
 use crate::server::routes::webpush::webpush_route;
 use crate::settings::Settings;
+use fernet::MultiFernet;
+use std::sync::Arc;
 
 mod routes;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ServerState {
     /// Server Data
     pub metrics: StatsdClient,
     pub port: u16,
+    pub fernet: Arc<MultiFernet>,
 }
 
 pub struct Server;
@@ -29,7 +32,11 @@ impl Server {
     pub fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let port = settings.port;
-        let state = ServerState { metrics, port };
+        let state = ServerState {
+            metrics,
+            port,
+            fernet: Arc::new(settings.make_fernet()),
+        };
 
         let server = HttpServer::new(move || {
             App::new()
