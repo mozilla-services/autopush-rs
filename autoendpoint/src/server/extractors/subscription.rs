@@ -2,6 +2,7 @@ use crate::error::ApiError;
 use crate::server::extractors::token_info::TokenInfo;
 use crate::server::ServerState;
 use actix_http::{Payload, PayloadStream};
+use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 
@@ -24,8 +25,8 @@ impl FromRequest for Subscription {
             Ok(t) => t,
             Err(e) => return future::err(e),
         };
-        let state = req
-            .app_data::<ServerState>()
+        let state: Data<ServerState> = Data::extract(req)
+            .into_inner()
             .expect("No server state found");
         let fernet = state.fernet.as_ref();
 
