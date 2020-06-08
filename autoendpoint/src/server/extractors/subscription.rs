@@ -11,7 +11,7 @@ pub struct Subscription {
     pub uaid: String,
     pub channel_id: String,
     pub api_version: String,
-    pub public_key: String,
+    pub public_key: Option<String>,
 }
 
 impl FromRequest for Subscription {
@@ -42,7 +42,7 @@ impl FromRequest for Subscription {
         }
 
         // Extract public key
-        let public_key = "TODO: Extract public key".to_string();
+        let mut public_key = None;
         if let Some(crypto_key_header) = token_info.crypto_key_header {
             todo!("Extract public key from header")
         }
