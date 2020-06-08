@@ -51,6 +51,9 @@ pub enum ApiErrorKind {
     #[error("{0}")]
     Validation(#[from] validator::ValidationErrors),
 
+    #[error("invalid token")]
+    InvalidToken,
+
     #[error("{0}")]
     Internal(String),
 }
@@ -60,6 +63,7 @@ impl ApiErrorKind {
     pub fn status(&self) -> StatusCode {
         match self {
             ApiErrorKind::Validation(_) => StatusCode::BAD_REQUEST,
+            ApiErrorKind::InvalidToken => StatusCode::NOT_FOUND,
             ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }

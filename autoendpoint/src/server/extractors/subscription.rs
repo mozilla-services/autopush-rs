@@ -1,4 +1,4 @@
-use crate::error::ApiError;
+use crate::error::{ApiError, ApiErrorKind};
 use crate::server::extractors::token_info::TokenInfo;
 use crate::server::ServerState;
 use actix_http::{Payload, PayloadStream};
@@ -33,11 +33,12 @@ impl FromRequest for Subscription {
         // Decrypt the token
         let token = match fernet.decrypt(&token_info.token) {
             Ok(t) => t,
-            Err(e) => todo!("Error: Invalid token"),
+            Err(_) => return future::err(ApiErrorKind::InvalidToken.into()),
         };
 
         if token_info.api_version == "v1" && token.len() != 32 {
-            todo!("Error: Corrupted push token")
+            // Corrupted token
+            return future::err(ApiErrorKind::InvalidToken.into());
         }
 
         // Extract public key
