@@ -27,8 +27,8 @@ impl FromRequest for Notification {
         let mut payload = payload.take();
 
         async move {
-            let headers = WebPushHeaders::from_request(&req, &mut payload).await?;
-            let subscription = Subscription::from_request(&req, &mut payload).await?;
+            let headers = WebPushHeaders::extract(&req).await?;
+            let subscription = Subscription::extract(&req).await?;
 
             // Read data and convert to base64
             let mut data = Vec::new();

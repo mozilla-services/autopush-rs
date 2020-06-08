@@ -19,9 +19,9 @@ impl FromRequest for Subscription {
     type Future = future::Ready<Result<Self, Self::Error>>;
     type Config = ();
 
-    fn from_request(req: &HttpRequest, payload: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
         // Collect token info and server state
-        let token_info = match TokenInfo::from_request(req, payload).into_inner() {
+        let token_info = match TokenInfo::extract(req).into_inner() {
             Ok(t) => t,
             Err(e) => return future::err(e),
         };
