@@ -1,4 +1,4 @@
-use crate::error::ApiError;
+use crate::error::{ApiError, ApiErrorKind};
 use crate::server::extractors::subscription::Subscription;
 use crate::server::extractors::webpush_headers::WebPushHeaders;
 use actix_web::dev::{Payload, PayloadStream};
@@ -33,7 +33,9 @@ impl FromRequest for Notification {
             // Read data and convert to base64
             let mut data = Vec::new();
             while let Some(item) = payload.next().await {
-                data.extend_from_slice(&item.map_err(|_| ApiError::Internal("todo".to_string()))?);
+                data.extend_from_slice(
+                    &item.map_err(|_| ApiErrorKind::Internal("todo".to_string()))?,
+                );
             }
             let data = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
 
