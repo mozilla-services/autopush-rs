@@ -151,13 +151,11 @@ impl Metrics {
     }
 }
 
-pub fn metrics_from_req(req: &HttpRequest) -> Result<StatsdClient, Error> {
-    Ok(req
-        .app_data::<Data<ServerState>>()
-        .ok_or_else(|| ErrorInternalServerError("Could not get state"))
+pub fn metrics_from_req(req: &HttpRequest) -> StatsdClient {
+    req.app_data::<Data<ServerState>>()
         .expect("Could not get state in metrics_from_req")
         .metrics
-        .clone())
+        .clone()
 }
 
 /// Create a cadence StatsdClient from the given options
