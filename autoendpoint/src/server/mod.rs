@@ -7,7 +7,7 @@ use actix_web::{
 };
 use cadence::StatsdClient;
 
-use crate::error::ApiError;
+use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::settings::Settings;
 
@@ -21,7 +21,7 @@ pub struct ServerState {
 pub struct Server;
 
 impl Server {
-    pub fn with_settings(settings: Settings) -> Result<dev::Server, ApiError> {
+    pub fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let port = settings.port;
         let state = ServerState { metrics, port };

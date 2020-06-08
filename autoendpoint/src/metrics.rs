@@ -6,7 +6,7 @@ use cadence::{
     BufferedUdpMetricSink, Counted, Metric, NopMetricSink, QueuingMetricSink, StatsdClient, Timed,
 };
 
-use crate::error::ApiError;
+use crate::error::ApiResult;
 use crate::server::ServerState;
 use crate::settings::Settings;
 use crate::tags::Tags;
@@ -161,7 +161,7 @@ pub fn metrics_from_req(req: &HttpRequest) -> Result<StatsdClient, Error> {
 }
 
 /// Create a cadence StatsdClient from the given options
-pub fn metrics_from_opts(opts: &Settings) -> Result<StatsdClient, ApiError> {
+pub fn metrics_from_opts(opts: &Settings) -> ApiResult<StatsdClient> {
     let builder = if let Some(statsd_host) = opts.statsd_host.as_ref() {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.set_nonblocking(true)?;

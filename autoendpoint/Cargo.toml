@@ -10,6 +10,7 @@ actix-web = "2.0"
 actix-rt = "1.0"
 actix-cors = "0.2.0"
 autopush_common = { path = "../autopush-common" }
+backtrace = "0.3"
 cadence = "0.19.1"
 config = "0.10.1"
 docopt = "1.1.0"
