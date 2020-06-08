@@ -31,3 +31,4 @@ target
 *.rs.bk
 requirements.txt
 test-requirements.txt
+venv
