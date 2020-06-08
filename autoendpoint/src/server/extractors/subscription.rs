@@ -42,12 +42,12 @@ impl FromRequest for Subscription {
         }
 
         // Extract public key
-        let mut public_key = None;
-        if let Some(crypto_key_header) = token_info.crypto_key_header {
+        let public_key = None;
+        if let Some(_crypto_key_header) = token_info.crypto_key_header {
             todo!("Extract public key from header")
         }
 
-        if let Some(auth_header) = token_info.auth_header {
+        if let Some(_auth_header) = token_info.auth_header {
             todo!("Parse vapid auth")
         }
 
