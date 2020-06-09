@@ -3,7 +3,6 @@
 #[macro_use]
 extern crate slog_scope;
 
-#[macro_use]
 mod error;
 mod logging;
 mod metrics;
