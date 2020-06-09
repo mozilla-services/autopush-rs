@@ -20,6 +20,8 @@ mod extractors;
 mod headers;
 mod routes;
 
+pub use headers::vapid::VapidError;
+
 #[derive(Clone)]
 pub struct ServerState {
     /// Server Data

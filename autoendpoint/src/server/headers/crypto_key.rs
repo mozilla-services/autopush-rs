@@ -1,3 +1,4 @@
+use crate::server::headers::util::split_key_value;
 use std::collections::HashMap;
 
 /// Parses the Crypto-Key header described by
@@ -16,15 +17,12 @@ impl CryptoKeyHeader {
             let mut section = HashMap::new();
 
             for item_str in section_str.split(';') {
-                let mut splitter = item_str.splitn(2, '=');
+                let (key, value) = split_key_value(item_str)?;
 
-                let key = splitter.next()?.trim().to_owned();
-                let value = splitter
-                    .next()?
-                    .trim_matches(&[' ', '"'] as &[char])
-                    .to_owned();
-
-                section.insert(key, value);
+                section.insert(
+                    key.trim().to_owned(),
+                    value.trim_matches(&[' ', '"'] as &[char]).to_owned(),
+                );
             }
 
             sections.push(section);

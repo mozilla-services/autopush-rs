@@ -1,6 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::server::extractors::token_info::TokenInfo;
 use crate::server::headers::crypto_key::CryptoKeyHeader;
+use crate::server::headers::vapid::VapidHeader;
 use crate::server::ServerState;
 use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;
@@ -52,8 +53,12 @@ impl FromRequest for Subscription {
             public_key = crypto_keys.get_by_key("p256ecdsa").map(str::to_string);
         }
 
-        if let Some(_auth_header) = token_info.auth_header {
-            todo!("Parse vapid auth")
+        if let Some(header) = token_info.auth_header {
+            let vapid = match VapidHeader::parse(&header) {
+                Ok(vapid) => vapid,
+                Err(e) => return future::err(e.into()),
+            };
+            public_key = vapid.public_key
         }
 
         // Validate key data if on v2

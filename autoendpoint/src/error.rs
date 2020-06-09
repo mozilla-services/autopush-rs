@@ -1,5 +1,6 @@
 //! Error types and transformations
 
+use crate::server::VapidError;
 use actix_web::{
     dev::{HttpResponseBuilder, ServiceResponse},
     error::{PayloadError, ResponseError},
@@ -55,6 +56,9 @@ pub enum ApiErrorKind {
     #[error("{0}")]
     PayloadError(PayloadError),
 
+    #[error(transparent)]
+    VapidError(#[from] VapidError),
+
     #[error("Invalid token")]
     InvalidToken,
 
@@ -70,7 +74,9 @@ impl ApiErrorKind {
     pub fn status(&self) -> StatusCode {
         match self {
             ApiErrorKind::PayloadError(e) => e.status_code(),
-            ApiErrorKind::Validation(_) | ApiErrorKind::InvalidCryptoKey => StatusCode::BAD_REQUEST,
+            ApiErrorKind::Validation(_)
+            | ApiErrorKind::InvalidCryptoKey
+            | ApiErrorKind::VapidError(_) => StatusCode::BAD_REQUEST,
             ApiErrorKind::InvalidToken => StatusCode::NOT_FOUND,
             ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
