@@ -2,7 +2,7 @@
 
 use actix_web::{
     dev::{HttpResponseBuilder, ServiceResponse},
-    error::ResponseError,
+    error::{PayloadError, ResponseError},
     http::StatusCode,
     middleware::errhandlers::ErrorHandlerResponse,
     HttpResponse, Result,
@@ -55,6 +55,9 @@ pub enum ApiErrorKind {
     InvalidToken,
 
     #[error("{0}")]
+    PayloadError(PayloadError),
+
+    #[error("{0}")]
     Internal(String),
 }
 
@@ -62,6 +65,7 @@ impl ApiErrorKind {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
+            ApiErrorKind::PayloadError(e) => e.status_code(),
             ApiErrorKind::Validation(_) => StatusCode::BAD_REQUEST,
             ApiErrorKind::InvalidToken => StatusCode::NOT_FOUND,
             ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {

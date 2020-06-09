@@ -33,9 +33,7 @@ impl FromRequest for Notification {
             // Read data and convert to base64
             let mut data = Vec::new();
             while let Some(item) = payload.next().await {
-                data.extend_from_slice(
-                    &item.map_err(|_| ApiErrorKind::Internal("todo".to_string()))?,
-                );
+                data.extend_from_slice(&item.map_err(ApiErrorKind::PayloadError)?);
             }
             let data = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
 
