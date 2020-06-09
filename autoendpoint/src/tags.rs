@@ -50,6 +50,8 @@ fn insert_if_not_empty(label: &str, val: &str, tags: &mut HashMap<String, String
 }
 
 impl Tags {
+    #![allow(unused)] // TODO: Start using tags
+
     pub fn from_request_head(req_head: &RequestHead) -> Tags {
         // Return an Option<> type because the later consumers (ApiErrors) presume that
         // tags are optional and wrapped by an Option<> type.

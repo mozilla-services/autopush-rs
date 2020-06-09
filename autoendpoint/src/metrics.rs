@@ -73,13 +73,7 @@ impl From<&HttpRequest> for Metrics {
         let def_tags = Tags::from_request_head(req.head());
         let tags = exts.get::<Tags>().unwrap_or_else(|| &def_tags);
         Metrics {
-            client: match req.app_data::<Data<ServerState>>() {
-                Some(v) => Some(v.metrics.clone()),
-                None => {
-                    warn!("⚠️ metric error: No App State");
-                    None
-                }
-            },
+            client: Some(metrics_from_req(req)),
             tags: Some(tags.clone()),
             timer: None,
         }
@@ -107,6 +101,8 @@ impl From<&actix_web::web::Data<ServerState>> for Metrics {
 }
 
 impl Metrics {
+    #![allow(unused)] // TODO: Start using metrics
+
     pub fn sink() -> StatsdClient {
         StatsdClient::builder("", NopMetricSink).build()
     }
