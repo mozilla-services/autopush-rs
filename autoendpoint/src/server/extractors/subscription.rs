@@ -1,6 +1,6 @@
-use crate::crypto_key::CryptoKeyHeader;
 use crate::error::{ApiError, ApiErrorKind};
 use crate::server::extractors::token_info::TokenInfo;
+use crate::server::headers::crypto_key::CryptoKeyHeader;
 use crate::server::ServerState;
 use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;

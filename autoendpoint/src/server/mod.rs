@@ -17,7 +17,7 @@ use fernet::MultiFernet;
 use std::sync::Arc;
 
 mod extractors;
-mod header_util;
+mod headers;
 mod routes;
 
 #[derive(Clone)]
