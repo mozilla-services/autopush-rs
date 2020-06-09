@@ -51,11 +51,15 @@ pub enum ApiErrorKind {
     #[error("{0}")]
     Validation(#[from] validator::ValidationErrors),
 
-    #[error("invalid token")]
-    InvalidToken,
-
+    // PayloadError does not implement std Error
     #[error("{0}")]
     PayloadError(PayloadError),
+
+    #[error("Invalid token")]
+    InvalidToken,
+
+    #[error("Invalid Crypto-Key value")]
+    InvalidCryptoKey,
 
     #[error("{0}")]
     Internal(String),
@@ -66,7 +70,7 @@ impl ApiErrorKind {
     pub fn status(&self) -> StatusCode {
         match self {
             ApiErrorKind::PayloadError(e) => e.status_code(),
-            ApiErrorKind::Validation(_) => StatusCode::BAD_REQUEST,
+            ApiErrorKind::Validation(_) | ApiErrorKind::InvalidCryptoKey => StatusCode::BAD_REQUEST,
             ApiErrorKind::InvalidToken => StatusCode::NOT_FOUND,
             ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR

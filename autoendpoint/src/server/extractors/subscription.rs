@@ -1,3 +1,4 @@
+use crate::crypto_key::CryptoKeyHeader;
 use crate::error::{ApiError, ApiErrorKind};
 use crate::server::extractors::token_info::TokenInfo;
 use crate::server::ServerState;
@@ -42,9 +43,13 @@ impl FromRequest for Subscription {
         }
 
         // Extract public key
-        let public_key = None;
-        if let Some(_crypto_key_header) = token_info.crypto_key_header {
-            todo!("Extract public key from header")
+        let mut public_key = None;
+        if let Some(header) = token_info.crypto_key_header {
+            let crypto_keys = match CryptoKeyHeader::parse(&header) {
+                Some(crypto_keys) => crypto_keys,
+                None => return future::err(ApiErrorKind::InvalidCryptoKey.into()),
+            };
+            public_key = crypto_keys.get_by_key("p256ecdsa").map(str::to_string);
         }
 
         if let Some(_auth_header) = token_info.auth_header {
