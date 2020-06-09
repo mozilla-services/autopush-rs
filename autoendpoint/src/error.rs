@@ -43,13 +43,13 @@ impl ApiError {
 /// The possible errors this application could encounter
 #[derive(Debug, Error)]
 pub enum ApiErrorKind {
-    #[error("{0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 
-    #[error("{0}")]
+    #[error(transparent)]
     Metrics(#[from] cadence::MetricError),
 
-    #[error("{0}")]
+    #[error(transparent)]
     Validation(#[from] validator::ValidationErrors),
 
     // PayloadError does not implement std Error
