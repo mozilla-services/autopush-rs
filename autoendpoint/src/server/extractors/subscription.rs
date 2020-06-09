@@ -6,6 +6,7 @@ use crate::server::ServerState;
 use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
+use cadence::Counted;
 use futures::future;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
@@ -58,6 +59,14 @@ impl FromRequest for Subscription {
                 Ok(vapid) => vapid,
                 Err(e) => return future::err(e.into()),
             };
+
+            state
+                .metrics
+                .incr_with_tags("notification.auth")
+                .with_tag("vapid", &vapid.version.to_string())
+                .with_tag("scheme", &vapid.scheme)
+                .send();
+
             public_key = vapid.public_key
         }
 
