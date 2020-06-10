@@ -146,10 +146,8 @@ fn version_2_validation(token: &[u8], public_key: &str) -> ApiResult<()> {
     let token_key = &token[32..];
 
     // Hash the VAPID public key
-    let public_key = match base64::decode(public_key) {
-        Ok(key) => key,
-        Err(_) => return Err(ApiErrorKind::InvalidToken.into()),
-    };
+    let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
+        .map_err(|_| VapidError::InvalidToken)?;
     let key_hash = hash::hash(hash::MessageDigest::sha256(), &public_key)?;
 
     // Verify that the VAPID public key equals the (expected) token public key
