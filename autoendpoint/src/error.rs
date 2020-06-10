@@ -59,6 +59,9 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     VapidError(#[from] VapidError),
 
+    #[error("Error while validating token")]
+    TokenHashValidation(#[from] openssl::error::ErrorStack),
+
     #[error("Invalid token")]
     InvalidToken,
 
@@ -76,7 +79,8 @@ impl ApiErrorKind {
             ApiErrorKind::PayloadError(e) => e.status_code(),
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidCryptoKey
-            | ApiErrorKind::VapidError(_) => StatusCode::BAD_REQUEST,
+            | ApiErrorKind::VapidError(_)
+            | ApiErrorKind::TokenHashValidation(_) => StatusCode::BAD_REQUEST,
             ApiErrorKind::InvalidToken => StatusCode::NOT_FOUND,
             ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR

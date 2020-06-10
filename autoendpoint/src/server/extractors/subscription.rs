@@ -8,6 +8,7 @@ use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use cadence::{Counted, StatsdClient};
 use futures::future;
+use openssl::hash;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 pub struct Subscription {
@@ -122,12 +123,21 @@ fn version_2_validation(token: &[u8], public_key: &str) -> ApiResult<()> {
         return Err(ApiErrorKind::InvalidToken.into());
     }
 
+    // Verify that the sender is authorized to send notifications.
+    // The last 32 bytes of the token is the hashed public key.
+    let token_key = &token[32..];
+
+    // Hash the VAPID public key
     let public_key = match base64::decode(public_key) {
         Ok(key) => key,
         Err(_) => return Err(ApiErrorKind::InvalidToken.into()),
     };
+    let key_hash = hash::hash(hash::MessageDigest::sha256(), &public_key)?;
 
-    // TODO: check key against token
+    // Verify that the VAPID public key equals the (expected) token public key
+    if !openssl::memcmp::eq(&key_hash, &token_key) {
+        return Err(VapidError::InvalidToken.into());
+    }
 
     Ok(())
 }
