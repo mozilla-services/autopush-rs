@@ -8,9 +8,7 @@ use futures::{future, FutureExt, StreamExt};
 
 /// Extracts notification data from `Subscription` and request data
 pub struct Notification {
-    pub uaid: String,
-    pub channel_id: String,
-    pub version: String,
+    pub subscription: Subscription,
     pub ttl: Option<u64>,
     pub topic: Option<String>,
     pub timestamp: u64,
@@ -38,9 +36,7 @@ impl FromRequest for Notification {
             let data = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
 
             Ok(Notification {
-                uaid: subscription.uaid,
-                channel_id: subscription.channel_id,
-                version: subscription.api_version,
+                subscription,
                 ttl: headers.ttl,
                 topic: headers.topic,
                 timestamp: sec_since_epoch(),
