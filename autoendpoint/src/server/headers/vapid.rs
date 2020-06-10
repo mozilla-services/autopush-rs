@@ -1,4 +1,5 @@
 use crate::server::headers::util::split_key_value;
+use std::collections::HashMap;
 use thiserror::Error;
 
 const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
@@ -7,8 +8,15 @@ const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 #[derive(Debug, PartialEq)]
 pub struct VapidHeader {
     pub scheme: String,
-    pub version: usize,
-    pub public_key: Option<String>,
+    pub token: String,
+    pub version_data: VapidVersionData,
+}
+
+/// Version-specific VAPID data. Also used to identify the VAPID version.
+#[derive(Debug, PartialEq)]
+pub enum VapidVersionData {
+    Version1,
+    Version2 { public_key: String },
 }
 
 impl VapidHeader {
@@ -16,34 +24,48 @@ impl VapidHeader {
     /// version is 2 ("vapid" scheme).
     pub fn parse(header: &str) -> Result<VapidHeader, VapidError> {
         let mut scheme_split = header.splitn(2, ' ');
-        let scheme = scheme_split.next().ok_or(VapidError::MissingToken)?;
+        let scheme = scheme_split
+            .next()
+            .ok_or(VapidError::MissingToken)?
+            .to_lowercase();
         let data = scheme_split
             .next()
             .ok_or(VapidError::MissingToken)?
             .replace(' ', "");
 
-        if !ALLOWED_SCHEMES.contains(&scheme) {
+        if !ALLOWED_SCHEMES.contains(&scheme.as_str()) {
             return Err(VapidError::UnknownScheme);
         }
 
-        let (version, public_key) = if scheme == "vapid" {
-            // Get the value of the "k" item. This is the public key.
-            let (_, public_key) = data
-                .split(',')
-                .filter_map(split_key_value)
-                .find(|(key, _)| *key == "k")
-                .ok_or(VapidError::InvalidToken)?;
+        let (token, version_data) = if scheme == "vapid" {
+            let data: HashMap<&str, &str> = data.split(',').filter_map(split_key_value).collect();
 
-            (2, Some(public_key.to_string()))
+            let public_key = *data.get("k").ok_or(VapidError::InvalidToken)?;
+            let token = *data.get("t").ok_or(VapidError::InvalidToken)?;
+
+            (
+                token.to_string(),
+                VapidVersionData::Version2 {
+                    public_key: public_key.to_string(),
+                },
+            )
         } else {
-            (1, None)
+            (data, VapidVersionData::Version1)
         };
 
         Ok(Self {
-            scheme: scheme.to_string(),
-            version,
-            public_key,
+            scheme,
+            token,
+            version_data,
         })
+    }
+
+    /// Get the VAPID version as a number
+    pub fn version(&self) -> usize {
+        match self.version_data {
+            VapidVersionData::Version1 => 1,
+            VapidVersionData::Version2 { .. } => 2,
+        }
     }
 }
 
@@ -59,8 +81,14 @@ pub enum VapidError {
 
 #[cfg(test)]
 mod tests {
-    use super::VapidHeader;
+    use super::{VapidHeader, VapidVersionData};
 
+    const TOKEN: &str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJodHRwc\
+        zovL3B1c2guc2VydmljZXMubW96aWxsYS5jb20iLCJzdWIiOiJtYWlsdG86YWRtaW5AZXhh\
+        bXBsZS5jb20iLCJleHAiOiIxNDYzMDAxMzQwIn0.y_dvPoTLBo60WwtocJmaTWaNet81_jT\
+        TJuyYt2CkxykLqop69pirSWLLRy80no9oTL8SDLXgTaYF1OrTIEkDow";
+    const KEY: &str = "BAS7pgV_RFQx5yAwSePfrmjvNm1sDXyMpyDSCL1IXRU32cdtopiAmSys\
+        WTCrL_aZg2GE1B_D9v7weQVXC3zDmnQ";
     const VALID_HEADER: &str = "vapid t=eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.ey\
         JhdWQiOiJodHRwczovL3B1c2guc2VydmljZXMubW96aWxsYS5jb20iLCJzdWIiOiJtYWlsd\
         G86YWRtaW5AZXhhbXBsZS5jb20iLCJleHAiOiIxNDYzMDAxMzQwIn0.y_dvPoTLBo60Wwto\
@@ -73,13 +101,11 @@ mod tests {
         assert_eq!(
             VapidHeader::parse(VALID_HEADER),
             Ok(VapidHeader {
-                version: 2,
                 scheme: "vapid".to_string(),
-                public_key: Some(
-                    "BAS7pgV_RFQx5yAwSePfrmjvNm1sDXyMpyDSCL1IXRU32cdtopiAmSysWT\
-                     CrL_aZg2GE1B_D9v7weQVXC3zDmnQ"
-                        .to_string()
-                )
+                token: TOKEN.to_string(),
+                version_data: VapidVersionData::Version2 {
+                    public_key: KEY.to_string()
+                }
             })
         );
     }

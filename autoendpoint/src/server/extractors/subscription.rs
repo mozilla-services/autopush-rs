@@ -1,12 +1,12 @@
-use crate::error::{ApiError, ApiErrorKind};
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::extractors::token_info::TokenInfo;
 use crate::server::headers::crypto_key::CryptoKeyHeader;
-use crate::server::headers::vapid::VapidHeader;
-use crate::server::ServerState;
+use crate::server::headers::vapid::{VapidHeader, VapidVersionData};
+use crate::server::{ServerState, VapidError};
 use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
-use cadence::Counted;
+use cadence::{Counted, StatsdClient};
 use futures::future;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
@@ -14,7 +14,7 @@ pub struct Subscription {
     pub uaid: String,
     pub channel_id: String,
     pub api_version: String,
-    pub public_key: Option<String>,
+    pub public_key: String,
 }
 
 impl FromRequest for Subscription {
@@ -39,40 +39,28 @@ impl FromRequest for Subscription {
             Err(_) => return future::err(ApiErrorKind::InvalidToken.into()),
         };
 
-        if token_info.api_version == "v1" && token.len() != 32 {
-            // Corrupted token
-            return future::err(ApiErrorKind::InvalidToken.into());
-        }
+        // Parse VAPID
+        let vapid = match parse_vapid(&token_info, &state.metrics) {
+            Ok(vapid) => vapid,
+            Err(e) => return future::err(e),
+        };
 
-        // Extract public key
-        let mut public_key = None;
-        if let Some(header) = token_info.crypto_key_header {
-            let crypto_keys = match CryptoKeyHeader::parse(&header) {
-                Some(crypto_keys) => crypto_keys,
-                None => return future::err(ApiErrorKind::InvalidCryptoKey.into()),
-            };
-            public_key = crypto_keys.get_by_key("p256ecdsa").map(str::to_string);
-        }
+        // Extract VAPID public key
+        let public_key = match extract_public_key(vapid, &token_info) {
+            Ok(key) => key,
+            Err(e) => return future::err(e),
+        };
 
-        if let Some(header) = token_info.auth_header {
-            let vapid = match VapidHeader::parse(&header) {
-                Ok(vapid) => vapid,
-                Err(e) => return future::err(e.into()),
-            };
-
-            state
-                .metrics
-                .incr_with_tags("notification.auth")
-                .with_tag("vapid", &vapid.version.to_string())
-                .with_tag("scheme", &vapid.scheme)
-                .send();
-
-            public_key = vapid.public_key
-        }
-
-        // Validate key data if on v2
         if token_info.api_version == "v2" {
-            todo!("Perform v2 checks")
+            match version_2_validation(&token, &public_key) {
+                Ok(_) => {}
+                Err(e) => return future::err(e),
+            };
+        } else {
+            match version_1_validation(&token) {
+                Ok(_) => {}
+                Err(e) => return future::err(e),
+            };
         }
 
         future::ok(Subscription {
@@ -82,4 +70,64 @@ impl FromRequest for Subscription {
             public_key,
         })
     }
+}
+
+/// Parse the authorization header for VAPID data and update metrics
+fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<VapidHeader> {
+    let auth_header = token_info
+        .auth_header
+        .as_ref()
+        .ok_or(VapidError::MissingToken)?;
+    let vapid = VapidHeader::parse(auth_header)?;
+
+    metrics
+        .incr_with_tags("notification.auth")
+        .with_tag("vapid", &vapid.version().to_string())
+        .with_tag("scheme", &vapid.scheme)
+        .send();
+
+    Ok(vapid)
+}
+
+/// Extract the VAPID public key from the headers
+fn extract_public_key(vapid: VapidHeader, token_info: &TokenInfo) -> ApiResult<String> {
+    Ok(match vapid.version_data {
+        VapidVersionData::Version1 => {
+            // VAPID v1 stores the public key in the Crypto-Key header
+            token_info
+                .crypto_key_header
+                .as_deref()
+                .and_then(CryptoKeyHeader::parse)
+                .and_then(|crypto_keys| crypto_keys.get_by_key("p256ecdsa").map(str::to_string))
+                .ok_or(ApiErrorKind::InvalidCryptoKey)?
+        }
+        VapidVersionData::Version2 { public_key } => public_key,
+    })
+}
+
+/// `/webpush/v1/` validations
+fn version_1_validation(token: &[u8]) -> ApiResult<()> {
+    if token.len() != 32 {
+        // Corrupted token
+        return Err(ApiErrorKind::InvalidToken.into());
+    }
+
+    Ok(())
+}
+
+/// `/webpush/v2/` validations
+fn version_2_validation(token: &[u8], public_key: &str) -> ApiResult<()> {
+    if token.len() != 64 {
+        // Corrupted token
+        return Err(ApiErrorKind::InvalidToken.into());
+    }
+
+    let public_key = match base64::decode(public_key) {
+        Ok(key) => key,
+        Err(_) => return Err(ApiErrorKind::InvalidToken.into()),
+    };
+
+    // TODO: check key against token
+
+    Ok(())
 }
