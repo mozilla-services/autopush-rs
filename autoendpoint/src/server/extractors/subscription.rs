@@ -9,6 +9,7 @@ use actix_web::{FromRequest, HttpRequest};
 use cadence::{Counted, StatsdClient};
 use futures::future;
 use openssl::hash;
+use std::borrow::Cow;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 pub struct Subscription {
@@ -35,7 +36,7 @@ impl FromRequest for Subscription {
         let fernet = state.fernet.as_ref();
 
         // Decrypt the token
-        let token = match fernet.decrypt(&token_info.token) {
+        let token = match fernet.decrypt(&repad_base64(&token_info.token)) {
             Ok(t) => t,
             Err(_) => return future::err(ApiErrorKind::InvalidToken.into()),
         };
@@ -70,6 +71,23 @@ impl FromRequest for Subscription {
             api_version: token_info.api_version,
             public_key,
         })
+    }
+}
+
+/// Add back padding to a base64 string
+fn repad_base64(data: &str) -> Cow<'_, str> {
+    let remaining_padding = data.len() % 4;
+
+    if remaining_padding != 0 {
+        let mut data = data.to_string();
+
+        for _ in 0..remaining_padding {
+            data.push('=');
+        }
+
+        Cow::Owned(data)
+    } else {
+        Cow::Borrowed(data)
     }
 }
 
