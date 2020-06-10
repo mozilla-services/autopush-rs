@@ -7,7 +7,8 @@ use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use cadence::{Counted, StatsdClient};
-use futures::future;
+use futures::future::LocalBoxFuture;
+use futures::FutureExt;
 use openssl::hash;
 use std::borrow::Cow;
 
@@ -21,56 +22,42 @@ pub struct Subscription {
 
 impl FromRequest for Subscription {
     type Error = ApiError;
-    type Future = future::Ready<Result<Self, Self::Error>>;
+    type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
     type Config = ();
 
     fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
-        // Collect token info and server state
-        let token_info = match TokenInfo::extract(req).into_inner() {
-            Ok(t) => t,
-            Err(e) => return future::err(e),
-        };
-        let state: Data<ServerState> = Data::extract(req)
-            .into_inner()
-            .expect("No server state found");
-        let fernet = state.fernet.as_ref();
+        let req = req.clone();
 
-        // Decrypt the token
-        let token = match fernet.decrypt(&repad_base64(&token_info.token)) {
-            Ok(t) => t,
-            Err(_) => return future::err(ApiErrorKind::InvalidToken.into()),
-        };
+        async move {
+            // Collect token info and server state
+            let token_info = TokenInfo::extract(&req).await?;
+            let state: Data<ServerState> =
+                Data::extract(&req).await.expect("No server state found");
+            let fernet = state.fernet.as_ref();
 
-        // Parse VAPID
-        let vapid = match parse_vapid(&token_info, &state.metrics) {
-            Ok(vapid) => vapid,
-            Err(e) => return future::err(e),
-        };
+            // Decrypt the token
+            let token = fernet
+                .decrypt(&repad_base64(&token_info.token))
+                .map_err(|_| ApiErrorKind::InvalidToken)?;
 
-        // Extract VAPID public key
-        let public_key = match extract_public_key(vapid, &token_info) {
-            Ok(key) => key,
-            Err(e) => return future::err(e),
-        };
+            // Parse VAPID and extract public key
+            let vapid = parse_vapid(&token_info, &state.metrics)?;
+            let public_key = extract_public_key(vapid, &token_info)?;
 
-        if token_info.api_version == "v2" {
-            match version_2_validation(&token, &public_key) {
-                Ok(_) => {}
-                Err(e) => return future::err(e),
-            };
-        } else {
-            match version_1_validation(&token) {
-                Ok(_) => {}
-                Err(e) => return future::err(e),
-            };
+            if token_info.api_version == "v2" {
+                version_2_validation(&token, &public_key)?;
+            } else {
+                version_1_validation(&token)?;
+            }
+
+            Ok(Subscription {
+                uaid: hex::encode(&token[..16]),
+                channel_id: hex::encode(&token[16..32]),
+                api_version: token_info.api_version,
+                public_key,
+            })
         }
-
-        future::ok(Subscription {
-            uaid: hex::encode(&token[..16]),
-            channel_id: hex::encode(&token[16..32]),
-            api_version: token_info.api_version,
-            public_key,
-        })
+        .boxed_local()
     }
 }
 
