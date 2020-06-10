@@ -147,12 +147,12 @@ fn version_2_validation(token: &[u8], public_key: &str) -> ApiResult<()> {
 
     // Hash the VAPID public key
     let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
-        .map_err(|_| VapidError::InvalidToken)?;
+        .map_err(|_| VapidError::InvalidKey)?;
     let key_hash = hash::hash(hash::MessageDigest::sha256(), &public_key)?;
 
     // Verify that the VAPID public key equals the (expected) token public key
     if !openssl::memcmp::eq(&key_hash, &token_key) {
-        return Err(VapidError::InvalidToken.into());
+        return Err(VapidError::KeyMismatch.into());
     }
 
     Ok(())

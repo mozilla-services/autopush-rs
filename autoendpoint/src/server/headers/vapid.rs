@@ -40,8 +40,8 @@ impl VapidHeader {
         let (token, version_data) = if scheme == "vapid" {
             let data: HashMap<&str, &str> = data.split(',').filter_map(split_key_value).collect();
 
-            let public_key = *data.get("k").ok_or(VapidError::InvalidToken)?;
-            let token = *data.get("t").ok_or(VapidError::InvalidToken)?;
+            let public_key = *data.get("k").ok_or(VapidError::MissingKey)?;
+            let token = *data.get("t").ok_or(VapidError::MissingToken)?;
 
             (
                 token.to_string(),
@@ -71,10 +71,16 @@ impl VapidHeader {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum VapidError {
-    #[error("Missing auth token")]
+    #[error("Missing VAPID token")]
     MissingToken,
-    #[error("Invalid auth token")]
+    #[error("Missing VAPID public key")]
+    MissingKey,
+    #[error("Invalid VAPID token")]
     InvalidToken,
+    #[error("Invalid VAPID public key")]
+    InvalidKey,
+    #[error("VAPID public key mismatch")]
+    KeyMismatch,
     #[error("Unknown auth scheme")]
     UnknownScheme,
 }
