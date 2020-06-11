@@ -68,6 +68,9 @@ pub enum ApiErrorKind {
     #[error("Invalid Crypto-Key value")]
     InvalidCryptoKey,
 
+    #[error("Data payload must be smaller than {} bytes", .0)]
+    PayloadTooLarge(usize),
+
     #[error("{0}")]
     Internal(String),
 }
@@ -85,6 +88,8 @@ impl ApiErrorKind {
             ApiErrorKind::VapidError(_) => StatusCode::UNAUTHORIZED,
 
             ApiErrorKind::InvalidToken => StatusCode::NOT_FOUND,
+
+            ApiErrorKind::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
 
             ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR

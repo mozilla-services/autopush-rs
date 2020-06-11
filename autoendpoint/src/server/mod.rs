@@ -26,7 +26,7 @@ pub use headers::vapid::VapidError;
 pub struct ServerState {
     /// Server Data
     pub metrics: StatsdClient,
-    pub port: u16,
+    pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
 }
 
@@ -35,11 +35,12 @@ pub struct Server;
 impl Server {
     pub fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
         let metrics = metrics::metrics_from_opts(&settings)?;
-        let port = settings.port;
+        let bind_address = format!("{}:{}", settings.host, settings.port);
+        let fernet = Arc::new(settings.make_fernet());
         let state = ServerState {
             metrics,
-            port,
-            fernet: Arc::new(settings.make_fernet()),
+            settings,
+            fernet,
         };
 
         let server = HttpServer::new(move || {
@@ -60,7 +61,7 @@ impl Server {
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
                 .service(web::resource("/__version__").route(web::get().to(version_route)))
         })
-        .bind(format!("{}:{}", settings.host, settings.port))?
+        .bind(bind_address)?
         .run();
 
         Ok(server)
