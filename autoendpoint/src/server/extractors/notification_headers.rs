@@ -1,4 +1,5 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
+use crate::server::headers::crypto_key::CryptoKeyHeader;
 use crate::server::headers::util::{get_header, get_owned_header};
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::{FromRequest, HttpRequest};
@@ -94,15 +95,9 @@ impl NotificationHeaders {
         })?;
 
         match content_encoding {
-            "aesgcm128" => {
-                self.validate_encryption_01_rules()?;
-            }
-            "aesgcm" => {
-                self.validate_encryption_04_rules()?;
-            }
-            "aes128gcm" => {
-                self.validate_encryption_06_rules()?;
-            }
+            "aesgcm128" => self.validate_encryption_01_rules()?,
+            "aesgcm" => self.validate_encryption_04_rules()?,
+            "aes128gcm" => self.validate_encryption_06_rules()?,
             _ => {
                 return Err(ApiErrorKind::InvalidEncryption(
                     "Unknown Content-Encoding header".to_string(),
@@ -117,18 +112,90 @@ impl NotificationHeaders {
     /// Validates encryption headers according to
     /// draft-ietf-webpush-encryption-01
     fn validate_encryption_01_rules(&self) -> ApiResult<()> {
-        todo!()
+        Self::assert_base64_item_exists("Encryption", self.encryption.as_deref(), "salt")?;
+        Self::assert_base64_item_exists("Encryption-Key", self.encryption_key.as_deref(), "dh")?;
+        Self::assert_not_exists("aesgcm128 Crypto-Key", self.crypto_key.as_deref(), "dh")?;
+
+        Ok(())
     }
 
     /// Validates encryption headers according to
     /// draft-ietf-webpush-encryption-04
     fn validate_encryption_04_rules(&self) -> ApiResult<()> {
-        todo!()
+        Self::assert_base64_item_exists("Encryption", self.encryption.as_deref(), "salt")?;
+
+        if self.encryption_key.is_some() {
+            return Err(ApiErrorKind::InvalidEncryption(
+                "Encryption-Key header is not valid for webpush draft 02 or later".to_string(),
+            )
+            .into());
+        }
+
+        if self.crypto_key.is_some() {
+            Self::assert_base64_item_exists("Crypto-Key", self.crypto_key.as_deref(), "dh")?;
+        }
+
+        Ok(())
     }
 
     /// Validates encryption headers according to
     /// draft-ietf-webpush-encryption-06
     fn validate_encryption_06_rules(&self) -> ApiResult<()> {
-        todo!()
+        Self::assert_not_exists("aes128gcm Encryption", self.encryption.as_deref(), "salt")?;
+        Self::assert_not_exists("aes128gcm Crypto-Key", self.crypto_key.as_deref(), "dh")?;
+
+        Ok(())
+    }
+
+    /// Assert that the given key exists in the header and is valid base64.
+    fn assert_base64_item_exists(
+        header_name: &str,
+        header: Option<&str>,
+        key: &str,
+    ) -> ApiResult<()> {
+        let header = header.ok_or_else(|| {
+            ApiErrorKind::InvalidEncryption(format!("Missing {} header", header_name))
+        })?;
+        let header_data = CryptoKeyHeader::parse(header).ok_or_else(|| {
+            ApiErrorKind::InvalidEncryption(format!("Invalid {} header", header_name))
+        })?;
+        let salt = header_data.get_by_key(key).ok_or_else(|| {
+            ApiErrorKind::InvalidEncryption(format!(
+                "Missing {} value in {} header",
+                key, header_name
+            ))
+        })?;
+
+        if !VALID_BASE64_URL.is_match(salt) {
+            return Err(ApiErrorKind::InvalidEncryption(format!(
+                "Invalid {} value in {} header",
+                key, header_name
+            ))
+            .into());
+        }
+
+        Ok(())
+    }
+
+    /// Assert that the given key does not exist in the header.
+    fn assert_not_exists(header_name: &str, header: Option<&str>, key: &str) -> ApiResult<()> {
+        let header = match header {
+            Some(header) => header,
+            None => return Ok(()),
+        };
+
+        let header_data = CryptoKeyHeader::parse(header).ok_or_else(|| {
+            ApiErrorKind::InvalidEncryption(format!("Invalid {} header", header_name))
+        })?;
+
+        if header_data.get_by_key(key).is_some() {
+            return Err(ApiErrorKind::InvalidEncryption(format!(
+                "Do not include '{}' header in {} header",
+                key, header_name
+            ))
+            .into());
+        }
+
+        Ok(())
     }
 }
