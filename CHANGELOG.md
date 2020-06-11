@@ -1,3 +1,15 @@
+<a name="1.56.0"></a>
+## 1.56.0 (2020-06-11)
+
+
+#### Features
+
+*   only register new users on new subscription requests (#152) ([06778267](https://github.com/mozilla-services/autopush-rs/commit/06778267097d71b53ef3b4bb94d21ca2f58b1014), closes [#137](https://github.com/mozilla-services/autopush-rs/issues/137))
+*   update to hyper 12 (#132) ([8733ad55](https://github.com/mozilla-services/autopush-rs/commit/8733ad55148997cf2f4399f3fec9f4a62a9b8e31), closes [#132](https://github.com/mozilla-services/autopush-rs/issues/132))
+*   Add autoendpoint crate (#150) ([e31ea1da](https://github.com/mozilla-services/autopush-rs/commit/e31ea1da9eab7fb1322d58bfb8d6facbcf5966cd), closes [#102](https://github.com/mozilla-services/autopush-rs/issues/102))
+
+
+
 <a name="1.55.0"></a>
 ## 1.55.0 (2020-04-10)
 

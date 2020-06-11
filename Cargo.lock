@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "autopush"
-version = "1.55.0"
+version = "1.56.0"
 dependencies = [
  "autopush_common 1.0.0",
  "base64 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
