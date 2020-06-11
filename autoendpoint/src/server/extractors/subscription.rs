@@ -16,7 +16,7 @@ use std::borrow::Cow;
 pub struct Subscription {
     pub uaid: String,
     pub channel_id: String,
-    pub api_version: String,
+    pub vapid: VapidHeader,
     pub public_key: String,
 }
 
@@ -42,7 +42,7 @@ impl FromRequest for Subscription {
 
             // Parse VAPID and extract public key
             let vapid = parse_vapid(&token_info, &state.metrics)?;
-            let public_key = extract_public_key(vapid, &token_info)?;
+            let public_key = extract_public_key(&vapid, &token_info)?;
 
             if token_info.api_version == "v2" {
                 version_2_validation(&token, &public_key)?;
@@ -53,7 +53,7 @@ impl FromRequest for Subscription {
             Ok(Subscription {
                 uaid: hex::encode(&token[..16]),
                 channel_id: hex::encode(&token[16..32]),
-                api_version: token_info.api_version,
+                vapid,
                 public_key,
             })
         }
@@ -96,8 +96,8 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Vapi
 }
 
 /// Extract the VAPID public key from the headers
-fn extract_public_key(vapid: VapidHeader, token_info: &TokenInfo) -> ApiResult<String> {
-    Ok(match vapid.version_data {
+fn extract_public_key(vapid: &VapidHeader, token_info: &TokenInfo) -> ApiResult<String> {
+    Ok(match &vapid.version_data {
         VapidVersionData::Version1 => {
             // VAPID v1 stores the public key in the Crypto-Key header
             token_info
@@ -107,7 +107,7 @@ fn extract_public_key(vapid: VapidHeader, token_info: &TokenInfo) -> ApiResult<S
                 .and_then(|crypto_keys| crypto_keys.get_by_key("p256ecdsa").map(str::to_string))
                 .ok_or(ApiErrorKind::InvalidCryptoKey)?
         }
-        VapidVersionData::Version2 { public_key } => public_key,
+        VapidVersionData::Version2 { public_key } => public_key.clone(),
     })
 }
 
