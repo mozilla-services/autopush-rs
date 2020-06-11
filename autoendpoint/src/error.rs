@@ -65,8 +65,9 @@ pub enum ApiErrorKind {
     #[error("Invalid token")]
     InvalidToken,
 
-    #[error("Invalid Crypto-Key value")]
-    InvalidCryptoKey,
+    /// A specific issue with the encryption headers
+    #[error("{0}")]
+    InvalidEncryption(String),
 
     #[error("Data payload must be smaller than {} bytes", .0)]
     PayloadTooLarge(usize),
@@ -82,7 +83,7 @@ impl ApiErrorKind {
             ApiErrorKind::PayloadError(e) => e.status_code(),
 
             ApiErrorKind::Validation(_)
-            | ApiErrorKind::InvalidCryptoKey
+            | ApiErrorKind::InvalidEncryption(_)
             | ApiErrorKind::TokenHashValidation(_) => StatusCode::BAD_REQUEST,
 
             ApiErrorKind::VapidError(_) => StatusCode::UNAUTHORIZED,

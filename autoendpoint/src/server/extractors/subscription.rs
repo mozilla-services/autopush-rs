@@ -100,12 +100,19 @@ fn extract_public_key(vapid: &VapidHeader, token_info: &TokenInfo) -> ApiResult<
     Ok(match &vapid.version_data {
         VapidVersionData::Version1 => {
             // VAPID v1 stores the public key in the Crypto-Key header
-            token_info
-                .crypto_key_header
-                .as_deref()
-                .and_then(CryptoKeyHeader::parse)
-                .and_then(|crypto_keys| crypto_keys.get_by_key("p256ecdsa").map(str::to_string))
-                .ok_or(ApiErrorKind::InvalidCryptoKey)?
+            let header = token_info.crypto_key_header.as_deref().ok_or_else(|| {
+                ApiErrorKind::InvalidEncryption("Missing Crypto-Key header".to_string())
+            })?;
+            let header_data = CryptoKeyHeader::parse(header).ok_or_else(|| {
+                ApiErrorKind::InvalidEncryption("Invalid Crypto-Key header".to_string())
+            })?;
+            let public_key = header_data.get_by_key("p256ecdsa").ok_or_else(|| {
+                ApiErrorKind::InvalidEncryption(
+                    "Missing p256ecdsa in Crypto-Key header".to_string(),
+                )
+            })?;
+
+            public_key.to_string()
         }
         VapidVersionData::Version2 { public_key } => public_key.clone(),
     })
