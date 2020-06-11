@@ -14,7 +14,7 @@ pub struct Notification {
     pub ttl: Option<u64>,
     pub topic: Option<String>,
     pub timestamp: u64,
-    pub data: String,
+    pub data: Option<String>,
 }
 
 impl FromRequest for Notification {
@@ -33,7 +33,7 @@ impl FromRequest for Notification {
                 .await
                 .expect("No server state found");
 
-            // Read data and convert to base64
+            // Read data
             let mut data = Vec::new();
             while let Some(item) = payload.next().await {
                 data.extend_from_slice(&item.map_err(ApiErrorKind::PayloadError)?);
@@ -44,7 +44,13 @@ impl FromRequest for Notification {
                     return Err(ApiErrorKind::PayloadTooLarge(max_bytes).into());
                 }
             }
-            let data = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
+
+            // Convert data to base64
+            let data = if data.is_empty() {
+                None
+            } else {
+                Some(base64::encode_config(data, base64::URL_SAFE_NO_PAD))
+            };
 
             Ok(Notification {
                 subscription,
