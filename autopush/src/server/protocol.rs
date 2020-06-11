@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use autopush_common::notification::Notification;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum BroadcastValue {
     Value(String),
@@ -34,7 +34,7 @@ impl Default for ServerNotification {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(tag = "messageType", rename_all = "snake_case")]
 pub enum ClientMessage {
     Hello {
@@ -86,14 +86,14 @@ impl FromStr for ClientMessage {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ClientAck {
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
     pub version: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(tag = "messageType", rename_all = "snake_case")]
 pub enum ServerMessage {
     Hello {
