@@ -6,7 +6,7 @@ use serde::Deserialize;
 use url::Url;
 
 const DEFAULT_PORT: u16 = 8000;
-const ENV_PREFIX: &str = "autoend_";
+const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
