@@ -1,6 +1,6 @@
 use crate::error::{ApiError, ApiErrorKind};
+use crate::server::extractors::notification_headers::NotificationHeaders;
 use crate::server::extractors::subscription::Subscription;
-use crate::server::extractors::webpush_headers::WebPushHeaders;
 use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
@@ -11,8 +11,7 @@ use futures::{future, FutureExt, StreamExt};
 /// Extracts notification data from `Subscription` and request data
 pub struct Notification {
     pub subscription: Subscription,
-    pub ttl: Option<u64>,
-    pub topic: Option<String>,
+    pub headers: NotificationHeaders,
     pub timestamp: u64,
     pub data: Option<String>,
 }
@@ -27,7 +26,7 @@ impl FromRequest for Notification {
         let mut payload = payload.take();
 
         async move {
-            let headers = WebPushHeaders::extract(&req).await?;
+            let headers = NotificationHeaders::from_request(&req, &mut payload).await?;
             let subscription = Subscription::extract(&req).await?;
             let state = Data::<ServerState>::extract(&req)
                 .await
@@ -54,8 +53,7 @@ impl FromRequest for Notification {
 
             Ok(Notification {
                 subscription,
-                ttl: headers.ttl,
-                topic: headers.topic,
+                headers,
                 timestamp: sec_since_epoch(),
                 data,
             })
