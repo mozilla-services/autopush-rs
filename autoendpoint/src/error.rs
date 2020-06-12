@@ -102,7 +102,7 @@ impl ApiErrorKind {
 // Print out the error and backtrace, including source errors
 impl Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}\nBacktrace: {:?}", self.kind, self.backtrace)?;
+        write!(f, "Error: {}\nBacktrace: \n{:?}", self.kind, self.backtrace)?;
 
         // Go down the chain of errors
         let mut error: &dyn Error = &self.kind;
