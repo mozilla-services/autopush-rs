@@ -1,7 +1,7 @@
 use std::net::UdpSocket;
 use std::time::Instant;
 
-use actix_web::{web::Data, HttpRequest};
+use actix_web::{web::Data, FromRequest, HttpRequest};
 use cadence::{
     BufferedUdpMetricSink, Counted, Metric, MetricError, NopMetricSink, QueuingMetricSink,
     StatsdClient, Timed,
@@ -10,6 +10,8 @@ use cadence::{
 use crate::server::ServerState;
 use crate::settings::Settings;
 use crate::tags::Tags;
+use actix_web::dev::{Payload, PayloadStream};
+use futures::future;
 
 #[derive(Debug, Clone)]
 pub struct MetricTimer {
@@ -52,6 +54,16 @@ impl Drop for Metrics {
                 }
             }
         }
+    }
+}
+
+impl FromRequest for Metrics {
+    type Error = ();
+    type Future = future::Ready<Result<Self, Self::Error>>;
+    type Config = ();
+
+    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+        future::ok(Metrics::from(req))
     }
 }
 

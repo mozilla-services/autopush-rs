@@ -1,6 +1,7 @@
 //! Application settings
 
 use config::{Config, ConfigError, Environment, File};
+use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
@@ -18,6 +19,7 @@ pub struct Settings {
     #[cfg(any(test, feature = "db_test"))]
     pub database_use_test_transactions: bool,
 
+    pub crypto_keys: Vec<String>,
     pub human_logs: bool,
 
     pub statsd_host: Option<String>,
@@ -35,10 +37,11 @@ impl Default for Settings {
             database_pool_max_size: None,
             #[cfg(any(test, feature = "db_test"))]
             database_use_test_transactions: false,
+            crypto_keys: vec![Fernet::generate_key()],
+            human_logs: false,
             statsd_host: None,
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
-            human_logs: false,
         }
     }
 }
@@ -82,5 +85,15 @@ impl Settings {
             .map(|url| url.scheme().to_owned())
             .unwrap_or_else(|_| "<invalid db>".to_owned());
         format!("http://{}:{} ({})", self.host, self.port, db)
+    }
+
+    /// Initialize the fernet encryption instance
+    pub fn make_fernet(&self) -> MultiFernet {
+        let fernets = self
+            .crypto_keys
+            .iter()
+            .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEY"))
+            .collect();
+        MultiFernet::new(fernets)
     }
 }
