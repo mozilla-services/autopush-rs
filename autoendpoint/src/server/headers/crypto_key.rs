@@ -1,7 +1,7 @@
 use crate::server::headers::util::split_key_value;
 use std::collections::HashMap;
 
-/// Parses the Crypto-Key header described by
+/// Parses the Crypto-Key header (and similar headers) described by
 /// http://tools.ietf.org/html/draft-ietf-httpbis-encryption-encoding-00#section-4
 pub struct CryptoKeyHeader {
     /// The sections (comma separated) and their items (key-value semicolon separated)
