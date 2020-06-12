@@ -17,7 +17,7 @@ lazy_static! {
 const MAX_TTL: i64 = 60 * 60 * 24 * 60;
 
 /// Extractor and validator for notification headers
-#[derive(Debug, Validate)]
+#[derive(Debug, Eq, PartialEq, Validate)]
 pub struct NotificationHeaders {
     // TTL is a signed value so that validation can catch negative inputs
     #[validate(range(min = 0, message = "TTL must be greater than 0", code = "114"))]
@@ -141,6 +141,8 @@ impl NotificationHeaders {
 
     /// Validates encryption headers according to
     /// draft-ietf-webpush-encryption-06
+    /// (the encryption values are in the payload, so there shouldn't be any in
+    /// the headers)
     fn validate_encryption_06_rules(&self) -> ApiResult<()> {
         Self::assert_not_exists("aes128gcm Encryption", self.encryption.as_deref(), "salt")?;
         Self::assert_not_exists("aes128gcm Crypto-Key", self.crypto_key.as_deref(), "dh")?;
@@ -199,4 +201,205 @@ impl NotificationHeaders {
 
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NotificationHeaders;
+    use super::MAX_TTL;
+    use crate::error::{ApiErrorKind, ApiResult};
+    use actix_web::test::TestRequest;
+    use actix_web::FromRequest;
+
+    /// Assert that a result is a validation error and check its serialization
+    /// against the JSON value.
+    fn assert_validation_error(
+        result: ApiResult<NotificationHeaders>,
+        expected_json: serde_json::Value,
+    ) {
+        assert!(result.is_err());
+        let errors = match result.unwrap_err().kind {
+            ApiErrorKind::Validation(errors) => errors,
+            _ => panic!("Expected a validation error"),
+        };
+
+        assert_eq!(serde_json::to_value(errors).unwrap(), expected_json);
+    }
+
+    /// Assert that a result is a specific encryption error
+    fn assert_encryption_error(result: ApiResult<NotificationHeaders>, expected_error: &str) {
+        assert!(result.is_err());
+        let error = match result.unwrap_err().kind {
+            ApiErrorKind::InvalidEncryption(error) => error,
+            _ => panic!("Expected an ecryption error"),
+        };
+
+        assert_eq!(error, expected_error);
+    }
+
+    /// A valid TTL results in no errors or adjustment
+    #[test]
+    fn valid_ttl() {
+        let req = TestRequest::post().header("TTL", "10").to_http_request();
+        let result = NotificationHeaders::extract(&req).into_inner();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().ttl, Some(10));
+    }
+
+    /// Negative TTL values are not allowed
+    #[test]
+    fn negative_ttl() {
+        let req = TestRequest::post().header("TTL", "-1").to_http_request();
+        let result = NotificationHeaders::extract(&req).into_inner();
+
+        assert_validation_error(
+            result,
+            serde_json::json!({
+                "ttl": [{
+                    "code": "114",
+                    "message": "TTL must be greater than 0",
+                    "params": {
+                        "min": 0.0,
+                        "value": -1
+                    }
+                }]
+            }),
+        );
+    }
+
+    /// TTL values above the max are silently reduced to the max
+    #[test]
+    fn maximum_ttl() {
+        let req = TestRequest::post()
+            .header("TTL", (MAX_TTL + 1).to_string())
+            .to_http_request();
+        let result = NotificationHeaders::extract(&req).into_inner();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().ttl, Some(MAX_TTL));
+    }
+
+    /// A valid topic results in no errors
+    #[test]
+    fn valid_topic() {
+        let req = TestRequest::post()
+            .header("TOPIC", "test-topic")
+            .to_http_request();
+        let result = NotificationHeaders::extract(&req).into_inner();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().topic, Some("test-topic".to_string()));
+    }
+
+    /// Topic names which are too long return an error
+    #[test]
+    fn too_long_topic() {
+        let req = TestRequest::post()
+            .header("TOPIC", "test-topic-which-is-too-long-1234")
+            .to_http_request();
+        let result = NotificationHeaders::extract(&req).into_inner();
+
+        assert_validation_error(
+            result,
+            serde_json::json!({
+                "topic": [{
+                    "code": "113",
+                    "message": "Topic must be no greater than 32 characters",
+                    "params": {
+                        "max": 32,
+                        "value": "test-topic-which-is-too-long-1234"
+                    }
+                }]
+            }),
+        );
+    }
+
+    /// If there is a payload, there must be a content encoding header
+    #[test]
+    fn payload_without_content_encoding() {
+        let (req, mut payload) = TestRequest::post()
+            .set_payload("some-payload")
+            .to_http_parts();
+        let result = NotificationHeaders::from_request(&req, &mut payload).into_inner();
+
+        assert_encryption_error(result, "Missing Content-Encoding header");
+    }
+
+    /// Valid 01 draft encryption passes validation
+    #[test]
+    fn valid_01_encryption() {
+        let (req, mut payload) = TestRequest::post()
+            .header("Content-Encoding", "aesgcm128")
+            .header("Encryption", "salt=foo")
+            .header("Encryption-Key", "dh=bar")
+            .set_payload("some-payload")
+            .to_http_parts();
+        let result = NotificationHeaders::from_request(&req, &mut payload).into_inner();
+
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            NotificationHeaders {
+                ttl: None,
+                topic: None,
+                content_encoding: Some("aesgcm128".to_string()),
+                encryption: Some("salt=foo".to_string()),
+                encryption_key: Some("dh=bar".to_string()),
+                crypto_key: None
+            }
+        );
+    }
+
+    /// Valid 04 draft encryption passes validation
+    #[test]
+    fn valid_04_encryption() {
+        let (req, mut payload) = TestRequest::post()
+            .header("Content-Encoding", "aesgcm")
+            .header("Encryption", "salt=foo")
+            .header("Crypto-Key", "dh=bar")
+            .set_payload("some-payload")
+            .to_http_parts();
+        let result = NotificationHeaders::from_request(&req, &mut payload).into_inner();
+
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            NotificationHeaders {
+                ttl: None,
+                topic: None,
+                content_encoding: Some("aesgcm".to_string()),
+                encryption: Some("salt=foo".to_string()),
+                encryption_key: None,
+                crypto_key: Some("dh=bar".to_string())
+            }
+        );
+    }
+
+    /// Valid 06 draft encryption passes validation
+    #[test]
+    fn valid_06_encryption() {
+        let (req, mut payload) = TestRequest::post()
+            .header("Content-Encoding", "aes128gcm")
+            .header("Encryption", "notsalt=foo")
+            .header("Crypto-Key", "notdh=bar")
+            .set_payload("some-payload")
+            .to_http_parts();
+        let result = NotificationHeaders::from_request(&req, &mut payload).into_inner();
+
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            NotificationHeaders {
+                ttl: None,
+                topic: None,
+                content_encoding: Some("aes128gcm".to_string()),
+                encryption: Some("notsalt=foo".to_string()),
+                encryption_key: None,
+                crypto_key: Some("notdh=bar".to_string())
+            }
+        );
+    }
+
+    // TODO: Add negative test cases for encryption validation?
 }
