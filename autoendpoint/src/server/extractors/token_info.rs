@@ -1,4 +1,4 @@
-use crate::error::ApiError;
+use crate::error::{ApiError, ApiErrorKind};
 use crate::server::headers::util::get_owned_header;
 use actix_http::{Payload, PayloadStream};
 use actix_web::{FromRequest, HttpRequest};
@@ -29,6 +29,12 @@ impl FromRequest for TokenInfo {
             .get("token")
             .expect("{token} must be part of the webpush path")
             .to_string();
+
+        // Check API version
+        match api_version.as_str() {
+            "v1" | "v2" => {}
+            _ => return future::err(ApiErrorKind::InvalidApiVersion.into()),
+        }
 
         future::ok(TokenInfo {
             api_version,

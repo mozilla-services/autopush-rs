@@ -72,6 +72,10 @@ pub enum ApiErrorKind {
     #[error("Data payload must be smaller than {} bytes", .0)]
     PayloadTooLarge(usize),
 
+    /// Used if the API version given is not v1 or v2
+    #[error("Invalid API version")]
+    InvalidApiVersion,
+
     #[error("{0}")]
     Internal(String),
 }
@@ -88,7 +92,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::VapidError(_) => StatusCode::UNAUTHORIZED,
 
-            ApiErrorKind::InvalidToken => StatusCode::NOT_FOUND,
+            ApiErrorKind::InvalidToken | ApiErrorKind::InvalidApiVersion => StatusCode::NOT_FOUND,
 
             ApiErrorKind::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
 
