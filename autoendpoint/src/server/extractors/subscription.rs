@@ -16,8 +16,8 @@ use std::borrow::Cow;
 pub struct Subscription {
     pub uaid: String,
     pub channel_id: String,
-    pub vapid: VapidHeader,
-    pub public_key: String,
+    pub vapid: Option<VapidHeader>,
+    pub public_key: Option<String>,
 }
 
 impl FromRequest for Subscription {
@@ -42,10 +42,13 @@ impl FromRequest for Subscription {
 
             // Parse VAPID and extract public key
             let vapid = parse_vapid(&token_info, &state.metrics)?;
-            let public_key = extract_public_key(&vapid, &token_info)?;
+            let public_key = vapid
+                .as_ref()
+                .map(|vapid| extract_public_key(vapid, &token_info))
+                .transpose()?;
 
             if token_info.api_version == "v2" {
-                version_2_validation(&token, &public_key)?;
+                version_2_validation(&token, public_key.as_deref())?;
             } else {
                 version_1_validation(&token)?;
             }
@@ -79,11 +82,12 @@ fn repad_base64(data: &str) -> Cow<'_, str> {
 }
 
 /// Parse the authorization header for VAPID data and update metrics
-fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<VapidHeader> {
-    let auth_header = token_info
-        .auth_header
-        .as_ref()
-        .ok_or(VapidError::MissingToken)?;
+fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Option<VapidHeader>> {
+    let auth_header = match token_info.auth_header.as_ref() {
+        Some(header) => header,
+        None => return Ok(None),
+    };
+
     let vapid = VapidHeader::parse(auth_header)?;
 
     metrics
@@ -92,7 +96,7 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Vapi
         .with_tag("scheme", &vapid.scheme)
         .send();
 
-    Ok(vapid)
+    Ok(Some(vapid))
 }
 
 /// Extract the VAPID public key from the headers
@@ -129,7 +133,7 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 }
 
 /// `/webpush/v2/` validations
-fn version_2_validation(token: &[u8], public_key: &str) -> ApiResult<()> {
+fn version_2_validation(token: &[u8], public_key: Option<&str>) -> ApiResult<()> {
     if token.len() != 64 {
         // Corrupted token
         return Err(ApiErrorKind::InvalidToken.into());
@@ -138,6 +142,7 @@ fn version_2_validation(token: &[u8], public_key: &str) -> ApiResult<()> {
     // Verify that the sender is authorized to send notifications.
     // The last 32 bytes of the token is the hashed public key.
     let token_key = &token[32..];
+    let public_key = public_key.ok_or(ApiErrorKind::VapidError(VapidError::MissingKey))?;
 
     // Hash the VAPID public key
     let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
