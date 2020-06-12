@@ -14,13 +14,14 @@ lazy_static! {
     static ref VALID_BASE64_URL: Regex = Regex::new(r"^[0-9A-Za-z\-_]+=*$").unwrap();
 }
 
-const MAX_TTL: u64 = 60 * 60 * 24 * 60;
+const MAX_TTL: i64 = 60 * 60 * 24 * 60;
 
 /// Extractor and validator for notification headers
-#[derive(Validate)]
+#[derive(Debug, Validate)]
 pub struct NotificationHeaders {
+    // TTL is a signed value so that validation can catch negative inputs
     #[validate(range(min = 0, message = "TTL must be greater than 0", code = "114"))]
-    pub ttl: Option<u64>,
+    pub ttl: Option<i64>,
 
     #[validate(
         length(
