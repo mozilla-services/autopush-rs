@@ -140,7 +140,7 @@ impl NotificationHeaders {
     }
 
     /// Validates encryption headers according to
-    /// draft-ietf-webpush-encryption-06
+    /// draft-ietf-httpbis-encryption-encoding-06
     /// (the encryption values are in the payload, so there shouldn't be any in
     /// the headers)
     fn validate_encryption_06_rules(&self) -> ApiResult<()> {
