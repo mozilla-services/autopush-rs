@@ -26,7 +26,6 @@ impl FromRequest for Notification {
         let mut payload = payload.take();
 
         async move {
-            let headers = NotificationHeaders::from_request(&req, &mut payload).await?;
             let subscription = Subscription::extract(&req).await?;
             let state = Data::<ServerState>::extract(&req)
                 .await
@@ -50,6 +49,8 @@ impl FromRequest for Notification {
             } else {
                 Some(base64::encode_config(data, base64::URL_SAFE_NO_PAD))
             };
+
+            let headers = NotificationHeaders::from_request(&req, data.is_some())?;
 
             Ok(Notification {
                 subscription,

@@ -1,9 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::headers::crypto_key::CryptoKeyHeader;
 use crate::server::headers::util::{get_header, get_owned_header};
-use actix_web::dev::{Payload, PayloadStream};
-use actix_web::{FromRequest, HttpRequest};
-use futures::future;
+use actix_web::HttpRequest;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::cmp::min;
@@ -45,12 +43,12 @@ pub struct NotificationHeaders {
     pub crypto_key: Option<String>,
 }
 
-impl FromRequest for NotificationHeaders {
-    type Error = ApiError;
-    type Future = future::Ready<Result<Self, Self::Error>>;
-    type Config = ();
-
-    fn from_request(req: &HttpRequest, payload: &mut Payload<PayloadStream>) -> Self::Future {
+impl NotificationHeaders {
+    /// Extract the notification headers from a request.
+    /// This can not be implemented as a `FromRequest` impl because we need to
+    /// know if the payload has data, without actually advancing the payload
+    /// stream.
+    pub fn from_request(req: &HttpRequest, has_data: bool) -> ApiResult<Self> {
         // Collect raw headers
         let ttl = get_header(req, "ttl")
             .and_then(|ttl| ttl.parse().ok())
@@ -72,22 +70,17 @@ impl FromRequest for NotificationHeaders {
         };
 
         // Validate encryption if there is a message body
-        if !matches!(payload, Payload::None) {
-            match headers.validate_encryption() {
-                Ok(_) => {}
-                Err(e) => return future::err(e),
-            }
+        if has_data {
+            headers.validate_encryption()?;
         }
 
         // Validate the other headers
         match headers.validate() {
-            Ok(_) => future::ok(headers),
-            Err(e) => future::err(ApiError::from(e)),
+            Ok(_) => Ok(headers),
+            Err(e) => Err(ApiError::from(e)),
         }
     }
-}
 
-impl NotificationHeaders {
     /// Validate the encryption headers according to the various WebPush
     /// standard versions
     fn validate_encryption(&self) -> ApiResult<()> {
@@ -209,7 +202,6 @@ mod tests {
     use super::MAX_TTL;
     use crate::error::{ApiErrorKind, ApiResult};
     use actix_web::test::TestRequest;
-    use actix_web::FromRequest;
 
     /// Assert that a result is a validation error and check its serialization
     /// against the JSON value.
@@ -241,7 +233,7 @@ mod tests {
     #[test]
     fn valid_ttl() {
         let req = TestRequest::post().header("TTL", "10").to_http_request();
-        let result = NotificationHeaders::extract(&req).into_inner();
+        let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().ttl, Some(10));
@@ -251,7 +243,7 @@ mod tests {
     #[test]
     fn negative_ttl() {
         let req = TestRequest::post().header("TTL", "-1").to_http_request();
-        let result = NotificationHeaders::extract(&req).into_inner();
+        let result = NotificationHeaders::from_request(&req, false);
 
         assert_validation_error(
             result,
@@ -274,7 +266,7 @@ mod tests {
         let req = TestRequest::post()
             .header("TTL", (MAX_TTL + 1).to_string())
             .to_http_request();
-        let result = NotificationHeaders::extract(&req).into_inner();
+        let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().ttl, Some(MAX_TTL));
@@ -286,7 +278,7 @@ mod tests {
         let req = TestRequest::post()
             .header("TOPIC", "test-topic")
             .to_http_request();
-        let result = NotificationHeaders::extract(&req).into_inner();
+        let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().topic, Some("test-topic".to_string()));
@@ -298,7 +290,7 @@ mod tests {
         let req = TestRequest::post()
             .header("TOPIC", "test-topic-which-is-too-long-1234")
             .to_http_request();
-        let result = NotificationHeaders::extract(&req).into_inner();
+        let result = NotificationHeaders::from_request(&req, false);
 
         assert_validation_error(
             result,
@@ -318,10 +310,8 @@ mod tests {
     /// If there is a payload, there must be a content encoding header
     #[test]
     fn payload_without_content_encoding() {
-        let (req, mut payload) = TestRequest::post()
-            .set_payload("some-payload")
-            .to_http_parts();
-        let result = NotificationHeaders::from_request(&req, &mut payload).into_inner();
+        let req = TestRequest::post().to_http_request();
+        let result = NotificationHeaders::from_request(&req, true);
 
         assert_encryption_error(result, "Missing Content-Encoding header");
     }
@@ -329,13 +319,12 @@ mod tests {
     /// Valid 01 draft encryption passes validation
     #[test]
     fn valid_01_encryption() {
-        let (req, mut payload) = TestRequest::post()
+        let req = TestRequest::post()
             .header("Content-Encoding", "aesgcm128")
             .header("Encryption", "salt=foo")
             .header("Encryption-Key", "dh=bar")
-            .set_payload("some-payload")
-            .to_http_parts();
-        let result = NotificationHeaders::from_request(&req, &mut payload).into_inner();
+            .to_http_request();
+        let result = NotificationHeaders::from_request(&req, true);
 
         assert!(result.is_ok());
         assert_eq!(
@@ -354,13 +343,12 @@ mod tests {
     /// Valid 04 draft encryption passes validation
     #[test]
     fn valid_04_encryption() {
-        let (req, mut payload) = TestRequest::post()
+        let req = TestRequest::post()
             .header("Content-Encoding", "aesgcm")
             .header("Encryption", "salt=foo")
             .header("Crypto-Key", "dh=bar")
-            .set_payload("some-payload")
-            .to_http_parts();
-        let result = NotificationHeaders::from_request(&req, &mut payload).into_inner();
+            .to_http_request();
+        let result = NotificationHeaders::from_request(&req, true);
 
         assert!(result.is_ok());
         assert_eq!(
@@ -379,13 +367,12 @@ mod tests {
     /// Valid 06 draft encryption passes validation
     #[test]
     fn valid_06_encryption() {
-        let (req, mut payload) = TestRequest::post()
+        let req = TestRequest::post()
             .header("Content-Encoding", "aes128gcm")
             .header("Encryption", "notsalt=foo")
             .header("Crypto-Key", "notdh=bar")
-            .set_payload("some-payload")
-            .to_http_parts();
-        let result = NotificationHeaders::from_request(&req, &mut payload).into_inner();
+            .to_http_request();
+        let result = NotificationHeaders::from_request(&req, true);
 
         assert!(result.is_ok());
         assert_eq!(
