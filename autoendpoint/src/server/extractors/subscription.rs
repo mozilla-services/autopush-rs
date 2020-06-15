@@ -66,9 +66,13 @@ impl FromRequest for Subscription {
                 .map_err(ApiErrorKind::Database)?;
             validate_user(&user, &channel_id, &state).await?;
 
-            // Validate the VAPID JWT token
+            // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
                 validate_vapid_jwt(vapid)?;
+
+                state
+                    .metrics
+                    .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
             }
 
             Ok(Subscription {
