@@ -8,6 +8,7 @@ use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::DynamoDbUser;
+use autopush_common::util::sec_since_epoch;
 use cadence::{Counted, StatsdClient};
 use futures::compat::Future01CompatExt;
 use futures::future::LocalBoxFuture;
@@ -183,22 +184,32 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 /// Validate the VAPID JWT token. Specifically,
 /// - Check the signature
 /// - Make sure it hasn't expired
-/// - Mke sure the expiration time isn't too far into the future
+/// - Make sure the expiration isn't too far into the future
 ///
-/// This is all taken care of by the jsonwebtoken library
+/// This is mostly taken care of by the jsonwebtoken library
 fn validate_vapid_jwt(vapid: &VapidHeaderWithKey) -> ApiResult<()> {
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
-    jsonwebtoken::decode::<()>(
+    #[derive(serde::Deserialize)]
+    struct Claims {
+        exp: u64,
+    }
+
+    // Check the signature and make sure the expiration is in the future
+    let token_data = jsonwebtoken::decode::<Claims>(
         &vapid.token,
         &DecodingKey::from_ec_der(public_key.as_bytes()),
-        &Validation {
-            algorithms: vec![Algorithm::ES256],
-            validate_exp: true,
-            leeway: 60 * 60 * 24,
-            ..Default::default()
-        },
+        &Validation::new(Algorithm::ES256),
     )?;
+
+    // Make sure the expiration isn't too far into the future
+    let now = sec_since_epoch();
+    const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
+
+    if token_data.claims.exp - now > ONE_DAY_IN_SECONDS {
+        // The expiration is too far in the future
+        return Err(VapidError::FutureExpirationToken.into());
+    }
 
     Ok(())
 }
