@@ -1,27 +1,28 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
-use crate::server::extractors::token_info::TokenInfo;
+use crate::server::extractors::token_info::{ApiVersion, TokenInfo};
 use crate::server::extractors::user::validate_user;
 use crate::server::headers::crypto_key::CryptoKeyHeader;
-use crate::server::headers::vapid::{VapidHeader, VapidVersionData};
+use crate::server::headers::vapid::{VapidHeader, VapidHeaderWithKey, VapidVersionData};
 use crate::server::{ServerState, VapidError};
 use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::DynamoDbUser;
+use autopush_common::util::sec_since_epoch;
 use cadence::{Counted, StatsdClient};
 use futures::compat::Future01CompatExt;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use openssl::hash;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 pub struct Subscription {
     pub user: DynamoDbUser,
     pub channel_id: Uuid,
-    pub vapid: Option<VapidHeader>,
-    pub public_key: Option<String>,
+    pub vapid: Option<VapidHeaderWithKey>,
 }
 
 impl FromRequest for Subscription {
@@ -44,17 +45,14 @@ impl FromRequest for Subscription {
                 .decrypt(&repad_base64(&token_info.token))
                 .map_err(|_| ApiErrorKind::InvalidToken)?;
 
-            // Parse VAPID and extract public key
-            let vapid = parse_vapid(&token_info, &state.metrics)?;
-            let public_key = vapid
-                .as_ref()
+            // Parse VAPID and extract public key.
+            let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &state.metrics)?
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
 
-            if token_info.api_version == "v2" {
-                version_2_validation(&token, public_key.as_deref())?;
-            } else {
-                version_1_validation(&token)?;
+            match token_info.api_version {
+                ApiVersion::Version1 => version_1_validation(&token)?,
+                ApiVersion::Version2 => version_2_validation(&token, vapid.as_ref())?,
             }
 
             // Load and validate user data
@@ -72,7 +70,6 @@ impl FromRequest for Subscription {
                 user,
                 channel_id,
                 vapid,
-                public_key,
             })
         }
         .boxed_local()
@@ -115,7 +112,7 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Opti
 }
 
 /// Extract the VAPID public key from the headers
-fn extract_public_key(vapid: &VapidHeader, token_info: &TokenInfo) -> ApiResult<String> {
+fn extract_public_key(vapid: VapidHeader, token_info: &TokenInfo) -> ApiResult<VapidHeaderWithKey> {
     Ok(match &vapid.version_data {
         VapidVersionData::Version1 => {
             // VAPID v1 stores the public key in the Crypto-Key header
@@ -131,9 +128,15 @@ fn extract_public_key(vapid: &VapidHeader, token_info: &TokenInfo) -> ApiResult<
                 )
             })?;
 
-            public_key.to_string()
+            VapidHeaderWithKey {
+                vapid,
+                public_key: public_key.to_string(),
+            }
         }
-        VapidVersionData::Version2 { public_key } => public_key.clone(),
+        VapidVersionData::Version2 { public_key } => VapidHeaderWithKey {
+            public_key: public_key.clone(),
+            vapid,
+        },
     })
 }
 
@@ -148,7 +151,7 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 }
 
 /// `/webpush/v2/` validations
-fn version_2_validation(token: &[u8], public_key: Option<&str>) -> ApiResult<()> {
+fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> ApiResult<()> {
     if token.len() != 64 {
         // Corrupted token
         return Err(ApiErrorKind::InvalidToken.into());
@@ -157,7 +160,9 @@ fn version_2_validation(token: &[u8], public_key: Option<&str>) -> ApiResult<()>
     // Verify that the sender is authorized to send notifications.
     // The last 32 bytes of the token is the hashed public key.
     let token_key = &token[32..];
-    let public_key = public_key.ok_or(ApiErrorKind::VapidError(VapidError::MissingKey))?;
+    let public_key = &vapid
+        .ok_or(ApiErrorKind::VapidError(VapidError::MissingKey))?
+        .public_key;
 
     // Hash the VAPID public key
     let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
