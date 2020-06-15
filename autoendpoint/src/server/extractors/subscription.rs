@@ -66,6 +66,11 @@ impl FromRequest for Subscription {
                 .map_err(ApiErrorKind::Database)?;
             validate_user(&user, &channel_id, &state).await?;
 
+            // Validate the VAPID JWT token
+            if let Some(vapid) = &vapid {
+                validate_vapid_jwt(vapid)?;
+            }
+
             Ok(Subscription {
                 user,
                 channel_id,
@@ -175,4 +180,43 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
     }
 
     Ok(())
+}
+
+/// Validate the VAPID JWT token. Specifically,
+/// - Check the signature
+/// - Make sure it hasn't expired
+/// - Mke sure the expiration time isn't too far into the future
+fn validate_vapid_jwt(vapid: &VapidHeaderWithKey) -> ApiResult<()> {
+    let VapidHeaderWithKey { vapid, public_key } = vapid;
+
+    let token = &vapid.token;
+    let claims = extract_and_validate_jwt_claims(token, public_key)?;
+
+    let expiration: u64 = claims
+        .get("exp")
+        .and_then(|exp| exp.parse().ok())
+        .ok_or_else(|| ApiErrorKind::VapidError(VapidError::InvalidToken))?;
+    let now = sec_since_epoch();
+
+    if expiration < now {
+        // The JWT has expired
+        return Err(ApiErrorKind::VapidError(VapidError::ExpiredToken).into());
+    }
+
+    const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
+    if expiration - now > ONE_DAY_IN_SECONDS {
+        // The expiration time is too far in the future
+        return Err(ApiErrorKind::VapidError(VapidError::FutureExpirationToken).into());
+    }
+
+    Ok(())
+}
+
+/// Extract claims from the JWT and validate the signature
+fn extract_and_validate_jwt_claims(
+    token: &str,
+    public_key: &str,
+) -> ApiResult<HashMap<String, String>> {
+    let public_key = repad_base64(public_key);
+    todo!()
 }
