@@ -8,14 +8,13 @@ use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::DynamoDbUser;
-use autopush_common::util::sec_since_epoch;
 use cadence::{Counted, StatsdClient};
 use futures::compat::Future01CompatExt;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
-use openssl::hash;
+use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use openssl::hash::MessageDigest;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
@@ -170,7 +169,8 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
     // Hash the VAPID public key
     let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
         .map_err(|_| VapidError::InvalidKey)?;
-    let key_hash = hash::hash(hash::MessageDigest::sha256(), &public_key)?;
+    let key_hash = openssl::hash::hash(MessageDigest::sha256(), &public_key)
+        .map_err(ApiErrorKind::TokenHashValidation)?;
 
     // Verify that the VAPID public key equals the (expected) token public key
     if !openssl::memcmp::eq(&key_hash, &token_key) {
@@ -184,78 +184,21 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 /// - Check the signature
 /// - Make sure it hasn't expired
 /// - Mke sure the expiration time isn't too far into the future
+///
+/// This is all taken care of by the jsonwebtoken library
 fn validate_vapid_jwt(vapid: &VapidHeaderWithKey) -> ApiResult<()> {
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
-    let token = &vapid.token;
-    let claims = extract_and_validate_jwt_claims(token, public_key)?;
-
-    let expiration: u64 = claims
-        .get("exp")
-        .and_then(|exp| exp.parse().ok())
-        .ok_or_else(|| VapidError::InvalidToken)?;
-    let now = sec_since_epoch();
-
-    if expiration < now {
-        // The JWT has expired
-        return Err(VapidError::ExpiredToken.into());
-    }
-
-    const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
-    if expiration - now > ONE_DAY_IN_SECONDS {
-        // The expiration time is too far in the future
-        return Err(VapidError::FutureExpirationToken.into());
-    }
+    jsonwebtoken::decode::<()>(
+        &vapid.token,
+        &DecodingKey::from_ec_der(public_key.as_bytes()),
+        &Validation {
+            algorithms: vec![Algorithm::ES256],
+            validate_exp: true,
+            leeway: 60 * 60 * 24,
+            ..Default::default()
+        },
+    )?;
 
     Ok(())
-}
-
-/// Extract claims from the JWT and validate the signature
-fn extract_and_validate_jwt_claims(
-    token: &str,
-    public_key: &str,
-) -> ApiResult<HashMap<String, String>> {
-    // Validate the claims
-    let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
-        .map_err(|_| VapidError::InvalidKey)?;
-
-    // TODO: validate claims
-
-    // Extract the claims
-    let claims = token
-        .split('.')
-        .nth(1)
-        .and_then(|claims| base64::decode_config(claims, base64::URL_SAFE_NO_PAD).ok())
-        .ok_or(VapidError::InvalidToken)?;
-
-    serde_json::from_slice(&claims).map_err(|_| VapidError::InvalidToken.into())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Extracting valid claims succeeds
-    #[test]
-    fn extract_valid_claims() {
-        const TOKEN: &str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJod\
-            HRwczovL3B1c2guc2VydmljZXMubW96aWxsYS5jb20iLCJzdWIiOiJtYWlsdG86YWRt\
-            aW5AZXhhbXBsZS5jb20iLCJleHAiOiIxNDYzMDAxMzQwIn0.y_dvPoTLBo60WwtocJm\
-            aTWaNet81_jTTJuyYt2CkxykLqop69pirSWLLRy80no9oTL8SDLXgTaYF1OrTIEkDow";
-        const PUBLIC_KEY: &str = "BAS7pgV_RFQx5yAwSePfrmjvNm1sDXyMpyDSCL1IXRU32\
-            cdtopiAmSysWTCrL_aZg2GE1B_D9v7weQVXC3zDmnQ";
-
-        let mut expected_claims = HashMap::new();
-        expected_claims.insert("sub".to_string(), "mailto:admin@example.com".to_string());
-        expected_claims.insert(
-            "aud".to_string(),
-            "https://push.services.mozilla.com".to_string(),
-        );
-        expected_claims.insert("exp".to_string(), "1463001340".to_string());
-
-        let actual_claims = extract_and_validate_jwt_claims(TOKEN, PUBLIC_KEY);
-
-        assert!(actual_claims.is_ok());
-        assert_eq!(actual_claims.unwrap(), expected_claims);
-    }
 }

@@ -82,16 +82,10 @@ pub enum VapidError {
     MissingToken,
     #[error("Missing VAPID public key")]
     MissingKey,
-    #[error("Invalid VAPID token")]
-    InvalidToken,
     #[error("Invalid VAPID public key")]
     InvalidKey,
     #[error("VAPID public key mismatch")]
     KeyMismatch,
-    #[error("The VAPID token has expired")]
-    ExpiredToken,
-    #[error("The VAPID token expiration is too long")]
-    FutureExpirationToken,
     #[error("Unknown auth scheme")]
     UnknownScheme,
 }
