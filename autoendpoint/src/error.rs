@@ -62,6 +62,9 @@ pub enum ApiErrorKind {
     #[error("Error while validating token")]
     TokenHashValidation(#[from] openssl::error::ErrorStack),
 
+    #[error("Database error: {0}")]
+    Database(#[source] autopush_common::errors::Error),
+
     #[error("Invalid token")]
     InvalidToken,
 
@@ -96,9 +99,10 @@ impl ApiErrorKind {
 
             ApiErrorKind::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
 
-            ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            ApiErrorKind::Io(_)
+            | ApiErrorKind::Metrics(_)
+            | ApiErrorKind::Database(_)
+            | ApiErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

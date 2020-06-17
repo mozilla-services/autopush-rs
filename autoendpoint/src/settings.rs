@@ -19,6 +19,9 @@ pub struct Settings {
     #[cfg(any(test, feature = "db_test"))]
     pub database_use_test_transactions: bool,
 
+    pub router_table_name: String,
+    pub message_table_name: String,
+
     pub max_data_bytes: usize,
     pub crypto_keys: String,
     pub human_logs: bool,
@@ -38,6 +41,8 @@ impl Default for Settings {
             database_pool_max_size: None,
             #[cfg(any(test, feature = "db_test"))]
             database_use_test_transactions: false,
+            router_table_name: "router".to_string(),
+            message_table_name: "message".to_string(),
             max_data_bytes: 4096,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             human_logs: false,

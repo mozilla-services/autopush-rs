@@ -1,18 +1,18 @@
 //! Main application server
 
-use actix_cors::Cors;
-use actix_web::{
-    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, HttpServer,
-};
-use cadence::StatsdClient;
-
-use crate::error::{ApiError, ApiResult};
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
 use crate::server::routes::health::{
     health_route, lb_heartbeat_route, status_route, version_route,
 };
 use crate::server::routes::webpush::webpush_route;
 use crate::settings::Settings;
+use actix_cors::Cors;
+use actix_web::{
+    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, HttpServer,
+};
+use autopush_common::db::DynamoStorage;
+use cadence::StatsdClient;
 use fernet::MultiFernet;
 use std::sync::Arc;
 
@@ -28,6 +28,7 @@ pub struct ServerState {
     pub metrics: StatsdClient,
     pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
+    pub ddb: DynamoStorage,
 }
 
 pub struct Server;
@@ -37,10 +38,17 @@ impl Server {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
+        let ddb = DynamoStorage::from_opts(
+            &settings.message_table_name,
+            &settings.router_table_name,
+            metrics.clone(),
+        )
+        .map_err(ApiErrorKind::Database)?;
         let state = ServerState {
             metrics,
             settings,
             fernet,
+            ddb,
         };
 
         let server = HttpServer::new(move || {
