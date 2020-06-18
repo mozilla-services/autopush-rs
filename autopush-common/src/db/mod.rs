@@ -458,6 +458,20 @@ impl DynamoStorage {
         });
         Box::new(result)
     }
+
+    /// Get the set of channel IDs for a user
+    pub fn get_user_channels(
+        &self,
+        uaid: &Uuid,
+        message_table: &str,
+    ) -> impl Future<Item = HashSet<Uuid>, Error = Error> {
+        commands::all_channels(self.ddb.clone(), uaid, message_table).and_then(|channels| {
+            channels
+                .into_iter()
+                .map(|channel| channel.parse().map_err(Error::from))
+                .collect::<Result<_>>()
+        })
+    }
 }
 
 pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<String>> {
