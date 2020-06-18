@@ -59,6 +59,9 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     VapidError(#[from] VapidError),
 
+    #[error(transparent)]
+    Uuid(#[from] uuid::Error),
+
     #[error("Error while validating token")]
     TokenHashValidation(#[from] openssl::error::ErrorStack),
 
@@ -67,6 +70,9 @@ pub enum ApiErrorKind {
 
     #[error("Invalid token")]
     InvalidToken,
+
+    #[error("No such subscription")]
+    NoSubscription,
 
     /// A specific issue with the encryption headers
     #[error("{0}")]
@@ -91,7 +97,10 @@ impl ApiErrorKind {
 
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
-            | ApiErrorKind::TokenHashValidation(_) => StatusCode::BAD_REQUEST,
+            | ApiErrorKind::TokenHashValidation(_)
+            | ApiErrorKind::Uuid(_) => StatusCode::BAD_REQUEST,
+
+            ApiErrorKind::NoSubscription => StatusCode::GONE,
 
             ApiErrorKind::VapidError(_) => StatusCode::UNAUTHORIZED,
 

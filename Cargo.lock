@@ -359,6 +359,7 @@ dependencies = [
  "slog-term 2.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror 1.0.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "uuid 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "validator 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "validator_derive 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

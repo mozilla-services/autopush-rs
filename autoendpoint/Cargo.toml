@@ -33,5 +33,6 @@ slog-stdlog = "4.0"
 slog-term = "2.5"
 thiserror = "1.0"
 url = "2.1"
+uuid = { version = "0.8.1", features = ["serde", "v4"] }
 validator = "0.10.0"
 validator_derive = "0.10.0"

@@ -65,7 +65,7 @@ pub struct DynamoStorage {
     ddb: DynamoDbClient,
     metrics: StatsdClient,
     router_table_name: String,
-    message_table_names: Vec<String>,
+    pub message_table_names: Vec<String>,
     pub current_message_month: String,
 }
 
