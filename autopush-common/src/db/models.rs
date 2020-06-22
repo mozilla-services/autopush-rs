@@ -77,9 +77,6 @@ pub struct DynamoDbUser {
     pub connected_at: u64,
     // Router type of the user
     pub router_type: String,
-    // Router-specific data
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub router_data: Option<HashMap<String, serde_json::Value>>,
     // Keyed time in a month the user last connected at with limited key range for indexing
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_connect: Option<u64>,
@@ -102,7 +99,6 @@ impl Default for DynamoDbUser {
             uaid,
             connected_at: ms_since_epoch(),
             router_type: "webpush".to_string(),
-            router_data: None,
             last_connect: Some(generate_last_connect()),
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
