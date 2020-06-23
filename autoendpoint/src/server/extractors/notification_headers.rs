@@ -4,9 +4,8 @@ use crate::server::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::ser::SerializeMap;
-use serde::{Serialize, Serializer};
 use std::cmp::min;
+use std::collections::HashMap;
 use validator::Validate;
 use validator_derive::Validate;
 
@@ -17,7 +16,7 @@ lazy_static! {
 const MAX_TTL: i64 = 60 * 60 * 24 * 60;
 
 /// Extractor and validator for notification headers
-#[derive(Debug, Eq, PartialEq, Validate)]
+#[derive(Clone, Debug, Eq, PartialEq, Validate)]
 pub struct NotificationHeaders {
     // TTL is a signed value so that validation can catch negative inputs
     #[validate(range(min = 0, message = "TTL must be greater than 0", code = "114"))]
@@ -45,19 +44,28 @@ pub struct NotificationHeaders {
     pub crypto_key: Option<String>,
 }
 
-impl Serialize for NotificationHeaders {
-    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
-    where
-        S: Serializer,
-    {
-        let mut map = serializer.serialize_map(Some(6))?;
-        map.serialize_entry("ttl", &self.ttl)?;
-        map.serialize_entry("topic", &self.topic)?;
-        map.serialize_entry("content_encoding", &self.content_encoding)?;
-        map.serialize_entry("encryption", &self.encryption)?;
-        map.serialize_entry("encryption_key", &self.encryption_key)?;
-        map.serialize_entry("crypto_key", &self.crypto_key)?;
-        map.end()
+impl From<NotificationHeaders> for HashMap<String, String> {
+    fn from(headers: NotificationHeaders) -> Self {
+        let mut map = HashMap::new();
+
+        map.insert("ttl".to_string(), headers.ttl.to_string());
+        if let Some(h) = headers.topic {
+            map.insert("topic".to_string(), h);
+        }
+        if let Some(h) = headers.content_encoding {
+            map.insert("content_encoding".to_string(), h);
+        }
+        if let Some(h) = headers.encryption {
+            map.insert("encryption".to_string(), h);
+        }
+        if let Some(h) = headers.encryption_key {
+            map.insert("encryption_key".to_string(), h);
+        }
+        if let Some(h) = headers.crypto_key {
+            map.insert("crypto_key".to_string(), h);
+        }
+
+        map
     }
 }
 

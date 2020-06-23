@@ -9,11 +9,10 @@ use autopush_common::util::sec_since_epoch;
 use cadence::Counted;
 use fernet::MultiFernet;
 use futures::{future, FutureExt, StreamExt};
-use serde::ser::SerializeMap;
-use serde::{Serialize, Serializer};
 use uuid::Uuid;
 
 /// Extracts notification data from `Subscription` and request data
+#[derive(Clone)]
 pub struct Notification {
     pub message_id: String,
     pub subscription: Subscription,
@@ -88,20 +87,18 @@ impl FromRequest for Notification {
     }
 }
 
-impl Serialize for Notification {
-    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
-    where
-        S: Serializer,
-    {
-        let mut map = serializer.serialize_map(Some(7))?;
-        map.serialize_entry("channelID", &self.subscription.channel_id)?;
-        map.serialize_entry("version", &self.message_id)?;
-        map.serialize_entry("ttl", &self.headers.ttl)?;
-        map.serialize_entry("topic", &self.headers.topic)?;
-        map.serialize_entry("timestamp", &self.timestamp)?;
-        map.serialize_entry("data", &self.data)?;
-        map.serialize_entry("headers", &self.headers)?;
-        map.end()
+impl From<Notification> for autopush_common::notification::Notification {
+    fn from(notification: Notification) -> Self {
+        autopush_common::notification::Notification {
+            channel_id: notification.subscription.channel_id,
+            version: notification.message_id,
+            ttl: notification.headers.ttl as u64,
+            topic: notification.headers.topic.clone(),
+            timestamp: notification.timestamp,
+            data: notification.data,
+            sortkey_timestamp: Some(notification.timestamp),
+            headers: Some(notification.headers.into()),
+        }
     }
 }
 

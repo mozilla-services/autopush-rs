@@ -72,8 +72,9 @@ impl WebPushRouter {
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
         let url = format!("{}/push/{}", node_id, notification.subscription.user.uaid);
+        let notification = autopush_common::notification::Notification::from(notification.clone());
 
-        self.http.put(&url).json(notification).send().await
+        self.http.put(&url).json(&notification).send().await
     }
 
     /// Update metrics and create a response for when a notification has been directly forwarded to
