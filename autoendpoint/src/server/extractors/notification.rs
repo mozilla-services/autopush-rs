@@ -9,6 +9,8 @@ use autopush_common::util::sec_since_epoch;
 use cadence::Counted;
 use fernet::MultiFernet;
 use futures::{future, FutureExt, StreamExt};
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 use uuid::Uuid;
 
 /// Extracts notification data from `Subscription` and request data
@@ -83,6 +85,23 @@ impl FromRequest for Notification {
             })
         }
         .boxed_local()
+    }
+}
+
+impl Serialize for Notification {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(7))?;
+        map.serialize_entry("channelID", &self.subscription.channel_id)?;
+        map.serialize_entry("version", &self.message_id)?;
+        map.serialize_entry("ttl", &self.headers.ttl)?;
+        map.serialize_entry("topic", &self.headers.topic)?;
+        map.serialize_entry("timestamp", &self.timestamp)?;
+        map.serialize_entry("data", &self.data)?;
+        map.serialize_entry("headers", &self.headers)?;
+        map.end()
     }
 }
 

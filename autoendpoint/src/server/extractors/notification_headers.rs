@@ -4,6 +4,8 @@ use crate::server::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 use std::cmp::min;
 use validator::Validate;
 use validator_derive::Validate;
@@ -41,6 +43,22 @@ pub struct NotificationHeaders {
     pub encryption: Option<String>,
     pub encryption_key: Option<String>,
     pub crypto_key: Option<String>,
+}
+
+impl Serialize for NotificationHeaders {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(6))?;
+        map.serialize_entry("ttl", &self.ttl)?;
+        map.serialize_entry("topic", &self.topic)?;
+        map.serialize_entry("content_encoding", &self.content_encoding)?;
+        map.serialize_entry("encryption", &self.encryption)?;
+        map.serialize_entry("encryption_key", &self.encryption_key)?;
+        map.serialize_entry("crypto_key", &self.crypto_key)?;
+        map.end()
+    }
 }
 
 impl NotificationHeaders {
