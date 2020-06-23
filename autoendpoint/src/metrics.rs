@@ -80,10 +80,10 @@ impl From<&HttpRequest> for Metrics {
     }
 }
 
-impl From<&StatsdClient> for Metrics {
-    fn from(client: &StatsdClient) -> Self {
+impl From<StatsdClient> for Metrics {
+    fn from(client: StatsdClient) -> Self {
         Metrics {
-            client: Some(client.clone()),
+            client: Some(client),
             tags: None,
             timer: None,
         }
