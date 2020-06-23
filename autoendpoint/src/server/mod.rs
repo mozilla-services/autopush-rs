@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 mod extractors;
 mod headers;
+mod routers;
 mod routes;
 
 pub use headers::vapid::VapidError;
