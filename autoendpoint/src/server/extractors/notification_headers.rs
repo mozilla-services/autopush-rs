@@ -19,7 +19,7 @@ const MAX_TTL: i64 = 60 * 60 * 24 * 60;
 pub struct NotificationHeaders {
     // TTL is a signed value so that validation can catch negative inputs
     #[validate(range(min = 0, message = "TTL must be greater than 0", code = "114"))]
-    pub ttl: Option<i64>,
+    pub ttl: i64,
 
     #[validate(
         length(
@@ -53,7 +53,12 @@ impl NotificationHeaders {
         let ttl = get_header(req, "ttl")
             .and_then(|ttl| ttl.parse().ok())
             // Enforce a maximum TTL, but don't error
-            .map(|ttl| min(ttl, MAX_TTL));
+            .map(|ttl| min(ttl, MAX_TTL))
+            // TODO: Should we return an error if no TTL is given instead of defaulting to 0?
+            //       The Python code often defaults to 0, but there's at least one case where an
+            //       error is returned if the TTL is missing:
+            //       https://github.com/mozilla-services/autopush/commit/1f01cd70f52de3c22f74a7389019dfafd1d90ea7#diff-170ab1658a6a917eee357db65564b076R111-R112
+            .unwrap_or(0);
         let topic = get_owned_header(req, "topic");
         let content_encoding = get_owned_header(req, "content-encoding");
         let encryption = get_owned_header(req, "encryption");
@@ -236,7 +241,7 @@ mod tests {
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, Some(10));
+        assert_eq!(result.unwrap().ttl, 10);
     }
 
     /// Negative TTL values are not allowed
@@ -269,7 +274,7 @@ mod tests {
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, Some(MAX_TTL));
+        assert_eq!(result.unwrap().ttl, MAX_TTL);
     }
 
     /// A valid topic results in no errors
@@ -330,7 +335,7 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: None,
+                ttl: 0,
                 topic: None,
                 content_encoding: Some("aesgcm128".to_string()),
                 encryption: Some("salt=foo".to_string()),
@@ -354,7 +359,7 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: None,
+                ttl: 0,
                 topic: None,
                 content_encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
@@ -378,7 +383,7 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: None,
+                ttl: 0,
                 topic: None,
                 content_encoding: Some("aes128gcm".to_string()),
                 encryption: Some("notsalt=foo".to_string()),
