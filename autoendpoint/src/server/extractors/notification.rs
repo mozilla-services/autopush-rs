@@ -7,10 +7,13 @@ use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::util::sec_since_epoch;
 use cadence::Counted;
+use fernet::MultiFernet;
 use futures::{future, FutureExt, StreamExt};
+use uuid::Uuid;
 
 /// Extracts notification data from `Subscription` and request data
 pub struct Notification {
+    pub message_id: String,
     pub subscription: Subscription,
     pub headers: NotificationHeaders,
     pub timestamp: u64,
@@ -52,6 +55,14 @@ impl FromRequest for Notification {
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
+            let timestamp = sec_since_epoch();
+            let message_id = Self::generate_message_id(
+                &state.fernet,
+                &subscription.user.uaid,
+                &subscription.channel_id,
+                headers.topic.as_deref(),
+                timestamp,
+            );
 
             // Record the encoding if we have an encrypted payload
             if let Some(encoding) = &headers.content_encoding {
@@ -64,12 +75,51 @@ impl FromRequest for Notification {
             }
 
             Ok(Notification {
+                message_id,
                 subscription,
                 headers,
-                timestamp: sec_since_epoch(),
+                timestamp,
                 data,
             })
         }
         .boxed_local()
+    }
+}
+
+impl Notification {
+    /// Generate a message-id suitable for accessing the message
+    ///
+    /// For topic messages, a sort_key version of 01 is used, and the topic
+    /// is included for reference:
+    ///
+    ///     Encrypted('01' : uaid.hex : channel_id.hex : topic)
+    ///
+    /// For non-topic messages, a sort_key version of 02 is used:
+    ///
+    ///     Encrypted('02' : uaid.hex : channel_id.hex : timestamp)
+    fn generate_message_id(
+        fernet: &MultiFernet,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        topic: Option<&str>,
+        timestamp: u64,
+    ) -> String {
+        let message_id = if let Some(topic) = topic {
+            format!(
+                "01:{}:{}:{}",
+                uaid.to_simple_ref(),
+                channel_id.to_simple_ref(),
+                topic
+            )
+        } else {
+            format!(
+                "02:{}:{}:{}",
+                uaid.to_simple_ref(),
+                channel_id.to_simple_ref(),
+                timestamp
+            )
+        };
+
+        fernet.encrypt(message_id.as_bytes())
     }
 }
