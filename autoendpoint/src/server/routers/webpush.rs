@@ -54,8 +54,6 @@ impl Router for WebPushRouter {
         let user = match self.ddb.get_user(&user.uaid).compat().await {
             Ok(user) => user,
             Err(autopush_common::errors::Error(ErrorKind::UserNotFound, _)) => {
-                // User was deleted
-                self.metrics.incr("updates.client.deleted").ok();
                 return Err(ApiErrorKind::UserWasDeleted.into());
             }
             // Database error, but we already stored the message so it's ok
