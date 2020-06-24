@@ -12,7 +12,7 @@ pub mod webpush;
 #[async_trait(?Send)]
 pub trait Router {
     /// Route a notification to the user
-    async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse>;
+    async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse>;
 }
 
 /// The response returned when a router routes a notification

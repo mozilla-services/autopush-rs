@@ -16,26 +16,26 @@ use reqwest::{Response, StatusCode};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-struct WebPushRouter {
-    ddb: DynamoStorage,
-    metrics: StatsdClient,
-    http: reqwest::Client,
+pub struct WebPushRouter {
+    pub ddb: DynamoStorage,
+    pub metrics: StatsdClient,
+    pub http: reqwest::Client,
 }
 
 #[async_trait(?Send)]
 impl Router for WebPushRouter {
-    async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse> {
+    async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
         let user = &notification.subscription.user;
 
         // Check if there is a node connected to the client
         if let Some(node_id) = &user.node_id {
             // Try to send the notification to the node
-            match self.send_notification(&notification, node_id).await {
+            match self.send_notification(notification, node_id).await {
                 Ok(response) => {
                     // The node might be busy, make sure it accepted the notification
                     if response.status() == 200 {
                         // The node has received the notification
-                        return Ok(self.make_delivered_response(&notification));
+                        return Ok(self.make_delivered_response(notification));
                     }
                 }
                 Err(error) => {
@@ -47,7 +47,7 @@ impl Router for WebPushRouter {
         }
 
         // Save notification, node is not present or busy
-        self.store_notification(&notification).await?;
+        self.store_notification(notification).await?;
 
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
@@ -57,30 +57,30 @@ impl Router for WebPushRouter {
                 return Err(ApiErrorKind::UserWasDeleted.into());
             }
             // Database error, but we already stored the message so it's ok
-            _ => return Ok(self.make_stored_response(&notification)),
+            _ => return Ok(self.make_stored_response(notification)),
         };
 
         // Try to notify the node the user is currently connected to
         let node_id = match &user.node_id {
             Some(id) => id,
             // The user is not connected to a node, nothing more to do
-            None => return Ok(self.make_stored_response(&notification)),
+            None => return Ok(self.make_stored_response(notification)),
         };
 
         // Notify the node to check for messages
         match self.trigger_notification_check(&user.uaid, &node_id).await {
             Ok(response) => {
                 if response.status() == 200 {
-                    Ok(self.make_delivered_response(&notification))
+                    Ok(self.make_delivered_response(notification))
                 } else {
-                    Ok(self.make_stored_response(&notification))
+                    Ok(self.make_stored_response(notification))
                 }
             }
             Err(error) => {
                 // Can't communicate with the node, so we should stop using it
                 debug!("Error while triggering notification check: {}", error);
                 self.remove_node_id(&user, node_id.clone()).await?;
-                Ok(self.make_stored_response(&notification))
+                Ok(self.make_stored_response(notification))
             }
         }
     }
