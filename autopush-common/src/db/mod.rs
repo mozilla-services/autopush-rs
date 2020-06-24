@@ -472,6 +472,36 @@ impl DynamoStorage {
                 .collect::<Result<_>>()
         })
     }
+
+    /// Remove the node ID from a user in the router table.
+    /// The node ID will only be cleared if `connected_at` matches up
+    /// with the item's `connected_at`.
+    pub fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: String,
+        connected_at: u64,
+    ) -> impl Future<Item = (), Error = Error> {
+        let ddb = self.ddb.clone();
+        let update_item = UpdateItemInput {
+            key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+            update_expression: Some("REMOVE node_id".to_string()),
+            condition_expression: Some("(node_id = :node) and (connected_at = :conn)".to_string()),
+            expression_attribute_values: Some(hashmap! {
+                ":node".to_string() => val!(S => node_id),
+                ":conn".to_string() => val!(N => connected_at.to_string())
+            }),
+            table_name: self.router_table_name.clone(),
+            ..Default::default()
+        };
+
+        retry_if(
+            move || ddb.update_item(update_item.clone()),
+            retryable_updateitem_error,
+        )
+        .and_then(|_| future::ok(()))
+        .chain_err(|| "Error removing node ID")
+    }
 }
 
 pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<String>> {

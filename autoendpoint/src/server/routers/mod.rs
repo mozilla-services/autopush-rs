@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 pub mod webpush;
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait Router {
     /// Route a notification to the user
     async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse>;

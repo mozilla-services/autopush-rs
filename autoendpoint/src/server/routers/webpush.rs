@@ -4,12 +4,13 @@
 //! server is located via the database routing table. If the server is busy or
 //! not available, the notification is stored in the database.
 
-use crate::error::ApiResult;
+use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::extractors::notification::Notification;
 use crate::server::routers::{Router, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::DynamoStorage;
 use cadence::{Counted, StatsdClient};
+use futures::compat::Future01CompatExt;
 use reqwest::{Response, StatusCode};
 use std::collections::HashMap;
 
@@ -19,20 +20,17 @@ struct WebPushRouter {
     http: reqwest::Client,
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Router for WebPushRouter {
     async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse> {
-        // Check if node_id is present
-        // - Send Notification to node
-        //   - Success: Done, return 200
-        //   - Error (Node busy): Jump to Save notification below
-        //   - Error (Client gone, node gone/dead): Clear node entry for user
-        //       - Both: Done, return 503
-
+        // Check if there is a node connected to the client
         if let Some(node_id) = &notification.subscription.user.node_id {
+            // Try to send the notification to the node
             match self.send_notification(&notification, node_id).await {
                 Ok(response) => {
+                    // The node might be busy, make sure it accepted the notification
                     if response.status() == 200 {
+                        // The node has received the notification
                         return Ok(self.make_delivered_response(&notification));
                     }
                 }
@@ -40,7 +38,16 @@ impl Router for WebPushRouter {
                     debug!("Error while sending webpush notification: {}", error);
                     self.metrics.incr("updates.client.host_gone").ok();
 
-                    // todo: clear node_id
+                    // We should stop sending notifications to this node for this user
+                    self.ddb
+                        .remove_node_id(
+                            &notification.subscription.user.uaid,
+                            node_id.clone(),
+                            notification.subscription.user.connected_at,
+                        )
+                        .compat()
+                        .await
+                        .map_err(ApiErrorKind::Database)?;
                 }
             }
         }
