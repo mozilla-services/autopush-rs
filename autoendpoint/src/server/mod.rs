@@ -30,6 +30,7 @@ pub struct ServerState {
     pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
     pub ddb: DynamoStorage,
+    pub http: reqwest::Client,
 }
 
 pub struct Server;
@@ -45,11 +46,13 @@ impl Server {
             metrics.clone(),
         )
         .map_err(ApiErrorKind::Database)?;
+        let http = reqwest::Client::new();
         let state = ServerState {
             metrics,
             settings,
             fernet,
             ddb,
+            http,
         };
 
         let server = HttpServer::new(move || {
