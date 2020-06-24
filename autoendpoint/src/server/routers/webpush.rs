@@ -56,6 +56,7 @@ impl Router for WebPushRouter {
         // - Save notification
         //   - Success (older version): Done, return 202
         //   - Error (db error): Done, return 503
+        self.save_notification(&notification).await?;
 
         // - Lookup client again to get latest node state after save.
         //   - Success (node found): Notify node of new notification
@@ -82,6 +83,24 @@ impl WebPushRouter {
         let notification = autopush_common::notification::Notification::from(notification.clone());
 
         self.http.put(&url).json(&notification).send().await
+    }
+
+    /// Save a notification in the database
+    async fn save_notification(&self, notification: &Notification) -> ApiResult<()> {
+        self.ddb
+            .store_message(
+                &notification.subscription.user.uaid,
+                notification
+                    .subscription
+                    .user
+                    .current_month
+                    .clone()
+                    .unwrap_or_else(|| self.ddb.current_message_month.clone()),
+                notification.clone().into(),
+            )
+            .compat()
+            .await
+            .map_err(|e| ApiErrorKind::Database(e).into())
     }
 
     /// Update metrics and create a response for when a notification has been directly forwarded to

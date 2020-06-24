@@ -8,8 +8,8 @@ use futures_backoff::retry_if;
 use rusoto_core::{HttpClient, Region};
 use rusoto_credential::StaticProvider;
 use rusoto_dynamodb::{
-    AttributeValue, BatchWriteItemInput, DeleteItemInput, DynamoDb, DynamoDbClient, PutRequest,
-    UpdateItemInput, UpdateItemOutput, WriteRequest,
+    AttributeValue, BatchWriteItemInput, DeleteItemInput, DynamoDb, DynamoDbClient, PutItemInput,
+    PutRequest, UpdateItemInput, UpdateItemOutput, WriteRequest,
 };
 
 #[macro_use]
@@ -27,6 +27,7 @@ use self::commands::{
     FetchMessageResponse,
 };
 pub use self::models::{DynamoDbNotification, DynamoDbUser};
+use crate::db::commands::retryable_putitem_error;
 
 const MAX_EXPIRY: u64 = 2_592_000;
 const USER_RECORD_VERSION: u8 = 1;
@@ -308,6 +309,29 @@ impl DynamoStorage {
             })
             .and_then(|_| future::ok(()))
             .chain_err(|| "Unable to migrate user")
+    }
+
+    /// Store a single message
+    pub fn store_message(
+        &self,
+        uaid: &Uuid,
+        message_month: String,
+        message: Notification,
+    ) -> impl Future<Item = (), Error = Error> {
+        let ddb = self.ddb.clone();
+        let put_item = PutItemInput {
+            item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, message))
+                .unwrap(),
+            table_name: message_month,
+            ..Default::default()
+        };
+
+        retry_if(
+            move || ddb.put_item(put_item.clone()),
+            retryable_putitem_error,
+        )
+        .and_then(|_| future::ok(()))
+        .chain_err(|| "Error saving notification")
     }
 
     /// Store a batch of messages when shutting down
