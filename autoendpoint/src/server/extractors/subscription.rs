@@ -1,6 +1,6 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::extractors::token_info::{ApiVersion, TokenInfo};
-use crate::server::extractors::user::validate_user;
+use crate::server::extractors::user::{validate_user, RouterType};
 use crate::server::headers::crypto_key::CryptoKeyHeader;
 use crate::server::headers::vapid::{VapidHeader, VapidHeaderWithKey, VapidVersionData};
 use crate::server::{ServerState, VapidError};
@@ -23,6 +23,7 @@ use uuid::Uuid;
 pub struct Subscription {
     pub user: DynamoDbUser,
     pub channel_id: Uuid,
+    pub router_type: RouterType,
     pub vapid: Option<VapidHeaderWithKey>,
 }
 
@@ -65,7 +66,7 @@ impl FromRequest for Subscription {
                 .compat()
                 .await
                 .map_err(ApiErrorKind::Database)?;
-            validate_user(&user, &channel_id, &state).await?;
+            let router_type = validate_user(&user, &channel_id, &state).await?;
 
             // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
@@ -79,6 +80,7 @@ impl FromRequest for Subscription {
             Ok(Subscription {
                 user,
                 channel_id,
+                router_type,
                 vapid,
             })
         }
