@@ -1,5 +1,6 @@
 //! Error types and transformations
 
+use crate::server::VapidError;
 use actix_web::{
     dev::{HttpResponseBuilder, ServiceResponse},
     error::{PayloadError, ResponseError},
@@ -42,20 +43,38 @@ impl ApiError {
 /// The possible errors this application could encounter
 #[derive(Debug, Error)]
 pub enum ApiErrorKind {
-    #[error("{0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 
-    #[error("{0}")]
+    #[error(transparent)]
     Metrics(#[from] cadence::MetricError),
 
-    #[error("{0}")]
+    #[error(transparent)]
     Validation(#[from] validator::ValidationErrors),
 
-    #[error("invalid token")]
-    InvalidToken,
-
+    // PayloadError does not implement std Error
     #[error("{0}")]
     PayloadError(PayloadError),
+
+    #[error(transparent)]
+    VapidError(#[from] VapidError),
+
+    #[error("Error while validating token")]
+    TokenHashValidation(#[from] openssl::error::ErrorStack),
+
+    #[error("Invalid token")]
+    InvalidToken,
+
+    /// A specific issue with the encryption headers
+    #[error("{0}")]
+    InvalidEncryption(String),
+
+    #[error("Data payload must be smaller than {} bytes", .0)]
+    PayloadTooLarge(usize),
+
+    /// Used if the API version given is not v1 or v2
+    #[error("Invalid API version")]
+    InvalidApiVersion,
 
     #[error("{0}")]
     Internal(String),
@@ -66,8 +85,17 @@ impl ApiErrorKind {
     pub fn status(&self) -> StatusCode {
         match self {
             ApiErrorKind::PayloadError(e) => e.status_code(),
-            ApiErrorKind::Validation(_) => StatusCode::BAD_REQUEST,
-            ApiErrorKind::InvalidToken => StatusCode::NOT_FOUND,
+
+            ApiErrorKind::Validation(_)
+            | ApiErrorKind::InvalidEncryption(_)
+            | ApiErrorKind::TokenHashValidation(_) => StatusCode::BAD_REQUEST,
+
+            ApiErrorKind::VapidError(_) => StatusCode::UNAUTHORIZED,
+
+            ApiErrorKind::InvalidToken | ApiErrorKind::InvalidApiVersion => StatusCode::NOT_FOUND,
+
+            ApiErrorKind::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
+
             ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
@@ -78,7 +106,7 @@ impl ApiErrorKind {
 // Print out the error and backtrace, including source errors
 impl Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}\nBacktrace: {:?}", self.kind, self.backtrace)?;
+        write!(f, "Error: {}\nBacktrace: \n{:?}", self.kind, self.backtrace)?;
 
         // Go down the chain of errors
         let mut error: &dyn Error = &self.kind;

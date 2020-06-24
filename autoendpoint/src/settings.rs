@@ -6,7 +6,7 @@ use serde::Deserialize;
 use url::Url;
 
 const DEFAULT_PORT: u16 = 8000;
-const ENV_PREFIX: &str = "autoend_";
+const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
@@ -19,7 +19,8 @@ pub struct Settings {
     #[cfg(any(test, feature = "db_test"))]
     pub database_use_test_transactions: bool,
 
-    pub crypto_keys: Vec<String>,
+    pub max_data_bytes: usize,
+    pub crypto_keys: String,
     pub human_logs: bool,
 
     pub statsd_host: Option<String>,
@@ -37,7 +38,8 @@ impl Default for Settings {
             database_pool_max_size: None,
             #[cfg(any(test, feature = "db_test"))]
             database_use_test_transactions: false,
-            crypto_keys: vec![Fernet::generate_key()],
+            max_data_bytes: 4096,
+            crypto_keys: format!("[{}]", Fernet::generate_key()),
             human_logs: false,
             statsd_host: None,
             statsd_port: 8125,
@@ -89,9 +91,13 @@ impl Settings {
 
     /// Initialize the fernet encryption instance
     pub fn make_fernet(&self) -> MultiFernet {
-        let fernets = self
-            .crypto_keys
-            .iter()
+        if !(self.crypto_keys.starts_with('[') && self.crypto_keys.ends_with(']')) {
+            panic!("Invalid AUTOEND_CRYPTO_KEY");
+        }
+
+        let crypto_keys = &self.crypto_keys[1..self.crypto_keys.len() - 1];
+        let fernets = crypto_keys
+            .split(',')
             .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEY"))
             .collect();
         MultiFernet::new(fernets)

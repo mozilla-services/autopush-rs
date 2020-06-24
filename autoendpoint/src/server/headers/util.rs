@@ -11,3 +11,10 @@ pub fn get_header<'r>(req: &'r HttpRequest, header: &str) -> Option<&'r str> {
 pub fn get_owned_header(req: &HttpRequest, header: &str) -> Option<String> {
     get_header(req, header).map(str::to_string)
 }
+
+/// Split a string into key and value, ex. "key=value" -> "key" and "value"
+pub fn split_key_value(item: &str) -> Option<(&str, &str)> {
+    let mut splitter = item.splitn(2, '=');
+
+    Some((splitter.next()?, splitter.next()?))
+}

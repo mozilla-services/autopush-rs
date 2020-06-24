@@ -1,20 +1,19 @@
 use crate::error::{ApiError, ApiErrorKind};
+use crate::server::extractors::notification_headers::NotificationHeaders;
 use crate::server::extractors::subscription::Subscription;
-use crate::server::extractors::webpush_headers::WebPushHeaders;
+use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
+use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::util::sec_since_epoch;
 use futures::{future, FutureExt, StreamExt};
 
 /// Extracts notification data from `Subscription` and request data
 pub struct Notification {
-    pub uaid: String,
-    pub channel_id: String,
-    pub version: String,
-    pub ttl: Option<u64>,
-    pub topic: Option<String>,
+    pub subscription: Subscription,
+    pub headers: NotificationHeaders,
     pub timestamp: u64,
-    pub data: String,
+    pub data: Option<String>,
 }
 
 impl FromRequest for Notification {
@@ -27,22 +26,35 @@ impl FromRequest for Notification {
         let mut payload = payload.take();
 
         async move {
-            let headers = WebPushHeaders::extract(&req).await?;
             let subscription = Subscription::extract(&req).await?;
+            let state = Data::<ServerState>::extract(&req)
+                .await
+                .expect("No server state found");
 
-            // Read data and convert to base64
+            // Read data
             let mut data = Vec::new();
             while let Some(item) = payload.next().await {
                 data.extend_from_slice(&item.map_err(ApiErrorKind::PayloadError)?);
+
+                // Make sure the payload isn't too big
+                let max_bytes = state.settings.max_data_bytes;
+                if data.len() > max_bytes {
+                    return Err(ApiErrorKind::PayloadTooLarge(max_bytes).into());
+                }
             }
-            let data = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
+
+            // Convert data to base64
+            let data = if data.is_empty() {
+                None
+            } else {
+                Some(base64::encode_config(data, base64::URL_SAFE_NO_PAD))
+            };
+
+            let headers = NotificationHeaders::from_request(&req, data.is_some())?;
 
             Ok(Notification {
-                uaid: subscription.uaid,
-                channel_id: subscription.channel_id,
-                version: subscription.api_version,
-                ttl: headers.ttl,
-                topic: headers.topic,
+                subscription,
+                headers,
                 timestamp: sec_since_epoch(),
                 data,
             })

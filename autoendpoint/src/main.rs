@@ -3,13 +3,12 @@
 #[macro_use]
 extern crate slog_scope;
 
-#[macro_use]
-pub mod error;
-pub mod logging;
-pub mod metrics;
-pub mod server;
-pub mod settings;
-pub mod tags;
+mod error;
+mod logging;
+mod metrics;
+mod server;
+mod settings;
+mod tags;
 
 use docopt::Docopt;
 use sentry::internals::ClientInitGuard;
