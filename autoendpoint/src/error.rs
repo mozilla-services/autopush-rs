@@ -88,6 +88,9 @@ pub enum ApiErrorKind {
     #[error("Invalid API version")]
     InvalidApiVersion,
 
+    #[error("User was deleted during routing")]
+    UserWasDeleted,
+
     #[error("{0}")]
     Internal(String),
 }
@@ -103,7 +106,7 @@ impl ApiErrorKind {
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::Uuid(_) => StatusCode::BAD_REQUEST,
 
-            ApiErrorKind::NoSubscription => StatusCode::GONE,
+            ApiErrorKind::NoSubscription | ApiErrorKind::UserWasDeleted => StatusCode::GONE,
 
             ApiErrorKind::VapidError(_) | ApiErrorKind::Jwt(_) => StatusCode::UNAUTHORIZED,
 

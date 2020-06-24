@@ -8,11 +8,13 @@ use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::extractors::notification::Notification;
 use crate::server::routers::{Router, RouterResponse};
 use async_trait::async_trait;
-use autopush_common::db::DynamoStorage;
+use autopush_common::db::{DynamoDbUser, DynamoStorage};
+use autopush_common::errors::ErrorKind;
 use cadence::{Counted, StatsdClient};
 use futures::compat::Future01CompatExt;
 use reqwest::{Response, StatusCode};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 struct WebPushRouter {
     ddb: DynamoStorage,
@@ -23,8 +25,10 @@ struct WebPushRouter {
 #[async_trait(?Send)]
 impl Router for WebPushRouter {
     async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse> {
+        let user = &notification.subscription.user;
+
         // Check if there is a node connected to the client
-        if let Some(node_id) = &notification.subscription.user.node_id {
+        if let Some(node_id) = &user.node_id {
             // Try to send the notification to the node
             match self.send_notification(&notification, node_id).await {
                 Ok(response) => {
@@ -35,40 +39,52 @@ impl Router for WebPushRouter {
                     }
                 }
                 Err(error) => {
-                    debug!("Error while sending webpush notification: {}", error);
-                    self.metrics.incr("updates.client.host_gone").ok();
-
                     // We should stop sending notifications to this node for this user
-                    self.ddb
-                        .remove_node_id(
-                            &notification.subscription.user.uaid,
-                            node_id.clone(),
-                            notification.subscription.user.connected_at,
-                        )
-                        .compat()
-                        .await
-                        .map_err(ApiErrorKind::Database)?;
+                    debug!("Error while sending webpush notification: {}", error);
+                    self.remove_node_id(user, node_id.clone()).await?;
                 }
             }
         }
 
         // Save notification, node is not present or busy
-        // - Save notification
-        //   - Success (older version): Done, return 202
-        //   - Error (db error): Done, return 503
-        self.save_notification(&notification).await?;
+        self.store_notification(&notification).await?;
 
-        // - Lookup client again to get latest node state after save.
-        //   - Success (node found): Notify node of new notification
-        //     - Success: Done, return 200
-        //     - Error (no client): Done, return 202
-        //     - Error (no node): Clear node entry
-        //       - Both: Done, return 202
-        //   - Success (no node): Done, return 202
-        //   - Error (db error): Done, return 202
-        //   - Error (no client) : Done, return 404
+        // Retrieve the user data again, they may have reconnected or the node
+        // is no longer busy.
+        let user = match self.ddb.get_user(&user.uaid).compat().await {
+            Ok(user) => user,
+            Err(autopush_common::errors::Error(ErrorKind::UserNotFound, _)) => {
+                // User was deleted
+                self.metrics.incr("updates.client.deleted").ok();
+                return Err(ApiErrorKind::UserWasDeleted.into());
+            }
+            // Database error, but we already stored the message so it's ok
+            _ => return Ok(self.make_stored_response(&notification)),
+        };
 
-        unimplemented!()
+        // Try to notify the node the user is currently connected to
+        let node_id = match &user.node_id {
+            Some(id) => id,
+            // The user is not connected to a node, nothing more to do
+            None => return Ok(self.make_stored_response(&notification)),
+        };
+
+        // Notify the node to check for messages
+        match self.trigger_notification_check(&user.uaid, &node_id).await {
+            Ok(response) => {
+                if response.status() == 200 {
+                    Ok(self.make_delivered_response(&notification))
+                } else {
+                    Ok(self.make_stored_response(&notification))
+                }
+            }
+            Err(error) => {
+                // Can't communicate with the node, so we should stop using it
+                debug!("Error while triggering notification check: {}", error);
+                self.remove_node_id(&user, node_id.clone()).await?;
+                Ok(self.make_stored_response(&notification))
+            }
+        }
     }
 }
 
@@ -85,8 +101,19 @@ impl WebPushRouter {
         self.http.put(&url).json(&notification).send().await
     }
 
-    /// Save a notification in the database
-    async fn save_notification(&self, notification: &Notification) -> ApiResult<()> {
+    /// Notify the node to check for notifications for the user
+    async fn trigger_notification_check(
+        &self,
+        uaid: &Uuid,
+        node_id: &str,
+    ) -> Result<Response, reqwest::Error> {
+        let url = format!("{}/notif/{}", node_id, uaid);
+
+        self.http.put(&url).send().await
+    }
+
+    /// Store a notification in the database
+    async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
         self.ddb
             .store_message(
                 &notification.subscription.user.uaid,
@@ -100,22 +127,51 @@ impl WebPushRouter {
             )
             .compat()
             .await
+            // TODO: this should be a 503 with errno 201
+            .map_err(|e| ApiErrorKind::Database(e).into())
+    }
+
+    /// Remove the node ID from a user. This is done if the user is no longer
+    /// connected to the node.
+    async fn remove_node_id(&self, user: &DynamoDbUser, node_id: String) -> ApiResult<()> {
+        self.metrics.incr("updates.client.host_gone").ok();
+
+        self.ddb
+            .remove_node_id(&user.uaid, node_id, user.connected_at)
+            .compat()
+            .await
             .map_err(|e| ApiErrorKind::Database(e).into())
     }
 
     /// Update metrics and create a response for when a notification has been directly forwarded to
     /// an autopush server.
     fn make_delivered_response(&self, notification: &Notification) -> RouterResponse {
+        self.make_response(notification, "Direct", StatusCode::OK)
+    }
+
+    /// Update metrics and create a response for when a notification has been stored in the database
+    /// for future transmission.
+    fn make_stored_response(&self, notification: &Notification) -> RouterResponse {
+        self.make_response(notification, "Stored", StatusCode::ACCEPTED)
+    }
+
+    /// Update metrics and create a response after routing a notification
+    fn make_response(
+        &self,
+        notification: &Notification,
+        destination_tag: &str,
+        status: StatusCode,
+    ) -> RouterResponse {
         self.metrics
             .count_with_tags(
                 "notification.message_data",
                 notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
             )
-            .with_tag("destination", "Direct")
+            .with_tag("destination", destination_tag)
             .send();
 
         RouterResponse {
-            status: StatusCode::OK,
+            status,
             headers: {
                 let mut map = HashMap::new();
                 // TODO: get endpoint url and add message_id to it
