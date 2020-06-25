@@ -22,6 +22,7 @@ mod routers;
 mod routes;
 
 pub use headers::vapid::VapidError;
+pub use routers::RouterError;
 
 #[derive(Clone)]
 pub struct ServerState {

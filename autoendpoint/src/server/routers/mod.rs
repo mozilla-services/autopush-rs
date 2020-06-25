@@ -6,6 +6,7 @@ use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use async_trait::async_trait;
 use std::collections::HashMap;
+use thiserror::Error;
 
 pub mod webpush;
 
@@ -31,5 +32,32 @@ impl From<RouterResponse> for HttpResponse {
         }
 
         builder.body(router_response.body.unwrap_or_default())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum RouterError {
+    #[error("Database error while saving notification")]
+    SaveDb(#[source] autopush_common::errors::Error),
+
+    #[error("User was deleted during routing")]
+    UserWasDeleted,
+}
+
+impl RouterError {
+    /// Get the associated HTTP status code
+    pub fn status(&self) -> StatusCode {
+        match self {
+            RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
+            RouterError::UserWasDeleted => StatusCode::GONE,
+        }
+    }
+
+    /// Get the associated error number
+    pub fn errno(&self) -> usize {
+        match self {
+            RouterError::SaveDb(_) => 201,
+            RouterError::UserWasDeleted => 105,
+        }
     }
 }

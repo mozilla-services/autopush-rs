@@ -7,6 +7,7 @@
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::extractors::notification::Notification;
 use crate::server::routers::{Router, RouterResponse};
+use crate::server::RouterError;
 use async_trait::async_trait;
 use autopush_common::db::{DynamoDbUser, DynamoStorage};
 use autopush_common::errors::ErrorKind;
@@ -56,7 +57,7 @@ impl Router for WebPushRouter {
         let user = match self.ddb.get_user(&user.uaid).compat().await {
             Ok(user) => user,
             Err(autopush_common::errors::Error(ErrorKind::UserNotFound, _)) => {
-                return Err(ApiErrorKind::UserWasDeleted.into());
+                return Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into());
             }
             // Database error, but we already stored the message so it's ok
             _ => return Ok(self.make_stored_response(notification)),
@@ -127,8 +128,7 @@ impl WebPushRouter {
             )
             .compat()
             .await
-            // TODO: this should be a 503 with errno 201
-            .map_err(|e| ApiErrorKind::Database(e).into())
+            .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer

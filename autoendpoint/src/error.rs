@@ -1,6 +1,6 @@
 //! Error types and transformations
 
-use crate::server::VapidError;
+use crate::server::{RouterError, VapidError};
 use actix_web::{
     dev::{HttpResponseBuilder, ServiceResponse},
     error::{PayloadError, ResponseError},
@@ -60,6 +60,9 @@ pub enum ApiErrorKind {
     VapidError(#[from] VapidError),
 
     #[error(transparent)]
+    Router(#[from] RouterError),
+
+    #[error(transparent)]
     Uuid(#[from] uuid::Error),
 
     #[error(transparent)]
@@ -81,15 +84,12 @@ pub enum ApiErrorKind {
     #[error("{0}")]
     InvalidEncryption(String),
 
-    #[error("Data payload must be smaller than {} bytes", .0)]
+    #[error("Data payload must be smaller than {0} bytes")]
     PayloadTooLarge(usize),
 
     /// Used if the API version given is not v1 or v2
     #[error("Invalid API version")]
     InvalidApiVersion,
-
-    #[error("User was deleted during routing")]
-    UserWasDeleted,
 
     #[error("{0}")]
     Internal(String),
@@ -100,13 +100,14 @@ impl ApiErrorKind {
     pub fn status(&self) -> StatusCode {
         match self {
             ApiErrorKind::PayloadError(e) => e.status_code(),
+            ApiErrorKind::Router(e) => e.status(),
 
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::Uuid(_) => StatusCode::BAD_REQUEST,
 
-            ApiErrorKind::NoSubscription | ApiErrorKind::UserWasDeleted => StatusCode::GONE,
+            ApiErrorKind::NoSubscription => StatusCode::GONE,
 
             ApiErrorKind::VapidError(_) | ApiErrorKind::Jwt(_) => StatusCode::UNAUTHORIZED,
 
