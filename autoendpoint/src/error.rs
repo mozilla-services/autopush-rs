@@ -59,11 +59,20 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     VapidError(#[from] VapidError),
 
+    #[error(transparent)]
+    Uuid(#[from] uuid::Error),
+
     #[error("Error while validating token")]
     TokenHashValidation(#[from] openssl::error::ErrorStack),
 
+    #[error("Database error: {0}")]
+    Database(#[source] autopush_common::errors::Error),
+
     #[error("Invalid token")]
     InvalidToken,
+
+    #[error("No such subscription")]
+    NoSubscription,
 
     /// A specific issue with the encryption headers
     #[error("{0}")]
@@ -88,7 +97,10 @@ impl ApiErrorKind {
 
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
-            | ApiErrorKind::TokenHashValidation(_) => StatusCode::BAD_REQUEST,
+            | ApiErrorKind::TokenHashValidation(_)
+            | ApiErrorKind::Uuid(_) => StatusCode::BAD_REQUEST,
+
+            ApiErrorKind::NoSubscription => StatusCode::GONE,
 
             ApiErrorKind::VapidError(_) => StatusCode::UNAUTHORIZED,
 
@@ -96,9 +108,10 @@ impl ApiErrorKind {
 
             ApiErrorKind::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
 
-            ApiErrorKind::Io(_) | ApiErrorKind::Metrics(_) | ApiErrorKind::Internal(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            ApiErrorKind::Io(_)
+            | ApiErrorKind::Metrics(_)
+            | ApiErrorKind::Database(_)
+            | ApiErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

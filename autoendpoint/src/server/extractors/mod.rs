@@ -5,3 +5,4 @@ pub mod notification;
 pub mod notification_headers;
 pub mod subscription;
 pub mod token_info;
+pub mod user;

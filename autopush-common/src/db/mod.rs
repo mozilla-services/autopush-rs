@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::env;
-use std::rc::Rc;
 use uuid::Uuid;
 
 use cadence::StatsdClient;
@@ -61,11 +60,12 @@ pub enum RegisterResponse {
     Error { error_msg: String, status: u32 },
 }
 
+#[derive(Clone)]
 pub struct DynamoStorage {
-    ddb: Rc<Box<dyn DynamoDb>>,
-    metrics: Rc<StatsdClient>,
+    ddb: DynamoDbClient,
+    metrics: StatsdClient,
     router_table_name: String,
-    message_table_names: Vec<String>,
+    pub message_table_names: Vec<String>,
     pub current_message_month: String,
 }
 
@@ -75,19 +75,18 @@ impl DynamoStorage {
         router_table_name: &str,
         metrics: StatsdClient,
     ) -> Result<Self> {
-        let ddb: Box<dyn DynamoDb> = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
-            Box::new(DynamoDbClient::new_with(
+        let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
+            DynamoDbClient::new_with(
                 HttpClient::new().chain_err(|| "TLS initialization error")?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
                 Region::Custom {
                     name: "us-east-1".to_string(),
                     endpoint,
                 },
-            ))
+            )
         } else {
-            Box::new(DynamoDbClient::new(Region::default()))
+            DynamoDbClient::new(Region::default())
         };
-        let ddb = Rc::new(ddb);
 
         let mut message_table_names = list_message_tables(&ddb, &message_table_name)
             .map_err(|_| "Failed to locate message tables")?;
@@ -102,7 +101,7 @@ impl DynamoStorage {
 
         Ok(Self {
             ddb,
-            metrics: Rc::new(metrics),
+            metrics,
             router_table_name: router_table_name.to_owned(),
             message_table_names,
             current_message_month,
@@ -154,7 +153,7 @@ impl DynamoStorage {
         let response: MyFuture<(HelloResponse, Option<DynamoDbUser>)> = if let Some(uaid) = uaid {
             commands::lookup_user(
                 self.ddb.clone(),
-                &self.metrics,
+                self.metrics.clone(),
                 &uaid,
                 connected_at,
                 router_url,
@@ -387,7 +386,7 @@ impl DynamoStorage {
         let response: MyFuture<FetchMessageResponse> = if include_topic {
             Box::new(commands::fetch_messages(
                 self.ddb.clone(),
-                &self.metrics,
+                self.metrics.clone(),
                 table_name,
                 uaid,
                 11 as u32,
@@ -398,7 +397,7 @@ impl DynamoStorage {
         let uaid = *uaid;
         let table_name = table_name.to_string();
         let ddb = self.ddb.clone();
-        let metrics = Rc::clone(&self.metrics);
+        let metrics = self.metrics.clone();
 
         response.and_then(move |resp| -> MyFuture<_> {
             // Return now from this future if we have messages
@@ -420,7 +419,7 @@ impl DynamoStorage {
                 if resp.messages.is_empty() || resp.timestamp.is_some() {
                     Box::new(commands::fetch_timestamp_messages(
                         ddb,
-                        &metrics,
+                        metrics,
                         table_name.as_ref(),
                         &uaid,
                         timestamp,
@@ -459,13 +458,27 @@ impl DynamoStorage {
         });
         Box::new(result)
     }
+
+    /// Get the set of channel IDs for a user
+    pub fn get_user_channels(
+        &self,
+        uaid: &Uuid,
+        message_table: &str,
+    ) -> impl Future<Item = HashSet<Uuid>, Error = Error> {
+        commands::all_channels(self.ddb.clone(), uaid, message_table).and_then(|channels| {
+            channels
+                .into_iter()
+                .map(|channel| channel.parse().map_err(Error::from))
+                .collect::<Result<_>>()
+        })
+    }
 }
 
-pub fn list_message_tables(ddb: &Rc<Box<dyn DynamoDb>>, prefix: &str) -> Result<Vec<String>> {
+pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<String>> {
     let mut names: Vec<String> = Vec::new();
     let mut start_key = None;
     loop {
-        let result = commands::list_tables_sync(Rc::clone(ddb), start_key)?;
+        let result = commands::list_tables_sync(&ddb, start_key)?;
         start_key = result.last_evaluated_table_name;
         if let Some(table_names) = result.table_names {
             names.extend(table_names);

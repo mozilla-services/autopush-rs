@@ -1,21 +1,25 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::extractors::token_info::TokenInfo;
+use crate::server::extractors::user::validate_user;
 use crate::server::headers::crypto_key::CryptoKeyHeader;
 use crate::server::headers::vapid::{VapidHeader, VapidVersionData};
 use crate::server::{ServerState, VapidError};
 use actix_http::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
+use autopush_common::db::DynamoDbUser;
 use cadence::{Counted, StatsdClient};
+use futures::compat::Future01CompatExt;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use openssl::hash;
 use std::borrow::Cow;
+use uuid::Uuid;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 pub struct Subscription {
-    pub uaid: String,
-    pub channel_id: String,
+    pub user: DynamoDbUser,
+    pub channel_id: Uuid,
     pub vapid: Option<VapidHeader>,
     pub public_key: Option<String>,
 }
@@ -33,10 +37,10 @@ impl FromRequest for Subscription {
             let token_info = TokenInfo::extract(&req).await?;
             let state: Data<ServerState> =
                 Data::extract(&req).await.expect("No server state found");
-            let fernet = state.fernet.as_ref();
 
             // Decrypt the token
-            let token = fernet
+            let token = state
+                .fernet
                 .decrypt(&repad_base64(&token_info.token))
                 .map_err(|_| ApiErrorKind::InvalidToken)?;
 
@@ -53,9 +57,20 @@ impl FromRequest for Subscription {
                 version_1_validation(&token)?;
             }
 
+            // Load and validate user data
+            let uaid = Uuid::from_slice(&token[..16])?;
+            let channel_id = Uuid::from_slice(&token[16..32])?;
+            let user = state
+                .ddb
+                .get_user(&uaid)
+                .compat()
+                .await
+                .map_err(ApiErrorKind::Database)?;
+            validate_user(&user, &channel_id, &state).await?;
+
             Ok(Subscription {
-                uaid: hex::encode(&token[..16]),
-                channel_id: hex::encode(&token[16..32]),
+                user,
+                channel_id,
                 vapid,
                 public_key,
             })

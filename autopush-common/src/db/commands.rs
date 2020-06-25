@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
-use std::rc::Rc;
 use std::result::Result as StdResult;
 use uuid::Uuid;
 
@@ -11,9 +10,9 @@ use futures_backoff::retry_if;
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemError, DeleteItemError, DeleteItemInput, DeleteItemOutput,
-    DynamoDb, GetItemError, GetItemInput, GetItemOutput, ListTablesInput, ListTablesOutput,
-    PutItemError, PutItemInput, PutItemOutput, QueryError, QueryInput, UpdateItemError,
-    UpdateItemInput, UpdateItemOutput,
+    DynamoDb, DynamoDbClient, GetItemError, GetItemInput, GetItemOutput, ListTablesInput,
+    ListTablesOutput, PutItemError, PutItemInput, PutItemOutput, QueryError, QueryInput,
+    UpdateItemError, UpdateItemInput, UpdateItemOutput,
 };
 
 use super::models::{DynamoDbNotification, DynamoDbUser};
@@ -63,7 +62,7 @@ fn has_connected_this_month(user: &DynamoDbUser) -> bool {
 /// A blocking list_tables call only called during initialization
 /// (prior to an any active tokio executor)
 pub fn list_tables_sync(
-    ddb: Rc<Box<dyn DynamoDb>>,
+    ddb: &DynamoDbClient,
     start_key: Option<String>,
 ) -> Result<ListTablesOutput> {
     let input = ListTablesInput {
@@ -76,8 +75,8 @@ pub fn list_tables_sync(
 }
 
 pub fn fetch_messages(
-    ddb: Rc<Box<dyn DynamoDb>>,
-    metrics: &Rc<StatsdClient>,
+    ddb: DynamoDbClient,
+    metrics: StatsdClient,
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
@@ -95,7 +94,6 @@ pub fn fetch_messages(
         ..Default::default()
     };
 
-    let metrics = Rc::clone(metrics);
     retry_if(move || ddb.query(input.clone()), retryable_query_error)
         .chain_err(|| ErrorKind::MessageFetch)
         .and_then(move |output| {
@@ -138,8 +136,8 @@ pub fn fetch_messages(
 }
 
 pub fn fetch_timestamp_messages(
-    ddb: Rc<Box<dyn DynamoDb>>,
-    metrics: &Rc<StatsdClient>,
+    ddb: DynamoDbClient,
+    metrics: StatsdClient,
     table_name: &str,
     uaid: &Uuid,
     timestamp: Option<u64>,
@@ -163,7 +161,6 @@ pub fn fetch_timestamp_messages(
         ..Default::default()
     };
 
-    let metrics = Rc::clone(metrics);
     retry_if(move || ddb.query(input.clone()), retryable_query_error)
         .chain_err(|| ErrorKind::MessageFetch)
         .and_then(move |output| {
@@ -194,7 +191,7 @@ pub fn fetch_timestamp_messages(
 }
 
 pub fn drop_user(
-    ddb: Rc<Box<dyn DynamoDb>>,
+    ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
 ) -> impl Future<Item = DeleteItemOutput, Error = Error> {
@@ -211,7 +208,7 @@ pub fn drop_user(
 }
 
 pub fn get_uaid(
-    ddb: Rc<Box<dyn DynamoDb>>,
+    ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
 ) -> impl Future<Item = GetItemOutput, Error = Error> {
@@ -226,7 +223,7 @@ pub fn get_uaid(
 }
 
 pub fn register_user(
-    ddb: Rc<Box<dyn DynamoDb>>,
+    ddb: DynamoDbClient,
     user: &DynamoDbUser,
     router_table: &str,
 ) -> impl Future<Item = PutItemOutput, Error = Error> {
@@ -268,7 +265,7 @@ pub fn register_user(
 }
 
 pub fn update_user_message_month(
-    ddb: Rc<Box<dyn DynamoDb>>,
+    ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
     message_month: &str,
@@ -298,7 +295,7 @@ pub fn update_user_message_month(
 }
 
 pub fn all_channels(
-    ddb: Rc<Box<dyn DynamoDb>>,
+    ddb: DynamoDbClient,
     uaid: &Uuid,
     message_table_name: &str,
 ) -> impl Future<Item = HashSet<String>, Error = Error> {
@@ -328,7 +325,7 @@ pub fn all_channels(
 }
 
 pub fn save_channels(
-    ddb: Rc<Box<dyn DynamoDb>>,
+    ddb: DynamoDbClient,
     uaid: &Uuid,
     channels: HashSet<String>,
     message_table_name: &str,
@@ -361,7 +358,7 @@ pub fn save_channels(
 }
 
 pub fn unregister_channel_id(
-    ddb: Rc<Box<dyn DynamoDb>>,
+    ddb: DynamoDbClient,
     uaid: &Uuid,
     channel_id: &Uuid,
     message_table_name: &str,
@@ -390,8 +387,8 @@ pub fn unregister_channel_id(
 
 #[allow(clippy::too_many_arguments)]
 pub fn lookup_user(
-    ddb: Rc<Box<dyn DynamoDb>>,
-    metrics: &Rc<StatsdClient>,
+    ddb: DynamoDbClient,
+    metrics: StatsdClient,
     uaid: &Uuid,
     connected_at: u64,
     router_url: &str,
@@ -407,7 +404,6 @@ pub fn lookup_user(
     let messages_tables = message_table_names.to_vec();
     let connected_at = connected_at;
     let router_url = router_url.to_string();
-    let metrics = Rc::clone(metrics);
     let response = response.and_then(move |data| -> MyFuture<_> {
         let mut hello_response = HelloResponse {
             message_month: cur_month.clone(),
