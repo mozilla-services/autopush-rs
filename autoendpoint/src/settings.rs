@@ -80,11 +80,6 @@ impl Settings {
         })
     }
 
-    /// A simple banner for display of certain settings at startup
-    pub fn banner(&self) -> String {
-        format!("http://{}:{}", self.host, self.port)
-    }
-
     /// Initialize the fernet encryption instance
     pub fn make_fernet(&self) -> MultiFernet {
         if !(self.crypto_keys.starts_with('[') && self.crypto_keys.ends_with(']')) {

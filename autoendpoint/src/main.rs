@@ -41,7 +41,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let _sentry_guard = configure_sentry();
 
     // Run server...
-    debug!("{}", settings.banner());
     let server = server::Server::with_settings(settings).expect("Could not start server");
     info!("Server started");
     server.await?;
