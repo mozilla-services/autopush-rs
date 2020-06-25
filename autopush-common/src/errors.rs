@@ -81,10 +81,6 @@ error_chain! {
         SendError {
             description("unable to send to client")
         }
-
-        UserNotFound {
-            description("user does not exist")
-        }
     }
 }
 

@@ -56,11 +56,15 @@ impl Router for WebPushRouter {
         // is no longer busy.
         let user = match self.ddb.get_user(&user.uaid).compat().await {
             Ok(user) => user,
-            Err(autopush_common::errors::Error(ErrorKind::UserNotFound, _)) => {
-                return Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into());
+            Err(e) => {
+                return match e.kind() {
+                    ErrorKind::Msg(msg) if msg == "No user record found" => {
+                        Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into())
+                    }
+                    // Database error, but we already stored the message so it's ok
+                    _ => Ok(self.make_stored_response(notification)),
+                };
             }
-            // Database error, but we already stored the message so it's ok
-            _ => return Ok(self.make_stored_response(notification)),
         };
 
         // Try to notify the node the user is currently connected to

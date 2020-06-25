@@ -218,12 +218,8 @@ pub fn get_uaid(
         key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         ..Default::default()
     };
-    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error).map_err(|e| match e {
-        RusotoError::Service(GetItemError::ResourceNotFound(_)) => {
-            Error::with_chain(e, ErrorKind::UserNotFound)
-        }
-        _ => Error::with_chain(e, "Error fetching user"),
-    })
+    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
+        .chain_err(|| "Error fetching user")
 }
 
 pub fn register_user(
