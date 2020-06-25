@@ -20,7 +20,7 @@ pub struct VapidHeaderWithKey {
 }
 
 /// Version-specific VAPID data. Also used to identify the VAPID version.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum VapidVersionData {
     Version1,
     Version2 { public_key: String },

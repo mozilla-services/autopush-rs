@@ -122,7 +122,7 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Opti
 
 /// Extract the VAPID public key from the headers
 fn extract_public_key(vapid: VapidHeader, token_info: &TokenInfo) -> ApiResult<VapidHeaderWithKey> {
-    Ok(match &vapid.version_data {
+    Ok(match vapid.version_data.clone() {
         VapidVersionData::Version1 => {
             // VAPID v1 stores the public key in the Crypto-Key header
             let header = token_info.crypto_key_header.as_deref().ok_or_else(|| {
@@ -142,10 +142,7 @@ fn extract_public_key(vapid: VapidHeader, token_info: &TokenInfo) -> ApiResult<V
                 public_key: public_key.to_string(),
             }
         }
-        VapidVersionData::Version2 { public_key } => VapidHeaderWithKey {
-            public_key: public_key.clone(),
-            vapid,
-        },
+        VapidVersionData::Version2 { public_key } => VapidHeaderWithKey { vapid, public_key },
     })
 }
 
