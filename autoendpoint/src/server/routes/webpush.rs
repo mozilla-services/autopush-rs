@@ -10,7 +10,7 @@ pub async fn webpush_route(
 ) -> ApiResult<HttpResponse> {
     let router = routers.get(notification.subscription.router_type);
 
-    router.route_notification(&notification).await?;
+    let response = router.route_notification(&notification).await?;
 
-    Ok(HttpResponse::Ok().finish())
+    Ok(response.into())
 }

@@ -23,11 +23,10 @@ use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
 use self::commands::{
-    retryable_batchwriteitem_error, retryable_delete_error, retryable_updateitem_error,
-    FetchMessageResponse,
+    retryable_batchwriteitem_error, retryable_delete_error, retryable_putitem_error,
+    retryable_updateitem_error, FetchMessageResponse,
 };
 pub use self::models::{DynamoDbNotification, DynamoDbUser};
-use crate::db::commands::retryable_putitem_error;
 
 const MAX_EXPIRY: u64 = 2_592_000;
 const USER_RECORD_VERSION: u8 = 1;
