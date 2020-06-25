@@ -28,6 +28,7 @@ impl FromRequest for Routers {
                 ddb: state.ddb.clone(),
                 metrics: state.metrics.clone(),
                 http: state.http.clone(),
+                endpoint_url: state.settings.endpoint_url.clone(),
             },
         })
     }

@@ -14,12 +14,14 @@ use cadence::{Counted, StatsdClient};
 use futures::compat::Future01CompatExt;
 use reqwest::{Response, StatusCode};
 use std::collections::HashMap;
+use url::Url;
 use uuid::Uuid;
 
 pub struct WebPushRouter {
     pub ddb: DynamoStorage,
     pub metrics: StatsdClient,
     pub http: reqwest::Client,
+    pub endpoint_url: Url,
 }
 
 #[async_trait(?Send)]
@@ -172,8 +174,10 @@ impl WebPushRouter {
             status,
             headers: {
                 let mut map = HashMap::new();
-                // TODO: get endpoint url and add message_id to it
-                map.insert("Location", "TODO".to_string());
+                map.insert(
+                    "Location",
+                    format!("{}/m/{}", self.endpoint_url, notification.message_id),
+                );
                 map.insert("TTL", notification.headers.ttl.to_string());
                 map
             },
