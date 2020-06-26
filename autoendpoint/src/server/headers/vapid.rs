@@ -12,8 +12,15 @@ pub struct VapidHeader {
     pub version_data: VapidVersionData,
 }
 
+/// Combines the VAPID header details with the public key, which may not be from
+/// the VAPID header
+pub struct VapidHeaderWithKey {
+    pub vapid: VapidHeader,
+    pub public_key: String,
+}
+
 /// Version-specific VAPID data. Also used to identify the VAPID version.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum VapidVersionData {
     Version1,
     Version2 { public_key: String },
@@ -75,12 +82,12 @@ pub enum VapidError {
     MissingToken,
     #[error("Missing VAPID public key")]
     MissingKey,
-    #[error("Invalid VAPID token")]
-    InvalidToken,
     #[error("Invalid VAPID public key")]
     InvalidKey,
     #[error("VAPID public key mismatch")]
     KeyMismatch,
+    #[error("The VAPID token expiration is too long")]
+    FutureExpirationToken,
     #[error("Unknown auth scheme")]
     UnknownScheme,
 }

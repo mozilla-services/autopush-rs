@@ -62,8 +62,11 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     Uuid(#[from] uuid::Error),
 
+    #[error(transparent)]
+    Jwt(#[from] jsonwebtoken::errors::Error),
+
     #[error("Error while validating token")]
-    TokenHashValidation(#[from] openssl::error::ErrorStack),
+    TokenHashValidation(#[source] openssl::error::ErrorStack),
 
     #[error("Database error: {0}")]
     Database(#[source] autopush_common::errors::Error),
@@ -102,7 +105,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::NoSubscription => StatusCode::GONE,
 
-            ApiErrorKind::VapidError(_) => StatusCode::UNAUTHORIZED,
+            ApiErrorKind::VapidError(_) | ApiErrorKind::Jwt(_) => StatusCode::UNAUTHORIZED,
 
             ApiErrorKind::InvalidToken | ApiErrorKind::InvalidApiVersion => StatusCode::NOT_FOUND,
 
