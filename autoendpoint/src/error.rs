@@ -130,6 +130,10 @@ impl ApiErrorKind {
             | ApiErrorKind::Jwt(_) => Some(109),
             ApiErrorKind::InvalidToken => Some(102),
             ApiErrorKind::NoUser => Some(103),
+            ApiErrorKind::NoSubscription => Some(106),
+            ApiErrorKind::PayloadError(PayloadError::Overflow)
+            | ApiErrorKind::PayloadTooLarge(_) => Some(104),
+            ApiErrorKind::Internal(_) => Some(999),
             _ => None,
         }
     }
