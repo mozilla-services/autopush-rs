@@ -14,6 +14,7 @@ pub struct VapidHeader {
 
 /// Combines the VAPID header details with the public key, which may not be from
 /// the VAPID header
+#[derive(Clone)]
 pub struct VapidHeaderWithKey {
     pub vapid: VapidHeader,
     pub public_key: String,
