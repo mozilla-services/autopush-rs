@@ -11,7 +11,6 @@ use std::str::FromStr;
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RouterType {
     WebPush,
-    GCM,
     FCM,
     APNS,
     ADM,
@@ -23,7 +22,6 @@ impl FromStr for RouterType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "webpush" => Ok(RouterType::WebPush),
-            "gcm" => Ok(RouterType::GCM),
             "fcm" => Ok(RouterType::FCM),
             "apns" => Ok(RouterType::APNS),
             "adm" => Ok(RouterType::ADM),
@@ -64,7 +62,6 @@ impl Routers {
     pub fn get(&self, router_type: RouterType) -> &dyn Router {
         match router_type {
             RouterType::WebPush => &self.webpush,
-            RouterType::GCM => unimplemented!(),
             RouterType::FCM => unimplemented!(),
             RouterType::APNS => unimplemented!(),
             RouterType::ADM => unimplemented!(),
