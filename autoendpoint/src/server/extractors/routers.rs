@@ -1,4 +1,3 @@
-use crate::server::extractors::user::RouterType;
 use crate::server::routers::webpush::WebPushRouter;
 use crate::server::routers::Router;
 use crate::server::ServerState;
@@ -6,6 +5,32 @@ use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
+use std::str::FromStr;
+
+/// Valid `DynamoDbUser::router_type` values
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum RouterType {
+    WebPush,
+    GCM,
+    FCM,
+    APNS,
+    ADM,
+}
+
+impl FromStr for RouterType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "webpush" => Ok(RouterType::WebPush),
+            "gcm" => Ok(RouterType::GCM),
+            "fcm" => Ok(RouterType::FCM),
+            "apns" => Ok(RouterType::APNS),
+            "adm" => Ok(RouterType::ADM),
+            _ => Err(()),
+        }
+    }
+}
 
 /// Holds the various notification routers. The routers use resources from the
 /// server state, which is why `Routers` is an extractor.
