@@ -6,6 +6,7 @@ use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::util::sec_since_epoch;
+use cadence::Counted;
 use futures::{future, FutureExt, StreamExt};
 
 /// Extracts notification data from `Subscription` and request data
@@ -51,6 +52,16 @@ impl FromRequest for Notification {
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
+
+            // Record the encoding if we have an encrypted payload
+            if let Some(encoding) = &headers.content_encoding {
+                if data.is_some() {
+                    state
+                        .metrics
+                        .incr(&format!("updates.notification.encoding.{}", encoding))
+                        .ok();
+                }
+            }
 
             Ok(Notification {
                 subscription,
