@@ -74,6 +74,9 @@ pub enum ApiErrorKind {
     #[error("Invalid token")]
     InvalidToken,
 
+    #[error("UAID not found")]
+    NoUser,
+
     #[error("No such subscription")]
     NoSubscription,
 
@@ -103,7 +106,7 @@ impl ApiErrorKind {
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::Uuid(_) => StatusCode::BAD_REQUEST,
 
-            ApiErrorKind::NoSubscription => StatusCode::GONE,
+            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
             ApiErrorKind::VapidError(_) | ApiErrorKind::Jwt(_) => StatusCode::UNAUTHORIZED,
 

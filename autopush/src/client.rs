@@ -693,6 +693,11 @@ fn save_and_notify_undelivered_messages(
                 srv2.ddb.get_user(&uaid)
             })
             .and_then(move |user| {
+                let user = match user.ok_or_else(|| "No user record found".into()) {
+                    Ok(user) => user,
+                    Err(e) => return future::err(e),
+                };
+
                 // Return an err to stop processing if the user hasn't reconnected yet, otherwise
                 // attempt to construct a client to make the request
                 if user.connected_at == connected_at {
