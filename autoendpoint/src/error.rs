@@ -120,6 +120,19 @@ impl ApiErrorKind {
             | ApiErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
+
+    /// Get the associated error number
+    pub fn errno(&self) -> Option<usize> {
+        match self {
+            ApiErrorKind::InvalidEncryption(_) => Some(110),
+            ApiErrorKind::VapidError(_)
+            | ApiErrorKind::TokenHashValidation(_)
+            | ApiErrorKind::Jwt(_) => Some(109),
+            ApiErrorKind::InvalidToken => Some(102),
+            ApiErrorKind::NoUser => Some(103),
+            _ => None,
+        }
+    }
 }
 
 // Print out the error and backtrace, including source errors
