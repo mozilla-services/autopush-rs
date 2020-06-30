@@ -2,6 +2,7 @@
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
+use crate::server::routers::fcm::router::FcmRouter;
 use crate::server::routes::health::{
     health_route, lb_heartbeat_route, status_route, version_route,
 };
@@ -22,6 +23,7 @@ mod routers;
 mod routes;
 
 pub use headers::vapid::VapidError;
+pub use routers::fcm::settings::FcmSettings;
 pub use routers::RouterError;
 
 #[derive(Clone)]
@@ -32,12 +34,13 @@ pub struct ServerState {
     pub fernet: Arc<MultiFernet>,
     pub ddb: DynamoStorage,
     pub http: reqwest::Client,
+    pub fcm_router: Arc<FcmRouter>,
 }
 
 pub struct Server;
 
 impl Server {
-    pub fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
+    pub async fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
@@ -48,12 +51,15 @@ impl Server {
         )
         .map_err(ApiErrorKind::Database)?;
         let http = reqwest::Client::new();
+        let fcm_router =
+            Arc::new(FcmRouter::new(settings.fcm.clone(), http.clone(), metrics.clone()).await?);
         let state = ServerState {
             metrics,
             settings,
             fernet,
             ddb,
             http,
+            fcm_router,
         };
 
         let server = HttpServer::new(move || {

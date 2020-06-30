@@ -1,9 +1,3 @@
-//! The router for desktop user agents.
-//!
-//! These agents are connected via an Autopush connection server. The correct
-//! server is located via the database routing table. If the server is busy or
-//! not available, the notification is stored in the database.
-
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::extractors::notification::Notification;
 use crate::server::routers::{Router, RouterResponse};
@@ -17,6 +11,11 @@ use std::collections::HashMap;
 use url::Url;
 use uuid::Uuid;
 
+/// The router for desktop user agents.
+///
+/// These agents are connected via an Autopush connection server. The correct
+/// server is located via the database routing table. If the server is busy or
+/// not available, the notification is stored in the database.
 pub struct WebPushRouter {
     pub ddb: DynamoStorage,
     pub metrics: StatsdClient,

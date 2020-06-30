@@ -39,3 +39,4 @@ url = "2.1"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 validator = "0.10.0"
 validator_derive = "0.10.0"
+yup-oauth2 = "4.1.2"

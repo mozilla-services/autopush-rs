@@ -1,5 +1,6 @@
 //! Application settings
 
+use crate::server::FcmSettings;
 use config::{Config, ConfigError, Environment, File};
 use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
@@ -26,6 +27,8 @@ pub struct Settings {
     pub statsd_host: Option<String>,
     pub statsd_port: u16,
     pub statsd_label: String,
+
+    pub fcm: FcmSettings,
 }
 
 impl Default for Settings {
@@ -43,6 +46,7 @@ impl Default for Settings {
             statsd_host: None,
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
+            fcm: FcmSettings::default(),
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::server::routers::fcm::router::FcmRouter;
 use crate::server::routers::webpush::WebPushRouter;
 use crate::server::routers::Router;
 use crate::server::ServerState;
@@ -6,6 +7,7 @@ use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// Valid `DynamoDbUser::router_type` values
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -33,7 +35,8 @@ impl FromStr for RouterType {
 /// Holds the various notification routers. The routers use resources from the
 /// server state, which is why `Routers` is an extractor.
 pub struct Routers {
-    pub webpush: WebPushRouter,
+    webpush: WebPushRouter,
+    fcm: Arc<FcmRouter>,
 }
 
 impl FromRequest for Routers {
@@ -53,6 +56,7 @@ impl FromRequest for Routers {
                 http: state.http.clone(),
                 endpoint_url: state.settings.endpoint_url.clone(),
             },
+            fcm: state.fcm_router.clone(),
         })
     }
 }
@@ -62,7 +66,7 @@ impl Routers {
     pub fn get(&self, router_type: RouterType) -> &dyn Router {
         match router_type {
             RouterType::WebPush => &self.webpush,
-            RouterType::FCM => unimplemented!(),
+            RouterType::FCM => self.fcm.as_ref(),
             RouterType::APNS => unimplemented!(),
             RouterType::ADM => unimplemented!(),
         }
