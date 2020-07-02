@@ -12,6 +12,7 @@ use crate::db::util::generate_last_connect;
 use crate::errors::*;
 use crate::notification::Notification;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
+use crate::util::InsertOpt;
 
 use super::{MAX_EXPIRY, USER_RECORD_VERSION};
 
@@ -39,20 +40,14 @@ struct NotificationHeaders {
     encoding: Option<String>,
 }
 
-fn insert_to_map(map: &mut HashMap<String, String>, name: &str, val: Option<String>) {
-    if let Some(val) = val {
-        map.insert(name.to_string(), val);
-    }
-}
-
 #[allow(clippy::implicit_hasher)]
 impl From<NotificationHeaders> for HashMap<String, String> {
     fn from(val: NotificationHeaders) -> Self {
         let mut map = Self::new();
-        insert_to_map(&mut map, "crypto_key", val.crypto_key);
-        insert_to_map(&mut map, "encryption", val.encryption);
-        insert_to_map(&mut map, "encryption_key", val.encryption_key);
-        insert_to_map(&mut map, "encoding", val.encoding);
+        map.insert_opt("crypto_key", val.crypto_key);
+        map.insert_opt("encryption", val.encryption);
+        map.insert_opt("encryption_key", val.encryption_key);
+        map.insert_opt("encoding", val.encoding);
         map
     }
 }
@@ -77,6 +72,8 @@ pub struct DynamoDbUser {
     pub connected_at: u64,
     // Router type of the user
     pub router_type: String,
+    // Router-specific data
+    pub router_data: HashMap<String, serde_json::Value>,
     // Keyed time in a month the user last connected at with limited key range for indexing
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_connect: Option<u64>,
@@ -99,6 +96,7 @@ impl Default for DynamoDbUser {
             uaid,
             connected_at: ms_since_epoch(),
             router_type: "webpush".to_string(),
+            router_data: HashMap::new(),
             last_connect: Some(generate_last_connect()),
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),

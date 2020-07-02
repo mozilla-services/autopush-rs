@@ -2,6 +2,7 @@ use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::headers::crypto_key::CryptoKeyHeader;
 use crate::server::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
+use autopush_common::util::InsertOpt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::cmp::min;
@@ -49,21 +50,11 @@ impl From<NotificationHeaders> for HashMap<String, String> {
         let mut map = HashMap::new();
 
         map.insert("ttl".to_string(), headers.ttl.to_string());
-        if let Some(h) = headers.topic {
-            map.insert("topic".to_string(), h);
-        }
-        if let Some(h) = headers.encoding {
-            map.insert("encoding".to_string(), h);
-        }
-        if let Some(h) = headers.encryption {
-            map.insert("encryption".to_string(), h);
-        }
-        if let Some(h) = headers.encryption_key {
-            map.insert("encryption_key".to_string(), h);
-        }
-        if let Some(h) = headers.crypto_key {
-            map.insert("crypto_key".to_string(), h);
-        }
+        map.insert_opt("topic", headers.topic);
+        map.insert_opt("encoding", headers.encoding);
+        map.insert_opt("encryption", headers.encryption);
+        map.insert_opt("encryption_key", headers.encryption_key);
+        map.insert_opt("crypto_key", headers.crypto_key);
 
         map
     }

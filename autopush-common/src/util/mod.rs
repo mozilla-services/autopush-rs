@@ -1,4 +1,6 @@
 //! Various small utilities accumulated over time for the WebPush server
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::time::Duration;
 
 use futures::future::{Either, Future, IntoFuture};
@@ -34,4 +36,17 @@ where
         Ok(Either::B(((), _item))) => Err("timed out".into()),
         Err(Either::B((e, _item))) => Err(e.into()),
     }))
+}
+
+pub trait InsertOpt<K: Eq + Hash, V> {
+    /// Insert an item only if it exists
+    fn insert_opt(&mut self, key: impl Into<K>, value: Option<impl Into<V>>);
+}
+
+impl<K: Eq + Hash, V> InsertOpt<K, V> for HashMap<K, V> {
+    fn insert_opt(&mut self, key: impl Into<K>, value: Option<impl Into<V>>) {
+        if let Some(value) = value {
+            self.insert(key.into(), value.into());
+        }
+    }
 }
