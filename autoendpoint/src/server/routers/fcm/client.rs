@@ -1,4 +1,6 @@
+use crate::error::ApiResult;
 use crate::server::routers::fcm::settings::FcmCredential;
+use std::collections::HashMap;
 use yup_oauth2::authenticator::DefaultAuthenticator;
 use yup_oauth2::ServiceAccountAuthenticator;
 
@@ -26,5 +28,15 @@ impl FcmClient {
             auth,
             http,
         })
+    }
+
+    /// Send the message data to FCM
+    pub async fn send(
+        &self,
+        data: HashMap<&'static str, String>,
+        token: String,
+        ttl: usize,
+    ) -> ApiResult<()> {
+        unimplemented!()
     }
 }

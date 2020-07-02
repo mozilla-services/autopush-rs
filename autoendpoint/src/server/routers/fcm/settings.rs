@@ -9,6 +9,8 @@ pub struct FcmSettings {
     /// A JSON dict of `FcmCredential`s. This must be a `String` because
     /// environment variables cannot encode a `HashMap<String, FcmCredential>`
     pub credentials: String,
+    /// The max size of notification data in bytes
+    pub max_data: usize,
 }
 
 /// Credential information for each application
@@ -23,6 +25,7 @@ impl Default for FcmSettings {
         Self {
             ttl: 60,
             credentials: "{}".to_string(),
+            max_data: 4096,
         }
     }
 }

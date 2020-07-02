@@ -51,8 +51,15 @@ impl Server {
         )
         .map_err(ApiErrorKind::Database)?;
         let http = reqwest::Client::new();
-        let fcm_router =
-            Arc::new(FcmRouter::new(settings.fcm.clone(), http.clone(), metrics.clone()).await?);
+        let fcm_router = Arc::new(
+            FcmRouter::new(
+                settings.fcm.clone(),
+                settings.endpoint_url.clone(),
+                http.clone(),
+                metrics.clone(),
+            )
+            .await?,
+        );
         let state = ServerState {
             metrics,
             settings,
