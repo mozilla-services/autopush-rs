@@ -25,6 +25,22 @@ pub struct RouterResponse {
     pub body: Option<String>,
 }
 
+impl RouterResponse {
+    /// Build a successful (200 OK) router response
+    pub fn success(location: String, ttl: usize) -> Self {
+        RouterResponse {
+            status: StatusCode::OK,
+            headers: {
+                let mut map = HashMap::new();
+                map.insert("Location", location);
+                map.insert("TTL", ttl.to_string());
+                map
+            },
+            body: None,
+        }
+    }
+}
+
 impl From<RouterResponse> for HttpResponse {
     fn from(router_response: RouterResponse) -> Self {
         let mut builder = HttpResponse::build(router_response.status);

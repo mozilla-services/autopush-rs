@@ -5,7 +5,6 @@ use crate::server::routers::fcm::error::FcmError;
 use crate::server::routers::fcm::settings::FcmCredential;
 use crate::server::routers::{Router, RouterResponse};
 use crate::server::FcmSettings;
-use actix_web::http::StatusCode;
 use async_trait::async_trait;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, StatsdClient};
@@ -177,18 +176,9 @@ impl Router for FcmRouter {
         // Sent successfully, update metrics and make response
         self.incr_success_metrics(notification);
 
-        Ok(RouterResponse {
-            status: StatusCode::OK,
-            headers: {
-                let mut map = HashMap::new();
-                map.insert(
-                    "Location",
-                    format!("{}/m/{}", self.endpoint_url, notification.message_id),
-                );
-                map.insert("TTL", notification.headers.ttl.to_string());
-                map
-            },
-            body: None,
-        })
+        Ok(RouterResponse::success(
+            format!("{}/m/{}", self.endpoint_url, notification.message_id),
+            notification.headers.ttl as usize,
+        ))
     }
 }
