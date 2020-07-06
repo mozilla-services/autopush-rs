@@ -66,7 +66,13 @@ impl FcmClient {
             .timeout(TIMEOUT)
             .send()
             .await
-            .map_err(FcmError::FcmRequest)?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    FcmError::FcmRequestTimeout
+                } else {
+                    FcmError::FcmConnect(e)
+                }
+            })?;
 
         // Handle error
         if let Err(e) = response.error_for_status_ref() {

@@ -14,8 +14,8 @@ pub enum FcmError {
     #[error("Error while retrieving an OAuth token")]
     OAuthToken(#[from] yup_oauth2::Error),
 
-    #[error("Error while sending the FCM request")]
-    FcmRequest(#[source] reqwest::Error),
+    #[error("Error while connecting to FCM")]
+    FcmConnect(#[source] reqwest::Error),
 
     #[error("Unable to deserialize FCM response")]
     DeserializeResponse(#[source] reqwest::Error),
@@ -41,6 +41,9 @@ pub enum FcmError {
     #[error("FCM recipient no longer available")]
     FcmNotFound,
 
+    #[error("FCM request timed out")]
+    FcmRequestTimeout,
+
     #[error("FCM error, {status}: {message}")]
     FcmUpstream { status: String, message: String },
 
@@ -63,9 +66,10 @@ impl FcmError {
             | FcmError::OAuthClientBuild(_)
             | FcmError::OAuthToken(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
-            FcmError::FcmRequest(_)
+            FcmError::FcmConnect(_)
             | FcmError::DeserializeResponse(_)
             | FcmError::FcmAuthentication
+            | FcmError::FcmRequestTimeout
             | FcmError::FcmUpstream { .. }
             | FcmError::FcmUnknown => StatusCode::BAD_GATEWAY,
         }
@@ -83,7 +87,9 @@ impl FcmError {
 
             FcmError::FcmAuthentication => Some(901),
 
-            FcmError::FcmRequest(_) => Some(902),
+            FcmError::FcmConnect(_) => Some(902),
+
+            FcmError::FcmRequestTimeout => Some(903),
 
             FcmError::CredentialDecode(_)
             | FcmError::OAuthClientBuild(_)
