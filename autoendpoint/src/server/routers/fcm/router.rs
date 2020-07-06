@@ -12,7 +12,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use url::Url;
 
-const MAX_TTL: usize = 2419200;
+/// 28 days
+const MAX_TTL: usize = 28 * 24 * 60 * 60;
 
 /// Firebase Cloud Messaging router
 pub struct FcmRouter {
