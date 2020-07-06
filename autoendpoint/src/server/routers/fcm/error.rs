@@ -11,6 +11,15 @@ pub enum FcmError {
     #[error("Error while building the OAuth client")]
     OAuthClientBuild(#[source] std::io::Error),
 
+    #[error("Error while retrieving an OAuth token")]
+    OAuthToken(#[from] yup_oauth2::Error),
+
+    #[error("Error while sending the FCM request")]
+    FcmRequest(#[source] reqwest::Error),
+
+    #[error("Unable to deserialize FCM response")]
+    DeserializeResponse(#[source] reqwest::Error),
+
     #[error("No registration token found for user")]
     NoRegistrationToken,
 
@@ -25,19 +34,40 @@ pub enum FcmError {
          size. Converted buffer is too long by {0} bytes"
     )]
     TooMuchData(usize),
+
+    #[error("FCM authentication error")]
+    FcmAuthentication,
+
+    #[error("FCM recipient no longer available")]
+    FcmNotFound,
+
+    #[error("FCM error, {status}: {message}")]
+    FcmUpstream { status: String, message: String },
+
+    #[error("Unknown FCM error")]
+    FcmUnknown,
 }
 
 impl FcmError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId => {
-                StatusCode::GONE
-            }
+            FcmError::NoRegistrationToken
+            | FcmError::NoAppId
+            | FcmError::InvalidAppId
+            | FcmError::FcmNotFound => StatusCode::GONE,
+
             FcmError::TooMuchData(_) => StatusCode::PAYLOAD_TOO_LARGE,
-            FcmError::CredentialDecode(_) | FcmError::OAuthClientBuild(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+
+            FcmError::CredentialDecode(_)
+            | FcmError::OAuthClientBuild(_)
+            | FcmError::OAuthToken(_) => StatusCode::INTERNAL_SERVER_ERROR,
+
+            FcmError::FcmRequest(_)
+            | FcmError::DeserializeResponse(_)
+            | FcmError::FcmAuthentication
+            | FcmError::FcmUpstream { .. }
+            | FcmError::FcmUnknown => StatusCode::BAD_GATEWAY,
         }
     }
 
@@ -45,8 +75,22 @@ impl FcmError {
     pub fn errno(&self) -> Option<usize> {
         match self {
             FcmError::TooMuchData(_) => Some(104),
-            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId => Some(106),
-            FcmError::CredentialDecode(_) | FcmError::OAuthClientBuild(_) => None,
+
+            FcmError::NoRegistrationToken
+            | FcmError::NoAppId
+            | FcmError::InvalidAppId
+            | FcmError::FcmNotFound => Some(106),
+
+            FcmError::FcmAuthentication => Some(901),
+
+            FcmError::FcmRequest(_) => Some(902),
+
+            FcmError::CredentialDecode(_)
+            | FcmError::OAuthClientBuild(_)
+            | FcmError::OAuthToken(_)
+            | FcmError::DeserializeResponse(_)
+            | FcmError::FcmUpstream { .. }
+            | FcmError::FcmUnknown => None,
         }
     }
 }
