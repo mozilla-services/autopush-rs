@@ -1,4 +1,4 @@
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::server::extractors::notification::Notification;
 use crate::server::routers::fcm::client::FcmClient;
 use crate::server::routers::fcm::error::FcmError;
@@ -91,6 +91,66 @@ impl FcmRouter {
 
         Ok(message_data)
     }
+
+    /// Handle an error by logging, updating metrics, etc
+    fn handle_error(&self, error: FcmError) -> ApiError {
+        match &error {
+            FcmError::FcmAuthentication => {
+                error!("FCM authentication error");
+                self.incr_error_metric("authentication");
+            }
+            FcmError::FcmRequestTimeout => {
+                warn!("FCM timeout");
+                self.incr_error_metric("timeout");
+            }
+            FcmError::FcmConnect(e) => {
+                warn!("FCM unavailable: {error}", error = e.to_string());
+                self.incr_error_metric("connection_unavailable");
+            }
+            FcmError::FcmNotFound => {
+                debug!("FCM recipient not found");
+                self.incr_error_metric("recipient_gone");
+            }
+            FcmError::FcmUpstream { .. } | FcmError::FcmUnknown => {
+                warn!("FCM error: {error}", error = error.to_string());
+                self.incr_error_metric("server_error");
+            }
+            _ => {
+                warn!(
+                    "Unknown error while sending FCM request: {error}",
+                    error = error.to_string()
+                );
+                self.incr_error_metric("unknown");
+            }
+        }
+
+        ApiError::from(error)
+    }
+
+    /// Update metrics after successfully routing the notification
+    fn incr_success_metrics(&self, notification: &Notification) {
+        self.metrics
+            .incr_with_tags("notification.bridge.sent")
+            .with_tag("platform", "fcmv1")
+            .send();
+        self.metrics
+            .count_with_tags(
+                "notification.message_data",
+                notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
+            )
+            .with_tag("platform", "fcmv1")
+            .with_tag("destination", "Direct")
+            .send();
+    }
+
+    /// Increment `notification.bridge.error` with a reason
+    fn incr_error_metric(&self, reason: &str) {
+        self.metrics
+            .incr_with_tags("notification.bridge.error")
+            .with_tag("platform", "fcmv1")
+            .with_tag("reason", reason)
+            .send();
+    }
 }
 
 #[async_trait(?Send)]
@@ -110,23 +170,12 @@ impl Router for FcmRouter {
 
         // Send the notification to FCM
         let client = self.clients.get(app_id).ok_or(FcmError::InvalidAppId)?;
-        client
-            .send(message_data, fcm_token.to_string(), ttl)
-            .await?;
+        if let Err(e) = client.send(message_data, fcm_token.to_string(), ttl).await {
+            return Err(self.handle_error(e));
+        }
 
         // Sent successfully, update metrics and make response
-        self.metrics
-            .incr_with_tags("notification.bridge.sent")
-            .with_tag("platform", "fcmv1")
-            .send();
-        self.metrics
-            .count_with_tags(
-                "notification.message_data",
-                notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
-            )
-            .with_tag("platform", "fcmv1")
-            .with_tag("destination", "Direct")
-            .send();
+        self.incr_success_metrics(notification);
 
         Ok(RouterResponse {
             status: StatusCode::OK,
