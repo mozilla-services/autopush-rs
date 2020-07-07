@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Extracts notification data from `Subscription` and request data
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Notification {
     pub message_id: String,
     pub subscription: Subscription,

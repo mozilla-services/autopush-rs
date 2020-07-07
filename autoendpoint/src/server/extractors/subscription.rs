@@ -19,7 +19,7 @@ use std::borrow::Cow;
 use uuid::Uuid;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Subscription {
     pub user: DynamoDbUser,
     pub channel_id: Uuid,

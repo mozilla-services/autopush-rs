@@ -29,17 +29,30 @@ pub struct WebPushRouter {
 impl Router for WebPushRouter {
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
         let user = &notification.subscription.user;
+        debug!(
+            "Routing WebPush notification to UAID {}",
+            notification.subscription.user.uaid
+        );
+        trace!("Notification = {:?}", notification);
 
         // Check if there is a node connected to the client
         if let Some(node_id) = &user.node_id {
+            trace!("User has a node ID, sending notification to node");
+
             // Try to send the notification to the node
             match self.send_notification(notification, node_id).await {
                 Ok(response) => {
                     // The node might be busy, make sure it accepted the notification
                     if response.status() == 200 {
                         // The node has received the notification
+                        trace!("Node received notification");
                         return Ok(self.make_delivered_response(notification));
                     }
+
+                    trace!(
+                        "Node did not receive the notification, response = {:?}",
+                        response
+                    );
                 }
                 Err(error) => {
                     // We should stop sending notifications to this node for this user
@@ -50,19 +63,25 @@ impl Router for WebPushRouter {
         }
 
         // Save notification, node is not present or busy
+        trace!("Node is not present or busy, storing notification");
         self.store_notification(notification).await?;
 
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
+        trace!("Re-fetching user to trigger notification check");
         let user = match self.ddb.get_user(&user.uaid).compat().await {
             Ok(user) => user,
             Err(e) => {
                 return match e.kind() {
                     ErrorKind::Msg(msg) if msg == "No user record found" => {
+                        trace!("No user found, must have been deleted");
                         Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into())
                     }
                     // Database error, but we already stored the message so it's ok
-                    _ => Ok(self.make_stored_response(notification)),
+                    _ => {
+                        debug!("Database error while re-fetching user: {}", e);
+                        Ok(self.make_stored_response(notification))
+                    }
                 };
             }
         };
@@ -71,15 +90,22 @@ impl Router for WebPushRouter {
         let node_id = match &user.node_id {
             Some(id) => id,
             // The user is not connected to a node, nothing more to do
-            None => return Ok(self.make_stored_response(notification)),
+            None => {
+                trace!("User is not connected to a node, returning stored response");
+                return Ok(self.make_stored_response(notification));
+            }
         };
 
         // Notify the node to check for messages
+        trace!("Notifying node to check for messages");
         match self.trigger_notification_check(&user.uaid, &node_id).await {
             Ok(response) => {
+                trace!("Response = {:?}", response);
                 if response.status() == 200 {
+                    trace!("Node has delivered the message");
                     Ok(self.make_delivered_response(notification))
                 } else {
+                    trace!("Node has not delivered the message, returning stored response");
                     Ok(self.make_stored_response(notification))
                 }
             }
