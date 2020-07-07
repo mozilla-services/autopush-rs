@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use url::Url;
 
 /// Settings for `FcmRouter`
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -11,6 +12,8 @@ pub struct FcmSettings {
     pub credentials: String,
     /// The max size of notification data in bytes
     pub max_data: usize,
+    /// The base URL to use for FCM requests
+    pub fcm_url: Url,
 }
 
 /// Credential information for each application
@@ -26,6 +29,7 @@ impl Default for FcmSettings {
             ttl: 60,
             credentials: "{}".to_string(),
             max_data: 4096,
+            fcm_url: Url::parse("https://fcm.googleapis.com").unwrap(),
         }
     }
 }

@@ -4,6 +4,7 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::Duration;
+use url::Url;
 use yup_oauth2::authenticator::DefaultAuthenticator;
 use yup_oauth2::ServiceAccountAuthenticator;
 
@@ -14,24 +15,30 @@ const OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/firebase.messag
 /// Holds application-specific Firebase data and authentication. This client
 /// handles sending notifications to Firebase.
 pub struct FcmClient {
-    pub endpoint: String,
+    pub endpoint: Url,
     pub auth: DefaultAuthenticator,
     pub http: reqwest::Client,
 }
 
 impl FcmClient {
     /// Create an `FcmClient` using the provided credential
-    pub async fn new(credential: FcmCredential, http: reqwest::Client) -> std::io::Result<Self> {
+    pub async fn new(
+        fcm_url: Url,
+        credential: FcmCredential,
+        http: reqwest::Client,
+    ) -> std::io::Result<Self> {
         let key_data = yup_oauth2::read_service_account_key(&credential.auth_file).await?;
         let auth = ServiceAccountAuthenticator::builder(key_data)
             .build()
             .await?;
 
         Ok(FcmClient {
-            endpoint: format!(
-                "https://fcm.googleapis.com/v1/projects/{}/messages:send",
-                credential.project_id
-            ),
+            endpoint: fcm_url
+                .join(&format!(
+                    "v1/projects/{}/messages:send",
+                    credential.project_id
+                ))
+                .expect("Project ID is not URL-safe"),
             auth,
             http,
         })
@@ -59,7 +66,7 @@ impl FcmClient {
         // Make the request
         let response = self
             .http
-            .post(&self.endpoint)
+            .post(self.endpoint.clone())
             .header("Authorization", format!("Bearer {}", access_token.as_str()))
             .header("Content-Type", "application/json; UTF-8")
             .body(message.to_string())
