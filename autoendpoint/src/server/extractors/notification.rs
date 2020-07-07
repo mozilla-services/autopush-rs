@@ -9,6 +9,7 @@ use autopush_common::util::sec_since_epoch;
 use cadence::Counted;
 use fernet::MultiFernet;
 use futures::{future, FutureExt, StreamExt};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Extracts notification data from `Subscription` and request data
@@ -137,5 +138,33 @@ impl Notification {
         };
 
         fernet.encrypt(message_id.as_bytes())
+    }
+
+    /// Serialize the notification for delivery to the connection server. Some
+    /// fields in `autopush_common`'s `Notification` are marked with
+    /// `#[serde(skip_serializing)]` so they are not shown to the UA. These
+    /// fields are still required when delivering to the connection server, so
+    /// we can't simply convert this notification type to that one and serialize
+    /// via serde.
+    pub fn serialize_for_delivery(&self) -> HashMap<&'static str, serde_json::Value> {
+        let mut map = HashMap::new();
+
+        map.insert(
+            "channelID",
+            serde_json::to_value(&self.subscription.channel_id).unwrap(),
+        );
+        map.insert("version", serde_json::to_value(&self.message_id).unwrap());
+        map.insert("ttl", serde_json::to_value(self.headers.ttl).unwrap());
+        map.insert("topic", serde_json::to_value(&self.headers.topic).unwrap());
+        map.insert("timestamp", serde_json::to_value(self.timestamp).unwrap());
+
+        if let Some(data) = &self.data {
+            map.insert("data", serde_json::to_value(&data).unwrap());
+
+            let headers: HashMap<_, _> = self.headers.clone().into();
+            map.insert("headers", serde_json::to_value(&headers).unwrap());
+        }
+
+        map
     }
 }
