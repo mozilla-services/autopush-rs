@@ -11,6 +11,7 @@ const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct Settings {
     pub debug: bool,
     pub port: u16,

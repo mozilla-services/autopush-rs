@@ -5,6 +5,7 @@ use url::Url;
 /// Settings for `FcmRouter`
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct FcmSettings {
     pub ttl: usize,
     /// A JSON dict of `FcmCredential`s. This must be a `String` because
