@@ -38,7 +38,7 @@ pub struct NotificationHeaders {
 
     // These fields are validated separately, because the validation is complex
     // and based upon the content encoding
-    pub content_encoding: Option<String>,
+    pub encoding: Option<String>,
     pub encryption: Option<String>,
     pub encryption_key: Option<String>,
     pub crypto_key: Option<String>,
@@ -52,8 +52,8 @@ impl From<NotificationHeaders> for HashMap<String, String> {
         if let Some(h) = headers.topic {
             map.insert("topic".to_string(), h);
         }
-        if let Some(h) = headers.content_encoding {
-            map.insert("content_encoding".to_string(), h);
+        if let Some(h) = headers.encoding {
+            map.insert("encoding".to_string(), h);
         }
         if let Some(h) = headers.encryption {
             map.insert("encryption".to_string(), h);
@@ -86,7 +86,7 @@ impl NotificationHeaders {
             //       https://github.com/mozilla-services/autopush/commit/1f01cd70f52de3c22f74a7389019dfafd1d90ea7#diff-170ab1658a6a917eee357db65564b076R111-R112
             .unwrap_or(0);
         let topic = get_owned_header(req, "topic");
-        let content_encoding = get_owned_header(req, "content-encoding");
+        let encoding = get_owned_header(req, "content-encoding");
         let encryption = get_owned_header(req, "encryption");
         let encryption_key = get_owned_header(req, "encryption-key");
         let crypto_key = get_owned_header(req, "crypto-key");
@@ -94,7 +94,7 @@ impl NotificationHeaders {
         let headers = NotificationHeaders {
             ttl,
             topic,
-            content_encoding,
+            encoding,
             encryption,
             encryption_key,
             crypto_key,
@@ -115,11 +115,11 @@ impl NotificationHeaders {
     /// Validate the encryption headers according to the various WebPush
     /// standard versions
     fn validate_encryption(&self) -> ApiResult<()> {
-        let content_encoding = self.content_encoding.as_deref().ok_or_else(|| {
+        let encoding = self.encoding.as_deref().ok_or_else(|| {
             ApiErrorKind::InvalidEncryption("Missing Content-Encoding header".to_string())
         })?;
 
-        match content_encoding {
+        match encoding {
             "aesgcm128" => self.validate_encryption_01_rules()?,
             "aesgcm" => self.validate_encryption_04_rules()?,
             "aes128gcm" => self.validate_encryption_06_rules()?,
@@ -363,7 +363,7 @@ mod tests {
             NotificationHeaders {
                 ttl: 0,
                 topic: None,
-                content_encoding: Some("aesgcm128".to_string()),
+                encoding: Some("aesgcm128".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: Some("dh=bar".to_string()),
                 crypto_key: None
@@ -387,7 +387,7 @@ mod tests {
             NotificationHeaders {
                 ttl: 0,
                 topic: None,
-                content_encoding: Some("aesgcm".to_string()),
+                encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: None,
                 crypto_key: Some("dh=bar".to_string())
@@ -411,7 +411,7 @@ mod tests {
             NotificationHeaders {
                 ttl: 0,
                 topic: None,
-                content_encoding: Some("aes128gcm".to_string()),
+                encoding: Some("aes128gcm".to_string()),
                 encryption: Some("notsalt=foo".to_string()),
                 encryption_key: None,
                 crypto_key: Some("notdh=bar".to_string())

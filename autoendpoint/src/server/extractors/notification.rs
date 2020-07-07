@@ -67,7 +67,7 @@ impl FromRequest for Notification {
             );
 
             // Record the encoding if we have an encrypted payload
-            if let Some(encoding) = &headers.content_encoding {
+            if let Some(encoding) = &headers.encoding {
                 if data.is_some() {
                     state
                         .metrics
