@@ -32,3 +32,6 @@ target
 requirements.txt
 test-requirements.txt
 venv
+
+# Local configs
+*.local.toml
