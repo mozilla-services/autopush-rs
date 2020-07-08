@@ -40,3 +40,8 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 validator = "0.10.0"
 validator_derive = "0.10.0"
 yup-oauth2 = "4.1.2"
+
+[dev-dependencies]
+mockito = "0.26.0"
+tempfile = "3.1.0"
+tokio = { version = "0.2.12", features = ["macros"] }

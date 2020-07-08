@@ -33,7 +33,7 @@ impl FcmRouter {
         metrics: StatsdClient,
     ) -> Result<Self, FcmError> {
         let credentials = settings.credentials()?;
-        let clients = Self::create_clients(&settings.fcm_url, credentials, http.clone())
+        let clients = Self::create_clients(&settings, credentials, http.clone())
             .await
             .map_err(FcmError::OAuthClientBuild)?;
 
@@ -47,7 +47,7 @@ impl FcmRouter {
 
     /// Create FCM clients for each application
     async fn create_clients(
-        fcm_url: &Url,
+        settings: &FcmSettings,
         credentials: HashMap<String, FcmCredential>,
         http: reqwest::Client,
     ) -> std::io::Result<HashMap<String, FcmClient>> {
@@ -56,7 +56,7 @@ impl FcmRouter {
         for (profile, credential) in credentials {
             clients.insert(
                 profile,
-                FcmClient::new(fcm_url.clone(), credential, http.clone()).await?,
+                FcmClient::new(settings.fcm_url.clone(), credential, http.clone()).await?,
             );
         }
 
