@@ -160,6 +160,12 @@ impl FcmRouter {
 #[async_trait(?Send)]
 impl Router for FcmRouter {
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+        debug!(
+            "Sending FCM notification to UAID {}",
+            notification.subscription.user.uaid
+        );
+        trace!("Notification = {:?}", notification);
+
         let router_data = &notification.subscription.user.router_data;
         let fcm_token = router_data
             .get("token")
@@ -174,11 +180,13 @@ impl Router for FcmRouter {
 
         // Send the notification to FCM
         let client = self.clients.get(app_id).ok_or(FcmError::InvalidAppId)?;
+        trace!("Sending message to FCM: {:?}", message_data);
         if let Err(e) = client.send(message_data, fcm_token.to_string(), ttl).await {
             return Err(self.handle_error(e));
         }
 
         // Sent successfully, update metrics and make response
+        trace!("FCM request was successful");
         self.incr_success_metrics(notification);
 
         Ok(RouterResponse::success(
