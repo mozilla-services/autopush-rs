@@ -8,7 +8,6 @@ use crate::server::FcmSettings;
 use async_trait::async_trait;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, StatsdClient};
-use serde_json::Value;
 use std::collections::HashMap;
 use url::Url;
 
@@ -166,14 +165,19 @@ impl Router for FcmRouter {
         );
         trace!("Notification = {:?}", notification);
 
-        let router_data = &notification.subscription.user.router_data;
+        let router_data = notification
+            .subscription
+            .user
+            .router_data
+            .as_ref()
+            .ok_or(FcmError::NoRegistrationToken)?;
         let fcm_token = router_data
             .get("token")
-            .and_then(Value::as_str)
+            .and_then(|t| t.s.as_deref())
             .ok_or(FcmError::NoRegistrationToken)?;
         let app_id = router_data
             .get("app_id")
-            .and_then(Value::as_str)
+            .and_then(|t| t.s.as_deref())
             .ok_or(FcmError::NoAppId)?;
         let ttl = MAX_TTL.min(self.settings.ttl.max(notification.headers.ttl as usize));
         let message_data = self.build_message_data(notification)?;
@@ -216,6 +220,7 @@ mod tests {
     use crate::server::FcmSettings;
     use autopush_common::db::DynamoDbUser;
     use cadence::StatsdClient;
+    use rusoto_dynamodb::AttributeValue;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use url::Url;
@@ -250,26 +255,24 @@ mod tests {
     }
 
     /// Create default user router data
-    fn default_router_data() -> HashMap<String, serde_json::Value> {
-        let mut map = HashMap::new();
-        map.insert(
-            "token".to_string(),
-            serde_json::to_value(FCM_TOKEN).unwrap(),
-        );
-        map.insert("app_id".to_string(), serde_json::to_value("dev").unwrap());
-        map
+    fn default_router_data() -> HashMap<String, AttributeValue> {
+        serde_dynamodb::to_hashmap(&serde_json::json!({
+            "token": FCM_TOKEN,
+            "app_id": "dev"
+        }))
+        .unwrap()
     }
 
     /// Create a notification
     fn make_notification(
-        router_data: HashMap<String, serde_json::Value>,
+        router_data: HashMap<String, AttributeValue>,
         data: Option<String>,
     ) -> Notification {
         Notification {
             message_id: "test-message-id".to_string(),
             subscription: Subscription {
                 user: DynamoDbUser {
-                    router_data,
+                    router_data: Some(router_data),
                     ..Default::default()
                 },
                 channel_id: channel_id(),
@@ -371,11 +374,11 @@ mod tests {
         let router = make_router(service_file.path().to_owned()).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder().expect(0).create();
-        let mut router_data = default_router_data();
-        router_data.insert(
-            "app_id".to_string(),
-            serde_json::to_value("unknown-app-id").unwrap(),
-        );
+        let router_data = serde_dynamodb::to_hashmap(&serde_json::json!({
+            "token": FCM_TOKEN,
+            "app_id": "unknown-app-id"
+        }))
+        .unwrap();
         let notification = make_notification(router_data, None);
 
         let result = router.route_notification(&notification).await;
