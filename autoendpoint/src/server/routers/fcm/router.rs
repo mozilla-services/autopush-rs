@@ -190,7 +190,10 @@ impl Router for FcmRouter {
         self.incr_success_metrics(notification);
 
         Ok(RouterResponse::success(
-            format!("{}/m/{}", self.endpoint_url, notification.message_id),
+            self.endpoint_url
+                .join(&format!("/m/{}", notification.message_id))
+                .expect("Message ID is not URL-safe")
+                .to_string(),
             notification.headers.ttl as usize,
         ))
     }

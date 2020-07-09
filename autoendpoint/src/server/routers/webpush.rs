@@ -200,7 +200,10 @@ impl WebPushRouter {
                 let mut map = HashMap::new();
                 map.insert(
                     "Location",
-                    format!("{}/m/{}", self.endpoint_url, notification.message_id),
+                    self.endpoint_url
+                        .join(&format!("/m/{}", notification.message_id))
+                        .expect("Message ID is not URL-safe")
+                        .to_string(),
                 );
                 map.insert("TTL", notification.headers.ttl.to_string());
                 map
