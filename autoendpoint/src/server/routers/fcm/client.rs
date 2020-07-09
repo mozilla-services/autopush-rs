@@ -115,7 +115,7 @@ struct FcmErrorResponse {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use crate::server::routers::fcm::client::FcmClient;
     use crate::server::routers::fcm::error::FcmError;
     use crate::server::routers::fcm::settings::FcmCredential;
@@ -125,11 +125,11 @@ mod tests {
     use tempfile::NamedTempFile;
     use url::Url;
 
-    const PROJECT_ID: &str = "yup-test-243420";
+    pub const PROJECT_ID: &str = "yup-test-243420";
     const ACCESS_TOKEN: &str = "ya29.c.ElouBywiys0LyNaZoLPJcp1Fdi2KjFMxzvYKLXkTdvM-rDfqKlvEq6PiMhGoGHx97t5FAvz3eb_ahdwlBjSStxHtDVQB4ZPRJQ_EOi-iS7PnayahU2S9Jp8S6rk";
 
     /// Write service data to a temporary file
-    fn make_service_file() -> NamedTempFile {
+    pub fn make_service_file() -> NamedTempFile {
         // Taken from the yup-oauth2 tests
         let contents = serde_json::json!({
             "type": "service_account",
@@ -151,7 +151,7 @@ mod tests {
     }
 
     /// Mock the OAuth token endpoint to provide the access token
-    fn mock_token_endpoint() -> mockito::Mock {
+    pub fn mock_token_endpoint() -> mockito::Mock {
         mockito::mock("POST", "/token")
             .with_body(
                 serde_json::json!({
@@ -165,7 +165,7 @@ mod tests {
     }
 
     /// Start building a mock for the FCM endpoint
-    fn mock_fcm_endpoint_builder() -> mockito::Mock {
+    pub fn mock_fcm_endpoint_builder() -> mockito::Mock {
         mockito::mock(
             "POST",
             format!("/v1/projects/{}/messages:send", PROJECT_ID).as_str(),

@@ -19,6 +19,7 @@ pub trait Router {
 }
 
 /// The response returned when a router routes a notification
+#[derive(Debug, PartialEq)]
 pub struct RouterResponse {
     pub status: StatusCode,
     pub headers: HashMap<&'static str, String>,

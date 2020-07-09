@@ -198,3 +198,196 @@ impl Router for FcmRouter {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::error::ApiErrorKind;
+    use crate::server::extractors::notification::Notification;
+    use crate::server::extractors::notification_headers::NotificationHeaders;
+    use crate::server::extractors::routers::RouterType;
+    use crate::server::extractors::subscription::Subscription;
+    use crate::server::routers::fcm::client::tests::{
+        make_service_file, mock_fcm_endpoint_builder, mock_token_endpoint, PROJECT_ID,
+    };
+    use crate::server::routers::fcm::error::FcmError;
+    use crate::server::routers::fcm::router::FcmRouter;
+    use crate::server::routers::RouterError;
+    use crate::server::routers::{Router, RouterResponse};
+    use crate::server::FcmSettings;
+    use autopush_common::db::DynamoDbUser;
+    use cadence::StatsdClient;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use url::Url;
+    use uuid::Uuid;
+
+    const FCM_TOKEN: &str = "test-token";
+    const CHANNEL_ID: &str = "4530d3a6-13f9-4639-87f9-2ff731824f34";
+
+    /// Get the test channel ID as a Uuid
+    fn channel_id() -> Uuid {
+        Uuid::parse_str(CHANNEL_ID).unwrap()
+    }
+
+    /// Create a router for testing, using the given service auth file
+    async fn make_router(auth_file: PathBuf) -> FcmRouter {
+        FcmRouter::new(
+            FcmSettings {
+                fcm_url: Url::parse(&mockito::server_url()).unwrap(),
+                credentials: format!(
+                    r#"{{ "dev": {{ "project_id": "{}", "auth_file": "{}" }} }}"#,
+                    PROJECT_ID,
+                    auth_file.to_string_lossy()
+                ),
+                ..Default::default()
+            },
+            Url::parse("http://localhost:8080/").unwrap(),
+            reqwest::Client::new(),
+            StatsdClient::from_sink("autopush", cadence::NopMetricSink),
+        )
+        .await
+        .unwrap()
+    }
+
+    /// Create default user router data
+    fn default_router_data() -> HashMap<String, serde_json::Value> {
+        let mut map = HashMap::new();
+        map.insert(
+            "token".to_string(),
+            serde_json::to_value(FCM_TOKEN).unwrap(),
+        );
+        map.insert("app_id".to_string(), serde_json::to_value("dev").unwrap());
+        map
+    }
+
+    /// Create a notification
+    fn make_notification(
+        router_data: HashMap<String, serde_json::Value>,
+        data: Option<String>,
+    ) -> Notification {
+        Notification {
+            message_id: "test-message-id".to_string(),
+            subscription: Subscription {
+                user: DynamoDbUser {
+                    router_data,
+                    ..Default::default()
+                },
+                channel_id: channel_id(),
+                router_type: RouterType::FCM,
+                vapid: None,
+            },
+            headers: NotificationHeaders {
+                ttl: 0,
+                topic: Some("test-topic".to_string()),
+                encoding: Some("test-encoding".to_string()),
+                encryption: Some("test-encryption".to_string()),
+                encryption_key: Some("test-encryption-key".to_string()),
+                crypto_key: Some("test-crypto-key".to_string()),
+            },
+            timestamp: 0,
+            data,
+        }
+    }
+
+    /// A notification with no data is sent to FCM
+    #[tokio::test]
+    async fn successful_routing_no_data() {
+        let service_file = make_service_file();
+        let router = make_router(service_file.path().to_owned()).await;
+        let _token_mock = mock_token_endpoint();
+        let fcm_mock = mock_fcm_endpoint_builder()
+            .match_body(
+                serde_json::json!({
+                    "message": {
+                        "android": {
+                            "data": {
+                                "chid": channel_id().to_simple().to_string()
+                            },
+                            "ttl": "60s"
+                        },
+                        "token": "test-token"
+                    }
+                })
+                .to_string()
+                .as_str(),
+            )
+            .create();
+        let notification = make_notification(default_router_data(), None);
+
+        let result = router.route_notification(&notification).await;
+        assert!(result.is_ok(), "result = {:?}", result);
+        assert_eq!(
+            result.unwrap(),
+            RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
+        );
+        fcm_mock.assert();
+    }
+
+    /// A notification with data is sent to FCM
+    #[tokio::test]
+    async fn successful_routing_with_data() {
+        let service_file = make_service_file();
+        let router = make_router(service_file.path().to_owned()).await;
+        let _token_mock = mock_token_endpoint();
+        let fcm_mock = mock_fcm_endpoint_builder()
+            .match_body(
+                serde_json::json!({
+                    "message": {
+                        "android": {
+                            "data": {
+                                "chid": channel_id().to_simple().to_string(),
+                                "body": "test-data",
+                                "con": "test-encoding",
+                                "enc": "test-encryption",
+                                "cryptokey": "test-crypto-key",
+                                "enckey": "test-encryption-key"
+                            },
+                            "ttl": "60s"
+                        },
+                        "token": "test-token"
+                    }
+                })
+                .to_string()
+                .as_str(),
+            )
+            .create();
+        let data = "test-data".to_string();
+        let notification = make_notification(default_router_data(), Some(data));
+
+        let result = router.route_notification(&notification).await;
+        assert!(result.is_ok(), "result = {:?}", result);
+        assert_eq!(
+            result.unwrap(),
+            RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
+        );
+        fcm_mock.assert();
+    }
+
+    /// If there is no client for the user's app ID, an error is returned and
+    /// the FCM request is not sent.
+    #[tokio::test]
+    async fn missing_client() {
+        let service_file = make_service_file();
+        let router = make_router(service_file.path().to_owned()).await;
+        let _token_mock = mock_token_endpoint();
+        let fcm_mock = mock_fcm_endpoint_builder().expect(0).create();
+        let mut router_data = default_router_data();
+        router_data.insert(
+            "app_id".to_string(),
+            serde_json::to_value("unknown-app-id").unwrap(),
+        );
+        let notification = make_notification(router_data, None);
+
+        let result = router.route_notification(&notification).await;
+        assert!(result.is_err());
+        assert!(
+            matches!(
+                result.as_ref().unwrap_err().kind,
+                ApiErrorKind::Router(RouterError::Fcm(FcmError::InvalidAppId))
+            ),
+            "result = {:?}",
+            result
+        );
+        fcm_mock.assert();
+    }
+}
