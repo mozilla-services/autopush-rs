@@ -11,7 +11,6 @@ use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::DynamoDbUser;
 use autopush_common::util::sec_since_epoch;
 use cadence::{Counted, StatsdClient};
-use futures::compat::Future01CompatExt;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
@@ -65,11 +64,9 @@ impl FromRequest for Subscription {
             let channel_id = Uuid::from_slice(&token[16..32]).unwrap();
             let user = state
                 .ddb
-                .get_user(&uaid)
-                .compat()
-                .await
-                .map_err(ApiErrorKind::Database)?
-                .ok_or(ApiErrorKind::NoUser)?;
+                .get_user(uaid)
+                .await?
+                .ok_or(ApiErrorKind::NoSubscription)?;
             let router_type = validate_user(&user, &channel_id, &state).await?;
 
             // Validate the VAPID JWT token and record the version

@@ -1,11 +1,11 @@
 //! User validations
 
+use crate::db::client::DbClient;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
-use autopush_common::db::{DynamoDbUser, DynamoStorage};
+use autopush_common::db::DynamoDbUser;
 use cadence::{Counted, StatsdClient};
-use futures::compat::Future01CompatExt;
 use uuid::Uuid;
 
 /// Perform some validations on the user, including:
@@ -23,7 +23,7 @@ pub async fn validate_user(
         Ok(router_type) => router_type,
         Err(_) => {
             debug!("Unknown router type, dropping user"; "user" => ?user);
-            drop_user(&user.uaid, &state.ddb, &state.metrics).await?;
+            drop_user(user.uaid, &state.ddb, &state.metrics).await?;
             return Err(ApiErrorKind::NoSubscription.into());
         }
     };
@@ -39,7 +39,7 @@ pub async fn validate_user(
 async fn validate_webpush_user(
     user: &DynamoDbUser,
     channel_id: &Uuid,
-    ddb: &DynamoStorage,
+    ddb: &DbClient,
     metrics: &StatsdClient,
 ) -> ApiResult<()> {
     // Make sure the user is active (has a valid message table)
@@ -47,23 +47,19 @@ async fn validate_webpush_user(
         Some(table) => table,
         None => {
             debug!("Missing `current_month` value, dropping user"; "user" => ?user);
-            drop_user(&user.uaid, ddb, metrics).await?;
+            drop_user(user.uaid, ddb, metrics).await?;
             return Err(ApiErrorKind::NoSubscription.into());
         }
     };
 
-    if !ddb.message_table_names.contains(message_table) {
+    if ddb.message_table.as_str() != message_table {
         debug!("User is inactive, dropping user"; "user" => ?user);
-        drop_user(&user.uaid, ddb, metrics).await?;
+        drop_user(user.uaid, ddb, metrics).await?;
         return Err(ApiErrorKind::NoSubscription.into());
     }
 
     // Make sure the subscription channel exists
-    let channel_ids = ddb
-        .get_user_channels(&user.uaid, message_table)
-        .compat()
-        .await
-        .map_err(ApiErrorKind::Database)?;
+    let channel_ids = ddb.get_user_channels(user.uaid).await?;
 
     if !channel_ids.contains(channel_id) {
         return Err(ApiErrorKind::NoSubscription.into());
@@ -73,16 +69,13 @@ async fn validate_webpush_user(
 }
 
 /// Drop a user and increment associated metric
-async fn drop_user(uaid: &Uuid, ddb: &DynamoStorage, metrics: &StatsdClient) -> ApiResult<()> {
+async fn drop_user(uaid: Uuid, ddb: &DbClient, metrics: &StatsdClient) -> ApiResult<()> {
     metrics
         .incr_with_tags("updates.drop_user")
         .with_tag("errno", "102")
         .send();
 
-    ddb.drop_uaid(uaid)
-        .compat()
-        .await
-        .map_err(ApiErrorKind::Database)?;
+    ddb.drop_user(uaid).await?;
 
     Ok(())
 }

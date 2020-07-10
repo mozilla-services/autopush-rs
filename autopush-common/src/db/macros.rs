@@ -33,6 +33,7 @@ macro_rules! key_schema {
     }
 }
 
+#[macro_export]
 macro_rules! val {
     (B => $val:expr) => {{
         let mut attr = AttributeValue::default();
@@ -74,14 +75,15 @@ macro_rules! val {
 /// assert_eq!(map.get("c"), None);
 /// # }
 /// ```
+#[macro_export]
 macro_rules! hashmap {
     (@single $($x:tt)*) => (());
-    (@count $($rest:expr),*) => (<[()]>::len(&[$(hashmap!(@single $rest)),*]));
+    (@count $($rest:expr),*) => (<[()]>::len(&[$($crate::hashmap!(@single $rest)),*]));
 
-    ($($key:expr => $value:expr,)+) => { hashmap!($($key => $value),+) };
+    ($($key:expr => $value:expr,)+) => { $crate::hashmap!($($key => $value),+) };
     ($($key:expr => $value:expr),*) => {
         {
-            let _cap = hashmap!(@count $($key),*);
+            let _cap = $crate::hashmap!(@count $($key),*);
             let mut _map = ::std::collections::HashMap::with_capacity(_cap);
             $(
                 _map.insert($key, $value);
@@ -92,11 +94,12 @@ macro_rules! hashmap {
 }
 
 /// Shorthand for specifying a dynamodb item
+#[macro_export]
 macro_rules! ddb_item {
     ($($p:tt: $t:tt => $x:expr),*) => {
         {
             use rusoto_dynamodb::AttributeValue;
-            hashmap!{
+            $crate::hashmap!{
                 $(
                     String::from(stringify!($p)) => AttributeValue {
                         $t: Some($x),
