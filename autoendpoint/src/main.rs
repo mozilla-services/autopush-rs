@@ -4,8 +4,12 @@
 extern crate slog_scope;
 
 mod error;
+mod extractors;
+mod headers;
 mod logging;
 mod metrics;
+mod routers;
+mod routes;
 mod server;
 mod settings;
 mod tags;

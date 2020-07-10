@@ -2,11 +2,9 @@
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
-use crate::server::routers::fcm::router::FcmRouter;
-use crate::server::routes::health::{
-    health_route, lb_heartbeat_route, status_route, version_route,
-};
-use crate::server::routes::webpush::webpush_route;
+use crate::routers::fcm::router::FcmRouter;
+use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
+use crate::routes::webpush::webpush_route;
 use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{
@@ -16,15 +14,6 @@ use autopush_common::db::DynamoStorage;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use std::sync::Arc;
-
-mod extractors;
-mod headers;
-mod routers;
-mod routes;
-
-pub use headers::vapid::VapidError;
-pub use routers::fcm::settings::FcmSettings;
-pub use routers::RouterError;
 
 #[derive(Clone)]
 pub struct ServerState {

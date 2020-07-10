@@ -1,7 +1,7 @@
 //! User validations
 
 use crate::error::{ApiErrorKind, ApiResult};
-use crate::server::extractors::routers::RouterType;
+use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
 use autopush_common::db::{DynamoDbUser, DynamoStorage};
 use cadence::{Counted, StatsdClient};

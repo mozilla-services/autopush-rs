@@ -32,5 +32,5 @@ pub fn version_route() -> HttpResponse {
     // and stored in the docker root
     HttpResponse::Ok()
         .content_type("application/json")
-        .body(include_str!("../../../../version.json"))
+        .body(include_str!("../../../version.json"))
 }

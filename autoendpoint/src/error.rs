@@ -1,6 +1,7 @@
 //! Error types and transformations
 
-use crate::server::{RouterError, VapidError};
+use crate::headers::vapid::VapidError;
+use crate::routers::RouterError;
 use actix_web::{
     dev::{HttpResponseBuilder, ServiceResponse},
     error::{PayloadError, ResponseError},

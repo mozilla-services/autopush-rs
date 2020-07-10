@@ -1,6 +1,6 @@
 //! Application settings
 
-use crate::server::FcmSettings;
+use crate::routers::fcm::settings::FcmSettings;
 use config::{Config, ConfigError, Environment, File};
 use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
