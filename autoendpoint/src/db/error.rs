@@ -7,16 +7,16 @@ pub type DbResult<T> = Result<T, DbError>;
 
 #[derive(Debug, Error)]
 pub enum DbError {
-    #[error(transparent)]
+    #[error("Database error while performing GetItem")]
     GetItem(#[from] RusotoError<GetItemError>),
 
-    #[error(transparent)]
+    #[error("Database error while performing UpdateItem")]
     UpdateItem(#[from] RusotoError<UpdateItemError>),
 
-    #[error(transparent)]
+    #[error("Database error while performing PutItem")]
     PutItem(#[from] RusotoError<PutItemError>),
 
-    #[error(transparent)]
+    #[error("Database error while performing DeleteItem")]
     DeleteItem(#[from] RusotoError<DeleteItemError>),
 
     #[error("Error while deserializing database response: {0}")]
