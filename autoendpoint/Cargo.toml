@@ -9,7 +9,7 @@ actix-http = "1.0"
 actix-web = "2.0"
 actix-rt = "1.0"
 actix-cors = "0.2.0"
-again = { version = "0.1.2", default-features = false }
+again = { version = "0.1.2", default-features = false, features = ["log"] }
 async-trait = "0.1.36"
 autopush_common = { path = "../autopush-common" }
 backtrace = "0.3"
