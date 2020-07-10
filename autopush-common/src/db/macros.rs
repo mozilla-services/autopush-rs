@@ -63,8 +63,7 @@ macro_rules! val {
 /// ## Example
 ///
 /// ```
-/// #[macro_use] extern crate rusoto_helpers;
-/// # fn main() {
+/// use autopush_common::hashmap;
 ///
 /// let map = hashmap!{
 ///     "a" => 1,
@@ -73,7 +72,6 @@ macro_rules! val {
 /// assert_eq!(map["a"], 1);
 /// assert_eq!(map["b"], 2);
 /// assert_eq!(map.get("c"), None);
-/// # }
 /// ```
 #[macro_export]
 macro_rules! hashmap {
