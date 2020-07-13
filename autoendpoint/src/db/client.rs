@@ -1,17 +1,17 @@
 use crate::db::error::{DbError, DbResult};
 use crate::db::retry::{
-    retry_policy, retryable_delete_error, retryable_getitem_error, retryable_putitem_error,
-    retryable_updateitem_error,
+    retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
+    retryable_putitem_error, retryable_updateitem_error,
 };
 use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
 use autopush_common::notification::Notification;
 use autopush_common::{ddb_item, hashmap, val};
 use cadence::StatsdClient;
 use rusoto_core::credential::StaticProvider;
-use rusoto_core::{HttpClient, Region};
+use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
-    AttributeValue, DeleteItemInput, DynamoDb, DynamoDbClient, GetItemInput, PutItemInput,
-    UpdateItemInput,
+    AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
+    DynamoDbClient, GetItemInput, PutItemInput, UpdateItemInput,
 };
 use std::collections::HashSet;
 use std::env;
@@ -179,5 +179,41 @@ impl DbClient {
             .await?;
 
         Ok(())
+    }
+
+    /// Check if the router table exists
+    pub async fn router_table_exists(&self) -> DbResult<bool> {
+        self.table_exists(self.router_table.clone()).await
+    }
+
+    /// Check if the message table exists
+    pub async fn message_table_exists(&self) -> DbResult<bool> {
+        self.table_exists(self.message_table.clone()).await
+    }
+
+    /// Check if a table exists
+    async fn table_exists(&self, table_name: String) -> DbResult<bool> {
+        let describe_item = DescribeTableInput { table_name };
+
+        let output = match retry_policy()
+            .retry_if(
+                || self.ddb.describe_table(describe_item.clone()),
+                retryable_describe_table_error(self.metrics.clone()),
+            )
+            .await
+        {
+            Ok(output) => output,
+            Err(RusotoError::Service(DescribeTableError::ResourceNotFound(_))) => {
+                return Ok(false);
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        let status = output
+            .table
+            .and_then(|table| table.table_status)
+            .ok_or(DbError::TableStatusUnknown)?;
+
+        Ok(["CREATING", "UPDATING", "ACTIVE"].contains(&status.as_str()))
     }
 }
