@@ -58,8 +58,8 @@ impl FromRequest for Subscription {
             }
 
             // Load and validate user data
-            let uaid = Uuid::from_slice(&token[..16])?;
-            let channel_id = Uuid::from_slice(&token[16..32])?;
+            let uaid = Uuid::from_slice(&token[..16]).unwrap();
+            let channel_id = Uuid::from_slice(&token[16..32]).unwrap();
             let user = state
                 .ddb
                 .get_user(&uaid)

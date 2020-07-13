@@ -14,6 +14,7 @@ use serde::{Serialize, Serializer};
 use std::error::Error;
 use std::fmt::{self, Display};
 use thiserror::Error;
+use validator::{ValidationErrors, ValidationErrorsKind};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -63,9 +64,6 @@ pub enum ApiErrorKind {
     Router(#[from] RouterError),
 
     #[error(transparent)]
-    Uuid(#[from] uuid::Error),
-
-    #[error(transparent)]
     Jwt(#[from] jsonwebtoken::errors::Error),
 
     #[error("Error while validating token")]
@@ -111,7 +109,6 @@ impl ApiErrorKind {
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
             | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::Uuid(_)
             | ApiErrorKind::NoTTL => StatusCode::BAD_REQUEST,
 
             ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
@@ -134,7 +131,9 @@ impl ApiErrorKind {
         match self {
             ApiErrorKind::Router(e) => Some(e.errno()),
 
-            ApiErrorKind::InvalidToken => Some(102),
+            ApiErrorKind::Validation(e) => errno_from_validation_errors(e),
+
+            ApiErrorKind::InvalidToken | ApiErrorKind::InvalidApiVersion => Some(102),
 
             ApiErrorKind::NoUser => Some(103),
 
@@ -153,7 +152,10 @@ impl ApiErrorKind {
 
             ApiErrorKind::Internal(_) => Some(999),
 
-            _ => None,
+            ApiErrorKind::Io(_)
+            | ApiErrorKind::Metrics(_)
+            | ApiErrorKind::Database(_)
+            | ApiErrorKind::PayloadError(_) => None,
         }
     }
 }
@@ -232,4 +234,29 @@ impl Serialize for ApiError {
         map.serialize_entry("more_info", ERROR_URL)?;
         map.end()
     }
+}
+
+/// Get the error number from validation errors. If multiple errors are present,
+/// the first one with a valid error code is used.
+fn errno_from_validation_errors(e: &ValidationErrors) -> Option<usize> {
+    // Build an iterator over the error numbers, then get the first one
+    e.errors()
+        .values()
+        .flat_map(|error| match error {
+            ValidationErrorsKind::Struct(inner_errors) => {
+                Box::new(errno_from_validation_errors(inner_errors).into_iter())
+                    as Box<dyn Iterator<Item = usize>>
+            }
+            ValidationErrorsKind::List(indexed_errors) => Box::new(
+                indexed_errors
+                    .values()
+                    .filter_map(|errors| errno_from_validation_errors(errors)),
+            )
+                as Box<dyn Iterator<Item = usize>>,
+            ValidationErrorsKind::Field(errors) => {
+                Box::new(errors.iter().filter_map(|error| error.code.parse().ok()))
+                    as Box<dyn Iterator<Item = usize>>
+            }
+        })
+        .next()
 }
