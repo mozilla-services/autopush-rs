@@ -303,6 +303,7 @@ mod tests {
     #[test]
     fn valid_topic() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("TOPIC", "test-topic")
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
@@ -315,6 +316,7 @@ mod tests {
     #[test]
     fn too_long_topic() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("TOPIC", "test-topic-which-is-too-long-1234")
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
@@ -337,7 +339,7 @@ mod tests {
     /// If there is a payload, there must be a content encoding header
     #[test]
     fn payload_without_content_encoding() {
-        let req = TestRequest::post().to_http_request();
+        let req = TestRequest::post().header("TTL", "10").to_http_request();
         let result = NotificationHeaders::from_request(&req, true);
 
         assert_encryption_error(result, "Missing Content-Encoding header");
@@ -347,6 +349,7 @@ mod tests {
     #[test]
     fn valid_01_encryption() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("Content-Encoding", "aesgcm128")
             .header("Encryption", "salt=foo")
             .header("Encryption-Key", "dh=bar")
@@ -357,7 +360,7 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: 0,
+                ttl: 10,
                 topic: None,
                 encoding: Some("aesgcm128".to_string()),
                 encryption: Some("salt=foo".to_string()),
@@ -371,6 +374,7 @@ mod tests {
     #[test]
     fn valid_04_encryption() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("Content-Encoding", "aesgcm")
             .header("Encryption", "salt=foo")
             .header("Crypto-Key", "dh=bar")
@@ -381,7 +385,7 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: 0,
+                ttl: 10,
                 topic: None,
                 encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
@@ -395,6 +399,7 @@ mod tests {
     #[test]
     fn valid_06_encryption() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("Content-Encoding", "aes128gcm")
             .header("Encryption", "notsalt=foo")
             .header("Crypto-Key", "notdh=bar")
@@ -405,7 +410,7 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: 0,
+                ttl: 10,
                 topic: None,
                 encoding: Some("aes128gcm".to_string()),
                 encryption: Some("notsalt=foo".to_string()),
