@@ -65,7 +65,8 @@ impl FromRequest for Subscription {
                 .get_user(&uaid)
                 .compat()
                 .await
-                .map_err(ApiErrorKind::Database)?;
+                .map_err(ApiErrorKind::Database)?
+                .ok_or(ApiErrorKind::NoUser)?;
             let router_type = validate_user(&user, &channel_id, &state).await?;
 
             // Validate the VAPID JWT token and record the version

@@ -10,7 +10,6 @@ use crate::server::routers::{Router, RouterResponse};
 use crate::server::RouterError;
 use async_trait::async_trait;
 use autopush_common::db::{DynamoDbUser, DynamoStorage};
-use autopush_common::errors::ErrorKind;
 use cadence::{Counted, StatsdClient};
 use futures::compat::Future01CompatExt;
 use reqwest::{Response, StatusCode};
@@ -70,19 +69,15 @@ impl Router for WebPushRouter {
         // is no longer busy.
         trace!("Re-fetching user to trigger notification check");
         let user = match self.ddb.get_user(&user.uaid).compat().await {
-            Ok(user) => user,
+            Ok(Some(user)) => user,
+            Ok(None) => {
+                trace!("No user found, must have been deleted");
+                return Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into());
+            }
             Err(e) => {
-                return match e.kind() {
-                    ErrorKind::Msg(msg) if msg == "No user record found" => {
-                        trace!("No user found, must have been deleted");
-                        Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into())
-                    }
-                    // Database error, but we already stored the message so it's ok
-                    _ => {
-                        debug!("Database error while re-fetching user: {}", e);
-                        Ok(self.make_stored_response(notification))
-                    }
-                };
+                // Database error, but we already stored the message so it's ok
+                debug!("Database error while re-fetching user: {}", e);
+                return Ok(self.make_stored_response(notification));
             }
         };
 

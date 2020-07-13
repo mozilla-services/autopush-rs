@@ -18,8 +18,8 @@ use thiserror::Error;
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
 
-/// How long the client should wait before retrying a conflicting write.
-pub const RETRY_AFTER: u8 = 10;
+/// A link for more info on the returned error
+const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#error-codes";
 
 /// The main error type.
 #[derive(Debug)]
@@ -77,6 +77,9 @@ pub enum ApiErrorKind {
     #[error("Invalid token")]
     InvalidToken,
 
+    #[error("UAID not found")]
+    NoUser,
+
     #[error("No such subscription")]
     NoSubscription,
 
@@ -111,7 +114,7 @@ impl ApiErrorKind {
             | ApiErrorKind::Uuid(_)
             | ApiErrorKind::NoTTL => StatusCode::BAD_REQUEST,
 
-            ApiErrorKind::NoSubscription => StatusCode::GONE,
+            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
             ApiErrorKind::VapidError(_) | ApiErrorKind::Jwt(_) => StatusCode::UNAUTHORIZED,
 
@@ -123,6 +126,23 @@ impl ApiErrorKind {
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    /// Get the associated error number
+    pub fn errno(&self) -> Option<usize> {
+        match self {
+            ApiErrorKind::InvalidEncryption(_) => Some(110),
+            ApiErrorKind::VapidError(_)
+            | ApiErrorKind::TokenHashValidation(_)
+            | ApiErrorKind::Jwt(_) => Some(109),
+            ApiErrorKind::InvalidToken => Some(102),
+            ApiErrorKind::NoUser => Some(103),
+            ApiErrorKind::NoSubscription => Some(106),
+            ApiErrorKind::PayloadError(PayloadError::Overflow)
+            | ApiErrorKind::PayloadTooLarge(_) => Some(104),
+            ApiErrorKind::Internal(_) => Some(999),
+            _ => None,
         }
     }
 }
@@ -182,40 +202,23 @@ impl From<ApiError> for HttpResponse {
 
 impl ResponseError for ApiError {
     fn error_response(&self) -> HttpResponse {
-        // To return a descriptive error response, this would work. We do not
-        // unfortunately do that so that we can retain Sync 1.1 backwards compatibility
-        // as the Python one does.
-        // HttpResponse::build(self.status).json(self)
-        //
-        // So instead we translate our error to a backwards compatible one
-        HttpResponse::build(self.kind.status())
-            .header("Retry-After", RETRY_AFTER.to_string())
-            .finish()
+        HttpResponse::build(self.kind.status()).json(self)
     }
 }
 
-// TODO: Use the same schema as documented here?
-//       https://autopush.readthedocs.io/en/latest/http.html#response
 impl Serialize for ApiError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         let status = self.kind.status();
-        let size = if status == StatusCode::UNAUTHORIZED {
-            2
-        } else {
-            3
-        };
+        let mut map = serializer.serialize_map(Some(5))?;
 
-        let mut map = serializer.serialize_map(Some(size))?;
-        map.serialize_entry("status", &status.as_u16())?;
-        map.serialize_entry("reason", status.canonical_reason().unwrap_or(""))?;
-
-        if status != StatusCode::UNAUTHORIZED {
-            map.serialize_entry("errors", &self.kind.to_string())?;
-        }
-
+        map.serialize_entry("code", &status.as_u16())?;
+        map.serialize_entry("errno", &self.kind.errno())?;
+        map.serialize_entry("error", &status.canonical_reason())?;
+        map.serialize_entry("message", &self.kind.to_string())?;
+        map.serialize_entry("more_info", ERROR_URL)?;
         map.end()
     }
 }
