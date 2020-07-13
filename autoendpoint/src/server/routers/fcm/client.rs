@@ -1,5 +1,6 @@
 use crate::server::routers::fcm::error::FcmError;
 use crate::server::routers::fcm::settings::FcmCredential;
+use crate::server::FcmSettings;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -8,14 +9,13 @@ use url::Url;
 use yup_oauth2::authenticator::DefaultAuthenticator;
 use yup_oauth2::ServiceAccountAuthenticator;
 
-/// The timeout for FCM requests, in seconds
-const TIMEOUT: Duration = Duration::from_secs(3);
 const OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/firebase.messaging"];
 
 /// Holds application-specific Firebase data and authentication. This client
 /// handles sending notifications to Firebase.
 pub struct FcmClient {
     endpoint: Url,
+    timeout: Duration,
     auth: DefaultAuthenticator,
     http: reqwest::Client,
 }
@@ -23,7 +23,7 @@ pub struct FcmClient {
 impl FcmClient {
     /// Create an `FcmClient` using the provided credential
     pub async fn new(
-        fcm_url: Url,
+        settings: &FcmSettings,
         credential: FcmCredential,
         http: reqwest::Client,
     ) -> std::io::Result<Self> {
@@ -33,12 +33,14 @@ impl FcmClient {
             .await?;
 
         Ok(FcmClient {
-            endpoint: fcm_url
+            endpoint: settings
+                .fcm_url
                 .join(&format!(
                     "v1/projects/{}/messages:send",
                     credential.project_id
                 ))
                 .expect("Project ID is not URL-safe"),
+            timeout: Duration::from_secs(settings.timeout as u64),
             auth,
             http,
         })
@@ -70,7 +72,7 @@ impl FcmClient {
             .header("Authorization", format!("Bearer {}", access_token.as_str()))
             .header("Content-Type", "application/json; UTF-8")
             .body(message.to_string())
-            .timeout(TIMEOUT)
+            .timeout(self.timeout)
             .send()
             .await
             .map_err(|e| {
@@ -119,6 +121,7 @@ pub mod tests {
     use crate::server::routers::fcm::client::FcmClient;
     use crate::server::routers::fcm::error::FcmError;
     use crate::server::routers::fcm::settings::FcmCredential;
+    use crate::server::FcmSettings;
     use std::collections::HashMap;
     use std::io::Write;
     use std::path::PathBuf;
@@ -175,7 +178,10 @@ pub mod tests {
     /// Make a FcmClient from the service auth data
     async fn make_client(auth_file: PathBuf) -> FcmClient {
         FcmClient::new(
-            Url::parse(&mockito::server_url()).unwrap(),
+            &FcmSettings {
+                fcm_url: Url::parse(&mockito::server_url()).unwrap(),
+                ..Default::default()
+            },
             FcmCredential {
                 auth_file,
                 project_id: PROJECT_ID.to_string(),

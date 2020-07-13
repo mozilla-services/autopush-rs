@@ -56,7 +56,7 @@ impl FcmRouter {
         for (profile, credential) in credentials {
             clients.insert(
                 profile,
-                FcmClient::new(settings.fcm_url.clone(), credential, http.clone()).await?,
+                FcmClient::new(&settings, credential, http.clone()).await?,
             );
         }
 
