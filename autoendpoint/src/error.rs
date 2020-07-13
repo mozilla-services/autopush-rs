@@ -132,16 +132,27 @@ impl ApiErrorKind {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            ApiErrorKind::InvalidEncryption(_) => Some(110),
+            ApiErrorKind::Router(e) => Some(e.errno()),
+
+            ApiErrorKind::InvalidToken => Some(102),
+
+            ApiErrorKind::NoUser => Some(103),
+
+            ApiErrorKind::PayloadError(PayloadError::Overflow)
+            | ApiErrorKind::PayloadTooLarge(_) => Some(104),
+
+            ApiErrorKind::NoSubscription => Some(106),
+
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::Jwt(_) => Some(109),
-            ApiErrorKind::InvalidToken => Some(102),
-            ApiErrorKind::NoUser => Some(103),
-            ApiErrorKind::NoSubscription => Some(106),
-            ApiErrorKind::PayloadError(PayloadError::Overflow)
-            | ApiErrorKind::PayloadTooLarge(_) => Some(104),
+
+            ApiErrorKind::InvalidEncryption(_) => Some(110),
+
+            ApiErrorKind::NoTTL => Some(111),
+
             ApiErrorKind::Internal(_) => Some(999),
+
             _ => None,
         }
     }
