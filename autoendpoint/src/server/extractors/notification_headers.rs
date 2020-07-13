@@ -80,11 +80,7 @@ impl NotificationHeaders {
             .and_then(|ttl| ttl.parse().ok())
             // Enforce a maximum TTL, but don't error
             .map(|ttl| min(ttl, MAX_TTL))
-            // TODO: Should we return an error if no TTL is given instead of defaulting to 0?
-            //       The Python code often defaults to 0, but there's at least one case where an
-            //       error is returned if the TTL is missing:
-            //       https://github.com/mozilla-services/autopush/commit/1f01cd70f52de3c22f74a7389019dfafd1d90ea7#diff-170ab1658a6a917eee357db65564b076R111-R112
-            .unwrap_or(0);
+            .ok_or(ApiErrorKind::NoTTL)?;
         let topic = get_owned_header(req, "topic");
         let encoding = get_owned_header(req, "content-encoding");
         let encryption = get_owned_header(req, "encryption");

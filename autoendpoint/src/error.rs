@@ -91,6 +91,9 @@ pub enum ApiErrorKind {
     #[error("Invalid API version")]
     InvalidApiVersion,
 
+    #[error("Missing TTL value")]
+    NoTTL,
+
     #[error("{0}")]
     Internal(String),
 }
@@ -105,7 +108,8 @@ impl ApiErrorKind {
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
             | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::Uuid(_) => StatusCode::BAD_REQUEST,
+            | ApiErrorKind::Uuid(_)
+            | ApiErrorKind::NoTTL => StatusCode::BAD_REQUEST,
 
             ApiErrorKind::NoSubscription => StatusCode::GONE,
 
