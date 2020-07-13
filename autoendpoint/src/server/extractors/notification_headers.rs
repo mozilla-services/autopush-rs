@@ -241,7 +241,7 @@ mod tests {
         assert!(result.is_err());
         let error = match result.unwrap_err().kind {
             ApiErrorKind::InvalidEncryption(error) => error,
-            _ => panic!("Expected an ecryption error"),
+            _ => panic!("Expected an encryption error"),
         };
 
         assert_eq!(error, expected_error);

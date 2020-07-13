@@ -227,7 +227,7 @@ mod tests {
     use uuid::Uuid;
 
     const FCM_TOKEN: &str = "test-token";
-    const CHANNEL_ID: &str = "4530d3a6-13f9-4639-87f9-2ff731824f34";
+    const CHANNEL_ID: &str = "deadbeef-13f9-4639-87f9-2ff731824f34";
 
     /// Get the test channel ID as a Uuid
     fn channel_id() -> Uuid {
