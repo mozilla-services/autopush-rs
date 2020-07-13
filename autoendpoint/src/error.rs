@@ -1,6 +1,6 @@
 //! Error types and transformations
 
-use crate::server::VapidError;
+use crate::server::{RouterError, VapidError};
 use actix_web::{
     dev::{HttpResponseBuilder, ServiceResponse},
     error::{PayloadError, ResponseError},
@@ -60,6 +60,9 @@ pub enum ApiErrorKind {
     VapidError(#[from] VapidError),
 
     #[error(transparent)]
+    Router(#[from] RouterError),
+
+    #[error(transparent)]
     Uuid(#[from] uuid::Error),
 
     #[error(transparent)]
@@ -84,12 +87,15 @@ pub enum ApiErrorKind {
     #[error("{0}")]
     InvalidEncryption(String),
 
-    #[error("Data payload must be smaller than {} bytes", .0)]
+    #[error("Data payload must be smaller than {0} bytes")]
     PayloadTooLarge(usize),
 
     /// Used if the API version given is not v1 or v2
     #[error("Invalid API version")]
     InvalidApiVersion,
+
+    #[error("Missing TTL value")]
+    NoTTL,
 
     #[error("{0}")]
     Internal(String),
@@ -100,11 +106,13 @@ impl ApiErrorKind {
     pub fn status(&self) -> StatusCode {
         match self {
             ApiErrorKind::PayloadError(e) => e.status_code(),
+            ApiErrorKind::Router(e) => e.status(),
 
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
             | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::Uuid(_) => StatusCode::BAD_REQUEST,
+            | ApiErrorKind::Uuid(_)
+            | ApiErrorKind::NoTTL => StatusCode::BAD_REQUEST,
 
             ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
@@ -124,16 +132,27 @@ impl ApiErrorKind {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            ApiErrorKind::InvalidEncryption(_) => Some(110),
+            ApiErrorKind::Router(e) => Some(e.errno()),
+
+            ApiErrorKind::InvalidToken => Some(102),
+
+            ApiErrorKind::NoUser => Some(103),
+
+            ApiErrorKind::PayloadError(PayloadError::Overflow)
+            | ApiErrorKind::PayloadTooLarge(_) => Some(104),
+
+            ApiErrorKind::NoSubscription => Some(106),
+
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::Jwt(_) => Some(109),
-            ApiErrorKind::InvalidToken => Some(102),
-            ApiErrorKind::NoUser => Some(103),
-            ApiErrorKind::NoSubscription => Some(106),
-            ApiErrorKind::PayloadError(PayloadError::Overflow)
-            | ApiErrorKind::PayloadTooLarge(_) => Some(104),
+
+            ApiErrorKind::InvalidEncryption(_) => Some(110),
+
+            ApiErrorKind::NoTTL => Some(111),
+
             ApiErrorKind::Internal(_) => Some(999),
+
             _ => None,
         }
     }

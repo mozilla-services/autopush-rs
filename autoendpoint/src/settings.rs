@@ -14,10 +14,7 @@ pub struct Settings {
     pub debug: bool,
     pub port: u16,
     pub host: String,
-    pub database_url: String,
-    pub database_pool_max_size: Option<u32>,
-    #[cfg(any(test, feature = "db_test"))]
-    pub database_use_test_transactions: bool,
+    pub endpoint_url: Url,
 
     pub router_table_name: String,
     pub message_table_name: String,
@@ -37,10 +34,7 @@ impl Default for Settings {
             debug: false,
             port: DEFAULT_PORT,
             host: "127.0.0.1".to_string(),
-            database_url: "mysql://root@127.0.0.1/autopush".to_string(),
-            database_pool_max_size: None,
-            #[cfg(any(test, feature = "db_test"))]
-            database_use_test_transactions: false,
+            endpoint_url: Url::parse("http://127.0.0.1:8000/").unwrap(),
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
             max_data_bytes: 4096,
@@ -84,14 +78,6 @@ impl Settings {
                 Err(error)
             }
         })
-    }
-
-    /// A simple banner for display of certain settings at startup
-    pub fn banner(&self) -> String {
-        let db = Url::parse(&self.database_url)
-            .map(|url| url.scheme().to_owned())
-            .unwrap_or_else(|_| "<invalid db>".to_owned());
-        format!("http://{}:{} ({})", self.host, self.port, db)
     }
 
     /// Initialize the fernet encryption instance

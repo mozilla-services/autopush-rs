@@ -5,31 +5,59 @@ use crate::server::ServerState;
 use autopush_common::db::{DynamoDbUser, DynamoStorage};
 use cadence::{Counted, StatsdClient};
 use futures::compat::Future01CompatExt;
+use std::str::FromStr;
 use uuid::Uuid;
 
 /// Valid `DynamoDbUser::router_type` values
-const VALID_ROUTERS: [&str; 5] = ["webpush", "gcm", "fcm", "apns", "adm"];
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum RouterType {
+    WebPush,
+    GCM,
+    FCM,
+    APNS,
+    ADM,
+}
+
+impl FromStr for RouterType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "webpush" => Ok(RouterType::WebPush),
+            "gcm" => Ok(RouterType::GCM),
+            "fcm" => Ok(RouterType::FCM),
+            "apns" => Ok(RouterType::APNS),
+            "adm" => Ok(RouterType::ADM),
+            _ => Err(()),
+        }
+    }
+}
 
 /// Perform some validations on the user, including:
 /// - Validate router type
 /// - (WebPush) Check that the subscription/channel exists
 /// - (WebPush) Drop user if inactive
+///
+/// Returns an enum representing the user's router type.
 pub async fn validate_user(
     user: &DynamoDbUser,
     channel_id: &Uuid,
     state: &ServerState,
-) -> ApiResult<()> {
-    if !VALID_ROUTERS.contains(&user.router_type.as_str()) {
-        debug!("Unknown router type, dropping user"; "user" => ?user);
-        drop_user(&user.uaid, &state.ddb, &state.metrics).await?;
-        return Err(ApiErrorKind::NoSubscription.into());
-    }
+) -> ApiResult<RouterType> {
+    let router_type = match user.router_type.parse::<RouterType>() {
+        Ok(router_type) => router_type,
+        Err(_) => {
+            debug!("Unknown router type, dropping user"; "user" => ?user);
+            drop_user(&user.uaid, &state.ddb, &state.metrics).await?;
+            return Err(ApiErrorKind::NoSubscription.into());
+        }
+    };
 
-    if user.router_type == "webpush" {
+    if router_type == RouterType::WebPush {
         validate_webpush_user(user, channel_id, &state.ddb, &state.metrics).await?;
     }
 
-    Ok(())
+    Ok(router_type)
 }
 
 /// Make sure the user is not inactive and the subscription channel exists

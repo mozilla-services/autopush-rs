@@ -5,7 +5,7 @@ use thiserror::Error;
 const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 
 /// Parses the VAPID authorization header
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct VapidHeader {
     pub scheme: String,
     pub token: String,
@@ -14,6 +14,7 @@ pub struct VapidHeader {
 
 /// Combines the VAPID header details with the public key, which may not be from
 /// the VAPID header
+#[derive(Clone, Debug)]
 pub struct VapidHeaderWithKey {
     pub vapid: VapidHeader,
     pub public_key: String,

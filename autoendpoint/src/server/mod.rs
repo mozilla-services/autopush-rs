@@ -18,9 +18,11 @@ use std::sync::Arc;
 
 mod extractors;
 mod headers;
+mod routers;
 mod routes;
 
 pub use headers::vapid::VapidError;
+pub use routers::RouterError;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -29,6 +31,7 @@ pub struct ServerState {
     pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
     pub ddb: DynamoStorage,
+    pub http: reqwest::Client,
 }
 
 pub struct Server;
@@ -44,11 +47,13 @@ impl Server {
             metrics.clone(),
         )
         .map_err(ApiErrorKind::Database)?;
+        let http = reqwest::Client::new();
         let state = ServerState {
             metrics,
             settings,
             fernet,
             ddb,
+            http,
         };
 
         let server = HttpServer::new(move || {

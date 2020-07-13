@@ -5,6 +5,7 @@ use actix_web::HttpRequest;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::cmp::min;
+use std::collections::HashMap;
 use validator::Validate;
 use validator_derive::Validate;
 
@@ -15,11 +16,11 @@ lazy_static! {
 const MAX_TTL: i64 = 60 * 60 * 24 * 60;
 
 /// Extractor and validator for notification headers
-#[derive(Debug, Eq, PartialEq, Validate)]
+#[derive(Clone, Debug, Eq, PartialEq, Validate)]
 pub struct NotificationHeaders {
     // TTL is a signed value so that validation can catch negative inputs
     #[validate(range(min = 0, message = "TTL must be greater than 0", code = "114"))]
-    pub ttl: Option<i64>,
+    pub ttl: i64,
 
     #[validate(
         length(
@@ -37,10 +38,35 @@ pub struct NotificationHeaders {
 
     // These fields are validated separately, because the validation is complex
     // and based upon the content encoding
-    pub content_encoding: Option<String>,
+    pub encoding: Option<String>,
     pub encryption: Option<String>,
     pub encryption_key: Option<String>,
     pub crypto_key: Option<String>,
+}
+
+impl From<NotificationHeaders> for HashMap<String, String> {
+    fn from(headers: NotificationHeaders) -> Self {
+        let mut map = HashMap::new();
+
+        map.insert("ttl".to_string(), headers.ttl.to_string());
+        if let Some(h) = headers.topic {
+            map.insert("topic".to_string(), h);
+        }
+        if let Some(h) = headers.encoding {
+            map.insert("encoding".to_string(), h);
+        }
+        if let Some(h) = headers.encryption {
+            map.insert("encryption".to_string(), h);
+        }
+        if let Some(h) = headers.encryption_key {
+            map.insert("encryption_key".to_string(), h);
+        }
+        if let Some(h) = headers.crypto_key {
+            map.insert("crypto_key".to_string(), h);
+        }
+
+        map
+    }
 }
 
 impl NotificationHeaders {
@@ -53,9 +79,10 @@ impl NotificationHeaders {
         let ttl = get_header(req, "ttl")
             .and_then(|ttl| ttl.parse().ok())
             // Enforce a maximum TTL, but don't error
-            .map(|ttl| min(ttl, MAX_TTL));
+            .map(|ttl| min(ttl, MAX_TTL))
+            .ok_or(ApiErrorKind::NoTTL)?;
         let topic = get_owned_header(req, "topic");
-        let content_encoding = get_owned_header(req, "content-encoding");
+        let encoding = get_owned_header(req, "content-encoding");
         let encryption = get_owned_header(req, "encryption");
         let encryption_key = get_owned_header(req, "encryption-key");
         let crypto_key = get_owned_header(req, "crypto-key");
@@ -63,7 +90,7 @@ impl NotificationHeaders {
         let headers = NotificationHeaders {
             ttl,
             topic,
-            content_encoding,
+            encoding,
             encryption,
             encryption_key,
             crypto_key,
@@ -84,11 +111,11 @@ impl NotificationHeaders {
     /// Validate the encryption headers according to the various WebPush
     /// standard versions
     fn validate_encryption(&self) -> ApiResult<()> {
-        let content_encoding = self.content_encoding.as_deref().ok_or_else(|| {
+        let encoding = self.encoding.as_deref().ok_or_else(|| {
             ApiErrorKind::InvalidEncryption("Missing Content-Encoding header".to_string())
         })?;
 
-        match content_encoding {
+        match encoding {
             "aesgcm128" => self.validate_encryption_01_rules()?,
             "aesgcm" => self.validate_encryption_04_rules()?,
             "aes128gcm" => self.validate_encryption_06_rules()?,
@@ -236,7 +263,7 @@ mod tests {
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, Some(10));
+        assert_eq!(result.unwrap().ttl, 10);
     }
 
     /// Negative TTL values are not allowed
@@ -269,13 +296,14 @@ mod tests {
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, Some(MAX_TTL));
+        assert_eq!(result.unwrap().ttl, MAX_TTL);
     }
 
     /// A valid topic results in no errors
     #[test]
     fn valid_topic() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("TOPIC", "test-topic")
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
@@ -288,6 +316,7 @@ mod tests {
     #[test]
     fn too_long_topic() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("TOPIC", "test-topic-which-is-too-long-1234")
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
@@ -310,7 +339,7 @@ mod tests {
     /// If there is a payload, there must be a content encoding header
     #[test]
     fn payload_without_content_encoding() {
-        let req = TestRequest::post().to_http_request();
+        let req = TestRequest::post().header("TTL", "10").to_http_request();
         let result = NotificationHeaders::from_request(&req, true);
 
         assert_encryption_error(result, "Missing Content-Encoding header");
@@ -320,6 +349,7 @@ mod tests {
     #[test]
     fn valid_01_encryption() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("Content-Encoding", "aesgcm128")
             .header("Encryption", "salt=foo")
             .header("Encryption-Key", "dh=bar")
@@ -330,9 +360,9 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: None,
+                ttl: 10,
                 topic: None,
-                content_encoding: Some("aesgcm128".to_string()),
+                encoding: Some("aesgcm128".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: Some("dh=bar".to_string()),
                 crypto_key: None
@@ -344,6 +374,7 @@ mod tests {
     #[test]
     fn valid_04_encryption() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("Content-Encoding", "aesgcm")
             .header("Encryption", "salt=foo")
             .header("Crypto-Key", "dh=bar")
@@ -354,9 +385,9 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: None,
+                ttl: 10,
                 topic: None,
-                content_encoding: Some("aesgcm".to_string()),
+                encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: None,
                 crypto_key: Some("dh=bar".to_string())
@@ -368,6 +399,7 @@ mod tests {
     #[test]
     fn valid_06_encryption() {
         let req = TestRequest::post()
+            .header("TTL", "10")
             .header("Content-Encoding", "aes128gcm")
             .header("Encryption", "notsalt=foo")
             .header("Crypto-Key", "notdh=bar")
@@ -378,9 +410,9 @@ mod tests {
         assert_eq!(
             result.unwrap(),
             NotificationHeaders {
-                ttl: None,
+                ttl: 10,
                 topic: None,
-                content_encoding: Some("aes128gcm".to_string()),
+                encoding: Some("aes128gcm".to_string()),
                 encryption: Some("notsalt=foo".to_string()),
                 encryption_key: None,
                 crypto_key: Some("notdh=bar".to_string())
