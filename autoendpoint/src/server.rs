@@ -5,6 +5,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
+use crate::routes::registration::register_uaid_route;
 use crate::routes::webpush::webpush_route;
 use crate::settings::Settings;
 use actix_cors::Cors;
@@ -66,6 +67,10 @@ impl Server {
                 .service(
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])
                         .route(web::post().to(webpush_route)),
+                )
+                .service(
+                    web::resource("/v1/{router_type}/{app_id}/registration")
+                        .route(web::post().to(register_uaid_route)),
                 )
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))
