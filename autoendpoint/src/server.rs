@@ -10,7 +10,8 @@ use crate::routes::webpush::webpush_route;
 use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{
-    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, HttpServer,
+    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, FromRequest,
+    HttpServer,
 };
 use cadence::StatsdClient;
 use fernet::MultiFernet;
@@ -61,8 +62,14 @@ impl Server {
         let server = HttpServer::new(move || {
             App::new()
                 .data(state.clone())
+                // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 .wrap(Cors::default())
+                // Extractor configuration
+                .app_data(web::Bytes::configure(|cfg| {
+                    cfg.limit(state.settings.max_data_bytes)
+                }))
+                .app_data(web::JsonConfig::default().limit(state.settings.max_data_bytes))
                 // Endpoints
                 .service(
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])

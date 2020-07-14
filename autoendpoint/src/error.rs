@@ -5,7 +5,7 @@ use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
     dev::{HttpResponseBuilder, ServiceResponse},
-    error::{PayloadError, ResponseError},
+    error::{JsonPayloadError, PayloadError, ResponseError},
     http::StatusCode,
     middleware::errhandlers::ErrorHandlerResponse,
     HttpResponse, Result,
@@ -55,9 +55,8 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     Validation(#[from] validator::ValidationErrors),
 
-    // PayloadError does not implement std Error
-    #[error("{0}")]
-    PayloadError(PayloadError),
+    #[error(transparent)]
+    PayloadError(actix_web::Error),
 
     #[error(transparent)]
     VapidError(#[from] VapidError),
@@ -87,15 +86,18 @@ pub enum ApiErrorKind {
     #[error("{0}")]
     InvalidEncryption(String),
 
-    #[error("Data payload must be smaller than {0} bytes")]
-    PayloadTooLarge(usize),
-
     /// Used if the API version given is not v1 or v2
     #[error("Invalid API version")]
     InvalidApiVersion,
 
     #[error("Missing TTL value")]
     NoTTL,
+
+    #[error("Invalid router type")]
+    InvalidRouterType,
+
+    #[error("Invalid router token")]
+    InvalidRouterToken,
 
     #[error("{0}")]
     Internal(String),
@@ -105,21 +107,21 @@ impl ApiErrorKind {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            ApiErrorKind::PayloadError(e) => e.status_code(),
+            ApiErrorKind::PayloadError(e) => e.as_response_error().status_code(),
             ApiErrorKind::Router(e) => e.status(),
 
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
             | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::NoTTL => StatusCode::BAD_REQUEST,
+            | ApiErrorKind::NoTTL
+            | ApiErrorKind::InvalidRouterType
+            | ApiErrorKind::InvalidRouterToken => StatusCode::BAD_REQUEST,
 
             ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
             ApiErrorKind::VapidError(_) | ApiErrorKind::Jwt(_) => StatusCode::UNAUTHORIZED,
 
             ApiErrorKind::InvalidToken | ApiErrorKind::InvalidApiVersion => StatusCode::NOT_FOUND,
-
-            ApiErrorKind::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
 
             ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
@@ -139,10 +141,16 @@ impl ApiErrorKind {
 
             ApiErrorKind::NoUser => Some(103),
 
-            ApiErrorKind::PayloadError(PayloadError::Overflow)
-            | ApiErrorKind::PayloadTooLarge(_) => Some(104),
+            ApiErrorKind::PayloadError(error)
+                if matches!(error.as_error(), Some(PayloadError::Overflow))
+                    || matches!(error.as_error(), Some(JsonPayloadError::Overflow)) =>
+            {
+                Some(104)
+            }
 
             ApiErrorKind::NoSubscription => Some(106),
+
+            ApiErrorKind::InvalidRouterType => Some(108),
 
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::TokenHashValidation(_)
@@ -157,7 +165,8 @@ impl ApiErrorKind {
             ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
-            | ApiErrorKind::PayloadError(_) => None,
+            | ApiErrorKind::PayloadError(_)
+            | ApiErrorKind::InvalidRouterToken => None,
         }
     }
 }
