@@ -3,11 +3,12 @@ use crate::extractors::notification::Notification;
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
-use crate::routers::{Router, RouterResponse};
+use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, StatsdClient};
 use serde_json::Value;
+use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use url::Url;
 
@@ -158,6 +159,22 @@ impl FcmRouter {
 
 #[async_trait(?Send)]
 impl Router for FcmRouter {
+    fn register(
+        &self,
+        token: &str,
+        app_id: &str,
+    ) -> Result<HashMap<String, Value, RandomState>, RouterError> {
+        if !self.clients.contains_key(app_id) {
+            return Err(FcmError::InvalidAppId.into());
+        }
+
+        let mut router_data = HashMap::new();
+        router_data.insert("token".to_string(), serde_json::to_value(token).unwrap());
+        router_data.insert("app_id".to_string(), serde_json::to_value(app_id).unwrap());
+
+        Ok(router_data)
+    }
+
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
         debug!(
             "Sending FCM notification to UAID {}",

@@ -15,6 +15,14 @@ pub mod webpush;
 
 #[async_trait(?Send)]
 pub trait Router {
+    /// Validate that the user can use this router, and return data to be stored in
+    /// the user's `router_data` field.
+    fn register(
+        &self,
+        token: &str,
+        app_id: &str,
+    ) -> Result<HashMap<String, serde_json::Value>, RouterError>;
+
     /// Route a notification to the user
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse>;
 }

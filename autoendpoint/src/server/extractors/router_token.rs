@@ -18,7 +18,7 @@ lazy_static! {
 /// router's token schema (taken from request path params).
 #[derive(serde::Deserialize)]
 pub struct RouterToken {
-    token: String,
+    pub token: String,
 }
 
 impl FromRequest for RouterToken {
