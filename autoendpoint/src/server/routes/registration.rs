@@ -8,7 +8,10 @@ use actix_web::web::Data;
 use actix_web::{HttpRequest, HttpResponse};
 use autopush_common::db::DynamoDbUser;
 use autopush_common::endpoint::make_endpoint;
-use cadence::Counted;
+use cadence::{Counted, StatsdClient};
+use openssl::hash::MessageDigest;
+use openssl::pkey::PKey;
+use openssl::sign::Signer;
 use uuid::Uuid;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
@@ -22,16 +25,7 @@ pub async fn register_uaid_route(
     // Register with router
     let router = routers.get(path_args.router_type);
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
-
-    state
-        .metrics
-        .incr_with_tags("ua.command.register")
-        .with_tag(
-            "user_agent",
-            get_header(&request, "User-Agent").unwrap_or("unknown"),
-        )
-        .with_tag("host", get_header(&request, "Host").unwrap_or("unknown"))
-        .send();
+    incr_metric("ua.command.register", &state.metrics, &request);
 
     // Register user and channel in database
     let user = DynamoDbUser {
@@ -43,6 +37,7 @@ pub async fn register_uaid_route(
     state.ddb.add_user(&user).await?;
     state.ddb.add_channel(user.uaid, channel_id).await?;
 
+    // Make the endpoint URL
     let endpoint_url = make_endpoint(
         &user.uaid,
         &channel_id,
@@ -52,7 +47,37 @@ pub async fn register_uaid_route(
     )
     .map_err(ApiErrorKind::EndpointUrl)?;
 
-    // TODO: Make response
+    // Create the secret
+    let auth_keys = state.settings.auth_keys();
+    let auth_key = auth_keys
+        .get(0)
+        .expect("At least one auth key must be provided in the settings");
+    let secret = sign_with_key(auth_key.as_bytes(), user.uaid.as_bytes())
+        .map_err(ApiErrorKind::RegistrationSecretHash)?;
 
-    Ok(HttpResponse::Ok().finish())
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "uaid": user.uaid.to_simple().to_string(),
+        "channelID": channel_id.to_simple().to_string(),
+        "endpoint": endpoint_url,
+        "secret": secret
+    })))
+}
+
+/// Increment a metric with data from the request
+fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
+    metrics
+        .incr_with_tags(name)
+        .with_tag(
+            "user_agent",
+            get_header(&request, "User-Agent").unwrap_or("unknown"),
+        )
+        .with_tag("host", get_header(&request, "Host").unwrap_or("unknown"))
+        .send()
+}
+
+/// Sign some data with a key and return the hex representation
+fn sign_with_key(key: &[u8], data: &[u8]) -> Result<String, openssl::error::ErrorStack> {
+    let signed_data = Signer::new(MessageDigest::sha256(), PKey::hmac(key)?.as_ref())?
+        .sign_oneshot_to_vec(data)?;
+    Ok(hex::encode(signed_data))
 }

@@ -70,6 +70,9 @@ pub enum ApiErrorKind {
     #[error("Error while validating token")]
     TokenHashValidation(#[source] openssl::error::ErrorStack),
 
+    #[error("Error while creating secret")]
+    RegistrationSecretHash(#[source] openssl::error::ErrorStack),
+
     #[error("Error while creating endpoint URL: {0}")]
     EndpointUrl(#[source] autopush_common::errors::Error),
 
@@ -130,6 +133,7 @@ impl ApiErrorKind {
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::EndpointUrl(_)
+            | ApiErrorKind::RegistrationSecretHash(_)
             | ApiErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
