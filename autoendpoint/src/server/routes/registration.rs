@@ -7,6 +7,7 @@ use crate::server::ServerState;
 use actix_web::web::Data;
 use actix_web::{HttpRequest, HttpResponse};
 use autopush_common::db::DynamoDbUser;
+use autopush_common::endpoint::make_endpoint;
 use cadence::Counted;
 use uuid::Uuid;
 
@@ -42,7 +43,16 @@ pub async fn register_uaid_route(
     state.ddb.add_user(&user).await?;
     state.ddb.add_channel(user.uaid, channel_id).await?;
 
-    // TODO: Generate and return endpoint
+    let endpoint_url = make_endpoint(
+        &user.uaid,
+        &channel_id,
+        router_data_input.key.as_deref(),
+        state.settings.endpoint_url.as_str(),
+        &state.fernet,
+    )
+    .map_err(ApiErrorKind::EndpointUrl)?;
+
+    // TODO: Make response
 
     Ok(HttpResponse::Ok().finish())
 }

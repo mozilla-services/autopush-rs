@@ -17,7 +17,6 @@ use futures::sync::oneshot;
 use futures::{task, try_ready};
 use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
 use hyper::{server::conn::Http, StatusCode};
-use openssl::hash;
 use openssl::ssl::SslAcceptor;
 use sentry::{self, capture_message, integrations::panic::register_panic_handler};
 use serde_json::{self, json};
@@ -26,7 +25,6 @@ use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
-use uuid::Uuid;
 
 use autopush_common::db::DynamoStorage;
 use autopush_common::errors::*;
@@ -135,7 +133,7 @@ pub struct ServerOptions {
     pub debug: bool,
     pub router_port: u16,
     pub port: u16,
-    fernet: MultiFernet,
+    pub fernet: MultiFernet,
     pub ssl_key: Option<PathBuf>,
     pub ssl_cert: Option<PathBuf>,
     pub ssl_dh_param: Option<PathBuf>,
@@ -427,39 +425,6 @@ impl Server {
         }));
 
         Ok((srv2, core))
-    }
-
-    /// Create an v1 or v2 WebPush endpoint from the identifiers
-    ///
-    /// Both endpoints use bytes instead of hex to reduce ID length.
-    //  v1 is the uaid + chid
-    //  v2 is the uaid + chid + sha256(key).bytes
-    pub fn make_endpoint(&self, uaid: &Uuid, chid: &Uuid, key: Option<String>) -> Result<String> {
-        let root = format!("{}/wpush/", self.opts.endpoint_url);
-        let mut base = hex::decode(uaid.to_simple().to_string()).chain_err(|| "Error decoding")?;
-        base.extend(hex::decode(chid.to_simple().to_string()).chain_err(|| "Error decoding")?);
-        if let Some(k) = key {
-            let raw_key = base64::decode_config(&k, base64::URL_SAFE)
-                .chain_err(|| "Error encrypting payload")?;
-            let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key)
-                .chain_err(|| "Error creating message digest for key")?;
-            base.extend(key_digest.iter());
-            let encrypted = self
-                .opts
-                .fernet
-                .encrypt(&base)
-                .trim_matches('=')
-                .to_string();
-            Ok(format!("{}v2/{}", root, encrypted))
-        } else {
-            let encrypted = self
-                .opts
-                .fernet
-                .encrypt(&base)
-                .trim_matches('=')
-                .to_string();
-            Ok(format!("{}v1/{}", root, encrypted))
-        }
     }
 
     /// Initialize broadcasts for a newly connected client
