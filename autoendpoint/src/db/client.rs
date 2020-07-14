@@ -5,6 +5,7 @@ use crate::db::retry::{
 };
 use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
 use autopush_common::notification::Notification;
+use autopush_common::util::sec_since_epoch;
 use autopush_common::{ddb_item, hashmap, val};
 use cadence::StatsdClient;
 use rusoto_core::credential::StaticProvider;
@@ -16,6 +17,9 @@ use rusoto_dynamodb::{
 use std::collections::HashSet;
 use std::env;
 use uuid::Uuid;
+
+/// The maximum TTL for channels, 30 days
+const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
 /// Provides high-level operations over the DynamoDB database
 #[derive(Clone)]
@@ -110,8 +114,33 @@ impl DbClient {
         Ok(())
     }
 
+    /// Add a channel to a user
+    pub async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()> {
+        let input = UpdateItemInput {
+            table_name: self.message_table.clone(),
+            key: ddb_item! {
+                uaid: s => uaid.to_simple().to_string(),
+                chidmessageid: s => " ".to_string()
+            },
+            update_expression: Some("ADD chids :channel_id SET expiry = :expiry".to_string()),
+            expression_attribute_values: Some(hashmap! {
+                ":channel_id".to_string() => val!(S => channel_id.to_simple().to_string()),
+                ":expiry".to_string() => val!(N => sec_since_epoch() + MAX_CHANNEL_TTL)
+            }),
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.ddb.update_item(input.clone()),
+                retryable_updateitem_error(self.metrics.clone()),
+            )
+            .await?;
+        Ok(())
+    }
+
     /// Get the set of channel IDs for a user
-    pub async fn get_user_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
+    pub async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
         // Channel IDs are stored in a special row in the message table, where
         // chidmessageid = " "
         let input = GetItemInput {

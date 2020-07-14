@@ -7,6 +7,8 @@ use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::collections::HashMap;
+use uuid::Uuid;
 
 lazy_static! {
     static ref VALID_TOKEN: Regex = Regex::new(r"^[^ ]{8,}$").unwrap();
@@ -14,14 +16,18 @@ lazy_static! {
         Regex::new(r"^amzn1.adm-registration.v3.[^ ]{256,}$").unwrap();
 }
 
-/// Extracts the token from the request body and validates it against the given
-/// router's token schema (taken from request path params).
+/// Extracts the router data from the request body and validates the token
+/// against the given router's token schema (taken from request path params).
 #[derive(serde::Deserialize)]
-pub struct RouterToken {
+pub struct RouterDataInput {
     pub token: String,
+    #[serde(rename = "channelID")]
+    pub channel_id: Option<Uuid>,
+    pub key: Option<String>,
+    pub aps: Option<HashMap<String, serde_json::Value>>,
 }
 
-impl FromRequest for RouterToken {
+impl FromRequest for RouterDataInput {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
     type Config = ();

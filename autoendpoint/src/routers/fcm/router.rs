@@ -1,5 +1,6 @@
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
+use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
@@ -161,7 +162,7 @@ impl FcmRouter {
 impl Router for FcmRouter {
     fn register(
         &self,
-        token: &str,
+        router_data_input: &RouterDataInput,
         app_id: &str,
     ) -> Result<HashMap<String, Value, RandomState>, RouterError> {
         if !self.clients.contains_key(app_id) {
@@ -169,7 +170,10 @@ impl Router for FcmRouter {
         }
 
         let mut router_data = HashMap::new();
-        router_data.insert("token".to_string(), serde_json::to_value(token).unwrap());
+        router_data.insert(
+            "token".to_string(),
+            serde_json::to_value(&router_data_input.token).unwrap(),
+        );
         router_data.insert("app_id".to_string(), serde_json::to_value(app_id).unwrap());
 
         Ok(router_data)

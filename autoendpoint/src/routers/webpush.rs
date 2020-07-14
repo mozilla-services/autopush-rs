@@ -1,6 +1,7 @@
 use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::extractors::notification::Notification;
+use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::DynamoDbUser;
@@ -28,7 +29,7 @@ pub struct WebPushRouter {
 impl Router for WebPushRouter {
     fn register(
         &self,
-        _token: &str,
+        _router_input: &RouterDataInput,
         _app_id: &str,
     ) -> Result<HashMap<String, Value, RandomState>, RouterError> {
         // WebPush registration happens through the connection server

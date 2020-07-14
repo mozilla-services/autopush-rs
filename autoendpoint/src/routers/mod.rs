@@ -3,6 +3,7 @@
 use crate::db::error::DbError;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
+use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::fcm::error::FcmError;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
@@ -19,7 +20,7 @@ pub trait Router {
     /// the user's `router_data` field.
     fn register(
         &self,
-        token: &str,
+        router_input: &RouterDataInput,
         app_id: &str,
     ) -> Result<HashMap<String, serde_json::Value>, RouterError>;
 
