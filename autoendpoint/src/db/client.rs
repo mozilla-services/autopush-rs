@@ -53,6 +53,25 @@ impl DbClient {
         })
     }
 
+    /// Add a new user to the database. An error will occur if the user already
+    /// exists.
+    pub async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+        let input = PutItemInput {
+            item: serde_dynamodb::to_hashmap(user)?,
+            table_name: self.router_table.to_string(),
+            condition_expression: Some("attribute_not_exists(uaid)".to_string()),
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                move || self.ddb.put_item(input.clone()),
+                retryable_putitem_error(self.metrics.clone()),
+            )
+            .await?;
+        Ok(())
+    }
+
     /// Read a user from the database
     pub async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
         let input = GetItemInput {
@@ -141,7 +160,7 @@ impl DbClient {
         node_id: String,
         connected_at: u64,
     ) -> DbResult<()> {
-        let update_item = UpdateItemInput {
+        let input = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),
             condition_expression: Some("(node_id = :node) and (connected_at = :conn)".to_string()),
@@ -155,7 +174,7 @@ impl DbClient {
 
         retry_policy()
             .retry_if(
-                || self.ddb.update_item(update_item.clone()),
+                || self.ddb.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
@@ -165,7 +184,7 @@ impl DbClient {
 
     /// Store a single message
     pub async fn store_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
-        let put_item = PutItemInput {
+        let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(&uaid, message))?,
             table_name: self.message_table.clone(),
             ..Default::default()
@@ -173,7 +192,7 @@ impl DbClient {
 
         retry_policy()
             .retry_if(
-                || self.ddb.put_item(put_item.clone()),
+                || self.ddb.put_item(input.clone()),
                 retryable_putitem_error(self.metrics.clone()),
             )
             .await?;

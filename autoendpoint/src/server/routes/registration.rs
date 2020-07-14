@@ -6,6 +6,7 @@ use crate::server::headers::util::get_header;
 use crate::server::ServerState;
 use actix_web::web::Data;
 use actix_web::{HttpRequest, HttpResponse};
+use autopush_common::db::DynamoDbUser;
 use cadence::Counted;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
@@ -30,7 +31,13 @@ pub async fn register_uaid_route(
         .with_tag("host", get_header(&request, "Host").unwrap_or("unknown"))
         .send();
 
-    // TODO: Register in database
+    // Register user and channel in database
+    let user = DynamoDbUser {
+        router_type: path_args.router_type.to_string(),
+        router_data: Some(router_data),
+        ..Default::default()
+    };
+    state.ddb.add_user(&user).await?;
 
     // TODO: Generate and return endpoint
 
