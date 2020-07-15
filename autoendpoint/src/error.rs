@@ -97,6 +97,9 @@ pub enum ApiErrorKind {
     #[error("Missing TTL value")]
     NoTTL,
 
+    #[error("Invalid message ID")]
+    InvalidMessageId,
+
     #[error("{0}")]
     Internal(String),
 }
@@ -111,7 +114,8 @@ impl ApiErrorKind {
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
             | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::NoTTL => StatusCode::BAD_REQUEST,
+            | ApiErrorKind::NoTTL
+            | ApiErrorKind::InvalidMessageId => StatusCode::BAD_REQUEST,
 
             ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
@@ -157,7 +161,8 @@ impl ApiErrorKind {
             ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
-            | ApiErrorKind::PayloadError(_) => None,
+            | ApiErrorKind::PayloadError(_)
+            | ApiErrorKind::InvalidMessageId => None,
         }
     }
 }

@@ -1,6 +1,7 @@
 //! Actix extractors (`FromRequest`). These extractors transform and validate
 //! the incoming request data.
 
+pub mod message_id;
 pub mod notification;
 pub mod notification_headers;
 pub mod routers;

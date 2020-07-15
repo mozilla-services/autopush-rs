@@ -1,4 +1,5 @@
 use crate::error::ApiResult;
+use crate::extractors::message_id::MessageId;
 use crate::extractors::notification::Notification;
 use crate::extractors::routers::Routers;
 use actix_web::HttpResponse;
@@ -16,6 +17,6 @@ pub async fn webpush_route(
 }
 
 /// Handle the `DELETE /m/{message_id}` route
-pub async fn delete_notification_route() -> ApiResult<HttpResponse> {
+pub async fn delete_notification_route(message_id: MessageId) -> ApiResult<HttpResponse> {
     Ok(HttpResponse::Ok().finish())
 }

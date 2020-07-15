@@ -1,4 +1,5 @@
 use crate::error::{ApiError, ApiErrorKind};
+use crate::extractors::message_id::MessageId;
 use crate::extractors::notification_headers::NotificationHeaders;
 use crate::extractors::subscription::Subscription;
 use crate::server::ServerState;
@@ -60,8 +61,8 @@ impl FromRequest for Notification {
             let timestamp = sec_since_epoch();
             let message_id = Self::generate_message_id(
                 &state.fernet,
-                &subscription.user.uaid,
-                &subscription.channel_id,
+                subscription.user.uaid,
+                subscription.channel_id,
                 headers.topic.as_deref(),
                 timestamp,
             );
@@ -116,28 +117,26 @@ impl Notification {
     ///     Encrypted('02' : uaid.hex : channel_id.hex : timestamp)
     fn generate_message_id(
         fernet: &MultiFernet,
-        uaid: &Uuid,
-        channel_id: &Uuid,
+        uaid: Uuid,
+        channel_id: Uuid,
         topic: Option<&str>,
         timestamp: u64,
     ) -> String {
         let message_id = if let Some(topic) = topic {
-            format!(
-                "01:{}:{}:{}",
-                uaid.to_simple_ref(),
-                channel_id.to_simple_ref(),
-                topic
-            )
+            MessageId::WithTopic {
+                uaid,
+                channel_id,
+                topic: topic.to_string(),
+            }
         } else {
-            format!(
-                "02:{}:{}:{}",
-                uaid.to_simple_ref(),
-                channel_id.to_simple_ref(),
-                timestamp
-            )
+            MessageId::WithoutTopic {
+                uaid,
+                channel_id,
+                timestamp,
+            }
         };
 
-        fernet.encrypt(message_id.as_bytes())
+        message_id.encrypt(fernet)
     }
 
     /// Serialize the notification for delivery to the connection server. Some
