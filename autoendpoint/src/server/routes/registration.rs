@@ -24,6 +24,11 @@ pub async fn register_uaid_route(
     request: HttpRequest,
 ) -> ApiResult<HttpResponse> {
     // Register with router
+    debug!(
+        "Registering a user with the {} router",
+        path_args.router_type
+    );
+    trace!("token = {}", router_data_input.token);
     let router = routers.get(path_args.router_type);
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
     incr_metric("ua.command.register", &state.metrics, &request);
@@ -36,10 +41,14 @@ pub async fn register_uaid_route(
         ..Default::default()
     };
     let channel_id = router_data_input.channel_id.unwrap_or_else(Uuid::new_v4);
+    trace!("Creating user with UAID {}", user.uaid);
+    trace!("user = {:?}", user);
+    trace!("channel_id = {}", channel_id);
     state.ddb.add_user(&user).await?;
     state.ddb.add_channel(user.uaid, channel_id).await?;
 
     // Make the endpoint URL
+    trace!("Creating endpoint for user");
     let endpoint_url = make_endpoint(
         &user.uaid,
         &channel_id,
@@ -48,8 +57,10 @@ pub async fn register_uaid_route(
         &state.fernet,
     )
     .map_err(ApiErrorKind::EndpointUrl)?;
+    trace!("endpoint = {}", endpoint_url);
 
     // Create the secret
+    trace!("Creating secret for UAID {}", user.uaid);
     let auth_keys = state.settings.auth_keys();
     let auth_key = auth_keys
         .get(0)
@@ -57,6 +68,7 @@ pub async fn register_uaid_route(
     let secret = sign_with_key(auth_key.as_bytes(), user.uaid.as_bytes())
         .map_err(ApiErrorKind::RegistrationSecretHash)?;
 
+    trace!("Finished registering UAID {}", user.uaid);
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uaid": user.uaid.to_simple().to_string(),
         "channelID": channel_id.to_simple().to_string(),
