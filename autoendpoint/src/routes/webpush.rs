@@ -3,7 +3,7 @@ use crate::extractors::notification::Notification;
 use crate::extractors::routers::Routers;
 use actix_web::HttpResponse;
 
-/// Handle the `/wpush/{api_version}/{token}` and `/wpush/{token}` routes
+/// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
@@ -13,4 +13,9 @@ pub async fn webpush_route(
     let response = router.route_notification(&notification).await?;
 
     Ok(response.into())
+}
+
+/// Handle the `DELETE /m/{message_id}` route
+pub async fn delete_notification_route() -> ApiResult<HttpResponse> {
+    Ok(HttpResponse::Ok().finish())
 }
