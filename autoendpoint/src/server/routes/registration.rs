@@ -9,6 +9,7 @@ use actix_web::{HttpRequest, HttpResponse};
 use autopush_common::db::DynamoDbUser;
 use autopush_common::endpoint::make_endpoint;
 use cadence::{Counted, StatsdClient};
+use openssl::error::ErrorStack;
 use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
 use openssl::sign::Signer;
@@ -77,8 +78,10 @@ fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
 }
 
 /// Sign some data with a key and return the hex representation
-fn sign_with_key(key: &[u8], data: &[u8]) -> Result<String, openssl::error::ErrorStack> {
-    let signed_data = Signer::new(MessageDigest::sha256(), PKey::hmac(key)?.as_ref())?
-        .sign_oneshot_to_vec(data)?;
-    Ok(hex::encode(signed_data))
+fn sign_with_key(key: &[u8], data: &[u8]) -> Result<String, ErrorStack> {
+    let key = PKey::hmac(key)?;
+    let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
+
+    signer.update(data)?;
+    Ok(hex::encode(signer.sign_to_vec()?))
 }
