@@ -11,6 +11,7 @@ use uuid::Uuid;
 /// encrypted into a "message ID" which is presented to the user. Later, the
 /// user can send us the message ID to perform operations on the associated
 /// notification (e.g. delete it).
+#[derive(Debug)]
 pub enum MessageId {
     WithTopic {
         uaid: Uuid,
