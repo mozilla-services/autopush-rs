@@ -60,7 +60,7 @@ impl Settings {
         // Merge the environment overrides
         config.merge(Environment::with_prefix(ENV_PREFIX))?;
 
-        config.try_into::<Self>().or_else(|error| match error {
+        config.try_into::<Self>().map_err(|error| match error {
             // Configuration errors are not very sysop friendly, Try to make them
             // a bit more 3AM useful.
             ConfigError::Message(error_msg) => {
@@ -71,11 +71,11 @@ impl Settings {
                     ENV_PREFIX.to_uppercase()
                 );
                 error!("Configuration error: Value undefined {:?}", &error_msg);
-                Err(ConfigError::NotFound(error_msg))
+                ConfigError::NotFound(error_msg)
             }
             _ => {
                 error!("Configuration error: Other: {:?}", &error);
-                Err(error)
+                error
             }
         })
     }
