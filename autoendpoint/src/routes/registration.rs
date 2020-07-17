@@ -2,6 +2,7 @@ use crate::auth::sign_with_key;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::authorization_check::AuthorizationCheck;
 use crate::extractors::registration_path_args::RegistrationPathArgs;
+use crate::extractors::registration_path_args_with_uaid::RegistrationPathArgsWithUaid;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::extractors::routers::Routers;
 use crate::headers::util::get_header;
@@ -78,7 +79,7 @@ pub async fn register_uaid_route(
 /// Handle the `PUT /v1/{router_type}/{app_id}/registration/{uaid}` route
 pub async fn update_token_route(
     _auth: AuthorizationCheck,
-    path_args: RegistrationPathArgs,
+    path_args: RegistrationPathArgsWithUaid,
     router_data_input: RouterDataInput,
     routers: Routers,
     state: Data<ServerState>,
