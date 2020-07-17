@@ -1,4 +1,6 @@
+use crate::auth::sign_with_key;
 use crate::error::{ApiErrorKind, ApiResult};
+use crate::extractors::authorization_check::AuthorizationCheck;
 use crate::extractors::registration_path_args::RegistrationPathArgs;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::extractors::routers::Routers;
@@ -9,10 +11,6 @@ use actix_web::{HttpRequest, HttpResponse};
 use autopush_common::db::DynamoDbUser;
 use autopush_common::endpoint::make_endpoint;
 use cadence::{Counted, StatsdClient};
-use openssl::error::ErrorStack;
-use openssl::hash::MessageDigest;
-use openssl::pkey::PKey;
-use openssl::sign::Signer;
 use uuid::Uuid;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
@@ -79,6 +77,7 @@ pub async fn register_uaid_route(
 
 /// Handle the `PUT /v1/{router_type}/{app_id}/registration/{uaid}` route
 pub async fn update_token_route(
+    _auth: AuthorizationCheck,
     path_args: RegistrationPathArgs,
     router_data_input: RouterDataInput,
     routers: Routers,
@@ -98,13 +97,4 @@ fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
         )
         .with_tag("host", get_header(&request, "Host").unwrap_or("unknown"))
         .send()
-}
-
-/// Sign some data with a key and return the hex representation
-fn sign_with_key(key: &[u8], data: &[u8]) -> Result<String, ErrorStack> {
-    let key = PKey::hmac(key)?;
-    let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
-
-    signer.update(data)?;
-    Ok(hex::encode(signer.sign_to_vec()?))
 }

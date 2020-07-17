@@ -103,7 +103,7 @@ impl Settings {
 
     /// Initialize the fernet encryption instance
     pub fn make_fernet(&self) -> MultiFernet {
-        let fernets = Self::read_list_from_str(&self.crypto_keys, "Invalid AUTOEND_CRYPTO_KEY")
+        let fernets = Self::read_list_from_str(&self.crypto_keys, "Invalid AUTOEND_CRYPTO_KEYS")
             .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS"))
             .collect();
         MultiFernet::new(fernets)
