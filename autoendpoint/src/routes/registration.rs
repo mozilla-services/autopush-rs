@@ -83,9 +83,29 @@ pub async fn update_token_route(
     router_data_input: RouterDataInput,
     routers: Routers,
     state: Data<ServerState>,
-    request: HttpRequest,
 ) -> ApiResult<HttpResponse> {
-    unimplemented!()
+    // Re-register with router
+    debug!(
+        "Updating the token of UAID {} with the {} router",
+        path_args.uaid, path_args.router_type
+    );
+    trace!("token = {}", router_data_input.token);
+    let router = routers.get(path_args.router_type);
+    let router_data = router.register(&router_data_input, &path_args.app_id)?;
+
+    // Update the user in the database
+    let user = DynamoDbUser {
+        uaid: path_args.uaid,
+        router_type: path_args.router_type.to_string(),
+        router_data: Some(router_data),
+        ..Default::default()
+    };
+    trace!("Updating user with UAID {}", user.uaid);
+    trace!("user = {:?}", user);
+    state.ddb.update_user(&user).await?;
+
+    trace!("Finished updating token for UAID {}", user.uaid);
+    Ok(HttpResponse::Ok().finish())
 }
 
 /// Increment a metric with data from the request

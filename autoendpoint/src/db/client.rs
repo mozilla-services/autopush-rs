@@ -29,6 +29,11 @@ pub trait DbClient: Send + Sync {
     /// exists.
     async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()>;
 
+    /// Update a user in the database. An error will occur if the user does not
+    /// already exist, has a different router type, or has a newer
+    /// `connected_at` timestamp.
+    async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()>;
+
     /// Read a user from the database
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>>;
 
@@ -137,16 +142,57 @@ impl DbClientImpl {
 impl DbClient for DbClientImpl {
     async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {
         let input = PutItemInput {
+            table_name: self.router_table.clone(),
             item: serde_dynamodb::to_hashmap(user)?,
-            table_name: self.router_table.to_string(),
             condition_expression: Some("attribute_not_exists(uaid)".to_string()),
             ..Default::default()
         };
 
         retry_policy()
             .retry_if(
-                move || self.ddb.put_item(input.clone()),
+                || self.ddb.put_item(input.clone()),
                 retryable_putitem_error(self.metrics.clone()),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+        let user_map = serde_dynamodb::to_hashmap(&user)?;
+        let input = UpdateItemInput {
+            table_name: self.router_table.clone(),
+            key: ddb_item! { uaid: s => user.uaid.to_simple().to_string() },
+            update_expression: Some(format!(
+                "SET {}",
+                user_map
+                    .keys()
+                    .map(|key| format!("{0}=:{0}", key))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+            expression_attribute_values: Some(
+                user_map
+                    .into_iter()
+                    .map(|(key, value)| (format!(":{}", key), value))
+                    .collect(),
+            ),
+            condition_expression: Some(
+                "attribute_exists(uaid) and (
+                    attribute_not_exists(router_type) or
+                    (router_type = :router_type)
+                ) and (
+                    attribute_not_exists(node_id) or
+                    (connected_at < :connected_at)
+                )"
+                .to_string(),
+            ),
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.ddb.update_item(input.clone()),
+                retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
         Ok(())
@@ -245,8 +291,7 @@ impl DbClient for DbClientImpl {
         // Convert the IDs from String to Uuid
         let channels = channels
             .into_iter()
-            .map(|s| Uuid::parse_str(&s))
-            .filter_map(Result::ok)
+            .filter_map(|s| Uuid::parse_str(&s).ok())
             .collect();
 
         Ok(channels)
