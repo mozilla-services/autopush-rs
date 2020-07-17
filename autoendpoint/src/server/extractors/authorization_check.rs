@@ -7,6 +7,7 @@ use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
+use uuid::Uuid;
 
 /// Verifies the request authorization via the authorization header.
 ///
@@ -26,7 +27,9 @@ impl FromRequest for AuthorizationCheck {
             let uaid = req
                 .match_info()
                 .get("uaid")
-                .expect("{uaid} must be part of the path");
+                .expect("{uaid} must be part of the path")
+                .parse::<Uuid>()
+                .map_err(|_| ApiErrorKind::NoUser)?;
             let state: Data<ServerState> = Data::extract(&req)
                 .into_inner()
                 .expect("No server state found");
