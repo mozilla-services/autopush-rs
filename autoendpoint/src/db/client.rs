@@ -158,7 +158,8 @@ impl DbClient for DbClientImpl {
     }
 
     async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()> {
-        let user_map = serde_dynamodb::to_hashmap(&user)?;
+        let mut user_map = serde_dynamodb::to_hashmap(&user)?;
+        user_map.remove("uaid");
         let input = UpdateItemInput {
             table_name: self.router_table.clone(),
             key: ddb_item! { uaid: s => user.uaid.to_simple().to_string() },
