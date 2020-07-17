@@ -61,7 +61,7 @@ fn get_token_from_auth_header(header: &str) -> Option<&str> {
     let mut split = header.splitn(2, ' ');
     let scheme = split.next()?;
 
-    if scheme != "Bearer" {
+    if scheme.to_lowercase() != "bearer" {
         return None;
     }
 
