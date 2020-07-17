@@ -77,6 +77,17 @@ pub async fn register_uaid_route(
     })))
 }
 
+/// Handle the `PUT /v1/{router_type}/{app_id}/registration/{uaid}` route
+pub async fn update_token_route(
+    path_args: RegistrationPathArgs,
+    router_data_input: RouterDataInput,
+    routers: Routers,
+    state: Data<ServerState>,
+    request: HttpRequest,
+) -> ApiResult<HttpResponse> {
+    unimplemented!()
+}
+
 /// Increment a metric with data from the request
 fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
     metrics
