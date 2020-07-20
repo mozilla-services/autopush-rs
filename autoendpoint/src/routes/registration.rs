@@ -108,6 +108,21 @@ pub async fn update_token_route(
     Ok(HttpResponse::Ok().finish())
 }
 
+/// Handle the `GET /v1/{router_type}/{app_id}/registration/{uaid}` route
+pub async fn get_channels_route(
+    _auth: AuthorizationCheck,
+    path_args: RegistrationPathArgsWithUaid,
+    state: Data<ServerState>,
+) -> ApiResult<HttpResponse> {
+    debug!("Getting channel IDs for UAID {}", path_args.uaid);
+    let channel_ids = state.ddb.get_channels(path_args.uaid).await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "uaid": path_args.uaid,
+        "channelIDs": channel_ids
+    })))
+}
+
 /// Increment a metric with data from the request
 fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
     metrics
