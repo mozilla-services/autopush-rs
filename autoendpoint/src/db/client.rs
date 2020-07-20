@@ -124,7 +124,7 @@ impl DbClient {
             },
             update_expression: Some("ADD chids :channel_id SET expiry = :expiry".to_string()),
             expression_attribute_values: Some(hashmap! {
-                ":channel_id".to_string() => val!(SS => Some(channel_id.to_simple())),
+                ":channel_id".to_string() => val!(SS => Some(channel_id.to_hyphenated())),
                 ":expiry".to_string() => val!(N => sec_since_epoch() + MAX_CHANNEL_TTL)
             }),
             ..Default::default()
