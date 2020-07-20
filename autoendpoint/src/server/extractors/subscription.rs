@@ -1,6 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
+use crate::server::extractors::routers::RouterType;
 use crate::server::extractors::token_info::{ApiVersion, TokenInfo};
-use crate::server::extractors::user::{validate_user, RouterType};
+use crate::server::extractors::user::validate_user;
 use crate::server::headers::crypto_key::CryptoKeyHeader;
 use crate::server::headers::vapid::{VapidHeader, VapidHeaderWithKey, VapidVersionData};
 use crate::server::{ServerState, VapidError};
