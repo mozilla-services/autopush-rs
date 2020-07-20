@@ -1,0 +1,3 @@
+paths-ignore:
+  # This is a fake key to make the OAuth client happy.
+  - "autoendpoint/src/server/routers/fcm/client.rs"

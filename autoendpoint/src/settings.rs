@@ -1,5 +1,6 @@
 //! Application settings
 
+use crate::server::FcmSettings;
 use config::{Config, ConfigError, Environment, File};
 use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
@@ -10,6 +11,7 @@ const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct Settings {
     pub debug: bool,
     pub port: u16,
@@ -26,6 +28,8 @@ pub struct Settings {
     pub statsd_host: Option<String>,
     pub statsd_port: u16,
     pub statsd_label: String,
+
+    pub fcm: FcmSettings,
 }
 
 impl Default for Settings {
@@ -43,6 +47,7 @@ impl Default for Settings {
             statsd_host: None,
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
+            fcm: FcmSettings::default(),
         }
     }
 }
@@ -60,7 +65,7 @@ impl Settings {
         // Merge the environment overrides
         config.merge(Environment::with_prefix(ENV_PREFIX))?;
 
-        config.try_into::<Self>().or_else(|error| match error {
+        config.try_into::<Self>().map_err(|error| match error {
             // Configuration errors are not very sysop friendly, Try to make them
             // a bit more 3AM useful.
             ConfigError::Message(error_msg) => {
@@ -71,11 +76,11 @@ impl Settings {
                     ENV_PREFIX.to_uppercase()
                 );
                 error!("Configuration error: Value undefined {:?}", &error_msg);
-                Err(ConfigError::NotFound(error_msg))
+                ConfigError::NotFound(error_msg)
             }
             _ => {
                 error!("Configuration error: Other: {:?}", &error);
-                Err(error)
+                error
             }
         })
     }

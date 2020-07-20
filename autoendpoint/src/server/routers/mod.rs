@@ -2,12 +2,14 @@
 
 use crate::error::ApiResult;
 use crate::server::extractors::notification::Notification;
+use crate::server::routers::fcm::error::FcmError;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use thiserror::Error;
 
+pub mod fcm;
 pub mod webpush;
 
 #[async_trait(?Send)]
@@ -17,10 +19,27 @@ pub trait Router {
 }
 
 /// The response returned when a router routes a notification
+#[derive(Debug, PartialEq)]
 pub struct RouterResponse {
     pub status: StatusCode,
     pub headers: HashMap<&'static str, String>,
     pub body: Option<String>,
+}
+
+impl RouterResponse {
+    /// Build a successful (200 OK) router response
+    pub fn success(location: String, ttl: usize) -> Self {
+        RouterResponse {
+            status: StatusCode::OK,
+            headers: {
+                let mut map = HashMap::new();
+                map.insert("Location", location);
+                map.insert("TTL", ttl.to_string());
+                map
+            },
+            body: None,
+        }
+    }
 }
 
 impl From<RouterResponse> for HttpResponse {
@@ -37,6 +56,9 @@ impl From<RouterResponse> for HttpResponse {
 
 #[derive(Debug, Error)]
 pub enum RouterError {
+    #[error(transparent)]
+    Fcm(#[from] FcmError),
+
     #[error("Database error while saving notification")]
     SaveDb(#[source] autopush_common::errors::Error),
 
@@ -48,16 +70,18 @@ impl RouterError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
+            RouterError::Fcm(e) => e.status(),
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
             RouterError::UserWasDeleted => StatusCode::GONE,
         }
     }
 
     /// Get the associated error number
-    pub fn errno(&self) -> usize {
+    pub fn errno(&self) -> Option<usize> {
         match self {
-            RouterError::SaveDb(_) => 201,
-            RouterError::UserWasDeleted => 105,
+            RouterError::Fcm(e) => e.errno(),
+            RouterError::SaveDb(_) => Some(201),
+            RouterError::UserWasDeleted => Some(105),
         }
     }
 }

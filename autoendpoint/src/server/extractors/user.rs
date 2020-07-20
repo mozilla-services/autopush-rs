@@ -1,37 +1,12 @@
 //! User validations
 
 use crate::error::{ApiErrorKind, ApiResult};
+use crate::server::extractors::routers::RouterType;
 use crate::server::ServerState;
 use autopush_common::db::{DynamoDbUser, DynamoStorage};
 use cadence::{Counted, StatsdClient};
 use futures::compat::Future01CompatExt;
-use std::str::FromStr;
 use uuid::Uuid;
-
-/// Valid `DynamoDbUser::router_type` values
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum RouterType {
-    WebPush,
-    GCM,
-    FCM,
-    APNS,
-    ADM,
-}
-
-impl FromStr for RouterType {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "webpush" => Ok(RouterType::WebPush),
-            "gcm" => Ok(RouterType::GCM),
-            "fcm" => Ok(RouterType::FCM),
-            "apns" => Ok(RouterType::APNS),
-            "adm" => Ok(RouterType::ADM),
-            _ => Err(()),
-        }
-    }
-}
 
 /// Perform some validations on the user, including:
 /// - Validate router type

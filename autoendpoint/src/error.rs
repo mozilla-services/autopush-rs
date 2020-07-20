@@ -129,7 +129,7 @@ impl ApiErrorKind {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            ApiErrorKind::Router(e) => Some(e.errno()),
+            ApiErrorKind::Router(e) => e.errno(),
 
             ApiErrorKind::Validation(e) => errno_from_validation_errors(e),
 
