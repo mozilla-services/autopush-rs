@@ -76,6 +76,17 @@ pub async fn register_uaid_route(
     })))
 }
 
+/// Handle the `DELETE /v1/{router_type}/{app_id}/registration/{uaid}` route
+pub async fn unregister_user_route(
+    _auth: AuthorizationCheck,
+    path_args: RegistrationPathArgsWithUaid,
+    state: Data<ServerState>,
+) -> ApiResult<HttpResponse> {
+    debug!("Unregistering UAID {}", path_args.uaid);
+    state.ddb.remove_user(path_args.uaid).await?;
+    Ok(HttpResponse::Ok().finish())
+}
+
 /// Handle the `PUT /v1/{router_type}/{app_id}/registration/{uaid}` route
 pub async fn update_token_route(
     _auth: AuthorizationCheck,
