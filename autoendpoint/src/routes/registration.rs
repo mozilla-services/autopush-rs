@@ -70,8 +70,8 @@ pub async fn register_uaid_route(
 
     trace!("Finished registering UAID {}", user.uaid);
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "uaid": user.uaid.to_simple().to_string(),
-        "channelID": channel_id.to_simple().to_string(),
+        "uaid": user.uaid,
+        "channelID": channel_id,
         "endpoint": endpoint_url,
         "secret": secret
     })))

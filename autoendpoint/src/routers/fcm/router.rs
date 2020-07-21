@@ -70,14 +70,7 @@ impl FcmRouter {
         notification: &Notification,
     ) -> ApiResult<HashMap<&'static str, String>> {
         let mut message_data = HashMap::new();
-        message_data.insert(
-            "chid",
-            notification
-                .subscription
-                .channel_id
-                .to_simple_ref()
-                .to_string(),
-        );
+        message_data.insert("chid", notification.subscription.channel_id.to_string());
 
         // Only add the other headers if there's data
         if let Some(data) = &notification.data {
@@ -326,7 +319,7 @@ mod tests {
                     "message": {
                         "android": {
                             "data": {
-                                "chid": channel_id().to_simple().to_string()
+                                "chid": CHANNEL_ID
                             },
                             "ttl": "60s"
                         },
@@ -360,7 +353,7 @@ mod tests {
                     "message": {
                         "android": {
                             "data": {
-                                "chid": channel_id().to_simple().to_string(),
+                                "chid": CHANNEL_ID,
                                 "body": "test-data",
                                 "con": "test-encoding",
                                 "enc": "test-encryption",
