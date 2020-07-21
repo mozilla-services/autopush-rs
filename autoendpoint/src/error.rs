@@ -174,7 +174,9 @@ impl ApiErrorKind {
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::PayloadError(_)
-            | ApiErrorKind::InvalidRouterToken => None,
+            | ApiErrorKind::InvalidRouterToken
+            | ApiErrorKind::RegistrationSecretHash(_)
+            | ApiErrorKind::EndpointUrl(_) => None,
         }
     }
 }

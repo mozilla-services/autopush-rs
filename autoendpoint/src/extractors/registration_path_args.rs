@@ -1,5 +1,5 @@
 use crate::error::{ApiError, ApiErrorKind};
-use crate::server::extractors::routers::RouterType;
+use crate::extractors::routers::RouterType;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;

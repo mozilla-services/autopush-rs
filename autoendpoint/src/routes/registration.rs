@@ -1,8 +1,8 @@
 use crate::error::{ApiErrorKind, ApiResult};
-use crate::server::extractors::registration_path_args::RegistrationPathArgs;
-use crate::server::extractors::router_data_input::RouterDataInput;
-use crate::server::extractors::routers::Routers;
-use crate::server::headers::util::get_header;
+use crate::extractors::registration_path_args::RegistrationPathArgs;
+use crate::extractors::router_data_input::RouterDataInput;
+use crate::extractors::routers::Routers;
+use crate::headers::util::get_header;
 use crate::server::ServerState;
 use actix_web::web::Data;
 use actix_web::{HttpRequest, HttpResponse};
