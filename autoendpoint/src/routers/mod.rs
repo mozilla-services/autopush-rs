@@ -1,8 +1,8 @@
 //! Routers route notifications to user agents
 
 use crate::error::ApiResult;
-use crate::server::extractors::notification::Notification;
-use crate::server::routers::fcm::error::FcmError;
+use crate::extractors::notification::Notification;
+use crate::routers::fcm::error::FcmError;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use async_trait::async_trait;

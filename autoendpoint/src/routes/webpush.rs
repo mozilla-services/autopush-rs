@@ -1,6 +1,6 @@
 use crate::error::ApiResult;
-use crate::server::extractors::notification::Notification;
-use crate::server::extractors::routers::Routers;
+use crate::extractors::notification::Notification;
+use crate::extractors::routers::Routers;
 use actix_web::HttpResponse;
 
 /// Handle the `/wpush/{api_version}/{token}` and `/wpush/{token}` routes
