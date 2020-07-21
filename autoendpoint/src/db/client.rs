@@ -166,8 +166,7 @@ impl DbClient {
     /// Store a single message
     pub async fn store_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
         let put_item = PutItemInput {
-            item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(&uaid, message))
-                .unwrap(),
+            item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(&uaid, message))?,
             table_name: self.message_table.clone(),
             ..Default::default()
         };

@@ -19,6 +19,6 @@ pub enum DbError {
     #[error("Database error while performing DeleteItem")]
     DeleteItem(#[from] RusotoError<DeleteItemError>),
 
-    #[error("Error while deserializing database response: {0}")]
-    Deserialize(#[from] serde_dynamodb::Error),
+    #[error("Error while performing (de)serialization: {0}")]
+    Serialization(#[from] serde_dynamodb::Error),
 }
