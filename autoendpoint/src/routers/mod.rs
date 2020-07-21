@@ -1,5 +1,6 @@
 //! Routers route notifications to user agents
 
+use crate::db::error::DbError;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::routers::fcm::error::FcmError;
@@ -60,7 +61,7 @@ pub enum RouterError {
     Fcm(#[from] FcmError),
 
     #[error("Database error while saving notification")]
-    SaveDb(#[source] autopush_common::errors::Error),
+    SaveDb(#[source] DbError),
 
     #[error("User was deleted during routing")]
     UserWasDeleted,
