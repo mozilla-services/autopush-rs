@@ -1,6 +1,6 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
-use crate::server::headers::crypto_key::CryptoKeyHeader;
-use crate::server::headers::util::{get_header, get_owned_header};
+use crate::headers::crypto_key::CryptoKeyHeader;
+use crate::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
 use autopush_common::util::InsertOpt;
 use lazy_static::lazy_static;

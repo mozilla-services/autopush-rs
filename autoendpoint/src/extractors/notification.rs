@@ -1,6 +1,6 @@
 use crate::error::{ApiError, ApiErrorKind};
-use crate::server::extractors::notification_headers::NotificationHeaders;
-use crate::server::extractors::subscription::Subscription;
+use crate::extractors::notification_headers::NotificationHeaders;
+use crate::extractors::subscription::Subscription;
 use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;

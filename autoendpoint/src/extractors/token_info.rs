@@ -1,5 +1,5 @@
 use crate::error::{ApiError, ApiErrorKind};
-use crate::server::headers::util::get_owned_header;
+use crate::headers::util::get_owned_header;
 use actix_http::{Payload, PayloadStream};
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;

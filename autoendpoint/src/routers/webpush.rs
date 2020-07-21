@@ -1,7 +1,6 @@
 use crate::error::{ApiErrorKind, ApiResult};
-use crate::server::extractors::notification::Notification;
-use crate::server::routers::{Router, RouterResponse};
-use crate::server::RouterError;
+use crate::extractors::notification::Notification;
+use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::{DynamoDbUser, DynamoStorage};
 use cadence::{Counted, StatsdClient};

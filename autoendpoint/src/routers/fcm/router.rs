@@ -1,10 +1,9 @@
 use crate::error::{ApiError, ApiResult};
-use crate::server::extractors::notification::Notification;
-use crate::server::routers::fcm::client::FcmClient;
-use crate::server::routers::fcm::error::FcmError;
-use crate::server::routers::fcm::settings::FcmCredential;
-use crate::server::routers::{Router, RouterResponse};
-use crate::server::FcmSettings;
+use crate::extractors::notification::Notification;
+use crate::routers::fcm::client::FcmClient;
+use crate::routers::fcm::error::FcmError;
+use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
+use crate::routers::{Router, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, StatsdClient};
@@ -207,18 +206,18 @@ impl Router for FcmRouter {
 #[cfg(test)]
 mod tests {
     use crate::error::ApiErrorKind;
-    use crate::server::extractors::notification::Notification;
-    use crate::server::extractors::notification_headers::NotificationHeaders;
-    use crate::server::extractors::routers::RouterType;
-    use crate::server::extractors::subscription::Subscription;
-    use crate::server::routers::fcm::client::tests::{
+    use crate::extractors::notification::Notification;
+    use crate::extractors::notification_headers::NotificationHeaders;
+    use crate::extractors::routers::RouterType;
+    use crate::extractors::subscription::Subscription;
+    use crate::routers::fcm::client::tests::{
         make_service_file, mock_fcm_endpoint_builder, mock_token_endpoint, PROJECT_ID,
     };
-    use crate::server::routers::fcm::error::FcmError;
-    use crate::server::routers::fcm::router::FcmRouter;
-    use crate::server::routers::RouterError;
-    use crate::server::routers::{Router, RouterResponse};
-    use crate::server::FcmSettings;
+    use crate::routers::fcm::error::FcmError;
+    use crate::routers::fcm::router::FcmRouter;
+    use crate::routers::fcm::settings::FcmSettings;
+    use crate::routers::RouterError;
+    use crate::routers::{Router, RouterResponse};
     use autopush_common::db::DynamoDbUser;
     use cadence::StatsdClient;
     use std::collections::HashMap;

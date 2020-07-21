@@ -1,6 +1,6 @@
-use crate::server::routers::fcm::router::FcmRouter;
-use crate::server::routers::webpush::WebPushRouter;
-use crate::server::routers::Router;
+use crate::routers::fcm::router::FcmRouter;
+use crate::routers::webpush::WebPushRouter;
+use crate::routers::Router;
 use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
