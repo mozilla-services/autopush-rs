@@ -58,9 +58,11 @@ impl FromRequest for Subscription {
                 ApiVersion::Version2 => version_2_validation(&token, vapid.as_ref())?,
             }
 
-            // Load and validate user data
-            let uaid = Uuid::from_slice(&token[..16])?;
-            let channel_id = Uuid::from_slice(&token[16..32])?;
+            // Load and validate user data.
+            // Note: It is safe to unwrap the Uuid result because an error is
+            // only returned if the slice length is not 16.
+            let uaid = Uuid::from_slice(&token[..16]).unwrap();
+            let channel_id = Uuid::from_slice(&token[16..32]).unwrap();
             let user = state
                 .ddb
                 .get_user(&uaid)
