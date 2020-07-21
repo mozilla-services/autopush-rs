@@ -136,7 +136,7 @@ pub async fn new_channel_route(
     trace!("endpoint = {}", endpoint_url);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "channelID": channel_id.to_simple().to_string(),
+        "channelID": channel_id,
         "endpoint": endpoint_url,
     })))
 }
