@@ -16,8 +16,8 @@ pub fn make_endpoint(
     fernet: &MultiFernet,
 ) -> Result<String> {
     let root = format!("{}/wpush/", endpoint_url);
-    let mut base = hex::decode(uaid.to_simple().to_string()).chain_err(|| "Error decoding")?;
-    base.extend(hex::decode(chid.to_simple().to_string()).chain_err(|| "Error decoding")?);
+    let mut base = uaid.as_bytes().to_vec();
+    base.extend(chid.as_bytes());
 
     if let Some(k) = key {
         let raw_key =
