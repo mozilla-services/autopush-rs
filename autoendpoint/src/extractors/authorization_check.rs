@@ -1,6 +1,6 @@
 use crate::auth::sign_with_key;
 use crate::error::{ApiError, ApiErrorKind};
-use crate::server::headers::util::get_header;
+use crate::headers::util::get_header;
 use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;

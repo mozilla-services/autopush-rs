@@ -1,6 +1,6 @@
 use crate::error::{ApiError, ApiErrorKind};
-use crate::server::extractors::registration_path_args::RegistrationPathArgs;
-use crate::server::extractors::routers::RouterType;
+use crate::extractors::registration_path_args::RegistrationPathArgs;
+use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;

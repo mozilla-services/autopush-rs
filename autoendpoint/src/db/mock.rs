@@ -17,6 +17,8 @@ mockall::mock! {
     pub DbClient {
         fn add_user(&self, user: &DynamoDbUser) -> DbResult<()>;
 
+        fn update_user(&self, user: &DynamoDbUser) -> DbResult<()>;
+
         fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>>;
 
         fn remove_user(&self, uaid: Uuid) -> DbResult<()>;
@@ -45,6 +47,10 @@ mockall::mock! {
 impl DbClient for Arc<MockDbClient> {
     async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {
         Arc::as_ref(self).add_user(user)
+    }
+
+    async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+        Arc::as_ref(self).update_user(user)
     }
 
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
