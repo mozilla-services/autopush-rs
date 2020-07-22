@@ -368,7 +368,7 @@ dependencies = [
  "reqwest 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_core 0.44.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_dynamodb 0.44.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "sentry 0.18.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_dynamodb 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.53 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -939,11 +939,9 @@ dependencies = [
 
 [[package]]
 name = "debugid"
-version = "0.7.0"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "regex 1.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -2848,7 +2846,6 @@ version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "backtrace 0.3.44 (registry+https://github.com/rust-lang/crates.io-index)",
- "curl 0.4.29 (registry+https://github.com/rust-lang/crates.io-index)",
  "error-chain 0.12.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "hostname 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2861,9 +2858,79 @@ dependencies = [
  "reqwest 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc_version 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sentry-types 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_json 1.0.53 (registry+https://github.com/rust-lang/crates.io-index)",
  "uname 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sentry"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "curl 0.4.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "httpdate 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "reqwest 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-backtrace 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-contexts 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-core 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-failure 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-panic 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.53 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sentry-backtrace"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "backtrace 0.3.44 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex 1.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-core 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sentry-contexts"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "hostname 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.71 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex 1.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc_version 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-core 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "uname 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sentry-core"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "im 14.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-types 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sentry-failure"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "failure 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-backtrace 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-core 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sentry-panic"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "sentry-backtrace 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-core 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2872,10 +2939,24 @@ version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "chrono 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "debugid 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "debugid 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.53 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "uuid 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sentry-types"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "chrono 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
+ "debugid 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.53 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 1.0.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -4271,7 +4352,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum darling 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "9158d690bc62a3a57c3e45b85e4d50de2008b39345592c64efd79345c7e24be0"
 "checksum darling_core 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "d2a368589465391e127e10c9e3a08efc8df66fd49b87dc8524c764bbe7f2ef82"
 "checksum darling_macro 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "244e8987bd4e174385240cde20a3657f607fb0797563c28255c353b5819a07b1"
-"checksum debugid 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c49e2ce8d9607581c6b246ccd1e3ca2185991952e3ac9985291ed61ae668ea4b"
+"checksum debugid 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f91cf5a8c2f2097e2a32627123508635d47ce10563d999ec1a95addf08b502ba"
 "checksum derive_more 0.99.7 (registry+https://github.com/rust-lang/crates.io-index)" = "2127768764f1556535c01b5326ef94bd60ff08dcfbdc544d53e69ed155610f5d"
 "checksum derive_state_machine_future 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1220ad071cb8996454c20adf547a34ba3ac793759dab793d9dc04996a373ac83"
 "checksum difference 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
@@ -4471,7 +4552,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum semver-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 "checksum send_wrapper 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a0eddf2e8f50ced781f288c19f18621fa72a3779e3cb58dbf23b07469b0abeb4"
 "checksum sentry 0.18.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8b01b723fc1b0a0f9394ca1a8451daec6e20206d47f96c3dceea7fd11ec9eec0"
+"checksum sentry 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9bf0d1227e6b2cf0a4787c6ba7deed5156ab19fba88e00ffc009bfca8f84812b"
+"checksum sentry-backtrace 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d80067b3c23a24ea12696bb6abeb0ae1c107cbc711ccceb93b1157e4efc219e9"
+"checksum sentry-contexts 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "50f4367379c4799edf477172cf0964274ae0bb5760ded72779503e64f7c54103"
+"checksum sentry-core 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "44ecd107ce94c346da806dd5ec7afe4aa1b9ff60067b7ea63de499921c990b5d"
+"checksum sentry-failure 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5fc8d591ebd58fff637fa7e8fdb308d22be3596cec02909233920c75333b8f8a"
+"checksum sentry-panic 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "f8ee9d1cbab974ec95ba450856115108ce3726ecbdc5316e17b165b527704d1b"
 "checksum sentry-types 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)" = "12ec406c11c060c8a7d5d67fc6f4beb2888338dcb12b9af409451995f124749d"
+"checksum sentry-types 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)" = "127fa240592798721c87d025ff7652101a492a38462f5a126f7fec43931aeeb1"
 "checksum serde 0.8.23 (registry+https://github.com/rust-lang/crates.io-index)" = "9dad3f759919b92c3068c696c15c3d17238234498bbdcc80f2c469606f948ac8"
 "checksum serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)" = "c9124df5b40cbd380080b2cc6ab894c040a3070d995f5c9dc77e18c34a8ae37d"
 "checksum serde-hjson 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "6a3a4e0ea8a88553209f6cc6cfe8724ecad22e1acf372793c27d995290fe74f8"
