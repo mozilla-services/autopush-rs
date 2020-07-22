@@ -216,6 +216,10 @@ impl From<ApiError> for HttpResponse {
 }
 
 impl ResponseError for ApiError {
+    fn status_code(&self) -> StatusCode {
+        self.kind.status()
+    }
+
     fn error_response(&self) -> HttpResponse {
         HttpResponse::build(self.kind.status()).json(self)
     }
