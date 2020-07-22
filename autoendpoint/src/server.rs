@@ -3,6 +3,7 @@
 use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
+use crate::middleware::sentry::sentry_middleware;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
 use crate::routes::webpush::webpush_route;
@@ -61,6 +62,7 @@ impl Server {
             App::new()
                 .data(state.clone())
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+                .wrap_fn(sentry_middleware)
                 .wrap(Cors::default())
                 // Endpoints
                 .service(

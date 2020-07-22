@@ -9,6 +9,7 @@ mod extractors;
 mod headers;
 mod logging;
 mod metrics;
+mod middleware;
 mod routers;
 mod routes;
 mod server;
