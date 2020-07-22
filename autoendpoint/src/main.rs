@@ -16,10 +16,9 @@ mod settings;
 mod tags;
 
 use docopt::Docopt;
-use sentry::internals::ClientInitGuard;
+use sentry::ClientInitGuard;
 use serde::Deserialize;
 use std::error::Error;
-use std::sync::Arc;
 
 const USAGE: &str = "
 Usage: autoendpoint [options]
@@ -60,11 +59,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn configure_sentry() -> ClientInitGuard {
-    let curl_transport_factory = |options: &sentry::ClientOptions| {
-        Arc::new(sentry::transports::CurlHttpTransport::new(&options)) as Arc<dyn sentry::Transport>
-    };
     let options = sentry::ClientOptions {
-        transport: Some(Arc::new(curl_transport_factory)),
         release: sentry::release_name!(),
         ..sentry::ClientOptions::default()
     };
