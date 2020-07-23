@@ -11,11 +11,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// Create a new mock DB client. Arc is used so that the mock can be cloned.
-pub fn mock_db_client() -> Arc<MockDbClient> {
-    Arc::new(MockDbClient::new())
-}
-
 // mockall currently has issues mocking async traits with #[automock], so we use
 // this workaround. See https://github.com/asomers/mockall/issues/75
 mockall::mock! {
@@ -64,5 +59,14 @@ impl DbClient for Arc<MockDbClient> {
 
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(Arc::clone(self))
+    }
+}
+
+impl MockDbClient {
+    /// Convert into a type which can be used in place of `Box<dyn DbClient>`.
+    /// Arc is used so that the mock can be cloned. Box is used so it can be
+    /// easily cast to `Box<dyn DbClient>`.
+    pub fn into_boxed_arc(self) -> Box<Arc<Self>> {
+        Box::new(Arc::new(self))
     }
 }

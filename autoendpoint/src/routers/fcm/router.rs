@@ -217,7 +217,7 @@ impl Router for FcmRouter {
 #[cfg(test)]
 mod tests {
     use crate::db::client::DbClient;
-    use crate::db::mock::mock_db_client;
+    use crate::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::notification::Notification;
     use crate::extractors::notification_headers::NotificationHeaders;
@@ -233,6 +233,7 @@ mod tests {
     use crate::routers::{Router, RouterResponse};
     use autopush_common::db::DynamoDbUser;
     use cadence::StatsdClient;
+    use mockall::predicate;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use url::Url;
@@ -311,7 +312,7 @@ mod tests {
     #[tokio::test]
     async fn successful_routing_no_data() {
         let service_file = make_service_file();
-        let ddb = Box::new(mock_db_client());
+        let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(service_file.path().to_owned(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
@@ -346,7 +347,7 @@ mod tests {
     #[tokio::test]
     async fn successful_routing_with_data() {
         let service_file = make_service_file();
-        let ddb = Box::new(mock_db_client());
+        let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(service_file.path().to_owned(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
@@ -388,7 +389,7 @@ mod tests {
     #[tokio::test]
     async fn missing_client() {
         let service_file = make_service_file();
-        let ddb = Box::new(mock_db_client());
+        let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(service_file.path().to_owned(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder().expect(0).create();
@@ -410,5 +411,35 @@ mod tests {
             result
         );
         fcm_mock.assert();
+    }
+
+    /// If the FCM user no longer exists (404), we drop the user from our database
+    #[tokio::test]
+    async fn no_fcm_user() {
+        let notification = make_notification(default_router_data(), None);
+        let mut ddb = MockDbClient::new();
+        ddb.expect_remove_user()
+            .with(predicate::eq(notification.subscription.user.uaid))
+            .times(1)
+            .return_once(move |_| Ok(()));
+
+        let service_file = make_service_file();
+        let router = make_router(service_file.path().to_owned(), ddb.into_boxed_arc()).await;
+        let _token_mock = mock_token_endpoint();
+        let _fcm_mock = mock_fcm_endpoint_builder()
+            .with_status(404)
+            .with_body(r#"{"error":{"status":"NOT_FOUND","message":"test-message"}}"#)
+            .create();
+
+        let result = router.route_notification(&notification).await;
+        assert!(result.is_err());
+        assert!(
+            matches!(
+                result.as_ref().unwrap_err().kind,
+                ApiErrorKind::Router(RouterError::Fcm(FcmError::FcmNotFound))
+            ),
+            "result = {:?}",
+            result
+        );
     }
 }
