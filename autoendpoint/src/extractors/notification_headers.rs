@@ -12,6 +12,8 @@ use validator_derive::Validate;
 
 lazy_static! {
     static ref VALID_BASE64_URL: Regex = Regex::new(r"^[0-9A-Za-z\-_]+=*$").unwrap();
+    static ref STRIP_PADDING: Regex =
+        Regex::new(r"(?P<head>[0-9A-Za-z\-_]+)=+(?P<tail>[,;]|$)").unwrap();
 }
 
 const MAX_TTL: i64 = 60 * 60 * 24 * 60;
@@ -78,6 +80,10 @@ impl NotificationHeaders {
         let encryption_key = get_owned_header(req, "encryption-key");
         let crypto_key = get_owned_header(req, "crypto-key");
 
+        // Strip quotes and padding from some headers
+        let encryption = encryption.map(Self::strip_header);
+        let crypto_key = crypto_key.map(Self::strip_header);
+
         let headers = NotificationHeaders {
             ttl,
             topic,
@@ -97,6 +103,12 @@ impl NotificationHeaders {
             Ok(_) => Ok(headers),
             Err(e) => Err(ApiError::from(e)),
         }
+    }
+
+    /// Remove Base64 padding and double-quotes
+    fn strip_header(header: String) -> String {
+        let header = header.replace('"', "");
+        STRIP_PADDING.replace_all(&header, "$head$tail").to_string()
     }
 
     /// Validate the encryption headers according to the various WebPush
@@ -161,7 +173,7 @@ impl NotificationHeaders {
         Ok(())
     }
 
-    /// Assert that the given key exists in the header and is valid base64.
+    /// Assert that the given item exists in the header and is valid base64.
     fn assert_base64_item_exists(
         header_name: &str,
         header: Option<&str>,
@@ -173,14 +185,14 @@ impl NotificationHeaders {
         let header_data = CryptoKeyHeader::parse(header).ok_or_else(|| {
             ApiErrorKind::InvalidEncryption(format!("Invalid {} header", header_name))
         })?;
-        let salt = header_data.get_by_key(key).ok_or_else(|| {
+        let value = header_data.get_by_key(key).ok_or_else(|| {
             ApiErrorKind::InvalidEncryption(format!(
                 "Missing {} value in {} header",
                 key, header_name
             ))
         })?;
 
-        if !VALID_BASE64_URL.is_match(salt) {
+        if !VALID_BASE64_URL.is_match(value) {
             return Err(ApiErrorKind::InvalidEncryption(format!(
                 "Invalid {} value in {} header",
                 key, header_name
@@ -407,6 +419,32 @@ mod tests {
                 encryption: Some("notsalt=foo".to_string()),
                 encryption_key: None,
                 crypto_key: Some("notdh=bar".to_string())
+            }
+        );
+    }
+
+    /// The encryption and crypto-key headers are stripped of Base64 padding and
+    /// double-quotes.
+    #[test]
+    fn strip_headers() {
+        let req = TestRequest::post()
+            .header("TTL", "10")
+            .header("Content-Encoding", "aesgcm")
+            .header("Encryption", "salt=\"foo\"")
+            .header("Crypto-Key", "dh=\"deadbeef==\"")
+            .to_http_request();
+        let result = NotificationHeaders::from_request(&req, true);
+
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            NotificationHeaders {
+                ttl: 10,
+                topic: None,
+                encoding: Some("aesgcm".to_string()),
+                encryption: Some("salt=foo".to_string()),
+                encryption_key: None,
+                crypto_key: Some("dh=deadbeef".to_string())
             }
         );
     }
