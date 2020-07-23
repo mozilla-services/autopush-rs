@@ -5,6 +5,7 @@ authors = ["Mark Drobnak <mdrobnak@mozilla.com>", "jrconlin <me+crypt@jrconlin.c
 edition = "2018"
 
 [dependencies]
+a2 = "0.5.3"
 actix-web = "2.0"
 actix-rt = "1.0"
 actix-cors = "0.2.0"
@@ -47,4 +48,4 @@ yup-oauth2 = "4.1.2"
 [dev-dependencies]
 mockito = "0.26.0"
 tempfile = "3.1.0"
-tokio = { version = "0.2.12", features = ["macros"] }
+tokio = { version = "0.2", features = ["macros"] }

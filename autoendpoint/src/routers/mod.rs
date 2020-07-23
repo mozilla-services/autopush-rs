@@ -4,6 +4,7 @@ use crate::db::error::DbError;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
+use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
@@ -11,6 +12,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use thiserror::Error;
 
+pub mod apns;
 pub mod fcm;
 pub mod webpush;
 
@@ -69,6 +71,9 @@ pub enum RouterError {
     #[error(transparent)]
     Fcm(#[from] FcmError),
 
+    #[error(transparent)]
+    Apns(#[from] ApnsError),
+
     #[error("Database error while saving notification")]
     SaveDb(#[source] DbError),
 
@@ -81,6 +86,7 @@ impl RouterError {
     pub fn status(&self) -> StatusCode {
         match self {
             RouterError::Fcm(e) => e.status(),
+            RouterError::Apns(e) => e.status(),
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
             RouterError::UserWasDeleted => StatusCode::GONE,
         }
@@ -90,6 +96,7 @@ impl RouterError {
     pub fn errno(&self) -> Option<usize> {
         match self {
             RouterError::Fcm(e) => e.errno(),
+            RouterError::Apns(e) => e.errno(),
             RouterError::SaveDb(_) => Some(201),
             RouterError::UserWasDeleted => Some(105),
         }

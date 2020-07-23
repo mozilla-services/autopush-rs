@@ -1,5 +1,6 @@
 //! Application settings
 
+use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
 use config::{Config, ConfigError, Environment, File};
 use fernet::{Fernet, MultiFernet};
@@ -31,6 +32,7 @@ pub struct Settings {
     pub statsd_label: String,
 
     pub fcm: FcmSettings,
+    pub apns: ApnsSettings,
 }
 
 impl Default for Settings {
@@ -50,6 +52,7 @@ impl Default for Settings {
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
             fcm: FcmSettings::default(),
+            apns: ApnsSettings::default(),
         }
     }
 }
