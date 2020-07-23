@@ -3,6 +3,7 @@ use crate::db::retry::{
     retry_policy, retryable_delete_error, retryable_getitem_error, retryable_putitem_error,
     retryable_updateitem_error,
 };
+use async_trait::async_trait;
 use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
 use autopush_common::notification::Notification;
 use autopush_common::{ddb_item, hashmap, val};
@@ -18,15 +19,46 @@ use std::env;
 use uuid::Uuid;
 
 /// Provides high-level operations over the DynamoDB database
+#[async_trait]
+pub trait DbClient: Send + Sync {
+    /// Read a user from the database
+    async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>>;
+
+    /// Delete a user from the router table
+    async fn remove_user(&self, uaid: Uuid) -> DbResult<()>;
+
+    /// Get the set of channel IDs for a user
+    async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>>;
+
+    /// Remove the node ID from a user in the router table.
+    /// The node ID will only be cleared if `connected_at` matches up with the
+    /// item's `connected_at`.
+    async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()>;
+
+    /// Save a message to the message table
+    async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()>;
+
+    /// Get the message table name
+    fn message_table(&self) -> &str;
+
+    fn box_clone(&self) -> Box<dyn DbClient>;
+}
+
+impl Clone for Box<dyn DbClient> {
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
+}
+
 #[derive(Clone)]
-pub struct DbClient {
+pub struct DbClientImpl {
     ddb: DynamoDbClient,
     metrics: StatsdClient,
     router_table: String,
-    pub message_table: String,
+    message_table: String,
 }
 
-impl DbClient {
+impl DbClientImpl {
     pub fn new(
         metrics: StatsdClient,
         router_table: String,
@@ -52,9 +84,11 @@ impl DbClient {
             message_table,
         })
     }
+}
 
-    /// Read a user from the database
-    pub async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
+#[async_trait]
+impl DbClient for DbClientImpl {
+    async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
         let input = GetItemInput {
             table_name: self.router_table.clone(),
             consistent_read: Some(true),
@@ -74,8 +108,7 @@ impl DbClient {
             .map_err(DbError::from)
     }
 
-    /// Delete a user from the router table
-    pub async fn drop_user(&self, uaid: Uuid) -> DbResult<()> {
+    async fn remove_user(&self, uaid: Uuid) -> DbResult<()> {
         let input = DeleteItemInput {
             table_name: self.router_table.clone(),
             key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
@@ -91,8 +124,7 @@ impl DbClient {
         Ok(())
     }
 
-    /// Get the set of channel IDs for a user
-    pub async fn get_user_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
+    async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
         // Channel IDs are stored in a special row in the message table, where
         // chidmessageid = " "
         let input = GetItemInput {
@@ -132,15 +164,7 @@ impl DbClient {
         Ok(channels)
     }
 
-    /// Remove the node ID from a user in the router table.
-    /// The node ID will only be cleared if `connected_at` matches up with the
-    /// item's `connected_at`.
-    pub async fn remove_node_id(
-        &self,
-        uaid: Uuid,
-        node_id: String,
-        connected_at: u64,
-    ) -> DbResult<()> {
+    async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {
         let update_item = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),
@@ -163,8 +187,7 @@ impl DbClient {
         Ok(())
     }
 
-    /// Store a single message
-    pub async fn store_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
+    async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
         let put_item = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(&uaid, message))?,
             table_name: self.message_table.clone(),
@@ -179,5 +202,13 @@ impl DbClient {
             .await?;
 
         Ok(())
+    }
+
+    fn message_table(&self) -> &str {
+        &self.message_table
+    }
+
+    fn box_clone(&self) -> Box<dyn DbClient> {
+        Box::new(self.clone())
     }
 }

@@ -16,7 +16,7 @@ use uuid::Uuid;
 /// server is located via the database routing table. If the server is busy or
 /// not available, the notification is stored in the database.
 pub struct WebPushRouter {
-    pub ddb: DbClient,
+    pub ddb: Box<dyn DbClient>,
     pub metrics: StatsdClient,
     pub http: reqwest::Client,
     pub endpoint_url: Url,
@@ -139,7 +139,7 @@ impl WebPushRouter {
     /// Store a notification in the database
     async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
         self.ddb
-            .store_message(
+            .save_message(
                 notification.subscription.user.uaid,
                 notification.clone().into(),
             )
