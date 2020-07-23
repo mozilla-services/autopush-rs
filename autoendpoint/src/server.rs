@@ -45,6 +45,7 @@ impl Server {
                 settings.endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
+                ddb.clone(),
             )
             .await?,
         );

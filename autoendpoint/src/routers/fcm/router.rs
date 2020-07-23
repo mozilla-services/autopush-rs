@@ -1,3 +1,4 @@
+use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::routers::fcm::client::FcmClient;
@@ -10,6 +11,7 @@ use cadence::{Counted, StatsdClient};
 use serde_json::Value;
 use std::collections::HashMap;
 use url::Url;
+use uuid::Uuid;
 
 /// 28 days
 const MAX_TTL: usize = 28 * 24 * 60 * 60;
@@ -19,6 +21,7 @@ pub struct FcmRouter {
     settings: FcmSettings,
     endpoint_url: Url,
     metrics: StatsdClient,
+    ddb: Box<dyn DbClient>,
     /// A map from application ID to an authenticated FCM client
     clients: HashMap<String, FcmClient>,
 }
@@ -30,6 +33,7 @@ impl FcmRouter {
         endpoint_url: Url,
         http: reqwest::Client,
         metrics: StatsdClient,
+        ddb: Box<dyn DbClient>,
     ) -> Result<Self, FcmError> {
         let credentials = settings.credentials()?;
         let clients = Self::create_clients(&settings, credentials, http.clone())
@@ -40,6 +44,7 @@ impl FcmRouter {
             settings,
             endpoint_url,
             metrics,
+            ddb,
             clients,
         })
     }
@@ -96,7 +101,7 @@ impl FcmRouter {
     }
 
     /// Handle an error by logging, updating metrics, etc
-    fn handle_error(&self, error: FcmError) -> ApiError {
+    async fn handle_error(&self, error: FcmError, uaid: Uuid) -> ApiError {
         match &error {
             FcmError::FcmAuthentication => {
                 error!("FCM authentication error");
@@ -111,8 +116,12 @@ impl FcmRouter {
                 self.incr_error_metric("connection_unavailable");
             }
             FcmError::FcmNotFound => {
-                debug!("FCM recipient not found");
+                debug!("FCM recipient not found, removing user");
                 self.incr_error_metric("recipient_gone");
+
+                if let Err(e) = self.ddb.remove_user(uaid).await {
+                    warn!("Error while removing user due to FCM 404: {}", e);
+                }
             }
             FcmError::FcmUpstream { .. } | FcmError::FcmUnknown => {
                 warn!("FCM error: {error}", error = error.to_string());
@@ -186,7 +195,9 @@ impl Router for FcmRouter {
         let client = self.clients.get(app_id).ok_or(FcmError::InvalidAppId)?;
         trace!("Sending message to FCM: {:?}", message_data);
         if let Err(e) = client.send(message_data, fcm_token.to_string(), ttl).await {
-            return Err(self.handle_error(e));
+            return Err(self
+                .handle_error(e, notification.subscription.user.uaid)
+                .await);
         }
 
         // Sent successfully, update metrics and make response
@@ -205,6 +216,8 @@ impl Router for FcmRouter {
 
 #[cfg(test)]
 mod tests {
+    use crate::db::client::DbClient;
+    use crate::db::mock::mock_db_client;
     use crate::error::ApiErrorKind;
     use crate::extractors::notification::Notification;
     use crate::extractors::notification_headers::NotificationHeaders;
@@ -234,7 +247,7 @@ mod tests {
     }
 
     /// Create a router for testing, using the given service auth file
-    async fn make_router(auth_file: PathBuf) -> FcmRouter {
+    async fn make_router(auth_file: PathBuf, ddb: Box<dyn DbClient>) -> FcmRouter {
         FcmRouter::new(
             FcmSettings {
                 fcm_url: Url::parse(&mockito::server_url()).unwrap(),
@@ -248,6 +261,7 @@ mod tests {
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
             StatsdClient::from_sink("autopush", cadence::NopMetricSink),
+            ddb,
         )
         .await
         .unwrap()
@@ -297,7 +311,8 @@ mod tests {
     #[tokio::test]
     async fn successful_routing_no_data() {
         let service_file = make_service_file();
-        let router = make_router(service_file.path().to_owned()).await;
+        let ddb = Box::new(mock_db_client());
+        let router = make_router(service_file.path().to_owned(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_body(
@@ -331,7 +346,8 @@ mod tests {
     #[tokio::test]
     async fn successful_routing_with_data() {
         let service_file = make_service_file();
-        let router = make_router(service_file.path().to_owned()).await;
+        let ddb = Box::new(mock_db_client());
+        let router = make_router(service_file.path().to_owned(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_body(
@@ -372,7 +388,8 @@ mod tests {
     #[tokio::test]
     async fn missing_client() {
         let service_file = make_service_file();
-        let router = make_router(service_file.path().to_owned()).await;
+        let ddb = Box::new(mock_db_client());
+        let router = make_router(service_file.path().to_owned(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder().expect(0).create();
         let mut router_data = default_router_data();
