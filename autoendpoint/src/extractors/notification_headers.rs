@@ -431,7 +431,7 @@ mod tests {
             .header("TTL", "10")
             .header("Content-Encoding", "aesgcm")
             .header("Encryption", "salt=\"foo\"")
-            .header("Crypto-Key", "dh=\"deadbeef==\"")
+            .header("Crypto-Key", "keyid=\"p256dh\";dh=\"deadbeef==\"")
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, true);
 
@@ -444,7 +444,7 @@ mod tests {
                 encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: None,
-                crypto_key: Some("dh=deadbeef".to_string())
+                crypto_key: Some("keyid=p256dh;dh=deadbeef".to_string())
             }
         );
     }
