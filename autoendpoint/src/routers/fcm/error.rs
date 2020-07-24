@@ -29,12 +29,6 @@ pub enum FcmError {
     #[error("User has invalid app ID")]
     InvalidAppId,
 
-    #[error(
-        "This message is intended for a constrained device and is limited in \
-         size. Converted buffer is too long by {0} bytes"
-    )]
-    TooMuchData(usize),
-
     #[error("FCM authentication error")]
     FcmAuthentication,
 
@@ -60,8 +54,6 @@ impl FcmError {
             | FcmError::InvalidAppId
             | FcmError::FcmNotFound => StatusCode::GONE,
 
-            FcmError::TooMuchData(_) => StatusCode::PAYLOAD_TOO_LARGE,
-
             FcmError::CredentialDecode(_)
             | FcmError::OAuthClientBuild(_)
             | FcmError::OAuthToken(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -78,8 +70,6 @@ impl FcmError {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            FcmError::TooMuchData(_) => Some(104),
-
             FcmError::NoRegistrationToken
             | FcmError::NoAppId
             | FcmError::InvalidAppId
