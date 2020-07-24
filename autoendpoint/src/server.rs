@@ -52,11 +52,14 @@ impl Server {
             )
             .await?,
         );
-        let apns_router = Arc::new(ApnsRouter::new(
-            &settings.apns,
-            settings.endpoint_url.clone(),
-            metrics.clone(),
-        )?);
+        let apns_router = Arc::new(
+            ApnsRouter::new(
+                settings.apns.clone(),
+                settings.endpoint_url.clone(),
+                metrics.clone(),
+            )
+            .await?,
+        );
         let state = ServerState {
             metrics,
             settings,

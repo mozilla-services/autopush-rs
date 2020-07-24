@@ -6,14 +6,18 @@ use std::path::PathBuf;
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct ApnsSettings {
+    /// A JSON dict of `ApnsChannel`s. This must be a `String` because
+    /// environment variables cannot encode a `HashMap<String, ApnsChannel>`
     pub channels: String,
+    /// The max size of notification data in bytes
+    pub max_data: usize,
 }
 
 /// Settings for a specific APNS release channel
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
-pub struct ApnsChannelSettings {
+pub struct ApnsChannel {
     pub cert: PathBuf,
     pub key: PathBuf,
     pub topic: Option<String>,
@@ -24,13 +28,14 @@ impl Default for ApnsSettings {
     fn default() -> Self {
         Self {
             channels: "{}".to_string(),
+            max_data: 4096,
         }
     }
 }
 
 impl ApnsSettings {
     /// Read the channels from the JSON string
-    pub fn channels(&self) -> serde_json::Result<HashMap<String, ApnsChannelSettings>> {
+    pub fn channels(&self) -> serde_json::Result<HashMap<String, ApnsChannel>> {
         serde_json::from_str(&self.channels)
     }
 }

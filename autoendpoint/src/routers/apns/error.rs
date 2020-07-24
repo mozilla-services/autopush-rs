@@ -17,13 +17,16 @@ pub enum ApnsError {
 
     #[error("No device token found for user")]
     NoDeviceToken,
+
+    #[error("No release channel found for user")]
+    NoReleaseChannel,
 }
 
 impl ApnsError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            ApnsError::NoDeviceToken => StatusCode::GONE,
+            ApnsError::NoDeviceToken | ApnsError::NoReleaseChannel => StatusCode::GONE,
 
             ApnsError::ChannelSettingsDecode(_) | ApnsError::Io(_) | ApnsError::ApnsClient(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -34,7 +37,7 @@ impl ApnsError {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            ApnsError::NoDeviceToken => Some(106),
+            ApnsError::NoDeviceToken | ApnsError::NoReleaseChannel => Some(106),
 
             ApnsError::ChannelSettingsDecode(_) | ApnsError::Io(_) | ApnsError::ApnsClient(_) => {
                 None

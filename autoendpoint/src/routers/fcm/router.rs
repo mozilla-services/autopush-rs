@@ -1,12 +1,12 @@
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
+use crate::routers::common::build_message_data;
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
-use autopush_common::util::InsertOpt;
 use cadence::{Counted, StatsdClient};
 use serde_json::Value;
 use std::collections::hash_map::RandomState;
@@ -62,32 +62,6 @@ impl FcmRouter {
         }
 
         Ok(clients)
-    }
-
-    /// Convert a notification into a WebPush message
-    fn build_message_data(
-        &self,
-        notification: &Notification,
-    ) -> ApiResult<HashMap<&'static str, String>> {
-        let mut message_data = HashMap::new();
-        message_data.insert("chid", notification.subscription.channel_id.to_string());
-
-        // Only add the other headers if there's data
-        if let Some(data) = &notification.data {
-            if data.len() > self.settings.max_data {
-                // Too much data. Tell the client how many bytes extra they had.
-                return Err(FcmError::TooMuchData(data.len() - self.settings.max_data).into());
-            }
-
-            // Add the body and headers
-            message_data.insert("body", data.clone());
-            message_data.insert_opt("con", notification.headers.encoding.as_ref());
-            message_data.insert_opt("enc", notification.headers.encryption.as_ref());
-            message_data.insert_opt("cryptokey", notification.headers.crypto_key.as_ref());
-            message_data.insert_opt("enckey", notification.headers.encryption_key.as_ref());
-        }
-
-        Ok(message_data)
     }
 
     /// Handle an error by logging, updating metrics, etc
@@ -194,7 +168,7 @@ impl Router for FcmRouter {
             .and_then(Value::as_str)
             .ok_or(FcmError::NoAppId)?;
         let ttl = MAX_TTL.min(self.settings.ttl.max(notification.headers.ttl as usize));
-        let message_data = self.build_message_data(notification)?;
+        let message_data = build_message_data(notification, self.settings.max_data)?;
 
         // Send the notification to FCM
         let client = self.clients.get(app_id).ok_or(FcmError::InvalidAppId)?;

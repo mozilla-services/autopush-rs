@@ -3,7 +3,7 @@
 [[package]]
 name = "a2"
 version = "0.5.2"
-source = "git+https://github.com/Mcat12/a2.git?branch=feat/deserialize-and-certificate-parts#54760f62726edd986fccd509a044a6ed4db38ade"
+source = "git+https://github.com/Mcat12/a2.git?branch=feat/deserialize-and-certificate-parts#55a974fc7deae2453617a349c77c05e485d1d259"
 dependencies = [
  "base64 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "erased-serde 0.3.10 (registry+https://github.com/rust-lang/crates.io-index)",

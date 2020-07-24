@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 pub mod apns;
+mod common;
 pub mod fcm;
 pub mod webpush;
 
@@ -79,6 +80,12 @@ pub enum RouterError {
 
     #[error("User was deleted during routing")]
     UserWasDeleted,
+
+    #[error(
+        "This message is intended for a constrained device and is limited in \
+         size. Converted buffer is too long by {0} bytes"
+    )]
+    TooMuchData(usize),
 }
 
 impl RouterError {
@@ -89,6 +96,7 @@ impl RouterError {
             RouterError::Apns(e) => e.status(),
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
             RouterError::UserWasDeleted => StatusCode::GONE,
+            RouterError::TooMuchData(_) => StatusCode::PAYLOAD_TOO_LARGE,
         }
     }
 
@@ -97,6 +105,7 @@ impl RouterError {
         match self {
             RouterError::Fcm(e) => e.errno(),
             RouterError::Apns(e) => e.errno(),
+            RouterError::TooMuchData(_) => Some(104),
             RouterError::SaveDb(_) => Some(201),
             RouterError::UserWasDeleted => Some(105),
         }
