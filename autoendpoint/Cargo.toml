@@ -5,7 +5,7 @@ authors = ["Mark Drobnak <mdrobnak@mozilla.com>", "jrconlin <me+crypt@jrconlin.c
 edition = "2018"
 
 [dependencies]
-a2 = { git = "https://github.com/Mcat12/a2.git", branch = "feat/deserialize-and-certificate-parts" }
+a2 = { git = "https://github.com/Mcat12/a2.git", branch = "autoendpoint" }
 actix-web = "2.0"
 actix-rt = "1.0"
 actix-cors = "0.2.0"

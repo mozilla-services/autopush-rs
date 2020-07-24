@@ -3,9 +3,9 @@
 [[package]]
 name = "a2"
 version = "0.5.2"
-source = "git+https://github.com/Mcat12/a2.git?branch=feat/deserialize-and-certificate-parts#55a974fc7deae2453617a349c77c05e485d1d259"
+source = "git+https://github.com/Mcat12/a2.git?branch=autoendpoint#74c8588f2cc7d40e9c239897acb99031ceb29117"
 dependencies = [
- "base64 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "base64 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "erased-serde 0.3.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -16,7 +16,6 @@ dependencies = [
  "serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.53 (registry+https://github.com/rust-lang/crates.io-index)",
- "time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -364,7 +363,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "autoendpoint"
 version = "1.0.0"
 dependencies = [
- "a2 0.5.2 (git+https://github.com/Mcat12/a2.git?branch=feat/deserialize-and-certificate-parts)",
+ "a2 0.5.2 (git+https://github.com/Mcat12/a2.git?branch=autoendpoint)",
  "actix-cors 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "actix-rt 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "actix-web 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -543,15 +542,6 @@ dependencies = [
 name = "base-x"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "base64"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "byteorder 1.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "safemem 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
-]
 
 [[package]]
 name = "base64"
@@ -2810,11 +2800,6 @@ version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "safemem"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
 name = "schannel"
 version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4274,7 +4259,7 @@ version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [metadata]
-"checksum a2 0.5.2 (git+https://github.com/Mcat12/a2.git?branch=feat/deserialize-and-certificate-parts)" = "<none>"
+"checksum a2 0.5.2 (git+https://github.com/Mcat12/a2.git?branch=autoendpoint)" = "<none>"
 "checksum actix-codec 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "09e55f0a5c2ca15795035d90c46bd0e73a5123b72f68f12596d6ba5282051380"
 "checksum actix-connect 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c95cc9569221e9802bf4c377f6c18b90ef10227d787611decf79fd47d2a8e76c"
 "checksum actix-cors 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "0a6206917d5c0fdd79d81cec9ef02d3e802df4abf276d96241e1f595d971e002"
@@ -4309,7 +4294,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0b25d992356d2eb0ed82172f5248873db5560c4721f564b13cb5193bda5e668e"
 "checksum base64 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
 "checksum base64 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)" = "53d1ccbaf7d9ec9537465a97bf19edc1a4e158ecb49fc16178202238c569cc42"
-"checksum base64 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)" = "489d6c0ed21b11d038c31b6ceccca973e65d73ba3bd8ecb9a2babf5546164643"
 "checksum bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 "checksum bitmaps 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "81e039a80914325b37fde728ef7693c212f0ac913d5599607d7b95a9484aae0b"
 "checksum blake2b_simd 0.5.10 (registry+https://github.com/rust-lang/crates.io-index)" = "d8fb2d74254a3a0b5cac33ac9f8ed0e44aa50378d9dbb2e5d83bd21ed1dc2c8a"
@@ -4544,7 +4528,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum rustls 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c0d4a31f5d68413404705d6982529b0e11a9aacd4839d1d6222ee3b8cb4015e1"
 "checksum rustls-native-certs 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a75ffeb84a6bd9d014713119542ce415db3a3e4748f0bfce1e1416cd224a23a5"
 "checksum ryu 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "bfa8506c1de11c9c4e4c38863ccbe02a305c8188e85a05a784c9e11e1c3910c8"
-"checksum safemem 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "ef703b7cb59335eae2eb93ceb664c0eb7ea6bf567079d843e09420219668e072"
 "checksum schannel 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)" = "507a9e6e8ffe0a4e0ebb9a10293e62fdf7657c06f1b8bb07a8fcf697d2abf295"
 "checksum scoped-tls 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "332ffa32bf586782a3efaeb58f127980944bbc8c4d6913a86107ac2a5ab24b28"
 "checksum scopeguard 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
