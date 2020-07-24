@@ -7,7 +7,6 @@ use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 lazy_static! {
@@ -24,7 +23,7 @@ pub struct RouterDataInput {
     #[serde(rename = "channelID")]
     pub channel_id: Option<Uuid>,
     pub key: Option<String>,
-    pub aps: Option<HashMap<String, serde_json::Value>>,
+    pub aps: Option<serde_json::Value>,
 }
 
 impl FromRequest for RouterDataInput {

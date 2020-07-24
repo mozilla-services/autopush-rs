@@ -1,9 +1,10 @@
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
+use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::apns::settings::{ApnsChannel, ApnsSettings};
 use crate::routers::common::build_message_data;
-use crate::routers::{Router, RouterResponse};
+use crate::routers::{Router, RouterError, RouterResponse};
 use a2::request::notification::LocalizedAlert;
 use a2::request::payload::{APSAlert, Payload, APS};
 use a2::{Endpoint, NotificationOptions, Priority};
@@ -134,6 +135,36 @@ impl ApnsRouter {
 
 #[async_trait(?Send)]
 impl Router for ApnsRouter {
+    fn register(
+        &self,
+        router_input: &RouterDataInput,
+        app_id: &str,
+    ) -> Result<HashMap<String, Value>, RouterError> {
+        if !self.clients.contains_key(app_id) {
+            return Err(ApnsError::InvalidReleaseChannel.into());
+        }
+
+        let mut router_data = HashMap::new();
+        router_data.insert(
+            "token".to_string(),
+            serde_json::to_value(&router_input.token).unwrap(),
+        );
+        router_data.insert(
+            "rel_channel".to_string(),
+            serde_json::to_value(app_id).unwrap(),
+        );
+
+        if let Some(aps) = &router_input.aps {
+            if APS::deserialize(aps).is_err() {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+
+            router_data.insert("aps".to_string(), aps.clone());
+        }
+
+        Ok(router_data)
+    }
+
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
         debug!(
             "Sending APNS notification to UAID {}",

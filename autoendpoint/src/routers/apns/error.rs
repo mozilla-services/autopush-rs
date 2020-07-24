@@ -24,6 +24,12 @@ pub enum ApnsError {
     #[error("No release channel found for user")]
     NoReleaseChannel,
 
+    #[error("Release channel is invalid")]
+    InvalidReleaseChannel,
+
+    #[error("Invalid APS data")]
+    InvalidApsData,
+
     #[error("APNS recipient no longer available")]
     Unregistered,
 }
@@ -32,6 +38,8 @@ impl ApnsError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
+            ApnsError::InvalidReleaseChannel | ApnsError::InvalidApsData => StatusCode::BAD_REQUEST,
+
             ApnsError::NoDeviceToken | ApnsError::NoReleaseChannel | ApnsError::Unregistered => {
                 StatusCode::GONE
             }
@@ -54,7 +62,9 @@ impl ApnsError {
             ApnsError::ChannelSettingsDecode(_)
             | ApnsError::Io(_)
             | ApnsError::ApnsClient(_)
-            | ApnsError::ApnsUpstream(_) => None,
+            | ApnsError::ApnsUpstream(_)
+            | ApnsError::InvalidReleaseChannel
+            | ApnsError::InvalidApsData => None,
         }
     }
 }

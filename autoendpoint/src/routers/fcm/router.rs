@@ -9,7 +9,6 @@ use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use cadence::{Counted, StatsdClient};
 use serde_json::Value;
-use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use url::Url;
 
@@ -128,7 +127,7 @@ impl Router for FcmRouter {
         &self,
         router_data_input: &RouterDataInput,
         app_id: &str,
-    ) -> Result<HashMap<String, Value, RandomState>, RouterError> {
+    ) -> Result<HashMap<String, Value>, RouterError> {
         if !self.clients.contains_key(app_id) {
             return Err(FcmError::InvalidAppId.into());
         }
