@@ -2,8 +2,8 @@
 # It is not intended for manual editing.
 [[package]]
 name = "a2"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+version = "0.5.2"
+source = "git+https://github.com/Mcat12/a2.git?branch=feat/deserialize-and-certificate-parts#54760f62726edd986fccd509a044a6ed4db38ade"
 dependencies = [
  "base64 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "erased-serde 0.3.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -364,7 +364,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "autoendpoint"
 version = "1.0.0"
 dependencies = [
- "a2 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "a2 0.5.2 (git+https://github.com/Mcat12/a2.git?branch=feat/deserialize-and-certificate-parts)",
  "actix-cors 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "actix-rt 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "actix-web 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4274,7 +4274,7 @@ version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [metadata]
-"checksum a2 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "db509a0215699ebd85b364d8e84e7c2a484d31835ec5d1046f25397b1bb4bd56"
+"checksum a2 0.5.2 (git+https://github.com/Mcat12/a2.git?branch=feat/deserialize-and-certificate-parts)" = "<none>"
 "checksum actix-codec 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "09e55f0a5c2ca15795035d90c46bd0e73a5123b72f68f12596d6ba5282051380"
 "checksum actix-connect 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c95cc9569221e9802bf4c377f6c18b90ef10227d787611decf79fd47d2a8e76c"
 "checksum actix-cors 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "0a6206917d5c0fdd79d81cec9ef02d3e802df4abf276d96241e1f595d971e002"

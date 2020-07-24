@@ -15,7 +15,7 @@ pub struct ApnsSettings {
 #[serde(deny_unknown_fields)]
 pub struct ApnsChannelSettings {
     pub cert: PathBuf,
-    pub password: String,
+    pub key: PathBuf,
     pub topic: Option<String>,
     pub sandbox: bool,
 }
