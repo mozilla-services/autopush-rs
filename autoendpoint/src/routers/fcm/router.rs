@@ -76,7 +76,7 @@ impl FcmRouter {
                 self.incr_error_metric("timeout");
             }
             FcmError::FcmConnect(e) => {
-                warn!("FCM unavailable: {error}", error = e.to_string());
+                warn!("FCM unavailable: {}", e);
                 self.incr_error_metric("connection_unavailable");
             }
             FcmError::FcmNotFound => {
@@ -84,14 +84,11 @@ impl FcmRouter {
                 self.incr_error_metric("recipient_gone");
             }
             FcmError::FcmUpstream { .. } | FcmError::FcmUnknown => {
-                warn!("FCM error: {error}", error = error.to_string());
+                warn!("FCM error: {}", error);
                 self.incr_error_metric("server_error");
             }
             _ => {
-                warn!(
-                    "Unknown error while sending FCM request: {error}",
-                    error = error.to_string()
-                );
+                warn!("Unknown error while sending FCM request: {}", error);
                 self.incr_error_metric("unknown");
             }
         }

@@ -1,4 +1,4 @@
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::apns::settings::{ApnsChannel, ApnsSettings};
@@ -94,6 +94,42 @@ impl ApnsRouter {
             .with_tag("destination", "Direct")
             .send();
     }
+
+    /// Increment an error metric with some details
+    fn incr_error_metric(&self, reason: &str, channel: &str) {
+        self.metrics
+            .incr_with_tags("notification.bridge.connection.error")
+            .with_tag("platform", "apns")
+            .with_tag("application", channel)
+            .with_tag("reason", reason)
+            .send()
+    }
+
+    /// Handle an error by logging, updating metrics, etc
+    fn handle_error(&self, error: a2::Error, channel: &str) -> ApiError {
+        match &error {
+            a2::Error::ResponseError(response) => {
+                if response.code == 410 {
+                    debug!("APNS recipient has been unregistered");
+                    self.incr_error_metric("unregistered", channel);
+                    return ApiError::from(ApnsError::Unregistered);
+                } else {
+                    warn!("APNS error: {:?}", response.error);
+                    self.incr_error_metric("response_error", channel);
+                }
+            }
+            a2::Error::ConnectionError => {
+                error!("APNS connection error");
+                self.incr_error_metric("connection", channel);
+            }
+            _ => {
+                warn!("Unknown error while sending APNS request: {}", error);
+                self.incr_error_metric("unknown", channel);
+            }
+        }
+
+        ApiError::from(ApnsError::ApnsUpstream(error))
+    }
 }
 
 #[async_trait(?Send)]
@@ -157,8 +193,8 @@ impl Router for ApnsRouter {
 
         // Send to APNS
         trace!("Sending message to APNS: {:?}", payload);
-        if let Err(error) = client.send(payload).await {
-            // TODO: handle error
+        if let Err(e) = client.send(payload).await {
+            return Err(self.handle_error(e, channel));
         }
 
         // Sent successfully, update metrics and make response
