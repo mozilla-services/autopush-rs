@@ -190,10 +190,8 @@ impl Router for FcmRouter {
 #[cfg(test)]
 mod tests {
     use crate::error::ApiErrorKind;
-    use crate::extractors::notification::Notification;
-    use crate::extractors::notification_headers::NotificationHeaders;
     use crate::extractors::routers::RouterType;
-    use crate::extractors::subscription::Subscription;
+    use crate::routers::common::tests::{make_notification, CHANNEL_ID};
     use crate::routers::fcm::client::tests::{
         make_service_file, mock_fcm_endpoint_builder, mock_token_endpoint, PROJECT_ID,
     };
@@ -202,20 +200,12 @@ mod tests {
     use crate::routers::fcm::settings::FcmSettings;
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
-    use autopush_common::db::DynamoDbUser;
     use cadence::StatsdClient;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use url::Url;
-    use uuid::Uuid;
 
     const FCM_TOKEN: &str = "test-token";
-    const CHANNEL_ID: &str = "deadbeef-13f9-4639-87f9-2ff731824f34";
-
-    /// Get the test channel ID as a Uuid
-    fn channel_id() -> Uuid {
-        Uuid::parse_str(CHANNEL_ID).unwrap()
-    }
 
     /// Create a router for testing, using the given service auth file
     async fn make_router(auth_file: PathBuf) -> FcmRouter {
@@ -248,35 +238,6 @@ mod tests {
         map
     }
 
-    /// Create a notification
-    fn make_notification(
-        router_data: HashMap<String, serde_json::Value>,
-        data: Option<String>,
-    ) -> Notification {
-        Notification {
-            message_id: "test-message-id".to_string(),
-            subscription: Subscription {
-                user: DynamoDbUser {
-                    router_data: Some(router_data),
-                    ..Default::default()
-                },
-                channel_id: channel_id(),
-                router_type: RouterType::FCM,
-                vapid: None,
-            },
-            headers: NotificationHeaders {
-                ttl: 0,
-                topic: Some("test-topic".to_string()),
-                encoding: Some("test-encoding".to_string()),
-                encryption: Some("test-encryption".to_string()),
-                encryption_key: Some("test-encryption-key".to_string()),
-                crypto_key: Some("test-crypto-key".to_string()),
-            },
-            timestamp: 0,
-            data,
-        }
-    }
-
     /// A notification with no data is sent to FCM
     #[tokio::test]
     async fn successful_routing_no_data() {
@@ -300,7 +261,7 @@ mod tests {
                 .as_str(),
             )
             .create();
-        let notification = make_notification(default_router_data(), None);
+        let notification = make_notification(default_router_data(), None, RouterType::FCM);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -340,7 +301,7 @@ mod tests {
             )
             .create();
         let data = "test-data".to_string();
-        let notification = make_notification(default_router_data(), Some(data));
+        let notification = make_notification(default_router_data(), Some(data), RouterType::FCM);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -364,7 +325,7 @@ mod tests {
             "app_id".to_string(),
             serde_json::to_value("unknown-app-id").unwrap(),
         );
-        let notification = make_notification(router_data, None);
+        let notification = make_notification(router_data, None, RouterType::FCM);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
