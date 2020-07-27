@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use cadence::{Counted, StatsdClient};
 use futures::{StreamExt, TryStreamExt};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Number, Value};
 use std::collections::HashMap;
 use url::Url;
 
@@ -160,6 +160,21 @@ impl ApnsRouter {
 
         ApiError::from(ApnsError::ApnsUpstream(error))
     }
+
+    /// Convert all of the floats in a JSON value into integers. DynamoDB
+    /// returns all numbers as floats, but deserializing to `APS` will fail if
+    /// it expects an integer and gets a float.
+    fn convert_value_float_to_int(value: &mut Value) {
+        if let Some(float) = value.as_f64() {
+            *value = Value::Number(Number::from(float as i64));
+        }
+
+        if let Some(object) = value.as_object_mut() {
+            object
+                .values_mut()
+                .for_each(Self::convert_value_float_to_int);
+        }
+    }
 }
 
 #[async_trait(?Send)]
@@ -216,9 +231,14 @@ impl Router for ApnsRouter {
             .get("rel_channel")
             .and_then(Value::as_str)
             .ok_or(ApnsError::NoReleaseChannel)?;
-        let aps: APS<'_> = router_data
-            .get("aps")
-            .and_then(|value| APS::deserialize(value).ok())
+        let aps_json = router_data.get("aps").cloned().map(|mut value| {
+            Self::convert_value_float_to_int(&mut value);
+            value
+        });
+        let aps: APS<'_> = aps_json
+            .as_ref()
+            .map(|value| APS::deserialize(value).map_err(|_| ApnsError::InvalidApsData))
+            .transpose()?
             .unwrap_or_else(Self::default_aps);
         let mut message_data = build_message_data(notification, self.settings.max_data)?;
         message_data.insert("ver", notification.message_id.clone());
@@ -508,16 +528,10 @@ mod tests {
         );
     }
 
-    /// The default APS data is used if the user's APS data is invalid
+    /// An error is returned if the user's APS data is invalid
     #[tokio::test]
     async fn invalid_aps_data() {
-        let client = MockApnsClient::new(|payload| {
-            assert_eq!(
-                serde_json::to_value(payload.aps).unwrap(),
-                serde_json::to_value(ApnsRouter::default_aps()).unwrap()
-            );
-            Ok(apns_success_response())
-        });
+        let client = MockApnsClient::new(|_| panic!("The notification should not be sent"));
         let router = make_router(client);
         let mut router_data = default_router_data();
         router_data.insert(
@@ -527,10 +541,14 @@ mod tests {
         let notification = make_notification(router_data, None, RouterType::APNS);
 
         let result = router.route_notification(&notification).await;
-        assert!(result.is_ok());
-        assert_eq!(
-            result.unwrap(),
-            RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
+        assert!(result.is_err());
+        assert!(
+            matches!(
+                result.as_ref().unwrap_err().kind,
+                ApiErrorKind::Router(RouterError::Apns(ApnsError::InvalidApsData))
+            ),
+            "result = {:?}",
+            result
         );
     }
 }
