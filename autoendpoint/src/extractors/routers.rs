@@ -6,6 +6,7 @@ use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
+use std::fmt::{self, Display};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -29,6 +30,17 @@ impl FromStr for RouterType {
             "adm" => Ok(RouterType::ADM),
             _ => Err(()),
         }
+    }
+}
+
+impl Display for RouterType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            RouterType::WebPush => "webpush",
+            RouterType::FCM => "fcm",
+            RouterType::APNS => "apns",
+            RouterType::ADM => "adm",
+        })
     }
 }
 
