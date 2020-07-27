@@ -6,6 +6,7 @@ use crate::db::retry::{
 use async_trait::async_trait;
 use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
 use autopush_common::notification::Notification;
+use autopush_common::util::sec_since_epoch;
 use autopush_common::{ddb_item, hashmap, val};
 use cadence::StatsdClient;
 use rusoto_core::credential::StaticProvider;
@@ -18,14 +19,24 @@ use std::collections::HashSet;
 use std::env;
 use uuid::Uuid;
 
+/// The maximum TTL for channels, 30 days
+const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
+
 /// Provides high-level operations over the DynamoDB database
 #[async_trait]
 pub trait DbClient: Send + Sync {
+    /// Add a new user to the database. An error will occur if the user already
+    /// exists.
+    async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()>;
+
     /// Read a user from the database
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>>;
 
     /// Delete a user from the router table
     async fn remove_user(&self, uaid: Uuid) -> DbResult<()>;
+
+    /// Add a channel to a user
+    async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()>;
 
     /// Get the set of channel IDs for a user
     async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>>;
@@ -88,6 +99,23 @@ impl DbClientImpl {
 
 #[async_trait]
 impl DbClient for DbClientImpl {
+    async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+        let input = PutItemInput {
+            item: serde_dynamodb::to_hashmap(user)?,
+            table_name: self.router_table.to_string(),
+            condition_expression: Some("attribute_not_exists(uaid)".to_string()),
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                move || self.ddb.put_item(input.clone()),
+                retryable_putitem_error(self.metrics.clone()),
+            )
+            .await?;
+        Ok(())
+    }
+
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
         let input = GetItemInput {
             table_name: self.router_table.clone(),
@@ -119,6 +147,30 @@ impl DbClient for DbClientImpl {
             .retry_if(
                 || self.ddb.delete_item(input.clone()),
                 retryable_delete_error(self.metrics.clone()),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()> {
+        let input = UpdateItemInput {
+            table_name: self.message_table.clone(),
+            key: ddb_item! {
+                uaid: s => uaid.to_simple().to_string(),
+                chidmessageid: s => " ".to_string()
+            },
+            update_expression: Some("ADD chids :channel_id SET expiry = :expiry".to_string()),
+            expression_attribute_values: Some(hashmap! {
+                ":channel_id".to_string() => val!(SS => Some(channel_id.to_hyphenated())),
+                ":expiry".to_string() => val!(N => sec_since_epoch() + MAX_CHANNEL_TTL)
+            }),
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.ddb.update_item(input.clone()),
+                retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
         Ok(())
@@ -165,7 +217,7 @@ impl DbClient for DbClientImpl {
     }
 
     async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {
-        let update_item = UpdateItemInput {
+        let input = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),
             condition_expression: Some("(node_id = :node) and (connected_at = :conn)".to_string()),
@@ -179,7 +231,7 @@ impl DbClient for DbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.ddb.update_item(update_item.clone()),
+                || self.ddb.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
@@ -188,7 +240,7 @@ impl DbClient for DbClientImpl {
     }
 
     async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
-        let put_item = PutItemInput {
+        let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(&uaid, message))?,
             table_name: self.message_table.clone(),
             ..Default::default()
@@ -196,7 +248,7 @@ impl DbClient for DbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.ddb.put_item(put_item.clone()),
+                || self.ddb.put_item(input.clone()),
                 retryable_putitem_error(self.metrics.clone()),
             )
             .await?;

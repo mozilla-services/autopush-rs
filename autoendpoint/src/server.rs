@@ -5,11 +5,13 @@ use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
+use crate::routes::registration::register_uaid_route;
 use crate::routes::webpush::webpush_route;
 use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{
-    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, HttpServer,
+    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, FromRequest,
+    HttpServer,
 };
 use cadence::StatsdClient;
 use fernet::MultiFernet;
@@ -61,12 +63,22 @@ impl Server {
         let server = HttpServer::new(move || {
             App::new()
                 .data(state.clone())
+                // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 .wrap(Cors::default())
+                // Extractor configuration
+                .app_data(web::Bytes::configure(|cfg| {
+                    cfg.limit(state.settings.max_data_bytes)
+                }))
+                .app_data(web::JsonConfig::default().limit(state.settings.max_data_bytes))
                 // Endpoints
                 .service(
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])
                         .route(web::post().to(webpush_route)),
+                )
+                .service(
+                    web::resource("/v1/{router_type}/{app_id}/registration")
+                        .route(web::post().to(register_uaid_route)),
                 )
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))

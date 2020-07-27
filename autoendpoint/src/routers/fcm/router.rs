@@ -1,14 +1,16 @@
 use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
+use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
-use crate::routers::{Router, RouterResponse};
+use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, StatsdClient};
 use serde_json::Value;
+use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use url::Url;
 use uuid::Uuid;
@@ -73,14 +75,7 @@ impl FcmRouter {
         notification: &Notification,
     ) -> ApiResult<HashMap<&'static str, String>> {
         let mut message_data = HashMap::new();
-        message_data.insert(
-            "chid",
-            notification
-                .subscription
-                .channel_id
-                .to_simple_ref()
-                .to_string(),
-        );
+        message_data.insert("chid", notification.subscription.channel_id.to_string());
 
         // Only add the other headers if there's data
         if let Some(data) = &notification.data {
@@ -167,6 +162,25 @@ impl FcmRouter {
 
 #[async_trait(?Send)]
 impl Router for FcmRouter {
+    fn register(
+        &self,
+        router_data_input: &RouterDataInput,
+        app_id: &str,
+    ) -> Result<HashMap<String, Value, RandomState>, RouterError> {
+        if !self.clients.contains_key(app_id) {
+            return Err(FcmError::InvalidAppId.into());
+        }
+
+        let mut router_data = HashMap::new();
+        router_data.insert(
+            "token".to_string(),
+            serde_json::to_value(&router_data_input.token).unwrap(),
+        );
+        router_data.insert("app_id".to_string(), serde_json::to_value(app_id).unwrap());
+
+        Ok(router_data)
+    }
+
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
         debug!(
             "Sending FCM notification to UAID {}",
@@ -321,7 +335,7 @@ mod tests {
                     "message": {
                         "android": {
                             "data": {
-                                "chid": channel_id().to_simple().to_string()
+                                "chid": CHANNEL_ID
                             },
                             "ttl": "60s"
                         },
@@ -356,7 +370,7 @@ mod tests {
                     "message": {
                         "android": {
                             "data": {
-                                "chid": channel_id().to_simple().to_string(),
+                                "chid": CHANNEL_ID,
                                 "body": "test-data",
                                 "con": "test-encoding",
                                 "enc": "test-encryption",

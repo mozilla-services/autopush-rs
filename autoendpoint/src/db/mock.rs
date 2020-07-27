@@ -15,9 +15,13 @@ use uuid::Uuid;
 // this workaround. See https://github.com/asomers/mockall/issues/75
 mockall::mock! {
     pub DbClient {
+        fn add_user(&self, user: &DynamoDbUser) -> DbResult<()>;
+
         fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>>;
 
         fn remove_user(&self, uaid: Uuid) -> DbResult<()>;
+
+        fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()>;
 
         fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>>;
 
@@ -33,12 +37,20 @@ mockall::mock! {
 
 #[async_trait]
 impl DbClient for Arc<MockDbClient> {
+    async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+        Arc::as_ref(self).add_user(user)
+    }
+
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
         Arc::as_ref(self).get_user(uaid)
     }
 
     async fn remove_user(&self, uaid: Uuid) -> DbResult<()> {
         Arc::as_ref(self).remove_user(uaid)
+    }
+
+    async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()> {
+        Arc::as_ref(self).add_channel(uaid, channel_id)
     }
 
     async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {

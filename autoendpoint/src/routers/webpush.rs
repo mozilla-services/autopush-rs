@@ -1,11 +1,14 @@
 use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::extractors::notification::Notification;
+use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::DynamoDbUser;
 use cadence::{Counted, StatsdClient};
 use reqwest::{Response, StatusCode};
+use serde_json::Value;
+use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use url::Url;
 use uuid::Uuid;
@@ -24,6 +27,15 @@ pub struct WebPushRouter {
 
 #[async_trait(?Send)]
 impl Router for WebPushRouter {
+    fn register(
+        &self,
+        _router_input: &RouterDataInput,
+        _app_id: &str,
+    ) -> Result<HashMap<String, Value, RandomState>, RouterError> {
+        // WebPush registration happens through the connection server
+        Ok(HashMap::new())
+    }
+
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
         let user = &notification.subscription.user;
         debug!(
