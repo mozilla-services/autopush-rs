@@ -112,10 +112,6 @@ impl ApnsRouter {
             .with_tag("application", channel)
             .send();
         self.metrics
-            .incr_with_tags(&format!("updates.client.bridge.apns.{}.sent", channel))
-            .with_tag("platform", "apns")
-            .send();
-        self.metrics
             .count_with_tags(
                 "notification.message_data",
                 notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
