@@ -19,6 +19,7 @@ use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
 use autopush_common::db::{CheckStorageResponse, DynamoDbUser, HelloResponse, RegisterResponse};
+use autopush_common::endpoint::make_endpoint;
 use autopush_common::errors::*;
 use autopush_common::notification::Notification;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
@@ -973,7 +974,13 @@ where
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
                 let srv = &data.srv;
-                let fut = match srv.make_endpoint(&uaid, &channel_id, key) {
+                let fut = match make_endpoint(
+                    &uaid,
+                    &channel_id,
+                    key.as_deref(),
+                    &srv.opts.endpoint_url,
+                    &srv.opts.fernet,
+                ) {
                     Ok(endpoint) => srv.ddb.register(
                         &uaid,
                         &channel_id,
