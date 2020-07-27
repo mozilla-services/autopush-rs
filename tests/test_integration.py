@@ -394,7 +394,10 @@ class TestRustWebPush(unittest.TestCase):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data)
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
         yield self.shut_down(client)
@@ -404,7 +407,10 @@ class TestRustWebPush(unittest.TestCase):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, topic="Inbox")
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
         yield self.shut_down(client)
@@ -420,7 +426,10 @@ class TestRustWebPush(unittest.TestCase):
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data2)
         assert result["messageType"] == "notification"
         result = yield client.get_notification()
@@ -437,7 +446,10 @@ class TestRustWebPush(unittest.TestCase):
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification(timeout=10)
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
         yield client.ack(result["channelID"], result["version"])
@@ -457,7 +469,10 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         vapid_info = _get_vapid()
         result = yield client.send_notification(data=data, vapid=vapid_info)
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
         assert self.logs.logged_ci(lambda ci: 'router_key' in ci)
@@ -737,7 +752,10 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, ttl=0)
         assert result is not None
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
         yield self.shut_down(client)
@@ -783,7 +801,10 @@ class TestRustWebPush(unittest.TestCase):
         yield client.hello()
         result = yield client.get_notification(timeout=4)
         assert result is not None
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data2)
         assert result["messageType"] == "notification"
         result = yield client.get_notification(timeout=0.5)
@@ -1569,7 +1590,10 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         yield client.connect(connection_port=RP_CONNECTION_PORT)
         yield client.hello()
         result = yield client.get_notification(timeout=10)
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
         yield client.ack(result["channelID"], result["version"])
@@ -1595,7 +1619,10 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         yield client.connect(connection_port=CONNECTION_PORT)
         yield client.hello()
         result = yield client.get_notification(timeout=10)
-        assert result["headers"]["encryption"] == client._crypto_key
+        # the following presumes that only `salt` is padded.
+        clean_header = client._crypto_key.replace(
+            '"', '').rstrip('=')
+        assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
         yield client.ack(result["channelID"], result["version"])
