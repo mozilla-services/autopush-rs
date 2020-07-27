@@ -5,3 +5,6 @@
 pub mod client;
 pub mod error;
 mod retry;
+
+#[cfg(test)]
+pub mod mock;

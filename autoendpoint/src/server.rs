@@ -1,6 +1,6 @@
 //! Main application server
 
-use crate::db::client::DbClient;
+use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::routers::fcm::router::FcmRouter;
@@ -23,7 +23,7 @@ pub struct ServerState {
     pub metrics: StatsdClient,
     pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
-    pub ddb: DbClient,
+    pub ddb: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
 }
@@ -35,11 +35,11 @@ impl Server {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
-        let ddb = DbClient::new(
+        let ddb = Box::new(DbClientImpl::new(
             metrics.clone(),
             settings.router_table_name.clone(),
             settings.message_table_name.clone(),
-        )?;
+        )?);
         let http = reqwest::Client::new();
         let fcm_router = Arc::new(
             FcmRouter::new(
@@ -47,6 +47,7 @@ impl Server {
                 settings.endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
+                ddb.clone(),
             )
             .await?,
         );

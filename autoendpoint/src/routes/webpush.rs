@@ -28,7 +28,7 @@ pub async fn delete_notification_route(
     trace!("message_id = {:?}", message_id);
     state
         .ddb
-        .delete_message(message_id.uaid(), sort_key)
+        .remove_message(message_id.uaid(), sort_key)
         .await?;
 
     Ok(HttpResponse::NoContent().finish())
