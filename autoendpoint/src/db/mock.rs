@@ -29,6 +29,12 @@ mockall::mock! {
 
         fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()>;
 
+        fn remove_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()>;
+
+        fn router_table_exists(&self) -> DbResult<bool>;
+
+        fn message_table_exists(&self) -> DbResult<bool>;
+
         fn message_table(&self) -> &str;
 
         fn box_clone(&self) -> Box<dyn DbClient>;
@@ -63,6 +69,18 @@ impl DbClient for Arc<MockDbClient> {
 
     async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
         Arc::as_ref(self).save_message(uaid, message)
+    }
+
+    async fn remove_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()> {
+        Arc::as_ref(self).remove_message(uaid, sort_key)
+    }
+
+    async fn router_table_exists(&self) -> DbResult<bool> {
+        Arc::as_ref(self).router_table_exists()
+    }
+
+    async fn message_table_exists(&self) -> DbResult<bool> {
+        Arc::as_ref(self).message_table_exists()
     }
 
     fn message_table(&self) -> &str {

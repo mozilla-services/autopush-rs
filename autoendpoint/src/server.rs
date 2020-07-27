@@ -6,7 +6,7 @@ use crate::metrics;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
 use crate::routes::registration::register_uaid_route;
-use crate::routes::webpush::webpush_route;
+use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{
@@ -77,6 +77,10 @@ impl Server {
                         .route(web::post().to(webpush_route)),
                 )
                 .service(
+                    web::resource("/m/{message_id}")
+                        .route(web::delete().to(delete_notification_route)),
+                )
+                .service(
                     web::resource("/v1/{router_type}/{app_id}/registration")
                         .route(web::post().to(register_uaid_route)),
                 )
@@ -84,7 +88,7 @@ impl Server {
                 .service(web::resource("/status").route(web::get().to(status_route)))
                 .service(web::resource("/health").route(web::get().to(health_route)))
                 // Dockerflow
-                .service(web::resource("/__heartbeat__").route(web::get().to(status_route)))
+                .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
                 .service(web::resource("/__version__").route(web::get().to(version_route)))
         })

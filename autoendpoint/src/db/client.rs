@@ -1,7 +1,7 @@
 use crate::db::error::{DbError, DbResult};
 use crate::db::retry::{
-    retry_policy, retryable_delete_error, retryable_getitem_error, retryable_putitem_error,
-    retryable_updateitem_error,
+    retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
+    retryable_putitem_error, retryable_updateitem_error,
 };
 use async_trait::async_trait;
 use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
@@ -10,10 +10,10 @@ use autopush_common::util::sec_since_epoch;
 use autopush_common::{ddb_item, hashmap, val};
 use cadence::StatsdClient;
 use rusoto_core::credential::StaticProvider;
-use rusoto_core::{HttpClient, Region};
+use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
-    AttributeValue, DeleteItemInput, DynamoDb, DynamoDbClient, GetItemInput, PutItemInput,
-    UpdateItemInput,
+    AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
+    DynamoDbClient, GetItemInput, PutItemInput, UpdateItemInput,
 };
 use std::collections::HashSet;
 use std::env;
@@ -48,6 +48,15 @@ pub trait DbClient: Send + Sync {
 
     /// Save a message to the message table
     async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()>;
+
+    /// Delete a notification
+    async fn remove_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()>;
+
+    /// Check if the router table exists
+    async fn router_table_exists(&self) -> DbResult<bool>;
+
+    /// Check if the message table exists
+    async fn message_table_exists(&self) -> DbResult<bool>;
 
     /// Get the message table name
     fn message_table(&self) -> &str;
@@ -94,6 +103,32 @@ impl DbClientImpl {
             router_table,
             message_table,
         })
+    }
+
+    /// Check if a table exists
+    async fn table_exists(&self, table_name: String) -> DbResult<bool> {
+        let input = DescribeTableInput { table_name };
+
+        let output = match retry_policy()
+            .retry_if(
+                || self.ddb.describe_table(input.clone()),
+                retryable_describe_table_error(self.metrics.clone()),
+            )
+            .await
+        {
+            Ok(output) => output,
+            Err(RusotoError::Service(DescribeTableError::ResourceNotFound(_))) => {
+                return Ok(false);
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        let status = output
+            .table
+            .and_then(|table| table.table_status)
+            .ok_or(DbError::TableStatusUnknown)?;
+
+        Ok(["CREATING", "UPDATING", "ACTIVE"].contains(&status.as_str()))
     }
 }
 
@@ -254,6 +289,33 @@ impl DbClient for DbClientImpl {
             .await?;
 
         Ok(())
+    }
+
+    async fn remove_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()> {
+        let input = DeleteItemInput {
+            table_name: self.message_table.clone(),
+            key: ddb_item! {
+               uaid: s => uaid.to_simple().to_string(),
+               chidmessageid: s => sort_key
+            },
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.ddb.delete_item(input.clone()),
+                retryable_delete_error(self.metrics.clone()),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn router_table_exists(&self) -> DbResult<bool> {
+        self.table_exists(self.router_table.clone()).await
+    }
+
+    async fn message_table_exists(&self) -> DbResult<bool> {
+        self.table_exists(self.message_table.clone()).await
     }
 
     fn message_table(&self) -> &str {

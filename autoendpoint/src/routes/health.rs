@@ -1,18 +1,42 @@
 //! Health and Dockerflow routes
 
-use actix_web::web::Json;
+use crate::db::error::DbResult;
+use crate::server::ServerState;
+use actix_web::web::{Data, Json};
 use actix_web::HttpResponse;
 use serde_json::json;
 
-/// Handle the `/health` route
-pub async fn health_route() -> Json<serde_json::Value> {
-    // TODO: Get database table health
+/// Handle the `/health` and `/__heartbeat__` routes
+pub async fn health_route(state: Data<ServerState>) -> Json<serde_json::Value> {
+    let router_health = interpret_table_health(state.ddb.router_table_exists().await);
+    let message_health = interpret_table_health(state.ddb.message_table_exists().await);
+
     Json(json!({
-        "status": "OK"
+        "status": "OK",
+        "version": env!("CARGO_PKG_VERSION"),
+        "router_table": router_health,
+        "message_table": message_health
     }))
 }
 
-/// Handle the `/status` and `/__heartbeat__` routes
+/// Convert the result of a DB health check to JSON
+fn interpret_table_health(health: DbResult<bool>) -> serde_json::Value {
+    match health {
+        Ok(true) => json!({
+            "status": "OK"
+        }),
+        Ok(false) => json!({
+            "status": "NOT OK",
+            "cause": "Nonexistent table"
+        }),
+        Err(e) => json!({
+            "status": "NOT OK",
+            "cause": e.to_string()
+        }),
+    }
+}
+
+/// Handle the `/status` route
 pub async fn status_route() -> Json<serde_json::Value> {
     Json(json!({
         "status": "OK",
