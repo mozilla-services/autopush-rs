@@ -260,6 +260,17 @@ impl Router for ApnsRouter {
             },
         };
 
+        // Check size limit
+        let payload_json = payload
+            .clone()
+            .to_json_string()
+            .map_err(ApnsError::SizeLimit)?;
+        if payload_json.len() > self.settings.max_data {
+            return Err(
+                RouterError::TooMuchData(payload_json.len() - self.settings.max_data).into(),
+            );
+        }
+
         // Send to APNS
         trace!("Sending message to APNS: {:?}", payload);
         if let Err(e) = client.send(payload).await {
