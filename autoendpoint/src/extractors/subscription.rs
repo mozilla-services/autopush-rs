@@ -5,7 +5,7 @@ use crate::extractors::user::validate_user;
 use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
 use crate::server::ServerState;
-use actix_http::{Payload, PayloadStream};
+use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::DynamoDbUser;
