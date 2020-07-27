@@ -6,7 +6,7 @@ use crate::metrics;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
 use crate::routes::registration::register_uaid_route;
-use crate::routes::webpush::webpush_route;
+use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{
@@ -74,6 +74,10 @@ impl Server {
                 .service(
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])
                         .route(web::post().to(webpush_route)),
+                )
+                .service(
+                    web::resource("/m/{message_id}")
+                        .route(web::delete().to(delete_notification_route)),
                 )
                 .service(
                     web::resource("/v1/{router_type}/{app_id}/registration")
