@@ -87,7 +87,7 @@ impl Server {
                 .service(web::resource("/status").route(web::get().to(status_route)))
                 .service(web::resource("/health").route(web::get().to(health_route)))
                 // Dockerflow
-                .service(web::resource("/__heartbeat__").route(web::get().to(status_route)))
+                .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
                 .service(web::resource("/__version__").route(web::get().to(version_route)))
         })
