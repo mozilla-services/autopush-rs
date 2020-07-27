@@ -105,6 +105,9 @@ pub enum ApiErrorKind {
     #[error("Invalid router token")]
     InvalidRouterToken,
 
+    #[error("Invalid message ID")]
+    InvalidMessageId,
+
     #[error("{0}")]
     Internal(String),
 }
@@ -121,7 +124,8 @@ impl ApiErrorKind {
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::NoTTL
             | ApiErrorKind::InvalidRouterType
-            | ApiErrorKind::InvalidRouterToken => StatusCode::BAD_REQUEST,
+            | ApiErrorKind::InvalidRouterToken
+            | ApiErrorKind::InvalidMessageId => StatusCode::BAD_REQUEST,
 
             ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
@@ -176,7 +180,8 @@ impl ApiErrorKind {
             | ApiErrorKind::PayloadError(_)
             | ApiErrorKind::InvalidRouterToken
             | ApiErrorKind::RegistrationSecretHash(_)
-            | ApiErrorKind::EndpointUrl(_) => None,
+            | ApiErrorKind::EndpointUrl(_)
+            | ApiErrorKind::InvalidMessageId => None,
         }
     }
 }

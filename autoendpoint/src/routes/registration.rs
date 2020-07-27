@@ -37,7 +37,7 @@ pub async fn register_uaid_route(
     let user = DynamoDbUser {
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),
-        current_month: Some(state.ddb.message_table.clone()),
+        current_month: Some(state.ddb.message_table().to_string()),
         ..Default::default()
     };
     let channel_id = router_data_input.channel_id.unwrap_or_else(Uuid::new_v4);

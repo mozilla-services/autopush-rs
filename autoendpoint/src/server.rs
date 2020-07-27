@@ -1,13 +1,13 @@
 //! Main application server
 
-use crate::db::client::DbClient;
+use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::middleware::sentry::sentry_middleware;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
 use crate::routes::registration::register_uaid_route;
-use crate::routes::webpush::webpush_route;
+use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{
@@ -24,7 +24,7 @@ pub struct ServerState {
     pub metrics: StatsdClient,
     pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
-    pub ddb: DbClient,
+    pub ddb: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
 }
@@ -36,11 +36,11 @@ impl Server {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
-        let ddb = DbClient::new(
+        let ddb = Box::new(DbClientImpl::new(
             metrics.clone(),
             settings.router_table_name.clone(),
             settings.message_table_name.clone(),
-        )?;
+        )?);
         let http = reqwest::Client::new();
         let fcm_router = Arc::new(
             FcmRouter::new(
@@ -48,6 +48,7 @@ impl Server {
                 settings.endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
+                ddb.clone(),
             )
             .await?,
         );
@@ -78,6 +79,10 @@ impl Server {
                         .route(web::post().to(webpush_route)),
                 )
                 .service(
+                    web::resource("/m/{message_id}")
+                        .route(web::delete().to(delete_notification_route)),
+                )
+                .service(
                     web::resource("/v1/{router_type}/{app_id}/registration")
                         .route(web::post().to(register_uaid_route)),
                 )
@@ -85,7 +90,7 @@ impl Server {
                 .service(web::resource("/status").route(web::get().to(status_route)))
                 .service(web::resource("/health").route(web::get().to(health_route)))
                 // Dockerflow
-                .service(web::resource("/__heartbeat__").route(web::get().to(status_route)))
+                .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
                 .service(web::resource("/__version__").route(web::get().to(version_route)))
         })
