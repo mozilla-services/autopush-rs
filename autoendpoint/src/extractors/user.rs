@@ -23,13 +23,13 @@ pub async fn validate_user(
         Ok(router_type) => router_type,
         Err(_) => {
             debug!("Unknown router type, dropping user"; "user" => ?user);
-            drop_user(user.uaid, &state.ddb, &state.metrics).await?;
+            drop_user(user.uaid, state.ddb.as_ref(), &state.metrics).await?;
             return Err(ApiErrorKind::NoSubscription.into());
         }
     };
 
     if router_type == RouterType::WebPush {
-        validate_webpush_user(user, channel_id, &state.ddb, &state.metrics).await?;
+        validate_webpush_user(user, channel_id, state.ddb.as_ref(), &state.metrics).await?;
     }
 
     Ok(router_type)
@@ -39,7 +39,7 @@ pub async fn validate_user(
 async fn validate_webpush_user(
     user: &DynamoDbUser,
     channel_id: &Uuid,
-    ddb: &DbClient,
+    ddb: &dyn DbClient,
     metrics: &StatsdClient,
 ) -> ApiResult<()> {
     // Make sure the user is active (has a valid message table)
@@ -52,7 +52,7 @@ async fn validate_webpush_user(
         }
     };
 
-    if ddb.message_table.as_str() != message_table {
+    if ddb.message_table() != message_table {
         debug!("User is inactive, dropping user"; "user" => ?user);
         drop_user(user.uaid, ddb, metrics).await?;
         return Err(ApiErrorKind::NoSubscription.into());
@@ -69,13 +69,13 @@ async fn validate_webpush_user(
 }
 
 /// Drop a user and increment associated metric
-async fn drop_user(uaid: Uuid, ddb: &DbClient, metrics: &StatsdClient) -> ApiResult<()> {
+async fn drop_user(uaid: Uuid, ddb: &dyn DbClient, metrics: &StatsdClient) -> ApiResult<()> {
     metrics
         .incr_with_tags("updates.drop_user")
         .with_tag("errno", "102")
         .send();
 
-    ddb.drop_user(uaid).await?;
+    ddb.remove_user(uaid).await?;
 
     Ok(())
 }

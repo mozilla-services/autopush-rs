@@ -3,6 +3,7 @@ use crate::db::retry::{
     retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
     retryable_putitem_error, retryable_updateitem_error,
 };
+use async_trait::async_trait;
 use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
 use autopush_common::notification::Notification;
 use autopush_common::util::sec_since_epoch;
@@ -22,15 +23,62 @@ use uuid::Uuid;
 const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
 /// Provides high-level operations over the DynamoDB database
+#[async_trait]
+pub trait DbClient: Send + Sync {
+    /// Add a new user to the database. An error will occur if the user already
+    /// exists.
+    async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()>;
+
+    /// Read a user from the database
+    async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>>;
+
+    /// Delete a user from the router table
+    async fn remove_user(&self, uaid: Uuid) -> DbResult<()>;
+
+    /// Add a channel to a user
+    async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()>;
+
+    /// Get the set of channel IDs for a user
+    async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>>;
+
+    /// Remove the node ID from a user in the router table.
+    /// The node ID will only be cleared if `connected_at` matches up with the
+    /// item's `connected_at`.
+    async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()>;
+
+    /// Save a message to the message table
+    async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()>;
+
+    /// Delete a notification
+    async fn remove_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()>;
+
+    /// Check if the router table exists
+    async fn router_table_exists(&self) -> DbResult<bool>;
+
+    /// Check if the message table exists
+    async fn message_table_exists(&self) -> DbResult<bool>;
+
+    /// Get the message table name
+    fn message_table(&self) -> &str;
+
+    fn box_clone(&self) -> Box<dyn DbClient>;
+}
+
+impl Clone for Box<dyn DbClient> {
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
+}
+
 #[derive(Clone)]
-pub struct DbClient {
+pub struct DbClientImpl {
     ddb: DynamoDbClient,
     metrics: StatsdClient,
     router_table: String,
-    pub message_table: String,
+    message_table: String,
 }
 
-impl DbClient {
+impl DbClientImpl {
     pub fn new(
         metrics: StatsdClient,
         router_table: String,
@@ -57,9 +105,37 @@ impl DbClient {
         })
     }
 
-    /// Add a new user to the database. An error will occur if the user already
-    /// exists.
-    pub async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+    /// Check if a table exists
+    async fn table_exists(&self, table_name: String) -> DbResult<bool> {
+        let input = DescribeTableInput { table_name };
+
+        let output = match retry_policy()
+            .retry_if(
+                || self.ddb.describe_table(input.clone()),
+                retryable_describe_table_error(self.metrics.clone()),
+            )
+            .await
+        {
+            Ok(output) => output,
+            Err(RusotoError::Service(DescribeTableError::ResourceNotFound(_))) => {
+                return Ok(false);
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        let status = output
+            .table
+            .and_then(|table| table.table_status)
+            .ok_or(DbError::TableStatusUnknown)?
+            .to_uppercase();
+
+        Ok(["CREATING", "UPDATING", "ACTIVE"].contains(&status.as_str()))
+    }
+}
+
+#[async_trait]
+impl DbClient for DbClientImpl {
+    async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {
         let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(user)?,
             table_name: self.router_table.to_string(),
@@ -76,8 +152,7 @@ impl DbClient {
         Ok(())
     }
 
-    /// Read a user from the database
-    pub async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
+    async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
         let input = GetItemInput {
             table_name: self.router_table.clone(),
             consistent_read: Some(true),
@@ -97,8 +172,7 @@ impl DbClient {
             .map_err(DbError::from)
     }
 
-    /// Delete a user from the router table
-    pub async fn drop_user(&self, uaid: Uuid) -> DbResult<()> {
+    async fn remove_user(&self, uaid: Uuid) -> DbResult<()> {
         let input = DeleteItemInput {
             table_name: self.router_table.clone(),
             key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
@@ -114,8 +188,7 @@ impl DbClient {
         Ok(())
     }
 
-    /// Add a channel to a user
-    pub async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()> {
+    async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()> {
         let input = UpdateItemInput {
             table_name: self.message_table.clone(),
             key: ddb_item! {
@@ -139,8 +212,7 @@ impl DbClient {
         Ok(())
     }
 
-    /// Get the set of channel IDs for a user
-    pub async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
+    async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
         // Channel IDs are stored in a special row in the message table, where
         // chidmessageid = " "
         let input = GetItemInput {
@@ -180,15 +252,7 @@ impl DbClient {
         Ok(channels)
     }
 
-    /// Remove the node ID from a user in the router table.
-    /// The node ID will only be cleared if `connected_at` matches up with the
-    /// item's `connected_at`.
-    pub async fn remove_node_id(
-        &self,
-        uaid: Uuid,
-        node_id: String,
-        connected_at: u64,
-    ) -> DbResult<()> {
+    async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {
         let input = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),
@@ -211,8 +275,7 @@ impl DbClient {
         Ok(())
     }
 
-    /// Store a single message
-    pub async fn store_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
+    async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
         let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(&uaid, message))?,
             table_name: self.message_table.clone(),
@@ -229,8 +292,7 @@ impl DbClient {
         Ok(())
     }
 
-    /// Delete a notification
-    pub async fn delete_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()> {
+    async fn remove_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()> {
         let input = DeleteItemInput {
             table_name: self.message_table.clone(),
             key: ddb_item! {
@@ -249,39 +311,19 @@ impl DbClient {
         Ok(())
     }
 
-    /// Check if the router table exists
-    pub async fn router_table_exists(&self) -> DbResult<bool> {
+    async fn router_table_exists(&self) -> DbResult<bool> {
         self.table_exists(self.router_table.clone()).await
     }
 
-    /// Check if the message table exists
-    pub async fn message_table_exists(&self) -> DbResult<bool> {
+    async fn message_table_exists(&self) -> DbResult<bool> {
         self.table_exists(self.message_table.clone()).await
     }
 
-    /// Check if a table exists
-    async fn table_exists(&self, table_name: String) -> DbResult<bool> {
-        let describe_item = DescribeTableInput { table_name };
+    fn message_table(&self) -> &str {
+        &self.message_table
+    }
 
-        let output = match retry_policy()
-            .retry_if(
-                || self.ddb.describe_table(describe_item.clone()),
-                retryable_describe_table_error(self.metrics.clone()),
-            )
-            .await
-        {
-            Ok(output) => output,
-            Err(RusotoError::Service(DescribeTableError::ResourceNotFound(_))) => {
-                return Ok(false);
-            }
-            Err(e) => return Err(e.into()),
-        };
-
-        let status = output
-            .table
-            .and_then(|table| table.table_status)
-            .ok_or(DbError::TableStatusUnknown)?;
-
-        Ok(["CREATING", "UPDATING", "ACTIVE"].contains(&status.as_str()))
+    fn box_clone(&self) -> Box<dyn DbClient> {
+        Box::new(self.clone())
     }
 }

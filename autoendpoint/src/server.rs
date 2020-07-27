@@ -1,8 +1,9 @@
 //! Main application server
 
-use crate::db::client::DbClient;
+use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
+use crate::middleware::sentry::sentry_middleware;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
@@ -24,7 +25,7 @@ pub struct ServerState {
     pub metrics: StatsdClient,
     pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
-    pub ddb: DbClient,
+    pub ddb: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
@@ -37,11 +38,11 @@ impl Server {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
-        let ddb = DbClient::new(
+        let ddb = Box::new(DbClientImpl::new(
             metrics.clone(),
             settings.router_table_name.clone(),
             settings.message_table_name.clone(),
-        )?;
+        )?);
         let http = reqwest::Client::new();
         let fcm_router = Arc::new(
             FcmRouter::new(
@@ -49,6 +50,7 @@ impl Server {
                 settings.endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
+                ddb.clone(),
             )
             .await?,
         );
@@ -75,6 +77,7 @@ impl Server {
                 .data(state.clone())
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+                .wrap_fn(sentry_middleware)
                 .wrap(Cors::default())
                 // Extractor configuration
                 .app_data(web::Bytes::configure(|cfg| {
