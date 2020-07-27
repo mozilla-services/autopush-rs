@@ -3,6 +3,7 @@
 use crate::db::error::DbError;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
+use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::fcm::error::FcmError;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
@@ -15,6 +16,14 @@ pub mod webpush;
 
 #[async_trait(?Send)]
 pub trait Router {
+    /// Validate that the user can use this router, and return data to be stored in
+    /// the user's `router_data` field.
+    fn register(
+        &self,
+        router_input: &RouterDataInput,
+        app_id: &str,
+    ) -> Result<HashMap<String, serde_json::Value>, RouterError>;
+
     /// Route a notification to the user
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse>;
 }
