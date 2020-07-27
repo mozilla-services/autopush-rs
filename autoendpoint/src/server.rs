@@ -59,6 +59,7 @@ impl Server {
                 settings.apns.clone(),
                 settings.endpoint_url.clone(),
                 metrics.clone(),
+                ddb.clone(),
             )
             .await?,
         );

@@ -366,7 +366,7 @@ mod tests {
         ddb.expect_remove_user()
             .with(predicate::eq(notification.subscription.user.uaid))
             .times(1)
-            .return_once(move |_| Ok(()));
+            .return_once(|_| Ok(()));
 
         let service_file = make_service_file();
         let router = make_router(service_file.path().to_owned(), ddb.into_boxed_arc()).await;

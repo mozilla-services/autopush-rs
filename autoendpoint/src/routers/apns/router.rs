@@ -1,3 +1,4 @@
+use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
@@ -15,6 +16,7 @@ use serde::Deserialize;
 use serde_json::{Number, Value};
 use std::collections::HashMap;
 use url::Url;
+use uuid::Uuid;
 
 pub struct ApnsRouter {
     /// A map from release channel to APNS client
@@ -22,6 +24,7 @@ pub struct ApnsRouter {
     settings: ApnsSettings,
     endpoint_url: Url,
     metrics: StatsdClient,
+    ddb: Box<dyn DbClient>,
 }
 
 struct ApnsClientData {
@@ -48,6 +51,7 @@ impl ApnsRouter {
         settings: ApnsSettings,
         endpoint_url: Url,
         metrics: StatsdClient,
+        ddb: Box<dyn DbClient>,
     ) -> Result<Self, ApnsError> {
         let channels = settings.channels()?;
 
@@ -61,6 +65,7 @@ impl ApnsRouter {
             settings,
             endpoint_url,
             metrics,
+            ddb,
         })
     }
 
@@ -132,12 +137,17 @@ impl ApnsRouter {
     }
 
     /// Handle an error by logging, updating metrics, etc
-    fn handle_error(&self, error: a2::Error, channel: &str) -> ApiError {
+    async fn handle_error(&self, error: a2::Error, uaid: Uuid, channel: &str) -> ApiError {
         match &error {
             a2::Error::ResponseError(response) => {
                 if response.code == 410 {
-                    debug!("APNS recipient has been unregistered");
+                    debug!("APNS recipient has been unregistered, removing user");
                     self.incr_error_metric("unregistered", channel);
+
+                    if let Err(e) = self.ddb.remove_user(uaid).await {
+                        warn!("Error while removing user due to APNS 410: {}", e);
+                    }
+
                     return ApiError::from(ApnsError::Unregistered);
                 } else {
                     warn!("APNS error: {:?}", response.error);
@@ -274,7 +284,9 @@ impl Router for ApnsRouter {
         // Send to APNS
         trace!("Sending message to APNS: {:?}", payload);
         if let Err(e) = client.send(payload).await {
-            return Err(self.handle_error(e, channel));
+            return Err(self
+                .handle_error(e, notification.subscription.user.uaid, channel)
+                .await);
         }
 
         // Sent successfully, update metrics and make response
@@ -293,6 +305,8 @@ impl Router for ApnsRouter {
 
 #[cfg(test)]
 mod tests {
+    use crate::db::client::DbClient;
+    use crate::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
     use crate::routers::apns::error::ApnsError;
@@ -304,6 +318,7 @@ mod tests {
     use a2::{Error, Response};
     use async_trait::async_trait;
     use cadence::StatsdClient;
+    use mockall::predicate;
     use std::collections::HashMap;
     use url::Url;
 
@@ -344,7 +359,7 @@ mod tests {
     }
 
     /// Create a router for testing, using the given APNS client
-    fn make_router(client: MockApnsClient) -> ApnsRouter {
+    fn make_router(client: MockApnsClient, ddb: Box<dyn DbClient>) -> ApnsRouter {
         ApnsRouter {
             clients: {
                 let mut map = HashMap::new();
@@ -360,6 +375,7 @@ mod tests {
             settings: ApnsSettings::default(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             metrics: StatsdClient::from_sink("autopush", cadence::NopMetricSink),
+            ddb,
         }
     }
 
@@ -397,7 +413,8 @@ mod tests {
 
             Ok(apns_success_response())
         });
-        let router = make_router(client);
+        let ddb = MockDbClient::new().into_boxed_arc();
+        let router = make_router(client, ddb);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
         let result = router.route_notification(&notification).await;
@@ -433,7 +450,8 @@ mod tests {
 
             Ok(apns_success_response())
         });
-        let router = make_router(client);
+        let ddb = MockDbClient::new().into_boxed_arc();
+        let router = make_router(client, ddb);
         let data = "test-data".to_string();
         let notification = make_notification(default_router_data(), Some(data), RouterType::APNS);
 
@@ -450,7 +468,8 @@ mod tests {
     #[tokio::test]
     async fn missing_client() {
         let client = MockApnsClient::new(|_| panic!("The notification should not be sent"));
-        let router = make_router(client);
+        let ddb = MockDbClient::new().into_boxed_arc();
+        let router = make_router(client, ddb);
         let mut router_data = default_router_data();
         router_data.insert(
             "rel_channel".to_string(),
@@ -471,6 +490,7 @@ mod tests {
     }
 
     /// If APNS says the user doesn't exist anymore, we return a specific error
+    /// and remove the user from the database.
     #[tokio::test]
     async fn user_not_found() {
         let client = MockApnsClient::new(|_| {
@@ -483,8 +503,13 @@ mod tests {
                 code: 410,
             }))
         });
-        let router = make_router(client);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
+        let mut ddb = MockDbClient::new();
+        ddb.expect_remove_user()
+            .with(predicate::eq(notification.subscription.user.uaid))
+            .times(1)
+            .return_once(|_| Ok(()));
+        let router = make_router(client, ddb.into_boxed_arc());
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
@@ -511,7 +536,8 @@ mod tests {
                 code: 403,
             }))
         });
-        let router = make_router(client);
+        let ddb = MockDbClient::new().into_boxed_arc();
+        let router = make_router(client, ddb);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
         let result = router.route_notification(&notification).await;
@@ -539,7 +565,8 @@ mod tests {
     #[tokio::test]
     async fn invalid_aps_data() {
         let client = MockApnsClient::new(|_| panic!("The notification should not be sent"));
-        let router = make_router(client);
+        let ddb = MockDbClient::new().into_boxed_arc();
+        let router = make_router(client, ddb);
         let mut router_data = default_router_data();
         router_data.insert(
             "aps".to_string(),
