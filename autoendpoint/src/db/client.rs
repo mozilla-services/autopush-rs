@@ -126,7 +126,8 @@ impl DbClientImpl {
         let status = output
             .table
             .and_then(|table| table.table_status)
-            .ok_or(DbError::TableStatusUnknown)?;
+            .ok_or(DbError::TableStatusUnknown)?
+            .to_uppercase();
 
         Ok(["CREATING", "UPDATING", "ACTIVE"].contains(&status.as_str()))
     }
