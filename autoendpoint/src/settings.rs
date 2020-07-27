@@ -23,6 +23,7 @@ pub struct Settings {
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
+    pub auth_keys: String,
     pub human_logs: bool,
 
     pub statsd_host: Option<String>,
@@ -43,6 +44,7 @@ impl Default for Settings {
             message_table_name: "message".to_string(),
             max_data_bytes: 4096,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
+            auth_keys: "[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=]".to_string(),
             human_logs: false,
             statsd_host: None,
             statsd_port: 8125,
@@ -85,17 +87,30 @@ impl Settings {
         })
     }
 
-    /// Initialize the fernet encryption instance
-    pub fn make_fernet(&self) -> MultiFernet {
-        if !(self.crypto_keys.starts_with('[') && self.crypto_keys.ends_with(']')) {
-            panic!("Invalid AUTOEND_CRYPTO_KEY");
+    /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.
+    /// Panics with a custom message if the string is not in the expected form.
+    fn read_list_from_str<'list>(
+        list_str: &'list str,
+        panic_msg: &'static str,
+    ) -> impl Iterator<Item = &'list str> {
+        if !(list_str.starts_with('[') && list_str.ends_with(']')) {
+            panic!(panic_msg);
         }
 
-        let crypto_keys = &self.crypto_keys[1..self.crypto_keys.len() - 1];
-        let fernets = crypto_keys
-            .split(',')
-            .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEY"))
+        let items = &list_str[1..list_str.len() - 1];
+        items.split(',')
+    }
+
+    /// Initialize the fernet encryption instance
+    pub fn make_fernet(&self) -> MultiFernet {
+        let fernets = Self::read_list_from_str(&self.crypto_keys, "Invalid AUTOEND_CRYPTO_KEY")
+            .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS"))
             .collect();
         MultiFernet::new(fernets)
+    }
+
+    /// Get the list of auth hash keys
+    pub fn auth_keys(&self) -> Vec<&str> {
+        Self::read_list_from_str(&self.auth_keys, "Invalid AUTOEND_AUTH_KEYS").collect()
     }
 }

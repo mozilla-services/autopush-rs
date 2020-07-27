@@ -4,11 +4,11 @@ use crate::extractors::subscription::Subscription;
 use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
-use actix_web::{FromRequest, HttpRequest};
+use actix_web::{web, FromRequest, HttpRequest};
 use autopush_common::util::sec_since_epoch;
 use cadence::Counted;
 use fernet::MultiFernet;
-use futures::{future, FutureExt, StreamExt};
+use futures::{future, FutureExt};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -38,16 +38,9 @@ impl FromRequest for Notification {
                 .expect("No server state found");
 
             // Read data
-            let mut data = Vec::new();
-            while let Some(item) = payload.next().await {
-                data.extend_from_slice(&item.map_err(ApiErrorKind::PayloadError)?);
-
-                // Make sure the payload isn't too big
-                let max_bytes = state.settings.max_data_bytes;
-                if data.len() > max_bytes {
-                    return Err(ApiErrorKind::PayloadTooLarge(max_bytes).into());
-                }
-            }
+            let data = web::Bytes::from_request(&req, &mut payload)
+                .await
+                .map_err(ApiErrorKind::PayloadError)?;
 
             // Convert data to base64
             let data = if data.is_empty() {

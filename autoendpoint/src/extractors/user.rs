@@ -59,7 +59,7 @@ async fn validate_webpush_user(
     }
 
     // Make sure the subscription channel exists
-    let channel_ids = ddb.get_user_channels(user.uaid).await?;
+    let channel_ids = ddb.get_channels(user.uaid).await?;
 
     if !channel_ids.contains(channel_id) {
         return Err(ApiErrorKind::NoSubscription.into());

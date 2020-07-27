@@ -5,7 +5,6 @@ authors = ["Mark Drobnak <mdrobnak@mozilla.com>", "jrconlin <me+crypt@jrconlin.c
 edition = "2018"
 
 [dependencies]
-actix-http = "1.0"
 actix-web = "2.0"
 actix-rt = "1.0"
 actix-cors = "0.2.0"
@@ -18,7 +17,7 @@ cadence = "0.20"
 config = "0.10.1"
 docopt = "1.1.0"
 fernet = "0.1.3"
-futures = { version = "0.3", features = ["compat"] }
+futures = "0.3"
 hex = "0.4.2"
 jsonwebtoken = "7.1.1"
 lazy_static = "1.4.0"
