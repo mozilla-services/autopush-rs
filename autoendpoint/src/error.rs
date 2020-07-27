@@ -110,6 +110,9 @@ pub enum ApiErrorKind {
 
     #[error("{0}")]
     Internal(String),
+
+    #[error("Invalid Authentication")]
+    InvalidAuthentication,
 }
 
 impl ApiErrorKind {
@@ -121,17 +124,19 @@ impl ApiErrorKind {
 
             ApiErrorKind::Validation(_)
             | ApiErrorKind::InvalidEncryption(_)
-            | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::NoTTL
             | ApiErrorKind::InvalidRouterType
             | ApiErrorKind::InvalidRouterToken
             | ApiErrorKind::InvalidMessageId => StatusCode::BAD_REQUEST,
 
-            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
-
-            ApiErrorKind::VapidError(_) | ApiErrorKind::Jwt(_) => StatusCode::UNAUTHORIZED,
+            ApiErrorKind::VapidError(_)
+            | ApiErrorKind::Jwt(_)
+            | ApiErrorKind::TokenHashValidation(_)
+            | ApiErrorKind::InvalidAuthentication => StatusCode::UNAUTHORIZED,
 
             ApiErrorKind::InvalidToken | ApiErrorKind::InvalidApiVersion => StatusCode::NOT_FOUND,
+
+            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
             ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
@@ -166,7 +171,8 @@ impl ApiErrorKind {
 
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::Jwt(_) => Some(109),
+            | ApiErrorKind::Jwt(_)
+            | ApiErrorKind::InvalidAuthentication => Some(109),
 
             ApiErrorKind::InvalidEncryption(_) => Some(110),
 
