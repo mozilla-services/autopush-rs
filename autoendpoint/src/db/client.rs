@@ -229,6 +229,26 @@ impl DbClient {
         Ok(())
     }
 
+    /// Delete a notification
+    pub async fn delete_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()> {
+        let input = DeleteItemInput {
+            table_name: self.message_table.clone(),
+            key: ddb_item! {
+               uaid: s => uaid.to_simple().to_string(),
+               chidmessageid: s => sort_key
+            },
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.ddb.delete_item(input.clone()),
+                retryable_delete_error(self.metrics.clone()),
+            )
+            .await?;
+        Ok(())
+    }
+
     /// Check if the router table exists
     pub async fn router_table_exists(&self) -> DbResult<bool> {
         self.table_exists(self.router_table.clone()).await
