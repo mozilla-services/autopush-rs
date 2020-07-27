@@ -9,6 +9,7 @@ mod extractors;
 mod headers;
 mod logging;
 mod metrics;
+mod middleware;
 mod routers;
 mod routes;
 mod server;
@@ -16,7 +17,7 @@ mod settings;
 mod tags;
 
 use docopt::Docopt;
-use sentry::internals::ClientInitGuard;
+use sentry::ClientInitGuard;
 use serde::Deserialize;
 use std::error::Error;
 
@@ -59,19 +60,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn configure_sentry() -> ClientInitGuard {
-    let curl_transport_factory = |options: &sentry::ClientOptions| {
-        Box::new(sentry::transports::CurlHttpTransport::new(&options))
-            as Box<dyn sentry::internals::Transport>
-    };
-    let sentry = sentry::init(sentry::ClientOptions {
-        transport: Box::new(curl_transport_factory),
+    let options = sentry::ClientOptions {
         release: sentry::release_name!(),
         ..sentry::ClientOptions::default()
-    });
+    };
 
-    if sentry.is_enabled() {
-        sentry::integrations::panic::register_panic_handler();
-    }
-
-    sentry
+    sentry::init(options)
 }

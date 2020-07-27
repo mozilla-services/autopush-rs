@@ -3,6 +3,7 @@
 use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
+use crate::middleware::sentry::sentry_middleware;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
 use crate::routes::registration::register_uaid_route;
@@ -65,6 +66,7 @@ impl Server {
                 .data(state.clone())
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+                .wrap_fn(sentry_middleware)
                 .wrap(Cors::default())
                 // Extractor configuration
                 .app_data(web::Bytes::configure(|cfg| {
