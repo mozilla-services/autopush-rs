@@ -119,7 +119,7 @@ impl FcmRouter {
                 }
             }
             FcmError::FcmUpstream { .. } | FcmError::FcmUnknown => {
-                warn!("FCM error: {error}", error = error.to_string());
+                warn!("{}", error.to_string());
                 self.incr_error_metric("server_error");
             }
             _ => {
