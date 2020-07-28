@@ -17,7 +17,7 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from threading import Event, Thread
-from unittest.case import SkipTest
+from unittest import SkipTest
 
 import autopush.tests
 import autopush.tests as ap_tests
