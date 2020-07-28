@@ -46,6 +46,9 @@ pub trait DbClient: Send + Sync {
     /// Get the set of channel IDs for a user
     async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>>;
 
+    /// Remove a channel from a user. Returns if the removed channel did exist.
+    async fn remove_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<bool>;
+
     /// Remove the node ID from a user in the router table.
     /// The node ID will only be cleared if `connected_at` matches up with the
     /// item's `connected_at`.
@@ -244,7 +247,7 @@ impl DbClient for DbClientImpl {
             },
             update_expression: Some("ADD chids :channel_id SET expiry = :expiry".to_string()),
             expression_attribute_values: Some(hashmap! {
-                ":channel_id".to_string() => val!(SS => Some(channel_id.to_hyphenated())),
+                ":channel_id".to_string() => val!(SS => Some(channel_id)),
                 ":expiry".to_string() => val!(N => sec_since_epoch() + MAX_CHANNEL_TTL)
             }),
             ..Default::default()
@@ -296,6 +299,39 @@ impl DbClient for DbClientImpl {
             .collect();
 
         Ok(channels)
+    }
+
+    async fn remove_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<bool> {
+        let input = UpdateItemInput {
+            table_name: self.message_table.clone(),
+            key: ddb_item! {
+                uaid: s => uaid.to_simple().to_string(),
+                chidmessageid: s => " ".to_string()
+            },
+            update_expression: Some("DELETE chids :channel_id SET expiry = :expiry".to_string()),
+            expression_attribute_values: Some(hashmap! {
+                ":channel_id".to_string() => val!(SS => Some(channel_id)),
+                ":expiry".to_string() => val!(N => sec_since_epoch() + MAX_CHANNEL_TTL)
+            }),
+            return_values: Some("UPDATED_OLD".to_string()),
+            ..Default::default()
+        };
+
+        let output = retry_policy()
+            .retry_if(
+                || self.ddb.update_item(input.clone()),
+                retryable_updateitem_error(self.metrics.clone()),
+            )
+            .await?;
+
+        // Check if the old channel IDs contain the removed channel
+        Ok(output
+            .attributes
+            .as_ref()
+            .and_then(|map| map.get("chids"))
+            .and_then(|item| item.ss.as_ref())
+            .map(|channel_ids| channel_ids.contains(&channel_id.to_string()))
+            .unwrap_or(false))
     }
 
     async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {

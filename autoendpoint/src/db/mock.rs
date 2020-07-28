@@ -27,6 +27,8 @@ mockall::mock! {
 
         fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>>;
 
+        fn remove_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<bool>;
+
         fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()>;
 
         fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()>;
@@ -67,6 +69,10 @@ impl DbClient for Arc<MockDbClient> {
 
     async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
         Arc::as_ref(self).get_channels(uaid)
+    }
+
+    async fn remove_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<bool> {
+        Arc::as_ref(self).remove_channel(uaid, channel_id)
     }
 
     async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {

@@ -4,9 +4,13 @@ use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::middleware::sentry::sentry_middleware;
+use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
-use crate::routes::registration::{register_uaid_route, unregister_user_route, update_token_route};
+use crate::routes::registration::{
+    get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
+    unregister_user_route, update_token_route,
+};
 use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
 use actix_cors::Cors;
@@ -27,6 +31,7 @@ pub struct ServerState {
     pub ddb: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
+    pub apns_router: Arc<ApnsRouter>,
 }
 
 pub struct Server;
@@ -52,6 +57,15 @@ impl Server {
             )
             .await?,
         );
+        let apns_router = Arc::new(
+            ApnsRouter::new(
+                settings.apns.clone(),
+                settings.endpoint_url.clone(),
+                metrics.clone(),
+                ddb.clone(),
+            )
+            .await?,
+        );
         let state = ServerState {
             metrics,
             settings,
@@ -59,6 +73,7 @@ impl Server {
             ddb,
             http,
             fcm_router,
+            apns_router,
         };
 
         let server = HttpServer::new(move || {
@@ -89,7 +104,18 @@ impl Server {
                 .service(
                     web::resource("/v1/{router_type}/{app_id}/registration/{uaid}")
                         .route(web::put().to(update_token_route))
+                        .route(web::get().to(get_channels_route))
                         .route(web::delete().to(unregister_user_route)),
+                )
+                .service(
+                    web::resource("/v1/{router_type}/{app_id}/registration/{uaid}/subscription")
+                        .route(web::post().to(new_channel_route)),
+                )
+                .service(
+                    web::resource(
+                        "/v1/{router_type}/{app_id}/registration/{uaid}/subscription/{chid}",
+                    )
+                    .route(web::delete().to(unregister_channel_route)),
                 )
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))

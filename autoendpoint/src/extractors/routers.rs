@@ -1,3 +1,4 @@
+use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routers::webpush::WebPushRouter;
 use crate::routers::Router;
@@ -49,6 +50,7 @@ impl Display for RouterType {
 pub struct Routers {
     webpush: WebPushRouter,
     fcm: Arc<FcmRouter>,
+    apns: Arc<ApnsRouter>,
 }
 
 impl FromRequest for Routers {
@@ -69,6 +71,7 @@ impl FromRequest for Routers {
                 endpoint_url: state.settings.endpoint_url.clone(),
             },
             fcm: state.fcm_router.clone(),
+            apns: state.apns_router.clone(),
         })
     }
 }
@@ -79,7 +82,7 @@ impl Routers {
         match router_type {
             RouterType::WebPush => &self.webpush,
             RouterType::FCM => self.fcm.as_ref(),
-            RouterType::APNS => unimplemented!(),
+            RouterType::APNS => self.apns.as_ref(),
             RouterType::ADM => unimplemented!(),
         }
     }
