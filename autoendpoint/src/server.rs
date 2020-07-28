@@ -8,7 +8,8 @@ use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
 use crate::routes::registration::{
-    get_channels_route, new_channel_route, register_uaid_route, update_token_route,
+    get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
+    update_token_route,
 };
 use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
@@ -108,6 +109,12 @@ impl Server {
                 .service(
                     web::resource("/v1/{router_type}/{app_id}/registration/{uaid}/subscription")
                         .route(web::post().to(new_channel_route)),
+                )
+                .service(
+                    web::resource(
+                        "/v1/{router_type}/{app_id}/registration/{uaid}/subscription/{chid}",
+                    )
+                    .route(web::delete().to(unregister_channel_route)),
                 )
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))

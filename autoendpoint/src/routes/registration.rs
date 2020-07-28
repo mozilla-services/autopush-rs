@@ -156,6 +156,36 @@ pub async fn get_channels_route(
     })))
 }
 
+/// Handle the `DELETE /v1/{router_type}/{app_id}/registration/{uaid}/subscription/{chid}` route
+pub async fn unregister_channel_route(
+    _auth: AuthorizationCheck,
+    path_args: RegistrationPathArgsWithUaid,
+    state: Data<ServerState>,
+    request: HttpRequest,
+) -> ApiResult<HttpResponse> {
+    let channel_id = request
+        .match_info()
+        .get("chid")
+        .expect("{chid} must be part of the path")
+        .parse::<Uuid>()
+        .map_err(|_| ApiErrorKind::NoSubscription)?;
+
+    debug!(
+        "Unregistering CHID {} for UAID {}",
+        channel_id, path_args.uaid
+    );
+
+    incr_metric("ua.command.unregister", &state.metrics, &request);
+    let channel_did_exist = state.ddb.remove_channel(path_args.uaid, channel_id).await?;
+
+    if channel_did_exist {
+        Ok(HttpResponse::Ok().finish())
+    } else {
+        debug!("Channel did not exist");
+        Err(ApiErrorKind::NoSubscription.into())
+    }
+}
+
 /// Increment a metric with data from the request
 fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
     metrics
