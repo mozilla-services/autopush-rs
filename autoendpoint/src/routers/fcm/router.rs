@@ -2,15 +2,14 @@ use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
+use crate::routers::common::build_message_data;
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
-use autopush_common::util::InsertOpt;
 use cadence::{Counted, StatsdClient};
 use serde_json::Value;
-use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use url::Url;
 use uuid::Uuid;
@@ -69,32 +68,6 @@ impl FcmRouter {
         Ok(clients)
     }
 
-    /// Convert a notification into a WebPush message
-    fn build_message_data(
-        &self,
-        notification: &Notification,
-    ) -> ApiResult<HashMap<&'static str, String>> {
-        let mut message_data = HashMap::new();
-        message_data.insert("chid", notification.subscription.channel_id.to_string());
-
-        // Only add the other headers if there's data
-        if let Some(data) = &notification.data {
-            if data.len() > self.settings.max_data {
-                // Too much data. Tell the client how many bytes extra they had.
-                return Err(FcmError::TooMuchData(data.len() - self.settings.max_data).into());
-            }
-
-            // Add the body and headers
-            message_data.insert("body", data.clone());
-            message_data.insert_opt("con", notification.headers.encoding.as_ref());
-            message_data.insert_opt("enc", notification.headers.encryption.as_ref());
-            message_data.insert_opt("cryptokey", notification.headers.crypto_key.as_ref());
-            message_data.insert_opt("enckey", notification.headers.encryption_key.as_ref());
-        }
-
-        Ok(message_data)
-    }
-
     /// Handle an error by logging, updating metrics, etc
     async fn handle_error(&self, error: FcmError, uaid: Uuid) -> ApiError {
         match &error {
@@ -107,7 +80,7 @@ impl FcmRouter {
                 self.incr_error_metric("timeout");
             }
             FcmError::FcmConnect(e) => {
-                warn!("FCM unavailable: {error}", error = e.to_string());
+                warn!("FCM unavailable: {}", e);
                 self.incr_error_metric("connection_unavailable");
             }
             FcmError::FcmNotFound => {
@@ -123,10 +96,7 @@ impl FcmRouter {
                 self.incr_error_metric("server_error");
             }
             _ => {
-                warn!(
-                    "Unknown error while sending FCM request: {error}",
-                    error = error.to_string()
-                );
+                warn!("Unknown error while sending FCM request: {}", error);
                 self.incr_error_metric("unknown");
             }
         }
@@ -166,7 +136,7 @@ impl Router for FcmRouter {
         &self,
         router_data_input: &RouterDataInput,
         app_id: &str,
-    ) -> Result<HashMap<String, Value, RandomState>, RouterError> {
+    ) -> Result<HashMap<String, Value>, RouterError> {
         if !self.clients.contains_key(app_id) {
             return Err(FcmError::InvalidAppId.into());
         }
@@ -203,7 +173,7 @@ impl Router for FcmRouter {
             .and_then(Value::as_str)
             .ok_or(FcmError::NoAppId)?;
         let ttl = MAX_TTL.min(self.settings.ttl.max(notification.headers.ttl as usize));
-        let message_data = self.build_message_data(notification)?;
+        let message_data = build_message_data(notification, self.settings.max_data)?;
 
         // Send the notification to FCM
         let client = self.clients.get(app_id).ok_or(FcmError::InvalidAppId)?;
@@ -233,10 +203,8 @@ mod tests {
     use crate::db::client::DbClient;
     use crate::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
-    use crate::extractors::notification::Notification;
-    use crate::extractors::notification_headers::NotificationHeaders;
     use crate::extractors::routers::RouterType;
-    use crate::extractors::subscription::Subscription;
+    use crate::routers::common::tests::{make_notification, CHANNEL_ID};
     use crate::routers::fcm::client::tests::{
         make_service_file, mock_fcm_endpoint_builder, mock_token_endpoint, PROJECT_ID,
     };
@@ -245,21 +213,13 @@ mod tests {
     use crate::routers::fcm::settings::FcmSettings;
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
-    use autopush_common::db::DynamoDbUser;
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use url::Url;
-    use uuid::Uuid;
 
     const FCM_TOKEN: &str = "test-token";
-    const CHANNEL_ID: &str = "deadbeef-13f9-4639-87f9-2ff731824f34";
-
-    /// Get the test channel ID as a Uuid
-    fn channel_id() -> Uuid {
-        Uuid::parse_str(CHANNEL_ID).unwrap()
-    }
 
     /// Create a router for testing, using the given service auth file
     async fn make_router(auth_file: PathBuf, ddb: Box<dyn DbClient>) -> FcmRouter {
@@ -293,35 +253,6 @@ mod tests {
         map
     }
 
-    /// Create a notification
-    fn make_notification(
-        router_data: HashMap<String, serde_json::Value>,
-        data: Option<String>,
-    ) -> Notification {
-        Notification {
-            message_id: "test-message-id".to_string(),
-            subscription: Subscription {
-                user: DynamoDbUser {
-                    router_data: Some(router_data),
-                    ..Default::default()
-                },
-                channel_id: channel_id(),
-                router_type: RouterType::FCM,
-                vapid: None,
-            },
-            headers: NotificationHeaders {
-                ttl: 0,
-                topic: Some("test-topic".to_string()),
-                encoding: Some("test-encoding".to_string()),
-                encryption: Some("test-encryption".to_string()),
-                encryption_key: Some("test-encryption-key".to_string()),
-                crypto_key: Some("test-crypto-key".to_string()),
-            },
-            timestamp: 0,
-            data,
-        }
-    }
-
     /// A notification with no data is sent to FCM
     #[tokio::test]
     async fn successful_routing_no_data() {
@@ -346,7 +277,7 @@ mod tests {
                 .as_str(),
             )
             .create();
-        let notification = make_notification(default_router_data(), None);
+        let notification = make_notification(default_router_data(), None, RouterType::FCM);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -387,7 +318,7 @@ mod tests {
             )
             .create();
         let data = "test-data".to_string();
-        let notification = make_notification(default_router_data(), Some(data));
+        let notification = make_notification(default_router_data(), Some(data), RouterType::FCM);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -412,7 +343,7 @@ mod tests {
             "app_id".to_string(),
             serde_json::to_value("unknown-app-id").unwrap(),
         );
-        let notification = make_notification(router_data, None);
+        let notification = make_notification(router_data, None, RouterType::FCM);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
@@ -430,12 +361,12 @@ mod tests {
     /// If the FCM user no longer exists (404), we drop the user from our database
     #[tokio::test]
     async fn no_fcm_user() {
-        let notification = make_notification(default_router_data(), None);
+        let notification = make_notification(default_router_data(), None, RouterType::FCM);
         let mut ddb = MockDbClient::new();
         ddb.expect_remove_user()
             .with(predicate::eq(notification.subscription.user.uaid))
             .times(1)
-            .return_once(move |_| Ok(()));
+            .return_once(|_| Ok(()));
 
         let service_file = make_service_file();
         let router = make_router(service_file.path().to_owned(), ddb.into_boxed_arc()).await;

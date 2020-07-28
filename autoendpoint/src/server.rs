@@ -4,6 +4,7 @@ use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::middleware::sentry::sentry_middleware;
+use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
 use crate::routes::registration::{
@@ -29,6 +30,7 @@ pub struct ServerState {
     pub ddb: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
+    pub apns_router: Arc<ApnsRouter>,
 }
 
 pub struct Server;
@@ -54,6 +56,15 @@ impl Server {
             )
             .await?,
         );
+        let apns_router = Arc::new(
+            ApnsRouter::new(
+                settings.apns.clone(),
+                settings.endpoint_url.clone(),
+                metrics.clone(),
+                ddb.clone(),
+            )
+            .await?,
+        );
         let state = ServerState {
             metrics,
             settings,
@@ -61,6 +72,7 @@ impl Server {
             ddb,
             http,
             fcm_router,
+            apns_router,
         };
 
         let server = HttpServer::new(move || {
