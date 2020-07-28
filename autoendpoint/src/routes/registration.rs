@@ -1,13 +1,14 @@
 use crate::auth::sign_with_key;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::authorization_check::AuthorizationCheck;
+use crate::extractors::new_channel_data::NewChannelData;
 use crate::extractors::registration_path_args::RegistrationPathArgs;
 use crate::extractors::registration_path_args_with_uaid::RegistrationPathArgsWithUaid;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::extractors::routers::Routers;
 use crate::headers::util::get_header;
 use crate::server::ServerState;
-use actix_web::web::Data;
+use actix_web::web::{Data, Json};
 use actix_web::{HttpRequest, HttpResponse};
 use autopush_common::db::DynamoDbUser;
 use autopush_common::endpoint::make_endpoint;
@@ -106,6 +107,53 @@ pub async fn update_token_route(
 
     trace!("Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
+}
+
+/// Handle the `POST /v1/{router_type}/{app_id}/registration/{uaid}/subscription` route
+pub async fn new_channel_route(
+    _auth: AuthorizationCheck,
+    path_args: RegistrationPathArgsWithUaid,
+    channel_data: Option<Json<NewChannelData>>,
+    state: Data<ServerState>,
+) -> ApiResult<HttpResponse> {
+    // Add the channel
+    debug!("Adding a channel to UAID {}", path_args.uaid);
+    let channel_data = channel_data.map(Json::into_inner).unwrap_or_default();
+    let channel_id = channel_data.channel_id.unwrap_or_else(Uuid::new_v4);
+    trace!("channel_id = {}", channel_id);
+    state.ddb.add_channel(path_args.uaid, channel_id).await?;
+
+    // Make the endpoint URL
+    trace!("Creating endpoint for the new channel");
+    let endpoint_url = make_endpoint(
+        &path_args.uaid,
+        &channel_id,
+        channel_data.key.as_deref(),
+        state.settings.endpoint_url.as_str(),
+        &state.fernet,
+    )
+    .map_err(ApiErrorKind::EndpointUrl)?;
+    trace!("endpoint = {}", endpoint_url);
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "channelID": channel_id,
+        "endpoint": endpoint_url,
+    })))
+}
+
+/// Handle the `GET /v1/{router_type}/{app_id}/registration/{uaid}` route
+pub async fn get_channels_route(
+    _auth: AuthorizationCheck,
+    path_args: RegistrationPathArgsWithUaid,
+    state: Data<ServerState>,
+) -> ApiResult<HttpResponse> {
+    debug!("Getting channel IDs for UAID {}", path_args.uaid);
+    let channel_ids = state.ddb.get_channels(path_args.uaid).await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "uaid": path_args.uaid,
+        "channelIDs": channel_ids
+    })))
 }
 
 /// Handle the `DELETE /v1/{router_type}/{app_id}/registration/{uaid}/subscription/{chid}` route
