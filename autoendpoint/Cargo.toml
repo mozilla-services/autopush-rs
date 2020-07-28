@@ -5,6 +5,12 @@ authors = ["Mark Drobnak <mdrobnak@mozilla.com>", "jrconlin <me+crypt@jrconlin.c
 edition = "2018"
 
 [dependencies]
+# Using a fork temporarily until these three PRs are merged:
+# - https://github.com/pimeys/a2/pull/49
+# - https://github.com/pimeys/a2/pull/48
+# - https://github.com/pimeys/a2/pull/47
+# The `autoendpoint` branch merges these three PRs together.
+# The version of a2 at the time of the fork is v0.5.3.
 a2 = { git = "https://github.com/Mcat12/a2.git", branch = "autoendpoint" }
 actix-web = "2.0"
 actix-rt = "1.0"
