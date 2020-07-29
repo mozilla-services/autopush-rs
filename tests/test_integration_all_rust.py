@@ -2,6 +2,7 @@
 Rust Connection and Endpoint Node Integration Tests
 """
 
+import copy
 import logging
 import os
 import signal
@@ -78,6 +79,41 @@ MOCK_MP_SERVICES = {}
 MOCK_MP_TOKEN = "Bearer {}".format(uuid.uuid4().hex)
 MOCK_MP_POLLED = Event()
 MOCK_SENTRY_QUEUE = Queue()
+
+CONNECTION_CONFIG = dict(
+    hostname='localhost',
+    port=CONNECTION_PORT,
+    endpoint_hostname="localhost",
+    endpoint_port=ENDPOINT_PORT,
+    router_port=ROUTER_PORT,
+    endpoint_scheme='http',
+    statsd_host="",
+    router_tablename=ROUTER_TABLE,
+    message_tablename=MESSAGE_TABLE,
+    crypto_key="[{}]".format(CRYPTO_KEY),
+    auto_ping_interval=60.0,
+    auto_ping_timeout=10.0,
+    close_handshake_timeout=5,
+    max_connections=5000,
+    human_logs="true",
+    msg_limit=MSG_LIMIT,
+)
+
+MEGAPHONE_CONFIG = copy.deepcopy(CONNECTION_CONFIG)
+MEGAPHONE_CONFIG.update(
+    port=MP_CONNECTION_PORT,
+    endpoint_port=ENDPOINT_PORT,
+    router_port=MP_ROUTER_PORT,
+    auto_ping_interval=0.5,
+    auto_ping_timeout=10.0,
+    close_handshake_timeout=5,
+    max_connections=5000,
+    megaphone_api_url='http://localhost:{port}/v1/broadcasts'.format(
+        port=MOCK_SERVER_PORT
+    ),
+    megaphone_api_token=MOCK_MP_TOKEN,
+    megaphone_poll_interval=1,
+)
 
 
 def enqueue_output(out, queue):
@@ -169,8 +205,34 @@ def kill_process(process):
     process.wait()
 
 
+def get_rust_binary_path(binary):
+    global STRICT_LOG_COUNTS
+
+    rust_bin = root_dir + "/target/release/{}".format(binary)
+    possible_paths = ["/target/debug/{}".format(binary),
+                      "/{0}/target/release/{0}".format(binary),
+                      "/{0}/target/debug/{0}".format(binary)]
+    while possible_paths and not os.path.exists(rust_bin):  # pragma: nocover
+        rust_bin = root_dir + possible_paths.pop(0)
+
+    if 'release' not in rust_bin:
+        # disable checks for chatty debug mode binaries
+        STRICT_LOG_COUNTS = False
+
+    return rust_bin
+
+
+def capture_output_to_queue(output_stream):
+    log_queue = Queue()
+    t = Thread(target=enqueue_output, args=(output_stream, log_queue))
+    t.daemon = True  # thread dies with the program
+    t.start()
+    return log_queue
+
+
 def setup_dynamodb():
     global DDB_PROCESS, BOTO_RESOURCE
+
     cmd = " ".join([
         "java", "-Djava.library.path=%s" % DDB_LIB_DIR,
         "-jar", DDB_JAR, "-sharedDb", "-inMemory"
@@ -178,58 +240,29 @@ def setup_dynamodb():
     DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
     if os.getenv("AWS_LOCAL_DYNAMODB") is None:
         os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
-    BOTO_RESOURCE = DynamoDBResource()
 
     # Setup the necessary tables
+    BOTO_RESOURCE = DynamoDBResource()
     create_message_table(MESSAGE_TABLE, boto_resource=BOTO_RESOURCE)
     create_router_table(ROUTER_TABLE, boto_resource=BOTO_RESOURCE)
 
 
-def setup_module():
-    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
-        STRICT_LOG_COUNTS
-    setup_dynamodb()
+def setup_mock_server():
+    global MOCK_SERVER_THREAD
 
-    pool = reactor.getThreadPool()
-    pool.adjustPoolsize(minthreads=pool.max)
-
-    for name in ('boto', 'boto3', 'botocore'):
-        logging.getLogger(name).setLevel(logging.CRITICAL)
-
-    if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
-        raise SkipTest("Skipping integration tests")
-
-    conn_conf = dict(
-        hostname='localhost',
-        port=CONNECTION_PORT,
-        endpoint_hostname="localhost",
-        endpoint_port=ENDPOINT_PORT,
-        router_port=ROUTER_PORT,
-        endpoint_scheme='http',
-        statsd_host="",
-        router_tablename=ROUTER_TABLE,
-        message_tablename=MESSAGE_TABLE,
-        crypto_key="[{}]".format(CRYPTO_KEY),
-        auto_ping_interval=60.0,
-        auto_ping_timeout=10.0,
-        close_handshake_timeout=5,
-        max_connections=5000,
-        human_logs="true",
-        msg_limit=MSG_LIMIT,
+    MOCK_SERVER_THREAD = Thread(
+        target=bottle.run,
+        kwargs=dict(port=MOCK_SERVER_PORT, debug=True)
     )
-    rust_bin = root_dir + "/target/release/autopush_rs"
-    possible_paths = ["/target/debug/autopush_rs",
-                      "/autopush_rs/target/release/autopush_rs",
-                      "/autopush_rs/target/debug/autopush_rs"]
-    while possible_paths and not os.path.exists(rust_bin):  # pragma: nocover
-        rust_bin = root_dir + possible_paths.pop(0)
+    MOCK_SERVER_THREAD.setDaemon(True)
+    MOCK_SERVER_THREAD.start()
 
-    if 'release' not in rust_bin:
-        # disable checks for chatty debug mode autopush-rs
-        STRICT_LOG_COUNTS = False
 
-    # Setup the environment
-    for key, val in conn_conf.items():
+def setup_connection_server(connection_binary):
+    global CN_SERVER
+
+    # Setup the autopush environment
+    for key, val in CONNECTION_CONFIG.items():
         key = "autopush_" + key
         os.environ[key.upper()] = str(val)
     # Sentry API mock
@@ -237,53 +270,49 @@ def setup_module():
         MOCK_SERVER_PORT
     )
 
-    cmd = [rust_bin]
-    CN_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ,
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE,
-                                 universal_newlines=True)
+    cmd = [connection_binary]
+    CN_SERVER = subprocess.Popen(
+        cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, universal_newlines=True
+    )
     # Spin up the readers to dump the output from stdout/stderr
-    out_q = Queue()
-    t = Thread(target=enqueue_output, args=(CN_SERVER.stdout, out_q))
-    t.daemon = True  # thread dies with the program
-    t.start()
-    err_q = Queue()
-    t = Thread(target=enqueue_output, args=(CN_SERVER.stderr, err_q))
-    t.daemon = True  # thread dies with the program
-    t.start()
+    out_q = capture_output_to_queue(CN_SERVER.stdout)
+    err_q = capture_output_to_queue(CN_SERVER.stderr)
     CN_QUEUES.extend([out_q, err_q])
 
-    MOCK_SERVER_THREAD = Thread(
-        target=bottle.run,
-        kwargs=dict(
-            port=MOCK_SERVER_PORT, debug=True
-        ))
-    MOCK_SERVER_THREAD.setDaemon(True)
-    MOCK_SERVER_THREAD.start()
 
-    # Setup the megaphone connection node
-    megaphone_api_url = 'http://localhost:{port}/v1/broadcasts'.format(
-        port=MOCK_SERVER_PORT)
-    conn_conf.update(dict(
-        port=MP_CONNECTION_PORT,
-        endpoint_port=ENDPOINT_PORT,
-        router_port=MP_ROUTER_PORT,
-        auto_ping_interval=0.5,
-        auto_ping_timeout=10.0,
-        close_handshake_timeout=5,
-        max_connections=5000,
-        megaphone_api_url=megaphone_api_url,
-        megaphone_api_token=MOCK_MP_TOKEN,
-        megaphone_poll_interval=1,
-    ))
+def setup_megaphone_server(connection_binary):
+    global CN_MP_SERVER
 
-    # Setup the environment
-    for key, val in conn_conf.items():
+    # Start the megaphone connection node
+    for key, val in MEGAPHONE_CONFIG.items():
         key = "autopush_" + key
         os.environ[key.upper()] = str(val)
 
-    cmd = [rust_bin]
+    cmd = [connection_binary]
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
+
+
+def setup_module():
+    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
+        STRICT_LOG_COUNTS
+
+    if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
+        raise SkipTest("Skipping integration tests")
+
+    for name in ('boto', 'boto3', 'botocore'):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+
+    setup_dynamodb()
+
+    pool = reactor.getThreadPool()
+    pool.adjustPoolsize(minthreads=pool.max)
+
+    setup_mock_server()
+
+    connection_binary = get_rust_binary_path("autopush_rs")
+    setup_connection_server(connection_binary)
+    setup_megaphone_server(connection_binary)
     time.sleep(2)
 
 
