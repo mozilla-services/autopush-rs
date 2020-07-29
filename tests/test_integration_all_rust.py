@@ -19,18 +19,13 @@ import ecdsa
 import psutil
 import requests
 import twisted.internet.base
-from autopush.config import AutopushConfig
 from autopush.db import DynamoDBResource, create_message_table, create_router_table
-from autopush.logging import begin_or_register
-from autopush.main import EndpointApplication
-from autopush.tests.support import _TestingLogObserver
 from autopush.tests.test_integration import Client, _get_vapid
 from autopush.utils import base64url_encode
 from cryptography.fernet import Fernet
 from Queue import Empty, Queue
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.logger import globalLogPublisher
 from twisted.trial import unittest
 
 log = logging.getLogger(__name__)
@@ -61,8 +56,10 @@ RP_ROUTER_PORT = 9074
 
 CN_SERVER = None  # type: subprocess.Popen
 CN_MP_SERVER = None  # type: subprocess.Popen
+EP_SERVER = None  # type: subprocess.Popen
 MOCK_SERVER_THREAD = None
 CN_QUEUES = []
+EP_QUEUES = []
 STRICT_LOG_COUNTS = True
 
 
@@ -115,6 +112,16 @@ MEGAPHONE_CONFIG.update(
     megaphone_poll_interval=1,
 )
 
+ENDPOINT_CONFIG = dict(
+    host='localhost',
+    port=ENDPOINT_PORT,
+    endpoint_url='http://localhost:{}'.format(ENDPOINT_PORT),
+    router_table_name=ROUTER_TABLE,
+    message_table_name=MESSAGE_TABLE,
+    human_logs='true',
+    crypto_keys="[{}]".format(CRYPTO_KEY),
+)
+
 
 def enqueue_output(out, queue):
     for line in iter(out.readline, b''):
@@ -122,16 +129,8 @@ def enqueue_output(out, queue):
     out.close()
 
 
-def process_logs(testcase):
-    """Process (print) the testcase logs (in tearDown).
-
-    Ensures a maximum level of logs allowed to be emitted when running
-    w/ a `--release` mode connection node
-
-    """
-    conn_count = sum(queue.qsize() for queue in CN_QUEUES)
-
-    for queue in CN_QUEUES:
+def print_lines_in_queues(queues, prefix):
+    for queue in queues:
         is_empty = False
         while not is_empty:
             try:
@@ -139,21 +138,34 @@ def process_logs(testcase):
             except Empty:
                 is_empty = True
             else:
-                print(line)
+                print(prefix + line)
+
+
+def process_logs(testcase):
+    """Process (print) the testcase logs (in tearDown).
+
+    Ensures a maximum level of logs allowed to be emitted when running
+    w/ a `--release` mode connection/endpoint node
+
+    """
+    conn_count = sum(queue.qsize() for queue in CN_QUEUES)
+    endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
+
+    print_lines_in_queues(CN_QUEUES, "AUTOPUSH: ")
+    print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
 
     if not STRICT_LOG_COUNTS:
         return
 
-    MSG = "endpoint node emitted excessive log statements, count: {} > max: {}"
-    endpoint_count = len(testcase.logs)
+    msg = "endpoint node emitted excessive log statements, count: {} > max: {}"
     # Give an extra to endpoint for potential startup log messages
     # (e.g. when running tests individually)
     max_endpoint_logs = testcase.max_endpoint_logs + 1
-    assert endpoint_count <= max_endpoint_logs, MSG.format(
+    assert endpoint_count <= max_endpoint_logs, msg.format(
         endpoint_count, max_endpoint_logs)
 
-    MSG = "conn node emitted excessive log statements, count: {} > max: {}"
-    assert conn_count <= testcase.max_conn_logs, MSG.format(
+    msg = "conn node emitted excessive log statements, count: {} > max: {}"
+    assert conn_count <= testcase.max_conn_logs, msg.format(
         conn_count, testcase.max_conn_logs)
 
 
@@ -222,6 +234,12 @@ def get_rust_binary_path(binary):
     return rust_bin
 
 
+def write_config_to_env(config, prefix):
+    for key, val in config.items():
+        new_key = prefix + key
+        os.environ[new_key.upper()] = str(val)
+
+
 def capture_output_to_queue(output_stream):
     log_queue = Queue()
     t = Thread(target=enqueue_output, args=(output_stream, log_queue))
@@ -257,24 +275,22 @@ def setup_mock_server():
     MOCK_SERVER_THREAD.setDaemon(True)
     MOCK_SERVER_THREAD.start()
 
-
-def setup_connection_server(connection_binary):
-    global CN_SERVER
-
-    # Setup the autopush environment
-    for key, val in CONNECTION_CONFIG.items():
-        key = "autopush_" + key
-        os.environ[key.upper()] = str(val)
     # Sentry API mock
     os.environ["SENTRY_DSN"] = 'http://foo:bar@localhost:{}/1'.format(
         MOCK_SERVER_PORT
     )
 
+
+def setup_connection_server(connection_binary):
+    global CN_SERVER
+
+    write_config_to_env(CONNECTION_CONFIG, "autopush_")
     cmd = [connection_binary]
     CN_SERVER = subprocess.Popen(
         cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, universal_newlines=True
     )
+
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(CN_SERVER.stdout)
     err_q = capture_output_to_queue(CN_SERVER.stderr)
@@ -284,13 +300,29 @@ def setup_connection_server(connection_binary):
 def setup_megaphone_server(connection_binary):
     global CN_MP_SERVER
 
-    # Start the megaphone connection node
-    for key, val in MEGAPHONE_CONFIG.items():
-        key = "autopush_" + key
-        os.environ[key.upper()] = str(val)
-
+    write_config_to_env(MEGAPHONE_CONFIG, "autopush_")
     cmd = [connection_binary]
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
+
+
+def setup_endpoint_server():
+    global EP_SERVER
+
+    # Set up environment
+    os.environ["RUST_LOG"] = "trace"
+    write_config_to_env(ENDPOINT_CONFIG, "autoend_")
+
+    # Run autoendpoint
+    cmd = [get_rust_binary_path("autoendpoint")]
+    EP_SERVER = subprocess.Popen(
+        cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, universal_newlines=True
+    )
+
+    # Spin up the readers to dump the output from stdout/stderr
+    out_q = capture_output_to_queue(EP_SERVER.stdout)
+    err_q = capture_output_to_queue(EP_SERVER.stderr)
+    EP_QUEUES.extend([out_q, err_q])
 
 
 def setup_module():
@@ -313,6 +345,7 @@ def setup_module():
     connection_binary = get_rust_binary_path("autopush_rs")
     setup_connection_server(connection_binary)
     setup_megaphone_server(connection_binary)
+    setup_endpoint_server()
     time.sleep(2)
 
 
@@ -320,53 +353,18 @@ def teardown_module():
     kill_process(DDB_PROCESS)
     kill_process(CN_SERVER)
     kill_process(CN_MP_SERVER)
+    kill_process(EP_SERVER)
 
 
 class TestRustWebPush(unittest.TestCase):
-    _endpoint_defaults = dict(
-        hostname='localhost',
-        port=ENDPOINT_PORT,
-        endpoint_port=ENDPOINT_PORT,
-        endpoint_scheme='http',
-        router_port=ROUTER_PORT,
-        statsd_host=None,
-        router_table=dict(tablename=ROUTER_TABLE),
-        message_table=dict(tablename=MESSAGE_TABLE),
-        use_cryptography=True,
-    )
-
     # Max log lines allowed to be emitted by each node type
     max_endpoint_logs = 8
     max_conn_logs = 3
-
-    def start_ep(self, ep_conf):
-        # Endpoint HTTP router
-        self.ep = ep = EndpointApplication(
-            ep_conf,
-            resource=BOTO_RESOURCE
-        )
-        ep.setup(rotate_tables=False)
-        ep.startService()
-        self.addCleanup(ep.stopService)
-
-    def setUp(self):
-        self.logs = _TestingLogObserver()
-        begin_or_register(self.logs)
-        self.addCleanup(globalLogPublisher.removeObserver, self.logs)
-
-        self._ep_conf = AutopushConfig(
-            crypto_key=CRYPTO_KEY,
-            **self.endpoint_kwargs()
-        )
-        self.start_ep(self._ep_conf)
 
     def tearDown(self):
         process_logs(self)
         while not MOCK_SENTRY_QUEUE.empty():
             MOCK_SENTRY_QUEUE.get_nowait()
-
-    def endpoint_kwargs(self):
-        return self._endpoint_defaults
 
     @inlineCallbacks
     def quick_register(self, sslcontext=None):
@@ -507,7 +505,6 @@ class TestRustWebPush(unittest.TestCase):
         assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
-        assert self.logs.logged_ci(lambda ci: 'router_key' in ci)
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -1003,11 +1000,6 @@ class TestRustWebPush(unittest.TestCase):
 class TestRustWebPushBroadcast(unittest.TestCase):
     max_endpoint_logs = 4
     max_conn_logs = 1
-
-    def setUp(self):
-        self.logs = _TestingLogObserver()
-        begin_or_register(self.logs)
-        self.addCleanup(globalLogPublisher.removeObserver, self.logs)
 
     def tearDown(self):
         process_logs(self)
