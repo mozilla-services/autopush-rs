@@ -8,6 +8,8 @@ import os
 import signal
 import socket
 import subprocess
+
+import sys
 import time
 import uuid
 from functools import wraps
@@ -138,7 +140,7 @@ def print_lines_in_queues(queues, prefix):
             except Empty:
                 is_empty = True
             else:
-                print(prefix + line)
+                sys.stdout.write(prefix + line)
 
 
 def process_logs(testcase):
