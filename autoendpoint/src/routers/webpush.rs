@@ -173,7 +173,7 @@ impl WebPushRouter {
     /// Update metrics and create a response for when a notification has been directly forwarded to
     /// an autopush server.
     fn make_delivered_response(&self, notification: &Notification) -> RouterResponse {
-        self.make_response(notification, "Direct", StatusCode::OK)
+        self.make_response(notification, "Direct", StatusCode::CREATED)
     }
 
     /// Update metrics and create a response for when a notification has been stored in the database
