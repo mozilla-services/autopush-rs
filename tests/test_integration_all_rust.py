@@ -37,9 +37,7 @@ root_dir = os.path.dirname(here_dir)
 
 DDB_JAR = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
 DDB_LIB_DIR = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
-
 DDB_PROCESS = None  # type: subprocess.Popen
-BOTO_RESOURCE = None  # type: DynamoDBResource
 
 twisted.internet.base.DelayedCall.debug = True
 
@@ -53,8 +51,6 @@ ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
 MP_CONNECTION_PORT = 9052
 MP_ROUTER_PORT = 9072
-RP_CONNECTION_PORT = 9054
-RP_ROUTER_PORT = 9074
 
 CN_SERVER = None  # type: subprocess.Popen
 CN_MP_SERVER = None  # type: subprocess.Popen
@@ -251,7 +247,7 @@ def capture_output_to_queue(output_stream):
 
 
 def setup_dynamodb():
-    global DDB_PROCESS, BOTO_RESOURCE
+    global DDB_PROCESS
 
     cmd = " ".join([
         "java", "-Djava.library.path=%s" % DDB_LIB_DIR,
@@ -262,9 +258,9 @@ def setup_dynamodb():
         os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
 
     # Setup the necessary tables
-    BOTO_RESOURCE = DynamoDBResource()
-    create_message_table(MESSAGE_TABLE, boto_resource=BOTO_RESOURCE)
-    create_router_table(ROUTER_TABLE, boto_resource=BOTO_RESOURCE)
+    boto_resource = DynamoDBResource()
+    create_message_table(MESSAGE_TABLE, boto_resource=boto_resource)
+    create_router_table(ROUTER_TABLE, boto_resource=boto_resource)
 
 
 def setup_mock_server():
