@@ -113,7 +113,6 @@ MEGAPHONE_CONFIG.update(
 ENDPOINT_CONFIG = dict(
     host='localhost',
     port=ENDPOINT_PORT,
-    endpoint_url='http://localhost:{}'.format(ENDPOINT_PORT),
     router_table_name=ROUTER_TABLE,
     message_table_name=MESSAGE_TABLE,
     human_logs='true',
