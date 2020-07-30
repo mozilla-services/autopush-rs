@@ -6,7 +6,7 @@ use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{web, FromRequest, HttpRequest};
-use autopush_common::util::sec_since_epoch;
+use autopush_common::util::{ms_since_epoch, sec_since_epoch};
 use cadence::Counted;
 use fernet::MultiFernet;
 use futures::{future, FutureExt};
@@ -19,7 +19,10 @@ pub struct Notification {
     pub message_id: String,
     pub subscription: Subscription,
     pub headers: NotificationHeaders,
+    /// UNIX timestamp in seconds
     pub timestamp: u64,
+    /// UNIX timestamp in milliseconds
+    pub sort_key_timestamp: u64,
     pub data: Option<String>,
 }
 
@@ -52,12 +55,13 @@ impl FromRequest for Notification {
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
             let timestamp = sec_since_epoch();
+            let sort_key_timestamp = ms_since_epoch();
             let message_id = Self::generate_message_id(
                 &state.fernet,
                 subscription.user.uaid,
                 subscription.channel_id,
                 headers.topic.as_deref(),
-                timestamp,
+                sort_key_timestamp,
             );
 
             // Record the encoding if we have an encrypted payload
@@ -75,6 +79,7 @@ impl FromRequest for Notification {
                 subscription,
                 headers,
                 timestamp,
+                sort_key_timestamp,
                 data,
             })
         }
@@ -91,7 +96,7 @@ impl From<Notification> for autopush_common::notification::Notification {
             topic: notification.headers.topic.clone(),
             timestamp: notification.timestamp,
             data: notification.data,
-            sortkey_timestamp: Some(notification.timestamp),
+            sortkey_timestamp: Some(notification.sort_key_timestamp),
             headers: Some(notification.headers.into()),
         }
     }

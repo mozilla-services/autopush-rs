@@ -74,6 +74,7 @@ pub mod tests {
                 crypto_key: Some("test-crypto-key".to_string()),
             },
             timestamp: 0,
+            sort_key_timestamp: 0,
             data,
         }
     }
