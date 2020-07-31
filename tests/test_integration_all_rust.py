@@ -31,6 +31,7 @@ from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.trial import unittest
 
 app = bottle.Bottle()
+logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 here_dir = os.path.abspath(os.path.dirname(__file__))
