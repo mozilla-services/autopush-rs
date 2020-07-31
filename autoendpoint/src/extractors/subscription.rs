@@ -201,9 +201,11 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey) -> ApiResult<()> {
     }
 
     // Check the signature and make sure the expiration is in the future
+    let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
+        .map_err(|_| VapidError::InvalidKey)?;
     let token_data = jsonwebtoken::decode::<Claims>(
         &vapid.token,
-        &DecodingKey::from_ec_der(public_key.as_bytes()),
+        &DecodingKey::from_ec_der(&public_key),
         &Validation::new(Algorithm::ES256),
     )?;
 
