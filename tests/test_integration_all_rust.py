@@ -30,6 +30,7 @@ from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.trial import unittest
 
+app = bottle.Bottle()
 log = logging.getLogger(__name__)
 
 here_dir = os.path.abspath(os.path.dirname(__file__))
@@ -184,14 +185,14 @@ def max_logs(endpoint=None, conn=None):
     return max_logs_decorator
 
 
-@bottle.get("/v1/broadcasts")
+@app.get("/v1/broadcasts")
 def broadcast_handler():
     assert bottle.request.headers["Authorization"] == MOCK_MP_TOKEN
     MOCK_MP_POLLED.set()
     return dict(broadcasts=MOCK_MP_SERVICES)
 
 
-@bottle.post("/api/1/store/")
+@app.post("/api/1/store/")
 def sentry_handler():
     content = bottle.request.json
     MOCK_SENTRY_QUEUE.put(content)
@@ -266,7 +267,7 @@ def setup_mock_server():
     global MOCK_SERVER_THREAD
 
     MOCK_SERVER_THREAD = Thread(
-        target=bottle.run,
+        target=app.run,
         kwargs=dict(port=MOCK_SERVER_PORT, debug=True)
     )
     MOCK_SERVER_THREAD.setDaemon(True)
