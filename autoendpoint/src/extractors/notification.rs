@@ -97,7 +97,14 @@ impl From<Notification> for autopush_common::notification::Notification {
             timestamp: notification.timestamp,
             data: notification.data,
             sortkey_timestamp: Some(notification.sort_key_timestamp),
-            headers: Some(notification.headers.into()),
+            headers: {
+                let headers: HashMap<String, String> = notification.headers.into();
+                if headers.is_empty() {
+                    None
+                } else {
+                    Some(headers)
+                }
+            },
         }
     }
 }

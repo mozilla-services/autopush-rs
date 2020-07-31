@@ -51,8 +51,6 @@ impl From<NotificationHeaders> for HashMap<String, String> {
     fn from(headers: NotificationHeaders) -> Self {
         let mut map = HashMap::new();
 
-        map.insert("ttl".to_string(), headers.ttl.to_string());
-        map.insert_opt("topic", headers.topic);
         map.insert_opt("encoding", headers.encoding);
         map.insert_opt("encryption", headers.encryption);
         map.insert_opt("encryption_key", headers.encryption_key);
@@ -84,7 +82,7 @@ impl NotificationHeaders {
         let encryption = encryption.map(Self::strip_header);
         let crypto_key = crypto_key.map(Self::strip_header);
 
-        let headers = NotificationHeaders {
+        let mut headers = NotificationHeaders {
             ttl,
             topic,
             encoding,
@@ -96,6 +94,9 @@ impl NotificationHeaders {
         // Validate encryption if there is a message body
         if has_data {
             headers.validate_encryption()?;
+        } else {
+            // Messages without a body shouldn't pass along unnecessary headers
+            headers.clear_encryption();
         }
 
         // Validate the other headers
@@ -109,6 +110,14 @@ impl NotificationHeaders {
     fn strip_header(header: String) -> String {
         let header = header.replace('"', "");
         STRIP_PADDING.replace_all(&header, "$head$tail").to_string()
+    }
+
+    /// Remove the encryption-related headers
+    fn clear_encryption(&mut self) {
+        self.encoding = None;
+        self.encryption = None;
+        self.encryption_key = None;
+        self.crypto_key = None;
     }
 
     /// Validate the encryption headers according to the various WebPush
