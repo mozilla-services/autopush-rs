@@ -91,12 +91,12 @@ impl FromRequest for Subscription {
 
 /// Add back padding to a base64 string
 fn repad_base64(data: &str) -> Cow<'_, str> {
-    let remaining_padding = data.len() % 4;
+    let trailing_chars = data.len() % 4;
 
-    if remaining_padding != 0 {
+    if trailing_chars != 0 {
         let mut data = data.to_string();
 
-        for _ in 0..remaining_padding {
+        for _ in trailing_chars..4 {
             data.push('=');
         }
 
@@ -217,4 +217,19 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey) -> ApiResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::extractors::subscription::repad_base64;
+
+    #[test]
+    fn repad_base64_1_padding() {
+        assert_eq!(repad_base64("Zm9vYmE"), "Zm9vYmE=")
+    }
+
+    #[test]
+    fn repad_base64_2_padding() {
+        assert_eq!(repad_base64("Zm9vYg"), "Zm9vYg==")
+    }
 }
