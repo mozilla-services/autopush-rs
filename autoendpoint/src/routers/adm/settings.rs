@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use url::Url;
 
 /// Settings for `AdmRouter`
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -10,6 +11,12 @@ pub struct AdmSettings {
     pub profiles: String,
     /// The max size of notification data in bytes
     pub max_data: usize,
+    /// The base URL to use for ADM requests
+    pub base_url: Url,
+    /// The number of seconds to wait for ADM requests to complete
+    pub timeout: usize,
+    /// The minimum TTL to use for ADM notifications
+    pub min_ttl: usize,
 }
 
 /// Settings for a specific ADM profile
@@ -26,6 +33,9 @@ impl Default for AdmSettings {
         Self {
             profiles: "{}".to_string(),
             max_data: 6000,
+            base_url: Url::parse("https://api.amazon.com").unwrap(),
+            timeout: 3,
+            min_ttl: 60,
         }
     }
 }
