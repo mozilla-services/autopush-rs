@@ -6,7 +6,9 @@ use crate::metrics;
 use crate::middleware::sentry::sentry_middleware;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
-use crate::routes::health::{health_route, lb_heartbeat_route, status_route, version_route};
+use crate::routes::health::{
+    health_route, lb_heartbeat_route, log_check, status_route, version_route,
+};
 use crate::routes::registration::{
     get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
     unregister_user_route, update_token_route,
@@ -120,6 +122,7 @@ impl Server {
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))
                 .service(web::resource("/health").route(web::get().to(health_route)))
+                .service(web::resource("/v1/err").route(web::get().to(log_check)))
                 // Dockerflow
                 .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))

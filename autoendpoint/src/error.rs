@@ -108,11 +108,11 @@ pub enum ApiErrorKind {
     #[error("Invalid message ID")]
     InvalidMessageId,
 
-    #[error("{0}")]
-    Internal(String),
-
     #[error("Invalid Authentication")]
     InvalidAuthentication,
+
+    #[error("ERROR:Success")]
+    LogCheck,
 }
 
 impl ApiErrorKind {
@@ -138,12 +138,13 @@ impl ApiErrorKind {
 
             ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
+            ApiErrorKind::LogCheck => StatusCode::IM_A_TEAPOT,
+
             ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::EndpointUrl(_)
-            | ApiErrorKind::RegistrationSecretHash(_)
-            | ApiErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            | ApiErrorKind::RegistrationSecretHash(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -178,7 +179,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::NoTTL => Some(111),
 
-            ApiErrorKind::Internal(_) => Some(999),
+            ApiErrorKind::LogCheck => Some(999),
 
             ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
@@ -225,23 +226,6 @@ where
             kind: ApiErrorKind::from(item),
             backtrace: Backtrace::new(),
         }
-    }
-}
-
-impl From<actix_web::error::BlockingError<ApiError>> for ApiError {
-    fn from(inner: actix_web::error::BlockingError<ApiError>) -> Self {
-        match inner {
-            actix_web::error::BlockingError::Error(e) => e,
-            actix_web::error::BlockingError::Canceled => {
-                ApiErrorKind::Internal("Db threadpool operation canceled".to_owned()).into()
-            }
-        }
-    }
-}
-
-impl From<ApiError> for HttpResponse {
-    fn from(inner: ApiError) -> Self {
-        ResponseError::error_response(&inner)
     }
 }
 
