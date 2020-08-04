@@ -1,5 +1,6 @@
 use crate::routers::adm::error::AdmError;
 use crate::routers::adm::settings::{AdmProfile, AdmSettings};
+use crate::routers::RouterError;
 use autopush_common::util::sec_since_epoch;
 use futures::lock::Mutex;
 use reqwest::StatusCode;
@@ -61,7 +62,7 @@ impl AdmClient {
     }
 
     /// Get an ADM access token (from cache or request a new one)
-    async fn get_access_token(&self) -> Result<String, AdmError> {
+    async fn get_access_token(&self) -> Result<String, RouterError> {
         let mut token_info = self.token_info.lock().await;
 
         if token_info.expiration_time > sec_since_epoch() + 60 {
@@ -81,21 +82,28 @@ impl AdmClient {
                 "client_secret": &self.profile.client_secret,
             }))
             .send()
-            .await?;
+            .await
+            .map_err(AdmError::Http)?;
         trace!("response = {:?}", response);
 
         if response.status() != 200 {
             let status = response.status();
-            let error_response: AdmResponseError = response.json().await?;
-            return Err(AdmError::Upstream {
-                status,
-                reason: error_response
+            let error_response: AdmResponseError = response
+                .json()
+                .await
+                .map_err(AdmError::DeserializeResponse)?;
+            return Err(RouterError::Upstream {
+                status: status.to_string(),
+                message: error_response
                     .reason
                     .unwrap_or_else(|| "Unknown reason".to_string()),
             });
         }
 
-        let token_response: TokenResponse = response.json().await?;
+        let token_response: TokenResponse = response
+            .json()
+            .await
+            .map_err(AdmError::DeserializeResponse)?;
         token_info.token = token_response.access_token;
         token_info.expiration_time = sec_since_epoch() + token_response.expires_in;
 
@@ -110,17 +118,20 @@ impl AdmClient {
         data: HashMap<&'static str, String>,
         registration_id: String,
         ttl: usize,
-    ) -> Result<String, AdmError> {
+    ) -> Result<String, RouterError> {
         // Build the ADM message
         let message = serde_json::json!({
             "data": data,
             "expiresAfter": ttl,
         });
         let access_token = self.get_access_token().await?;
-        let url = self.base_url.join(&format!(
-            "messaging/registrations/{}/messages",
-            registration_id
-        ))?;
+        let url = self
+            .base_url
+            .join(&format!(
+                "messaging/registrations/{}/messages",
+                registration_id
+            ))
+            .map_err(AdmError::ParseUrl)?;
 
         // Make the request
         let response = self
@@ -142,9 +153,9 @@ impl AdmClient {
             .await
             .map_err(|e| {
                 if e.is_timeout() {
-                    AdmError::RequestTimeout
+                    RouterError::RequestTimeout
                 } else {
-                    AdmError::Connect(e)
+                    RouterError::Connect(e)
                 }
             })?;
 
@@ -157,16 +168,19 @@ impl AdmClient {
                 .map_err(AdmError::DeserializeResponse)?;
 
             return Err(match (status, response_error.reason) {
-                (StatusCode::UNAUTHORIZED, _) => AdmError::Authentication,
-                (StatusCode::NOT_FOUND, _) => AdmError::NotFound,
-                (status, reason) => AdmError::Upstream {
-                    status,
-                    reason: reason.unwrap_or_else(|| "Unknown reason".to_string()),
+                (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
+                (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
+                (status, reason) => RouterError::Upstream {
+                    status: status.to_string(),
+                    message: reason.unwrap_or_else(|| "Unknown reason".to_string()),
                 },
             });
         }
 
-        let send_response: AdmSendResponse = response.json().await?;
+        let send_response: AdmSendResponse = response
+            .json()
+            .await
+            .map_err(AdmError::DeserializeResponse)?;
         Ok(send_response.registration_id)
     }
 }
@@ -174,8 +188,8 @@ impl AdmClient {
 #[cfg(test)]
 pub mod tests {
     use crate::routers::adm::client::AdmClient;
-    use crate::routers::adm::error::AdmError;
     use crate::routers::adm::settings::{AdmProfile, AdmSettings};
+    use crate::routers::RouterError;
     use std::collections::HashMap;
     use url::Url;
 
@@ -267,7 +281,7 @@ pub mod tests {
             .await;
         assert!(result.is_err());
         assert!(
-            matches!(result.as_ref().unwrap_err(), AdmError::Authentication),
+            matches!(result.as_ref().unwrap_err(), RouterError::Authentication),
             "result = {:?}",
             result
         );
@@ -288,7 +302,7 @@ pub mod tests {
             .await;
         assert!(result.is_err());
         assert!(
-            matches!(result.as_ref().unwrap_err(), AdmError::NotFound),
+            matches!(result.as_ref().unwrap_err(), RouterError::NotFound),
             "result = {:?}",
             result
         );
@@ -311,8 +325,8 @@ pub mod tests {
         assert!(
             matches!(
                 result.as_ref().unwrap_err(),
-                AdmError::Upstream { status, reason }
-                    if *status == 400 && reason == "test-message"
+                RouterError::Upstream { status, message }
+                    if status == "400 Bad Request" && message == "test-message"
             ),
             "result = {:?}",
             result
@@ -336,8 +350,8 @@ pub mod tests {
         assert!(
             matches!(
                 result.as_ref().unwrap_err(),
-                AdmError::Upstream { status, reason }
-                    if *status == 400 && reason == "Unknown reason"
+                RouterError::Upstream { status, message }
+                    if status == "400 Bad Request" && message == "Unknown reason"
             ),
             "result = {:?}",
             result

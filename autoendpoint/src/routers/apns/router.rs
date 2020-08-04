@@ -4,13 +4,13 @@ use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::apns::settings::{ApnsChannel, ApnsSettings};
-use crate::routers::common::build_message_data;
+use crate::routers::common::{build_message_data, incr_error_metric, incr_success_metrics};
 use crate::routers::{Router, RouterError, RouterResponse};
 use a2::request::notification::LocalizedAlert;
 use a2::request::payload::{APSAlert, Payload, APS};
 use a2::{Endpoint, Error, NotificationOptions, Priority, Response};
 use async_trait::async_trait;
-use cadence::{Counted, StatsdClient};
+use cadence::StatsdClient;
 use futures::{StreamExt, TryStreamExt};
 use serde::Deserialize;
 use serde_json::{Number, Value};
@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use url::Url;
 use uuid::Uuid;
 
+/// Apple Push Notification Service router
 pub struct ApnsRouter {
     /// A map from release channel to APNS client
     clients: HashMap<String, ApnsClientData>,
@@ -109,40 +110,13 @@ impl ApnsRouter {
         }
     }
 
-    /// Update metrics after successfully routing the notification
-    fn incr_success_metrics(&self, notification: &Notification, channel: &str) {
-        self.metrics
-            .incr_with_tags("notification.bridge.sent")
-            .with_tag("platform", "apns")
-            .with_tag("application", channel)
-            .send();
-        self.metrics
-            .count_with_tags(
-                "notification.message_data",
-                notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
-            )
-            .with_tag("platform", "apns")
-            .with_tag("destination", "Direct")
-            .send();
-    }
-
-    /// Increment an error metric with some details
-    fn incr_error_metric(&self, reason: &str, channel: &str) {
-        self.metrics
-            .incr_with_tags("notification.bridge.connection.error")
-            .with_tag("platform", "apns")
-            .with_tag("application", channel)
-            .with_tag("reason", reason)
-            .send()
-    }
-
     /// Handle an error by logging, updating metrics, etc
     async fn handle_error(&self, error: a2::Error, uaid: Uuid, channel: &str) -> ApiError {
         match &error {
             a2::Error::ResponseError(response) => {
                 if response.code == 410 {
                     debug!("APNS recipient has been unregistered, removing user");
-                    self.incr_error_metric("unregistered", channel);
+                    incr_error_metric(&self.metrics, "apns", channel, "recipient_gone");
 
                     if let Err(e) = self.ddb.remove_user(uaid).await {
                         warn!("Error while removing user due to APNS 410: {}", e);
@@ -151,16 +125,16 @@ impl ApnsRouter {
                     return ApiError::from(ApnsError::Unregistered);
                 } else {
                     warn!("APNS error: {:?}", response.error);
-                    self.incr_error_metric("response_error", channel);
+                    incr_error_metric(&self.metrics, "apns", channel, "server_error");
                 }
             }
             a2::Error::ConnectionError => {
                 error!("APNS connection error");
-                self.incr_error_metric("connection", channel);
+                incr_error_metric(&self.metrics, "apns", channel, "connection_unavailable");
             }
             _ => {
                 warn!("Unknown error while sending APNS request: {}", error);
-                self.incr_error_metric("unknown", channel);
+                incr_error_metric(&self.metrics, "apns", channel, "unknown");
             }
         }
 
@@ -291,7 +265,7 @@ impl Router for ApnsRouter {
 
         // Sent successfully, update metrics and make response
         trace!("APNS request was successful");
-        self.incr_success_metrics(notification, channel);
+        incr_success_metrics(&self.metrics, "apns", channel, notification);
 
         Ok(RouterResponse::success(
             self.endpoint_url

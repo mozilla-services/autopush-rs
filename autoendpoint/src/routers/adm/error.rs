@@ -14,23 +14,17 @@ pub enum AdmError {
     #[error("Failed to decode the profile settings")]
     ProfileSettingsDecode(#[from] serde_json::Error),
 
-    #[error("Error while connecting to ADM")]
-    Connect(#[source] reqwest::Error),
-
     #[error("Unable to deserialize ADM response")]
     DeserializeResponse(#[source] reqwest::Error),
 
-    #[error("ADM authentication error")]
-    Authentication,
+    #[error("No registration ID found for user")]
+    NoRegistrationId,
 
-    #[error("ADM recipient no longer available")]
-    NotFound,
+    #[error("No ADM profile found for user")]
+    NoProfile,
 
-    #[error("ADM error, {status}: {reason}")]
-    Upstream { status: StatusCode, reason: String },
-
-    #[error("ADM request timed out")]
-    RequestTimeout,
+    #[error("User has invalid ADM profile")]
+    InvalidProfile,
 }
 
 impl AdmError {
@@ -39,36 +33,29 @@ impl AdmError {
         match self {
             AdmError::ParseUrl(_) => StatusCode::BAD_REQUEST,
 
-            AdmError::NotFound => StatusCode::GONE,
+            AdmError::NoRegistrationId | AdmError::NoProfile | AdmError::InvalidProfile => {
+                StatusCode::GONE
+            }
 
             AdmError::Http(_) | AdmError::ProfileSettingsDecode(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
 
-            AdmError::Connect(_)
-            | AdmError::DeserializeResponse(_)
-            | AdmError::Authentication
-            | AdmError::Upstream { .. }
-            | AdmError::RequestTimeout => StatusCode::BAD_GATEWAY,
+            AdmError::DeserializeResponse(_) => StatusCode::BAD_GATEWAY,
         }
     }
 
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            AdmError::NotFound => Some(106),
-
-            AdmError::Authentication => Some(901),
-
-            AdmError::Connect(_) => Some(902),
-
-            AdmError::RequestTimeout => Some(903),
+            AdmError::NoRegistrationId | AdmError::NoProfile | AdmError::InvalidProfile => {
+                Some(106)
+            }
 
             AdmError::Http(_)
             | AdmError::ParseUrl(_)
             | AdmError::ProfileSettingsDecode(_)
-            | AdmError::DeserializeResponse(_)
-            | AdmError::Upstream { .. } => None,
+            | AdmError::DeserializeResponse(_) => None,
         }
     }
 }

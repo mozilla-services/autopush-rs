@@ -91,6 +91,21 @@ pub enum RouterError {
          size. Converted buffer is too long by {0} bytes"
     )]
     TooMuchData(usize),
+
+    #[error("Bridge authentication error")]
+    Authentication,
+
+    #[error("Bridge request timeout")]
+    RequestTimeout,
+
+    #[error("Error while connecting to bridge service")]
+    Connect(#[source] reqwest::Error),
+
+    #[error("Bridge reports user was not found")]
+    NotFound,
+
+    #[error("Bridge error, {status}: {message}")]
+    Upstream { status: String, message: String },
 }
 
 impl RouterError {
@@ -100,9 +115,17 @@ impl RouterError {
             RouterError::Adm(e) => e.status(),
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => e.status(),
+
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
-            RouterError::UserWasDeleted => StatusCode::GONE,
+
+            RouterError::UserWasDeleted | RouterError::NotFound => StatusCode::GONE,
+
             RouterError::TooMuchData(_) => StatusCode::PAYLOAD_TOO_LARGE,
+
+            RouterError::Authentication
+            | RouterError::RequestTimeout
+            | RouterError::Connect(_)
+            | RouterError::Upstream { .. } => StatusCode::BAD_GATEWAY,
         }
     }
 
@@ -112,9 +135,22 @@ impl RouterError {
             RouterError::Adm(e) => e.errno(),
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
+
             RouterError::TooMuchData(_) => Some(104),
-            RouterError::SaveDb(_) => Some(201),
+
             RouterError::UserWasDeleted => Some(105),
+
+            RouterError::NotFound => Some(106),
+
+            RouterError::SaveDb(_) => Some(201),
+
+            RouterError::Authentication => Some(901),
+
+            RouterError::Connect(_) => Some(902),
+
+            RouterError::RequestTimeout => Some(903),
+
+            RouterError::Upstream { .. } => None,
         }
     }
 }
