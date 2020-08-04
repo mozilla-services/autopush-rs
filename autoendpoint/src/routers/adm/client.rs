@@ -193,10 +193,10 @@ pub mod tests {
     use std::collections::HashMap;
     use url::Url;
 
-    const REGISTRATION_ID: &str = "test-registration-id";
+    pub const REGISTRATION_ID: &str = "test-registration-id";
+    pub const CLIENT_ID: &str = "test-client-id";
+    pub const CLIENT_SECRET: &str = "test-client-secret";
     const ACCESS_TOKEN: &str = "test-access-token";
-    const CLIENT_ID: &str = "test-client-id";
-    const CLIENT_SECRET: &str = "test-client-secret";
 
     /// Mock the OAuth token endpoint to provide the access token
     pub fn mock_token_endpoint() -> mockito::Mock {
@@ -263,6 +263,7 @@ pub mod tests {
 
         let result = client.send(data, REGISTRATION_ID.to_string(), 42).await;
         assert!(result.is_ok(), "result = {:?}", result);
+        assert_eq!(result.unwrap(), "test-registration-id2");
         adm_mock.assert();
     }
 
