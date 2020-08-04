@@ -104,7 +104,6 @@ impl Router for AdmRouter {
         // Send the notification to ADM
         let client = self.clients.get(profile).ok_or(AdmError::InvalidProfile)?;
         trace!("Sending message to ADM: {:?}", message_data);
-
         let new_registration_id = match client
             .send(message_data, registration_id.to_string(), ttl)
             .await
@@ -123,6 +122,10 @@ impl Router for AdmRouter {
             }
         };
 
+        // Sent successfully, update metrics and make response
+        trace!("ADM request was successful");
+        incr_success_metrics(&self.metrics, "adm", profile, notification);
+
         // If the returned registration ID is different than the old one, update
         // the user.
         if new_registration_id != registration_id {
@@ -138,10 +141,6 @@ impl Router for AdmRouter {
 
             self.ddb.update_user(&user).await?;
         }
-
-        // Sent successfully, update metrics and make response
-        trace!("ADM request was successful");
-        incr_success_metrics(&self.metrics, "adm", profile, notification);
 
         Ok(RouterResponse::success(
             self.endpoint_url
