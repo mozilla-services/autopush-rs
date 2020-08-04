@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
     let settings = settings::Settings::with_env_and_config_file(&args.flag_config)?;
-    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+    logging::init_logging(!settings.human_logs);
     debug!("Starting up...");
 
     // Configure sentry error capture

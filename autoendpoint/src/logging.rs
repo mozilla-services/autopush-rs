@@ -1,12 +1,10 @@
 use std::io;
 
-use crate::error::ApiResult;
-
 use slog::{self, slog_o, Drain};
 use slog_mozlog_json::MozLogJson;
 
 // TODO: Merge back into common code? Removes hostname and adds envlogger
-pub fn init_logging(json: bool) -> ApiResult<()> {
+pub fn init_logging(json: bool) {
     let logger = if json {
         let drain = MozLogJson::new(io::stdout())
             .logger_name(format!(
@@ -33,7 +31,6 @@ pub fn init_logging(json: bool) -> ApiResult<()> {
     // https://github.com/slog-rs/slog/issues/169
     slog_scope::set_global_logger(logger).cancel_reset();
     slog_stdlog::init().ok();
-    Ok(())
 }
 
 pub fn reset_logging() {
