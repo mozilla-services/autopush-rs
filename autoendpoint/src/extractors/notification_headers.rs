@@ -16,6 +16,7 @@ lazy_static! {
         Regex::new(r"(?P<head>[0-9A-Za-z\-_]+)=+(?P<tail>[,;]|$)").unwrap();
 }
 
+/// 60 days
 const MAX_TTL: i64 = 60 * 60 * 24 * 60;
 
 /// Extractor and validator for notification headers
@@ -73,30 +74,31 @@ impl NotificationHeaders {
             .map(|ttl| min(ttl, MAX_TTL))
             .ok_or(ApiErrorKind::NoTTL)?;
         let topic = get_owned_header(req, "topic");
-        let encoding = get_owned_header(req, "content-encoding");
-        let encryption = get_owned_header(req, "encryption");
-        let encryption_key = get_owned_header(req, "encryption-key");
-        let crypto_key = get_owned_header(req, "crypto-key");
 
-        // Strip quotes and padding from some headers
-        let encryption = encryption.map(Self::strip_header);
-        let crypto_key = crypto_key.map(Self::strip_header);
-
-        let mut headers = NotificationHeaders {
-            ttl,
-            topic,
-            encoding,
-            encryption,
-            encryption_key,
-            crypto_key,
+        let headers = if has_data {
+            NotificationHeaders {
+                ttl,
+                topic,
+                encoding: get_owned_header(req, "content-encoding"),
+                encryption: get_owned_header(req, "encryption").map(Self::strip_header),
+                encryption_key: get_owned_header(req, "encryption-key"),
+                crypto_key: get_owned_header(req, "crypto-key").map(Self::strip_header),
+            }
+        } else {
+            // Messages without a body shouldn't pass along unnecessary headers
+            NotificationHeaders {
+                ttl,
+                topic,
+                encoding: None,
+                encryption: None,
+                encryption_key: None,
+                crypto_key: None,
+            }
         };
 
         // Validate encryption if there is a message body
         if has_data {
             headers.validate_encryption()?;
-        } else {
-            // Messages without a body shouldn't pass along unnecessary headers
-            headers.clear_encryption();
         }
 
         // Validate the other headers
@@ -110,14 +112,6 @@ impl NotificationHeaders {
     fn strip_header(header: String) -> String {
         let header = header.replace('"', "");
         STRIP_PADDING.replace_all(&header, "$head$tail").to_string()
-    }
-
-    /// Remove the encryption-related headers
-    fn clear_encryption(&mut self) {
-        self.encoding = None;
-        self.encryption = None;
-        self.encryption_key = None;
-        self.crypto_key = None;
     }
 
     /// Validate the encryption headers according to the various WebPush
