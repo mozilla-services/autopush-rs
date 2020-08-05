@@ -1,3 +1,4 @@
+use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routers::webpush::WebPushRouter;
@@ -51,6 +52,7 @@ pub struct Routers {
     webpush: WebPushRouter,
     fcm: Arc<FcmRouter>,
     apns: Arc<ApnsRouter>,
+    adm: Arc<AdmRouter>,
 }
 
 impl FromRequest for Routers {
@@ -68,10 +70,11 @@ impl FromRequest for Routers {
                 ddb: state.ddb.clone(),
                 metrics: state.metrics.clone(),
                 http: state.http.clone(),
-                endpoint_url: state.settings.endpoint_url.clone(),
+                endpoint_url: state.settings.endpoint_url(),
             },
             fcm: state.fcm_router.clone(),
             apns: state.apns_router.clone(),
+            adm: state.adm_router.clone(),
         })
     }
 }
@@ -83,7 +86,7 @@ impl Routers {
             RouterType::WebPush => &self.webpush,
             RouterType::FCM => self.fcm.as_ref(),
             RouterType::APNS => self.apns.as_ref(),
-            RouterType::ADM => unimplemented!(),
+            RouterType::ADM => self.adm.as_ref(),
         }
     }
 }

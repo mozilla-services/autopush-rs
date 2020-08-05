@@ -1,5 +1,6 @@
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
+use crate::routers::RouterError;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -51,7 +52,7 @@ impl FcmClient {
         data: HashMap<&'static str, String>,
         token: String,
         ttl: usize,
-    ) -> Result<(), FcmError> {
+    ) -> Result<(), RouterError> {
         // Build the FCM message
         let message = serde_json::json!({
             "message": {
@@ -62,7 +63,11 @@ impl FcmClient {
                 }
             }
         });
-        let access_token = self.auth.token(OAUTH_SCOPES).await?;
+        let access_token = self
+            .auth
+            .token(OAUTH_SCOPES)
+            .await
+            .map_err(FcmError::OAuthToken)?;
 
         // Make the request
         let response = self
@@ -76,27 +81,31 @@ impl FcmClient {
             .await
             .map_err(|e| {
                 if e.is_timeout() {
-                    FcmError::FcmRequestTimeout
+                    RouterError::RequestTimeout
                 } else {
-                    FcmError::FcmConnect(e)
+                    RouterError::Connect(e)
                 }
             })?;
 
         // Handle error
-        if let Err(e) = response.error_for_status_ref() {
+        let status = response.status();
+        if status.is_client_error() || status.is_server_error() {
             let data: FcmResponse = response
                 .json()
                 .await
                 .map_err(FcmError::DeserializeResponse)?;
 
-            return Err(match (e.status(), data.error) {
-                (Some(StatusCode::UNAUTHORIZED), _) => FcmError::FcmAuthentication,
-                (Some(StatusCode::NOT_FOUND), _) => FcmError::FcmNotFound,
-                (_, Some(error)) => FcmError::FcmUpstream {
+            return Err(match (status, data.error) {
+                (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
+                (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
+                (_, Some(error)) => RouterError::Upstream {
                     status: error.status,
                     message: error.message,
                 },
-                _ => FcmError::FcmUnknown,
+                (status, None) => RouterError::Upstream {
+                    status: status.to_string(),
+                    message: "Unknown reason".to_string(),
+                },
             });
         }
 
@@ -118,8 +127,8 @@ struct FcmErrorResponse {
 #[cfg(test)]
 pub mod tests {
     use crate::routers::fcm::client::FcmClient;
-    use crate::routers::fcm::error::FcmError;
     use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
+    use crate::routers::RouterError;
     use std::collections::HashMap;
     use std::io::Write;
     use std::path::PathBuf;
@@ -227,7 +236,7 @@ pub mod tests {
             .await;
         assert!(result.is_err());
         assert!(
-            matches!(result.as_ref().unwrap_err(), FcmError::FcmAuthentication),
+            matches!(result.as_ref().unwrap_err(), RouterError::Authentication),
             "result = {:?}",
             result
         );
@@ -249,7 +258,7 @@ pub mod tests {
             .await;
         assert!(result.is_err());
         assert!(
-            matches!(result.as_ref().unwrap_err(), FcmError::FcmNotFound),
+            matches!(result.as_ref().unwrap_err(), RouterError::NotFound),
             "result = {:?}",
             result
         );
@@ -273,7 +282,7 @@ pub mod tests {
         assert!(
             matches!(
                 result.as_ref().unwrap_err(),
-                FcmError::FcmUpstream { status, message }
+                RouterError::Upstream { status, message }
                     if status == "TEST_ERROR" && message == "test-message"
             ),
             "result = {:?}",
@@ -297,7 +306,11 @@ pub mod tests {
             .await;
         assert!(result.is_err());
         assert!(
-            matches!(result.as_ref().unwrap_err(), FcmError::FcmUnknown),
+            matches!(
+                result.as_ref().unwrap_err(),
+                RouterError::Upstream { status, message }
+                    if status == "400 Bad Request" && message == "Unknown reason"
+            ),
             "result = {:?}",
             result
         );

@@ -4,6 +4,7 @@ use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::middleware::sentry::sentry_middleware;
+use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routes::health::{
@@ -34,6 +35,7 @@ pub struct ServerState {
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
+    pub adm_router: Arc<AdmRouter>,
 }
 
 pub struct Server;
@@ -43,6 +45,7 @@ impl Server {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
+        let endpoint_url = settings.endpoint_url();
         let ddb = Box::new(DbClientImpl::new(
             metrics.clone(),
             settings.router_table_name.clone(),
@@ -52,7 +55,7 @@ impl Server {
         let fcm_router = Arc::new(
             FcmRouter::new(
                 settings.fcm.clone(),
-                settings.endpoint_url.clone(),
+                endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
                 ddb.clone(),
@@ -62,12 +65,19 @@ impl Server {
         let apns_router = Arc::new(
             ApnsRouter::new(
                 settings.apns.clone(),
-                settings.endpoint_url.clone(),
+                endpoint_url.clone(),
                 metrics.clone(),
                 ddb.clone(),
             )
             .await?,
         );
+        let adm_router = Arc::new(AdmRouter::new(
+            settings.adm.clone(),
+            endpoint_url,
+            http.clone(),
+            metrics.clone(),
+            ddb.clone(),
+        )?);
         let state = ServerState {
             metrics,
             settings,
@@ -76,6 +86,7 @@ impl Server {
             http,
             fcm_router,
             apns_router,
+            adm_router,
         };
 
         let server = HttpServer::new(move || {

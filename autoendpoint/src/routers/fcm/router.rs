@@ -1,18 +1,17 @@
 use crate::db::client::DbClient;
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
-use crate::routers::common::build_message_data;
+use crate::routers::common::{build_message_data, handle_error, incr_success_metrics};
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
-use cadence::{Counted, StatsdClient};
+use cadence::StatsdClient;
 use serde_json::Value;
 use std::collections::HashMap;
 use url::Url;
-use uuid::Uuid;
 
 /// 28 days
 const MAX_TTL: usize = 28 * 24 * 60 * 60;
@@ -67,67 +66,6 @@ impl FcmRouter {
 
         Ok(clients)
     }
-
-    /// Handle an error by logging, updating metrics, etc
-    async fn handle_error(&self, error: FcmError, uaid: Uuid) -> ApiError {
-        match &error {
-            FcmError::FcmAuthentication => {
-                error!("FCM authentication error");
-                self.incr_error_metric("authentication");
-            }
-            FcmError::FcmRequestTimeout => {
-                warn!("FCM timeout");
-                self.incr_error_metric("timeout");
-            }
-            FcmError::FcmConnect(e) => {
-                warn!("FCM unavailable: {}", e);
-                self.incr_error_metric("connection_unavailable");
-            }
-            FcmError::FcmNotFound => {
-                debug!("FCM recipient not found, removing user");
-                self.incr_error_metric("recipient_gone");
-
-                if let Err(e) = self.ddb.remove_user(uaid).await {
-                    warn!("Error while removing user due to FCM 404: {}", e);
-                }
-            }
-            FcmError::FcmUpstream { .. } | FcmError::FcmUnknown => {
-                warn!("{}", error.to_string());
-                self.incr_error_metric("server_error");
-            }
-            _ => {
-                warn!("Unknown error while sending FCM request: {}", error);
-                self.incr_error_metric("unknown");
-            }
-        }
-
-        ApiError::from(error)
-    }
-
-    /// Update metrics after successfully routing the notification
-    fn incr_success_metrics(&self, notification: &Notification) {
-        self.metrics
-            .incr_with_tags("notification.bridge.sent")
-            .with_tag("platform", "fcmv1")
-            .send();
-        self.metrics
-            .count_with_tags(
-                "notification.message_data",
-                notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
-            )
-            .with_tag("platform", "fcmv1")
-            .with_tag("destination", "Direct")
-            .send();
-    }
-
-    /// Increment `notification.bridge.error` with a reason
-    fn incr_error_metric(&self, reason: &str) {
-        self.metrics
-            .incr_with_tags("notification.bridge.error")
-            .with_tag("platform", "fcmv1")
-            .with_tag("reason", reason)
-            .send();
-    }
 }
 
 #[async_trait(?Send)]
@@ -179,14 +117,20 @@ impl Router for FcmRouter {
         let client = self.clients.get(app_id).ok_or(FcmError::InvalidAppId)?;
         trace!("Sending message to FCM: {:?}", message_data);
         if let Err(e) = client.send(message_data, fcm_token.to_string(), ttl).await {
-            return Err(self
-                .handle_error(e, notification.subscription.user.uaid)
-                .await);
+            return Err(handle_error(
+                e,
+                &self.metrics,
+                self.ddb.as_ref(),
+                "fcmv1",
+                app_id,
+                notification.subscription.user.uaid,
+            )
+            .await);
         }
 
         // Sent successfully, update metrics and make response
         trace!("FCM request was successful");
-        self.incr_success_metrics(notification);
+        incr_success_metrics(&self.metrics, "fcmv1", app_id, notification);
 
         Ok(RouterResponse::success(
             self.endpoint_url
@@ -381,7 +325,7 @@ mod tests {
         assert!(
             matches!(
                 result.as_ref().unwrap_err().kind,
-                ApiErrorKind::Router(RouterError::Fcm(FcmError::FcmNotFound))
+                ApiErrorKind::Router(RouterError::NotFound)
             ),
             "result = {:?}",
             result
