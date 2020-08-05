@@ -21,7 +21,9 @@ import ecdsa
 import psutil
 import requests
 import twisted.internet.base
-from autopush.db import DynamoDBResource, create_message_table, create_router_table
+from autopush.db import (
+    DynamoDBResource, create_message_table, create_router_table
+)
 from autopush.tests.test_integration import Client, _get_vapid
 from autopush.utils import base64url_encode
 from cryptography.fernet import Fernet
@@ -1131,4 +1133,3 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         assert result["broadcasts"] == {}
 
         yield self.shut_down(client)
-
