@@ -4,7 +4,7 @@ use slog::{self, slog_o, Drain};
 use slog_mozlog_json::MozLogJson;
 
 // TODO: Merge back into common code? Removes hostname and adds envlogger
-pub fn init_logging(json: bool) {
+pub fn init_logging(json: bool) -> Result<(), log::SetLoggerError> {
     let logger = if json {
         let drain = MozLogJson::new(io::stdout())
             .logger_name(format!(
@@ -30,7 +30,7 @@ pub fn init_logging(json: bool) {
     // the global logger during shutdown anyway:
     // https://github.com/slog-rs/slog/issues/169
     slog_scope::set_global_logger(logger).cancel_reset();
-    slog_stdlog::init().ok();
+    slog_stdlog::init()
 }
 
 pub fn reset_logging() {
