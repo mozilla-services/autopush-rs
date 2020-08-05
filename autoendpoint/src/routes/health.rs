@@ -1,10 +1,13 @@
 //! Health and Dockerflow routes
 
 use crate::db::error::DbResult;
+use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::ServerState;
 use actix_web::web::{Data, Json};
 use actix_web::HttpResponse;
+use reqwest::StatusCode;
 use serde_json::json;
+use std::thread;
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<ServerState>) -> Json<serde_json::Value> {
@@ -57,4 +60,19 @@ pub fn version_route() -> HttpResponse {
     HttpResponse::Ok()
         .content_type("application/json")
         .body(include_str!("../../../version.json"))
+}
+
+/// Handle the `/v1/err` route
+pub async fn log_check() -> ApiResult<String> {
+    error!(
+        "Test Critical Message";
+        "status_code" => StatusCode::IM_A_TEAPOT.as_u16(),
+        "errno" => 999,
+    );
+
+    thread::spawn(|| {
+        panic!("LogCheck");
+    });
+
+    Err(ApiErrorKind::LogCheck.into())
 }
