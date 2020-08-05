@@ -8,17 +8,15 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
-const DEFAULT_PORT: u16 = 8000;
 const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
-    pub debug: bool,
-    pub port: u16,
+    pub scheme: String,
     pub host: String,
-    pub endpoint_url: Url,
+    pub port: u16,
 
     pub router_table_name: String,
     pub message_table_name: String,
@@ -40,10 +38,9 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Settings {
         Settings {
-            debug: false,
-            port: DEFAULT_PORT,
+            scheme: "http".to_string(),
             host: "127.0.0.1".to_string(),
-            endpoint_url: Url::parse("http://127.0.0.1:8000/").unwrap(),
+            port: 8000,
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
             max_data_bytes: 4096,
@@ -118,5 +115,11 @@ impl Settings {
     /// Get the list of auth hash keys
     pub fn auth_keys(&self) -> Vec<&str> {
         Self::read_list_from_str(&self.auth_keys, "Invalid AUTOEND_AUTH_KEYS").collect()
+    }
+
+    /// Get the URL for this endpoint server
+    pub fn endpoint_url(&self) -> Url {
+        Url::parse(&format!("{}://{}:{}", self.scheme, self.host, self.port))
+            .expect("Invalid endpoint URL")
     }
 }

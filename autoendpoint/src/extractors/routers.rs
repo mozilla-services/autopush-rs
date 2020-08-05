@@ -70,7 +70,7 @@ impl FromRequest for Routers {
                 ddb: state.ddb.clone(),
                 metrics: state.metrics.clone(),
                 http: state.http.clone(),
-                endpoint_url: state.settings.endpoint_url.clone(),
+                endpoint_url: state.settings.endpoint_url(),
             },
             fcm: state.fcm_router.clone(),
             apns: state.apns_router.clone(),
