@@ -20,6 +20,7 @@ pub struct AdmClient {
 }
 
 /// Holds information about the cached access token
+#[derive(Default)]
 struct TokenInfo {
     token: String,
     expiration_time: u64,
@@ -53,11 +54,8 @@ impl AdmClient {
             profile,
             timeout: Duration::from_secs(settings.timeout as u64),
             http,
-            token_info: Mutex::new(TokenInfo {
-                // Dummy values to trigger a token fetch
-                token: "".to_string(),
-                expiration_time: 0,
-            }),
+            // The default TokenInfo has dummy values to trigger a token fetch
+            token_info: Mutex::default(),
         }
     }
 
