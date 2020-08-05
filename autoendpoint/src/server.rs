@@ -63,7 +63,7 @@ impl Server {
         let apns_router = Arc::new(
             ApnsRouter::new(
                 settings.apns.clone(),
-                endpoint_url,
+                endpoint_url.clone(),
                 metrics.clone(),
                 ddb.clone(),
             )
@@ -71,7 +71,7 @@ impl Server {
         );
         let adm_router = Arc::new(AdmRouter::new(
             settings.adm.clone(),
-            settings.endpoint_url.clone(),
+            endpoint_url,
             http.clone(),
             metrics.clone(),
             ddb.clone(),
