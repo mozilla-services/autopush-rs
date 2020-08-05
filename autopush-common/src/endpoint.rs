@@ -1,6 +1,7 @@
 use crate::errors::{Result, ResultExt};
 use fernet::MultiFernet;
 use openssl::hash;
+use url::Url;
 use uuid::Uuid;
 
 /// Create an v1 or v2 WebPush endpoint from the identifiers
@@ -15,7 +16,10 @@ pub fn make_endpoint(
     endpoint_url: &str,
     fernet: &MultiFernet,
 ) -> Result<String> {
-    let root = format!("{}/wpush/", endpoint_url);
+    let root = Url::parse(endpoint_url)
+        .chain_err(|| "endpoint_url is not a valid URL")?
+        .join("wpush/")
+        .chain_err(|| "Error creating URL")?;
     let mut base = uaid.as_bytes().to_vec();
     base.extend(chid.as_bytes());
 
@@ -26,9 +30,15 @@ pub fn make_endpoint(
             .chain_err(|| "Error creating message digest for key")?;
         base.extend(key_digest.iter());
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
-        Ok(format!("{}v2/{}", root, encrypted))
+        let final_url = root
+            .join(&format!("v2/{}", encrypted))
+            .chain_err(|| "Encrypted data is not URL-safe")?;
+        Ok(final_url.to_string())
     } else {
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
-        Ok(format!("{}v1/{}", root, encrypted))
+        let final_url = root
+            .join(&format!("v1/{}", encrypted))
+            .chain_err(|| "Encrypted data is not URL-safe")?;
+        Ok(final_url.to_string())
     }
 }
