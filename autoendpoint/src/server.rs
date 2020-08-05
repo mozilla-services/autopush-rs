@@ -41,6 +41,7 @@ impl Server {
         let metrics = metrics::metrics_from_opts(&settings)?;
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
+        let endpoint_url = settings.endpoint_url();
         let ddb = Box::new(DbClientImpl::new(
             metrics.clone(),
             settings.router_table_name.clone(),
@@ -50,7 +51,7 @@ impl Server {
         let fcm_router = Arc::new(
             FcmRouter::new(
                 settings.fcm.clone(),
-                settings.endpoint_url.clone(),
+                endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
                 ddb.clone(),
@@ -60,7 +61,7 @@ impl Server {
         let apns_router = Arc::new(
             ApnsRouter::new(
                 settings.apns.clone(),
-                settings.endpoint_url.clone(),
+                endpoint_url,
                 metrics.clone(),
                 ddb.clone(),
             )
