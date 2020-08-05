@@ -108,11 +108,11 @@ pub enum ApiErrorKind {
     #[error("Invalid message ID")]
     InvalidMessageId,
 
-    #[error("{0}")]
-    Internal(String),
-
     #[error("Invalid Authentication")]
     InvalidAuthentication,
+
+    #[error("ERROR:Success")]
+    LogCheck,
 }
 
 impl ApiErrorKind {
@@ -138,12 +138,13 @@ impl ApiErrorKind {
 
             ApiErrorKind::NoUser | ApiErrorKind::NoSubscription => StatusCode::GONE,
 
+            ApiErrorKind::LogCheck => StatusCode::IM_A_TEAPOT,
+
             ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::EndpointUrl(_)
-            | ApiErrorKind::RegistrationSecretHash(_)
-            | ApiErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            | ApiErrorKind::RegistrationSecretHash(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -178,7 +179,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::NoTTL => Some(111),
 
-            ApiErrorKind::Internal(_) => Some(999),
+            ApiErrorKind::LogCheck => Some(999),
 
             ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
@@ -228,30 +229,19 @@ where
     }
 }
 
-impl From<actix_web::error::BlockingError<ApiError>> for ApiError {
-    fn from(inner: actix_web::error::BlockingError<ApiError>) -> Self {
-        match inner {
-            actix_web::error::BlockingError::Error(e) => e,
-            actix_web::error::BlockingError::Canceled => {
-                ApiErrorKind::Internal("Db threadpool operation canceled".to_owned()).into()
-            }
-        }
-    }
-}
-
-impl From<ApiError> for HttpResponse {
-    fn from(inner: ApiError) -> Self {
-        ResponseError::error_response(&inner)
-    }
-}
-
 impl ResponseError for ApiError {
     fn status_code(&self) -> StatusCode {
         self.kind.status()
     }
 
     fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.kind.status()).json(self)
+        let mut builder = HttpResponse::build(self.kind.status());
+
+        if self.status_code() == 410 {
+            builder.set_header("Cache-Control", "max-age=86400");
+        }
+
+        builder.json(self)
     }
 }
 

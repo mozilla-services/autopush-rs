@@ -53,7 +53,7 @@ pub async fn register_uaid_route(
         &user.uaid,
         &channel_id,
         router_data_input.key.as_deref(),
-        state.settings.endpoint_url.as_str(),
+        state.settings.endpoint_url().as_str(),
         &state.fernet,
     )
     .map_err(ApiErrorKind::EndpointUrl)?;
@@ -140,7 +140,7 @@ pub async fn new_channel_route(
         &path_args.uaid,
         &channel_id,
         channel_data.key.as_deref(),
-        state.settings.endpoint_url.as_str(),
+        state.settings.endpoint_url().as_str(),
         &state.fernet,
     )
     .map_err(ApiErrorKind::EndpointUrl)?;

@@ -1,57 +1,47 @@
-"""Rust Connection Node Integration Test
-
-Differences from original integration test:
-
-1. Connection node metrics can't be counted from the Python side.
-2. Increment is only run after all messages are ack'd, rather than merely the
-   last message as production currently uses.
-
 """
+Rust Connection and Endpoint Node Integration Tests
+"""
+
+import copy
 import logging
 import os
 import signal
 import socket
 import subprocess
+
+import sys
 import time
 import uuid
-from contextlib import contextmanager
 from functools import wraps
 from threading import Event, Thread
 from unittest import SkipTest
 
-import autopush.tests
-import autopush.tests as ap_tests
 import bottle
 import ecdsa
 import psutil
 import requests
 import twisted.internet.base
-from autopush.config import AutopushConfig
-from autopush.db import (Message, get_month, has_connected_this_month,
-                         make_rotating_tablename)
-from autopush.logging import begin_or_register
-from autopush.main import (
-    ConnectionApplication,
-    EndpointApplication,
+from autopush.db import (
+    DynamoDBResource, create_message_table, create_router_table
 )
-from autopush.tests.support import _TestingLogObserver
-from autopush.tests.test_integration import (
-    Client,
-    _get_vapid,
-)
+from autopush.tests.test_integration import Client, _get_vapid
 from autopush.utils import base64url_encode
 from cryptography.fernet import Fernet
 from Queue import Empty, Queue
+from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet.threads import deferToThread
-from twisted.logger import globalLogPublisher
 from twisted.trial import unittest
 
 app = bottle.Bottle()
+logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 here_dir = os.path.abspath(os.path.dirname(__file__))
 root_dir = os.path.dirname(here_dir)
+
+DDB_JAR = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
+DDB_LIB_DIR = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
+DDB_PROCESS = None  # type: subprocess.Popen
 
 twisted.internet.base.DelayedCall.debug = True
 
@@ -65,13 +55,13 @@ ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
 MP_CONNECTION_PORT = 9052
 MP_ROUTER_PORT = 9072
-RP_CONNECTION_PORT = 9054
-RP_ROUTER_PORT = 9074
 
-CN_SERVER = None
-CN_MP_SERVER = None
+CN_SERVER = None  # type: subprocess.Popen
+CN_MP_SERVER = None  # type: subprocess.Popen
+EP_SERVER = None  # type: subprocess.Popen
 MOCK_SERVER_THREAD = None
 CN_QUEUES = []
+EP_QUEUES = []
 STRICT_LOG_COUNTS = True
 
 
@@ -89,6 +79,50 @@ MOCK_MP_TOKEN = "Bearer {}".format(uuid.uuid4().hex)
 MOCK_MP_POLLED = Event()
 MOCK_SENTRY_QUEUE = Queue()
 
+CONNECTION_CONFIG = dict(
+    hostname='localhost',
+    port=CONNECTION_PORT,
+    endpoint_hostname="localhost",
+    endpoint_port=ENDPOINT_PORT,
+    router_port=ROUTER_PORT,
+    endpoint_scheme='http',
+    statsd_host="",
+    router_tablename=ROUTER_TABLE,
+    message_tablename=MESSAGE_TABLE,
+    crypto_key="[{}]".format(CRYPTO_KEY),
+    auto_ping_interval=60.0,
+    auto_ping_timeout=10.0,
+    close_handshake_timeout=5,
+    max_connections=5000,
+    human_logs="true",
+    msg_limit=MSG_LIMIT,
+)
+
+MEGAPHONE_CONFIG = copy.deepcopy(CONNECTION_CONFIG)
+MEGAPHONE_CONFIG.update(
+    port=MP_CONNECTION_PORT,
+    endpoint_port=ENDPOINT_PORT,
+    router_port=MP_ROUTER_PORT,
+    auto_ping_interval=0.5,
+    auto_ping_timeout=10.0,
+    close_handshake_timeout=5,
+    max_connections=5000,
+    megaphone_api_url='http://localhost:{port}/v1/broadcasts'.format(
+        port=MOCK_SERVER_PORT
+    ),
+    megaphone_api_token=MOCK_MP_TOKEN,
+    megaphone_poll_interval=1,
+)
+
+ENDPOINT_CONFIG = dict(
+    host='localhost',
+    port=ENDPOINT_PORT,
+    router_table_name=ROUTER_TABLE,
+    message_table_name=MESSAGE_TABLE,
+    human_logs='true',
+    crypto_keys="[{}]".format(CRYPTO_KEY),
+)
+
 
 def enqueue_output(out, queue):
     for line in iter(out.readline, b''):
@@ -96,16 +130,8 @@ def enqueue_output(out, queue):
     out.close()
 
 
-def process_logs(testcase):
-    """Process (print) the testcase logs (in tearDown).
-
-    Ensures a maximum level of logs allowed to be emitted when running
-    w/ a `--release` mode connection node
-
-    """
-    conn_count = sum(queue.qsize() for queue in CN_QUEUES)
-
-    for queue in CN_QUEUES:
+def print_lines_in_queues(queues, prefix):
+    for queue in queues:
         is_empty = False
         while not is_empty:
             try:
@@ -113,21 +139,34 @@ def process_logs(testcase):
             except Empty:
                 is_empty = True
             else:
-                print(line)
+                sys.stdout.write(prefix + line)
+
+
+def process_logs(testcase):
+    """Process (print) the testcase logs (in tearDown).
+
+    Ensures a maximum level of logs allowed to be emitted when running
+    w/ a `--release` mode connection/endpoint node
+
+    """
+    conn_count = sum(queue.qsize() for queue in CN_QUEUES)
+    endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
+
+    print_lines_in_queues(CN_QUEUES, "AUTOPUSH: ")
+    print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
 
     if not STRICT_LOG_COUNTS:
         return
 
-    MSG = "endpoint node emitted excessive log statements, count: {} > max: {}"
-    endpoint_count = len(testcase.logs)
+    msg = "endpoint node emitted excessive log statements, count: {} > max: {}"
     # Give an extra to endpoint for potential startup log messages
     # (e.g. when running tests individually)
     max_endpoint_logs = testcase.max_endpoint_logs + 1
-    assert endpoint_count <= max_endpoint_logs, MSG.format(
+    assert endpoint_count <= max_endpoint_logs, msg.format(
         endpoint_count, max_endpoint_logs)
 
-    MSG = "conn node emitted excessive log statements, count: {} > max: {}"
-    assert conn_count <= testcase.max_conn_logs, MSG.format(
+    msg = "conn node emitted excessive log statements, count: {} > max: {}"
+    assert conn_count <= testcase.max_conn_logs, msg.format(
         conn_count, testcase.max_conn_logs)
 
 
@@ -170,166 +209,163 @@ class CustomClient(Client):
         self.ws.send("bad-data")
 
 
-def setup_module():
-    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
-        STRICT_LOG_COUNTS
-    ap_tests.ddb_jar = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
-    ap_tests.ddb_lib_dir = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
-    ap_tests.setUp()
-    logging.getLogger('boto').setLevel(logging.CRITICAL)
-    if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
-        raise SkipTest("Skipping integration tests")
+def kill_process(process):
+    # This kinda sucks, but its the only way to nuke the child procs
+    proc = psutil.Process(pid=process.pid)
+    child_procs = proc.children(recursive=True)
+    for p in [proc] + child_procs:
+        os.kill(p.pid, signal.SIGTERM)
+    process.wait()
 
-    conn_conf = dict(
-        hostname='localhost',
-        port=CONNECTION_PORT,
-        endpoint_hostname="localhost",
-        endpoint_port=ENDPOINT_PORT,
-        router_port=ROUTER_PORT,
-        endpoint_scheme='http',
-        statsd_host="",
-        router_tablename=ROUTER_TABLE,
-        message_tablename=MESSAGE_TABLE,
-        crypto_key="[{}]".format(CRYPTO_KEY),
-        auto_ping_interval=60.0,
-        auto_ping_timeout=10.0,
-        close_handshake_timeout=5,
-        max_connections=5000,
-        human_logs="true",
-        msg_limit=MSG_LIMIT,
-    )
-    rust_bin = root_dir + "/target/release/autopush_rs"
-    possible_paths = ["/target/debug/autopush_rs",
-                      "/autopush_rs/target/release/autopush_rs",
-                      "/autopush_rs/target/debug/autopush_rs"]
+
+def get_rust_binary_path(binary):
+    global STRICT_LOG_COUNTS
+
+    rust_bin = root_dir + "/target/release/{}".format(binary)
+    possible_paths = ["/target/debug/{}".format(binary),
+                      "/{0}/target/release/{0}".format(binary),
+                      "/{0}/target/debug/{0}".format(binary)]
     while possible_paths and not os.path.exists(rust_bin):  # pragma: nocover
         rust_bin = root_dir + possible_paths.pop(0)
 
     if 'release' not in rust_bin:
-        # disable checks for chatty debug mode autopush-rs
+        # disable checks for chatty debug mode binaries
         STRICT_LOG_COUNTS = False
 
-    # Setup the environment
-    for key, val in conn_conf.items():
-        key = "autopush_" + key
-        os.environ[key.upper()] = str(val)
+    return rust_bin
+
+
+def write_config_to_env(config, prefix):
+    for key, val in config.items():
+        new_key = prefix + key
+        os.environ[new_key.upper()] = str(val)
+
+
+def capture_output_to_queue(output_stream):
+    log_queue = Queue()
+    t = Thread(target=enqueue_output, args=(output_stream, log_queue))
+    t.daemon = True  # thread dies with the program
+    t.start()
+    return log_queue
+
+
+def setup_dynamodb():
+    global DDB_PROCESS
+
+    cmd = " ".join([
+        "java", "-Djava.library.path=%s" % DDB_LIB_DIR,
+        "-jar", DDB_JAR, "-sharedDb", "-inMemory"
+    ])
+    DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
+    if os.getenv("AWS_LOCAL_DYNAMODB") is None:
+        os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
+
+    # Setup the necessary tables
+    boto_resource = DynamoDBResource()
+    create_message_table(MESSAGE_TABLE, boto_resource=boto_resource)
+    create_router_table(ROUTER_TABLE, boto_resource=boto_resource)
+
+
+def setup_mock_server():
+    global MOCK_SERVER_THREAD
+
+    MOCK_SERVER_THREAD = Thread(
+        target=app.run,
+        kwargs=dict(port=MOCK_SERVER_PORT, debug=True)
+    )
+    MOCK_SERVER_THREAD.setDaemon(True)
+    MOCK_SERVER_THREAD.start()
+
     # Sentry API mock
     os.environ["SENTRY_DSN"] = 'http://foo:bar@localhost:{}/1'.format(
         MOCK_SERVER_PORT
     )
 
-    cmd = [rust_bin]
-    CN_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ,
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE,
-                                 universal_newlines=True)
+
+def setup_connection_server(connection_binary):
+    global CN_SERVER
+
+    write_config_to_env(CONNECTION_CONFIG, "autopush_")
+    cmd = [connection_binary]
+    CN_SERVER = subprocess.Popen(
+        cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, universal_newlines=True
+    )
+
     # Spin up the readers to dump the output from stdout/stderr
-    out_q = Queue()
-    t = Thread(target=enqueue_output, args=(CN_SERVER.stdout, out_q))
-    t.daemon = True  # thread dies with the program
-    t.start()
-    err_q = Queue()
-    t = Thread(target=enqueue_output, args=(CN_SERVER.stderr, err_q))
-    t.daemon = True  # thread dies with the program
-    t.start()
+    out_q = capture_output_to_queue(CN_SERVER.stdout)
+    err_q = capture_output_to_queue(CN_SERVER.stderr)
     CN_QUEUES.extend([out_q, err_q])
 
-    MOCK_SERVER_THREAD = Thread(
-        target=app.run,
-        kwargs=dict(
-            port=MOCK_SERVER_PORT, debug=True
-        ))
-    MOCK_SERVER_THREAD.setDaemon(True)
-    MOCK_SERVER_THREAD.start()
 
-    # Setup the megaphone connection node
-    megaphone_api_url = 'http://localhost:{port}/v1/broadcasts'.format(
-        port=MOCK_SERVER_PORT)
-    conn_conf.update(dict(
-        port=MP_CONNECTION_PORT,
-        endpoint_port=ENDPOINT_PORT,
-        router_port=MP_ROUTER_PORT,
-        auto_ping_interval=0.5,
-        auto_ping_timeout=10.0,
-        close_handshake_timeout=5,
-        max_connections=5000,
-        megaphone_api_url=megaphone_api_url,
-        megaphone_api_token=MOCK_MP_TOKEN,
-        megaphone_poll_interval=1,
-    ))
+def setup_megaphone_server(connection_binary):
+    global CN_MP_SERVER
 
-    # Setup the environment
-    for key, val in conn_conf.items():
-        key = "autopush_" + key
-        os.environ[key.upper()] = str(val)
-
-    cmd = [rust_bin]
+    write_config_to_env(MEGAPHONE_CONFIG, "autopush_")
+    cmd = [connection_binary]
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
+
+
+def setup_endpoint_server():
+    global EP_SERVER
+
+    # Set up environment
+    os.environ["RUST_LOG"] = "trace"
+    write_config_to_env(ENDPOINT_CONFIG, "autoend_")
+
+    # Run autoendpoint
+    cmd = [get_rust_binary_path("autoendpoint")]
+    EP_SERVER = subprocess.Popen(
+        cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, universal_newlines=True
+    )
+
+    # Spin up the readers to dump the output from stdout/stderr
+    out_q = capture_output_to_queue(EP_SERVER.stdout)
+    err_q = capture_output_to_queue(EP_SERVER.stderr)
+    EP_QUEUES.extend([out_q, err_q])
+
+
+def setup_module():
+    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
+        STRICT_LOG_COUNTS
+
+    if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
+        raise SkipTest("Skipping integration tests")
+
+    for name in ('boto', 'boto3', 'botocore'):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+
+    setup_dynamodb()
+
+    pool = reactor.getThreadPool()
+    pool.adjustPoolsize(minthreads=pool.max)
+
+    setup_mock_server()
+
+    connection_binary = get_rust_binary_path("autopush_rs")
+    setup_connection_server(connection_binary)
+    setup_megaphone_server(connection_binary)
+    setup_endpoint_server()
     time.sleep(2)
 
 
 def teardown_module():
-    global CN_SERVER, CN_MP_SERVER
-    ap_tests.tearDown()
-    # This kinda sucks, but its the only way to nuke the child procs
-    proc = psutil.Process(pid=CN_SERVER.pid)
-    child_procs = proc.children(recursive=True)
-    for p in [proc] + child_procs:
-        os.kill(p.pid, signal.SIGTERM)
-        CN_SERVER.wait()
-
-    proc = psutil.Process(pid=CN_MP_SERVER.pid)
-    child_procs = proc.children(recursive=True)
-    for p in [proc] + child_procs:
-        os.kill(p.pid, signal.SIGTERM)
-        CN_MP_SERVER.wait()
+    kill_process(DDB_PROCESS)
+    kill_process(CN_SERVER)
+    kill_process(CN_MP_SERVER)
+    kill_process(EP_SERVER)
 
 
 class TestRustWebPush(unittest.TestCase):
-    _endpoint_defaults = dict(
-        hostname='localhost',
-        port=ENDPOINT_PORT,
-        endpoint_port=ENDPOINT_PORT,
-        endpoint_scheme='http',
-        router_port=ROUTER_PORT,
-        statsd_host=None,
-        router_table=dict(tablename=ROUTER_TABLE),
-        message_table=dict(tablename=MESSAGE_TABLE),
-        use_cryptography=True,
-    )
-
     # Max log lines allowed to be emitted by each node type
     max_endpoint_logs = 8
     max_conn_logs = 3
-
-    def start_ep(self, ep_conf):
-        # Endpoint HTTP router
-        self.ep = ep = EndpointApplication(
-            ep_conf,
-            resource=autopush.tests.boto_resource
-        )
-        ep.setup(rotate_tables=False)
-        ep.startService()
-        self.addCleanup(ep.stopService)
-
-    def setUp(self):
-        self.logs = _TestingLogObserver()
-        begin_or_register(self.logs)
-        self.addCleanup(globalLogPublisher.removeObserver, self.logs)
-
-        self._ep_conf = AutopushConfig(
-            crypto_key=CRYPTO_KEY,
-            **self.endpoint_kwargs()
-        )
-        self.start_ep(self._ep_conf)
 
     def tearDown(self):
         process_logs(self)
         while not MOCK_SENTRY_QUEUE.empty():
             MOCK_SENTRY_QUEUE.get_nowait()
-
-    def endpoint_kwargs(self):
-        return self._endpoint_defaults
 
     @inlineCallbacks
     def quick_register(self, sslcontext=None):
@@ -344,12 +380,6 @@ class TestRustWebPush(unittest.TestCase):
     def shut_down(self, client=None):
         if client:
             yield client.disconnect()
-
-    @contextmanager
-    def legacy_endpoint(self):
-        self.ep.conf._notification_legacy = True
-        yield
-        self.ep.conf._notification_legacy = False
 
     @property
     def _ws_url(self):
@@ -476,7 +506,6 @@ class TestRustWebPush(unittest.TestCase):
         assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
-        assert self.logs.logged_ci(lambda ci: 'router_key' in ci)
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -610,37 +639,6 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
-    def test_multiple_legacy_delivery_with_single_ack(self):
-        data = str(uuid.uuid4())
-        data2 = str(uuid.uuid4())
-        client = yield self.quick_register()
-        yield client.disconnect()
-        assert client.channels
-        with self.legacy_endpoint():
-            yield client.send_notification(data=data)
-            yield client.send_notification(data=data2)
-        yield client.connect()
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [data, data2])
-        result = yield client.get_notification()
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [data, data2])
-        yield client.ack(result["channelID"], result["version"])
-
-        yield client.disconnect()
-        yield client.connect()
-        yield client.hello()
-        result = yield client.get_notification()
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [data, data2])
-        assert result["messageType"] == "notification"
-        result = yield client.get_notification(timeout=0.5)
-        assert result is None
-        yield self.shut_down(client)
-
-    @inlineCallbacks
     def test_topic_expired(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -766,7 +764,7 @@ class TestRustWebPush(unittest.TestCase):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
-        yield client.send_notification(data=data, ttl=0, status=201)
+        yield client.send_notification(data=data, ttl=0)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification(timeout=0.5)
@@ -1001,75 +999,11 @@ class TestRustWebPush(unittest.TestCase):
 
 
 class TestRustWebPushBroadcast(unittest.TestCase):
-    _endpoint_defaults = dict(
-        hostname='localhost',
-        port=ENDPOINT_PORT,
-        endpoint_port=ENDPOINT_PORT,
-        endpoint_scheme='http',
-        router_port=MP_ROUTER_PORT,
-        statsd_host=None,
-        router_table=dict(tablename=ROUTER_TABLE),
-        message_table=dict(tablename=MESSAGE_TABLE),
-        use_cryptography=True,
-    )
-
-    _conn_defaults = dict(
-        hostname='localhost',
-        port=RP_CONNECTION_PORT,
-        endpoint_port=ENDPOINT_PORT,
-        router_port=RP_ROUTER_PORT,
-        endpoint_scheme='http',
-        statsd_host=None,
-        router_table=dict(tablename=ROUTER_TABLE),
-        message_table=dict(tablename=MESSAGE_TABLE),
-        use_cryptography=True,
-        human_logs=False,
-    )
-
     max_endpoint_logs = 4
     max_conn_logs = 1
 
-    def start_ep(self, ep_conf):
-        # Endpoint HTTP router
-        self.ep = ep = EndpointApplication(
-            ep_conf,
-            resource=autopush.tests.boto_resource
-        )
-        ep.setup(rotate_tables=False)
-        ep.startService()
-        self.addCleanup(ep.stopService)
-
-    def setUp(self):
-        self.logs = _TestingLogObserver()
-        begin_or_register(self.logs)
-        self.addCleanup(globalLogPublisher.removeObserver, self.logs)
-
-        self._ep_conf = AutopushConfig(
-            crypto_key=CRYPTO_KEY,
-            **self.endpoint_kwargs()
-        )
-
-        self.start_ep(self._ep_conf)
-
-        # Create a Python connection application for accessing the db
-        self._conn_conf = AutopushConfig(
-            crypto_key=CRYPTO_KEY,
-            **self.conn_kwargs()
-        )
-        self.conn = conn = ConnectionApplication(
-            self._conn_conf,
-            resource=autopush.tests.boto_resource,
-        )
-        conn.setup(rotate_tables=True)
-
     def tearDown(self):
         process_logs(self)
-
-    def endpoint_kwargs(self):
-        return self._endpoint_defaults
-
-    def conn_kwargs(self):
-        return self._conn_defaults
 
     @inlineCallbacks
     def quick_register(self, sslcontext=None, connection_port=None):
@@ -1085,12 +1019,6 @@ class TestRustWebPushBroadcast(unittest.TestCase):
     def shut_down(self, client=None):
         if client:
             yield client.disconnect()
-
-    @contextmanager
-    def legacy_endpoint(self):
-        self.ep.conf._notification_legacy = True
-        yield
-        self.ep.conf._notification_legacy = False
 
     @property
     def _ws_url(self):
@@ -1204,575 +1132,4 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    def test_webpush_monthly_rotation(self):
-        client = yield self.quick_register()
-        yield client.disconnect()
-
-        # Move the client back one month to the past
-        last_month = make_rotating_tablename(
-            prefix=self.conn.conf.message_table.tablename, delta=-1)
-        lm_message = Message(last_month, boto_resource=self.conn.db.resource)
-        yield deferToThread(
-            self.conn.db.router.update_message_month,
-            client.uaid,
-            last_month,
-        )
-
-        # Verify the move
-        c = yield deferToThread(self.conn.db.router.get_uaid,
-                                client.uaid)
-        assert c["current_month"] == last_month
-
-        # Verify last_connect is current, then move that back
-        assert has_connected_this_month(c)
-        today = get_month(delta=-1)
-        last_connect = int("%s%s020001" % (today.year,
-                                           str(today.month).zfill(2)))
-
-        yield deferToThread(
-            self.conn.db.router._update_last_connect,
-            client.uaid,
-            last_connect)
-        c = yield deferToThread(self.conn.db.router.get_uaid,
-                                client.uaid)
-        assert has_connected_this_month(c) is False
-
-        # Move the clients channels back one month
-        exists, chans = yield deferToThread(
-            self.conn.db.message.all_channels,
-            client.uaid
-        )
-        assert exists is True
-        assert len(chans) == 1
-        yield deferToThread(
-            lm_message.save_channels,
-            client.uaid,
-            chans,
-        )
-
-        # Remove the channels entry entirely from this month
-        yield deferToThread(
-            self.conn.db.message.table.delete_item,
-            Key={'uaid': client.uaid, 'chidmessageid': ' '}
-        )
-
-        # Verify the channel is gone
-        exists, chans = yield deferToThread(
-            self.conn.db.message.all_channels,
-            client.uaid,
-        )
-        assert exists is False
-        assert len(chans) == 0
-
-        # Send in a notification, verify it landed in last months notification
-        # table
-        data = uuid.uuid4().hex
-        yield client.send_notification(data=data)
-        ts, notifs = yield deferToThread(lm_message.fetch_timestamp_messages,
-                                         uuid.UUID(client.uaid),
-                                         " ")
-        assert len(notifs) == 1
-
-        # Connect the client, verify the migration
-        yield client.connect()
-        yield client.hello()
-
-        # Pull down the notification
-        result = yield client.get_notification()
-        chan = client.channels.keys()[0]
-        assert result is not None
-        assert chan == result["channelID"]
-
-        # Acknowledge the notification, which triggers the migration
-        yield client.ack(chan, result["version"])
-
-        # Wait up to 4 seconds for the table rotation to occur
-        start = time.time()
-        while time.time()-start < 4:
-            c = yield deferToThread(
-                self.conn.db.router.get_uaid,
-                client.uaid)
-            if c["current_month"] == self.conn.db.current_msg_month:
-                break
-            else:
-                yield deferToThread(time.sleep, 0.2)
-
-        # Verify the month update in the router table
-        c = yield deferToThread(
-            self.conn.db.router.get_uaid,
-            client.uaid)
-        assert c["current_month"] == self.conn.db.current_msg_month
-
-        # Verify the client moved last_connect
-        assert has_connected_this_month(c) is True
-
-        # Verify the channels were moved
-        exists, chans = yield deferToThread(
-            self.conn.db.message.all_channels,
-            client.uaid
-        )
-        assert exists is True
-        assert len(chans) == 1
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    def test_webpush_monthly_rotation_prior_record_exists(self):
-        client = yield self.quick_register()
-        yield client.disconnect()
-
-        # Move the client back one month to the past
-        last_month = make_rotating_tablename(
-            prefix=self.conn.conf.message_table.tablename, delta=-1)
-        lm_message = Message(last_month,
-                             boto_resource=autopush.tests.boto_resource)
-        yield deferToThread(
-            self.conn.db.router.update_message_month,
-            client.uaid,
-            last_month,
-        )
-
-        # Verify the move
-        c = yield deferToThread(self.conn.db.router.get_uaid,
-                                client.uaid)
-        assert c["current_month"] == last_month
-
-        # Verify last_connect is current, then move that back
-        assert has_connected_this_month(c)
-        today = get_month(delta=-1)
-        yield deferToThread(
-            self.conn.db.router._update_last_connect,
-            client.uaid,
-            int("%s%s020001" % (today.year, str(today.month).zfill(2))),
-        )
-        c = yield deferToThread(self.conn.db.router.get_uaid, client.uaid)
-        assert has_connected_this_month(c) is False
-
-        # Move the clients channels back one month
-        exists, chans = yield deferToThread(
-            self.conn.db.message.all_channels,
-            client.uaid,
-        )
-        assert exists is True
-        assert len(chans) == 1
-        yield deferToThread(
-            lm_message.save_channels,
-            client.uaid,
-            chans,
-        )
-
-        # Send in a notification, verify it landed in last months notification
-        # table
-        data = uuid.uuid4().hex
-        yield client.send_notification(data=data)
-        _, notifs = yield deferToThread(lm_message.fetch_timestamp_messages,
-                                        uuid.UUID(client.uaid),
-                                        " ")
-        assert len(notifs) == 1
-
-        # Connect the client, verify the migration
-        yield client.connect()
-        yield client.hello()
-
-        # Pull down the notification
-        result = yield client.get_notification()
-        chan = client.channels.keys()[0]
-        assert result is not None
-        assert chan == result["channelID"]
-
-        # Acknowledge the notification, which triggers the migration
-        yield client.ack(chan, result["version"])
-
-        # Wait up to 4 seconds for the table rotation to occur
-        start = time.time()
-        while time.time()-start < 4:
-            c = yield deferToThread(
-                self.conn.db.router.get_uaid,
-                client.uaid)
-            if c["current_month"] == self.conn.db.current_msg_month:
-                break
-            else:
-                yield deferToThread(time.sleep, 0.2)
-
-        # Verify the month update in the router table
-        c = yield deferToThread(self.conn.db.router.get_uaid, client.uaid)
-        assert c["current_month"] == self.conn.db.current_msg_month
-
-        # Verify the client moved last_connect
-        assert has_connected_this_month(c) is True
-
-        # Verify the channels were moved
-        exists, chans = yield deferToThread(
-            self.conn.db.message.all_channels,
-            client.uaid
-        )
-        assert exists is True
-        assert len(chans) == 1
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    def test_webpush_monthly_rotation_no_channels(self):
-        client = Client("ws://localhost:{}/".format(MP_CONNECTION_PORT))
-        yield client.connect()
-        yield client.hello()
-        yield client.disconnect()
-
-        # Move the client back one month to the past
-        last_month = make_rotating_tablename(
-            prefix=self.conn.conf.message_table.tablename, delta=-1)
-        yield deferToThread(
-            self.conn.db.router.update_message_month,
-            client.uaid,
-            last_month
-        )
-
-        # Verify the move
-        c = yield deferToThread(self.conn.db.router.get_uaid,
-                                client.uaid
-                                )
-        assert c["current_month"] == last_month
-
-        # Verify there's no channels
-        exists, chans = yield deferToThread(
-            self.conn.db.message.all_channels,
-            client.uaid,
-        )
-        assert exists is False
-        assert len(chans) == 0
-
-        # Connect the client, verify the migration
-        yield client.connect()
-        yield client.hello()
-
-        # Wait up to 2 seconds for the table rotation to occur
-        start = time.time()
-        while time.time()-start < 2:
-            c = yield deferToThread(
-                self.conn.db.router.get_uaid,
-                client.uaid,
-            )
-            if c["current_month"] == self.conn.db.current_msg_month:
-                break
-            else:
-                yield deferToThread(time.sleep, 0.2)
-
-        # Verify the month update in the router table
-        c = yield deferToThread(self.conn.db.router.get_uaid,
-                                client.uaid)
-        assert c["current_month"] == self.conn.db.current_msg_month
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    def test_webpush_monthly_rotation_old_user_dropped(self):
-        client = yield self.quick_register()
-        uaid = client.uaid
-        yield client.disconnect()
-
-        # Move the client back 2 months to the past
-        old_month = make_rotating_tablename(
-            prefix=self.conn.conf.message_table.tablename, delta=-3)
-        yield deferToThread(
-            self.conn.db.router.update_message_month,
-            client.uaid,
-            old_month
-        )
-        _ = Message(old_month, boto_resource=autopush.tests.boto_resource)
-
-        # Verify the move
-        c = yield deferToThread(self.conn.db.router.get_uaid, client.uaid)
-        assert c["current_month"] == old_month
-
-        # Connect the client and verify its uaid was dropped
-        yield client.connect()
-        yield client.hello()
-        assert client.uaid != uaid
-
-
-class TestRustAndPythonWebPush(unittest.TestCase):
-    _endpoint_defaults = dict(
-        hostname='localhost',
-        port=ENDPOINT_PORT,
-        endpoint_port=ENDPOINT_PORT,
-        endpoint_scheme='http',
-        router_port=RP_ROUTER_PORT,
-        statsd_host=None,
-        router_table=dict(tablename=ROUTER_TABLE),
-        message_table=dict(tablename=MESSAGE_TABLE),
-        use_cryptography=True,
-    )
-
-    _conn_defaults = dict(
-        hostname='localhost',
-        port=RP_CONNECTION_PORT,
-        endpoint_port=ENDPOINT_PORT,
-        router_port=RP_ROUTER_PORT,
-        endpoint_scheme='http',
-        statsd_host=None,
-        router_table=dict(tablename=ROUTER_TABLE),
-        message_table=dict(tablename=MESSAGE_TABLE),
-        use_cryptography=True,
-        human_logs=False,
-    )
-
-    max_endpoint_logs = 1
-    max_conn_logs = 3
-
-    def start_ep(self, ep_conf):
-        # Endpoint HTTP router
-        self.ep = ep = EndpointApplication(
-            ep_conf,
-            resource=autopush.tests.boto_resource
-        )
-        ep.setup(rotate_tables=False)
-        ep.startService()
-        self.addCleanup(ep.stopService)
-
-    def start_conn(self, conn_conf):
-        # Startup only the Python connection application as we will use
-        # the module global Rust one as well
-        self.conn = conn = ConnectionApplication(
-            conn_conf,
-            resource=autopush.tests.boto_resource,
-        )
-        conn.setup(rotate_tables=False)
-        conn.startService()
-        self.addCleanup(conn.stopService)
-
-    def setUp(self):
-        self.logs = _TestingLogObserver()
-        begin_or_register(self.logs)
-        self.addCleanup(globalLogPublisher.removeObserver, self.logs)
-
-        self._ep_conf = AutopushConfig(
-            crypto_key=CRYPTO_KEY,
-            **self.endpoint_kwargs()
-        )
-        self._conn_conf = AutopushConfig(
-            crypto_key=CRYPTO_KEY,
-            **self.conn_kwargs()
-        )
-
-        self.start_ep(self._ep_conf)
-        self.start_conn(self._conn_conf)
-
-    def tearDown(self):
-        process_logs(self)
-
-    def endpoint_kwargs(self):
-        return self._endpoint_defaults
-
-    def conn_kwargs(self):
-        return self._conn_defaults
-
-    @inlineCallbacks
-    def quick_register(self, sslcontext=None, connection_port=None):
-        conn_port = connection_port or RP_CONNECTION_PORT
-        client = Client("ws://localhost:{}/".format(conn_port),
-                        sslcontext=sslcontext)
-        yield client.connect()
-        yield client.hello()
-        yield client.register()
-        returnValue(client)
-
-    @inlineCallbacks
-    def shut_down(self, client=None):
-        if client:
-            yield client.disconnect()
-
-    @inlineCallbacks
-    @max_logs(endpoint=41)
-    def test_cross_topic_no_delivery_on_reconnect(self):
-        data = str(uuid.uuid4())
-        client = yield self.quick_register(connection_port=CONNECTION_PORT)
-        yield client.disconnect()
-        yield client.send_notification(data=data, topic="Inbox")
-        yield client.connect(connection_port=RP_CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(timeout=10)
-        # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace(
-            '"', '').rstrip('=')
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(data)
-        assert result["messageType"] == "notification"
-        yield client.ack(result["channelID"], result["version"])
-        yield client.disconnect()
-        yield client.connect(connection_port=CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(0.5)
-        assert result is None
-        yield client.disconnect()
-        yield client.connect(connection_port=RP_CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(0.5)
-        assert result is None
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    @max_logs(endpoint=41)
-    def test_cross_topic_no_delivery_on_reconnect_reverse(self):
-        data = str(uuid.uuid4())
-        client = yield self.quick_register()
-        yield client.disconnect()
-        yield client.send_notification(data=data, topic="Inbox")
-        yield client.connect(connection_port=CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(timeout=10)
-        # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace(
-            '"', '').rstrip('=')
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(data)
-        assert result["messageType"] == "notification"
-        yield client.ack(result["channelID"], result["version"])
-        yield client.disconnect()
-        yield client.connect(connection_port=RP_CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(0.5)
-        assert result is None
-        yield client.disconnect()
-        yield client.connect(connection_port=CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(0.5)
-        assert result is None
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    @max_logs(endpoint=10, conn=4)
-    def test_cross_multiple_delivery_with_single_ack(self):
-        data = str(uuid.uuid4())
-        data2 = str(uuid.uuid4())
-        client = yield self.quick_register(connection_port=CONNECTION_PORT)
-        yield client.disconnect()
-        assert client.channels
-        yield client.send_notification(data=data)
-        yield client.send_notification(data=data2)
-        yield client.connect()
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] == base64url_encode(data)
-        result2 = yield client.get_notification(timeout=0.5)
-        assert result2 != {}
-        assert result2["data"] == base64url_encode(data2)
-        yield client.ack(result["channelID"], result["version"])
-
-        yield client.disconnect()
-        yield client.connect(connection_port=CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] == base64url_encode(data)
-        assert result["messageType"] == "notification"
-        result2 = yield client.get_notification()
-        assert result2 != {}
-        assert result2["data"] == base64url_encode(data2)
-        yield client.ack(result["channelID"], result["version"])
-        yield client.ack(result2["channelID"], result2["version"])
-
-        # Verify no messages are delivered
-        yield client.disconnect()
-        yield client.connect()
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result is None
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    @max_logs(endpoint=45)
-    def test_cross_multiple_delivery_with_single_ack_reverse(self):
-        data = str(uuid.uuid4())
-        data2 = str(uuid.uuid4())
-        client = yield self.quick_register()
-        yield client.disconnect()
-        assert client.channels
-        yield client.send_notification(data=data)
-        yield client.send_notification(data=data2)
-        yield client.connect(connection_port=CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] == base64url_encode(data)
-        result2 = yield client.get_notification(timeout=0.5)
-        assert result2 != {}
-        assert result2["data"] == base64url_encode(data2)
-        yield client.ack(result["channelID"], result["version"])
-
-        yield client.disconnect()
-        yield client.connect()
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] == base64url_encode(data)
-        assert result["messageType"] == "notification"
-        result2 = yield client.get_notification()
-        assert result2 != {}
-        assert result2["data"] == base64url_encode(data2)
-        yield client.ack(result["channelID"], result["version"])
-        yield client.ack(result2["channelID"], result2["version"])
-
-        # Verify no messages are delivered
-        yield client.disconnect()
-        yield client.connect(connection_port=CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result is None
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    @max_logs(endpoint=43)
-    def test_cross_multiple_delivery_with_multiple_ack(self):
-        data = str(uuid.uuid4())
-        data2 = str(uuid.uuid4())
-        client = yield self.quick_register()
-        yield client.disconnect()
-        assert client.channels
-        yield client.send_notification(data=data)
-        yield client.send_notification(data=data2)
-        yield client.connect(connection_port=CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [data, data2])
-        result2 = yield client.get_notification()
-        assert result2 != {}
-        assert result2["data"] in map(base64url_encode, [data, data2])
-        yield client.ack(result2["channelID"], result2["version"])
-        yield client.ack(result["channelID"], result["version"])
-
-        yield client.disconnect()
-        yield client.connect()
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result is None
-        yield self.shut_down(client)
-
-    @inlineCallbacks
-    @max_logs(endpoint=10)
-    def test_cross_multiple_delivery_with_multiple_ack_reverse(self):
-        data = str(uuid.uuid4())
-        data2 = str(uuid.uuid4())
-        client = yield self.quick_register(connection_port=CONNECTION_PORT)
-        yield client.disconnect()
-        assert client.channels
-        yield client.send_notification(data=data)
-        yield client.send_notification(data=data2)
-        yield client.connect()
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [data, data2])
-        result2 = yield client.get_notification()
-        assert result2 != {}
-        assert result2["data"] in map(base64url_encode, [data, data2])
-        yield client.ack(result2["channelID"], result2["version"])
-        yield client.ack(result["channelID"], result["version"])
-
-        yield client.disconnect()
-        yield client.connect(connection_port=CONNECTION_PORT)
-        yield client.hello()
-        result = yield client.get_notification(timeout=0.5)
-        assert result is None
         yield self.shut_down(client)

@@ -14,9 +14,6 @@ pub enum FcmError {
     #[error("Error while retrieving an OAuth token")]
     OAuthToken(#[from] yup_oauth2::Error),
 
-    #[error("Error while connecting to FCM")]
-    FcmConnect(#[source] reqwest::Error),
-
     #[error("Unable to deserialize FCM response")]
     DeserializeResponse(#[source] reqwest::Error),
 
@@ -28,65 +25,33 @@ pub enum FcmError {
 
     #[error("User has invalid app ID")]
     InvalidAppId,
-
-    #[error("FCM authentication error")]
-    FcmAuthentication,
-
-    #[error("FCM recipient no longer available")]
-    FcmNotFound,
-
-    #[error("FCM request timed out")]
-    FcmRequestTimeout,
-
-    #[error("FCM error, {status}: {message}")]
-    FcmUpstream { status: String, message: String },
-
-    #[error("Unknown FCM error")]
-    FcmUnknown,
 }
 
 impl FcmError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            FcmError::NoRegistrationToken
-            | FcmError::NoAppId
-            | FcmError::InvalidAppId
-            | FcmError::FcmNotFound => StatusCode::GONE,
+            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId => {
+                StatusCode::GONE
+            }
 
             FcmError::CredentialDecode(_)
             | FcmError::OAuthClientBuild(_)
             | FcmError::OAuthToken(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
-            FcmError::FcmConnect(_)
-            | FcmError::DeserializeResponse(_)
-            | FcmError::FcmAuthentication
-            | FcmError::FcmRequestTimeout
-            | FcmError::FcmUpstream { .. }
-            | FcmError::FcmUnknown => StatusCode::BAD_GATEWAY,
+            FcmError::DeserializeResponse(_) => StatusCode::BAD_GATEWAY,
         }
     }
 
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            FcmError::NoRegistrationToken
-            | FcmError::NoAppId
-            | FcmError::InvalidAppId
-            | FcmError::FcmNotFound => Some(106),
-
-            FcmError::FcmAuthentication => Some(901),
-
-            FcmError::FcmConnect(_) => Some(902),
-
-            FcmError::FcmRequestTimeout => Some(903),
+            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId => Some(106),
 
             FcmError::CredentialDecode(_)
             | FcmError::OAuthClientBuild(_)
             | FcmError::OAuthToken(_)
-            | FcmError::DeserializeResponse(_)
-            | FcmError::FcmUpstream { .. }
-            | FcmError::FcmUnknown => None,
+            | FcmError::DeserializeResponse(_) => None,
         }
     }
 }

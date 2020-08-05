@@ -1,8 +1,11 @@
-use crate::error::ApiResult;
+use crate::db::client::DbClient;
+use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::routers::RouterError;
 use autopush_common::util::InsertOpt;
+use cadence::{Counted, StatsdClient};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Convert a notification into a WebPush message
 pub fn build_message_data(
@@ -28,6 +31,82 @@ pub fn build_message_data(
     }
 
     Ok(message_data)
+}
+
+/// Handle a bridge error by logging, updating metrics, etc
+pub async fn handle_error(
+    error: RouterError,
+    metrics: &StatsdClient,
+    ddb: &dyn DbClient,
+    platform: &str,
+    app_id: &str,
+    uaid: Uuid,
+) -> ApiError {
+    match &error {
+        RouterError::Authentication => {
+            error!("Bridge authentication error");
+            incr_error_metric(metrics, platform, app_id, "authentication");
+        }
+        RouterError::RequestTimeout => {
+            warn!("Bridge timeout");
+            incr_error_metric(metrics, platform, app_id, "timeout");
+        }
+        RouterError::Connect(e) => {
+            warn!("Bridge unavailable: {}", e);
+            incr_error_metric(metrics, platform, app_id, "connection_unavailable");
+        }
+        RouterError::NotFound => {
+            debug!("Bridge recipient not found, removing user");
+            incr_error_metric(metrics, platform, app_id, "recipient_gone");
+
+            if let Err(e) = ddb.remove_user(uaid).await {
+                warn!("Error while removing user due to bridge not_found: {}", e);
+            }
+        }
+        RouterError::Upstream { .. } => {
+            warn!("{}", error.to_string());
+            incr_error_metric(metrics, platform, app_id, "server_error");
+        }
+        _ => {
+            warn!("Unknown error while sending bridge request: {}", error);
+            incr_error_metric(metrics, platform, app_id, "unknown");
+        }
+    }
+
+    ApiError::from(error)
+}
+
+/// Increment `notification.bridge.error`
+pub fn incr_error_metric(metrics: &StatsdClient, platform: &str, app_id: &str, reason: &str) {
+    metrics
+        .incr_with_tags("notification.bridge.error")
+        .with_tag("platform", platform)
+        .with_tag("app_id", app_id)
+        .with_tag("reason", reason)
+        .send();
+}
+
+/// Update metrics after successfully routing the notification
+pub fn incr_success_metrics(
+    metrics: &StatsdClient,
+    platform: &str,
+    app_id: &str,
+    notification: &Notification,
+) {
+    metrics
+        .incr_with_tags("notification.bridge.sent")
+        .with_tag("platform", platform)
+        .with_tag("app_id", app_id)
+        .send();
+    metrics
+        .count_with_tags(
+            "notification.message_data",
+            notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
+        )
+        .with_tag("platform", platform)
+        .with_tag("app_id", app_id)
+        .with_tag("destination", "Direct")
+        .send();
 }
 
 /// Common router test code
@@ -74,6 +153,7 @@ pub mod tests {
                 crypto_key: Some("test-crypto-key".to_string()),
             },
             timestamp: 0,
+            sort_key_timestamp: 0,
             data,
         }
     }
