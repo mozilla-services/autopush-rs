@@ -73,7 +73,7 @@ impl Router for WebPushRouter {
 
         if notification.headers.ttl == 0 {
             trace!(
-                "Notification has a TTL of zero but was not successfully \
+                "Notification has a TTL of zero and was not successfully \
                  delivered, dropping it"
             );
             return Ok(self.make_delivered_response(notification));
