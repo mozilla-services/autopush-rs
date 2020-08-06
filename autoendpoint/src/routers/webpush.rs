@@ -71,6 +71,14 @@ impl Router for WebPushRouter {
             }
         }
 
+        if notification.headers.ttl == 0 {
+            trace!(
+                "Notification has a TTL of zero and was not successfully \
+                 delivered, dropping it"
+            );
+            return Ok(self.make_delivered_response(notification));
+        }
+
         // Save notification, node is not present or busy
         trace!("Node is not present or busy, storing notification");
         self.store_notification(notification).await?;

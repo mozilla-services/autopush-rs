@@ -764,7 +764,7 @@ class TestRustWebPush(unittest.TestCase):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
-        yield client.send_notification(data=data, ttl=0)
+        yield client.send_notification(data=data, ttl=0, status=201)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification(timeout=0.5)
