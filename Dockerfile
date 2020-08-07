@@ -26,11 +26,12 @@ RUN \
 
 COPY --from=builder /app/bin /app/bin
 COPY --from=builder /app/version.json /app
+COPY --from=builder /app/entrypoint.sh /app
 
 WORKDIR /app
 # XXX: ensure we no longer bind to privileged ports and re-enable this later
 #USER app
 
-# ARG variables aren't available in CMD/ENTRYPOINT
+# ARG variables aren't available at runtime
 ENV BINARY=/app/bin/$BINARY
-CMD ["sh", "-c", "$BINARY"]
+ENTRYPOINT ["/app/entrypoint.sh"]
