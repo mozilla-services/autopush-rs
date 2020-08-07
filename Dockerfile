@@ -31,4 +31,6 @@ WORKDIR /app
 # XXX: ensure we no longer bind to privileged ports and re-enable this later
 #USER app
 
-CMD ["/app/bin/$BINARY"]
+# ARG variables aren't available in CMD/ENTRYPOINT
+ENV BINARY=/app/bin/$BINARY
+CMD ["sh", "-c", "$BINARY"]
