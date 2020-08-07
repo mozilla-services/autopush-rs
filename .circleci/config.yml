@@ -60,8 +60,8 @@ jobs:
           name: Build Docker image
           command: |
             docker build -t <<parameters.image>> \
-              --build-arg CRATE=<<paramters.crate>> \
-              --build-arg BINARY=<<paramters.binary>> .
+              --build-arg CRATE=<<parameters.crate>> \
+              --build-arg BINARY=<<parameters.binary>> .
       # save the built docker container into CircleCI's cache. This is
       # required since Workflows do not have the same remote docker instance.
       - run:
