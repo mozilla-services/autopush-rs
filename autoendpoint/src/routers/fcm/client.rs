@@ -56,6 +56,11 @@ impl FcmClient {
         token: String,
         ttl: usize,
     ) -> Result<(), RouterError> {
+        // Check the payload size. FCM only cares about the `data` field when
+        // checking size.
+        let data_json = serde_json::to_string(&data).unwrap();
+        message_size_check(data_json.as_bytes(), self.max_data)?;
+
         // Build the FCM message
         let message = serde_json::json!({
             "message": {
@@ -66,8 +71,6 @@ impl FcmClient {
                 }
             }
         });
-        let message_json = message.to_string();
-        message_size_check(message_json.as_bytes(), self.max_data)?;
 
         let access_token = self
             .auth
@@ -80,8 +83,7 @@ impl FcmClient {
             .http
             .post(self.endpoint.clone())
             .header("Authorization", format!("Bearer {}", access_token.as_str()))
-            .header("Content-Type", "application/json; UTF-8")
-            .body(message_json)
+            .json(&message)
             .timeout(self.timeout)
             .send()
             .await
@@ -214,7 +216,7 @@ pub mod tests {
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_header("Authorization", format!("Bearer {}", ACCESS_TOKEN).as_str())
-            .match_header("Content-Type", "application/json; UTF-8")
+            .match_header("Content-Type", "application/json")
             .match_body(r#"{"message":{"android":{"data":{"is_test":"true"},"ttl":"42s"},"token":"test-token"}}"#)
             .create();
 
