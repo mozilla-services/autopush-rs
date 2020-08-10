@@ -62,15 +62,15 @@ jobs:
             docker build -t <<parameters.image>> \
               --build-arg CRATE=<<parameters.crate>> \
               --build-arg BINARY=<<parameters.binary>> .
-      # save the built docker container into CircleCI's cache. This is
+      # save the built docker container into CircleCI's workspace cache. This is
       # required since Workflows do not have the same remote docker instance.
       - run:
           name: docker save <<parameters.image>>
           command: mkdir -p /cache; docker save -o /cache/docker.tar "<<parameters.image>>"
-      - save_cache:
-          key: v1-{{ .Branch }}-{{ .Environment.CIRCLE_TAG }}-<<parameters.image>>-{{ epoch }}
+      - persist_to_workspace:
+          root: /cache
           paths:
-            - /cache/docker.tar
+            - docker.tar
 
   deploy:
     docker:
@@ -82,8 +82,8 @@ jobs:
         type: string
     steps:
       - setup_remote_docker
-      - restore_cache:
-          key: v1-{{ .Branch }}-{{ .Environment.CIRCLE_TAG }}-<<parameters.image>>
+      - attach_workspace:
+          at: /cache
       - run:
           name: Restore Docker image cache
           command: docker load -i /cache/docker.tar
