@@ -111,7 +111,7 @@ impl Router for FcmRouter {
             .and_then(Value::as_str)
             .ok_or(FcmError::NoAppId)?;
         let ttl = MAX_TTL.min(self.settings.ttl.max(notification.headers.ttl as usize));
-        let message_data = build_message_data(notification, self.settings.max_data)?;
+        let message_data = build_message_data(notification)?;
 
         // Send the notification to FCM
         let client = self.clients.get(app_id).ok_or(FcmError::InvalidAppId)?;

@@ -8,21 +8,12 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Convert a notification into a WebPush message
-pub fn build_message_data(
-    notification: &Notification,
-    max_data: usize,
-) -> ApiResult<HashMap<&'static str, String>> {
+pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'static str, String>> {
     let mut message_data = HashMap::new();
     message_data.insert("chid", notification.subscription.channel_id.to_string());
 
     // Only add the other headers if there's data
     if let Some(data) = &notification.data {
-        if data.len() > max_data {
-            // Too much data. Tell the client how many bytes extra they had.
-            return Err(RouterError::TooMuchData(data.len() - max_data).into());
-        }
-
-        // Add the body and headers
         message_data.insert("body", data.clone());
         message_data.insert_opt("con", notification.headers.encoding.as_ref());
         message_data.insert_opt("enc", notification.headers.encryption.as_ref());
@@ -31,6 +22,17 @@ pub fn build_message_data(
     }
 
     Ok(message_data)
+}
+
+/// Check the data against the max data size and return an error if there is too
+/// much data.
+pub fn message_size_check(data: &[u8], max_data: usize) -> Result<(), RouterError> {
+    if data.len() > max_data {
+        trace!("Data is too long by {} bytes", data.len() - max_data);
+        Err(RouterError::TooMuchData(data.len() - max_data))
+    } else {
+        Ok(())
+    }
 }
 
 /// Handle a bridge error by logging, updating metrics, etc
