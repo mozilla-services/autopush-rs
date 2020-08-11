@@ -63,7 +63,7 @@
 
 # A (stringified) list of Fernet keys to use when encrypting the notification
 # endpoint URL. The default is a single auto-generated key.
-#crypto_key = "[]"
+#crypto_key = "[replace-me-with-a-real-key]"
 
 # How often we send WebSocket pings. 0 indicates no limit.
 #auto_ping_interval = 300
