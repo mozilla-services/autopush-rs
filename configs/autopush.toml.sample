@@ -1,0 +1,83 @@
+# The host to use for HTTP connections. Defaults to the machine's hostname.
+#hostname = "localhost"
+
+# The WebSocket port
+#port = 8080
+
+# If the hostname should be resolved to an IP
+#resolve_hostname = false
+
+# If human-readable logging should be used
+#human_logs = false
+
+# The HTTP router host. Defaults to the hostname setting.
+#router_hostname = "localhost"
+
+# The HTTP router port
+#router_port = 8081
+
+# Path to the SSL key to use for the router HTTP server. If not set, only HTTP
+# connections are supported.
+#router_ssl_key = "..."
+
+# Path to the SSL cert to use for the router HTTP server. Required if
+# router_ssl_key is set.
+#router_ssl_cert = "..."
+
+# Optional path to Diffie-Hellman parameters to use during SSL key exchange
+#router_ssl_dh_param = "..."
+
+# The URI scheme to use for the endpoint server URL
+#endpoint_scheme = "http"
+
+# The hostname of the endpoint server
+#endpoint_hostname = "localhost"
+
+# The port of the endpoint server
+#endpoint_port = 8082
+
+# The URL to use for megaphone. If not set, megaphone functionality is disabled.
+#megaphone_api_url = "..."
+
+# The token to use for megaphone. Required if megaphone_api_url is set.
+#megaphone_api_token = "..."
+
+# The number of seconds between megaphone polls
+#megaphone_poll_interval = 30
+
+# The host of the metrics server. An empty string disables metrics.
+#statsd_host = "localhost"
+
+# The port of the metrics server
+#statsd_port = 8125
+
+# Override the DynamoDB endpoint via the AWS_LOCAL_DYNAMODB environment
+# variable. No default value.
+#aws_ddb_endpoint = "..."
+
+# The name of the router table
+#router_tablename = "router"
+
+# The prefix of the message table(s)
+#message_tablename = "message"
+
+# A (stringified) list of Fernet keys to use when encrypting the notification
+# endpoint URL. The default is a single auto-generated key.
+#crypto_key = "[]"
+
+# How often we send WebSocket pings. 0 indicates no limit.
+#auto_ping_interval = 300
+
+# How long to wait for the WebSocket ping to come back before we time out. 0
+# indicates no limit.
+#auto_ping_timeout = 4
+
+# How long to wait for a closing handshake. 0 indicates no limit.
+#close_handshake_timeout = 0
+
+# Maximum number of WebSocket clients. 0 indicates no limit.
+#max_connections = 0
+
+# The max number of stored messages to return to a connecting client. If this
+# limit is reached, the client is dropped and must re-register.
+#msg_limit = 100
