@@ -27,7 +27,6 @@ fn include_port(scheme: &str, port: u16) -> bool {
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Settings {
-    pub debug: bool,
     pub port: u16,
     pub hostname: Option<String>,
     pub resolve_hostname: bool,
@@ -43,7 +42,7 @@ pub struct Settings {
     pub max_connections: u32,
     pub close_handshake_timeout: u32,
     pub endpoint_scheme: String,
-    pub endpoint_hostname: Option<String>,
+    pub endpoint_hostname: String,
     pub endpoint_port: u16,
     pub crypto_key: String,
     pub statsd_host: String,
@@ -73,8 +72,9 @@ impl Settings {
         s.set_default("max_connections", 0)?;
         s.set_default("close_handshake_timeout", 0)?;
         s.set_default("endpoint_scheme", "http")?;
+        s.set_default("endpoint_hostname", "localhost")?;
         s.set_default("endpoint_port", 8082)?;
-        s.set_default("crypto_key", Fernet::generate_key())?;
+        s.set_default("crypto_key", format!("[{}]", Fernet::generate_key()))?;
         s.set_default("statsd_host", "localhost")?;
         s.set_default("statsd_port", 8125)?;
         s.set_default("megaphone_poll_interval", 30)?;
@@ -112,13 +112,7 @@ impl Settings {
     }
 
     pub fn endpoint_url(&self) -> String {
-        let url = format!(
-            "{}://{}",
-            self.endpoint_scheme,
-            self.endpoint_hostname
-                .as_ref()
-                .expect("Endpoint hostname must be supplied"),
-        );
+        let url = format!("{}://{}", self.endpoint_scheme, self.endpoint_hostname,);
         if include_port(&self.endpoint_scheme, self.endpoint_port) {
             format!("{}:{}", url, self.endpoint_port)
         } else {
@@ -171,7 +165,7 @@ mod tests {
     #[test]
     fn test_endpoint_url() {
         let mut settings: Settings = Default::default();
-        settings.endpoint_hostname = Some("testname".to_string());
+        settings.endpoint_hostname = "testname".to_string();
         settings.endpoint_port = 80;
         settings.endpoint_scheme = "http".to_string();
         let url = settings.endpoint_url();
