@@ -16,8 +16,10 @@
 # The maximum payload size to accept in HTTP requests to this server
 #max_data_bytes = 4096
 
-# The fernet keys to use. Multiple are allowed when separated by a comma.
-#crypto_keys = "[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=]"
+# A (stringified) list of comma-separated Fernet keys to use when encrypting the
+# notification endpoint URL. The default is a single auto-generated key.
+# You can generate a key with `scripts/fernet_key.py`.
+#crypto_keys = "[replace-me-with-a-real-key]"
 
 # The HMAC SHA256 keys to use, for authenticating registration update requests.
 # Multiple are allowed when separated by a comma.
