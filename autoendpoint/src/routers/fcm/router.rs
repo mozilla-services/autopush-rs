@@ -110,7 +110,7 @@ impl Router for FcmRouter {
             .get("app_id")
             .and_then(Value::as_str)
             .ok_or(FcmError::NoAppId)?;
-        let ttl = MAX_TTL.min(self.settings.ttl.max(notification.headers.ttl as usize));
+        let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
         let message_data = build_message_data(notification)?;
 
         // Send the notification to FCM
@@ -169,7 +169,7 @@ mod tests {
     async fn make_router(auth_file: PathBuf, ddb: Box<dyn DbClient>) -> FcmRouter {
         FcmRouter::new(
             FcmSettings {
-                fcm_url: Url::parse(&mockito::server_url()).unwrap(),
+                base_url: Url::parse(&mockito::server_url()).unwrap(),
                 credentials: format!(
                     r#"{{ "dev": {{ "project_id": "{}", "auth_file": "{}" }} }}"#,
                     PROJECT_ID,

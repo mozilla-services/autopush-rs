@@ -36,7 +36,7 @@ impl FcmClient {
 
         Ok(FcmClient {
             endpoint: settings
-                .fcm_url
+                .base_url
                 .join(&format!(
                     "v1/projects/{}/messages:send",
                     credential.project_id
@@ -194,7 +194,7 @@ pub mod tests {
     async fn make_client(auth_file: PathBuf) -> FcmClient {
         FcmClient::new(
             &FcmSettings {
-                fcm_url: Url::parse(&mockito::server_url()).unwrap(),
+                base_url: Url::parse(&mockito::server_url()).unwrap(),
                 ..Default::default()
             },
             FcmCredential {
