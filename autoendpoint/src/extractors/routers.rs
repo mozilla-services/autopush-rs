@@ -17,6 +17,7 @@ use std::sync::Arc;
 pub enum RouterType {
     WebPush,
     FCM,
+    GCM,
     APNS,
     ADM,
 }
@@ -28,6 +29,7 @@ impl FromStr for RouterType {
         match s {
             "webpush" => Ok(RouterType::WebPush),
             "fcm" => Ok(RouterType::FCM),
+            "gcm" => Ok(RouterType::GCM),
             "apns" => Ok(RouterType::APNS),
             "adm" => Ok(RouterType::ADM),
             _ => Err(()),
@@ -40,6 +42,7 @@ impl Display for RouterType {
         f.write_str(match self {
             RouterType::WebPush => "webpush",
             RouterType::FCM => "fcm",
+            RouterType::GCM => "gcm",
             RouterType::APNS => "apns",
             RouterType::ADM => "adm",
         })
@@ -84,7 +87,7 @@ impl Routers {
     pub fn get(&self, router_type: RouterType) -> &dyn Router {
         match router_type {
             RouterType::WebPush => &self.webpush,
-            RouterType::FCM => self.fcm.as_ref(),
+            RouterType::FCM | RouterType::GCM => self.fcm.as_ref(),
             RouterType::APNS => self.apns.as_ref(),
             RouterType::ADM => self.adm.as_ref(),
         }

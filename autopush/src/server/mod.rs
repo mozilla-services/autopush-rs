@@ -130,7 +130,6 @@ impl AutopushServer {
 }
 
 pub struct ServerOptions {
-    pub debug: bool,
     pub router_port: u16,
     pub port: u16,
     pub fernet: MultiFernet,
@@ -172,7 +171,6 @@ impl ServerOptions {
         let router_url = settings.router_url();
         let endpoint_url = settings.endpoint_url();
         Ok(Self {
-            debug: settings.debug,
             port: settings.port,
             fernet,
             router_port: settings.router_port,

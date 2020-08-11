@@ -8,14 +8,14 @@ use url::Url;
 #[serde(deny_unknown_fields)]
 pub struct FcmSettings {
     /// The minimum TTL to use for FCM notifications
-    pub ttl: usize,
+    pub min_ttl: usize,
     /// A JSON dict of `FcmCredential`s. This must be a `String` because
     /// environment variables cannot encode a `HashMap<String, FcmCredential>`
     pub credentials: String,
     /// The max size of notification data in bytes
     pub max_data: usize,
     /// The base URL to use for FCM requests
-    pub fcm_url: Url,
+    pub base_url: Url,
     /// The number of seconds to wait for FCM requests to complete
     pub timeout: usize,
 }
@@ -30,10 +30,10 @@ pub struct FcmCredential {
 impl Default for FcmSettings {
     fn default() -> Self {
         Self {
-            ttl: 60,
+            min_ttl: 60,
             credentials: "{}".to_string(),
             max_data: 4096,
-            fcm_url: Url::parse("https://fcm.googleapis.com").unwrap(),
+            base_url: Url::parse("https://fcm.googleapis.com").unwrap(),
             timeout: 3,
         }
     }

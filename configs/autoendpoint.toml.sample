@@ -1,0 +1,109 @@
+# The URI scheme to use when referencing this server
+#scheme = "http"
+
+# The host to use
+#host = "127.0.0.1"
+
+# The port to use
+#port = 8000
+
+# The router table name
+#router_table_name = "router"
+
+# The message table name
+#message_table_name = "message"
+
+# The maximum payload size to accept in HTTP requests to this server
+#max_data_bytes = 4096
+
+# A (stringified) list of comma-separated Fernet keys to use when encrypting the
+# notification endpoint URL. The default is a single auto-generated key.
+# You can generate a key with `scripts/fernet_key.py`.
+#crypto_keys = "[replace-me-with-a-real-key]"
+
+# The HMAC SHA256 keys to use, for authenticating registration update requests.
+# Multiple are allowed when separated by a comma.
+#auth_keys = "[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=]"
+
+# If human-readable logging should be used
+#human_logs = false
+
+# The host to use for metrics.
+# By default there is no value for this setting (`None`).
+#statsd_host = "localhost"
+
+# The port to use for metrics
+#statsd_port = 8125
+
+# The label to use for metrics
+#statsd_label = "autoendpoint"
+
+# Settings for the Firebase Cloud Messaging router
+[fcm]
+# The minimum TTL to use. If a notification's TTL is shorter than this, it will
+# be set to this value.
+#min_ttl = 60
+
+# The max size of notification data in bytes. This is usually dictated by FCM to
+# be 4KB.
+#max_data = 4096
+
+# The number of seconds to wait for FCM requests to complete
+#timeout = 3
+
+# The base URL to use when sending messages
+#base_url = "https://fcm.googleapis.com"
+
+# The credentials to use for each application. This setting is a JSON dictionary
+# where the key is the app ID. The project ID and path to the service auth file
+# are supplied for each application.
+#credentials = """{
+#    "test": {
+#        "project_id": "autoendpoint-test",
+#        "auth_file": "autoendpoint-test-credentials.json"
+#    }
+#}"""
+
+# Settings for the Apple Push Notification Service router
+[apns]
+# The max size of notification data in bytes. This is usually dictated by Apple
+# to be 4KB.
+#max_data = 4096
+
+# The credentials to use for each channel. This setting is a JSON dictionary
+# where the key is the app ID. The auth files, topic, and API sandbox switch
+# are supplied for each application.
+#channels = """{
+#    "test": {
+#        "cert": "apns_cert.pem",
+#        "key": "apns_key.pem",
+#        "topic": "com.mozilla.org.Firefox",
+#        "sandbox": true
+#    }
+#}"""
+
+# Settings for the Amazon Device Messaging router
+[adm]
+# The minimum TTL to use. If a notification's TTL is shorter than this, it will
+# be set to this value.
+#min_ttl = 60
+
+# The max size of notification data in bytes. This is usually dictated by ADM to
+# be about 6KB.
+#max_data = 6000
+
+# The number of seconds to wait for FCM requests to complete
+#timeout = 3
+
+# The base URL to use when sending messages
+#base_url = "https://api.amazon.com"
+
+# The credentials to use for each profile. This setting is a JSON dictionary
+# where the key is the app ID. The client ID and secret are supplied for each
+# application.
+#profiles = """{
+#    "test": {
+#        "client_id": "...",
+#        "client_secret": "..."
+#    }
+#}"""
