@@ -31,6 +31,7 @@ from Queue import Empty, Queue
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.trial import unittest
+from typing import Optional
 
 app = bottle.Bottle()
 logging.basicConfig(level=logging.DEBUG)
@@ -41,7 +42,7 @@ root_dir = os.path.dirname(here_dir)
 
 DDB_JAR = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
 DDB_LIB_DIR = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
-DDB_PROCESS = None  # type: subprocess.Popen
+DDB_PROCESS = None  # type: Optional[subprocess.Popen]
 
 twisted.internet.base.DelayedCall.debug = True
 
@@ -252,12 +253,12 @@ def capture_output_to_queue(output_stream):
 def setup_dynamodb():
     global DDB_PROCESS
 
-    cmd = " ".join([
-        "java", "-Djava.library.path=%s" % DDB_LIB_DIR,
-        "-jar", DDB_JAR, "-sharedDb", "-inMemory"
-    ])
-    DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
     if os.getenv("AWS_LOCAL_DYNAMODB") is None:
+        cmd = " ".join([
+            "java", "-Djava.library.path=%s" % DDB_LIB_DIR,
+            "-jar", DDB_JAR, "-sharedDb", "-inMemory"
+        ])
+        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
         os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
 
     # Setup the necessary tables
@@ -351,7 +352,8 @@ def setup_module():
 
 
 def teardown_module():
-    kill_process(DDB_PROCESS)
+    if DDB_PROCESS:
+        kill_process(DDB_PROCESS)
     kill_process(CN_SERVER)
     kill_process(CN_MP_SERVER)
     kill_process(EP_SERVER)

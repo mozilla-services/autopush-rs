@@ -19,8 +19,6 @@ from functools import wraps
 from threading import Event, Thread
 from unittest import SkipTest
 
-import autopush.tests
-import autopush.tests as ap_tests
 import bottle
 import ecdsa
 import psutil
@@ -28,7 +26,7 @@ import requests
 import twisted.internet.base
 from autopush.config import AutopushConfig
 from autopush.db import (Message, get_month, has_connected_this_month,
-                         make_rotating_tablename)
+                         make_rotating_tablename, DynamoDBResource, create_rotating_message_table)
 from autopush.logging import begin_or_register
 from autopush.main import (
     ConnectionApplication,
@@ -42,16 +40,24 @@ from autopush.tests.test_integration import (
 from autopush.utils import base64url_encode
 from cryptography.fernet import Fernet
 from Queue import Empty, Queue
+
+from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.threads import deferToThread
 from twisted.logger import globalLogPublisher
 from twisted.trial import unittest
+from typing import Optional
 
 app = bottle.Bottle()
 log = logging.getLogger(__name__)
 
 here_dir = os.path.abspath(os.path.dirname(__file__))
 root_dir = os.path.dirname(here_dir)
+
+DDB_JAR = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
+DDB_LIB_DIR = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
+DDB_PROCESS = None  # type: Optional[subprocess.Popen]
+BOTO_RESOURCE = None  # type: DynamoDBResource
 
 twisted.internet.base.DelayedCall.debug = True
 
@@ -170,12 +176,44 @@ class CustomClient(Client):
         self.ws.send("bad-data")
 
 
+def kill_process(process):
+    # This kinda sucks, but its the only way to nuke the child procs
+    proc = psutil.Process(pid=process.pid)
+    child_procs = proc.children(recursive=True)
+    for p in [proc] + child_procs:
+        os.kill(p.pid, signal.SIGTERM)
+    process.wait()
+
+
+def setup_dynamodb():
+    global DDB_PROCESS, BOTO_RESOURCE
+
+    for name in ('boto3', 'botocore'):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+
+    if os.getenv("AWS_LOCAL_DYNAMODB") is None:
+        cmd = " ".join([
+            "java", "-Djava.library.path=%s" % DDB_LIB_DIR,
+            "-jar", DDB_JAR, "-sharedDb", "-inMemory"
+        ])
+        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
+        os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
+
+    # Setup the necessary tables
+    BOTO_RESOURCE = DynamoDBResource()
+    message_table = os.environ.get("MESSAGE_TABLE", "message_int_test")
+    create_rotating_message_table(prefix=message_table, delta=-1,
+                                  boto_resource=BOTO_RESOURCE)
+    create_rotating_message_table(prefix=message_table,
+                                  boto_resource=BOTO_RESOURCE)
+    pool = reactor.getThreadPool()
+    pool.adjustPoolsize(minthreads=pool.max)
+
+
 def setup_module():
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
         STRICT_LOG_COUNTS
-    ap_tests.ddb_jar = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
-    ap_tests.ddb_lib_dir = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
-    ap_tests.setUp()
+    setup_dynamodb()
     logging.getLogger('boto').setLevel(logging.CRITICAL)
     if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
         raise SkipTest("Skipping integration tests")
@@ -269,20 +307,12 @@ def setup_module():
 
 
 def teardown_module():
-    global CN_SERVER, CN_MP_SERVER
-    ap_tests.tearDown()
-    # This kinda sucks, but its the only way to nuke the child procs
-    proc = psutil.Process(pid=CN_SERVER.pid)
-    child_procs = proc.children(recursive=True)
-    for p in [proc] + child_procs:
-        os.kill(p.pid, signal.SIGTERM)
-        CN_SERVER.wait()
+    global CN_SERVER, CN_MP_SERVER, DDB_PROCESS
 
-    proc = psutil.Process(pid=CN_MP_SERVER.pid)
-    child_procs = proc.children(recursive=True)
-    for p in [proc] + child_procs:
-        os.kill(p.pid, signal.SIGTERM)
-        CN_MP_SERVER.wait()
+    if DDB_PROCESS:
+        kill_process(DDB_PROCESS)
+    kill_process(CN_SERVER)
+    kill_process(CN_MP_SERVER)
 
 
 class TestRustWebPush(unittest.TestCase):
@@ -306,7 +336,7 @@ class TestRustWebPush(unittest.TestCase):
         # Endpoint HTTP router
         self.ep = ep = EndpointApplication(
             ep_conf,
-            resource=autopush.tests.boto_resource
+            resource=BOTO_RESOURCE
         )
         ep.setup(rotate_tables=False)
         ep.startService()
@@ -1033,7 +1063,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         # Endpoint HTTP router
         self.ep = ep = EndpointApplication(
             ep_conf,
-            resource=autopush.tests.boto_resource
+            resource=BOTO_RESOURCE
         )
         ep.setup(rotate_tables=False)
         ep.startService()
@@ -1058,7 +1088,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         )
         self.conn = conn = ConnectionApplication(
             self._conn_conf,
-            resource=autopush.tests.boto_resource,
+            resource=BOTO_RESOURCE,
         )
         conn.setup(rotate_tables=True)
 
@@ -1327,7 +1357,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         last_month = make_rotating_tablename(
             prefix=self.conn.conf.message_table.tablename, delta=-1)
         lm_message = Message(last_month,
-                             boto_resource=autopush.tests.boto_resource)
+                             boto_resource=BOTO_RESOURCE)
         yield deferToThread(
             self.conn.db.router.update_message_month,
             client.uaid,
@@ -1478,7 +1508,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
             client.uaid,
             old_month
         )
-        _ = Message(old_month, boto_resource=autopush.tests.boto_resource)
+        _ = Message(old_month, boto_resource=BOTO_RESOURCE)
 
         # Verify the move
         c = yield deferToThread(self.conn.db.router.get_uaid, client.uaid)
@@ -1523,7 +1553,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         # Endpoint HTTP router
         self.ep = ep = EndpointApplication(
             ep_conf,
-            resource=autopush.tests.boto_resource
+            resource=BOTO_RESOURCE
         )
         ep.setup(rotate_tables=False)
         ep.startService()
@@ -1534,7 +1564,7 @@ class TestRustAndPythonWebPush(unittest.TestCase):
         # the module global Rust one as well
         self.conn = conn = ConnectionApplication(
             conn_conf,
-            resource=autopush.tests.boto_resource,
+            resource=BOTO_RESOURCE,
         )
         conn.setup(rotate_tables=False)
         conn.startService()
