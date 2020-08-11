@@ -4,7 +4,9 @@ use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::apns::settings::{ApnsChannel, ApnsSettings};
-use crate::routers::common::{build_message_data, incr_error_metric, incr_success_metrics};
+use crate::routers::common::{
+    build_message_data, incr_error_metric, incr_success_metrics, message_size_check,
+};
 use crate::routers::{Router, RouterError, RouterResponse};
 use a2::request::notification::LocalizedAlert;
 use a2::request::payload::{APSAlert, Payload, APS};
@@ -220,7 +222,7 @@ impl Router for ApnsRouter {
             .map(|value| APS::deserialize(value).map_err(|_| ApnsError::InvalidApsData))
             .transpose()?
             .unwrap_or_else(Self::default_aps);
-        let mut message_data = build_message_data(notification, self.settings.max_data)?;
+        let mut message_data = build_message_data(notification)?;
         message_data.insert("ver", notification.message_id.clone());
 
         // Get client and build payload
@@ -249,11 +251,7 @@ impl Router for ApnsRouter {
             .clone()
             .to_json_string()
             .map_err(ApnsError::SizeLimit)?;
-        if payload_json.len() > self.settings.max_data {
-            return Err(
-                RouterError::TooMuchData(payload_json.len() - self.settings.max_data).into(),
-            );
-        }
+        message_size_check(payload_json.as_bytes(), self.settings.max_data)?;
 
         // Send to APNS
         trace!("Sending message to APNS: {:?}", payload);

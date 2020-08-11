@@ -1,3 +1,4 @@
+use crate::routers::common::message_size_check;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
 use crate::routers::RouterError;
@@ -16,6 +17,7 @@ const OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/firebase.messag
 pub struct FcmClient {
     endpoint: Url,
     timeout: Duration,
+    max_data: usize,
     auth: DefaultAuthenticator,
     http: reqwest::Client,
 }
@@ -41,6 +43,7 @@ impl FcmClient {
                 ))
                 .expect("Project ID is not URL-safe"),
             timeout: Duration::from_secs(settings.timeout as u64),
+            max_data: settings.max_data,
             auth,
             http,
         })
@@ -53,6 +56,11 @@ impl FcmClient {
         token: String,
         ttl: usize,
     ) -> Result<(), RouterError> {
+        // Check the payload size. FCM only cares about the `data` field when
+        // checking size.
+        let data_json = serde_json::to_string(&data).unwrap();
+        message_size_check(data_json.as_bytes(), self.max_data)?;
+
         // Build the FCM message
         let message = serde_json::json!({
             "message": {
@@ -63,6 +71,7 @@ impl FcmClient {
                 }
             }
         });
+
         let access_token = self
             .auth
             .token(OAUTH_SCOPES)
@@ -74,8 +83,7 @@ impl FcmClient {
             .http
             .post(self.endpoint.clone())
             .header("Authorization", format!("Bearer {}", access_token.as_str()))
-            .header("Content-Type", "application/json; UTF-8")
-            .body(message.to_string())
+            .json(&message)
             .timeout(self.timeout)
             .send()
             .await
@@ -208,7 +216,7 @@ pub mod tests {
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_header("Authorization", format!("Bearer {}", ACCESS_TOKEN).as_str())
-            .match_header("Content-Type", "application/json; UTF-8")
+            .match_header("Content-Type", "application/json")
             .match_body(r#"{"message":{"android":{"data":{"is_test":"true"},"ttl":"42s"},"token":"test-token"}}"#)
             .create();
 

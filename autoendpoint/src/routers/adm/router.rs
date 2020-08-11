@@ -99,7 +99,7 @@ impl Router for AdmRouter {
             .and_then(Value::as_str)
             .ok_or(AdmError::NoProfile)?;
         let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
-        let message_data = build_message_data(notification, self.settings.max_data)?;
+        let message_data = build_message_data(notification)?;
 
         // Send the notification to ADM
         let client = self.clients.get(profile).ok_or(AdmError::InvalidProfile)?;

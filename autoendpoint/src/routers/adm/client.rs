@@ -1,5 +1,6 @@
 use crate::routers::adm::error::AdmError;
 use crate::routers::adm::settings::{AdmProfile, AdmSettings};
+use crate::routers::common::message_size_check;
 use crate::routers::RouterError;
 use autopush_common::util::sec_since_epoch;
 use futures::lock::Mutex;
@@ -15,6 +16,7 @@ pub struct AdmClient {
     base_url: Url,
     profile: AdmProfile,
     timeout: Duration,
+    max_data: usize,
     http: reqwest::Client,
     token_info: Mutex<TokenInfo>,
 }
@@ -53,6 +55,7 @@ impl AdmClient {
             base_url: settings.base_url.clone(),
             profile,
             timeout: Duration::from_secs(settings.timeout as u64),
+            max_data: settings.max_data,
             http,
             // The default TokenInfo has dummy values to trigger a token fetch
             token_info: Mutex::default(),
@@ -122,6 +125,10 @@ impl AdmClient {
             "data": data,
             "expiresAfter": ttl,
         });
+        let message_json = message.to_string();
+        message_size_check(message_json.as_bytes(), self.max_data)?;
+
+        // Prepare request data
         let access_token = self.get_access_token().await?;
         let url = self
             .base_url
@@ -136,6 +143,7 @@ impl AdmClient {
             .http
             .post(url)
             .header("Authorization", format!("Bearer {}", access_token.as_str()))
+            .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .header(
                 "X-Amzn-Type-Version",
@@ -145,7 +153,7 @@ impl AdmClient {
                 "X-Amzn-Accept-Type",
                 "com.amazon.device.messaging.ADMSendResult@1.0",
             )
-            .json(&message)
+            .body(message_json)
             .timeout(self.timeout)
             .send()
             .await
