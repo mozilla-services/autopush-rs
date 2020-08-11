@@ -61,8 +61,9 @@
 # The prefix of the message table(s)
 #message_tablename = "message"
 
-# A (stringified) list of Fernet keys to use when encrypting the notification
-# endpoint URL. The default is a single auto-generated key.
+# A (stringified) list of comma-separated Fernet keys to use when encrypting the
+# notification endpoint URL. The default is a single auto-generated key.
+# You can generate a key with `scripts/fernet_key.py`.
 #crypto_key = "[replace-me-with-a-real-key]"
 
 # How often we send WebSocket pings. 0 indicates no limit.
