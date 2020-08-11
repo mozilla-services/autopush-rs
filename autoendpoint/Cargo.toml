@@ -4,9 +4,6 @@ version = "1.0.0"
 authors = ["Mark Drobnak <mdrobnak@mozilla.com>", "jrconlin <me+crypt@jrconlin.com>"]
 edition = "2018"
 
-[profile.release]
-debug = 1
-
 [dependencies]
 # Using a fork temporarily until these three PRs are merged:
 # - https://github.com/pimeys/a2/pull/49

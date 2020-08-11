@@ -13,9 +13,6 @@ edition = "2018"
 name = "autopush_rs"
 path = "src/main.rs"
 
-[profile.release]
-debug = 1
-
 [dependencies]
 autopush_common = { path = "../autopush-common" }
 base64 = "0.12.1"
