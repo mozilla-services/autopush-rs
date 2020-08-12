@@ -254,12 +254,15 @@ def setup_dynamodb():
     global DDB_PROCESS
 
     if os.getenv("AWS_LOCAL_DYNAMODB") is None:
+        print "Starting new DynamoDB instance"
         cmd = " ".join([
             "java", "-Djava.library.path=%s" % DDB_LIB_DIR,
             "-jar", DDB_JAR, "-sharedDb", "-inMemory"
         ])
         DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
         os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
+    else:
+        print "Using existing DynamoDB instance"
 
     # Setup the necessary tables
     boto_resource = DynamoDBResource()
