@@ -38,8 +38,8 @@ jobs:
       - run:
           name: Set up Python
           command: |
-            curl https://raw.githubusercontent.com/mozilla-services/autopush/fix/editable-dependencies/requirements.txt > requirements.txt
-            curl https://raw.githubusercontent.com/mozilla-services/autopush/fix/editable-dependencies/test-requirements.txt > test-requirements.txt
+            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
+            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
             pip install --upgrade pip
             pip install bottle
             pip install -r requirements.txt
