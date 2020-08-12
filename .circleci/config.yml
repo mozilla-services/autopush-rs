@@ -30,6 +30,7 @@ jobs:
     docker:
       - image: circleci/python:2.7
       - image: circleci/dynamodb
+        command: -sharedDb -inMemory
     environment:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
