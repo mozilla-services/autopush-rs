@@ -35,6 +35,13 @@ jobs:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
       - checkout
+      # Need to download the requirements.txt files so we can use their
+      # checksums in restore_cache.
+      - run:
+          name: Download Python dependency lists
+          command: |
+            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
+            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
       - restore_cache:
           name: Restoring Python cache
           key: python-v1-{{ checksum "requirements.txt" }}-{{ checksum "test-requirements.txt" }}
@@ -44,8 +51,6 @@ jobs:
       - run:
           name: Set up Python
           command: |
-            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
-            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
             pip install --upgrade pip
             pip install bottle
             pip install -r requirements.txt
