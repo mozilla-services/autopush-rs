@@ -22,7 +22,7 @@ import psutil
 import requests
 import twisted.internet.base
 from autopush.db import (
-    DynamoDBResource, create_message_table, create_router_table
+    DynamoDBResource, create_message_table, get_router_table
 )
 from autopush.tests.test_integration import Client, _get_vapid
 from autopush.utils import base64url_encode
@@ -267,7 +267,7 @@ def setup_dynamodb():
     # Setup the necessary tables
     boto_resource = DynamoDBResource()
     create_message_table(MESSAGE_TABLE, boto_resource=boto_resource)
-    create_router_table(ROUTER_TABLE, boto_resource=boto_resource)
+    get_router_table(ROUTER_TABLE, boto_resource=boto_resource)
 
 
 def setup_mock_server():
@@ -356,6 +356,7 @@ def setup_module():
 
 def teardown_module():
     if DDB_PROCESS:
+        os.unsetenv("AWS_LOCAL_DYNAMODB")
         kill_process(DDB_PROCESS)
     kill_process(CN_SERVER)
     kill_process(CN_MP_SERVER)
