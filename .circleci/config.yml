@@ -47,7 +47,7 @@ jobs:
           command: |
             pip install --upgrade pip
             pip install bottle
-            pip install -r requirements.txt
+            # test-requirements.txt includes requirements.txt
             pip install -r test-requirements.txt
             pip install git+https://github.com/mozilla-services/autopush.git#egg=autopush
       - run:
