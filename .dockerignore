@@ -22,3 +22,5 @@ include/*
 lib_pypy/*
 pypy
 .coverage
+target
+venv
