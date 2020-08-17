@@ -1,4 +1,5 @@
 FROM rust:1.45 as builder
+ARG CRATE
 
 ADD . /app
 WORKDIR /app
@@ -8,10 +9,11 @@ RUN \
     cargo --version && \
     rustc --version && \
     mkdir -m 755 bin && \
-    cargo install --path autopush --locked --root /app
+    cargo install --path $CRATE --locked --root /app
 
 
 FROM debian:buster-slim
+ARG BINARY
 # FROM debian:buster  # for debugging docker build
 MAINTAINER <src+push-dev@mozilla.com>
 RUN \
@@ -24,9 +26,12 @@ RUN \
 
 COPY --from=builder /app/bin /app/bin
 COPY --from=builder /app/version.json /app
+COPY --from=builder /app/entrypoint.sh /app
 
 WORKDIR /app
 # XXX: ensure we no longer bind to privileged ports and re-enable this later
 #USER app
 
-CMD ["/app/bin/autopush_rs"]
+# ARG variables aren't available at runtime
+ENV BINARY=/app/bin/$BINARY
+ENTRYPOINT ["/app/entrypoint.sh"]
