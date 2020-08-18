@@ -197,6 +197,7 @@ workflows:
           repo: ${DOCKERHUB_REPO}
           requires:
             - build-autopush
+            - test
           filters:
             tags:
               only: /.*/
