@@ -24,9 +24,71 @@ jobs:
       - run:
           command: cargo audit
 
+  test:
+    docker:
+      - image: circleci/python:2.7
+      - image: circleci/dynamodb
+        command: -sharedDb -inMemory
+    environment:
+      AWS_LOCAL_DYNAMODB: http://localhost:8000
+    steps:
+      - checkout
+      # Need to download the requirements.txt files so we can use their
+      # checksums in restore_cache.
+      - run:
+          name: Download Python dependency lists
+          command: |
+            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
+            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
+      - restore_cache:
+          name: Restoring Python cache
+          key: python-v1-{{ checksum "requirements.txt" }}-{{ checksum "test-requirements.txt" }}
+      - restore_cache:
+          name: Restoring Rust cache
+          key: rust-v1-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Set up Python
+          command: |
+            pip install --upgrade pip
+            pip install bottle
+            # test-requirements.txt includes requirements.txt
+            pip install -r test-requirements.txt
+            pip install git+https://github.com/mozilla-services/autopush.git#egg=autopush
+      - run:
+          name: Set up Rust
+          command: |
+            curl https://sh.rustup.rs -sSf | sh -s -- -y
+            export PATH=$PATH:$HOME/.cargo/bin
+            echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
+            rustc --version
+            cargo build
+      - run:
+          name: Check formatting
+          command: cargo fmt -- --check
+      - run:
+          name: Integration tests
+          command: py.test -v
+      - run:
+          name: Rust tests
+          command: cargo test
+      - save_cache:
+          name: Save Python cache
+          key: python-v1-{{ checksum "requirements.txt" }}-{{ checksum "test-requirements.txt" }}
+          paths:
+            - /home/circleci/.local/bin/
+            - /home/circleci/.local/lib/
+      - save_cache:
+          name: Save Rust cache
+          key: rust-v1-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - target
+            - ~/.cargo/registry
+            - ~/.cargo/git
+
   build:
     docker:
       - image: docker:18.03.0-ce
+    working_directory: /dockerflow
     parameters:
       image:
         type: string
@@ -107,7 +169,10 @@ workflows:
           filters:
             tags:
               only: /.*/
-
+      - test:
+          filters:
+            tags:
+              only: /.*/
       - build:
           name: build-autopush
           image: autopush:build
@@ -132,6 +197,7 @@ workflows:
           repo: ${DOCKERHUB_REPO}
           requires:
             - build-autopush
+            - test
           filters:
             tags:
               only: /.*/
@@ -144,6 +210,7 @@ workflows:
           repo: ${DOCKERHUB_ENDPOINT_REPO}
           requires:
             - build-autoendpoint
+            - test
           filters:
             tags:
               only: /.*/
