@@ -15,7 +15,6 @@ RUN \
 FROM debian:buster-slim
 ARG BINARY
 # FROM debian:buster  # for debugging docker build
-MAINTAINER <src+push-dev@mozilla.com>
 RUN \
     groupadd --gid 10001 app && \
     useradd --uid 10001 --gid 10001 --home /app --create-home app && \
