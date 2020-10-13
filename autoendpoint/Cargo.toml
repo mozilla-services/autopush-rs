@@ -12,9 +12,9 @@ edition = "2018"
 # The `autoendpoint` branch merges these three PRs together.
 # The version of a2 at the time of the fork is v0.5.3.
 a2 = { git = "https://github.com/Mcat12/a2.git", branch = "autoendpoint" }
-actix-web = "2.0"
-actix-rt = "1.0"
-actix-cors = "0.2.0"
+actix-web = "3.1"
+actix-rt = "1.1"
+actix-cors = "0.4"
 again = { version = "0.1.2", default-features = false, features = ["log"] }
 async-trait = "0.1.36"
 autopush_common = { path = "../autopush-common" }

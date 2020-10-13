@@ -10,6 +10,17 @@
 
 version: 2.1
 
+defaults:
+  docker_login: &docker_login
+  run:
+      name: Login to Dockerhub
+      command: |
+          if [ "${DOCKER_USER}" == "" ] || [ "${DOCKER_PASS}" == "" ]; then
+              echo "Skipping Login to Dockerhub, no credentials."
+          else
+              echo "${DOCKER_PASS}" | docker login -u="${DOCKER_USER}" --password-stdin
+          fi
+
 jobs:
   audit:
     docker:
@@ -22,7 +33,9 @@ jobs:
             rustc --version
             cargo install cargo-audit
       - run:
-          command: cargo audit
+          # ignoring RUSTSEC-2020-0041 -> sentry fix not yet available
+          # ignoring RUSTSEC-2020-0049 -> fix is beta code
+          command: cargo audit --ignore RUSTSEC-2020-0041 --ignore RUSTSEC-2020-0049
 
   test:
     docker:
