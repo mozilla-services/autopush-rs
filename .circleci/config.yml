@@ -12,14 +12,14 @@ version: 2.1
 
 defaults:
   docker_login: &docker_login
-  run:
-      name: Login to Dockerhub
-      command: |
-          if [ "${DOCKER_USER}" == "" ] || [ "${DOCKER_PASS}" == "" ]; then
-              echo "Skipping Login to Dockerhub, no credentials."
-          else
-              echo "${DOCKER_PASS}" | docker login -u="${DOCKER_USER}" --password-stdin
-          fi
+      run:
+          name: Login to Dockerhub
+          command: |
+              if [ "${DOCKER_USER}" == "" ] || [ "${DOCKER_PASS}" == "" ]; then
+                  echo "Skipping Login to Dockerhub, no credentials."
+              else
+                  echo "${DOCKER_PASS}" | docker login -u="${DOCKER_USER}" --password-stdin
+              fi
 
 jobs:
   audit:
@@ -116,6 +116,7 @@ jobs:
           command: apk add --no-cache openssh-client git
       - checkout
       - setup_remote_docker
+      - *docker_login
       - run:
           name: Create a version.json
           command: |
@@ -152,6 +153,7 @@ jobs:
         type: string
     steps:
       - setup_remote_docker
+      - *docker_login
       - attach_workspace:
           at: /cache
       - run:
