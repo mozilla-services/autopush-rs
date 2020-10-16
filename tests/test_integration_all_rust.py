@@ -13,6 +13,7 @@ import sys
 import time
 import uuid
 from functools import wraps
+from jose import jws
 from threading import Event, Thread
 from unittest import SkipTest
 
@@ -24,7 +25,7 @@ import twisted.internet.base
 from autopush.db import (
     DynamoDBResource, create_message_table, get_router_table
 )
-from autopush.tests.test_integration import Client, _get_vapid
+from autopush.tests.test_integration import Client
 from autopush.utils import base64url_encode
 from cryptography.fernet import Fernet
 from Queue import Empty, Queue
@@ -32,6 +33,7 @@ from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.trial import unittest
 from typing import Optional
+from urlparse import urlparse
 
 app = bottle.Bottle()
 logging.basicConfig(level=logging.DEBUG)
@@ -123,6 +125,31 @@ ENDPOINT_CONFIG = dict(
     human_logs='true',
     crypto_keys="[{}]".format(CRYPTO_KEY),
 )
+
+
+def _get_vapid(key=None, payload=None, endpoint=None):
+    global CONNECTION_CONFIG
+
+    if endpoint is None:
+        endpoint = "{}://{}:{}".format(
+                        CONNECTION_CONFIG.get("endpoint_scheme"),
+                        CONNECTION_CONFIG.get("endpoint_hostname"),
+                        CONNECTION_CONFIG.get("endpoint_port"),
+                   )
+    if not payload:
+        payload = {"aud": endpoint,
+                   "exp": int(time.time()) + 86400,
+                   "sub": "mailto:admin@example.com"}
+    if not payload.get("aud"):
+        payload['aud'] = endpoint
+    if not key:
+        key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+    vk = key.get_verifying_key()
+    auth = jws.sign(payload, key, algorithm="ES256").strip('=')
+    crypto_key = base64url_encode('\4' + vk.to_string())
+    return {"auth": auth,
+            "crypto-key": crypto_key,
+            "key": key}
 
 
 def enqueue_output(out, queue):
@@ -254,7 +281,7 @@ def setup_dynamodb():
     global DDB_PROCESS
 
     if os.getenv("AWS_LOCAL_DYNAMODB") is None:
-        print "Starting new DynamoDB instance"
+        print("Starting new DynamoDB instance")
         cmd = " ".join([
             "java", "-Djava.library.path=%s" % DDB_LIB_DIR,
             "-jar", DDB_JAR, "-sharedDb", "-inMemory"
@@ -262,7 +289,7 @@ def setup_dynamodb():
         DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
         os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
     else:
-        print "Using existing DynamoDB instance"
+        print("Using existing DynamoDB instance")
 
     # Setup the necessary tables
     boto_resource = DynamoDBResource()
@@ -367,11 +394,17 @@ class TestRustWebPush(unittest.TestCase):
     # Max log lines allowed to be emitted by each node type
     max_endpoint_logs = 8
     max_conn_logs = 3
+    vapid_payload = {"exp": int(time.time()) + 86400,
+                     "sub": "mailto:admin@example.com"}
 
     def tearDown(self):
         process_logs(self)
         while not MOCK_SENTRY_QUEUE.empty():
             MOCK_SENTRY_QUEUE.get_nowait()
+
+    def host_endpoint(self, client):
+        parsed = urlparse(client.channels.values()[0])
+        "{}://{}".format(parsed.scheme, parsed.netloc)
 
     @inlineCallbacks
     def quick_register(self, sslcontext=None):
@@ -458,8 +491,8 @@ class TestRustWebPush(unittest.TestCase):
         data2 = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
-        yield client.send_notification(data=data, topic="Inbox")
-        yield client.send_notification(data=data2, topic="Inbox")
+        yield client.send_notification(data=data, topic="Inbox", status=202)
+        yield client.send_notification(data=data2, topic="Inbox", status=202)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
@@ -479,7 +512,7 @@ class TestRustWebPush(unittest.TestCase):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
-        yield client.send_notification(data=data, topic="Inbox")
+        yield client.send_notification(data=data, topic="Inbox", status=202)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification(timeout=10)
@@ -504,7 +537,8 @@ class TestRustWebPush(unittest.TestCase):
     def test_basic_delivery_with_vapid(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
-        vapid_info = _get_vapid()
+        vapid_info = _get_vapid(
+            payload=self.vapid_payload)
         result = yield client.send_notification(data=data, vapid=vapid_info)
         # the following presumes that only `salt` is padded.
         clean_header = client._crypto_key.replace(
@@ -518,7 +552,10 @@ class TestRustWebPush(unittest.TestCase):
     def test_basic_delivery_with_invalid_vapid(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
-        vapid_info = _get_vapid()
+        vapid_info = _get_vapid(
+            payload=self.vapid_payload,
+            endpoint=self.host_endpoint(client)
+        )
         vapid_info['crypto-key'] = "invalid"
         yield client.send_notification(
             data=data,
@@ -531,7 +568,7 @@ class TestRustWebPush(unittest.TestCase):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
-            payload={"aud": "https://pusher_origin.example.com",
+            payload={"aud": self.host_endpoint(client),
                      "exp": '@',
                      "sub": "mailto:admin@example.com"})
         vapid_info['crypto-key'] = "invalid"
@@ -545,7 +582,10 @@ class TestRustWebPush(unittest.TestCase):
     def test_basic_delivery_with_invalid_vapid_auth(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
-        vapid_info = _get_vapid()
+        vapid_info = _get_vapid(
+            payload=self.vapid_payload,
+            endpoint=self.host_endpoint(client),
+        )
         vapid_info['auth'] = ""
         yield client.send_notification(
             data=data,
@@ -558,7 +598,7 @@ class TestRustWebPush(unittest.TestCase):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
-            payload={"aud": "https://pusher_origin.example.com",
+            payload={"aud": self.host_endpoint(client),
                      "sub": "mailto:admin@example.com"})
         vapid_info['auth'] = vapid_info['auth'][:-3] + "bad"
         yield client.send_notification(
@@ -571,7 +611,9 @@ class TestRustWebPush(unittest.TestCase):
     def test_basic_delivery_with_invalid_vapid_ckey(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
-        vapid_info = _get_vapid()
+        vapid_info = _get_vapid(
+            payload=self.vapid_payload,
+            endpoint=self.host_endpoint(client))
         vapid_info['crypto-key'] = "invalid|"
         yield client.send_notification(
             data=data,
@@ -585,7 +627,7 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        yield client.send_notification(data=data)
+        yield client.send_notification(data=data, status=202)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
@@ -622,8 +664,8 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        yield client.send_notification(data=data)
-        yield client.send_notification(data=data2)
+        yield client.send_notification(data=data, status=202)
+        yield client.send_notification(data=data2, status=202)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
@@ -650,7 +692,7 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        yield client.send_notification(data=data, ttl=1, topic="test")
+        yield client.send_notification(data=data, ttl=1, topic="test", status=202)
         yield client.sleep(2)
         yield client.connect()
         yield client.hello()
@@ -669,8 +711,8 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        yield client.send_notification(data=data)
-        yield client.send_notification(data=data2)
+        yield client.send_notification(data=data, status=202)
+        yield client.send_notification(data=data2, status=202)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification(timeout=0.5)
@@ -709,8 +751,8 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        yield client.send_notification(data=data)
-        yield client.send_notification(data=data2)
+        yield client.send_notification(data=data, status=202)
+        yield client.send_notification(data=data2, status=202)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification(timeout=0.5)
@@ -782,7 +824,7 @@ class TestRustWebPush(unittest.TestCase):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
-        yield client.send_notification(data=data, ttl=1)
+        yield client.send_notification(data=data, ttl=1, status=202)
         time.sleep(1)
         yield client.connect()
         yield client.hello()
@@ -798,9 +840,9 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         for x in range(0, 12):
-            yield client.send_notification(data=data, ttl=1)
+            yield client.send_notification(data=data, ttl=1, status=202)
 
-        yield client.send_notification(data=data2)
+        yield client.send_notification(data=data2, status=202)
         time.sleep(1)
         yield client.connect()
         yield client.hello()
@@ -825,12 +867,12 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         for x in range(0, 6):
-            yield client.send_notification(data=data)
+            yield client.send_notification(data=data, status=202)
 
         for x in range(0, 6):
-            yield client.send_notification(data=data1, ttl=1)
+            yield client.send_notification(data=data1, ttl=1, status=202)
 
-        yield client.send_notification(data=data2)
+        yield client.send_notification(data=data2, status=202)
         time.sleep(1)
         yield client.connect()
         yield client.hello()
@@ -873,7 +915,7 @@ class TestRustWebPush(unittest.TestCase):
         yield client.ack(result["channelID"], result["version"])
 
         yield client.disconnect()
-        yield client.send_notification(use_header=False)
+        yield client.send_notification(use_header=False, status=202)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
@@ -904,7 +946,7 @@ class TestRustWebPush(unittest.TestCase):
         yield client.ack(result2["channelID"], result2["version"])
 
         yield client.disconnect()
-        yield client.send_notification()
+        yield client.send_notification(status=202)
         yield client.connect()
         yield client.hello()
         result3 = yield client.get_notification()
@@ -915,6 +957,16 @@ class TestRustWebPush(unittest.TestCase):
 
         yield self.shut_down(client)
 
+    """
+    # Need to dig into this test a bit more. I'm not sure it's structured correctly
+    # since we resolved a bug about returning 202 v. 201, and it's using a dependent
+    # library to do the Client calls. In short, this test will fail in `send_notification()`
+    # because the response will be a 202 instead of 201, and Client.send_notification will
+    # fail to record the message into it's internal message array, which will cause
+    # Client.delete_notification to fail.
+
+    # Skipping test for now.
+    """
     @inlineCallbacks
     def test_delete_saved_notification(self):
         client = yield self.quick_register()
@@ -922,17 +974,18 @@ class TestRustWebPush(unittest.TestCase):
         assert client.channels
         chan = client.channels.keys()[0]
         yield client.send_notification()
-        yield client.delete_notification(chan)
+        yield client.delete_notification(chan, status=204)
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
         assert result is None
         yield self.shut_down(client)
+    # """
 
     @inlineCallbacks
     def test_with_key(self):
         private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
-        claims = {"aud": "http://example.com",
+        claims = {"aud": "http://localhost:{}".format(ENDPOINT_PORT),
                   "exp": int(time.time()) + 86400,
                   "sub": "a@example.com"}
         vapid = _get_vapid(private_key, claims)
@@ -975,7 +1028,7 @@ class TestRustWebPush(unittest.TestCase):
         uaid = client.uaid
         yield client.disconnect()
         for i in range(MSG_LIMIT + 1):
-            yield client.send_notification()
+            yield client.send_notification(status=202)
         yield client.connect()
         yield client.hello()
         assert client.uaid == uaid

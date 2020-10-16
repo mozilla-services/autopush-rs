@@ -85,6 +85,10 @@ pub enum VapidError {
     MissingKey,
     #[error("Invalid VAPID public key")]
     InvalidKey,
+    #[error("Invalid VAPID audience")]
+    InvalidAudience,
+    #[error("Invalid VAPID expiry")]
+    InvalidExpiry,
     #[error("VAPID public key mismatch")]
     KeyMismatch,
     #[error("The VAPID token expiration is too long")]

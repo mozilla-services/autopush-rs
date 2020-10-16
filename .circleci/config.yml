@@ -21,8 +21,9 @@ jobs:
           command: |
             rustc --version
             cargo install cargo-audit
+      # pending https://github.com/bodil/sized-chunks/issues/11
       - run:
-          command: cargo audit
+          command: cargo audit --ignore RUSTSEC-2020-0041 --ignore RUSTSEC-2020-0049
 
   test:
     docker:

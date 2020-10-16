@@ -15,12 +15,12 @@ path = "src/main.rs"
 
 [dependencies]
 autopush_common = { path = "../autopush-common" }
-base64 = "0.12.1"
+base64 = "0.13"
 # XXX: pin to < 0.5 for hyper 0.12
-bytes = "0.4.12"
-cadence = "0.20.0"
-crossbeam-channel = "0.4.2"
-chrono = "0.4.11"
+bytes = "0.4"
+cadence = "0.20"
+crossbeam-channel = "0.4"
+chrono = "0.4"
 config = "0.10.1"
 docopt = "1.1.0"
 env_logger = "0.7.1"
@@ -63,4 +63,4 @@ tokio-service = "0.1.0"
 tokio-tungstenite = { version = "0.9.0", default-features = false }
 tungstenite = { version = "0.9.2", default-features = false }
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
-woothee = "0.10.0"
+woothee = "0.11"
