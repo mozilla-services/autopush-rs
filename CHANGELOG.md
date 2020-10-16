@@ -1,3 +1,54 @@
+<a name="1.57.0"></a>
+## 1.57.0 (2020-10-16)
+
+Includes autoendpoint
+
+#### Bug Fixes
+
+*   Fix debug info setting being ignored (#219) ([35a9d4f6](https://github.com/mozilla-services/autopush-rs/commit/35a9d4f6455dc8c40928af19f32a565c4d7fbcec))
+*   Check the max data size against the final message payload (#212) ([4e07ff07](https://github.com/mozilla-services/autopush-rs/commit/4e07ff07df7befd0ae29abfab335a870cb8c9dd6), closes [#203](https://github.com/mozilla-services/autopush-rs/issues/203))
+*   Drop 0 TTL WebPush notifications if they aren't delivered the first time (#210) ([a28cb295](https://github.com/mozilla-services/autopush-rs/commit/a28cb2955c87125e61b3400bb539898e17e1107a))
+*   Fix having extra slashes in the endpoint URL (#206) ([f943659e](https://github.com/mozilla-services/autopush-rs/commit/f943659e5a87aacaa367d818f344d881a3f77ca1))
+*   Drop unknown FCM users (#197) ([068f54dd](https://github.com/mozilla-services/autopush-rs/commit/068f54ddaa00b54fb0ab8d8a12cc2251f02a31fd), closes [#173](https://github.com/mozilla-services/autopush-rs/issues/173))
+*   Strip padding and double quotes from encryption and crypto-key headers (#200) ([e20fc6af](https://github.com/mozilla-services/autopush-rs/commit/e20fc6afd86d2ec18394181cedd992e2987b7858), closes [#192](https://github.com/mozilla-services/autopush-rs/issues/192))
+*   Copy and upgrade parts of DynamoStorage into autoendpoint (#174) ([120a46b7](https://github.com/mozilla-services/autopush-rs/commit/120a46b75a82f1cb12ab6a93c2707f7613dc4f59), closes [#172](https://github.com/mozilla-services/autopush-rs/issues/172))
+*   Use errnos from validation errors (#184) ([147aed84](https://github.com/mozilla-services/autopush-rs/commit/147aed84801ab0699fd0d9426f95a9c642a239bc))
+
+#### Doc
+
+*   Add a fernet_key.py script for generating Fernet keys (#218) ([aa0e9d96](https://github.com/mozilla-services/autopush-rs/commit/aa0e9d9629f7e844adbf52f44721b3bc7f0b1b13), closes [#217](https://github.com/mozilla-services/autopush-rs/issues/217))
+*   Add a sample config for autopush and fix some settings (#216) ([5badbfbe](https://github.com/mozilla-services/autopush-rs/commit/5badbfbefae8b637f5062ef4f708f7016cfde29b))
+*   Add a sample config for autoendpoint and normalize router settings (#214) ([3b30d694](https://github.com/mozilla-services/autopush-rs/commit/3b30d694e528a3d55117d456d81b0c05f72bdfd6))
+
+#### Features
+
+*   Include minimal debug info in release builds (#215) ([fd659e3e](https://github.com/mozilla-services/autopush-rs/commit/fd659e3e613114ead60fc5b28348711bc57514ac), closes [#77](https://github.com/mozilla-services/autopush-rs/issues/77))
+*   Support "gcm" as an alias to "fcm" (#211) ([fd0d63d2](https://github.com/mozilla-services/autopush-rs/commit/fd0d63d2767e85e76955eab232ca49f663bf7f60), closes [#204](https://github.com/mozilla-services/autopush-rs/issues/204))
+*   Add the log-check route and remove unused ApiError variants/impls (#209) ([1b0b18b3](https://github.com/mozilla-services/autopush-rs/commit/1b0b18b3b37505acedbe32bf6a8fce325986aaa1), closes [#208](https://github.com/mozilla-services/autopush-rs/issues/208))
+*   Amazon Device Messaging router (#207) ([c587446a](https://github.com/mozilla-services/autopush-rs/commit/c587446a96178a2359dcb7a3dc0bd5fb33947946), closes [#165](https://github.com/mozilla-services/autopush-rs/issues/165))
+*   Use autoendpoint-rs in integration tests (#205) ([31d2d19c](https://github.com/mozilla-services/autopush-rs/commit/31d2d19c971ab2a90dfe47a62b17b422aaeec33a), closes [#168](https://github.com/mozilla-services/autopush-rs/issues/168))
+*   Add the unregister user route (#195) ([b4bb1636](https://github.com/mozilla-services/autopush-rs/commit/b4bb163607c302e07f779486bfb0b8ef0b7da75c), closes [#179](https://github.com/mozilla-services/autopush-rs/issues/179))
+*   APNS Router (#201) ([ce51957f](https://github.com/mozilla-services/autopush-rs/commit/ce51957f0dcb1a3ead8dab3d013e43f8e976064a), closes [#164](https://github.com/mozilla-services/autopush-rs/issues/164))
+*   New channel endpoint (#189) ([6cc9a7dc](https://github.com/mozilla-services/autopush-rs/commit/6cc9a7dcae95e6978cfe15c003db199ebba6fd85))
+*   Update token endpoint (#188) ([bb395fb2](https://github.com/mozilla-services/autopush-rs/commit/bb395fb2bfa620016baff174ac14d57786a4197c), closes [#177](https://github.com/mozilla-services/autopush-rs/issues/177))
+*   Sentry integration for autoendpoint (#196) ([674d7d2c](https://github.com/mozilla-services/autopush-rs/commit/674d7d2c1ec7d79e41e871fc0fb39dc613353e32), closes [#155](https://github.com/mozilla-services/autopush-rs/issues/155))
+*   Delete message endpoint (#186) ([6a7fa492](https://github.com/mozilla-services/autopush-rs/commit/6a7fa49209bbe576840d3c40f641e854257e4417), closes [#175](https://github.com/mozilla-services/autopush-rs/issues/175))
+*   User registration (#185) ([6df3e36b](https://github.com/mozilla-services/autopush-rs/commit/6df3e36bab07a68d04e7bdfff23ed327d6f98e6b), closes [#176](https://github.com/mozilla-services/autopush-rs/issues/176))
+*   Route notifications to FCM (Android) (#171) ([d9a0d9d7](https://github.com/mozilla-services/autopush-rs/commit/d9a0d9d7d1bd79fc3cd786e4a27a18bca4ff3eec), closes [#162](https://github.com/mozilla-services/autopush-rs/issues/162))
+*   Route notifications to autopush connection servers (#167) ([e73dff17](https://github.com/mozilla-services/autopush-rs/commit/e73dff17e9a9909743fd57bbd9d6769789a455e1), closes [#161](https://github.com/mozilla-services/autopush-rs/issues/161))
+*   Return detailed autoendpoint errors (#170) ([91d483ab](https://github.com/mozilla-services/autopush-rs/commit/91d483ab5e357ad6c50dc7669a9d12cd3f1914a7), closes [#159](https://github.com/mozilla-services/autopush-rs/issues/159))
+*   Record the encoding in a metric if there is an encrypted payload (#166) ([8451d3f9](https://github.com/mozilla-services/autopush-rs/commit/8451d3f9790a6633107cd5473768c1dd53602df1))
+*   Validate autoendpoint JWT tokens (#154) ([04fee7f9](https://github.com/mozilla-services/autopush-rs/commit/04fee7f9cbb7fc984d34953c05f34f7a732310d4), closes [#103](https://github.com/mozilla-services/autopush-rs/issues/103))
+*   Validate user subscription data in autoendpoint (#160) ([8efa42c8](https://github.com/mozilla-services/autopush-rs/commit/8efa42c8885865ae1392155099af1b30a01a2dff), closes [#156](https://github.com/mozilla-services/autopush-rs/issues/156))
+*   Basic autoendpoint extractors (#151) ([b08fdbdd](https://github.com/mozilla-services/autopush-rs/commit/b08fdbdd61edbc817835ab0fb18f304fd6fda505))
+
+#### Chore
+
+*   Re-enable cargo-audit in CI (#221) ([e8179a85](https://github.com/mozilla-services/autopush-rs/commit/e8179a85b87f953a7fea3235315877706e26b3f7))
+*   Update Docker rust to 1.45 (#193) ([9dd589ce](https://github.com/mozilla-services/autopush-rs/commit/9dd589ce449b76a7c773e28638ffb528adf283a6))
+
+
+
 <a name="1.55.0"></a>
 ## 1.55.0 (2020-04-10)
 

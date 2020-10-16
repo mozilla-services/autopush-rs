@@ -22,7 +22,14 @@ jobs:
             rustc --version
             cargo install cargo-audit
       - run:
-          command: cargo audit
+          # ignoring RUSTSEC-2020-0049 => requires non-standard release (actix-codec 0.3.0-beta.1)
+          # ignoring RUSTSEC-2020-0048 => requires non-standard release (actix-http 2.0.0-alpha.1)
+          # ignoring RUSTSEC-2020-0041 => no upgrade available for im 14.2.0 (sentry 0.18.1)
+          command: |
+            cargo audit \
+            --ignore RUSTSEC-2020-0041 \
+            --ignore RUSTSEC-2020-0048 \
+            --ignore RUSTSEC-2020-0049
 
   test:
     docker:
