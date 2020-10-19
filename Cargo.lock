@@ -390,7 +390,11 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "autoendpoint"
+<<<<<<< HEAD
 version = "1.0.0"
+=======
+version = "1.57.0"
+>>>>>>> 761d91f4fc06176dbc1ddc0d654d2b1981eebe81
 dependencies = [
  "a2",
  "actix-cors",
@@ -440,7 +444,11 @@ dependencies = [
 
 [[package]]
 name = "autopush"
+<<<<<<< HEAD
 version = "1.55.0"
+=======
+version = "1.57.0"
+>>>>>>> 761d91f4fc06176dbc1ddc0d654d2b1981eebe81
 dependencies = [
  "autopush_common",
  "base64 0.13.0",
@@ -488,7 +496,11 @@ dependencies = [
 
 [[package]]
 name = "autopush_common"
+<<<<<<< HEAD
 version = "1.0.0"
+=======
+version = "1.57.0"
+>>>>>>> 761d91f4fc06176dbc1ddc0d654d2b1981eebe81
 dependencies = [
  "base64 0.12.3",
  "cadence 0.20.0",
@@ -1894,6 +1906,7 @@ name = "input_buffer"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e1b822cc844905551931d6f81608ed5f50a79c1078a4e2b4d42dbc7c1eedfbf"
+<<<<<<< HEAD
 dependencies = [
  "bytes 0.4.12",
 ]
@@ -1904,6 +1917,18 @@ version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63312a18f7ea8760cdd0a7c5aac1a619752a246b833545e3e36d1f81f7cd9e66"
 dependencies = [
+=======
+dependencies = [
+ "bytes 0.4.12",
+]
+
+[[package]]
+name = "instant"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63312a18f7ea8760cdd0a7c5aac1a619752a246b833545e3e36d1f81f7cd9e66"
+dependencies = [
+>>>>>>> 761d91f4fc06176dbc1ddc0d654d2b1981eebe81
  "cfg-if 0.1.10",
 ]
 
