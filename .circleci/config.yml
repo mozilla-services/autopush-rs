@@ -25,6 +25,10 @@ jobs:
   audit:
     docker:
       - image: rust:latest
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+
     steps:
       - checkout
       - run:
@@ -41,7 +45,13 @@ jobs:
   test:
     docker:
       - image: circleci/python:2.7
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
       - image: circleci/dynamodb
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
         command: -sharedDb -inMemory
     environment:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
@@ -102,6 +112,9 @@ jobs:
   build:
     docker:
       - image: docker:18.03.0-ce
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
     working_directory: /dockerflow
     parameters:
       image:
@@ -147,6 +160,9 @@ jobs:
   deploy:
     docker:
       - image: docker:18.03.0-ce
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
     parameters:
       image:
         type: string
