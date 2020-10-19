@@ -436,7 +436,7 @@ class TestRustWebPush(unittest.TestCase):
 
         # LogCheck does throw an error every time
         requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT))
-        data = MOCK_SENTRY_QUEUE.get(timeout=1)
+        data = MOCK_SENTRY_QUEUE.get(timeout=5)
         assert data["exception"]["values"][0]["value"] == "LogCheck"
 
     @inlineCallbacks
