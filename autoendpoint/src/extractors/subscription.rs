@@ -15,8 +15,13 @@ use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::str::FromStr;
+use url::Url;
 use uuid::Uuid;
+
+const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 #[derive(Clone, Debug)]
@@ -25,6 +30,23 @@ pub struct Subscription {
     pub channel_id: Uuid,
     pub router_type: RouterType,
     pub vapid: Option<VapidHeaderWithKey>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VapidClaims {
+    exp: u64,
+    aud: String,
+    sub: String,
+}
+
+impl Default for VapidClaims {
+    fn default() -> Self {
+        Self {
+            exp: sec_since_epoch() + ONE_DAY_IN_SECONDS,
+            aud: "No audience".to_owned(),
+            sub: "No sub".to_owned(),
+        }
+    }
 }
 
 impl FromRequest for Subscription {
@@ -71,7 +93,7 @@ impl FromRequest for Subscription {
 
             // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid)?;
+                validate_vapid_jwt(vapid, &state.settings.endpoint_url())?;
 
                 state
                     .metrics
@@ -192,30 +214,36 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 /// - Make sure the expiration isn't too far into the future
 ///
 /// This is mostly taken care of by the jsonwebtoken library
-fn validate_vapid_jwt(vapid: &VapidHeaderWithKey) -> ApiResult<()> {
+fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()> {
     let VapidHeaderWithKey { vapid, public_key } = vapid;
-
-    #[derive(serde::Deserialize)]
-    struct Claims {
-        exp: u64,
-    }
 
     // Check the signature and make sure the expiration is in the future
     let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
         .map_err(|_| VapidError::InvalidKey)?;
-    let token_data = jsonwebtoken::decode::<Claims>(
+    // NOTE: This will fail if `exp` is specified as a string instead of a numeric.
+    let token_data = jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
         &DecodingKey::from_ec_der(&public_key),
         &Validation::new(Algorithm::ES256),
     )?;
 
     // Make sure the expiration isn't too far into the future
-    let now = sec_since_epoch();
-    const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
-
-    if token_data.claims.exp - now > ONE_DAY_IN_SECONDS {
+    if token_data.claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
+    }
+
+    let aud = match Url::from_str(&token_data.claims.aud) {
+        Ok(v) => v,
+        Err(_) => {
+            error!("Bad Aud: Invalid audience {:?}", &token_data.claims.aud);
+            return Err(VapidError::InvalidAudience.into());
+        }
+    };
+
+    if domain != &aud {
+        error!("Bad Aud: I am{:?}, asked for {:?} ", domain, aud);
+        return Err(VapidError::InvalidAudience.into());
     }
 
     Ok(())
@@ -223,7 +251,14 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey) -> ApiResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::{validate_vapid_jwt, VapidClaims};
+    use crate::error::ApiErrorKind;
     use crate::extractors::subscription::repad_base64;
+    use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
+    use autopush_common::util::sec_since_epoch;
+    use base64;
+    use std::str::FromStr;
+    use url::Url;
 
     #[test]
     fn repad_base64_1_padding() {
@@ -233,5 +268,71 @@ mod tests {
     #[test]
     fn repad_base64_2_padding() {
         assert_eq!(repad_base64("Zm9vYg"), "Zm9vYg==")
+    }
+
+    #[test]
+    fn vapid_aud_valid() {
+        let priv_key = base64::decode_config(
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
+                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+            base64::STANDARD,
+        )
+        .unwrap();
+        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
+        let domain = "https://push.services.mozilla.org";
+        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let claims = VapidClaims {
+            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            aud: domain.to_owned(),
+            sub: "mailto:admin@example.com".to_owned(),
+        };
+        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
+
+        let header = VapidHeaderWithKey {
+            public_key,
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token,
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+    }
+
+    #[test]
+    fn vapid_aud_invalid() {
+        let priv_key = base64::decode_config(
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
+                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+            base64::STANDARD,
+        )
+        .unwrap();
+        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
+        let domain = "https://push.services.mozilla.org";
+        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let claims = VapidClaims {
+            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            aud: domain.to_owned(),
+            sub: "mailto:admin@example.com".to_owned(),
+        };
+        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
+        let header = VapidHeaderWithKey {
+            public_key,
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token,
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        assert!(matches!(
+            validate_vapid_jwt(&header, &Url::from_str("http://example.org").unwrap())
+                .unwrap_err()
+                .kind,
+            ApiErrorKind::VapidError(VapidError::InvalidAudience)
+        ));
     }
 }

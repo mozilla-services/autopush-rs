@@ -32,6 +32,7 @@ jobs:
           command: |
             rustc --version
             cargo install cargo-audit
+      # pending https://github.com/bodil/sized-chunks/issues/11
       - run:
           # ignoring RUSTSEC-2020-0041 -> sentry fix not yet available
           # ignoring RUSTSEC-2020-0049 -> fix is beta code
