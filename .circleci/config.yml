@@ -10,10 +10,25 @@
 
 version: 2.1
 
+defaults:
+  docker_login: &docker_login
+      run:
+          name: Login to Dockerhub
+          command: |
+              if [ "${DOCKER_USER}" == "" ] || [ "${DOCKER_PASS}" == "" ]; then
+                  echo "Skipping Login to Dockerhub, no credentials."
+              else
+                  echo "${DOCKER_PASS}" | docker login -u="${DOCKER_USER}" --password-stdin
+              fi
+
 jobs:
   audit:
     docker:
       - image: rust:latest
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+
     steps:
       - checkout
       - run:
@@ -35,7 +50,13 @@ jobs:
   test:
     docker:
       - image: circleci/python:2.7
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
       - image: circleci/dynamodb
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
         command: -sharedDb -inMemory
     environment:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
@@ -96,6 +117,9 @@ jobs:
   build:
     docker:
       - image: docker:18.03.0-ce
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
     working_directory: /dockerflow
     parameters:
       image:
@@ -111,6 +135,7 @@ jobs:
           command: apk add --no-cache openssh-client git
       - checkout
       - setup_remote_docker
+      - *docker_login
       - run:
           name: Create a version.json
           command: |
@@ -140,6 +165,9 @@ jobs:
   deploy:
     docker:
       - image: docker:18.03.0-ce
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
     parameters:
       image:
         type: string
@@ -147,6 +175,7 @@ jobs:
         type: string
     steps:
       - setup_remote_docker
+      - *docker_login
       - attach_workspace:
           at: /cache
       - run:
