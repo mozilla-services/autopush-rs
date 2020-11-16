@@ -45,7 +45,7 @@ impl Default for Settings {
             message_table_name: "message".to_string(),
             max_data_bytes: 4096,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
-            auth_keys: "[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=]".to_string(),
+            auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             human_logs: false,
             statsd_host: None,
             statsd_port: 8125,
@@ -106,20 +106,54 @@ impl Settings {
 
     /// Initialize the fernet encryption instance
     pub fn make_fernet(&self) -> MultiFernet {
-        let fernets = Self::read_list_from_str(&self.crypto_keys, "Invalid AUTOEND_CRYPTO_KEYS")
+        let keys = &self.crypto_keys.replace('"', "").replace(" ", "");
+        let fernets = Self::read_list_from_str(&keys, "Invalid AUTOEND_CRYPTO_KEYS")
             .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS"))
             .collect();
         MultiFernet::new(fernets)
     }
 
     /// Get the list of auth hash keys
-    pub fn auth_keys(&self) -> Vec<&str> {
-        Self::read_list_from_str(&self.auth_keys, "Invalid AUTOEND_AUTH_KEYS").collect()
+    pub fn auth_keys(&self) -> Vec<String> {
+        let keys = &self.auth_keys.replace('"', "").replace(" ", "");
+        Self::read_list_from_str(&keys, "Invalid AUTOEND_AUTH_KEYS")
+            .map(|v| v.to_owned())
+            .collect()
     }
 
     /// Get the URL for this endpoint server
     pub fn endpoint_url(&self) -> Url {
         Url::parse(&format!("{}://{}:{}", self.scheme, self.host, self.port))
             .expect("Invalid endpoint URL")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Settings;
+    use crate::error::ApiResult;
+
+    #[test]
+    fn test_auth_keys() -> ApiResult<()> {
+        let success: Vec<String> = vec![
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=".to_owned(),
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC=".to_owned(),
+        ];
+        // Try with quoted strings
+        let settings = Settings{
+            auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC="]"#.to_owned(),
+            ..Default::default()
+        };
+        let result = settings.auth_keys();
+        assert_eq!(result, success);
+
+        // try with unquoted, non-JSON compliant strings.
+        let settings = Settings{
+            auth_keys: r#"[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC=]"#.to_owned(),
+            ..Default::default()
+        };
+        let result = settings.auth_keys();
+        assert_eq!(result, success);
+        Ok(())
     }
 }
