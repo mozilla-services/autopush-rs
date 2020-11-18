@@ -23,7 +23,7 @@
 
 # The HMAC SHA256 keys to use, for authenticating registration update requests.
 # Multiple are allowed when separated by a comma.
-#auth_keys = "[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=]"
+#auth_keys = "["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]"
 
 # If human-readable logging should be used
 #human_logs = false
