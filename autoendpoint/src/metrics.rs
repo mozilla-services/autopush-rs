@@ -71,7 +71,7 @@ impl From<&HttpRequest> for Metrics {
     fn from(req: &HttpRequest) -> Self {
         let exts = req.extensions();
         let def_tags = Tags::from_request_head(req.head());
-        let tags = exts.get::<Tags>().unwrap_or_else(|| &def_tags);
+        let tags = exts.get::<Tags>().unwrap_or(&def_tags);
         Metrics {
             client: Some(metrics_from_req(req)),
             tags: Some(tags.clone()),

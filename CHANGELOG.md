@@ -1,3 +1,18 @@
+<a name="1.57.1"></a>
+## 1.57.1 (2020-11-19)
+
+
+#### Bug Fixes
+
+*   Allow JSON formatted Auth keys ([d177a759](https://github.com/mozilla-services/autopush-rs/commit/d177a759b7550fcdb582d5463fc9f36b1838ffe0), closes [#234](https://github.com/mozilla-services/autopush-rs/issues/234))
+
+#### Chore
+
+*   release 1.57.0 (#231) ([761d91f4](https://github.com/mozilla-services/autopush-rs/commit/761d91f4fc06176dbc1ddc0d654d2b1981eebe81))
+*   update circleci to use new docker auth ([fabe4954](https://github.com/mozilla-services/autopush-rs/commit/fabe4954c64944cf94d2b36bea5bcac89671bbbf))
+
+
+
 <a name="1.57.0"></a>
 ## 1.57.0 (2020-10-16)
 
