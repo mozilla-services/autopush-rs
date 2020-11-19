@@ -11,7 +11,7 @@ pub fn init_logging(json: bool) -> Result<()> {
         let hostname = get_ec2_instance_id()
             .map(&str::to_owned)
             .or_else(get_hostname)
-            .ok_or_else(|| "Couldn't get_hostname")?;
+            .ok_or("Couldn't get_hostname")?;
 
         let drain = MozLogJson::new(io::stdout())
             .logger_name(format!(

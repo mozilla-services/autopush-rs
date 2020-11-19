@@ -273,6 +273,7 @@ impl Server {
         }
     }
 
+    #[allow(clippy::single_char_push_str)]
     fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Core)> {
         let core = Core::new()?;
         let broadcaster = if let Some(ref megaphone_url) = opts.megaphone_api_url {
