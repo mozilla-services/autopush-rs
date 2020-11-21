@@ -82,8 +82,16 @@ impl ApnsRouter {
         } else {
             Endpoint::Production
         };
-        let cert = tokio::fs::read(settings.cert).await?;
-        let key = tokio::fs::read(settings.key).await?;
+        let cert = if settings.cert.starts_with('/') {
+            tokio::fs::read(settings.cert).await?
+        } else {
+            settings.cert.as_bytes().to_vec()
+        };
+        let key = if settings.key.starts_with('/') {
+            tokio::fs::read(settings.key).await?
+        } else {
+            settings.key.as_bytes().to_vec()
+        };
         let client = ApnsClientData {
             client: Box::new(
                 a2::Client::certificate_parts(&cert, &key, endpoint)

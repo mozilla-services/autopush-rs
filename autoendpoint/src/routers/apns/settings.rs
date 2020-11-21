@@ -18,8 +18,10 @@ pub struct ApnsSettings {
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct ApnsChannel {
-    pub cert: PathBuf,
-    pub key: PathBuf,
+    /// the cert and key are either fully qualified paths (starts with "/")
+    /// or an inline value.
+    pub cert: String,
+    pub key: String,
     pub topic: Option<String>,
     pub sandbox: bool,
 }
