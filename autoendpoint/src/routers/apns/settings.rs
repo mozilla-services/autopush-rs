@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 /// Settings for `ApnsRouter`
 #[derive(Clone, Debug, serde::Deserialize)]
