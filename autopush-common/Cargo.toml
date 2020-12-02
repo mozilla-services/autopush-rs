@@ -1,7 +1,7 @@
 [package]
 name = "autopush_common"
 # Should match version in ../autopush/Cargo.toml
-version = "1.57.1"
+version = "1.57.3"
 authors = [
   "Ben Bangert <ben@groovie.org>",
   "JR Conlin <jrconlin@mozilla.com>",
