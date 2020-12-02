@@ -68,7 +68,9 @@ impl Settings {
         }
 
         // Merge the environment overrides
-        config.merge(Environment::with_prefix(ENV_PREFIX))?;
+        // Note: Specify the separator here so that the shell can properly pass args
+        // down to the sub structures.
+        config.merge(Environment::with_prefix(ENV_PREFIX).separator("__"))?;
 
         config.try_into::<Self>().map_err(|error| match error {
             // Configuration errors are not very sysop friendly, Try to make them
