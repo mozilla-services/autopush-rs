@@ -1,3 +1,17 @@
+<a name="1.57.2"></a>
+## 1.57.3 (2020-12-02)
+
+
+#### Bug Fixes
+
+*   Accept either paths or strings containing the cert for APNS (#241) ([b3dd8a3e](https://github.com/mozilla-services/autopush-rs/commit/b3dd8a3ee3a47424e13a4661337aa8f4a8106612), closes [#240](https://github.com/mozilla-services/autopush-rs/issues/240))
+
+#### Chore
+
+*   tag 1.57.1 (#239) ([0f168c93](https://github.com/mozilla-services/autopush-rs/commit/0f168c93c9758b515732231e0cae0f7a8a6779bb))
+
+
+
 <a name="1.57.1"></a>
 ## 1.57.1 (2020-11-19)
 
