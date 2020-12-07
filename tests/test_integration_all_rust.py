@@ -965,7 +965,7 @@ class TestRustWebPush(unittest.TestCase):
     # Client.delete_notification to fail.
 
     # Skipping test for now.
-    # """
+    """
     @inlineCallbacks
     def test_delete_saved_notification(self):
         client = yield self.quick_register()
