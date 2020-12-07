@@ -3,7 +3,7 @@
 [[package]]
 name = "a2"
 version = "0.5.2"
-source = "git+https://github.com/Mcat12/a2.git?branch=autoendpoint#74c8588f2cc7d40e9c239897acb99031ceb29117"
+source = "git+https://github.com/mozilla-services/a2.git?branch=autoendpoint#74c8588f2cc7d40e9c239897acb99031ceb29117"
 dependencies = [
  "base64 0.12.3",
  "erased-serde",
@@ -392,7 +392,7 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "autoendpoint"
-version = "1.57.3"
+version = "1.57.0"
 dependencies = [
  "a2",
  "actix-cors",
@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "autopush"
-version = "1.57.3"
+version = "1.57.1"
 dependencies = [
  "autopush_common",
  "base64 0.13.0",
@@ -490,7 +490,7 @@ dependencies = [
 
 [[package]]
 name = "autopush_common"
-version = "1.57.3"
+version = "1.57.1"
 dependencies = [
  "base64 0.12.3",
  "cadence 0.20.0",
