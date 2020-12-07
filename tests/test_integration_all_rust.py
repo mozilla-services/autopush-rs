@@ -957,7 +957,6 @@ class TestRustWebPush(unittest.TestCase):
 
         yield self.shut_down(client)
 
-    """
     # Need to dig into this test a bit more. I'm not sure it's structured correctly
     # since we resolved a bug about returning 202 v. 201, and it's using a dependent
     # library to do the Client calls. In short, this test will fail in `send_notification()`
@@ -966,7 +965,7 @@ class TestRustWebPush(unittest.TestCase):
     # Client.delete_notification to fail.
 
     # Skipping test for now.
-    """
+    # """
     @inlineCallbacks
     def test_delete_saved_notification(self):
         client = yield self.quick_register()
