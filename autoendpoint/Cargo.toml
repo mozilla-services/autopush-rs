@@ -12,7 +12,7 @@ edition = "2018"
 # - https://github.com/pimeys/a2/pull/47
 # The `autoendpoint` branch merges these three PRs together.
 # The version of a2 at the time of the fork is v0.5.3.
-a2 = { git = "https://github.com/Mcat12/a2.git", branch = "autoendpoint" }
+a2 = { git = "https://github.com/mozilla-services/a2.git", branch = "autoendpoint" }
 actix-web = "3.2"
 actix-rt = "1.1"
 actix-cors = "0.5"
