@@ -37,7 +37,7 @@ struct Args {
 
 fn main() -> Result<()> {
     env_logger::init();
-    let signal = notify(&[signal_hook::SIGINT, signal_hook::SIGTERM])?;
+    let signal = notify(&[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])?;
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
 /// Create a new channel subscribed to the given signals
 fn notify(signals: &[c_int]) -> Result<crossbeam_channel::Receiver<c_int>> {
     let (s, r) = crossbeam_channel::bounded(100);
-    let signals = signal_hook::iterator::Signals::new(signals)?;
+    let mut signals = signal_hook::iterator::Signals::new(signals)?;
     thread::spawn(move || {
         for signal in signals.forever() {
             if s.send(signal).is_err() {

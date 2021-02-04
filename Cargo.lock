@@ -403,7 +403,7 @@ dependencies = [
  "autopush_common",
  "backtrace",
  "base64 0.13.0",
- "cadence 0.24.0",
+ "cadence",
  "config",
  "docopt",
  "fernet",
@@ -448,10 +448,10 @@ dependencies = [
  "autopush_common",
  "base64 0.13.0",
  "bytes 0.4.12",
- "cadence 0.20.0",
+ "cadence",
  "chrono",
  "config",
- "crossbeam-channel 0.4.4",
+ "crossbeam-channel",
  "docopt",
  "env_logger",
  "error-chain",
@@ -494,8 +494,8 @@ dependencies = [
 name = "autopush_common"
 version = "1.57.3"
 dependencies = [
- "base64 0.12.3",
- "cadence 0.20.0",
+ "base64 0.13.0",
+ "cadence",
  "chrono",
  "config",
  "error-chain",
@@ -509,7 +509,7 @@ dependencies = [
  "log",
  "mozsvc-common",
  "openssl",
- "rand 0.7.3",
+ "rand 0.8.3",
  "regex",
  "reqwest 0.9.24",
  "rusoto_core 0.42.0",
@@ -726,20 +726,11 @@ dependencies = [
 
 [[package]]
 name = "cadence"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c57523ff87f22fc96f07f5f379af387fdd86009242a17d805a3278540cde94a"
-dependencies = [
- "crossbeam-channel 0.4.4",
-]
-
-[[package]]
-name = "cadence"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e47ac30b0598bfd991b91817387bff591a75fb8e63f5b318c80e61d29aaf20c0"
 dependencies = [
- "crossbeam-channel 0.5.0",
+ "crossbeam-channel",
 ]
 
 [[package]]
@@ -922,16 +913,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81156fece84ab6a9f2afdb109ce3ae577e42b1228441eded99bd77f627953b1a"
 dependencies = [
  "cfg-if 1.0.0",
-]
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b153fe7cbef478c567df0f972e02e6d736db11affe43dfc9c56a9374d1adfb87"
-dependencies = [
- "crossbeam-utils 0.7.2",
- "maybe-uninit",
 ]
 
 [[package]]
@@ -1235,9 +1216,9 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.7.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44533bbbb3bb3c1fa17d9f2e4e38bbbaf8396ba82193c4cb1b6445d711445d36"
+checksum = "f26ecb66b4bdca6c1409b40fb255eefc2bd4f6d135dab3c3124f80ffa2a9661e"
 dependencies = [
  "atty",
  "humantime",
@@ -1768,12 +1749,9 @@ checksum = "494b4d60369511e7dea41cf646832512a94e542f68bb9c49e54518e0f468eb47"
 
 [[package]]
 name = "humantime"
-version = "1.3.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df004cfca50ef23c36850aaaa59ad52cc70d0e90243c3c7737a4dd32dc7a3c4f"
-dependencies = [
- "quick-error",
-]
+checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "hyper"
@@ -3771,9 +3749,9 @@ checksum = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"
 
 [[package]]
 name = "signal-hook"
-version = "0.1.16"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "604508c1418b99dfe1925ca9224829bb2a8a9a04dda655cc01fcad46f4ab05ed"
+checksum = "780f5e3fe0c66f67197236097d89de1e86216f1f6fdeaf47c442f854ab46c240"
 dependencies = [
  "libc",
  "signal-hook-registry",
@@ -3781,9 +3759,9 @@ dependencies = [
 
 [[package]]
 name = "signal-hook-registry"
-version = "1.2.2"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce32ea0c6c56d5eacaeb814fbed9960547021d3edd010ded1425f180536b20ab"
+checksum = "16f1d0fef1604ba8f7a073c7e701f213e056707210e9020af4528e0101ce11a6"
 dependencies = [
  "libc",
 ]
@@ -3840,7 +3818,7 @@ version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c60813879f820c85dbc4eabf3269befe374591289019775898d56a81a804fbdc"
 dependencies = [
- "crossbeam-channel 0.5.0",
+ "crossbeam-channel",
  "slog",
  "take_mut",
  "thread_local",
