@@ -52,6 +52,7 @@ slog-async = "2.5.0"
 slog-term = "2.6.0"
 slog-mozlog-json = "0.1.0"
 slog-scope = "4.3.0"
+smallvec = "1.6"  # for RUSTSEC-2021-0003
 # state_machine_future = { version = "0.1.6", features = ["debug_code_generation"] }
 state_machine_future = "0.2.0"
 tokio-core = "0.1.17"

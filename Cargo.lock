@@ -148,7 +148,7 @@ dependencies = [
  "copyless",
  "futures-channel",
  "futures-util",
- "smallvec 1.5.1",
+ "smallvec 1.6.1",
  "tokio 0.2.23",
 ]
 
@@ -430,6 +430,7 @@ dependencies = [
  "slog-scope",
  "slog-stdlog",
  "slog-term",
+ "smallvec 1.6.1",
  "tempfile",
  "thiserror",
  "tokio 0.2.23",
@@ -477,6 +478,7 @@ dependencies = [
  "slog-mozlog-json",
  "slog-scope",
  "slog-term",
+ "smallvec 1.6.1",
  "state_machine_future",
  "tokio-core",
  "tokio-io",
@@ -524,6 +526,7 @@ dependencies = [
  "slog-scope",
  "slog-stdlog",
  "slog-term",
+ "smallvec 1.6.1",
  "tokio-core",
  "tungstenite",
  "url 2.2.0",
@@ -2515,7 +2518,7 @@ dependencies = [
  "instant",
  "libc",
  "redox_syscall 0.1.57",
- "smallvec 1.5.1",
+ "smallvec 1.6.1",
  "winapi 0.3.9",
 ]
 
@@ -3916,9 +3919,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.5.1"
+version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae524f056d7d770e174287294f562e95044c68e88dec909a00d2094805db9d75"
+checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
 name = "socket2"
@@ -4643,7 +4646,7 @@ dependencies = [
  "lazy_static",
  "log",
  "rand 0.7.3",
- "smallvec 1.5.1",
+ "smallvec 1.6.1",
  "thiserror",
  "tokio 0.2.23",
  "url 2.2.0",
@@ -4663,7 +4666,7 @@ dependencies = [
  "log",
  "lru-cache",
  "resolv-conf",
- "smallvec 1.5.1",
+ "smallvec 1.6.1",
  "thiserror",
  "tokio 0.2.23",
  "trust-dns-proto",
