@@ -9,7 +9,7 @@ use rand::{thread_rng, Rng};
 pub fn generate_last_connect() -> u64 {
     let today = Utc::now();
     let mut rng = thread_rng();
-    let num = rng.gen_range(0, 10);
+    let num = rng.gen_range(0..10);
     let val = format!("{}{:04}", today.format("%Y%m%H"), num);
     val.parse::<u64>().unwrap()
 }
