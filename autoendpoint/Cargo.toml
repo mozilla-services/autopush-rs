@@ -14,7 +14,7 @@ edition = "2018"
 # The version of a2 at the time of the fork is v0.5.3.
 a2 = { git = "https://github.com/mozilla-services/a2.git", branch = "autoendpoint" }
 # several of these libraries are pinned due to https://github.com/mozilla-services/autopush-rs/issues/249
-actix-web = "3.2"  # 3.3+ requires futures 0.3+
+actix-web = "3.3"
 actix-rt = "1.1"   # 2.0+ requires futures 0.3+
 actix-cors = "0.5"
 again = { version = "0.1.2", default-features = false, features = ["log"] }
