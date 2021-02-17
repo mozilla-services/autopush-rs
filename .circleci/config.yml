@@ -40,10 +40,12 @@ jobs:
       - run:
           # ignoring RUSTSEC-2020-0041 => no upgrade available for im 14.2.0 (sentry 0.18.1)
           # ignoring RUSTSEC-2021-0003 => blocked tokio update #249
+          # ignoring RUSTSEC-2021-0020 => increasing LB security filtering
           command: |
             cargo audit \
             --ignore RUSTSEC-2020-0041 \
-            --ignore RUSTSEC-2021-0003
+            --ignore RUSTSEC-2021-0003 \
+            --ignore RUSTSEC-2021-0020
 
   test:
     docker:
