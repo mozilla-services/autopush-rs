@@ -1,3 +1,16 @@
+<a name="1.57.4"></a>
+## 1.57.4 (2021-02-23)
+
+
+#### Chore
+
+*   Set baseline hyper version ([8bb5998c](https://github.com/mozilla-services/autopush-rs/commit/8bb5998c63186a86182af0912fcb6e11847d30cc), closes [#251](https://github.com/mozilla-services/autopush-rs/issues/251))
+*   Update dependencies where possible. (#250) ([d9446f63](https://github.com/mozilla-services/autopush-rs/commit/d9446f630583f015c77e3d808fc0b6bb4ad4598a))
+*   move a2 under mozilla-services (#245) ([1300a4dc](https://github.com/mozilla-services/autopush-rs/commit/1300a4dcce7f8390cfbc33f427e5fbebd318b00e), closes [#236](https://github.com/mozilla-services/autopush-rs/issues/236))
+*   release/1.57.3 (#243) ([9bc9fef0](https://github.com/mozilla-services/autopush-rs/commit/9bc9fef001963b24ec13d9e2ec6e2485e5c04cea))
+
+
+
 <a name="1.57.3"></a>
 ## 1.57.3 (2020-12-02)
 

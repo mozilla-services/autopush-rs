@@ -392,7 +392,7 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "autoendpoint"
-version = "1.57.3"
+version = "1.57.4"
 dependencies = [
  "a2",
  "actix-cors",
@@ -443,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "autopush"
-version = "1.57.3"
+version = "1.57.4"
 dependencies = [
  "autopush_common",
  "base64 0.13.0",
@@ -492,7 +492,7 @@ dependencies = [
 
 [[package]]
 name = "autopush_common"
-version = "1.57.3"
+version = "1.57.4"
 dependencies = [
  "base64 0.13.0",
  "cadence",
