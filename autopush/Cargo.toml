@@ -32,7 +32,7 @@ futures-locks = "0.5.0"
 hex = "0.4.2"
 httparse = "1.3"
 # XXX: pin to hyper 0.12 for now: 0.13 has many changes..
-hyper = "0.12"
+hyper = "^0.12.36"
 lazy_static = "1.4.0"
 log = { version = "0.4", features = ["max_level_info", "release_max_level_info"] }
 mozsvc-common = "0.1.1"
