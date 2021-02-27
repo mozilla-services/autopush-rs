@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+
 use url::Url;
 
 /// Settings for `FcmRouter`
@@ -24,7 +24,7 @@ pub struct FcmSettings {
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct FcmCredential {
     pub project_id: String,
-    pub auth_file: PathBuf,
+    pub credential: String,
 }
 
 impl Default for FcmSettings {

@@ -150,31 +150,33 @@ mod tests {
     use crate::extractors::routers::RouterType;
     use crate::routers::common::tests::{make_notification, CHANNEL_ID};
     use crate::routers::fcm::client::tests::{
-        make_service_file, mock_fcm_endpoint_builder, mock_token_endpoint, PROJECT_ID,
+        make_service_key, mock_fcm_endpoint_builder, mock_token_endpoint, PROJECT_ID,
     };
     use crate::routers::fcm::error::FcmError;
     use crate::routers::fcm::router::FcmRouter;
     use crate::routers::fcm::settings::FcmSettings;
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
+
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
-    use std::path::PathBuf;
     use url::Url;
 
     const FCM_TOKEN: &str = "test-token";
 
     /// Create a router for testing, using the given service auth file
-    async fn make_router(auth_file: PathBuf, ddb: Box<dyn DbClient>) -> FcmRouter {
+    async fn make_router(credential: String, ddb: Box<dyn DbClient>) -> FcmRouter {
         FcmRouter::new(
             FcmSettings {
                 base_url: Url::parse(&mockito::server_url()).unwrap(),
-                credentials: format!(
-                    r#"{{ "dev": {{ "project_id": "{}", "auth_file": "{}" }} }}"#,
-                    PROJECT_ID,
-                    auth_file.to_string_lossy()
-                ),
+                credentials: serde_json::json!({
+                    "dev": {
+                        "project_id": PROJECT_ID,
+                        "credential": credential
+                    }
+                })
+                .to_string(),
                 ..Default::default()
             },
             Url::parse("http://localhost:8080/").unwrap(),
@@ -200,9 +202,8 @@ mod tests {
     /// A notification with no data is sent to FCM
     #[tokio::test]
     async fn successful_routing_no_data() {
-        let service_file = make_service_file();
         let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(service_file.path().to_owned(), ddb).await;
+        let router = make_router(String::from_utf8(make_service_key()).unwrap(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_body(
@@ -235,9 +236,8 @@ mod tests {
     /// A notification with data is sent to FCM
     #[tokio::test]
     async fn successful_routing_with_data() {
-        let service_file = make_service_file();
         let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(service_file.path().to_owned(), ddb).await;
+        let router = make_router(String::from_utf8(make_service_key()).unwrap(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_body(
@@ -277,9 +277,8 @@ mod tests {
     /// the FCM request is not sent.
     #[tokio::test]
     async fn missing_client() {
-        let service_file = make_service_file();
         let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(service_file.path().to_owned(), ddb).await;
+        let router = make_router(String::from_utf8(make_service_key()).unwrap(), ddb).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder().expect(0).create();
         let mut router_data = default_router_data();
@@ -312,8 +311,8 @@ mod tests {
             .times(1)
             .return_once(|_| Ok(()));
 
-        let service_file = make_service_file();
-        let router = make_router(service_file.path().to_owned(), ddb.into_boxed_arc()).await;
+        let key = String::from_utf8(make_service_key()).unwrap();
+        let router = make_router(key, ddb.into_boxed_arc()).await;
         let _token_mock = mock_token_endpoint();
         let _fcm_mock = mock_fcm_endpoint_builder()
             .with_status(404)
