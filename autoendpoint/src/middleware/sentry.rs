@@ -72,6 +72,7 @@ fn sentry_request_from_http(request: &ServiceRequest) -> sentry::protocol::Reque
 }
 
 /// Add request data to a Sentry event
+#[allow(clippy::unnecessary_wraps)]
 fn process_event(
     mut event: Event<'static>,
     request: &sentry::protocol::Request,

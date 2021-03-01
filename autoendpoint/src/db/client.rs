@@ -141,6 +141,7 @@ impl DbClientImpl {
     }
 }
 
+#[allow(clippy::field_reassign_with_default)]
 #[async_trait]
 impl DbClient for DbClientImpl {
     async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {

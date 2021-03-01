@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use url::Url;
 use yup_oauth2::authenticator::DefaultAuthenticator;
-use yup_oauth2::ServiceAccountAuthenticator;
+use yup_oauth2::{ServiceAccountAuthenticator, ServiceAccountKey};
 
 const OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/firebase.messaging"];
 
@@ -29,7 +29,7 @@ impl FcmClient {
         credential: FcmCredential,
         http: reqwest::Client,
     ) -> std::io::Result<Self> {
-        let key_data = yup_oauth2::read_service_account_key(&credential.auth_file).await?;
+        let key_data = serde_json::from_str::<ServiceAccountKey>(&credential.credential)?;
         let auth = ServiceAccountAuthenticator::builder(key_data)
             .build()
             .await?;
@@ -138,18 +138,15 @@ pub mod tests {
     use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
     use crate::routers::RouterError;
     use std::collections::HashMap;
-    use std::io::Write;
-    use std::path::PathBuf;
-    use tempfile::NamedTempFile;
     use url::Url;
 
     pub const PROJECT_ID: &str = "yup-test-243420";
     const ACCESS_TOKEN: &str = "ya29.c.ElouBywiys0LyNaZoLPJcp1Fdi2KjFMxzvYKLXkTdvM-rDfqKlvEq6PiMhGoGHx97t5FAvz3eb_ahdwlBjSStxHtDVQB4ZPRJQ_EOi-iS7PnayahU2S9Jp8S6rk";
 
     /// Write service data to a temporary file
-    pub fn make_service_file() -> NamedTempFile {
+    pub fn make_service_key() -> Vec<u8> {
         // Taken from the yup-oauth2 tests
-        let contents = serde_json::json!({
+        serde_json::json!({
             "type": "service_account",
             "project_id": PROJECT_ID,
             "private_key_id": "26de294916614a5ebdf7a065307ed3ea9941902b",
@@ -160,12 +157,7 @@ pub mod tests {
             "token_uri": mockito::server_url() + "/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
             "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/yup-test-sa-1%40yup-test-243420.iam.gserviceaccount.com"
-        });
-
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        file.write_all(&serde_json::to_vec(&contents).unwrap())
-            .unwrap();
-        file
+        }).to_string().as_bytes().to_vec()
     }
 
     /// Mock the OAuth token endpoint to provide the access token
@@ -191,14 +183,14 @@ pub mod tests {
     }
 
     /// Make a FcmClient from the service auth data
-    async fn make_client(auth_file: PathBuf) -> FcmClient {
+    async fn make_client(credential: Vec<u8>) -> FcmClient {
         FcmClient::new(
             &FcmSettings {
                 base_url: Url::parse(&mockito::server_url()).unwrap(),
                 ..Default::default()
             },
             FcmCredential {
-                auth_file,
+                credential: String::from_utf8(credential).unwrap(),
                 project_id: PROJECT_ID.to_string(),
             },
             reqwest::Client::new(),
@@ -211,8 +203,7 @@ pub mod tests {
     /// expected FCM request.
     #[tokio::test]
     async fn sends_correct_request() {
-        let service_file = make_service_file();
-        let client = make_client(service_file.path().to_owned()).await;
+        let client = make_client(make_service_key()).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_header("Authorization", format!("Bearer {}", ACCESS_TOKEN).as_str())
@@ -231,8 +222,7 @@ pub mod tests {
     /// Authorization errors are handled
     #[tokio::test]
     async fn unauthorized() {
-        let service_file = make_service_file();
-        let client = make_client(service_file.path().to_owned()).await;
+        let client = make_client(make_service_key()).await;
         let _token_mock = mock_token_endpoint();
         let _fcm_mock = mock_fcm_endpoint_builder()
             .with_status(401)
@@ -253,8 +243,7 @@ pub mod tests {
     /// 404 errors are handled
     #[tokio::test]
     async fn not_found() {
-        let service_file = make_service_file();
-        let client = make_client(service_file.path().to_owned()).await;
+        let client = make_client(make_service_key()).await;
         let _token_mock = mock_token_endpoint();
         let _fcm_mock = mock_fcm_endpoint_builder()
             .with_status(404)
@@ -275,8 +264,7 @@ pub mod tests {
     /// Unhandled errors (where an error object is returned) are wrapped and returned
     #[tokio::test]
     async fn other_fcm_error() {
-        let service_file = make_service_file();
-        let client = make_client(service_file.path().to_owned()).await;
+        let client = make_client(make_service_key()).await;
         let _token_mock = mock_token_endpoint();
         let _fcm_mock = mock_fcm_endpoint_builder()
             .with_status(400)
@@ -301,8 +289,7 @@ pub mod tests {
     /// Unknown errors (where an error object is NOT returned) is handled
     #[tokio::test]
     async fn unknown_fcm_error() {
-        let service_file = make_service_file();
-        let client = make_client(service_file.path().to_owned()).await;
+        let client = make_client(make_service_key()).await;
         let _token_mock = mock_token_endpoint();
         let _fcm_mock = mock_fcm_endpoint_builder()
             .with_status(400)

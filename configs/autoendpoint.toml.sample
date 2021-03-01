@@ -60,7 +60,7 @@
 #credentials = """{
 #    "test": {
 #        "project_id": "autoendpoint-test",
-#        "auth_file": "autoendpoint-test-credentials.json"
+#        "credential": "{\"type\":\"service_account\",...
 #    }
 #}"""
 
