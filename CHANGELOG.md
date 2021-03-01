@@ -1,3 +1,18 @@
+<a name="1.57.5"></a>
+## 1.57.5 (2021-03-01)
+
+
+#### Chore
+
+*   update dependencies for Mar 2021 ([7ec16f08](https://github.com/mozilla-services/autopush-rs/commit/7ec16f0877c1c6de5b08e429e1321536ae8ff9d8), closes [#256](https://github.com/mozilla-services/autopush-rs/issues/256))
+*   tag 1.57.4 (#253) ([b4c5e5e3](https://github.com/mozilla-services/autopush-rs/commit/b4c5e5e38ecf9d9b4d06320a0daa457b2d280359))
+
+#### Features
+
+*   convert FCM credential to string parameter ([5ba885af](https://github.com/mozilla-services/autopush-rs/commit/5ba885af5f2b68548047e2f83da36e364de7fbcb), closes [#254](https://github.com/mozilla-services/autopush-rs/issues/254))
+
+
+
 <a name="1.57.4"></a>
 ## 1.57.4 (2021-02-23)
 
