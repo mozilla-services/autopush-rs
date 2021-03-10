@@ -187,7 +187,7 @@ impl WebPushRouter {
     /// Update metrics and create a response for when a notification has been stored in the database
     /// for future transmission.
     fn make_stored_response(&self, notification: &Notification) -> RouterResponse {
-        self.make_response(notification, "Stored", StatusCode::ACCEPTED)
+        self.make_response(notification, "Stored", StatusCode::CREATED)
     }
 
     /// Update metrics and create a response after routing a notification
