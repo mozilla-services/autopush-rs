@@ -122,7 +122,6 @@ impl NotificationHeaders {
         })?;
 
         match encoding {
-            "aesgcm128" => self.validate_encryption_01_rules()?,
             "aesgcm" => self.validate_encryption_04_rules()?,
             "aes128gcm" => self.validate_encryption_06_rules()?,
             _ => {
@@ -132,16 +131,6 @@ impl NotificationHeaders {
                 .into());
             }
         }
-
-        Ok(())
-    }
-
-    /// Validates encryption headers according to
-    /// draft-ietf-webpush-encryption-01
-    fn validate_encryption_01_rules(&self) -> ApiResult<()> {
-        Self::assert_base64_item_exists("Encryption", self.encryption.as_deref(), "salt")?;
-        Self::assert_base64_item_exists("Encryption-Key", self.encryption_key.as_deref(), "dh")?;
-        Self::assert_not_exists("aesgcm128 Crypto-Key", self.crypto_key.as_deref(), "dh")?;
 
         Ok(())
     }
@@ -351,32 +340,7 @@ mod tests {
         assert_encryption_error(result, "Missing Content-Encoding header");
     }
 
-    /// Valid 01 draft encryption passes validation
-    #[test]
-    fn valid_01_encryption() {
-        let req = TestRequest::post()
-            .header("TTL", "10")
-            .header("Content-Encoding", "aesgcm128")
-            .header("Encryption", "salt=foo")
-            .header("Encryption-Key", "dh=bar")
-            .to_http_request();
-        let result = NotificationHeaders::from_request(&req, true);
-
-        assert!(result.is_ok());
-        assert_eq!(
-            result.unwrap(),
-            NotificationHeaders {
-                ttl: 10,
-                topic: None,
-                encoding: Some("aesgcm128".to_string()),
-                encryption: Some("salt=foo".to_string()),
-                encryption_key: Some("dh=bar".to_string()),
-                crypto_key: None
-            }
-        );
-    }
-
-    /// Valid 04 draft encryption passes validation
+    /// Valid 04 draft encryption passes validationgit o
     #[test]
     fn valid_04_encryption() {
         let req = TestRequest::post()
