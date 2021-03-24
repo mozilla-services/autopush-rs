@@ -17,6 +17,7 @@ pub struct Settings {
     pub scheme: String,
     pub host: String,
     pub port: u16,
+    pub endpoint_url: String,
 
     pub router_table_name: String,
     pub message_table_name: String,
@@ -40,6 +41,7 @@ impl Default for Settings {
         Settings {
             scheme: "http".to_string(),
             host: "127.0.0.1".to_string(),
+            endpoint_url: "".to_string(),
             port: 8000,
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
@@ -125,8 +127,12 @@ impl Settings {
 
     /// Get the URL for this endpoint server
     pub fn endpoint_url(&self) -> Url {
-        Url::parse(&format!("{}://{}:{}", self.scheme, self.host, self.port))
-            .expect("Invalid endpoint URL")
+        let endpoint = if self.endpoint_url.is_empty() {
+            format!("{}://{}:{}", self.scheme, self.host, self.port)
+        } else {
+            self.endpoint_url.clone()
+        };
+        Url::parse(&endpoint).expect("Invalid endpoint URL")
     }
 }
 
@@ -156,6 +162,30 @@ mod tests {
         };
         let result = settings.auth_keys();
         assert_eq!(result, success);
+        Ok(())
+    }
+
+    #[test]
+    fn test_endpoint_url() -> ApiResult<()> {
+        let example = "https://example.org/";
+        let settings = Settings {
+            endpoint_url: example.to_owned(),
+            ..Default::default()
+        };
+
+        assert_eq!(settings.endpoint_url(), url::Url::parse(example).unwrap());
+        let settings = Settings {
+            ..Default::default()
+        };
+
+        assert_eq!(
+            settings.endpoint_url(),
+            url::Url::parse(&format!(
+                "{}://{}:{}",
+                settings.scheme, settings.host, settings.port
+            ))
+            .unwrap()
+        );
         Ok(())
     }
 }
