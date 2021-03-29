@@ -340,7 +340,7 @@ mod tests {
         assert_encryption_error(result, "Missing Content-Encoding header");
     }
 
-    /// Valid 04 draft encryption passes validationgit o
+    /// Valid 04 draft encryption passes validation
     #[test]
     fn valid_04_encryption() {
         let req = TestRequest::post()
