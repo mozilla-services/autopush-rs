@@ -242,7 +242,7 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
     };
 
     if domain != &aud {
-        error!("Bad Aud: I am{:?}, asked for {:?} ", domain, aud);
+        error!("Bad Aud: I am <{:?}>, asked for <{:?}> ", domain, aud);
         return Err(VapidError::InvalidAudience.into());
     }
 

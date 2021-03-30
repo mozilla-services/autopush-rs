@@ -1,3 +1,17 @@
+<a name="1.57.7"></a>
+## 1.57.7 (2021-03-26)
+
+
+#### Chore
+
+*   tag 1.57.6 ([802bfdfe](https://github.com/mozilla-services/autopush-rs/commit/802bfdfef56b394569ca571de3871c2aa59f44a6))
+
+#### Bug Fixes
+
+*   Add explicit `endpoint_url` setting (#270) ([5649d966](https://github.com/mozilla-services/autopush-rs/commit/5649d966e9eade5526efe240c52a84724d3a1020), closes [#269](https://github.com/mozilla-services/autopush-rs/issues/269))
+
+
+
 <a name="1.57.6"></a>
 ## 1.57.6 (2021-03-16)
 
