@@ -101,7 +101,7 @@ impl Settings {
         panic_msg: &'static str,
     ) -> impl Iterator<Item = &'list str> {
         if !(list_str.starts_with('[') && list_str.ends_with(']')) {
-            panic!(panic_msg);
+            panic!("{}", panic_msg);
         }
 
         let items = &list_str[1..list_str.len() - 1];

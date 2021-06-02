@@ -142,9 +142,11 @@ mod tests {
 
     #[test]
     fn test_router_url() {
-        let mut settings: Settings = Default::default();
-        settings.router_hostname = Some("testname".to_string());
-        settings.router_port = 80;
+        let mut settings = Settings {
+            router_hostname: Some("testname".to_string()),
+            router_port: 80,
+            ..Default::default()
+        };
         let url = settings.router_url();
         assert_eq!("http://testname", url);
 
@@ -164,10 +166,12 @@ mod tests {
 
     #[test]
     fn test_endpoint_url() {
-        let mut settings: Settings = Default::default();
-        settings.endpoint_hostname = "testname".to_string();
-        settings.endpoint_port = 80;
-        settings.endpoint_scheme = "http".to_string();
+        let mut settings = Settings {
+            endpoint_hostname: "testname".to_string(),
+            endpoint_port: 80,
+            endpoint_scheme: "http".to_string(),
+            ..Default::default()
+        };
         let url = settings.endpoint_url();
         assert_eq!("http://testname", url);
 

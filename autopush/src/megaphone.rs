@@ -383,7 +383,7 @@ mod tests {
         let delta = tracker
             .subscribe_to_broadcasts(
                 &mut broadcast_subs,
-                &vec![Broadcast {
+                &[Broadcast {
                     broadcast_id: String::from("bcastc"),
                     version: String::from("revision_alpha"),
                 }],

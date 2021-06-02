@@ -412,7 +412,7 @@ impl DynamoStorage {
                 self.metrics.clone(),
                 table_name,
                 uaid,
-                11 as u32,
+                11,
             ))
         } else {
             Box::new(future::ok(Default::default()))
@@ -446,7 +446,7 @@ impl DynamoStorage {
                         table_name.as_ref(),
                         &uaid,
                         timestamp,
-                        10 as u32,
+                        10,
                     ))
                 } else {
                     Box::new(future::ok(Default::default()))

@@ -273,7 +273,7 @@ impl Server {
         }
     }
 
-    #[allow(clippy::single_char_push_str)]
+    #[allow(clippy::single_char_add_str)]
     fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Core)> {
         let core = Core::new()?;
         let broadcaster = if let Some(ref megaphone_url) = opts.megaphone_api_url {
@@ -714,7 +714,7 @@ impl Future for PingManager {
         loop {
             match self.client {
                 CloseState::Exchange(ref mut client) => try_ready!(client.poll()),
-                CloseState::Closing => return Ok(self.socket.borrow_mut().close()?),
+                CloseState::Closing => return self.socket.borrow_mut().close(),
             }
 
             self.client = CloseState::Closing;
