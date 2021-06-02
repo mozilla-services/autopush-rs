@@ -1,3 +1,21 @@
+<a name="1.57.8"></a>
+## 1.57.8 (2021-06-02)
+
+
+#### Bug Fixes
+
+*   use sentry 0.19 to match our backend server  (#276) ([44c85c0c](https://github.com/mozilla-services/autopush-rs/commit/44c85c0c6b6f093bebc4ca3383df7750140db236), closes [#275](https://github.com/mozilla-services/autopush-rs/issues/275))
+
+#### Features
+
+*   Drop aesgcm128 support (#268) ([d8b7ca83](https://github.com/mozilla-services/autopush-rs/commit/d8b7ca83542e2f0acf6dc6a3b277efe60aef276b))
+
+#### Chore
+
+*   tag 1.57.7 (#271) ([4857f0b1](https://github.com/mozilla-services/autopush-rs/commit/4857f0b1ea4e74ae4fce0dc411e1e4ba9758b26c))
+
+
+
 <a name="1.57.7"></a>
 ## 1.57.7 (2021-03-26)
 
