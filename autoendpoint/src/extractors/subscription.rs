@@ -256,7 +256,6 @@ mod tests {
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
     use autopush_common::util::sec_since_epoch;
-    use base64;
     use std::str::FromStr;
     use url::Url;
 

@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_parse_sort_key_bad_values() {
-        for val in vec!["02j3i2o", "03:ffas:wef", "01::mytopic", "02:oops:ohnoes"] {
+        for val in &["02j3i2o", "03:ffas:wef", "01::mytopic", "02:oops:ohnoes"] {
             let key = DynamoDbNotification::parse_sort_key(val);
             assert!(key.is_err());
         }

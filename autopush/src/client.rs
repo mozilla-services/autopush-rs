@@ -1018,7 +1018,7 @@ where
                 // only metric codes expected from the client (or 0)
                 let mcode = code
                     .and_then(|code| {
-                        if code >= 301 && code <= 303 {
+                        if (301..=303).contains(&code) {
                             Some(code)
                         } else {
                             None
