@@ -133,7 +133,10 @@ impl Server {
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))
                 .service(web::resource("/health").route(web::get().to(health_route)))
+                // legacy
                 .service(web::resource("/v1/err").route(web::get().to(log_check)))
+                // standardized
+                .service(web::resource("/__error__").route(web::get().to(log_check)))
                 // Dockerflow
                 .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
