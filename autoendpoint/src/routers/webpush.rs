@@ -5,7 +5,7 @@ use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::DynamoDbUser;
-use cadence::{Counted, StatsdClient};
+use cadence::{Counted, CountedExt, StatsdClient};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::hash_map::RandomState;

@@ -10,7 +10,7 @@ use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::DynamoDbUser;
 use autopush_common::util::sec_since_epoch;
-use cadence::{Counted, StatsdClient};
+use cadence::{CountedExt, StatsdClient};
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};

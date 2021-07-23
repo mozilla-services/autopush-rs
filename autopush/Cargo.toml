@@ -18,7 +18,7 @@ autopush_common = { path = "../autopush-common" }
 base64 = "0.13"
 # XXX: pin to < 0.5 for hyper 0.12
 bytes = "0.4"
-cadence = "0.25"
+cadence = "0.26"
 crossbeam-channel = "0.5"
 chrono = "0.4"
 config = "0.11"

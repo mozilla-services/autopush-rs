@@ -7,7 +7,7 @@ use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{web, FromRequest, HttpRequest};
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
-use cadence::Counted;
+use cadence::CountedExt;
 use fernet::MultiFernet;
 use futures::{future, FutureExt};
 use std::collections::HashMap;
