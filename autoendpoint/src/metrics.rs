@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use actix_web::{web::Data, FromRequest, HttpRequest};
 use cadence::{
-    BufferedUdpMetricSink, Counted, Metric, MetricError, NopMetricSink, QueuingMetricSink,
+    BufferedUdpMetricSink, CountedExt, Metric, MetricError, NopMetricSink, QueuingMetricSink,
     StatsdClient, Timed,
 };
 

@@ -5,7 +5,7 @@ use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
 use autopush_common::db::DynamoDbUser;
-use cadence::{Counted, StatsdClient};
+use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 
 /// Perform some validations on the user, including:

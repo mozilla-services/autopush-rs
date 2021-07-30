@@ -3,7 +3,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::routers::RouterError;
 use autopush_common::util::InsertOpt;
-use cadence::{Counted, StatsdClient};
+use cadence::{Counted, CountedExt, StatsdClient};
 use std::collections::HashMap;
 use uuid::Uuid;
 
