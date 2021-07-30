@@ -15,7 +15,7 @@ name = "autopush_common"
 
 [dependencies]
 base64 = "0.13"
-cadence = "0.25"
+cadence = "0.26"
 chrono = "0.4"
 config = "0.11"
 error-chain = "0.12"

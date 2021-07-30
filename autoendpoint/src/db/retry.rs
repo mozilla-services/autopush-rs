@@ -1,5 +1,5 @@
 use again::RetryPolicy;
-use cadence::{Counted, StatsdClient};
+use cadence::{CountedExt, StatsdClient};
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     DeleteItemError, DescribeTableError, GetItemError, PutItemError, UpdateItemError,

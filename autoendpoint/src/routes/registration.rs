@@ -12,7 +12,7 @@ use actix_web::web::{Data, Json};
 use actix_web::{HttpRequest, HttpResponse};
 use autopush_common::db::DynamoDbUser;
 use autopush_common::endpoint::make_endpoint;
-use cadence::{Counted, StatsdClient};
+use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route

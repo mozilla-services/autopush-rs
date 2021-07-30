@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display};
 use std::result::Result as StdResult;
 use uuid::Uuid;
 
-use cadence::{Counted, StatsdClient};
+use cadence::{CountedExt, StatsdClient};
 use chrono::Utc;
 use futures::{future, Future};
 use futures_backoff::retry_if;
