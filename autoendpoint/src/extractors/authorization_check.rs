@@ -20,24 +20,27 @@ use uuid::Uuid;
 pub struct AuthorizationCheck;
 
 impl AuthorizationCheck {
-
-    pub fn generate_token(auth_key: &str, user:&Uuid) -> Result<String, ErrorStack> {
+    pub fn generate_token(auth_key: &str, user: &Uuid) -> Result<String, ErrorStack> {
         sign_with_key(auth_key.as_bytes(), user.to_simple().to_string().as_bytes())
     }
 
-    pub fn validate_token(token: &str, uaid: &Uuid, auth_keys:&Vec<String>) -> Result<Self, ApiError> {
-            // Check the token against the expected token for each key
-            for key in auth_keys {
-                let expected_token = sign_with_key(key.as_bytes(), uaid.as_bytes())
-                    .map_err(ApiErrorKind::RegistrationSecretHash)?;
+    pub fn validate_token(
+        token: &str,
+        uaid: &Uuid,
+        auth_keys: &[String],
+    ) -> Result<Self, ApiError> {
+        // Check the token against the expected token for each key
+        for key in auth_keys {
+            let expected_token = sign_with_key(key.as_bytes(), uaid.as_bytes())
+                .map_err(ApiErrorKind::RegistrationSecretHash)?;
 
-                if expected_token.len() == token.len()
-                    && openssl::memcmp::eq(expected_token.as_bytes(), token.as_bytes())
-                {
-                    return Ok(Self);
-                }
+            if expected_token.len() == token.len()
+                && openssl::memcmp::eq(expected_token.as_bytes(), token.as_bytes())
+            {
+                return Ok(Self);
             }
-            Err(ApiErrorKind::InvalidLocalAuth("incorrect auth token".to_owned()).into())
+        }
+        Err(ApiErrorKind::InvalidLocalAuth("incorrect auth token".to_owned()).into())
     }
 }
 
@@ -59,13 +62,12 @@ impl FromRequest for AuthorizationCheck {
             let state: Data<ServerState> = Data::extract(&req)
                 .into_inner()
                 .expect("No server state found");
-            let auth_header =
-                get_header(&req, "Authorization").ok_or(ApiErrorKind::InvalidLocalAuth("missing auth header".to_owned()))?;
+            let auth_header = get_header(&req, "Authorization")
+                .ok_or_else(|| ApiErrorKind::InvalidLocalAuth("missing auth header".to_owned()))?;
             let token = get_token_from_auth_header(auth_header)
-                .ok_or(ApiErrorKind::InvalidLocalAuth("missing auth token".to_owned()))?;
+                .ok_or_else(|| ApiErrorKind::InvalidLocalAuth("missing auth token".to_owned()))?;
 
             Self::validate_token(token, &uaid, &state.settings.auth_keys())
-
         }
         .boxed_local()
     }
@@ -83,21 +85,19 @@ fn get_token_from_auth_header(header: &str) -> Option<&str> {
     split.next()
 }
 
-
 #[cfg(test)]
-mod test
-{
+mod test {
 
     use crate::error::ApiResult;
 
     use super::*;
 
     #[test]
-    fn test_signature() -> ApiResult<()>{
+    fn test_signature() -> ApiResult<()> {
         // hopefully no-op type test to check locally generated tokens.
-        let uaid:Uuid = "729e5104f5f04abc9196085340317dea".parse().unwrap();
+        let uaid: Uuid = "729e5104f5f04abc9196085340317dea".parse().unwrap();
         let auth_keys = ["HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned()].to_vec();
-        let token = AuthorizationCheck::generate_token(&auth_keys.get(0).unwrap(), &uaid).unwrap();
+        let token = AuthorizationCheck::generate_token(auth_keys.get(0).unwrap(), &uaid).unwrap();
 
         AuthorizationCheck::validate_token(&token, &uaid, &auth_keys)?;
         Ok(())
@@ -107,17 +107,16 @@ mod test
     fn test_legacy_signature() -> ApiResult<()> {
         // check a previously generated python token.
         // original python uaids are lower case all hex.
-        let uaid:Uuid = "729e5104f5f04abc9196085340317dea".parse().unwrap();
+        let uaid: Uuid = "729e5104f5f04abc9196085340317dea".parse().unwrap();
         // Auth keys are strings. don't run through base64!
         let auth_keys = ["HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned()].to_vec();
         // the following token was generated using the old python application.
         let legacy_token = "f694963453adf5dedcc379bbdd6900d692b6e09f1c91f44169bfcd2f941bf36c";
         // pop the firstkey off of the auth_key list.
         let selected = auth_keys.get(0).unwrap();
-        let token = AuthorizationCheck::generate_token(&selected, &uaid).unwrap();
+        let token = AuthorizationCheck::generate_token(selected, &uaid).unwrap();
 
         assert_eq!(&token, legacy_token);
         Ok(())
-
     }
 }

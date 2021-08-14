@@ -77,17 +77,15 @@ impl Future for Dispatch {
                     RequestType::Websocket
                 } else {
                     match req.path {
-                        Some(ref path)
-                            if path.starts_with("/status") || *path == "/__heartbeat__" =>
-                        {
+                        Some(path) if path.starts_with("/status") || path == "/__heartbeat__" => {
                             RequestType::Status
                         }
-                        Some(ref path) if *path == "/__lbheartbeat__" => RequestType::LBHeartBeat,
-                        Some(ref path) if *path == "/__version__" => RequestType::Version,
+                        Some(path) if path == "/__lbheartbeat__" => RequestType::LBHeartBeat,
+                        Some(path) if path == "/__version__" => RequestType::Version,
                         // legacy:
-                        Some(ref path) if path.starts_with("/v1/err/crit") => RequestType::LogCheck,
+                        Some(path) if path.starts_with("/v1/err/crit") => RequestType::LogCheck,
                         // standardized:
-                        Some(ref path) if *path == ("/__error__") => RequestType::LogCheck,
+                        Some(path) if path == ("/__error__") => RequestType::LogCheck,
                         _ => {
                             debug!("unknown http request {:?}", req);
                             return Err("unknown http request".into());
