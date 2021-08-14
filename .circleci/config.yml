@@ -51,7 +51,7 @@ jobs:
             --ignore RUSTSEC-2021-0003 \
             --ignore RUSTSEC-2021-0020 \
             --ignore RUSTSEC-2021-0078 \
-            --ignore RUSTSEC-2020-0079
+            --ignore RUSTSEC-2021-0079
 
   test:
     docker:
