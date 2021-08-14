@@ -111,6 +111,9 @@ pub enum ApiErrorKind {
     #[error("Invalid Authentication")]
     InvalidAuthentication,
 
+    #[error("Invalid Local Auth {0}")]
+    InvalidLocalAuth(String),
+
     #[error("ERROR:Success")]
     LogCheck,
 }
@@ -132,7 +135,8 @@ impl ApiErrorKind {
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::Jwt(_)
             | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::InvalidAuthentication => StatusCode::UNAUTHORIZED,
+            | ApiErrorKind::InvalidAuthentication
+            | ApiErrorKind::InvalidLocalAuth(_) => StatusCode::UNAUTHORIZED,
 
             ApiErrorKind::InvalidToken | ApiErrorKind::InvalidApiVersion => StatusCode::NOT_FOUND,
 
@@ -173,7 +177,8 @@ impl ApiErrorKind {
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::Jwt(_)
-            | ApiErrorKind::InvalidAuthentication => Some(109),
+            | ApiErrorKind::InvalidAuthentication
+            | ApiErrorKind::InvalidLocalAuth(_) => Some(109),
 
             ApiErrorKind::InvalidEncryption(_) => Some(110),
 
