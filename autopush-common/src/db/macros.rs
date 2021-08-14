@@ -65,7 +65,7 @@ macro_rules! val {
 ///
 /// ## Example
 ///
-/// ```
+/// ```ignore
 /// use autopush_common::hashmap;
 ///
 /// let map = hashmap!{
