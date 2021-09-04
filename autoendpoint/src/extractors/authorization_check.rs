@@ -80,7 +80,9 @@ fn get_token_from_auth_header(header: &str) -> Option<&str> {
     let mut split = header.splitn(2, ' ');
     let scheme = split.next()?;
 
-    if scheme.to_lowercase() != "bearer" {
+    // An error in the android push component code uses "webpush" to identify
+    // the local authorization header. We need to allow for that.
+    if !["bearer", "webpush"].contains(&scheme.to_lowercase().as_str()) {
         return None;
     }
 
@@ -119,6 +121,18 @@ mod test {
         let token = AuthorizationCheck::generate_token(selected, &uaid).unwrap();
 
         assert_eq!(&token, legacy_token);
+        Ok(())
+    }
+
+    #[test]
+    fn test_token_extractor() -> ApiResult<()> {
+        let uaid: Uuid = "729e5104f5f04abc9196085340317dea".parse().unwrap();
+        let auth_keys = ["HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned()].to_vec();
+        let token = AuthorizationCheck::generate_token(auth_keys.get(0).unwrap(), &uaid).unwrap();
+
+        assert!(get_token_from_auth_header(&format!("bearer {}", &token)).is_some());
+        assert!(get_token_from_auth_header(&format!("webpush {}", &token)).is_some());
+        assert!(get_token_from_auth_header(&format!("random {}", &token)).is_none());
         Ok(())
     }
 }
