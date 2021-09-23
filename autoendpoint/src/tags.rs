@@ -108,7 +108,7 @@ impl slog::KV for Tags {
         serializer: &mut dyn slog::Serializer,
     ) -> slog::Result {
         for (key, val) in &self.tags {
-            serializer.emit_str(slog::Key::from(key.clone()), &val)?;
+            serializer.emit_str(slog::Key::from(key.clone()), val)?;
         }
         Ok(())
     }

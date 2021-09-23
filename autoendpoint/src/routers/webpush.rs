@@ -111,7 +111,7 @@ impl Router for WebPushRouter {
 
         // Notify the node to check for messages
         trace!("Notifying node to check for messages");
-        match self.trigger_notification_check(&user.uaid, &node_id).await {
+        match self.trigger_notification_check(&user.uaid, node_id).await {
             Ok(response) => {
                 trace!("Response = {:?}", response);
                 if response.status() == 200 {

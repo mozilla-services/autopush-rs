@@ -203,8 +203,8 @@ fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
         .incr_with_tags(name)
         .with_tag(
             "user_agent",
-            get_header(&request, "User-Agent").unwrap_or("unknown"),
+            get_header(request, "User-Agent").unwrap_or("unknown"),
         )
-        .with_tag("host", get_header(&request, "Host").unwrap_or("unknown"))
+        .with_tag("host", get_header(request, "Host").unwrap_or("unknown"))
         .send()
 }

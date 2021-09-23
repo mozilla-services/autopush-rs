@@ -41,7 +41,7 @@ impl Drop for Metrics {
                 let tags = timer.tags.tags.clone();
                 let keys = tags.keys();
                 for tag in keys {
-                    tagged = tagged.with_tag(tag, &tags.get(tag).unwrap())
+                    tagged = tagged.with_tag(tag, tags.get(tag).unwrap())
                 }
                 match tagged.try_send() {
                     Err(e) => {
@@ -144,7 +144,7 @@ impl Metrics {
             let tag_keys = mtags.tags.keys();
             for key in tag_keys.clone() {
                 // REALLY wants a static here, or at least a well defined ref.
-                tagged = tagged.with_tag(&key, &mtags.tags.get(key).unwrap());
+                tagged = tagged.with_tag(key, mtags.tags.get(key).unwrap());
             }
             // Include any "hard coded" tags.
             // incr = incr.with_tag("version", env!("CARGO_PKG_VERSION"));

@@ -108,6 +108,7 @@ impl MockDbClient {
     /// Convert into a type which can be used in place of `Box<dyn DbClient>`.
     /// Arc is used so that the mock can be cloned. Box is used so it can be
     /// easily cast to `Box<dyn DbClient>`.
+    #[allow(clippy::redundant_allocation)]
     pub fn into_boxed_arc(self) -> Box<Arc<Self>> {
         Box::new(Arc::new(self))
     }
