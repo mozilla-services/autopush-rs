@@ -77,9 +77,7 @@ impl Future for Dispatch {
                     RequestType::Websocket
                 } else {
                     match req.path {
-                        Some(path)
-                            if path.starts_with("/status") || path == "/__heartbeat__" =>
-                        {
+                        Some(path) if path.starts_with("/status") || path == "/__heartbeat__" => {
                             RequestType::Status
                         }
                         Some(path) if path == "/__lbheartbeat__" => RequestType::LBHeartBeat,
