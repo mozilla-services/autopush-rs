@@ -1,0 +1,6 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2020-0041", # Bound by Sentry 0.19 requiring Hyper 0.13
+    "RUSTSEC-2021-0078", # Bound by Sentry 0.19 requiring Hyper 0.13
+    "RUSTSEC-2021-0079", # Bound by Sentry 0.19 requiring Hyper 0.13
+]
