@@ -327,7 +327,7 @@ where
     UnAuthDone(()),
 
     #[state_machine_future(error)]
-    GeneralUnAuthError(Error),
+    GeneralUnauthClientError(Error),
 }
 
 impl<T> PollUnAuthClientState<T> for UnAuthClientState<T>
