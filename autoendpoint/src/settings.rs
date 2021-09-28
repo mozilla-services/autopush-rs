@@ -111,7 +111,7 @@ impl Settings {
     /// Initialize the fernet encryption instance
     pub fn make_fernet(&self) -> MultiFernet {
         let keys = &self.crypto_keys.replace('"', "").replace(" ", "");
-        let fernets = Self::read_list_from_str(&keys, "Invalid AUTOEND_CRYPTO_KEYS")
+        let fernets = Self::read_list_from_str(keys, "Invalid AUTOEND_CRYPTO_KEYS")
             .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS"))
             .collect();
         MultiFernet::new(fernets)
@@ -120,7 +120,7 @@ impl Settings {
     /// Get the list of auth hash keys
     pub fn auth_keys(&self) -> Vec<String> {
         let keys = &self.auth_keys.replace('"', "").replace(" ", "");
-        Self::read_list_from_str(&keys, "Invalid AUTOEND_AUTH_KEYS")
+        Self::read_list_from_str(keys, "Invalid AUTOEND_AUTH_KEYS")
             .map(|v| v.to_owned())
             .collect()
     }

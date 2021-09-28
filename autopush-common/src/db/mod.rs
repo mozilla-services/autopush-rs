@@ -88,7 +88,7 @@ impl DynamoStorage {
             DynamoDbClient::new(Region::default())
         };
 
-        let mut message_table_names = list_message_tables(&ddb, &message_table_name)
+        let mut message_table_names = list_message_tables(&ddb, message_table_name)
             .map_err(|_| "Failed to locate message tables")?;
         // Valid message months are the current and last 2 months
         message_table_names.sort_unstable_by(|a, b| b.cmp(a));
@@ -154,7 +154,7 @@ impl DynamoStorage {
             commands::lookup_user(
                 self.ddb.clone(),
                 self.metrics.clone(),
-                &uaid,
+                uaid,
                 connected_at,
                 router_url,
                 &self.router_table_name,
@@ -254,7 +254,7 @@ impl DynamoStorage {
             return Box::new(response);
         };
         trace!("### Continuing...");
-        let response = commands::save_channels(ddb, &uaid, chids, &message_month)
+        let response = commands::save_channels(ddb, uaid, chids, message_month)
             .and_then(move |_| future::ok(RegisterResponse::Success { endpoint }))
             .or_else(move |_| {
                 future::ok(RegisterResponse::Error {
@@ -531,7 +531,7 @@ pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<Str
     let mut names: Vec<String> = Vec::new();
     let mut start_key = None;
     loop {
-        let result = commands::list_tables_sync(&ddb, start_key)?;
+        let result = commands::list_tables_sync(ddb, start_key)?;
         start_key = result.last_evaluated_table_name;
         if let Some(table_names) = result.table_names {
             names.extend(table_names);

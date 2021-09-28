@@ -201,7 +201,7 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
         .map_err(ApiErrorKind::TokenHashValidation)?;
 
     // Verify that the VAPID public key equals the (expected) token public key
-    if !openssl::memcmp::eq(&key_hash, &token_key) {
+    if !openssl::memcmp::eq(&key_hash, token_key) {
         return Err(VapidError::KeyMismatch.into());
     }
 

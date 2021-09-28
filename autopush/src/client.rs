@@ -327,7 +327,7 @@ where
     UnAuthDone(()),
 
     #[state_machine_future(error)]
-    UnAuthClientStateError(Error),
+    GeneralUnauthClientError(Error),
 }
 
 impl<T> PollUnAuthClientState<T> for UnAuthClientState<T>
@@ -642,7 +642,7 @@ where
         if unacked_direct_notifs > 0 {
             debug!("Writing direct notifications to storage");
             stats.direct_storage += unacked_direct_notifs as i32;
-            let mut notifs = mem::replace(&mut webpush.unacked_direct_notifs, Vec::new());
+            let mut notifs = mem::take(&mut webpush.unacked_direct_notifs);
             // Ensure we don't store these as legacy by setting a 0 as the sortkey_timestamp
             // That will ensure the Python side doesn't mark it as legacy during conversion and
             // still get the correct default us_time when saving.
@@ -824,7 +824,7 @@ where
     AuthDone(()),
 
     #[state_machine_future(error)]
-    AuthClientStateError(Error),
+    GeneralAuthClientStateError(Error),
 }
 
 impl<T> PollAuthClientState<T> for AuthClientState<T>
@@ -1200,7 +1200,7 @@ where
                 if n.sortkey_timestamp.is_none() {
                     srv.handle.spawn(
                         srv.ddb
-                            .delete_message(&webpush.message_month, &webpush.uaid, &n)
+                            .delete_message(&webpush.message_month, &webpush.uaid, n)
                             .then(|_| {
                                 debug!("Deleting expired message without sortkey_timestamp");
                                 Ok(())
@@ -1218,7 +1218,7 @@ where
                 .extend(messages.iter().cloned());
             let smessages: Vec<_> = messages
                 .into_iter()
-                .inspect(|msg| emit_metrics_for_send(&data.srv.metrics, &msg, "Stored"))
+                .inspect(|msg| emit_metrics_for_send(&data.srv.metrics, msg, "Stored"))
                 .map(ServerMessage::Notification)
                 .collect();
             webpush.sent_from_storage += smessages.len() as u32;

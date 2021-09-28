@@ -2,7 +2,7 @@ use crate::headers::util::split_key_value;
 use std::collections::HashMap;
 use thiserror::Error;
 
-const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
+pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 
 /// Parses the VAPID authorization header
 #[derive(Clone, Debug, PartialEq)]

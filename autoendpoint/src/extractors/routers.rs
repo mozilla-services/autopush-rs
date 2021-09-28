@@ -65,7 +65,7 @@ impl FromRequest for Routers {
     type Config = ();
 
     fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
-        let state = Data::<ServerState>::extract(&req)
+        let state = Data::<ServerState>::extract(req)
             .into_inner()
             .expect("No server state found");
 

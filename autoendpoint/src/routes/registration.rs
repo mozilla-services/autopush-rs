@@ -1,4 +1,3 @@
-use crate::auth::sign_with_key;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::authorization_check::AuthorizationCheck;
 use crate::extractors::new_channel_data::NewChannelData;
@@ -65,7 +64,7 @@ pub async fn register_uaid_route(
     let auth_key = auth_keys
         .get(0)
         .expect("At least one auth key must be provided in the settings");
-    let secret = sign_with_key(auth_key.as_bytes(), user.uaid.as_bytes())
+    let secret = AuthorizationCheck::generate_token(auth_key, &user.uaid)
         .map_err(ApiErrorKind::RegistrationSecretHash)?;
 
     trace!("Finished registering UAID {}", user.uaid);
@@ -203,8 +202,8 @@ fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
         .incr_with_tags(name)
         .with_tag(
             "user_agent",
-            get_header(&request, "User-Agent").unwrap_or("unknown"),
+            get_header(request, "User-Agent").unwrap_or("unknown"),
         )
-        .with_tag("host", get_header(&request, "Host").unwrap_or("unknown"))
+        .with_tag("host", get_header(request, "Host").unwrap_or("unknown"))
         .send()
 }
