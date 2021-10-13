@@ -1,3 +1,22 @@
+<a name="1.58.0"></a>
+## 1.58.0 (2021-10-13)
+
+
+#### Bug Fixes
+
+*   fix local Authorization header (#284) ([0027d78f](https://github.com/mozilla-services/autopush-rs/commit/0027d78f76e9d5644ab95a0c3649555bc007a56c), closes [#282](https://github.com/mozilla-services/autopush-rs/issues/282))
+
+#### Features
+
+*   Standardize to `/__error__` for sentry error check (#278) ([3f0dc8f4](https://github.com/mozilla-services/autopush-rs/commit/3f0dc8f43b42f49cf3108d34c3f5b901e3075e54), closes [#274](https://github.com/mozilla-services/autopush-rs/issues/274))
+
+#### Chore
+
+*   Dep update for Jul 2021 (#283) ([230fb191](https://github.com/mozilla-services/autopush-rs/commit/230fb191d39bae2838b819362566fe5892394a4e))
+*   library update for Jun 2021 (#280) ([5e9aabfe](https://github.com/mozilla-services/autopush-rs/commit/5e9aabfe54e4b2b0d0e0c8fa5d45f4e735f6e84f))
+
+
+
 <a name="1.57.8"></a>
 ## 1.57.8 (2021-06-02)
 
