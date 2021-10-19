@@ -4,4 +4,6 @@ ignore = [
     "RUSTSEC-2021-0078", # Bound by Sentry 0.19 requiring Hyper 0.13
     "RUSTSEC-2021-0079", # Bound by Sentry 0.19 requiring Hyper 0.13
     "RUSTSEC-2021-0115", # Bound by rusoto 0.45 & fernet 0.1.4 (not a risk)
+    "RUSTSEC-2020-0071", # Bound by rusoto, sentry, actix and others.
+    "RUSTSEC-2020-0159", # bound by rusoto, sentry, slog and others.
 ]
