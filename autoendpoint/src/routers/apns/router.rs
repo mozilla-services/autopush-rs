@@ -10,7 +10,8 @@ use crate::routers::common::{
 use crate::routers::{Router, RouterError, RouterResponse};
 use a2::request::notification::LocalizedAlert;
 use a2::request::payload::{APSAlert, Payload, APS};
-use a2::{Endpoint, Error, NotificationOptions, Priority, Response};
+use a2::{self, Endpoint, NotificationOptions, Priority, Response};
+use actix_web::http::StatusCode;
 use async_trait::async_trait;
 use cadence::StatsdClient;
 use futures::{StreamExt, TryStreamExt};
@@ -42,7 +43,7 @@ trait ApnsClient: Send + Sync {
 
 #[async_trait]
 impl ApnsClient for a2::Client {
-    async fn send(&self, payload: Payload<'_>) -> Result<Response, Error> {
+    async fn send(&self, payload: Payload<'_>) -> Result<Response, a2::Error> {
         self.send(payload).await
     }
 }
@@ -124,9 +125,10 @@ impl ApnsRouter {
     async fn handle_error(&self, error: a2::Error, uaid: Uuid, channel: &str) -> ApiError {
         match &error {
             a2::Error::ResponseError(response) => {
+                let code = StatusCode::from_u16(response.code).unwrap_or(StatusCode::BAD_GATEWAY);
                 if response.code == 410 {
                     debug!("APNS recipient has been unregistered, removing user");
-                    incr_error_metric(&self.metrics, "apns", channel, "recipient_gone");
+                    incr_error_metric(&self.metrics, "apns", channel, "recipient_gone", code, None);
 
                     if let Err(e) = self.ddb.remove_user(uaid).await {
                         warn!("Error while removing user due to APNS 410: {}", e);
@@ -135,16 +137,30 @@ impl ApnsRouter {
                     return ApiError::from(ApnsError::Unregistered);
                 } else {
                     warn!("APNS error: {:?}", response.error);
-                    incr_error_metric(&self.metrics, "apns", channel, "server_error");
+                    incr_error_metric(&self.metrics, "apns", channel, "server_error", code, None);
                 }
             }
             a2::Error::ConnectionError => {
                 error!("APNS connection error");
-                incr_error_metric(&self.metrics, "apns", channel, "connection_unavailable");
+                incr_error_metric(
+                    &self.metrics,
+                    "apns",
+                    channel,
+                    "connection_unavailable",
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    None,
+                );
             }
             _ => {
                 warn!("Unknown error while sending APNS request: {}", error);
-                incr_error_metric(&self.metrics, "apns", channel, "unknown");
+                incr_error_metric(
+                    &self.metrics,
+                    "apns",
+                    channel,
+                    "unknown",
+                    StatusCode::BAD_GATEWAY,
+                    None,
+                );
             }
         }
 
