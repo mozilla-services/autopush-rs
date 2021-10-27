@@ -35,7 +35,7 @@ impl AuthorizationCheck {
                 sign_with_key(key.as_bytes(), uaid.to_simple().to_string().as_bytes())
                     .map_err(ApiErrorKind::RegistrationSecretHash)?;
 
-            dbg!(&expected_token, &token);
+            debug!(&expected_token, &token);
             if expected_token.len() == token.len()
                 && openssl::memcmp::eq(expected_token.as_bytes(), token.as_bytes())
             {
