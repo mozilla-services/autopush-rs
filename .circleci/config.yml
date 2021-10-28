@@ -87,7 +87,7 @@ jobs:
           name: Check formatting
           command: |
             cargo fmt -- --check
-            cargo clippy --all --all-targtes --all-features -- -D warnings --deny=clippy::dbg_macro
+            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
       - run:
           name: Integration tests
           command: py.test -v
