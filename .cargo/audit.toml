@@ -5,4 +5,6 @@ ignore = [
     "RUSTSEC-2021-0079", # Bound by Sentry 0.19 requiring Hyper 0.13
     "RUSTSEC-2021-0115", # Bound by rusoto 0.45 & fernet 0.1.4 (not a risk)
     "RUSTSEC-2021-0124", # Bound by tokio restrictions
+    "RUSTSEC-2020-0159", # Bound by time
+    "RUSTSEC-2020-0071", # Bound by sentry, cadence, etc.
 ]
