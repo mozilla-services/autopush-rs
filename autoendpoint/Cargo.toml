@@ -53,8 +53,8 @@ tokio = { version = "0.2", features = ["fs"] }  # 1.1+ requires futures 0.3+
 thiserror = "1.0"
 url = "2.2"
 uuid = { version = "0.8", features = ["serde", "v4"] }
-validator = "0.12"
-validator_derive = "0.12"
+validator = "0.14"
+validator_derive = "0.14"
 yup-oauth2 = "4.1.2"  # 5.0+ requires tokio 1.1+
 
 [dev-dependencies]
