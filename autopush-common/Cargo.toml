@@ -8,7 +8,7 @@ authors = [
   "Alex Crichton <alex@alexcrichton.com>",
   "Phil Jenvey <pjenvey@underboss.org>",
 ]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "autopush_common"

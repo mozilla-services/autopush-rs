@@ -7,4 +7,5 @@ ignore = [
     "RUSTSEC-2021-0124", # Bound by tokio restrictions
     "RUSTSEC-2020-0159", # Bound by time
     "RUSTSEC-2020-0071", # Bound by sentry, cadence, etc.
+    "RUSTSEC-2021-0131", # Bound by actix-http 2.2.1
 ]

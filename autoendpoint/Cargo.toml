@@ -3,7 +3,7 @@ name = "autoendpoint"
 # Should match version in ../autopush/Cargo.toml
 version = "1.58.0"
 authors = ["Mark Drobnak <mdrobnak@mozilla.com>", "jrconlin <me+crypt@jrconlin.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 # Using a fork temporarily until these three PRs are merged:
