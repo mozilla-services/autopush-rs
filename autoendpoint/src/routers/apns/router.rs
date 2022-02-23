@@ -58,11 +58,12 @@ impl ApnsRouter {
     ) -> Result<Self, ApnsError> {
         let channels = settings.channels()?;
 
-        let clients = futures::stream::iter(channels)
+        let clients: HashMap<String, ApnsClientData> = futures::stream::iter(channels)
             .then(|(name, settings)| Self::create_client(name, settings))
             .try_collect()
             .await?;
 
+        trace!("Initialized {} APNs clients", clients.len());
         Ok(Self {
             clients,
             settings,
@@ -165,6 +166,12 @@ impl ApnsRouter {
                 .for_each(Self::convert_value_float_to_int);
         }
     }
+
+    /// if we have any clients defined, this connection is "active"
+    pub fn active(&self) -> bool {
+        self.clients.len() > 0
+    }
+
 }
 
 #[async_trait(?Send)]
