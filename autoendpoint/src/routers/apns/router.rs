@@ -169,9 +169,8 @@ impl ApnsRouter {
 
     /// if we have any clients defined, this connection is "active"
     pub fn active(&self) -> bool {
-        self.clients.len() > 0
+        !self.clients.is_empty()
     }
-
 }
 
 #[async_trait(?Send)]

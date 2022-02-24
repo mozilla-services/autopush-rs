@@ -37,7 +37,7 @@ impl AdmRouter {
     ) -> Result<Self, AdmError> {
         let profiles = settings.profiles()?;
 
-        let clients:HashMap<String, AdmClient> = profiles
+        let clients: HashMap<String, AdmClient> = profiles
             .into_iter()
             .map(|(name, profile)| (name, AdmClient::new(&settings, profile, http.clone())))
             .collect();
@@ -54,9 +54,8 @@ impl AdmRouter {
 
     /// if we have any clients defined, this connection is "active"
     pub fn active(&self) -> bool {
-        self.clients.len() > 0
+        !self.clients.is_empty()
     }
-
 }
 
 #[async_trait(?Send)]
