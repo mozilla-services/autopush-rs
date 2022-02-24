@@ -39,7 +39,6 @@ impl FcmRouter {
         let clients = Self::create_clients(&settings, credentials, http.clone())
             .await
             .map_err(FcmError::OAuthClientBuild)?;
-
         Ok(Self {
             settings,
             endpoint_url,
@@ -63,8 +62,13 @@ impl FcmRouter {
                 FcmClient::new(settings, credential, http.clone()).await?,
             );
         }
-
+        trace!("Initialized {} FCM clients", clients.len());
         Ok(clients)
+    }
+
+    /// if we have any clients defined, this connection is "active"
+    pub fn active(&self) -> bool {
+        !self.clients.is_empty()
     }
 }
 
@@ -204,6 +208,7 @@ mod tests {
     async fn successful_routing_no_data() {
         let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(String::from_utf8(make_service_key()).unwrap(), ddb).await;
+        assert!(router.active());
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_body(

@@ -36,10 +36,12 @@ impl AdmRouter {
         ddb: Box<dyn DbClient>,
     ) -> Result<Self, AdmError> {
         let profiles = settings.profiles()?;
-        let clients = profiles
+
+        let clients: HashMap<String, AdmClient> = profiles
             .into_iter()
             .map(|(name, profile)| (name, AdmClient::new(&settings, profile, http.clone())))
             .collect();
+        trace!("Initialized {} ADM clients", clients.len());
 
         Ok(Self {
             settings,
@@ -48,6 +50,11 @@ impl AdmRouter {
             ddb,
             clients,
         })
+    }
+
+    /// if we have any clients defined, this connection is "active"
+    pub fn active(&self) -> bool {
+        !self.clients.is_empty()
     }
 }
 

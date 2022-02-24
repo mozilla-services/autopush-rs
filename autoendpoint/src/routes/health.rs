@@ -18,7 +18,12 @@ pub async fn health_route(state: Data<ServerState>) -> Json<serde_json::Value> {
         "status": "OK",
         "version": env!("CARGO_PKG_VERSION"),
         "router_table": router_health,
-        "message_table": message_health
+        "message_table": message_health,
+        "routers": {
+            "adm": state.adm_router.active(),
+            "apns": state.apns_router.active(),
+            "fcm": state.fcm_router.active(),
+        }
     }))
 }
 
