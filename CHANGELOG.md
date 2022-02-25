@@ -1,3 +1,13 @@
+<a name="1.59.1"></a>
+## 1.59.1 (2022-02-25)
+
+
+#### Chore
+
+*   tag 1.59 (#296) ([8b8e5fb3](https://github.com/mozilla-services/autopush-rs/commit/8b8e5fb36eb8909341af8c12e11ded6fc724d3c6))
+
+
+
 <a name="1.59.0"></a>
 ## 1.59.0 (2022-02-25)
 
