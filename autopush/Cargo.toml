@@ -1,6 +1,6 @@
 [package]
 name = "autopush"
-version = "1.58.0"
+version = "1.59.0"
 authors = [
   "Ben Bangert <ben@groovie.org>",
   "JR Conlin <jrconlin@mozilla.com>",
