@@ -8,7 +8,7 @@ use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
-use autopush_common::db::DynamoDbUser;
+use autopush_common::db::dynamodb::DynamoDbUser;
 use autopush_common::util::sec_since_epoch;
 use cadence::{CountedExt, StatsdClient};
 use futures::future::LocalBoxFuture;

@@ -26,7 +26,7 @@ use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
 
-use autopush_common::db::DynamoStorage;
+use autopush_common::db::dynamodb::DynamoStorage;
 use autopush_common::errors::*;
 use autopush_common::errors::{Error, Result};
 use autopush_common::logging;

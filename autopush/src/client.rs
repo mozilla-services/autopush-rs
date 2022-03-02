@@ -7,7 +7,8 @@ use futures::sync::oneshot::Receiver;
 use futures::AsyncSink;
 use futures::{future, try_ready};
 use futures::{Async, Future, Poll, Sink, Stream};
-use reqwest::r#async::Client as AsyncClient;
+use reqwest::Client as ReqClient;
+// use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
 use sentry::integrations::error_chain::event_from_error_chain;
 use state_machine_future::{transition, RentToOwn, StateMachineFuture};
@@ -18,7 +19,7 @@ use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
-use autopush_common::db::{CheckStorageResponse, DynamoDbUser, HelloResponse, RegisterResponse};
+use autopush_common::db::{CheckStorageResponse, dynamodb::DynamoDbUser, HelloResponse, RegisterResponse};
 use autopush_common::endpoint::make_endpoint;
 use autopush_common::errors::*;
 use autopush_common::notification::Notification;
@@ -704,7 +705,7 @@ fn save_and_notify_undelivered_messages(
                 if user.connected_at == connected_at {
                     future::err("No notify needed".into())
                 } else if let Some(node_id) = user.node_id {
-                    let result = AsyncClient::builder()
+                    let result = ReqClient::builder()
                         .timeout(Duration::from_secs(1))
                         .build();
                     if let Ok(client) = result {

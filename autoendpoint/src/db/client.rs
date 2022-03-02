@@ -4,7 +4,7 @@ use crate::db::retry::{
     retryable_putitem_error, retryable_updateitem_error,
 };
 use async_trait::async_trait;
-use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
+use autopush_common::db::dynamodb::{DynamoDbNotification, DynamoDbUser};
 use autopush_common::notification::Notification;
 use autopush_common::util::sec_since_epoch;
 use autopush_common::{ddb_item, hashmap, val};
