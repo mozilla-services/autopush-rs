@@ -174,7 +174,7 @@ mod tests {
     use crate::routers::common::tests::{make_notification, CHANNEL_ID};
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
-    use autopush_common::db::dynamodb::DynamoDbUser;
+    use autopush_common::db::dynamodb::UserRecord;
     use cadence::StatsdClient;
     use mockall::predicate;
     use serde_json::Value;
@@ -338,7 +338,7 @@ mod tests {
         let notification = make_notification(default_router_data(), None, RouterType::ADM);
         let mut ddb = MockDbClient::new();
         ddb.expect_update_user()
-            .withf(|user: &DynamoDbUser| {
+            .withf(|user: &UserRecord| {
                 user.router_data
                     .as_ref()
                     .unwrap()

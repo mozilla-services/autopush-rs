@@ -64,7 +64,7 @@ impl From<HashMap<String, String>> for NotificationHeaders {
 }
 
 #[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
-pub struct DynamoDbUser {
+pub struct UserRecord {
     // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     pub uaid: Uuid,
@@ -88,7 +88,7 @@ pub struct DynamoDbUser {
     pub current_month: Option<String>,
 }
 
-impl Default for DynamoDbUser {
+impl Default for UserRecord {
     fn default() -> Self {
         let uaid = Uuid::new_v4();
         //trace!(">>> Setting default uaid: {:?}", &uaid);
@@ -106,7 +106,7 @@ impl Default for DynamoDbUser {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct DynamoDbNotification {
+pub struct NotificationRecord {
     // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     uaid: Uuid,
@@ -145,7 +145,7 @@ pub struct DynamoDbNotification {
     updateid: Option<String>,
 }
 
-impl DynamoDbNotification {
+impl NotificationRecord {
     fn parse_sort_key(key: &str) -> Result<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet =
@@ -243,7 +243,7 @@ struct RangeKey {
 
 #[cfg(test)]
 mod tests {
-    use super::DynamoDbNotification;
+    use super::NotificationRecord;
     use crate::util::us_since_epoch;
     use uuid::Uuid;
 
@@ -251,7 +251,7 @@ mod tests {
     fn test_parse_sort_key_ver1() {
         let chid = Uuid::new_v4();
         let chidmessageid = format!("01:{}:mytopic", chid.to_hyphenated());
-        let key = DynamoDbNotification::parse_sort_key(&chidmessageid).unwrap();
+        let key = NotificationRecord::parse_sort_key(&chidmessageid).unwrap();
         assert_eq!(key.topic, Some("mytopic".to_string()));
         assert_eq!(key.channel_id, chid);
         assert_eq!(key.sortkey_timestamp, None);
@@ -262,7 +262,7 @@ mod tests {
         let chid = Uuid::new_v4();
         let sortkey_timestamp = us_since_epoch();
         let chidmessageid = format!("02:{}:{}", sortkey_timestamp, chid.to_hyphenated());
-        let key = DynamoDbNotification::parse_sort_key(&chidmessageid).unwrap();
+        let key = NotificationRecord::parse_sort_key(&chidmessageid).unwrap();
         assert_eq!(key.topic, None);
         assert_eq!(key.channel_id, chid);
         assert_eq!(key.sortkey_timestamp, Some(sortkey_timestamp));
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn test_parse_sort_key_bad_values() {
         for val in &["02j3i2o", "03:ffas:wef", "01::mytopic", "02:oops:ohnoes"] {
-            let key = DynamoDbNotification::parse_sort_key(val);
+            let key = NotificationRecord::parse_sort_key(val);
             assert!(key.is_err());
         }
     }

@@ -37,7 +37,7 @@ pub struct HelloResponse {
     pub rotate_message_table: bool,
     pub connected_at: u64,
     // Exists when we didn't register this user during HELLO
-    pub deferred_user_registration: Option<dynamodb::DynamoDbUser>,
+    pub deferred_user_registration: Option<dynamodb::UserRecord>,
 }
 
 pub struct CheckStorageResponse {
@@ -50,5 +50,3 @@ pub enum RegisterResponse {
     Success { endpoint: String },
     Error { error_msg: String, status: u32 },
 }
-
-

@@ -118,7 +118,7 @@ pub mod tests {
     use crate::extractors::notification_headers::NotificationHeaders;
     use crate::extractors::routers::RouterType;
     use crate::extractors::subscription::Subscription;
-    use autopush_common::db::dynamodb::DynamoDbUser;
+    use autopush_common::db::dynamodb::UserRecord;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -138,7 +138,7 @@ pub mod tests {
         Notification {
             message_id: "test-message-id".to_string(),
             subscription: Subscription {
-                user: DynamoDbUser {
+                user: UserRecord {
                     router_data: Some(router_data),
                     ..Default::default()
                 },

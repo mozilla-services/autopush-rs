@@ -19,7 +19,7 @@ use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
-use autopush_common::db::{CheckStorageResponse, dynamodb::DynamoDbUser, HelloResponse, RegisterResponse};
+use autopush_common::db::{CheckStorageResponse, dynamodb::UserRecord, HelloResponse, RegisterResponse};
 use autopush_common::endpoint::make_endpoint;
 use autopush_common::errors::*;
 use autopush_common::notification::Notification;
@@ -163,7 +163,7 @@ pub struct WebPushClient {
     sent_from_storage: u32,
     last_ping: u64,
     stats: SessionStatistics,
-    deferred_user_registration: Option<DynamoDbUser>,
+    deferred_user_registration: Option<UserRecord>,
 }
 
 impl Default for WebPushClient {

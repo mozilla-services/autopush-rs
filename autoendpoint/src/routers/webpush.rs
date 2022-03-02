@@ -4,7 +4,7 @@ use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
-use autopush_common::db::dynamodb::DynamoDbUser;
+use autopush_common::db::dynamodb::UserRecord;
 use cadence::{Counted, CountedExt, StatsdClient};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
@@ -169,7 +169,7 @@ impl WebPushRouter {
 
     /// Remove the node ID from a user. This is done if the user is no longer
     /// connected to the node.
-    async fn remove_node_id(&self, user: &DynamoDbUser, node_id: String) -> ApiResult<()> {
+    async fn remove_node_id(&self, user: &UserRecord, node_id: String) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
 
         self.ddb
