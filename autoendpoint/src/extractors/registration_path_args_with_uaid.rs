@@ -38,7 +38,7 @@ impl FromRequest for RegistrationPathArgsWithUaid {
                 .map_err(|_| ApiErrorKind::NoUser)?;
 
             // Verify that the user exists
-            if state.ddb.get_user(uaid).await?.is_none() {
+            if state.db_client.get_user(uaid).await?.is_none() {
                 return Err(ApiErrorKind::NoUser.into());
             }
 

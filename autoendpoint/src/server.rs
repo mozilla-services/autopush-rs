@@ -1,6 +1,6 @@
 //! Main application server
 
-use crate::db::client::{DbClient, DbClientImpl};
+use crate::db::{client::DbClient, dynamodb::DdbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::middleware::sentry::sentry_middleware;
@@ -31,7 +31,7 @@ pub struct ServerState {
     pub metrics: StatsdClient,
     pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
-    pub ddb: Box<dyn DbClient>,
+    pub db_client: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
@@ -46,11 +46,15 @@ impl Server {
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
-        let ddb = Box::new(DbClientImpl::new(
-            metrics.clone(),
-            settings.router_table_name.clone(),
-            settings.message_table_name.clone(),
-        )?);
+        // TODO: Match dbtype
+        let db = match settings.use_ddb {
+            true => Box::new(DdbClientImpl::new(
+                metrics.clone(),
+                settings.router_table_name.clone(),
+                settings.message_table_name.clone(),
+            )?),
+            false => panic!("Not implemented")
+        };
         let http = reqwest::Client::new();
         let fcm_router = Arc::new(
             FcmRouter::new(
@@ -58,7 +62,7 @@ impl Server {
                 endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
-                ddb.clone(),
+                db.clone(),
             )
             .await?,
         );
@@ -67,7 +71,7 @@ impl Server {
                 settings.apns.clone(),
                 endpoint_url.clone(),
                 metrics.clone(),
-                ddb.clone(),
+                db.clone(),
             )
             .await?,
         );
@@ -76,13 +80,13 @@ impl Server {
             endpoint_url,
             http.clone(),
             metrics.clone(),
-            ddb.clone(),
+            db.clone(),
         )?);
         let state = ServerState {
             metrics,
             settings,
             fernet,
-            ddb,
+            db_client: db,
             http,
             fcm_router,
             apns_router,

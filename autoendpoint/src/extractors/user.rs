@@ -4,7 +4,7 @@ use crate::db::client::DbClient;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
-use autopush_common::db::dynamodb::UserRecord;
+use autopush_common::db::UserRecord;
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 
@@ -23,13 +23,13 @@ pub async fn validate_user(
         Ok(router_type) => router_type,
         Err(_) => {
             debug!("Unknown router type, dropping user"; "user" => ?user);
-            drop_user(user.uaid, state.ddb.as_ref(), &state.metrics).await?;
+            drop_user(user.uaid, state.db_client.as_ref(), &state.metrics).await?;
             return Err(ApiErrorKind::NoSubscription.into());
         }
     };
 
     if router_type == RouterType::WebPush {
-        validate_webpush_user(user, channel_id, state.ddb.as_ref(), &state.metrics).await?;
+        validate_webpush_user(user, channel_id, state.db_client.as_ref(), &state.metrics).await?;
     }
 
     Ok(router_type)

@@ -19,7 +19,7 @@ use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
-use autopush_common::db::{CheckStorageResponse, dynamodb::UserRecord, HelloResponse, RegisterResponse};
+use autopush_common::db::{CheckStorageResponse, UserRecord, HelloResponse, RegisterResponse};
 use autopush_common::endpoint::make_endpoint;
 use autopush_common::errors::*;
 use autopush_common::notification::Notification;

@@ -4,7 +4,7 @@ use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
-use autopush_common::db::dynamodb::UserRecord;
+use autopush_common::db::UserRecord;
 use cadence::{Counted, CountedExt, StatsdClient};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
@@ -66,7 +66,7 @@ impl Router for WebPushRouter {
                 Err(error) => {
                     // We should stop sending notifications to this node for this user
                     debug!("Error while sending webpush notification: {}", error);
-                    self.remove_node_id(user, node_id.clone()).await?;
+                    self.remove_node_id(user, node_id.to_owned()).await?;
                 }
             }
         }

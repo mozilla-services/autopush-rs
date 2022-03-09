@@ -5,6 +5,7 @@
 pub mod client;
 pub mod error;
 mod retry;
+pub mod dynamodb;
 
 #[cfg(test)]
 pub mod mock;

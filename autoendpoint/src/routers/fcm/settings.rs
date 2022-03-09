@@ -42,6 +42,12 @@ impl Default for FcmSettings {
 impl FcmSettings {
     /// Read the credentials from the provided JSON
     pub fn credentials(&self) -> serde_json::Result<HashMap<String, FcmCredential>> {
-        serde_json::from_str(&self.credentials)
+        match serde_json::from_str(&self.credentials) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                print!("{:?}\n{}", e, &self.credentials);
+                Err(e)
+            }
+        }
     }
 }

@@ -19,6 +19,7 @@ pub struct Settings {
     pub port: u16,
     pub endpoint_url: String,
 
+    pub use_ddb: bool,
     pub router_table_name: String,
     pub message_table_name: String,
 
@@ -43,6 +44,7 @@ impl Default for Settings {
             host: "127.0.0.1".to_string(),
             endpoint_url: "".to_string(),
             port: 8000,
+            use_ddb: true,
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
             max_data_bytes: 4096,

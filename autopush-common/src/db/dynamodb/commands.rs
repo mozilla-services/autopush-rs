@@ -15,7 +15,7 @@ use rusoto_dynamodb::{
     UpdateItemError, UpdateItemInput, UpdateItemOutput,
 };
 
-use super::super::models::{NotificationRecord, UserRecord};
+use crate::db::{NotificationRecord, UserRecord};
 use super::super::util::generate_last_connect;
 use super::super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
 use crate::errors::*;

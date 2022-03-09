@@ -8,7 +8,7 @@ use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
-use autopush_common::db::dynamodb::UserRecord;
+use autopush_common::db::UserRecord;
 use autopush_common::util::sec_since_epoch;
 use cadence::{CountedExt, StatsdClient};
 use futures::future::LocalBoxFuture;
@@ -85,7 +85,7 @@ impl FromRequest for Subscription {
             let uaid = Uuid::from_slice(&token[..16]).unwrap();
             let channel_id = Uuid::from_slice(&token[16..32]).unwrap();
             let user = state
-                .ddb
+                .db_client
                 .get_user(uaid)
                 .await?
                 .ok_or(ApiErrorKind::NoSubscription)?;

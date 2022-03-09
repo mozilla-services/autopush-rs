@@ -5,7 +5,7 @@
 use crate::db::client::DbClient;
 use crate::db::error::DbResult;
 use async_trait::async_trait;
-use autopush_common::db::dynamodb::UserRecord;
+use autopush_common::db::UserRecord;
 use autopush_common::notification::Notification;
 use std::collections::HashSet;
 use std::sync::Arc;

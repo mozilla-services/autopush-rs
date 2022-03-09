@@ -118,7 +118,7 @@ pub mod tests {
     use crate::extractors::notification_headers::NotificationHeaders;
     use crate::extractors::routers::RouterType;
     use crate::extractors::subscription::Subscription;
-    use autopush_common::db::dynamodb::UserRecord;
+    use autopush_common::db::UserRecord;
     use std::collections::HashMap;
     use uuid::Uuid;
 

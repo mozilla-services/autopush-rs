@@ -22,8 +22,8 @@ pub use rusoto_dynamodb::{
     PutRequest, UpdateItemInput, UpdateItemOutput, WriteRequest,
 };
 
-pub use super::models::{NotificationRecord, UserRecord};
 use super::{MAX_EXPIRY, HelloResponse, RegisterResponse,CheckStorageResponse};
+use super::{NotificationRecord, UserRecord};
 
 #[macro_use]
 pub mod macros;
