@@ -216,7 +216,7 @@ pub struct Server {
     tls_acceptor: Option<SslAcceptor>,
     pub opts: Arc<ServerOptions>,
     pub handle: Handle,
-    pub metrics: StatsdClient,
+    pub metrics: Arc<StatsdClient>,
 }
 
 impl Server {
@@ -286,7 +286,7 @@ impl Server {
         } else {
             BroadcastChangeTracker::new(Vec::new())
         };
-        let metrics = metrics_from_opts(opts)?;
+        let metrics = Arc::new(metrics_from_opts(opts)?);
 
         let srv = Rc::new(Server {
             opts: opts.clone(),

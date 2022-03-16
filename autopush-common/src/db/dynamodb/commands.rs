@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::result::Result as StdResult;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use cadence::{CountedExt, StatsdClient};
@@ -15,9 +16,9 @@ use rusoto_dynamodb::{
     UpdateItemError, UpdateItemInput, UpdateItemOutput,
 };
 
-use crate::db::{NotificationRecord, UserRecord};
 use super::super::util::generate_last_connect;
 use super::super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
+use crate::db::{NotificationRecord, UserRecord};
 use crate::errors::*;
 use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
@@ -76,7 +77,7 @@ pub fn list_tables_sync(
 
 pub fn fetch_messages(
     ddb: DynamoDbClient,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
@@ -97,20 +98,19 @@ pub fn fetch_messages(
     retry_if(move || ddb.query(input.clone()), retryable_query_error)
         .chain_err(|| ErrorKind::MessageFetch)
         .and_then(move |output| {
-            let mut notifs: Vec<NotificationRecord> =
-                output.items.map_or_else(Vec::new, |items| {
-                    debug!("Got response of: {:?}", items);
-                    items
-                        .into_iter()
-                        .inspect(|i| debug!("Item: {:?}", i))
-                        .filter_map(|item| {
-                            let item2 = item.clone();
-                            ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                                conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
-                            })
+            let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
+                debug!("Got response of: {:?}", items);
+                items
+                    .into_iter()
+                    .inspect(|i| debug!("Item: {:?}", i))
+                    .filter_map(|item| {
+                        let item2 = item.clone();
+                        ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                            conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
                         })
-                        .collect()
-                });
+                    })
+                    .collect()
+            });
             if notifs.is_empty() {
                 return Ok(Default::default());
             }
@@ -137,7 +137,7 @@ pub fn fetch_messages(
 
 pub fn fetch_timestamp_messages(
     ddb: DynamoDbClient,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
     timestamp: Option<u64>,
@@ -388,7 +388,7 @@ pub fn unregister_channel_id(
 #[allow(clippy::too_many_arguments)]
 pub fn lookup_user(
     ddb: DynamoDbClient,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     uaid: &Uuid,
     connected_at: u64,
     router_url: &str,

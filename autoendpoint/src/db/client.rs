@@ -1,12 +1,9 @@
 use crate::db::error::DbResult;
 use async_trait::async_trait;
-use autopush_common::db::{UserRecord};
+use autopush_common::db::UserRecord;
 use autopush_common::notification::Notification;
 use std::collections::HashSet;
 use uuid::Uuid;
-
-/// The maximum TTL for channels, 30 days
-pub(crate) const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
 /// Provides high-level operations over the DynamoDB database
 #[async_trait]

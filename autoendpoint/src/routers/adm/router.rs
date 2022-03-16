@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use cadence::StatsdClient;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
 
 /// 31 days, specified by ADM
@@ -20,7 +21,7 @@ const MAX_TTL: usize = 2419200;
 pub struct AdmRouter {
     settings: AdmSettings,
     endpoint_url: Url,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     ddb: Box<dyn DbClient>,
     /// A map from profile name to an authenticated ADM client
     clients: HashMap<String, AdmClient>,
@@ -32,7 +33,7 @@ impl AdmRouter {
         settings: AdmSettings,
         endpoint_url: Url,
         http: reqwest::Client,
-        metrics: StatsdClient,
+        metrics: Arc<StatsdClient>,
         ddb: Box<dyn DbClient>,
     ) -> Result<Self, AdmError> {
         let profiles = settings.profiles()?;
@@ -179,6 +180,7 @@ mod tests {
     use mockall::predicate;
     use serde_json::Value;
     use std::collections::HashMap;
+    use std::sync::Arc;
     use url::Url;
 
     /// Create a router for testing
@@ -194,7 +196,7 @@ mod tests {
             },
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
-            StatsdClient::from_sink("autopush", cadence::NopMetricSink),
+            Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             ddb,
         )
         .unwrap()

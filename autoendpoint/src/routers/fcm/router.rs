@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use cadence::StatsdClient;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
 
 /// 28 days
@@ -20,7 +21,7 @@ const MAX_TTL: usize = 28 * 24 * 60 * 60;
 pub struct FcmRouter {
     settings: FcmSettings,
     endpoint_url: Url,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     ddb: Box<dyn DbClient>,
     /// A map from application ID to an authenticated FCM client
     clients: HashMap<String, FcmClient>,
@@ -32,7 +33,7 @@ impl FcmRouter {
         settings: FcmSettings,
         endpoint_url: Url,
         http: reqwest::Client,
-        metrics: StatsdClient,
+        metrics: Arc<StatsdClient>,
         ddb: Box<dyn DbClient>,
     ) -> Result<Self, FcmError> {
         let credentials = settings.credentials()?;
@@ -165,6 +166,7 @@ mod tests {
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
+    use std::sync::Arc;
     use url::Url;
 
     const FCM_TOKEN: &str = "test-token";
@@ -185,7 +187,7 @@ mod tests {
             },
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
-            StatsdClient::from_sink("autopush", cadence::NopMetricSink),
+            Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             ddb,
         )
         .await

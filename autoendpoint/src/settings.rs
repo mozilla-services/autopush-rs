@@ -64,36 +64,38 @@ impl Default for Settings {
 impl Settings {
     /// Load the settings from the config file if supplied, then the environment.
     pub fn with_env_and_config_file(filename: &Option<String>) -> Result<Self, ConfigError> {
-        let mut config = Config::new();
+        let mut s = Config::builder();
 
         // Merge the config file if supplied
         if let Some(config_filename) = filename {
-            config.merge(File::with_name(config_filename))?;
+            s = s.add_source(File::with_name(config_filename));
         }
 
         // Merge the environment overrides
         // Note: Specify the separator here so that the shell can properly pass args
         // down to the sub structures.
-        config.merge(Environment::with_prefix(ENV_PREFIX).separator("__"))?;
+        s = s.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
 
-        config.try_into::<Self>().map_err(|error| match error {
-            // Configuration errors are not very sysop friendly, Try to make them
-            // a bit more 3AM useful.
-            ConfigError::Message(error_msg) => {
-                println!("Bad configuration: {:?}", &error_msg);
-                println!("Please set in config file or use environment variable.");
-                println!(
-                    "For example to set `database_url` use env var `{}_DATABASE_URL`\n",
-                    ENV_PREFIX.to_uppercase()
-                );
-                error!("Configuration error: Value undefined {:?}", &error_msg);
-                ConfigError::NotFound(error_msg)
-            }
-            _ => {
-                error!("Configuration error: Other: {:?}", &error);
-                error
-            }
-        })
+        s.build()?
+            .try_deserialize::<Self>()
+            .map_err(|error| match error {
+                // Configuration errors are not very sysop friendly, Try to make them
+                // a bit more 3AM useful.
+                ConfigError::Message(error_msg) => {
+                    println!("Bad configuration: {:?}", &error_msg);
+                    println!("Please set in config file or use environment variable.");
+                    println!(
+                        "For example to set `database_url` use env var `{}_DATABASE_URL`\n",
+                        ENV_PREFIX.to_uppercase()
+                    );
+                    error!("Configuration error: Value undefined {:?}", &error_msg);
+                    ConfigError::NotFound(error_msg)
+                }
+                _ => {
+                    error!("Configuration error: Other: {:?}", &error);
+                    error
+                }
+            })
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.

@@ -28,7 +28,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ServerState {
     /// Server Data
-    pub metrics: StatsdClient,
+    pub metrics: Arc<StatsdClient>,
     pub settings: Settings,
     pub fernet: Arc<MultiFernet>,
     pub db_client: Box<dyn DbClient>,
@@ -42,7 +42,7 @@ pub struct Server;
 
 impl Server {
     pub async fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
-        let metrics = metrics::metrics_from_opts(&settings)?;
+        let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
@@ -53,7 +53,7 @@ impl Server {
                 settings.router_table_name.clone(),
                 settings.message_table_name.clone(),
             )?),
-            false => panic!("Not implemented")
+            false => panic!("Not implemented"),
         };
         let http = reqwest::Client::new();
         let fcm_router = Arc::new(

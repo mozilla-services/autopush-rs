@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::env;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use cadence::StatsdClient;
@@ -22,7 +23,7 @@ pub use rusoto_dynamodb::{
     PutRequest, UpdateItemInput, UpdateItemOutput, WriteRequest,
 };
 
-use super::{MAX_EXPIRY, HelloResponse, RegisterResponse,CheckStorageResponse};
+use super::{CheckStorageResponse, HelloResponse, RegisterResponse, MAX_EXPIRY};
 use super::{NotificationRecord, UserRecord};
 
 #[macro_use]
@@ -32,18 +33,17 @@ pub mod commands;
 #[derive(Clone)]
 pub struct DynamoStorage {
     ddb: DynamoDbClient,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     router_table_name: String,
     pub message_table_names: Vec<String>,
     pub current_message_month: String,
 }
 
-
 impl DynamoStorage {
     pub fn from_opts(
         message_table_name: &str,
         router_table_name: &str,
-        metrics: StatsdClient,
+        metrics: Arc<StatsdClient>,
     ) -> Result<Self> {
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(

@@ -42,7 +42,6 @@ impl From<HashMap<String, String>> for NotificationHeaders {
     }
 }
 
-
 pub(crate) struct RangeKey {
     pub(crate) channel_id: Uuid,
     pub(crate) topic: Option<String>,

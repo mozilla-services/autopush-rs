@@ -131,7 +131,10 @@ pub async fn new_channel_route(
     let channel_data = channel_data.map(Json::into_inner).unwrap_or_default();
     let channel_id = channel_data.channel_id.unwrap_or_else(Uuid::new_v4);
     trace!("channel_id = {}", channel_id);
-    state.db_client.add_channel(path_args.uaid, channel_id).await?;
+    state
+        .db_client
+        .add_channel(path_args.uaid, channel_id)
+        .await?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for the new channel");
@@ -186,7 +189,10 @@ pub async fn unregister_channel_route(
     );
 
     incr_metric("ua.command.unregister", &state.metrics, &request);
-    let channel_did_exist = state.db_client.remove_channel(path_args.uaid, channel_id).await?;
+    let channel_did_exist = state
+        .db_client
+        .remove_channel(path_args.uaid, channel_id)
+        .await?;
 
     if channel_did_exist {
         Ok(HttpResponse::Ok().finish())

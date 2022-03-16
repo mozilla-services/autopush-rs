@@ -3,9 +3,9 @@
 //! pieces of `DynamoStorage` as needed.
 
 pub mod client;
+pub mod dynamodb;
 pub mod error;
 mod retry;
-pub mod dynamodb;
 
 #[cfg(test)]
 pub mod mock;

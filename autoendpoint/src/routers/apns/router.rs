@@ -17,6 +17,7 @@ use futures::{StreamExt, TryStreamExt};
 use serde::Deserialize;
 use serde_json::{Number, Value};
 use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
 
@@ -26,7 +27,7 @@ pub struct ApnsRouter {
     clients: HashMap<String, ApnsClientData>,
     settings: ApnsSettings,
     endpoint_url: Url,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     ddb: Box<dyn DbClient>,
 }
 
@@ -53,7 +54,7 @@ impl ApnsRouter {
     pub async fn new(
         settings: ApnsSettings,
         endpoint_url: Url,
-        metrics: StatsdClient,
+        metrics: Arc<StatsdClient>,
         ddb: Box<dyn DbClient>,
     ) -> Result<Self, ApnsError> {
         let channels = settings.channels()?;
@@ -306,6 +307,7 @@ mod tests {
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
+    use std::sync::Arc;
     use url::Url;
 
     const DEVICE_TOKEN: &str = "test-token";
@@ -360,7 +362,7 @@ mod tests {
             },
             settings: ApnsSettings::default(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
-            metrics: StatsdClient::from_sink("autopush", cadence::NopMetricSink),
+            metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             ddb,
         }
     }

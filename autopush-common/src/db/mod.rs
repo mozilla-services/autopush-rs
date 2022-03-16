@@ -9,17 +9,21 @@ use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::db::util::generate_last_connect;
-use models::{NotificationHeaders, RangeKey};
 use crate::errors::*;
 use crate::notification::Notification;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
+use models::{NotificationHeaders, RangeKey};
 
+pub mod client;
 pub mod dynamodb;
+pub mod error;
 pub mod models;
 mod util;
 
 const MAX_EXPIRY: u64 = 2_592_000;
 const USER_RECORD_VERSION: u8 = 1;
+/// The maximum TTL for channels, 30 days
+pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
 /// Custom Uuid serializer
 ///
@@ -30,7 +34,6 @@ where
 {
     s.serialize_str(&x.to_simple().to_string())
 }
-
 
 /// Basic requirements for notification content to deliver to websocket client
 ///  - channelID  (the subscription website intended for)
@@ -60,7 +63,6 @@ pub enum RegisterResponse {
     Success { endpoint: String },
     Error { error_msg: String, status: u32 },
 }
-
 
 #[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
 pub struct UserRecord {

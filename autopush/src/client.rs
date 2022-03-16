@@ -19,7 +19,7 @@ use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
-use autopush_common::db::{CheckStorageResponse, UserRecord, HelloResponse, RegisterResponse};
+use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse, UserRecord};
 use autopush_common::endpoint::make_endpoint;
 use autopush_common::errors::*;
 use autopush_common::notification::Notification;
@@ -705,9 +705,7 @@ fn save_and_notify_undelivered_messages(
                 if user.connected_at == connected_at {
                     future::err("No notify needed".into())
                 } else if let Some(node_id) = user.node_id {
-                    let result = ReqClient::builder()
-                        .timeout(Duration::from_secs(1))
-                        .build();
+                    let result = ReqClient::builder().timeout(Duration::from_secs(1)).build();
                     if let Ok(client) = result {
                         future::ok((client, user.uaid, node_id))
                     } else {
