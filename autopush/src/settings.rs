@@ -25,7 +25,8 @@ fn include_port(scheme: &str, port: u16) -> bool {
     !((scheme == "http" && port == 80) || (scheme == "https" && port == 443))
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub port: u16,
     pub hostname: Option<String>,
@@ -55,32 +56,38 @@ pub struct Settings {
     pub msg_limit: u32,
 }
 
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            port: 8080,
+            resolve_hostname: false,
+            router_port: 8081,
+            router_tablename: "router".to_owned(),
+            message_tablename: "message".to_owned(),
+            auto_ping_interval: 300.0,
+            auto_ping_timeout: 4.0,
+            max_connections: 0,
+            close_handshake_timeout: 0,
+            endpoint_scheme: "http".to_owned(),
+            endpoint_hostname: "localhost".to_owned(),
+            endpoint_port: 8082,
+            crypto_key: format!("[{}]", Fernet::generate_key()),
+            statsd_host: "localhost".to_owned(),
+            statsd_port: 8125,
+            megaphone_poll_interval: 30,
+            human_logs: false,
+            msg_limit: 100,
+            ..Default::default()
+        }
+    }
+}
+
 impl Settings {
     /// Load the settings from the config files in order first then the environment.
     pub fn with_env_and_config_files(filenames: &[String]) -> Result<Self, ConfigError> {
         let mut s = Config::builder();
         // Set our defaults, this can be fixed up drastically later after:
         // https://github.com/mehcode/config-rs/issues/60
-        s = s
-            .set_default("debug", false)?
-            .set_default("port", 8080_u64)?
-            .set_default("resolve_hostname", false)?
-            .set_default("router_port", 8081_u64)?
-            .set_default("router_tablename", "router")?
-            .set_default("message_tablename", "message")?
-            .set_default("auto_ping_interval", 300_u64)?
-            .set_default("auto_ping_timeout", 4_u64)?
-            .set_default("max_connections", 0_u64)?
-            .set_default("close_handshake_timeout", 0_u64)?
-            .set_default("endpoint_scheme", "http")?
-            .set_default("endpoint_hostname", "localhost")?
-            .set_default("endpoint_port", 8082_u64)?
-            .set_default("crypto_key", format!("[{}]", Fernet::generate_key()))?
-            .set_default("statsd_host", "localhost")?
-            .set_default("statsd_port", 8125_u64)?
-            .set_default("megaphone_poll_interval", 30_u64)?
-            .set_default("human_logs", false)?
-            .set_default("msg_limit", 100_u64)?;
 
         // Merge the configs from the files
         for filename in filenames {
