@@ -227,11 +227,11 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
         &Validation::new(Algorithm::ES256),
     ) {
         Ok(v) => v,
-        Err(e) => match e.clone().into_kind() {
+        Err(e) => match e.kind() {
             jsonwebtoken::errors::ErrorKind::Json(e) => {
                 if e.is_data() {
                     return Err(VapidError::InvalidVapid(
-                        "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":None). Please correct and retry.".to_owned(),
+                        "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":null). Please correct and retry.".to_owned(),
                     )
                     .into());
                 }

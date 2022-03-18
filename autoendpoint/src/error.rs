@@ -153,7 +153,7 @@ impl ApiErrorKind {
     }
 
     /// Specify the label to use for metrics reporting.
-    pub fn metric_label<'a>(&self) -> &'a str {
+    pub fn metric_label(&self) -> &'static str {
         match self {
             ApiErrorKind::PayloadError(_) => "payload_error",
             ApiErrorKind::Router(_) => "router",
@@ -188,7 +188,7 @@ impl ApiErrorKind {
     }
 
     /// Don't report all errors to sentry
-    pub fn is_reportable(&self) -> bool {
+    pub fn is_sentry_event(&self) -> bool {
         !matches!(
             self,
             // Ignore common webpush errors

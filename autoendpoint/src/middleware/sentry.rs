@@ -34,7 +34,7 @@ pub fn sentry_middleware(
             Err(error) => {
                 if let Some(api_err) = error.as_error::<ApiError>() {
                     // if it's not reportable, and we have access to the metrics, record it as a metric.
-                    if !api_err.kind.is_reportable() {
+                    if !api_err.kind.is_sentry_event() {
                         if let Some(state) = state {
                             match state
                                 .metrics
@@ -57,7 +57,7 @@ pub fn sentry_middleware(
         // Check for errors inside the response
         if let Some(error) = response.response().error() {
             if let Some(api_err) = error.as_error::<ApiError>() {
-                if !api_err.kind.is_reportable() {
+                if !api_err.kind.is_sentry_event() {
                     debug!("Not reporting error (service error): {:?}", error);
                     drop(_scope_guard);
                     return Ok(response);
