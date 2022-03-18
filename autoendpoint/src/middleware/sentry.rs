@@ -1,5 +1,6 @@
 use crate::error::ApiError;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse};
+use cadence::CountedExt;
 use sentry::protocol::Event;
 use sentry::Hub;
 use std::future::Future;
@@ -22,22 +23,46 @@ pub fn sentry_middleware(
         scope.add_event_processor(Box::new(move |event| process_event(event, &sentry_request)))
     });
 
+    let state = request
+        .app_data::<actix_web::web::Data<crate::server::ServerState>>()
+        .cloned();
     let response = service.call(request);
-
     async move {
         // Wait for the response and check for errors
         let response: ServiceResponse = match response.await {
             Ok(response) => response,
-            Err(e) => {
-                debug!("Reporting error to Sentry (service error): {}", e);
-                let event_id = hub.capture_event(event_from_actix_error(&e));
+            Err(error) => {
+                if let Some(api_err) = error.as_error::<ApiError>() {
+                    // if it's not reportable, and we have access to the metrics, record it as a metric.
+                    if !api_err.kind.is_reportable() {
+                        if let Some(state) = state {
+                            match state
+                                .metrics
+                                .incr(&format!("api_error.{}", api_err.kind.metric_label()))
+                            {
+                                Ok(_) | Err(_) => {}
+                            };
+                        }
+                        debug!("Not reporting error (service error): {:?}", error);
+                        return Err(error);
+                    }
+                }
+                debug!("Reporting error to Sentry (service error): {}", error);
+                let event_id = hub.capture_event(event_from_actix_error(&error));
                 trace!("event_id = {}", event_id);
-                return Err(e);
+                return Err(error);
             }
         };
 
         // Check for errors inside the response
         if let Some(error) = response.response().error() {
+            if let Some(api_err) = error.as_error::<ApiError>() {
+                if !api_err.kind.is_reportable() {
+                    debug!("Not reporting error (service error): {:?}", error);
+                    drop(_scope_guard);
+                    return Ok(response);
+                }
+            }
             debug!("Reporting error to Sentry (response error): {}", error);
             let event_id = hub.capture_event(event_from_actix_error(error));
             trace!("event_id = {}", event_id);

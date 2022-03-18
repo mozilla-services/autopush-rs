@@ -152,6 +152,58 @@ impl ApiErrorKind {
         }
     }
 
+    /// Specify the label to use for metrics reporting.
+    pub fn metric_label<'a>(&self) -> &'a str {
+        match self {
+            ApiErrorKind::PayloadError(_) => "payload_error",
+            ApiErrorKind::Router(_) => "router",
+
+            ApiErrorKind::Validation(_) => "validation",
+            ApiErrorKind::InvalidEncryption(_) => "invalid_encryption",
+            ApiErrorKind::NoTTL => "no_ttl",
+            ApiErrorKind::InvalidRouterType => "invalid_router_type",
+            ApiErrorKind::InvalidRouterToken => "invalid_router_token",
+            ApiErrorKind::InvalidMessageId => "invalid_message_id",
+
+            ApiErrorKind::VapidError(_) => "vapid_error",
+            ApiErrorKind::Jwt(_) => "jwt",
+            ApiErrorKind::TokenHashValidation(_) => "token_hash_validation",
+            ApiErrorKind::InvalidAuthentication => "invalid_authentication",
+            ApiErrorKind::InvalidLocalAuth(_) => "invalid_local_auth",
+
+            ApiErrorKind::InvalidToken => "invalid_token",
+            ApiErrorKind::InvalidApiVersion => "invalid_api_version",
+
+            ApiErrorKind::NoUser => "no_user",
+            ApiErrorKind::NoSubscription => "no_subscription",
+
+            ApiErrorKind::LogCheck => "log_check",
+
+            ApiErrorKind::Io(_) => "io",
+            ApiErrorKind::Metrics(_) => "metrics",
+            ApiErrorKind::Database(_) => "database",
+            ApiErrorKind::EndpointUrl(_) => "endpoint_url",
+            ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
+        }
+    }
+
+    /// Don't report all errors to sentry
+    pub fn is_reportable(&self) -> bool {
+        !matches!(
+            self,
+            // Ignore common webpush errors
+            ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
+            // Ignore common VAPID erros
+            ApiErrorKind::VapidError(_)
+            | ApiErrorKind::Jwt(_)
+            | ApiErrorKind::TokenHashValidation(_)
+            | ApiErrorKind::InvalidAuthentication
+            | ApiErrorKind::InvalidLocalAuth(_) |
+            // Ignore missing or invalid user errors
+            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription,
+        )
+    }
+
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {

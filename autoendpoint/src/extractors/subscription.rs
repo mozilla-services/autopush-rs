@@ -432,6 +432,7 @@ mod tests {
         let vv = validate_vapid_jwt(&header, &Url::from_str("http://example.org").unwrap())
             .unwrap_err()
             .kind;
+        dbg!(vv.to_string());
         assert!(matches![
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
