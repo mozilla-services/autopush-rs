@@ -81,6 +81,8 @@ impl VapidHeader {
 pub enum VapidError {
     #[error("Missing VAPID token")]
     MissingToken,
+    #[error("Invalid VAPID token: {0}")]
+    InvalidVapid(String),
     #[error("Missing VAPID public key")]
     MissingKey,
     #[error("Invalid VAPID public key")]
