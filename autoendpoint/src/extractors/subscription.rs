@@ -230,15 +230,13 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
         Err(e) => match e.clone().into_kind() {
             jsonwebtoken::errors::ErrorKind::Json(e) => {
                 if e.is_data() {
-                    // Data returns normally for string as numeric. Vapid only has
-                    // one of those right now, so it's safe to presume.
                     return Err(VapidError::InvalidVapid(
-                        "'exp' may be a string. Remove quotes and try again.".to_owned(),
+                        "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":None). Please correct and retry.".to_owned(),
                     )
                     .into());
                 }
                 // Other errors are always possible. Try to be helpful by returning
-                // the Json parse error. 
+                // the Json parse error.
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
             _ => return Err(e.into()),
@@ -378,6 +376,49 @@ mod tests {
             exp: (sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100).to_string(),
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
+        };
+        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
+        let header = VapidHeaderWithKey {
+            public_key,
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token,
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        let vv = validate_vapid_jwt(&header, &Url::from_str("http://example.org").unwrap())
+            .unwrap_err()
+            .kind;
+        assert!(matches![
+            vv,
+            ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
+        ])
+    }
+
+    #[test]
+    fn vapid_missing_sub() {
+        #[derive(Debug, Deserialize, Serialize)]
+        struct NoSubVapidClaims {
+            exp: u64,
+            aud: String,
+            sub: Option<String>,
+        }
+
+        let priv_key = base64::decode_config(
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
+                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+            base64::STANDARD,
+        )
+        .unwrap();
+        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
+        let domain = "https://push.services.mozilla.org";
+        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let claims = NoSubVapidClaims {
+            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            aud: domain.to_owned(),
+            sub: None,
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         let header = VapidHeaderWithKey {
