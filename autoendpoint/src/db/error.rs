@@ -29,4 +29,10 @@ pub enum DbError {
 
     #[error("Unable to determine table status")]
     TableStatusUnknown,
+
+    #[error("Could not connect to database: {0}")]
+    Connection(String),
+
+    #[error("Postgres Error: {0}")]
+    Postgres(#[from] tokio_postgres::error::Error),
 }

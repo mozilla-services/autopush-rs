@@ -34,8 +34,12 @@ log = "0.4"
 openssl = "0.10"
 regex = "1.4"
 reqwest = "0.10.6"  # 0.11+ requires futures 0.3+
+# datbases
 rusoto_core = "0.45.0"  # 0.46+ requires futures 0.3+
 rusoto_dynamodb = "0.45.0"  # 0.46+ requires futures 0.3+
+# postgres = "0.19" # sync
+tokio-postgres = "0.7"  # async
+
 # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
 sentry = { version = "0.19", features = ["debug-logs"] }  # Keep on 0.19 in order to work with our backend
 serde = { version = "1.0", features = ["derive"] }

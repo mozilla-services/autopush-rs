@@ -20,8 +20,10 @@ pub struct Settings {
     pub endpoint_url: String,
 
     pub use_ddb: bool,
+    pub pg_dsn: Option<String>,
     pub router_table_name: String,
     pub message_table_name: String,
+    pub meta_table_name: Option<String>,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
@@ -45,8 +47,10 @@ impl Default for Settings {
             endpoint_url: "".to_string(),
             port: 8000,
             use_ddb: true,
+            pg_dsn: None,
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
+            meta_table_name: None,
             max_data_bytes: 4096,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),

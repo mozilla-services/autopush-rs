@@ -5,6 +5,7 @@
 pub mod client;
 pub mod dynamodb;
 pub mod error;
+pub mod postgres;
 mod retry;
 
 #[cfg(test)]
