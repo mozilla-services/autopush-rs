@@ -318,7 +318,7 @@ pub fn all_channels(
                         .ok()
                         .and_then(|notif: DynamoDbNotification| notif.chids)
                 })
-                .unwrap_or_else(HashSet::new);
+                .unwrap_or_default();
             future::ok(channels)
         })
         .or_else(|_err| future::ok(HashSet::new()))

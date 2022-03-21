@@ -1,3 +1,37 @@
+<a name="1.59.1"></a>
+## 1.59.1 (2022-02-25)
+
+
+#### Chore
+
+*   tag 1.59 (#296) ([8b8e5fb3](https://github.com/mozilla-services/autopush-rs/commit/8b8e5fb36eb8909341af8c12e11ded6fc724d3c6))
+
+
+
+<a name="1.59.0"></a>
+## 1.59.0 (2022-02-25)
+
+
+#### Chore
+
+*   cleanup cargo audit invocation (#290) ([23818662](https://github.com/mozilla-services/autopush-rs/commit/23818662e17cf246fe96f17c2cfb41671b1e0015))
+*   tag 1.58.0 (#289) ([e47f697b](https://github.com/mozilla-services/autopush-rs/commit/e47f697b29516acc7db53ecee708e41d4d26891b))
+*   Q3 dependency update (#286) ([627456d9](https://github.com/mozilla-services/autopush-rs/commit/627456d9472971419bc4a8189b53d5b85e48ab30), closes [#285](https://github.com/mozilla-services/autopush-rs/issues/285))
+*   Dep update for Jul 2021 (#283) ([230fb191](https://github.com/mozilla-services/autopush-rs/commit/230fb191d39bae2838b819362566fe5892394a4e))
+*   library update for Jun 2021 (#280) ([5e9aabfe](https://github.com/mozilla-services/autopush-rs/commit/5e9aabfe54e4b2b0d0e0c8fa5d45f4e735f6e84f))
+*   tag 1.57.8 (#277) ([35f0b406](https://github.com/mozilla-services/autopush-rs/commit/35f0b4066ef7873cf1a5c5d3c7f55bd4fb8d6387))
+
+#### Bug Fixes
+
+*   remove dbg!() (#292) ([1eca808f](https://github.com/mozilla-services/autopush-rs/commit/1eca808fc3ad641227b46d9e1ed52c8bf988097b), closes [#287](https://github.com/mozilla-services/autopush-rs/issues/287))
+
+#### Features
+
+*   Report bridge status via `__heartbeat__` (#295) ([4e85e401](https://github.com/mozilla-services/autopush-rs/commit/4e85e401df48c6c2057db2b82540f9009a90272a), closes [#294](https://github.com/mozilla-services/autopush-rs/issues/294))
+*   Standardize to `/__error__` for sentry error check (#278) ([3f0dc8f4](https://github.com/mozilla-services/autopush-rs/commit/3f0dc8f43b42f49cf3108d34c3f5b901e3075e54), closes [#274](https://github.com/mozilla-services/autopush-rs/issues/274))
+
+
+
 <a name="1.58.0"></a>
 ## 1.58.0 (2021-10-13)
 
@@ -559,6 +593,3 @@ Includes autoendpoint
 #### Doc
 
 *   update documentation ([1d244864](https://github.com/mozilla-services/autopush-rs/commit/1d24486497c5bad20d74c9d065b07a83b192523c))
-
-
-
