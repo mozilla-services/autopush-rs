@@ -1,3 +1,17 @@
+<a name="1.61.0"></a>
+## 1.61.0 (2022-03-22)
+
+
+#### Features
+
+*   add status code and errno to reported metric for bridged errors (#291) ([772f020b](https://github.com/mozilla-services/autopush-rs/commit/772f020b844cc390884a12454931e028546cc826), closes [#288](https://github.com/mozilla-services/autopush-rs/issues/288))
+
+#### Chore
+
+*   tag 1.60.0 (#300) ([ef47c7a7](https://github.com/mozilla-services/autopush-rs/commit/ef47c7a7a0e6145a7bd325fcbe7204194612263a))
+
+
+
 <a name="1.60.0"></a>
 ## 1.60.0 (2022-03-22)
 
