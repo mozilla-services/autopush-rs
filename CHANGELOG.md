@@ -1,3 +1,21 @@
+<a name="1.60.0"></a>
+## 1.60.0 (2022-03-22)
+
+#### Bug Fixes
+
+*    bug: Do not report non-actionable errors to sentry (#299) ([3d18b10d2](https://github.com/mozilla-services/autopush-rs/commit/3d18b10d2e05a768f4cb1c2fa23f86b8df825a87))
+
+#### Features
+
+*   feat: return more explicit VAPID error message (#299) ([3d18b10d2](https://github.com/mozilla-services/autopush-rs/commit/3d18b10d2e05a768f4cb1c2fa23f86b8df825a87))
+
+
+#### Chore
+
+*   1.59.1 (#297) ([01d39582](https://github.com/mozilla-services/autopush-rs/commit/01d395826c1ab7359dea5b5405e2b1ffdd5e22df))
+
+
+
 <a name="1.59.1"></a>
 ## 1.59.1 (2022-02-25)
 
