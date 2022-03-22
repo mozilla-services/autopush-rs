@@ -28,7 +28,7 @@ pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 /// Custom Uuid serializer
 ///
 /// Serializes a Uuid as a simple string instead of hyphenated
-fn uuid_serializer<S>(x: &Uuid, s: S) -> StdResult<S::Ok, S::Error>
+pub fn uuid_serializer<S>(x: &Uuid, s: S) -> StdResult<S::Ok, S::Error>
 where
     S: Serializer,
 {
