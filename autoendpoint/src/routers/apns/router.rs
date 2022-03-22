@@ -126,11 +126,18 @@ impl ApnsRouter {
     async fn handle_error(&self, error: a2::Error, uaid: Uuid, channel: &str) -> ApiError {
         match &error {
             a2::Error::ResponseError(response) => {
+                // capture the APNs error as a metric response. This allows us to spot trends.
+                // While APNS can return a number of errors (see a2::response::ErrorReason) we
+                // shouldn't encounter many of those.
+                let reason = response
+                    .error
+                    .as_ref()
+                    .map(|r| r.reason.to_string())
+                    .unwrap_or_else(|| "Unknown reason".to_owned());
                 let code = StatusCode::from_u16(response.code).unwrap_or(StatusCode::BAD_GATEWAY);
+                incr_error_metric(&self.metrics, "apns", channel, &reason, code, None);
                 if response.code == 410 {
                     debug!("APNS recipient has been unregistered, removing user");
-                    incr_error_metric(&self.metrics, "apns", channel, "recipient_gone", code, None);
-
                     if let Err(e) = self.ddb.remove_user(uaid).await {
                         warn!("Error while removing user due to APNS 410: {}", e);
                     }
@@ -138,7 +145,6 @@ impl ApnsRouter {
                     return ApiError::from(ApnsError::Unregistered);
                 } else {
                     warn!("APNS error: {:?}", response.error);
-                    incr_error_metric(&self.metrics, "apns", channel, "server_error", code, None);
                 }
             }
             a2::Error::ConnectionError => {
