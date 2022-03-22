@@ -132,8 +132,8 @@ impl ApnsRouter {
                 let reason = response
                     .error
                     .as_ref()
-                    .map(|r| r.reason.to_string())
-                    .unwrap_or_else(|| "Unknown reason".to_owned());
+                    .map(|r| format!("{:?}", r.reason))
+                    .unwrap_or_else(|| "Unknown".to_owned());
                 let code = StatusCode::from_u16(response.code).unwrap_or(StatusCode::BAD_GATEWAY);
                 incr_error_metric(&self.metrics, "apns", channel, &reason, code, None);
                 if response.code == 410 {
