@@ -2,6 +2,7 @@ use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::routers::RouterError;
+use actix_web::http::StatusCode;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, CountedExt, StatsdClient};
 use std::collections::HashMap;
@@ -47,19 +48,47 @@ pub async fn handle_error(
     match &error {
         RouterError::Authentication => {
             error!("Bridge authentication error");
-            incr_error_metric(metrics, platform, app_id, "authentication");
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "authentication",
+                error.status(),
+                error.errno(),
+            );
         }
         RouterError::RequestTimeout => {
             warn!("Bridge timeout");
-            incr_error_metric(metrics, platform, app_id, "timeout");
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "timeout",
+                error.status(),
+                error.errno(),
+            );
         }
         RouterError::Connect(e) => {
             warn!("Bridge unavailable: {}", e);
-            incr_error_metric(metrics, platform, app_id, "connection_unavailable");
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "connection_unavailable",
+                error.status(),
+                error.errno(),
+            );
         }
         RouterError::NotFound => {
             debug!("Bridge recipient not found, removing user");
-            incr_error_metric(metrics, platform, app_id, "recipient_gone");
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "recipient_gone",
+                error.status(),
+                error.errno(),
+            );
 
             if let Err(e) = ddb.remove_user(uaid).await {
                 warn!("Error while removing user due to bridge not_found: {}", e);
@@ -67,11 +96,25 @@ pub async fn handle_error(
         }
         RouterError::Upstream { .. } => {
             warn!("{}", error.to_string());
-            incr_error_metric(metrics, platform, app_id, "server_error");
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "server_error",
+                error.status(),
+                error.errno(),
+            );
         }
         _ => {
             warn!("Unknown error while sending bridge request: {}", error);
-            incr_error_metric(metrics, platform, app_id, "unknown");
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "unknown",
+                error.status(),
+                error.errno(),
+            );
         }
     }
 
@@ -79,12 +122,22 @@ pub async fn handle_error(
 }
 
 /// Increment `notification.bridge.error`
-pub fn incr_error_metric(metrics: &StatsdClient, platform: &str, app_id: &str, reason: &str) {
+pub fn incr_error_metric(
+    metrics: &StatsdClient,
+    platform: &str,
+    app_id: &str,
+    reason: &str,
+    status: StatusCode,
+    errno: Option<usize>,
+) {
+    // I'd love to extract the status and errno from the passed ApiError, but a2 error handling makes that impossible.
     metrics
         .incr_with_tags("notification.bridge.error")
         .with_tag("platform", platform)
         .with_tag("app_id", app_id)
         .with_tag("reason", reason)
+        .with_tag("error", &status.to_string())
+        .with_tag("errno", &errno.unwrap_or(0).to_string())
         .send();
 }
 
