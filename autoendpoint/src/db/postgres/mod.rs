@@ -1,12 +1,11 @@
 //TODO: REMOVE:
 #[allow(unused_imports)]
-
 use std::collections::HashSet;
-use std::env;
 use std::panic::panic_any;
 use std::sync::Arc;
+use std::str::FromStr;
 
-use tokio_postgres::{types, types::ToSql, Client}; // Client is sync.
+use tokio_postgres::Client; // Client is sync.
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
@@ -15,14 +14,10 @@ use uuid::Uuid;
 
 use crate::db::client::DbClient;
 use crate::db::error::{DbError, DbResult};
-use crate::db::retry::{
-    retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
-    retryable_putitem_error, retryable_updateitem_error,
-};
 use crate::settings::Settings;
-use autopush_common::db::{uuid_serializer, NotificationRecord, UserRecord, MAX_CHANNEL_TTL};
+use autopush_common::db::UserRecord;
 use autopush_common::notification::Notification;
-use autopush_common::util::sec_since_epoch;
+// use autopush_common::util::sec_since_epoch;
 use autopush_common::{ddb_item, hashmap, val};
 
 #[derive(Clone)]
@@ -65,7 +60,9 @@ impl PgClientImpl {
                 metrics,
                 router_table: settings.router_table_name,
                 message_table: settings.message_table_name,
-                meta_table: settings.meta_table_name.unwrap_or_else(|| "meta".to_owned()),
+                meta_table: settings
+                    .meta_table_name
+                    .unwrap_or_else(|| "meta".to_owned()),
             });
         };
         Err(DbError::Connection("No DSN specified".to_owned()))
@@ -149,7 +146,48 @@ impl DbClient for PgClientImpl {
 
     /// fetch user information from router_table for uaid.
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<UserRecord>> {
-        Ok(None)
+        let row = self.client.query_one(
+            &format!(
+                "select connected_at, router_type, router_data, last_connect, node_id, record_version, current_month from {tablename} where uaid = ?",
+                tablename=self.router_table
+            ),
+            &[&uaid.to_simple().to_string()]
+        )
+        .await?;
+        if row.is_empty() {
+            return Ok(None);
+        };
+        // I was tempted to make this a From impl, but realized that it would mean making autopush-common require a dependency.
+        // Maybe make this a deserialize?
+        let resp = UserRecord {
+            uaid,
+            connected_at: row
+                .try_get::<&str, i64>("connected_at")
+                .map_err(|e| DbError::Postgres(e))? as u64,
+            router_type: row
+                .try_get::<&str, String>("router_type")
+                .map_err(|e| DbError::Postgres(e))?,
+            router_data: serde_json::from_str(
+                row.try_get::<&str, &str>("router_data")
+                    .map_err(|e| DbError::Postgres(e))?,
+            )
+            .map_err(|e| DbError::General(e.to_string()))?,
+            last_connect: row
+                .try_get::<&str, Option<i64>>("last_connect")
+                .map_err(|e| DbError::Postgres(e))?
+                .map(|v| v as u64),
+            node_id: row
+                .try_get::<&str, Option<String>>("node_id")
+                .map_err(|e| DbError::Postgres(e))?,
+            record_version: row
+                .try_get::<&str, Option<i8>>("record_verison")
+                .map_err(|e| DbError::Postgres(e))?
+                .map(|v| v as u8),
+            current_month: row
+                .try_get::<&str, Option<String>>("current_month")
+                .map_err(|e| DbError::Postgres(e))?,
+        };
+        Ok(Some(resp))
     }
 
     /// delete a user at uaid from router_table
@@ -170,33 +208,57 @@ impl DbClient for PgClientImpl {
 
     /// update list of channel_ids for uaid in meta table
     async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()> {
+        self.client.execute(
+            &format!("INSERT INTO {tablename} (uaid, channel_id) VALUES (?, ?);", tablename=self.meta_table),
+            &[&uaid.to_simple().to_string(), &channel_id.to_simple().to_string()]
+        ).await?;
         Ok(())
     }
 
     /// get all channels for uaid from meta table
     async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
-        let empty = HashSet::new();
-
-        Ok(empty)
+        let mut result = HashSet::new();
+        let rows = self.client.query(
+            &format!("SELECT channel_id FROM {tablename} WHERE uaid = ?;", tablename=self.meta_table),
+            &[&uaid.to_simple().to_string()]
+        ).await?;
+        for row in rows.iter() {
+            let s = row.try_get::<&str, &str>("channel_id").map_err(DbError::Postgres)?;
+            result.insert(Uuid::from_str(s).map_err(|e|DbError::General(e.to_string()))?);
+        };
+        Ok(result)
     }
 
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<bool> {
-        Ok(false)
+        Ok(self.client.execute(
+            &format!("DELETE FROM {tablename} WHERE uaid=? AND channel_id = ?;", tablename=self.meta_table),
+            &[&uaid.to_simple().to_string(), &channel_id.to_simple().to_string()]
+        ).await.is_ok())
     }
 
     /// remove node info for a uaid from router table
     async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {
+        self.client.execute(
+            &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.router_table),
+            &[&uaid.to_simple().to_string(), &node_id, &(connected_at as i64)]
+        ).await?;
         Ok(())
     }
 
     /// write a message to message table
     async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
+        // TODO: write serializer
         Ok(())
     }
 
     /// remove a given message from the message table
     async fn remove_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()> {
+        self.client.execute(
+            &format!("DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;", tablename=self.message_table),
+            &[&uaid.to_simple().to_string(), &sort_key]
+        ).await?;
+
         Ok(())
     }
 

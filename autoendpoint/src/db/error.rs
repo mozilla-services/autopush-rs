@@ -35,4 +35,7 @@ pub enum DbError {
 
     #[error("Postgres Error: {0}")]
     Postgres(#[from] tokio_postgres::error::Error),
+
+    #[error("General Error: {0}")]
+    General(String),
 }

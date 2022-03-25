@@ -50,6 +50,7 @@ slog-stdlog = "4.1.0"
 smallvec = "1.6"  # for RUSTSEC-2021-0003
 thiserror = "1.0"
 tokio-core = "0.1.17"
+tokio-postgres = "0.7"
 tungstenite = { version = "0.9.2", default-features = false } # 0.10+  requires hyper 0.13+
 url = "2.2"
 uuid = { version = "0.8", features = ["serde", "v4"] }

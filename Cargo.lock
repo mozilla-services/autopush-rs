@@ -556,6 +556,7 @@ dependencies = [
  "smallvec 1.8.0",
  "thiserror",
  "tokio-core",
+ "tokio-postgres",
  "tungstenite",
  "url 2.2.2",
  "uuid 0.8.2",
