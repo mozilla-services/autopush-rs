@@ -39,7 +39,7 @@ pub fn message_size_check(data: &[u8], max_data: usize) -> Result<(), RouterErro
 pub async fn handle_error(
     error: RouterError,
     metrics: &StatsdClient,
-    ddb: &dyn DbClient,
+    db_client: &dyn DbClient,
     platform: &str,
     app_id: &str,
     uaid: Uuid,
@@ -61,7 +61,7 @@ pub async fn handle_error(
             debug!("Bridge recipient not found, removing user");
             incr_error_metric(metrics, platform, app_id, "recipient_gone");
 
-            if let Err(e) = ddb.remove_user(uaid).await {
+            if let Err(e) = db_client.remove_user(uaid).await {
                 warn!("Error while removing user due to bridge not_found: {}", e);
             }
         }

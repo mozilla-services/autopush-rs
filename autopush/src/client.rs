@@ -370,7 +370,7 @@ where
         // whenever the user first subscribes to a channel_id
         // (ClientMessage::Register).
         let defer_registration = uaid.is_none();
-        let response = Box::new(data.srv.ddb.hello(
+        let response = Box::new(data.srv.db_client.hello(
             connected_at,
             uaid.as_ref(),
             &data.srv.opts.router_url,
@@ -688,11 +688,11 @@ fn save_and_notify_undelivered_messages(
     let uaid = webpush.uaid;
     let connected_at = webpush.connected_at;
     srv.handle.spawn(
-        srv.ddb
+        srv.db_client
             .store_messages(&webpush.uaid, &webpush.message_month, notifs)
             .and_then(move |_| {
                 debug!("Finished saving unacked direct notifications, checking for reconnect");
-                srv2.ddb.get_user(&uaid)
+                srv2.db_client.get_user(&uaid)
             })
             .and_then(move |user| {
                 let user = match user.ok_or_else(|| "No user record found".into()) {
@@ -879,7 +879,7 @@ where
             // Exceeded the max limit of stored messages: drop the user to trigger a
             // re-register
             debug!("Dropping user: exceeded msg_limit");
-            let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
+            let response = Box::new(data.srv.db_client.drop_uaid(&webpush.uaid));
             transition!(AwaitDropUser { response, data });
         } else if !smessages.is_empty() {
             transition!(Send { smessages, data });
@@ -902,13 +902,13 @@ where
             debug!("Triggering migration");
             let response = Box::new(
                 data.srv
-                    .ddb
+                    .db_client
                     .migrate_user(&webpush.uaid, &webpush.message_month),
             );
             transition!(AwaitMigrateUser { response, data });
         } else if all_acked && webpush.flags.reset_uaid {
             debug!("Dropping user: flagged reset_uaid");
-            let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
+            let response = Box::new(data.srv.db_client.drop_uaid(&webpush.uaid));
             transition!(AwaitDropUser { response, data });
         }
         transition!(AwaitInput { data })
@@ -980,7 +980,7 @@ where
                     &srv.opts.endpoint_url,
                     &srv.opts.fernet,
                 ) {
-                    Ok(endpoint) => srv.ddb.register(
+                    Ok(endpoint) => srv.db_client.register(
                         &uaid,
                         &channel_id,
                         &message_month,
@@ -1004,8 +1004,11 @@ where
                 // register does
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
-                let response =
-                    Box::new(data.srv.ddb.unregister(&uaid, &channel_id, &message_month));
+                let response = Box::new(data.srv.db_client.unregister(
+                    &uaid,
+                    &channel_id,
+                    &message_month,
+                ));
                 transition!(AwaitUnregister {
                     channel_id,
                     code: code.unwrap_or(200),
@@ -1052,13 +1055,14 @@ where
                         // Topic/legacy messages have no sortkey_timestamp
                         if n.sortkey_timestamp.is_none() {
                             fut = if let Some(call) = fut {
-                                let my_fut =
-                                    data.srv
-                                        .ddb
-                                        .delete_message(&message_month, &webpush.uaid, &n);
+                                let my_fut = data.srv.db_client.delete_message(
+                                    &message_month,
+                                    &webpush.uaid,
+                                    &n,
+                                );
                                 Some(Box::new(call.and_then(move |_| my_fut)))
                             } else {
-                                Some(Box::new(data.srv.ddb.delete_message(
+                                Some(Box::new(data.srv.db_client.delete_message(
                                     &message_month,
                                     &webpush.uaid,
                                     &n,
@@ -1125,7 +1129,7 @@ where
             .unacked_stored_highest
             .ok_or("unacked_stored_highest unset")?
             .to_string();
-        let response = Box::new(increment_storage.data.srv.ddb.increment_storage(
+        let response = Box::new(increment_storage.data.srv.db_client.increment_storage(
             &webpush.message_month,
             &webpush.uaid,
             &timestamp,
@@ -1154,7 +1158,7 @@ where
         let CheckStorage { data } = check_storage.take();
         let response = Box::new({
             let webpush = data.webpush.borrow();
-            data.srv.ddb.check_storage(
+            data.srv.db_client.check_storage(
                 &webpush.message_month.clone(),
                 &webpush.uaid,
                 webpush.flags.include_topic,
@@ -1198,7 +1202,7 @@ where
                 }
                 if n.sortkey_timestamp.is_none() {
                     srv.handle.spawn(
-                        srv.ddb
+                        srv.db_client
                             .delete_message(&webpush.message_month, &webpush.uaid, n)
                             .then(|_| {
                                 debug!("Deleting expired message without sortkey_timestamp");
@@ -1236,7 +1240,7 @@ where
         let AwaitMigrateUser { data, .. } = await_migrate_user.take();
         {
             let mut webpush = data.webpush.borrow_mut();
-            webpush.message_month = data.srv.ddb.current_message_month.clone();
+            webpush.message_month = data.srv.db_client.current_message_month.clone();
             webpush.flags.rotate_message_table = false;
         }
         transition!(DetermineAck { data })

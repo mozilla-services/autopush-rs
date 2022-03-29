@@ -81,6 +81,11 @@ error_chain! {
         SendError {
             description("unable to send to client")
         }
+
+        General(text: String) {
+            description("general error")
+            display("General Error: {}", text)
+        }
     }
 }
 

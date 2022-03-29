@@ -22,7 +22,7 @@ pub struct AdmRouter {
     settings: AdmSettings,
     endpoint_url: Url,
     metrics: Arc<StatsdClient>,
-    ddb: Box<dyn DbClient>,
+    db_client: Box<dyn DbClient>,
     /// A map from profile name to an authenticated ADM client
     clients: HashMap<String, AdmClient>,
 }
@@ -34,7 +34,7 @@ impl AdmRouter {
         endpoint_url: Url,
         http: reqwest::Client,
         metrics: Arc<StatsdClient>,
-        ddb: Box<dyn DbClient>,
+        db_client: Box<dyn DbClient>,
     ) -> Result<Self, AdmError> {
         let profiles = settings.profiles()?;
 
@@ -48,7 +48,7 @@ impl AdmRouter {
             settings,
             endpoint_url,
             metrics,
-            ddb,
+            db_client,
             clients,
         })
     }
@@ -121,7 +121,7 @@ impl Router for AdmRouter {
                 return Err(handle_error(
                     e,
                     &self.metrics,
-                    self.ddb.as_ref(),
+                    self.db_client.as_ref(),
                     "adm",
                     profile,
                     notification.subscription.user.uaid,
@@ -147,7 +147,7 @@ impl Router for AdmRouter {
             );
             user.router_data = Some(router_data);
 
-            self.ddb.update_user(&user).await?;
+            self.db_client.update_user(&user).await?;
         }
 
         Ok(RouterResponse::success(
@@ -184,7 +184,7 @@ mod tests {
     use url::Url;
 
     /// Create a router for testing
-    fn make_router(ddb: Box<dyn DbClient>) -> AdmRouter {
+    fn make_router(db_client: Box<dyn DbClient>) -> AdmRouter {
         AdmRouter::new(
             AdmSettings {
                 base_url: Url::parse(&mockito::server_url()).unwrap(),
@@ -197,7 +197,7 @@ mod tests {
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
-            ddb,
+            db_client,
         )
         .unwrap()
     }
@@ -216,8 +216,8 @@ mod tests {
     /// A notification with no data is sent to ADM
     #[tokio::test]
     async fn successful_routing_no_data() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(ddb);
+        let db_client = MockDbClient::new().into_boxed_arc();
+        let router = make_router(db_client);
         let _token_mock = mock_token_endpoint();
         let adm_mock = mock_adm_endpoint_builder()
             .match_body(
@@ -244,8 +244,8 @@ mod tests {
     /// A notification with data is sent to ADM
     #[tokio::test]
     async fn successful_routing_with_data() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(ddb);
+        let db_client = MockDbClient::new().into_boxed_arc();
+        let router = make_router(db_client);
         let _token_mock = mock_token_endpoint();
         let adm_mock = mock_adm_endpoint_builder()
             .match_body(
@@ -281,8 +281,8 @@ mod tests {
     /// the ADM request is not sent.
     #[tokio::test]
     async fn missing_client() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(ddb);
+        let db_client = MockDbClient::new().into_boxed_arc();
+        let router = make_router(db_client);
         let _token_mock = mock_token_endpoint();
         let adm_mock = mock_adm_endpoint_builder().expect(0).create();
         let mut router_data = default_router_data();
@@ -309,13 +309,14 @@ mod tests {
     #[tokio::test]
     async fn no_adm_user() {
         let notification = make_notification(default_router_data(), None, RouterType::ADM);
-        let mut ddb = MockDbClient::new();
-        ddb.expect_remove_user()
+        let mut db_client = MockDbClient::new();
+        db_client
+            .expect_remove_user()
             .with(predicate::eq(notification.subscription.user.uaid))
             .times(1)
             .return_once(|_| Ok(()));
 
-        let router = make_router(ddb.into_boxed_arc());
+        let router = make_router(db_client.into_boxed_arc());
         let _token_mock = mock_token_endpoint();
         let _adm_mock = mock_adm_endpoint_builder()
             .with_status(404)
@@ -338,8 +339,9 @@ mod tests {
     #[tokio::test]
     async fn update_registration_token() {
         let notification = make_notification(default_router_data(), None, RouterType::ADM);
-        let mut ddb = MockDbClient::new();
-        ddb.expect_update_user()
+        let mut db_client = MockDbClient::new();
+        db_client
+            .expect_update_user()
             .withf(|user: &UserRecord| {
                 user.router_data
                     .as_ref()
@@ -351,7 +353,7 @@ mod tests {
             .times(1)
             .return_once(|_| Ok(()));
 
-        let router = make_router(ddb.into_boxed_arc());
+        let router = make_router(db_client.into_boxed_arc());
         let _token_mock = mock_token_endpoint();
         let _adm_mock = mock_adm_endpoint_builder()
             .with_body(r#"{"registrationID":"test-registration-id2"}"#)

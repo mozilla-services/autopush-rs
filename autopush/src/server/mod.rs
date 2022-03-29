@@ -27,6 +27,7 @@ use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
 
 use autopush_common::db::dynamodb::DynamoStorage;
+// use autopush_common::db::postgres::PostgresStorage;
 use autopush_common::errors::*;
 use autopush_common::errors::{Error, Result};
 use autopush_common::logging;
@@ -143,6 +144,7 @@ pub struct ServerOptions {
     pub close_handshake_timeout: Option<Duration>,
     pub _message_table_name: String,
     pub _router_table_name: String,
+    pub _meta_table_name: Option<String>,
     pub router_url: String,
     pub endpoint_url: String,
     pub statsd_host: Option<String>,
@@ -152,6 +154,7 @@ pub struct ServerOptions {
     pub megaphone_poll_interval: Duration,
     pub human_logs: bool,
     pub msg_limit: u32,
+    pub db_dsn: Option<String>,
 }
 
 impl ServerOptions {
@@ -182,6 +185,7 @@ impl ServerOptions {
             statsd_port: settings.statsd_port,
             _message_table_name: settings.message_tablename,
             _router_table_name: settings.router_tablename,
+            _meta_table_name: settings.meta_tablename,
             router_url,
             endpoint_url,
             ssl_key: settings.router_ssl_key.map(PathBuf::from),
@@ -204,6 +208,7 @@ impl ServerOptions {
                 .expect("megaphone poll interval cannot be 0"),
             human_logs: settings.human_logs,
             msg_limit: settings.msg_limit,
+            db_dsn: settings.db_dsn,
         })
     }
 }
@@ -211,7 +216,7 @@ impl ServerOptions {
 pub struct Server {
     pub clients: Arc<ClientRegistry>,
     broadcaster: RefCell<BroadcastChangeTracker>,
-    pub ddb: DynamoStorage,
+    pub db_client: DynamoStorage,
     open_connections: Cell<u32>,
     tls_acceptor: Option<SslAcceptor>,
     pub opts: Arc<ServerOptions>,
@@ -291,7 +296,7 @@ impl Server {
         let srv = Rc::new(Server {
             opts: opts.clone(),
             broadcaster: RefCell::new(broadcaster),
-            ddb: DynamoStorage::from_opts(
+            db_client: DynamoStorage::from_opts(
                 &opts._message_table_name,
                 &opts._router_table_name,
                 metrics.clone(),

@@ -32,7 +32,7 @@ pub mod commands;
 
 #[derive(Clone)]
 pub struct DynamoStorage {
-    ddb: DynamoDbClient,
+    db_client: DynamoDbClient,
     metrics: Arc<StatsdClient>,
     router_table_name: String,
     pub message_table_names: Vec<String>,
@@ -70,7 +70,7 @@ impl DynamoStorage {
             .to_string();
 
         Ok(Self {
-            ddb,
+            db_client: ddb,
             metrics,
             router_table_name: router_table_name.to_owned(),
             message_table_names,
@@ -84,7 +84,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         timestamp: &str,
     ) -> impl Future<Item = UpdateItemOutput, Error = Error> {
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
         let attr_values = hashmap! {
             ":timestamp".to_string() => val!(N => timestamp),
@@ -122,7 +122,7 @@ impl DynamoStorage {
         );
         let response: MyFuture<(HelloResponse, Option<UserRecord>)> = if let Some(uaid) = uaid {
             commands::lookup_user(
-                self.ddb.clone(),
+                self.db_client.clone(),
                 self.metrics.clone(),
                 uaid,
                 connected_at,
@@ -141,7 +141,7 @@ impl DynamoStorage {
                 None,
             )))
         };
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let router_url = router_url.to_string();
         let router_table_name = self.router_table_name.clone();
         let connected_at = connected_at;
@@ -193,7 +193,7 @@ impl DynamoStorage {
         endpoint: &str,
         register_user: Option<&UserRecord>,
     ) -> MyFuture<RegisterResponse> {
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let mut chids = HashSet::new();
         let endpoint = endpoint.to_owned();
         chids.insert(channel_id.to_hyphenated().to_string());
@@ -236,7 +236,7 @@ impl DynamoStorage {
     }
 
     pub fn drop_uaid(&self, uaid: &Uuid) -> impl Future<Item = (), Error = Error> {
-        commands::drop_user(self.ddb.clone(), uaid, &self.router_table_name)
+        commands::drop_user(self.db_client.clone(), uaid, &self.router_table_name)
             .and_then(|_| future::ok(()))
             .chain_err(|| "Unable to drop user record")
     }
@@ -247,7 +247,7 @@ impl DynamoStorage {
         channel_id: &Uuid,
         message_month: &str,
     ) -> impl Future<Item = bool, Error = Error> {
-        commands::unregister_channel_id(self.ddb.clone(), uaid, channel_id, message_month)
+        commands::unregister_channel_id(self.db_client.clone(), uaid, channel_id, message_month)
             .and_then(|_| future::ok(true))
             .or_else(|_| future::ok(false))
     }
@@ -259,13 +259,13 @@ impl DynamoStorage {
         message_month: &str,
     ) -> impl Future<Item = (), Error = Error> {
         let uaid = *uaid;
-        let ddb = self.ddb.clone();
-        let ddb2 = self.ddb.clone();
+        let ddb = self.db_client.clone();
+        let ddb2 = self.db_client.clone();
         let cur_month = self.current_message_month.to_string();
         let cur_month2 = cur_month.clone();
         let router_table_name = self.router_table_name.clone();
 
-        commands::all_channels(self.ddb.clone(), &uaid, message_month)
+        commands::all_channels(self.db_client.clone(), &uaid, message_month)
             .and_then(move |channels| -> MyFuture<_> {
                 if channels.is_empty() {
                     Box::new(future::ok(()))
@@ -287,7 +287,7 @@ impl DynamoStorage {
         message_month: String,
         message: Notification,
     ) -> impl Future<Item = (), Error = Error> {
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let put_item = PutItemInput {
             item: serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(uaid, message))
                 .unwrap(),
@@ -310,7 +310,7 @@ impl DynamoStorage {
         message_month: &str,
         messages: Vec<Notification>,
     ) -> impl Future<Item = (), Error = Error> {
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let put_items: Vec<WriteRequest> = messages
             .into_iter()
             .filter_map(|n| {
@@ -351,7 +351,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         notif: &Notification,
     ) -> impl Future<Item = (), Error = Error> {
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let delete_input = DeleteItemInput {
             table_name: table_name.to_string(),
             key: ddb_item! {
@@ -378,7 +378,7 @@ impl DynamoStorage {
     ) -> impl Future<Item = CheckStorageResponse, Error = Error> {
         let response: MyFuture<FetchMessageResponse> = if include_topic {
             Box::new(commands::fetch_messages(
-                self.ddb.clone(),
+                self.db_client.clone(),
                 self.metrics.clone(),
                 table_name,
                 uaid,
@@ -389,7 +389,7 @@ impl DynamoStorage {
         };
         let uaid = *uaid;
         let table_name = table_name.to_string();
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let metrics = self.metrics.clone();
 
         response.and_then(move |resp| -> MyFuture<_> {
@@ -437,7 +437,7 @@ impl DynamoStorage {
     }
 
     pub fn get_user(&self, uaid: &Uuid) -> impl Future<Item = Option<UserRecord>, Error = Error> {
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let result = commands::get_uaid(ddb, uaid, &self.router_table_name).and_then(|result| {
             future::result(
                 result
@@ -458,7 +458,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         message_table: &str,
     ) -> impl Future<Item = HashSet<Uuid>, Error = Error> {
-        commands::all_channels(self.ddb.clone(), uaid, message_table).and_then(|channels| {
+        commands::all_channels(self.db_client.clone(), uaid, message_table).and_then(|channels| {
             channels
                 .into_iter()
                 .map(|channel| channel.parse().map_err(Error::from))
@@ -475,7 +475,7 @@ impl DynamoStorage {
         node_id: String,
         connected_at: u64,
     ) -> impl Future<Item = (), Error = Error> {
-        let ddb = self.ddb.clone();
+        let ddb = self.db_client.clone();
         let update_item = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),

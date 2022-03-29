@@ -22,7 +22,7 @@ pub struct FcmRouter {
     settings: FcmSettings,
     endpoint_url: Url,
     metrics: Arc<StatsdClient>,
-    ddb: Box<dyn DbClient>,
+    db_client: Box<dyn DbClient>,
     /// A map from application ID to an authenticated FCM client
     clients: HashMap<String, FcmClient>,
 }
@@ -34,7 +34,7 @@ impl FcmRouter {
         endpoint_url: Url,
         http: reqwest::Client,
         metrics: Arc<StatsdClient>,
-        ddb: Box<dyn DbClient>,
+        db_client: Box<dyn DbClient>,
     ) -> Result<Self, FcmError> {
         let credentials = settings.credentials()?;
         let clients = Self::create_clients(&settings, credentials, http.clone())
@@ -44,7 +44,7 @@ impl FcmRouter {
             settings,
             endpoint_url,
             metrics,
-            ddb,
+            db_client,
             clients,
         })
     }
@@ -125,7 +125,7 @@ impl Router for FcmRouter {
             return Err(handle_error(
                 e,
                 &self.metrics,
-                self.ddb.as_ref(),
+                self.db_client.as_ref(),
                 "fcmv1",
                 app_id,
                 notification.subscription.user.uaid,
@@ -172,7 +172,7 @@ mod tests {
     const FCM_TOKEN: &str = "test-token";
 
     /// Create a router for testing, using the given service auth file
-    async fn make_router(credential: String, ddb: Box<dyn DbClient>) -> FcmRouter {
+    async fn make_router(credential: String, db_client: Box<dyn DbClient>) -> FcmRouter {
         FcmRouter::new(
             FcmSettings {
                 base_url: Url::parse(&mockito::server_url()).unwrap(),
@@ -188,7 +188,7 @@ mod tests {
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
-            ddb,
+            db_client,
         )
         .await
         .unwrap()
@@ -208,8 +208,8 @@ mod tests {
     /// A notification with no data is sent to FCM
     #[tokio::test]
     async fn successful_routing_no_data() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(String::from_utf8(make_service_key()).unwrap(), ddb).await;
+        let db_client = MockDbClient::new().into_boxed_arc();
+        let router = make_router(String::from_utf8(make_service_key()).unwrap(), db_client).await;
         assert!(router.active());
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
@@ -243,8 +243,8 @@ mod tests {
     /// A notification with data is sent to FCM
     #[tokio::test]
     async fn successful_routing_with_data() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(String::from_utf8(make_service_key()).unwrap(), ddb).await;
+        let db_client = MockDbClient::new().into_boxed_arc();
+        let router = make_router(String::from_utf8(make_service_key()).unwrap(), db_client).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder()
             .match_body(
@@ -284,8 +284,8 @@ mod tests {
     /// the FCM request is not sent.
     #[tokio::test]
     async fn missing_client() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(String::from_utf8(make_service_key()).unwrap(), ddb).await;
+        let db_client = MockDbClient::new().into_boxed_arc();
+        let router = make_router(String::from_utf8(make_service_key()).unwrap(), db_client).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder().expect(0).create();
         let mut router_data = default_router_data();
@@ -312,14 +312,15 @@ mod tests {
     #[tokio::test]
     async fn no_fcm_user() {
         let notification = make_notification(default_router_data(), None, RouterType::FCM);
-        let mut ddb = MockDbClient::new();
-        ddb.expect_remove_user()
+        let mut db_client = MockDbClient::new();
+        db_client
+            .expect_remove_user()
             .with(predicate::eq(notification.subscription.user.uaid))
             .times(1)
             .return_once(|_| Ok(()));
 
         let key = String::from_utf8(make_service_key()).unwrap();
-        let router = make_router(key, ddb.into_boxed_arc()).await;
+        let router = make_router(key, db_client.into_boxed_arc()).await;
         let _token_mock = mock_token_endpoint();
         let _fcm_mock = mock_fcm_endpoint_builder()
             .with_status(404)

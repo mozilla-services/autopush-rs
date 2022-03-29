@@ -2,8 +2,8 @@
 #[allow(unused_imports)]
 use std::collections::HashSet;
 use std::panic::panic_any;
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use tokio_postgres::Client; // Client is sync.
 
@@ -18,18 +18,19 @@ use crate::settings::Settings;
 use autopush_common::db::UserRecord;
 use autopush_common::notification::Notification;
 // use autopush_common::util::sec_since_epoch;
-use autopush_common::{ddb_item, hashmap, val};
 
 #[derive(Clone)]
 pub struct PgClientImpl {
     client: Arc<Client>,
-    metrics: Arc<StatsdClient>,
+    _metrics: Arc<StatsdClient>,
     router_table: String,  // Routing information
     message_table: String, // Message storage information
     meta_table: String,    // Channels and meta info for a user.
 }
 
 impl PgClientImpl {
+    /// We'll use this eventually...
+    #[allow(dead_code)]
     pub async fn new(metrics: Arc<StatsdClient>, settings: Settings) -> DbResult<Self> {
         if let Some(dsn) = settings.pg_dsn {
             let parsed = url::Url::parse(&dsn)
@@ -57,7 +58,7 @@ impl PgClientImpl {
             });
             return Ok(Self {
                 client: Arc::new(client),
-                metrics,
+                _metrics: metrics,
                 router_table: settings.router_table_name,
                 message_table: settings.message_table_name,
                 meta_table: settings
@@ -163,29 +164,29 @@ impl DbClient for PgClientImpl {
             uaid,
             connected_at: row
                 .try_get::<&str, i64>("connected_at")
-                .map_err(|e| DbError::Postgres(e))? as u64,
+                .map_err(DbError::Postgres)? as u64,
             router_type: row
                 .try_get::<&str, String>("router_type")
-                .map_err(|e| DbError::Postgres(e))?,
+                .map_err(DbError::Postgres)?,
             router_data: serde_json::from_str(
                 row.try_get::<&str, &str>("router_data")
-                    .map_err(|e| DbError::Postgres(e))?,
+                    .map_err(DbError::Postgres)?,
             )
             .map_err(|e| DbError::General(e.to_string()))?,
             last_connect: row
                 .try_get::<&str, Option<i64>>("last_connect")
-                .map_err(|e| DbError::Postgres(e))?
+                .map_err(DbError::Postgres)?
                 .map(|v| v as u64),
             node_id: row
                 .try_get::<&str, Option<String>>("node_id")
-                .map_err(|e| DbError::Postgres(e))?,
+                .map_err(DbError::Postgres)?,
             record_version: row
                 .try_get::<&str, Option<i8>>("record_verison")
-                .map_err(|e| DbError::Postgres(e))?
+                .map_err(DbError::Postgres)?
                 .map(|v| v as u8),
             current_month: row
                 .try_get::<&str, Option<String>>("current_month")
-                .map_err(|e| DbError::Postgres(e))?,
+                .map_err(DbError::Postgres)?,
         };
         Ok(Some(resp))
     }
@@ -208,33 +209,59 @@ impl DbClient for PgClientImpl {
 
     /// update list of channel_ids for uaid in meta table
     async fn add_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<()> {
-        self.client.execute(
-            &format!("INSERT INTO {tablename} (uaid, channel_id) VALUES (?, ?);", tablename=self.meta_table),
-            &[&uaid.to_simple().to_string(), &channel_id.to_simple().to_string()]
-        ).await?;
+        self.client
+            .execute(
+                &format!(
+                    "INSERT INTO {tablename} (uaid, channel_id) VALUES (?, ?);",
+                    tablename = self.meta_table
+                ),
+                &[
+                    &uaid.to_simple().to_string(),
+                    &channel_id.to_simple().to_string(),
+                ],
+            )
+            .await?;
         Ok(())
     }
 
     /// get all channels for uaid from meta table
     async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
         let mut result = HashSet::new();
-        let rows = self.client.query(
-            &format!("SELECT channel_id FROM {tablename} WHERE uaid = ?;", tablename=self.meta_table),
-            &[&uaid.to_simple().to_string()]
-        ).await?;
+        let rows = self
+            .client
+            .query(
+                &format!(
+                    "SELECT channel_id FROM {tablename} WHERE uaid = ?;",
+                    tablename = self.meta_table
+                ),
+                &[&uaid.to_simple().to_string()],
+            )
+            .await?;
         for row in rows.iter() {
-            let s = row.try_get::<&str, &str>("channel_id").map_err(DbError::Postgres)?;
-            result.insert(Uuid::from_str(s).map_err(|e|DbError::General(e.to_string()))?);
-        };
+            let s = row
+                .try_get::<&str, &str>("channel_id")
+                .map_err(DbError::Postgres)?;
+            result.insert(Uuid::from_str(s).map_err(|e| DbError::General(e.to_string()))?);
+        }
         Ok(result)
     }
 
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: Uuid, channel_id: Uuid) -> DbResult<bool> {
-        Ok(self.client.execute(
-            &format!("DELETE FROM {tablename} WHERE uaid=? AND channel_id = ?;", tablename=self.meta_table),
-            &[&uaid.to_simple().to_string(), &channel_id.to_simple().to_string()]
-        ).await.is_ok())
+        Ok(self
+            .client
+            .execute(
+                &format!(
+                    "DELETE FROM {tablename} WHERE uaid=? AND channel_id = ?;",
+                    tablename = self.meta_table
+                ),
+                &[
+                    &uaid.to_simple().to_string(),
+                    &channel_id.to_simple().to_string(),
+                ],
+            )
+            .await
+            .is_ok())
     }
 
     /// remove node info for a uaid from router table
@@ -249,15 +276,45 @@ impl DbClient for PgClientImpl {
     /// write a message to message table
     async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
         // TODO: write serializer
+        // fun fact: serde_postgres exists, but only deserializes (as of 0.2)
+
+        self.client
+            .execute(
+                &format!(
+                    "INSERT INTO {tablename}
+                (uaid, channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers)
+                VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            ",
+                    tablename = &self.message_table
+                ),
+                &[
+                    &uaid.to_simple().to_string(),
+                    &message.channel_id.to_simple().to_string(),
+                    &message.version,
+                    &(message.ttl as i64), // Postgres has no auto TTL.
+                    &message.topic,
+                    &(message.timestamp as i64),
+                    &message.data,
+                    &message.sortkey_timestamp.map(|v| v as i64),
+                    &json!(message.headers).to_string(),
+                ],
+            )
+            .await?;
         Ok(())
     }
 
     /// remove a given message from the message table
     async fn remove_message(&self, uaid: Uuid, sort_key: String) -> DbResult<()> {
-        self.client.execute(
-            &format!("DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;", tablename=self.message_table),
-            &[&uaid.to_simple().to_string(), &sort_key]
-        ).await?;
+        self.client
+            .execute(
+                &format!(
+                    "DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;",
+                    tablename = self.message_table
+                ),
+                &[&uaid.to_simple().to_string(), &sort_key],
+            )
+            .await?;
 
         Ok(())
     }

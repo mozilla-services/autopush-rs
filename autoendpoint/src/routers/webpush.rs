@@ -20,7 +20,7 @@ use uuid::Uuid;
 /// server is located via the database routing table. If the server is busy or
 /// not available, the notification is stored in the database.
 pub struct WebPushRouter {
-    pub ddb: Box<dyn DbClient>,
+    pub db_client: Box<dyn DbClient>,
     pub metrics: Arc<StatsdClient>,
     pub http: reqwest::Client,
     pub endpoint_url: Url,
@@ -87,7 +87,7 @@ impl Router for WebPushRouter {
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
         trace!("Re-fetching user to trigger notification check");
-        let user = match self.ddb.get_user(user.uaid).await {
+        let user = match self.db_client.get_user(user.uaid).await {
             Ok(Some(user)) => user,
             Ok(None) => {
                 trace!("No user found, must have been deleted");
@@ -159,7 +159,7 @@ impl WebPushRouter {
 
     /// Store a notification in the database
     async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
-        self.ddb
+        self.db_client
             .save_message(
                 notification.subscription.user.uaid,
                 notification.clone().into(),
@@ -173,7 +173,7 @@ impl WebPushRouter {
     async fn remove_node_id(&self, user: &UserRecord, node_id: String) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
 
-        self.ddb
+        self.db_client
             .remove_node_id(user.uaid, node_id, user.connected_at)
             .await
             .map_err(ApiError::from)

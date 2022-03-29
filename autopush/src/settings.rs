@@ -35,6 +35,7 @@ pub struct Settings {
     pub router_hostname: Option<String>,
     pub router_tablename: String,
     pub message_tablename: String,
+    pub meta_tablename: Option<String>,
     pub router_ssl_key: Option<String>,
     pub router_ssl_cert: Option<String>,
     pub router_ssl_dh_param: Option<String>,
@@ -54,6 +55,7 @@ pub struct Settings {
     pub megaphone_poll_interval: u32,
     pub human_logs: bool,
     pub msg_limit: u32,
+    pub db_dsn: Option<String>,
 }
 
 impl Default for Settings {

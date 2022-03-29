@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use autopush_common::db::UserRecord;
 use autopush_common::notification::Notification;
 use std::collections::HashSet;
+
 use uuid::Uuid;
 
 /// Provides high-level operations over the DynamoDB database
