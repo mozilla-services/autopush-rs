@@ -62,10 +62,16 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             port: 8080,
+            hostname: None,
             resolve_hostname: false,
             router_port: 8081,
+            router_hostname: None,
             router_tablename: "router".to_owned(),
             message_tablename: "message".to_owned(),
+            meta_tablename: None,
+            router_ssl_key: None,
+            router_ssl_cert: None,
+            router_ssl_dh_param: None,
             auto_ping_interval: 300.0,
             auto_ping_timeout: 4.0,
             max_connections: 0,
@@ -76,10 +82,13 @@ impl Default for Settings {
             crypto_key: format!("[{}]", Fernet::generate_key()),
             statsd_host: "localhost".to_owned(),
             statsd_port: 8125,
+            aws_ddb_endpoint: None,
+            megaphone_api_url: None,
+            megaphone_api_token: None,
             megaphone_poll_interval: 30,
             human_logs: false,
             msg_limit: 100,
-            ..Default::default()
+            db_dsn: None,
         }
     }
 }
