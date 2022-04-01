@@ -1,6 +1,6 @@
 //! Main application server
 
-use crate::db::{client::DbClient, dynamodb::DdbClientImpl};
+use crate::db::{client::DbClient, dynamodb::DdbClientImpl, postgres::PgClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
 use crate::middleware::sentry::sentry_middleware;
@@ -46,14 +46,9 @@ impl Server {
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
-        // TODO: Match dbtype
-        let db = match settings.use_ddb {
-            true => Box::new(DdbClientImpl::new(
-                metrics.clone(),
-                settings.router_table_name.clone(),
-                settings.message_table_name.clone(),
-            )?),
-            false => panic!("Not implemented"),
+        let db: Box<dyn DbClient> = match settings.use_ddb {
+            true => Box::new(DdbClientImpl::new(metrics.clone(), &settings)?),
+            false => Box::new(PgClientImpl::new(metrics.clone(), &settings).await?),
         };
         let http = reqwest::Client::new();
         let fcm_router = Arc::new(

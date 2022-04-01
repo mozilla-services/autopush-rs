@@ -50,7 +50,7 @@ slog-scope = "4.4"
 smallvec = "1.6"  # for RUSTSEC-2021-0003
 # state_machine_future = { version = "0.1.6", features = ["debug_code_generation"] }
 state_machine_future = "0.2.0"
-tokio={ version="1.17", features=["rt"]}
+tokio={ version="1.17", features=["full"]}
 tokio-core = "0.1"
 tokio-io = "0.1.13"
 tokio-openssl = "0.3.0" # XXX: pin to < 0.4 until hyper 0.13

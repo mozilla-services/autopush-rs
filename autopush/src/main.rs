@@ -35,7 +35,8 @@ struct Args {
     flag_config_shared: Option<String>,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     env_logger::init();
     let signal = notify(&[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])?;
     let args: Args = Docopt::new(USAGE)

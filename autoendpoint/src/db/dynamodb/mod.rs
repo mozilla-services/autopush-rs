@@ -4,6 +4,8 @@ use crate::db::retry::{
     retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
     retryable_putitem_error, retryable_updateitem_error,
 };
+use crate::settings::Settings;
+
 use async_trait::async_trait;
 use autopush_common::db::{NotificationRecord, UserRecord, MAX_CHANNEL_TTL};
 use autopush_common::notification::Notification;
@@ -30,11 +32,7 @@ pub struct DdbClientImpl {
 }
 
 impl DdbClientImpl {
-    pub fn new(
-        metrics: Arc<StatsdClient>,
-        router_table: String,
-        message_table: String,
-    ) -> DbResult<Self> {
+    pub fn new(metrics: Arc<StatsdClient>, settings: &Settings) -> DbResult<Self> {
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
@@ -51,8 +49,8 @@ impl DdbClientImpl {
         Ok(Self {
             client: ddb,
             metrics,
-            router_table,
-            message_table,
+            router_table: settings.router_table_name.clone(),
+            message_table: settings.message_table_name.clone(),
         })
     }
 

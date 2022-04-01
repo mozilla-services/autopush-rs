@@ -30,9 +30,8 @@ pub struct PgClientImpl {
 
 impl PgClientImpl {
     /// We'll use this eventually...
-    #[allow(dead_code)]
-    pub async fn new(metrics: Arc<StatsdClient>, settings: Settings) -> DbResult<Self> {
-        if let Some(dsn) = settings.pg_dsn {
+    pub async fn new(metrics: Arc<StatsdClient>, settings: &Settings) -> DbResult<Self> {
+        if let Some(dsn) = settings.pg_dsn.clone() {
             let parsed = url::Url::parse(&dsn)
                 .map_err(|e| DbError::Connection(format!("Invalid Postgres DSN: {:?}", e)))?;
             let pg_connect = format!(
@@ -59,10 +58,11 @@ impl PgClientImpl {
             return Ok(Self {
                 client: Arc::new(client),
                 _metrics: metrics,
-                router_table: settings.router_table_name,
-                message_table: settings.message_table_name,
+                router_table: settings.router_table_name.clone(),
+                message_table: settings.message_table_name.clone(),
                 meta_table: settings
                     .meta_table_name
+                    .clone()
                     .unwrap_or_else(|| "meta".to_owned()),
             });
         };
