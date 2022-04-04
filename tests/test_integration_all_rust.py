@@ -418,6 +418,7 @@ def process_logs(testcase):
     w/ a `--release` mode connection/endpoint node
 
     """
+    return
     conn_count = sum(queue.qsize() for queue in CN_QUEUES)
     endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
 
@@ -556,14 +557,18 @@ def setup_mock_server():
 
 def setup_connection_server(connection_binary):
     global CN_SERVER
+    return
 
     write_config_to_env(CONNECTION_CONFIG, "autopush_")
     cmd = [connection_binary]
-    CN_SERVER = subprocess.Popen(
-        cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, universal_newlines=True
-    )
-
+    try:
+        CN_SERVER = subprocess.Popen(
+            cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, universal_newlines=True
+        )
+    except Exception as e:
+        import pdb; pdb.set_trace();
+        print("crap")
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(CN_SERVER.stdout)
     err_q = capture_output_to_queue(CN_SERVER.stderr)
@@ -572,14 +577,19 @@ def setup_connection_server(connection_binary):
 
 def setup_megaphone_server(connection_binary):
     global CN_MP_SERVER
+    return
 
     write_config_to_env(MEGAPHONE_CONFIG, "autopush_")
     cmd = [connection_binary]
-    CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
-
+    try:
+        CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
+    except Exception as e:
+        import pdb;pdb.set_trace();
+        print ("also crap")
 
 def setup_endpoint_server():
     global EP_SERVER
+    return
 
     # Set up environment
     os.environ["RUST_LOG"] = "trace"
@@ -587,10 +597,14 @@ def setup_endpoint_server():
 
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
-    EP_SERVER = subprocess.Popen(
-        cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, universal_newlines=True
-    )
+    try:
+        EP_SERVER = subprocess.Popen(
+            cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, universal_newlines=True
+        )
+    except Exception as e:
+        import pdb; pdb.set_trace()
+        print("more crap")
 
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(EP_SERVER.stdout)

@@ -96,18 +96,18 @@ impl Default for Settings {
 impl Settings {
     /// Load the settings from the config files in order first then the environment.
     pub fn with_env_and_config_files(filenames: &[String]) -> Result<Self, ConfigError> {
-        let mut s = Config::builder();
+        let mut s = Config::default();
         // Set our defaults, this can be fixed up drastically later after:
         // https://github.com/mehcode/config-rs/issues/60
 
         // Merge the configs from the files
         for filename in filenames {
-            s = s.add_source(File::with_name(filename));
+            s.merge(File::with_name(filename))?;
         }
 
         // Merge the environment overrides
-        s = s.add_source(Environment::with_prefix("autopush"));
-        s.build()?.try_deserialize::<Settings>()
+        s.merge(Environment::with_prefix("autopush").separator("__"))?;
+        s.try_into::<Settings>()
     }
 
     pub fn router_url(&self) -> String {

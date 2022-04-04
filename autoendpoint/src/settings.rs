@@ -8,7 +8,7 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
-const ENV_PREFIX: &str = "autoend";
+pub const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
@@ -68,38 +68,41 @@ impl Default for Settings {
 impl Settings {
     /// Load the settings from the config file if supplied, then the environment.
     pub fn with_env_and_config_file(filename: &Option<String>) -> Result<Self, ConfigError> {
-        let mut s = Config::builder();
+        let mut s = Config::default();
 
         // Merge the config file if supplied
         if let Some(config_filename) = filename {
-            s = s.add_source(File::with_name(config_filename));
+            s.merge(File::with_name(config_filename))?;
         }
 
         // Merge the environment overrides
         // Note: Specify the separator here so that the shell can properly pass args
-        // down to the sub structures.
-        s = s.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
+        // down to the sub structures. Also, with config 0.12 the `separator` impacts
+        // which vars are read. (e.g. `separator('__') ignores "AUTOEND_FOO__BAR" since
+        // the "key" would be determined as "AUTOEND_FOO"). Config::Environment
+        // overloads separator and group_separator with no way to differentiate. The
+        // better solution is to NOT specify `separator()` and use the default
+        // `_` group separator.
+        s.merge(Environment::with_prefix(ENV_PREFIX).separator("__"))?;
 
-        s.build()?
-            .try_deserialize::<Self>()
-            .map_err(|error| match error {
-                // Configuration errors are not very sysop friendly, Try to make them
-                // a bit more 3AM useful.
-                ConfigError::Message(error_msg) => {
-                    println!("Bad configuration: {:?}", &error_msg);
-                    println!("Please set in config file or use environment variable.");
-                    println!(
-                        "For example to set `database_url` use env var `{}_DATABASE_URL`\n",
-                        ENV_PREFIX.to_uppercase()
-                    );
-                    error!("Configuration error: Value undefined {:?}", &error_msg);
-                    ConfigError::NotFound(error_msg)
-                }
-                _ => {
-                    error!("Configuration error: Other: {:?}", &error);
-                    error
-                }
-            })
+        s.try_into::<Self>().map_err(|error| match error {
+            // Configuration errors are not very sysop friendly, Try to make them
+            // a bit more 3AM useful.
+            ConfigError::Message(error_msg) => {
+                println!("Bad configuration: {:?}", &error_msg);
+                println!("Please set in config file or use environment variable.");
+                println!(
+                    "For example to set `database_url` use env var `{}_DATABASE_URL`\n",
+                    ENV_PREFIX.to_uppercase()
+                );
+                error!("Configuration error: Value undefined {:?}", &error_msg);
+                ConfigError::NotFound(error_msg)
+            }
+            _ => {
+                error!("Configuration error: Other: {:?}", &error);
+                error
+            }
+        })
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.
