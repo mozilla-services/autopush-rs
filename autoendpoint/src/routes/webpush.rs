@@ -12,6 +12,7 @@ pub async fn webpush_route(
     routers: Routers,
 ) -> ApiResult<HttpResponse> {
     let router = routers.get(notification.subscription.router_type);
+    trace!("sending to {:?}", &notification.subscription.router_type);
 
     let response = router.route_notification(&notification).await?;
 

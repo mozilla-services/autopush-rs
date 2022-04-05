@@ -67,7 +67,10 @@ impl FromRequest for Subscription {
             let token = state
                 .fernet
                 .decrypt(&repad_base64(&token_info.token))
-                .map_err(|_| ApiErrorKind::InvalidToken)?;
+                .map_err(|e| {
+                    trace!("Feret error: {:?}", e);
+                    ApiErrorKind::InvalidToken
+                })?;
 
             // Parse VAPID and extract public key.
             let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &state.metrics)?
@@ -176,6 +179,7 @@ fn extract_public_key(vapid: VapidHeader, token_info: &TokenInfo) -> ApiResult<V
 fn version_1_validation(token: &[u8]) -> ApiResult<()> {
     if token.len() != 32 {
         // Corrupted token
+        trace!("Invalid v1 token length");
         return Err(ApiErrorKind::InvalidToken.into());
     }
 
@@ -186,6 +190,7 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> ApiResult<()> {
     if token.len() != 64 {
         // Corrupted token
+        trace!("Invalid v2 token length");
         return Err(ApiErrorKind::InvalidToken.into());
     }
 

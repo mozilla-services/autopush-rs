@@ -240,7 +240,7 @@ pub fn register_user(
 
     retry_if(
         move || {
-            debug!("Registering user: {:?}", item);
+            debug!("Registering user: {:?} in {:?}", item, router_table);
             ddb.put_item(PutItemInput {
                 item: item.clone(),
                 table_name: router_table.clone(),
@@ -274,6 +274,7 @@ pub fn update_user_message_month(
         ":curmonth".to_string() => val!(S => message_month.to_string()),
         ":lastconnect".to_string() => val!(N => generate_last_connect().to_string()),
     };
+    trace!("Setting current_month: {:?}", &message_month);
     let update_item = UpdateItemInput {
         key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         update_expression: Some(
@@ -462,6 +463,9 @@ fn handle_user_result(
     }
     hello_response.check_storage = true;
     hello_response.rotate_message_table = user_month != *cur_month;
+    if hello_response.rotate_message_table {
+        trace!("🚨🚨🚨 Rotating table!!!");
+    }
     hello_response.message_month = user_month;
     hello_response.reset_uaid = user
         .record_version

@@ -20,6 +20,7 @@ impl FromRequest for TokenInfo {
 
     fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
         // Path variables
+        trace!("Processing token");
         let api_version = match req.match_info().get("api_version").unwrap_or("v1").parse() {
             Ok(version) => version,
             Err(e) => return future::err(e),

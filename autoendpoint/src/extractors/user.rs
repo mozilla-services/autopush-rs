@@ -53,7 +53,11 @@ async fn validate_webpush_user(
     };
 
     if db.message_table() != message_table {
-        debug!("User is inactive, dropping user"; "user" => ?user);
+        debug!("User is inactive, dropping user";
+            "user" => ?user,
+            "message_table" => ?message_table,
+            "db_table" => ?db.message_table(),
+        );
         drop_user(user.uaid, db, metrics).await?;
         return Err(ApiErrorKind::NoSubscription.into());
     }

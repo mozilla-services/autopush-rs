@@ -121,6 +121,7 @@ pub enum ApiErrorKind {
 impl ApiErrorKind {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
+        trace!("Returning error: {}", self.metric_label());
         match self {
             ApiErrorKind::PayloadError(e) => e.as_response_error().status_code(),
             ApiErrorKind::Router(e) => e.status(),

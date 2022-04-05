@@ -159,14 +159,14 @@ pub struct ServerOptions {
 
 impl ServerOptions {
     pub fn from_settings(settings: Settings) -> Result<Self> {
-        let crypto_key = &settings.crypto_key;
+        let crypto_key = &settings.crypto_keys;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
             return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
         let fernets: Vec<Fernet> = crypto_key
             .split(',')
-            .map(|s| s.trim().to_string())
+            .map(|s| s.trim_matches(|c| c == ' ' || c == '"').to_string())
             .map(|key| Fernet::new(&key).expect("Invalid AUTOPUSH_CRYPTO_KEY"))
             .collect();
         let fernet = MultiFernet::new(fernets);

@@ -47,8 +47,14 @@ impl Server {
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
         let db: Box<dyn DbClient> = match settings.use_ddb {
-            true => Box::new(DdbClientImpl::new(metrics.clone(), &settings)?),
-            false => Box::new(PgClientImpl::new(metrics.clone(), &settings).await?),
+            true => {
+                trace!("Using DDB Client");
+                Box::new(DdbClientImpl::new(metrics.clone(), &settings)?)
+            }
+            false => {
+                trace!("Using postgres Client");
+                Box::new(PgClientImpl::new(metrics.clone(), &settings).await?)
+            }
         };
         let http = reqwest::Client::new();
         let fcm_router = Arc::new(

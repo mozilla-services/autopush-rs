@@ -9,6 +9,7 @@ use std::{env, os::raw::c_int, thread};
 use docopt::Docopt;
 
 use autopush_common::errors::{Result, ResultExt};
+use autopush_common::logging;
 
 mod client;
 mod http;
@@ -37,7 +38,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    //env_logger::init();
     let signal = notify(&[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])?;
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
@@ -50,14 +51,22 @@ async fn main() -> Result<()> {
         filenames.push(config_filename);
     }
     let settings = Settings::with_env_and_config_files(&filenames)?;
+    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
     // Setup the AWS env var if it was set
     if let Some(ref ddb_local) = settings.aws_ddb_endpoint {
         env::set_var("AWS_LOCAL_DYNAMODB", ddb_local);
     }
+    info!("Server starting on port {}", &settings.port);
+    trace!(
+        "message {:?}, router: {:?}",
+        &settings.message_tablename,
+        &settings.router_tablename
+    );
     let server_opts = ServerOptions::from_settings(settings)?;
     let server = AutopushServer::new(server_opts);
     server.start();
     signal.recv().unwrap();
+    info!("Server closing");
     server.stop().chain_err(|| "Failed to shutdown properly")
 }
 

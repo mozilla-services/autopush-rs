@@ -46,6 +46,7 @@ impl DynamoStorage {
         metrics: Arc<StatsdClient>,
     ) -> Result<Self> {
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
+            trace!("Using local DDB: {:?}", endpoint);
             DynamoDbClient::new_with(
                 HttpClient::new().chain_err(|| "TLS initialization error")?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
@@ -55,6 +56,7 @@ impl DynamoStorage {
                 },
             )
         } else {
+            trace!("Using remote DDB: {:?}", Region::default());
             DynamoDbClient::new(Region::default())
         };
 
@@ -68,7 +70,7 @@ impl DynamoStorage {
             .last()
             .ok_or("No last message month found")?
             .to_string();
-
+        trace!("Current message month {:?}", current_message_month);
         Ok(Self {
             db_client: ddb,
             metrics,
@@ -203,6 +205,7 @@ impl DynamoStorage {
                 "### Endpoint Request: User not yet registered... {:?}",
                 &user.uaid
             );
+            trace!("message month: {:?}", &message_month);
             let uaid2 = *uaid;
             let message_month2 = message_month.to_owned();
             let response = commands::register_user(ddb.clone(), user, &self.router_table_name)
@@ -514,5 +517,6 @@ pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<Str
         .into_iter()
         .filter(|name| name.starts_with(prefix))
         .collect();
+    trace!("Available tables: {:?}", &names);
     Ok(names)
 }

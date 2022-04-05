@@ -96,7 +96,7 @@ CONNECTION_CONFIG = dict(
     statsd_host="",
     router_tablename=ROUTER_TABLE,
     message_tablename=MESSAGE_TABLE,
-    crypto_key="[{}]".format(CRYPTO_KEY),
+    crypto_keys="[{}]".format(CRYPTO_KEY),
     auto_ping_interval=60.0,
     auto_ping_timeout=10.0,
     close_handshake_timeout=5,
@@ -124,8 +124,8 @@ MEGAPHONE_CONFIG.update(
 ENDPOINT_CONFIG = dict(
     host='localhost',
     port=ENDPOINT_PORT,
-    router_table_name=ROUTER_TABLE,
-    message_table_name=MESSAGE_TABLE,
+    router_tablename=ROUTER_TABLE,
+    message_tablename=MESSAGE_TABLE,
     human_logs='true',
     crypto_keys="[{}]".format(CRYPTO_KEY),
 )
@@ -209,6 +209,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug("Send: %s", msg)
         self.ws.send(msg)
         rcv = self.ws.recv()
+        log.debug("rcv'd %s", rcv)
         result = json.loads(rcv)
         log.debug("Recv: %s", result)
         assert result["status"] == status
@@ -557,7 +558,6 @@ def setup_mock_server():
 
 def setup_connection_server(connection_binary):
     global CN_SERVER
-    return
 
     write_config_to_env(CONNECTION_CONFIG, "autopush_")
     cmd = [connection_binary]
@@ -577,7 +577,6 @@ def setup_connection_server(connection_binary):
 
 def setup_megaphone_server(connection_binary):
     global CN_MP_SERVER
-    return
 
     write_config_to_env(MEGAPHONE_CONFIG, "autopush_")
     cmd = [connection_binary]
@@ -589,7 +588,6 @@ def setup_megaphone_server(connection_binary):
 
 def setup_endpoint_server():
     global EP_SERVER
-    return
 
     # Set up environment
     os.environ["RUST_LOG"] = "trace"
@@ -682,6 +680,9 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_sentry_output(self):
+        if "SKIP_SENTRY" in os.environ:
+            raise SkipTest("Skipping Sentry Check")
+
         # Ensure bad data doesn't throw errors
         client = CustomClient(self._ws_url)
         yield client.connect()

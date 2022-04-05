@@ -96,6 +96,7 @@ impl DbClient for Arc<MockDbClient> {
     }
 
     fn message_table(&self) -> &str {
+        trace!("mock message table");
         Arc::as_ref(self).message_table()
     }
 

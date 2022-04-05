@@ -20,9 +20,9 @@ pub struct Settings {
     pub endpoint_url: String,
 
     pub use_ddb: bool,
-    pub pg_dsn: Option<String>,
-    pub router_table_name: String,
-    pub message_table_name: String,
+    pub db_dsn: Option<String>,
+    pub router_tablename: String,
+    pub message_tablename: String,
     pub meta_table_name: Option<String>,
 
     pub max_data_bytes: usize,
@@ -47,9 +47,9 @@ impl Default for Settings {
             endpoint_url: "".to_string(),
             port: 8000,
             use_ddb: true,
-            pg_dsn: None,
-            router_table_name: "router".to_string(),
-            message_table_name: "message".to_string(),
+            db_dsn: None,
+            router_tablename: "router".to_string(), // be consistent with autopush-rs
+            message_tablename: "message".to_string(),
             meta_table_name: None,
             max_data_bytes: 4096,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
@@ -121,18 +121,20 @@ impl Settings {
 
     /// Initialize the fernet encryption instance
     pub fn make_fernet(&self) -> MultiFernet {
-        let keys = &self.crypto_keys.replace('"', "").replace(' ', "");
+        let keys = &self.crypto_keys;
         let fernets = Self::read_list_from_str(keys, "Invalid AUTOEND_CRYPTO_KEYS")
-            .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS"))
+            .map(|key| {
+                Fernet::new(key.trim_matches(|c| c == '"' || c == ' '))
+                    .expect("Invalid AUTOEND_CRYPTO_KEYS")
+            })
             .collect();
         MultiFernet::new(fernets)
     }
 
     /// Get the list of auth hash keys
     pub fn auth_keys(&self) -> Vec<String> {
-        let keys = &self.auth_keys.replace('"', "").replace(' ', "");
-        Self::read_list_from_str(keys, "Invalid AUTOEND_AUTH_KEYS")
-            .map(|v| v.to_owned())
+        Self::read_list_from_str(&self.auth_keys, "Invalid AUTOEND_AUTH_KEYS")
+            .map(|v| v.trim_matches(|c| c == '"' || c == ' ').to_owned())
             .collect()
     }
 

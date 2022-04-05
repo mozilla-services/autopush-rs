@@ -49,8 +49,8 @@ impl DdbClientImpl {
         Ok(Self {
             client: ddb,
             metrics,
-            router_table: settings.router_table_name.clone(),
-            message_table: settings.message_table_name.clone(),
+            router_table: settings.router_tablename.clone(),
+            message_table: settings.message_tablename.clone(),
         })
     }
 
@@ -344,6 +344,7 @@ impl DbClient for DdbClientImpl {
     }
 
     fn message_table(&self) -> &str {
+        trace!("ddb message table {:?}", &self.message_table);
         &self.message_table
     }
 
