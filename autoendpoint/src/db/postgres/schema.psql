@@ -1,0 +1,34 @@
+DROP TABLE message;
+DROP TABLE meta;
+DROP TABLE router;
+
+CREATE TABLE IF NOT EXISTS router (
+    uaid varchar(40) NOT NULL PRIMARY KEY UNIQUE,
+    connected_at integer,
+    router_type varchar(100),
+    router_data text,
+    last_connect integer,
+    node_id varchar(100),
+    record_version integer,
+    current_month varchar(100)
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+    uaid varchar(40) NOT NULL PRIMARY KEY REFERENCES router ON DELETE cascade,
+    channel_id varchar(40) NOT NULL UNIQUE,
+    UNIQUE(uaid, channel_id),
+    FOREIGN KEY(uaid) REFERENCES router (uaid)
+);
+
+CREATE TABLE IF NOT EXISTS message (
+    uaid varchar(40) NOT NULL PRIMARY KEY REFERENCES router ON DELETE cascade,
+    channel_id varchar(40) REFERENCES meta ON DELETE cascade,
+    ttl integer,
+    topic varchar,
+    timestamp integer,
+    data text,
+    sortkey_timestamp varchar,
+    headers text,
+    FOREIGN KEY(uaid) REFERENCES router (uaid),
+    FOREIGN KEY(channel_id) REFERENCES meta (channel_id)
+);
