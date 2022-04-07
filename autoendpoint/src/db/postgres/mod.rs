@@ -5,7 +5,7 @@ use std::panic::panic_any;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use tokio_postgres::Client; // Client is sync.
+use tokio_postgres::{Client, NoTls}; // Client is sync.
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
@@ -29,27 +29,33 @@ pub struct PgClientImpl {
 }
 
 impl PgClientImpl {
-    /// We'll use this eventually...
     pub async fn new(metrics: Arc<StatsdClient>, settings: &Settings) -> DbResult<Self> {
         if let Some(dsn) = settings.db_dsn.clone() {
             let parsed = url::Url::parse(&dsn)
                 .map_err(|e| DbError::Connection(format!("Invalid Postgres DSN: {:?}", e)))?;
+            if !parsed.scheme().to_lowercase().starts_with("postgres") {
+                return Err(DbError::Connection(
+                    "Invalid Postgres DSN: wrong database schema".to_owned(),
+                ));
+            }
             let pg_connect = format!(
                 "user={:?} password={:?} host={:?} port={:?} dbname={:?}",
                 parsed.username(),
                 parsed.password().unwrap_or_default(),
                 parsed.host_str().unwrap_or_default(),
-                parsed.port(),
+                parsed.port().unwrap_or(5432),
                 parsed
                     .path_segments()
                     .map(|c| c.collect::<Vec<_>>())
                     .unwrap_or_default()[0]
             );
-            let (client, connection) = tokio_postgres::connect(&pg_connect, tokio_postgres::NoTls)
-                .await
-                .map_err(|e| {
-                    DbError::Connection(format!("Could not connect to postgres {:?}", e))
-                })?;
+            trace!("Postgres Connect {}", &pg_connect);
+            let (client, connection) =
+                tokio_postgres::connect(&pg_connect, NoTls)
+                    .await
+                    .map_err(|e| {
+                        DbError::Connection(format!("Could not connect to postgres {:?}", e))
+                    })?;
             tokio::spawn(async move {
                 if let Err(e) = connection.await {
                     panic_any(format!("PG Connection error {:?}", e));
@@ -147,7 +153,8 @@ impl DbClient for PgClientImpl {
 
     /// fetch user information from router_table for uaid.
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<UserRecord>> {
-        let row = self.client.query_one(
+        let row = self.client
+        .query_one(
             &format!(
                 "select connected_at, router_type, router_data, last_connect, node_id, record_version, current_month from {tablename} where uaid = ?",
                 tablename=self.router_table
@@ -266,7 +273,8 @@ impl DbClient for PgClientImpl {
 
     /// remove node info for a uaid from router table
     async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {
-        self.client.execute(
+        self.client
+        .execute(
             &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.router_table),
             &[&uaid.to_simple().to_string(), &node_id, &(connected_at as i64)]
         ).await?;

@@ -85,6 +85,9 @@ impl Settings {
         // `_` group separator.
         s.merge(Environment::with_prefix(ENV_PREFIX).separator("__"))?;
 
+        if s.get::<Option<String>>("db_dsn")?.is_some() {
+            s.set("use_ddb", false)?;
+        }
         s.try_into::<Self>().map_err(|error| match error {
             // Configuration errors are not very sysop friendly, Try to make them
             // a bit more 3AM useful.

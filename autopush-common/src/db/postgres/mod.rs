@@ -6,7 +6,7 @@ use std::sync::Arc;
 use cadence::StatsdClient;
 use futures::{future, Future};
 use futures_backoff::retry_if;
-use tokio_postgres::{Client, Connection, Socket};
+use postgres::{Client, Connection, Socket};
 
 use crate::errors::*;
 use crate::notification::Notification;
@@ -54,7 +54,7 @@ impl PostgresStorage {
                 .unwrap_or_default()[0]
         );
 
-        let (client, connection) = tokio_postgres::connect(&pg_connect, tokio_postgres::NoTls)
+        let (client, connection) = Client(&pg_connect, postgres::NoTls)
             .await
             .unwrap();
         tokio::spawn(async move {

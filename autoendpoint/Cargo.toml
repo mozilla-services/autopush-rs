@@ -53,7 +53,7 @@ slog-scope = "4.4"
 slog-stdlog = "4.1"
 slog-term = "2.6"
 smallvec = "1.6"  # for RUSTSEC-2021-0003
-tokio = { version = "0.2", features = ["fs"] }  # 1.1+ requires futures 0.3+
+tokio = { version = "1.17", features = ["fs"] }  # 1.1+ requires futures 0.3+
 thiserror = "1.0"
 url = "2.2"
 uuid = { version = "0.8", features = ["serde", "v4"] }
