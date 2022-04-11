@@ -4,11 +4,11 @@ use crate::db::error::DbError;
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
-    dev::{HttpResponseBuilder, ServiceResponse},
+    dev::ServiceResponse,
     error::{JsonPayloadError, PayloadError, ResponseError},
     http::StatusCode,
-    middleware::errhandlers::ErrorHandlerResponse,
-    HttpResponse, Result,
+    middleware::ErrorHandlerResponse,
+    HttpResponse, HttpResponseBuilder, Result,
 };
 use backtrace::Backtrace;
 use serde::ser::SerializeMap;
@@ -36,10 +36,9 @@ impl ApiError {
     pub fn render_404<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
         // Replace the outbound error message with our own.
         let resp = HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
-        Ok(ErrorHandlerResponse::Response(ServiceResponse::new(
-            res.request().clone(),
-            resp.into_body(),
-        )))
+        Ok(ErrorHandlerResponse::Response(
+            res.into_response(resp).map_into_right_body(),
+        ))
     }
 }
 
@@ -218,7 +217,10 @@ impl ApiErrorKind {
 
             ApiErrorKind::PayloadError(error)
                 if matches!(error.as_error(), Some(PayloadError::Overflow))
-                    || matches!(error.as_error(), Some(JsonPayloadError::Overflow)) =>
+                    || matches!(
+                        error.as_error(),
+                        Some(JsonPayloadError::Overflow { limit: _ })
+                    ) =>
             {
                 Some(104)
             }
@@ -296,7 +298,7 @@ impl ResponseError for ApiError {
         let mut builder = HttpResponse::build(self.kind.status());
 
         if self.status_code() == 410 {
-            builder.set_header("Cache-Control", "max-age=86400");
+            builder.insert_header(("Cache-Control", "max-age=86400"));
         }
 
         builder.json(self)

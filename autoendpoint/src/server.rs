@@ -3,7 +3,7 @@
 use crate::db::{client::DbClient, dynamodb::DdbClientImpl, postgres::PgClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
-use crate::middleware::sentry::sentry_middleware;
+use crate::middleware::sentry::SentryWrapper;
 use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
@@ -15,12 +15,10 @@ use crate::routes::registration::{
     unregister_user_route, update_token_route,
 };
 use crate::routes::webpush::{delete_notification_route, webpush_route};
+use crate::server::web::BytesMut;
 use crate::settings::Settings;
 use actix_cors::Cors;
-use actix_web::{
-    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, FromRequest,
-    HttpServer,
-};
+use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use std::sync::Arc;
@@ -96,15 +94,15 @@ impl Server {
 
         let server = HttpServer::new(move || {
             App::new()
-                .data(state.clone())
+                .app_data(state.clone())
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
-                .wrap_fn(sentry_middleware)
+                .wrap(SentryWrapper::default())
                 .wrap(Cors::default())
                 // Extractor configuration
-                .app_data(web::Bytes::configure(|cfg| {
-                    cfg.limit(state.settings.max_data_bytes)
-                }))
+                .app_data(web::Bytes::from(BytesMut::with_capacity(
+                    state.settings.max_data_bytes,
+                )))
                 .app_data(web::JsonConfig::default().limit(state.settings.max_data_bytes))
                 // Endpoints
                 .service(

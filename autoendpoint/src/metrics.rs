@@ -8,10 +8,12 @@ use cadence::{
     StatsdClient, Timed,
 };
 
+use crate::error::ApiError;
 use crate::server::ServerState;
 use crate::settings::Settings;
 use crate::tags::Tags;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_http::Payload;
+use actix_web::HttpMessage;
 use futures::future;
 
 #[derive(Debug, Clone)]
@@ -59,11 +61,10 @@ impl Drop for Metrics {
 }
 
 impl FromRequest for Metrics {
-    type Error = ();
+    type Error = ApiError;
     type Future = future::Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         future::ok(Metrics::from(req))
     }
 }

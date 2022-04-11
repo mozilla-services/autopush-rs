@@ -1,6 +1,6 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_http::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use fernet::MultiFernet;
@@ -28,9 +28,8 @@ pub enum MessageId {
 impl FromRequest for MessageId {
     type Error = ApiError;
     type Future = future::Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let message_id_param = req
             .match_info()
             .get("message_id")

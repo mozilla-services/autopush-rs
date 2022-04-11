@@ -2,7 +2,7 @@ use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::registration_path_args::RegistrationPathArgs;
 use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_http::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future::LocalBoxFuture;
@@ -20,9 +20,8 @@ pub struct RegistrationPathArgsWithUaid {
 impl FromRequest for RegistrationPathArgsWithUaid {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let req = req.clone();
 
         async move {

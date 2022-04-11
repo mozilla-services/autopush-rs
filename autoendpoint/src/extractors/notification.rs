@@ -3,7 +3,7 @@ use crate::extractors::message_id::MessageId;
 use crate::extractors::notification_headers::NotificationHeaders;
 use crate::extractors::subscription::Subscription;
 use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_http::Payload;
 use actix_web::web::Data;
 use actix_web::{web, FromRequest, HttpRequest};
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
@@ -29,9 +29,8 @@ pub struct Notification {
 impl FromRequest for Notification {
     type Error = ApiError;
     type Future = future::LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, payload: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
         let req = req.clone();
         let mut payload = payload.take();
 

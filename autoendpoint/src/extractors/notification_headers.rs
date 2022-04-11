@@ -254,7 +254,9 @@ mod tests {
     /// A valid TTL results in no errors or adjustment
     #[test]
     fn valid_ttl() {
-        let req = TestRequest::post().header("TTL", "10").to_http_request();
+        let req = TestRequest::post()
+            .insert_header(("TTL", "10"))
+            .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
@@ -264,7 +266,9 @@ mod tests {
     /// Negative TTL values are not allowed
     #[test]
     fn negative_ttl() {
-        let req = TestRequest::post().header("TTL", "-1").to_http_request();
+        let req = TestRequest::post()
+            .insert_header(("TTL", "-1"))
+            .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
         assert_validation_error(
@@ -274,8 +278,8 @@ mod tests {
                     "code": "114",
                     "message": "TTL must be greater than 0",
                     "params": {
-                        "min": 0.0,
-                        "value": -1
+                        "min": 0.0_f64,
+                        "value": -1_i64,
                     }
                 }]
             }),
@@ -286,7 +290,7 @@ mod tests {
     #[test]
     fn maximum_ttl() {
         let req = TestRequest::post()
-            .header("TTL", (MAX_TTL + 1).to_string())
+            .insert_header(("TTL", (MAX_TTL + 1).to_string()))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
@@ -298,8 +302,8 @@ mod tests {
     #[test]
     fn valid_topic() {
         let req = TestRequest::post()
-            .header("TTL", "10")
-            .header("TOPIC", "test-topic")
+            .insert_header(("TTL", "10"))
+            .insert_header(("TOPIC", "test-topic"))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
@@ -311,8 +315,8 @@ mod tests {
     #[test]
     fn too_long_topic() {
         let req = TestRequest::post()
-            .header("TTL", "10")
-            .header("TOPIC", "test-topic-which-is-too-long-1234")
+            .insert_header(("TTL", "10"))
+            .insert_header(("TOPIC", "test-topic-which-is-too-long-1234"))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
@@ -323,7 +327,7 @@ mod tests {
                     "code": "113",
                     "message": "Topic must be no greater than 32 characters",
                     "params": {
-                        "max": 32,
+                        "max": 32_i8,
                         "value": "test-topic-which-is-too-long-1234"
                     }
                 }]
@@ -334,7 +338,9 @@ mod tests {
     /// If there is a payload, there must be a content encoding header
     #[test]
     fn payload_without_content_encoding() {
-        let req = TestRequest::post().header("TTL", "10").to_http_request();
+        let req = TestRequest::post()
+            .insert_header(("TTL", "10"))
+            .to_http_request();
         let result = NotificationHeaders::from_request(&req, true);
 
         assert_encryption_error(result, "Missing Content-Encoding header");
@@ -344,10 +350,10 @@ mod tests {
     #[test]
     fn valid_04_encryption() {
         let req = TestRequest::post()
-            .header("TTL", "10")
-            .header("Content-Encoding", "aesgcm")
-            .header("Encryption", "salt=foo")
-            .header("Crypto-Key", "dh=bar")
+            .insert_header(("TTL", "10"))
+            .insert_header(("Content-Encoding", "aesgcm"))
+            .insert_header(("Encryption", "salt=foo"))
+            .insert_header(("Crypto-Key", "dh=bar"))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, true);
 
@@ -369,10 +375,10 @@ mod tests {
     #[test]
     fn valid_06_encryption() {
         let req = TestRequest::post()
-            .header("TTL", "10")
-            .header("Content-Encoding", "aes128gcm")
-            .header("Encryption", "notsalt=foo")
-            .header("Crypto-Key", "notdh=bar")
+            .insert_header(("TTL", "10"))
+            .insert_header(("Content-Encoding", "aes128gcm"))
+            .insert_header(("Encryption", "notsalt=foo"))
+            .insert_header(("Crypto-Key", "notdh=bar"))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, true);
 
@@ -395,10 +401,10 @@ mod tests {
     #[test]
     fn strip_headers() {
         let req = TestRequest::post()
-            .header("TTL", "10")
-            .header("Content-Encoding", "aesgcm")
-            .header("Encryption", "salt=\"foo\"")
-            .header("Crypto-Key", "keyid=\"p256dh\";dh=\"deadbeef==\"")
+            .insert_header(("TTL", "10"))
+            .insert_header(("Content-Encoding", "aesgcm"))
+            .insert_header(("Encryption", "salt=\"foo\""))
+            .insert_header(("Crypto-Key", "keyid=\"p256dh\";dh=\"deadbeef==\""))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, true);
 

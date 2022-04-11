@@ -14,9 +14,12 @@ edition = "2021"
 # The version of a2 at the time of the fork is v0.5.3.
 a2 = { git = "https://github.com/mozilla-services/a2.git", branch = "autoendpoint" }
 # several of these libraries are pinned due to https://github.com/mozilla-services/autopush-rs/issues/249
-actix-web = "3.3"
-actix-rt = "1.1"   # 2.0+ requires futures 0.3+
-actix-cors = "0.5"
+actix-http = "3.0"
+actix-web = "4.0"
+awc = "3.0"
+actix-rt = "2.7"   # 2.0+ requires futures 0.3+
+actix-cors = "0.6"
+actix-test = "0.0"
 again = { version = "0.1.2", default-features = false, features = ["log"] }
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
@@ -41,7 +44,8 @@ rusoto_dynamodb = "0.45.0"  # 0.46+ requires futures 0.3+
 tokio-postgres = "0.7"  # async
 
 # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
-sentry = { version = "0.19", features = ["debug-logs"] }  # Keep on 0.19 in order to work with our backend
+sentry = { version = "0.25", features = ["debug-logs"] }
+sentry-backtrace = "0.25"
 serde = { version = "1.0", features = ["derive"] }
 serde_dynamodb = "0.6"  # 0.7+ requires rusoto_dynamodb 0.46+
 serde_json = "1.0"
@@ -65,4 +69,4 @@ yup-oauth2 = "4.1.2"  # 5.0+ requires tokio 1.1+
 mockall = "0.8.3"  # 0.9+ requires reworking tests
 mockito = "0.30.0"
 tempfile = "3.2.0"
-tokio = { version = "0.2", features = ["macros"] }
+tokio = { version = "1.17", features = ["macros"] }

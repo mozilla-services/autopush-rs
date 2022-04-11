@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use actix_web::{
     dev::{Payload, RequestHead},
-    Error, FromRequest, HttpRequest,
+    Error, FromRequest, HttpMessage, HttpRequest,
 };
 use futures::future;
 use futures::future::Ready;
@@ -44,14 +44,7 @@ impl Tags {
     #![allow(unused)] // TODO: Start using tags
 
     pub fn from_request_head(req_head: &RequestHead) -> Tags {
-        // Return an Option<> type because the later consumers (ApiErrors) presume that
-        // tags are optional and wrapped by an Option<> type.
-        let mut tags = HashMap::new();
-        tags.insert("uri.method".to_owned(), req_head.method.to_string());
-        Tags {
-            tags,
-            extra: HashMap::new(),
-        }
+        req_head.into()
     }
 
     pub fn with_tags(tags: HashMap<String, String>) -> Tags {
@@ -106,7 +99,6 @@ impl slog::KV for Tags {
 }
 
 impl FromRequest for Tags {
-    type Config = ();
     type Error = Error;
     type Future = Ready<Result<Self, Self::Error>>;
 
@@ -120,6 +112,17 @@ impl FromRequest for Tags {
         };
 
         future::ok(tags)
+    }
+}
+
+impl From<&RequestHead> for Tags {
+    fn from(req_head: &RequestHead) -> Self {
+        let mut tags = HashMap::new();
+        tags.insert("uri.method".to_owned(), req_head.method.to_string());
+        Tags {
+            tags,
+            extra: HashMap::new(),
+        }
     }
 }
 

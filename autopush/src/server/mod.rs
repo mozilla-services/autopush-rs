@@ -897,7 +897,7 @@ fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
 
     error!("Test Critical Message";
            "status_code" => code,
-           "errno" => 0,
+           "errno" => 0 as u16,
     );
     thread::spawn(|| {
         panic!("LogCheck");

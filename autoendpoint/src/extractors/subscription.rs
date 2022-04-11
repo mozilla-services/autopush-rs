@@ -5,7 +5,7 @@ use crate::extractors::user::validate_user;
 use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
 use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_http::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::UserRecord;
@@ -52,9 +52,8 @@ impl Default for VapidClaims {
 impl FromRequest for Subscription {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let req = req.clone();
 
         async move {

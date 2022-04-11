@@ -53,13 +53,13 @@ pub async fn status_route() -> Json<serde_json::Value> {
 }
 
 /// Handle the `/__lbheartbeat__` route
-pub fn lb_heartbeat_route() -> HttpResponse {
+pub async fn lb_heartbeat_route() -> HttpResponse {
     // Used by the load balancers, just return OK.
     HttpResponse::Ok().finish()
 }
 
 /// Handle the `/__version__` route
-pub fn version_route() -> HttpResponse {
+pub async fn version_route() -> HttpResponse {
     // Return the contents of the version.json file created by circleci
     // and stored in the docker root
     HttpResponse::Ok()
@@ -72,7 +72,7 @@ pub async fn log_check() -> ApiResult<String> {
     error!(
         "Test Critical Message";
         "status_code" => StatusCode::IM_A_TEAPOT.as_u16(),
-        "errno" => 999,
+        "errno" => 999_u16,
     );
 
     thread::spawn(|| {
