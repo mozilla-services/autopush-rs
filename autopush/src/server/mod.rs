@@ -18,7 +18,7 @@ use futures::{task, try_ready};
 use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
 use hyper::{server::conn::Http, StatusCode};
 use openssl::ssl::SslAcceptor;
-use sentry::{self, capture_message, integrations::panic::register_panic_handler};
+use sentry::{self, capture_message};
 use serde_json::{self, json};
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::{Core, Handle, Timeout};
@@ -82,7 +82,7 @@ struct ShutdownHandle(oneshot::Sender<()>, thread::JoinHandle<()>);
 pub struct AutopushServer {
     opts: Arc<ServerOptions>,
     shutdown_handles: Cell<Option<Vec<ShutdownHandle>>>,
-    _guard: Option<sentry::internals::ClientInitGuard>,
+    _guard: Option<sentry::ClientInitGuard>,
 }
 
 impl AutopushServer {
@@ -95,7 +95,6 @@ impl AutopushServer {
                     ..Default::default()
                 },
             ));
-            register_panic_handler();
             Some(guard)
         } else {
             None
@@ -897,7 +896,7 @@ fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
 
     error!("Test Critical Message";
            "status_code" => code,
-           "errno" => 0 as u16,
+           "errno" => 0_u16,
     );
     thread::spawn(|| {
         panic!("LogCheck");

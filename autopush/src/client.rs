@@ -10,7 +10,6 @@ use futures::{Async, Future, Poll, Sink, Stream};
 use reqwest::Client as ReqClient;
 // use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
-use sentry::integrations::error_chain::event_from_error_chain;
 use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use std::cell::RefCell;
 use std::mem;
@@ -611,7 +610,7 @@ where
 
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {
-            let mut event = event_from_error_chain(err);
+            let mut event = sentry::event_from_error(err);
             event.user = Some(sentry::User {
                 id: Some(webpush.uaid.to_simple().to_string()),
                 ..Default::default()

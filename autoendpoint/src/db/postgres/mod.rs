@@ -1,5 +1,3 @@
-//TODO: REMOVE:
-#[allow(unused_imports)]
 use std::collections::HashSet;
 use std::panic::panic_any;
 use std::str::FromStr;
@@ -29,33 +27,19 @@ pub struct PgClientImpl {
 }
 
 impl PgClientImpl {
+    /// Create a new Postgres Client.
+    ///
+    /// This uses the `settings.db_dsn`. to try and connect to the postgres database.
+    /// See https://docs.rs/tokio-postgres/latest/tokio_postgres/config/struct.Config.html
+    /// for parameter details and requirements.
+    /// Example DSN: postgresql://user:password@host/database?option=val
+    /// e.g. (postgresql://scott:tiger@dbhost/autopush?connect_timeout=10&keepalives_idle=3600)
     pub async fn new(metrics: Arc<StatsdClient>, settings: &Settings) -> DbResult<Self> {
         if let Some(dsn) = settings.db_dsn.clone() {
-            let parsed = url::Url::parse(&dsn)
-                .map_err(|e| DbError::Connection(format!("Invalid Postgres DSN: {:?}", e)))?;
-            if !parsed.scheme().to_lowercase().starts_with("postgres") {
-                return Err(DbError::Connection(
-                    "Invalid Postgres DSN: wrong database schema".to_owned(),
-                ));
-            }
-            let pg_connect = format!(
-                "user={:?} password={:?} host={:?} port={:?} dbname={:?}",
-                parsed.username(),
-                parsed.password().unwrap_or_default(),
-                parsed.host_str().unwrap_or_default(),
-                parsed.port().unwrap_or(5432),
-                parsed
-                    .path_segments()
-                    .map(|c| c.collect::<Vec<_>>())
-                    .unwrap_or_default()[0]
-            );
-            trace!("Postgres Connect {}", &pg_connect);
-            let (client, connection) =
-                tokio_postgres::connect(&pg_connect, NoTls)
-                    .await
-                    .map_err(|e| {
-                        DbError::Connection(format!("Could not connect to postgres {:?}", e))
-                    })?;
+            trace!("Postgres Connect {}", &dsn);
+            let (client, connection) = tokio_postgres::connect(&dsn, NoTls).await.map_err(|e| {
+                DbError::Connection(format!("Could not connect to postgres {:?}", e))
+            })?;
             tokio::spawn(async move {
                 if let Err(e) = connection.await {
                     panic_any(format!("PG Connection error {:?}", e));
@@ -75,6 +59,7 @@ impl PgClientImpl {
         Err(DbError::Connection("No DSN specified".to_owned()))
     }
 
+    /// Does the given table exist
     async fn table_exists(&self, table_name: String) -> DbResult<bool> {
         let rows = self
             .client
@@ -327,19 +312,23 @@ impl DbClient for PgClientImpl {
         Ok(())
     }
 
+    /// Convenience function to check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool> {
         self.table_exists(self.router_table.clone()).await
     }
 
+    /// Convenience function to check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool> {
         self.table_exists(self.message_table.clone()).await
     }
 
+    /// Convenience function for the message table name
     fn message_table(&self) -> &str {
         trace!("pg message table {:?}", &self.message_table);
         &self.message_table
     }
 
+    /// Convenience function to return self as a Boxed DbClient
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
     }
