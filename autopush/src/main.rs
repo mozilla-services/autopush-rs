@@ -8,7 +8,7 @@ use std::{env, os::raw::c_int, thread};
 
 use docopt::Docopt;
 
-use autopush_common::errors::{Result, ResultExt};
+use autopush_common::errors::ApiResult;
 use autopush_common::logging;
 
 mod client;
@@ -37,7 +37,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> ApiResult<()> {
     //env_logger::init();
     let signal = notify(&[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])?;
     let args: Args = Docopt::new(USAGE)
@@ -67,11 +67,11 @@ async fn main() -> Result<()> {
     server.start();
     signal.recv().unwrap();
     info!("Server closing");
-    server.stop().chain_err(|| "Failed to shutdown properly")
+    server.stop().map_err(|| "Failed to shutdown properly")
 }
 
 /// Create a new channel subscribed to the given signals
-fn notify(signals: &[c_int]) -> Result<crossbeam_channel::Receiver<c_int>> {
+fn notify(signals: &[c_int]) -> ApiResult<crossbeam_channel::Receiver<c_int>> {
     let (s, r) = crossbeam_channel::bounded(100);
     let mut signals = signal_hook::iterator::Signals::new(signals)?;
     thread::spawn(move || {

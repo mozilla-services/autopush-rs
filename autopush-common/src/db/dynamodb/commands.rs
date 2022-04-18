@@ -18,8 +18,8 @@ use rusoto_dynamodb::{
 
 use super::super::util::generate_last_connect;
 use super::super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
-use crate::db::{NotificationRecord, UserRecord};
-use crate::errors::*;
+use crate::db::{error::DbError, NotificationRecord, UserRecord};
+use crate::errors::{ApiError, ApiErrorKind, ApiResult};
 use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
@@ -62,26 +62,27 @@ fn has_connected_this_month(user: &UserRecord) -> bool {
 
 /// A blocking list_tables call only called during initialization
 /// (prior to an any active tokio executor)
-pub fn list_tables_sync(
+pub async fn list_tables(
     ddb: &DynamoDbClient,
     start_key: Option<String>,
-) -> Result<ListTablesOutput> {
+) -> ApiResult<ListTablesOutput> {
     let input = ListTablesInput {
         exclusive_start_table_name: start_key,
         limit: Some(100),
     };
-    ddb.list_tables(input)
-        .sync()
-        .chain_err(|| "Unable to list tables")
+    Ok(ddb
+        .list_tables(input)
+        .await
+        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?)
 }
 
-pub fn fetch_messages(
+pub async fn fetch_messages(
     ddb: DynamoDbClient,
     metrics: Arc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
-) -> impl Future<Item = FetchMessageResponse, Error = Error> {
+) -> ApiResult<FetchMessageResponse> {
     let attr_values = hashmap! {
         ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
         ":cmi".to_string() => val!(S => "02"),
@@ -95,54 +96,54 @@ pub fn fetch_messages(
         ..Default::default()
     };
 
-    retry_if(move || ddb.query(input.clone()), retryable_query_error)
-        .chain_err(|| ErrorKind::MessageFetch)
-        .and_then(move |output| {
-            let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
-                debug!("Got response of: {:?}", items);
-                items
-                    .into_iter()
-                    .inspect(|i| debug!("Item: {:?}", i))
-                    .filter_map(|item| {
-                        let item2 = item.clone();
-                        ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                            conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
-                        })
-                    })
-                    .collect()
-            });
-            if notifs.is_empty() {
-                return Ok(Default::default());
-            }
-
-            // Load the current_timestamp from the subscription registry entry which is
-            // the first DynamoDbNotification and remove it from the vec.
-            let timestamp = notifs.remove(0).current_timestamp;
-            // Convert any remaining DynamoDbNotifications to Notification's
-            let messages = notifs
-                .into_iter()
-                .filter_map(|ddb_notif| {
-                    let ddb_notif2 = ddb_notif.clone();
-                    ok_or_inspect(ddb_notif.into_notif(), |e| {
-                        conversion_err(&metrics, e, ddb_notif2, "into_notif")
-                    })
+    let output = ddb
+        .query(input.clone())
+        .await
+        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+    let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
+        debug!("Got response of: {:?}", items);
+        items
+            .into_iter()
+            .inspect(|i| debug!("Item: {:?}", i))
+            .filter_map(|item| {
+                let item2 = item.clone();
+                ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                    conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
                 })
-                .collect();
-            Ok(FetchMessageResponse {
-                timestamp,
-                messages,
+            })
+            .collect()
+    });
+    if notifs.is_empty() {
+        return Ok(Default::default());
+    }
+
+    // Load the current_timestamp from the subscription registry entry which is
+    // the first DynamoDbNotification and remove it from the vec.
+    let timestamp = notifs.remove(0).current_timestamp;
+    // Convert any remaining DynamoDbNotifications to Notification's
+    let messages = notifs
+        .into_iter()
+        .filter_map(|ddb_notif| {
+            let ddb_notif2 = ddb_notif.clone();
+            ok_or_inspect(ddb_notif.into_notif(), |e| {
+                conversion_err(&metrics, e, ddb_notif2, "into_notif")
             })
         })
+        .collect();
+    Ok(FetchMessageResponse {
+        timestamp,
+        messages,
+    })
 }
 
-pub fn fetch_timestamp_messages(
+pub async fn fetch_timestamp_messages(
     ddb: DynamoDbClient,
     metrics: Arc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
     timestamp: Option<u64>,
     limit: u32,
-) -> impl Future<Item = FetchMessageResponse, Error = Error> {
+) -> ApiResult<FetchMessageResponse> {
     let range_key = if let Some(ts) = timestamp {
         format!("02:{}:z", ts)
     } else {
@@ -161,76 +162,75 @@ pub fn fetch_timestamp_messages(
         ..Default::default()
     };
 
-    retry_if(move || ddb.query(input.clone()), retryable_query_error)
-        .chain_err(|| ErrorKind::MessageFetch)
-        .and_then(move |output| {
-            let messages = output.items.map_or_else(Vec::new, |items| {
-                debug!("Got response of: {:?}", items);
-                items
-                    .into_iter()
-                    .filter_map(|item| {
-                        let item2 = item.clone();
-                        ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
-                            conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
-                        })
-                    })
-                    .filter_map(|ddb_notif: NotificationRecord| {
-                        let ddb_notif2 = ddb_notif.clone();
-                        ok_or_inspect(ddb_notif.into_notif(), |e| {
-                            conversion_err(&metrics, e, ddb_notif2, "into_notif")
-                        })
-                    })
-                    .collect()
-            });
-            let timestamp = messages.iter().filter_map(|m| m.sortkey_timestamp).max();
-            Ok(FetchMessageResponse {
-                timestamp,
-                messages,
+    let output = ddb
+        .query(input.clone())
+        .await
+        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+    let messages = output.items.map_or_else(Vec::new, |items| {
+        debug!("Got response of: {:?}", items);
+        items
+            .into_iter()
+            .filter_map(|item| {
+                let item2 = item.clone();
+                ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                    conversion_err(&metrics, e, item2, "serde_dynamodb_from_hashmap")
+                })
             })
-        })
+            .filter_map(|ddb_notif: NotificationRecord| {
+                let ddb_notif2 = ddb_notif.clone();
+                ok_or_inspect(ddb_notif.into_notif(), |e| {
+                    conversion_err(&metrics, e, ddb_notif2, "into_notif")
+                })
+            })
+            .collect()
+    });
+    let timestamp = messages.iter().filter_map(|m| m.sortkey_timestamp).max();
+    Ok(FetchMessageResponse {
+        timestamp,
+        messages,
+    })
 }
 
-pub fn drop_user(
+pub async fn drop_user(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
-) -> impl Future<Item = DeleteItemOutput, Error = Error> {
+) -> ApiResult<DeleteItemOutput> {
     let input = DeleteItemInput {
         table_name: router_table_name.to_string(),
         key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         ..Default::default()
     };
-    retry_if(
-        move || ddb.delete_item(input.clone()),
-        retryable_delete_error,
-    )
-    .chain_err(|| "Error dropping user")
+    ddb.delete_item(input.clone())
+        .await
+        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()).into())
 }
 
-pub fn get_uaid(
+pub async fn get_uaid(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
-) -> impl Future<Item = GetItemOutput, Error = Error> {
+) -> ApiResult<GetItemOutput> {
     let input = GetItemInput {
         table_name: router_table_name.to_string(),
         consistent_read: Some(true),
         key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
         ..Default::default()
     };
-    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
-        .chain_err(|| "Error fetching user")
+    ddb.get_item(input.clone())
+        .await
+        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()).into())
 }
 
-pub fn register_user(
+pub async fn register_user(
     ddb: DynamoDbClient,
     user: &UserRecord,
     router_table: &str,
-) -> impl Future<Item = PutItemOutput, Error = Error> {
+) -> ApiResult<PutItemOutput> {
     trace!("### Registering User...");
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
-        Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
+        Err(e) => return Err(ApiErrorKind::DatabaseError(e.to_string()).into()),
     };
     let router_table = router_table.to_string();
     let attr_values = hashmap! {
@@ -238,38 +238,34 @@ pub fn register_user(
         ":connected_at".to_string() => val!(N => user.connected_at),
     };
 
-    retry_if(
-        move || {
-            debug!("Registering user: {:?} in {:?}", item, router_table);
-            ddb.put_item(PutItemInput {
-                item: item.clone(),
-                table_name: router_table.clone(),
-                expression_attribute_values: Some(attr_values.clone()),
-                condition_expression: Some(
-                    r#"(
-                            attribute_not_exists(router_type) or
-                            (router_type = :router_type)
-                        ) and (
-                            attribute_not_exists(node_id) or
-                            (connected_at < :connected_at)
-                        )"#
-                    .to_string(),
-                ),
-                return_values: Some("ALL_OLD".to_string()),
-                ..Default::default()
-            })
-        },
-        retryable_putitem_error,
-    )
-    .chain_err(|| "Error storing user record")
+    debug!("Registering user: {:?} in {:?}", item, router_table);
+    ddb.put_item(PutItemInput {
+        item: item.clone(),
+        table_name: router_table.clone(),
+        expression_attribute_values: Some(attr_values.clone()),
+        condition_expression: Some(
+            r#"(
+                    attribute_not_exists(router_type) or
+                    (router_type = :router_type)
+                ) and (
+                    attribute_not_exists(node_id) or
+                    (connected_at < :connected_at)
+                )"#
+            .to_string(),
+        ),
+        return_values: Some("ALL_OLD".to_string()),
+        ..Default::default()
+    })
+    .await
+    .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()).into())
 }
 
-pub fn update_user_message_month(
+pub async fn update_user_message_month(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
     message_month: &str,
-) -> impl Future<Item = (), Error = Error> {
+) -> ApiResult<()> {
     let attr_values = hashmap! {
         ":curmonth".to_string() => val!(S => message_month.to_string()),
         ":lastconnect".to_string() => val!(N => generate_last_connect().to_string()),
@@ -285,21 +281,17 @@ pub fn update_user_message_month(
         ..Default::default()
     };
 
-    retry_if(
-        move || {
-            ddb.update_item(update_item.clone())
-                .and_then(|_| future::ok(()))
-        },
-        retryable_updateitem_error,
-    )
-    .chain_err(|| "Error updating user message month")
+    match ddb.update_item(update_item.clone()).await {
+        Ok(_) => Ok(()),
+        Err(e) => Err(ApiErrorKind::DatabaseError(e.to_string()).into()),
+    }
 }
 
-pub fn all_channels(
+pub async fn all_channels(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     message_table_name: &str,
-) -> impl Future<Item = HashSet<String>, Error = Error> {
+) -> ApiResult<HashSet<String>> {
     let input = GetItemInput {
         table_name: message_table_name.to_string(),
         consistent_read: Some(true),
@@ -310,27 +302,28 @@ pub fn all_channels(
         ..Default::default()
     };
 
-    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
-        .and_then(|output| {
-            let channels = output
+    let res = ddb
+        .get_item(input.clone())
+        .await
+        .map(|output| {
+            output
                 .item
-                .and_then(|item| {
-                    serde_dynamodb::from_hashmap(item)
-                        .ok()
-                        .and_then(|notif: NotificationRecord| notif.chids)
-                })
-                .unwrap_or_default();
-            future::ok(channels)
+                .map(|item| {
+                    serde_dynamodb::from_hashmap(item).map(|notif: NotificationRecord| notif.chids)
+                })?
+                .unwrap_or_default()
         })
-        .or_else(|_err| future::ok(HashSet::new()))
+        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+
+    Ok(res.unwrap_or_default())
 }
 
-pub fn save_channels(
+pub async fn save_channels(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     channels: HashSet<String>,
     message_table_name: &str,
-) -> impl Future<Item = (), Error = Error> {
+) -> ApiResult<()> {
     let chids: Vec<String> = channels.into_iter().collect();
     let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
     let attr_values = hashmap! {
@@ -348,22 +341,18 @@ pub fn save_channels(
         ..Default::default()
     };
 
-    retry_if(
-        move || {
-            ddb.update_item(update_item.clone())
-                .and_then(|_| future::ok(()))
-        },
-        retryable_updateitem_error,
-    )
-    .chain_err(|| "Error saving channels")
+    ddb.update_item(update_item.clone())
+        .await
+        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+    Ok(())
 }
 
-pub fn unregister_channel_id(
+pub async fn unregister_channel_id(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     channel_id: &Uuid,
     message_table_name: &str,
-) -> impl Future<Item = UpdateItemOutput, Error = Error> {
+) -> ApiResult<UpdateItemOutput> {
     let chid = channel_id.to_hyphenated().to_string();
     let attr_values = hashmap! {
         ":channel_id".to_string() => val!(SS => vec![chid]),
@@ -379,15 +368,14 @@ pub fn unregister_channel_id(
         ..Default::default()
     };
 
-    retry_if(
-        move || ddb.update_item(update_item.clone()),
-        retryable_updateitem_error,
-    )
-    .chain_err(|| "Error unregistering channel")
+    Ok(ddb
+        .update_item(update_item.clone())
+        .await
+        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn lookup_user(
+pub async fn lookup_user(
     ddb: DynamoDbClient,
     metrics: Arc<StatsdClient>,
     uaid: &Uuid,
@@ -396,8 +384,7 @@ pub fn lookup_user(
     router_table_name: &str,
     message_table_names: &[String],
     current_message_month: &str,
-) -> MyFuture<(HelloResponse, Option<UserRecord>)> {
-    let response = get_uaid(ddb.clone(), uaid, router_table_name);
+) -> ApiResult<(HelloResponse, Option<UserRecord>)> {
     // Prep all these for the move into the static closure capture
     let cur_month = current_message_month.to_string();
     let uaid2 = *uaid;
@@ -405,43 +392,42 @@ pub fn lookup_user(
     let messages_tables = message_table_names.to_vec();
     let connected_at = connected_at;
     let router_url = router_url.to_string();
-    let response = response.and_then(move |data| -> MyFuture<_> {
-        let mut hello_response = HelloResponse {
-            message_month: cur_month.clone(),
-            connected_at,
-            ..Default::default()
-        };
-        let user = handle_user_result(
-            &cur_month,
-            &messages_tables,
-            connected_at,
-            router_url,
-            data,
-            &mut hello_response,
-        );
-        match user {
-            Ok(user) => {
-                trace!("### returning user: {:?}", user.uaid);
-                Box::new(future::ok((hello_response, Some(user))))
-            }
-            Err((false, _)) => {
-                trace!("### handle_user_result false, _: {:?}", uaid2);
-                Box::new(future::ok((hello_response, None)))
-            }
-            Err((true, code)) => {
-                trace!("### handle_user_result true, {}: {:?}", uaid2, code);
-                metrics
-                    .incr_with_tags("ua.expiration")
-                    .with_tag("code", &code.to_string())
-                    .send();
-                let response = drop_user(ddb, &uaid2, &router_table)
-                    .and_then(|_| future::ok((hello_response, None)))
-                    .chain_err(|| "Unable to drop user");
-                Box::new(response)
-            }
+
+    let response = get_uaid(ddb.clone(), uaid, router_table_name).await?;
+    let mut hello_response = HelloResponse {
+        message_month: cur_month.clone(),
+        connected_at,
+        ..Default::default()
+    };
+    let user = handle_user_result(
+        &cur_month,
+        &messages_tables,
+        connected_at,
+        router_url,
+        response,
+        &mut hello_response,
+    );
+    Ok(match user {
+        Ok(user) => {
+            trace!("### returning user: {:?}", user.uaid);
+            (hello_response, Some(user))
         }
-    });
-    Box::new(response)
+        Err((false, _)) => {
+            trace!("### handle_user_result false, _: {:?}", uaid2);
+            (hello_response, None)
+        }
+        Err((true, code)) => {
+            trace!("### handle_user_result true, {}: {:?}", uaid2, code);
+            metrics
+                .incr_with_tags("ua.expiration")
+                .with_tag("code", &code.to_string())
+                .send();
+            drop_user(ddb, &uaid2, &router_table)
+                .await
+                .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+            (hello_response, None)
+        }
+    })
 }
 
 /// Helper function for determining if a returned user record is valid for use

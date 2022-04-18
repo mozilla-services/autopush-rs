@@ -2,6 +2,7 @@ use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
 
+use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::RegexSet;
 use serde::Serializer;
@@ -9,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::db::util::generate_last_connect;
-use crate::errors::*;
+use crate::errors::{ApiError, ApiErrorKind, ApiResult};
 use crate::notification::Notification;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
@@ -18,7 +19,7 @@ pub mod client;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
-// pub mod postgres;
+pub mod postgres;
 mod util;
 
 const MAX_EXPIRY: u64 = 2_592_000;
@@ -34,6 +35,85 @@ where
     S: Serializer,
 {
     s.serialize_str(&x.to_simple().to_string())
+}
+
+/// DbClient trait
+/// This is a blank trait which is a terrible idea. I'm using this as
+/// a cheat in order to allow for an abstractable database layer that
+/// works with the older futures/rusoto/future_state_machine mess.
+/// If there's a better option, I am absolutely in favor of it.
+#[async_trait]
+pub trait DbSocketClient: Send + Sync {
+    //*
+    async fn hello(
+        &self,
+        connected_at: u64,
+        uaid: Option<&Uuid>,
+        router_url: &str,
+        defer_registration: bool,
+    ) -> ApiResult<HelloResponse>;
+
+    async fn register(
+        &self,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        message_month: &str,
+        endpoint: &str,
+        register_user: Option<&UserRecord>,
+    ) -> ApiResult<RegisterResponse>;
+
+    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()>;
+
+    async fn unregister(
+        &self,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        message_month: &str,
+    ) -> ApiResult<bool>;
+
+    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()>;
+
+    async fn store_message(
+        &self,
+        uaid: &Uuid,
+        message_month: String,
+        message: Notification,
+    ) -> ApiResult<()>;
+
+    async fn store_messages(
+        &self,
+        uaid: &Uuid,
+        message_month: &str,
+        messages: Vec<Notification>,
+    ) -> ApiResult<()>;
+
+    async fn delete_message(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        notif: &Notification,
+    ) -> ApiResult<()>;
+
+    async fn check_storage(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        include_topic: bool,
+        timestamp: Option<u64>,
+    ) -> ApiResult<CheckStorageResponse>;
+
+    async fn get_user(&self, uaid: &Uuid) -> ApiResult<Option<UserRecord>>;
+
+    async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
+        -> ApiResult<HashSet<Uuid>>;
+
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: String,
+        connected_at: u64,
+    ) -> ApiResult<()>;
+    // */
 }
 
 /// Basic requirements for notification content to deliver to websocket client
@@ -148,7 +228,7 @@ pub struct NotificationRecord {
 }
 
 impl NotificationRecord {
-    fn parse_sort_key(key: &str) -> Result<RangeKey> {
+    fn parse_sort_key(key: &str) -> ApiResult<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet =
                 RegexSet::new(&[r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
@@ -202,7 +282,7 @@ impl NotificationRecord {
     }
 
     // TODO: Implement as TryFrom whenever that lands
-    pub fn into_notif(self) -> Result<Notification> {
+    pub fn into_notif(self) -> ApiResult<Notification> {
         let key = Self::parse_sort_key(&self.chidmessageid)?;
         let version = key
             .legacy_version

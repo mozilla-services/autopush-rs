@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde_derive::{Deserialize, Serialize};
 
-use autopush_common::errors::Result;
+use autopush_common::errors::ApiResult as Result;
 
 use crate::server::protocol::BroadcastValue;
 

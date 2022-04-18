@@ -8,12 +8,13 @@ use tokio_core::reactor::{Handle, Timeout};
 
 use crate::errors::*;
 
-mod send_all;
+// mod send_all; // kill?
 pub mod timing;
 
-pub use self::send_all::MySendAll;
+// pub use self::send_all::MySendAll;
 pub use self::timing::{ms_since_epoch, sec_since_epoch, us_since_epoch};
 
+/*
 /// Convenience future to time out the resolution of `f` provided within the
 /// duration provided.
 ///
@@ -38,6 +39,7 @@ where
     }))
 }
 
+*/
 pub trait InsertOpt<K: Eq + Hash, V> {
     /// Insert an item only if it exists
     fn insert_opt(&mut self, key: impl Into<K>, value: Option<impl Into<V>>);

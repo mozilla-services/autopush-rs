@@ -28,6 +28,8 @@ use tungstenite::{self, Message};
 
 use autopush_common::db::dynamodb::DynamoStorage;
 // use autopush_common::db::postgres::PostgresStorage;
+use autopush_common::db::postgres::PostgresStorage;
+use autopush_common::db::DbSocketClient;
 use autopush_common::errors::*;
 use autopush_common::errors::{Error, Result};
 use autopush_common::logging;
@@ -120,7 +122,7 @@ impl AutopushServer {
             for ShutdownHandle(tx, thread) in shutdown_handles {
                 let _ = tx.send(());
                 if let Err(err) = thread.join() {
-                    result = Err(From::from(ErrorKind::Thread(err)));
+                    result = Err(From::from(ApiErrorKind::Thread(err)));
                 }
             }
         }
@@ -215,7 +217,7 @@ impl ServerOptions {
 pub struct Server {
     pub clients: Arc<ClientRegistry>,
     broadcaster: RefCell<BroadcastChangeTracker>,
-    pub db_client: DynamoStorage,
+    pub db_client: Box<dyn DbSocketClient>,
     open_connections: Cell<u32>,
     tls_acceptor: Option<SslAcceptor>,
     pub opts: Arc<ServerOptions>,
@@ -292,14 +294,27 @@ impl Server {
         };
         let metrics = Arc::new(metrics_from_opts(opts)?);
 
-        let srv = Rc::new(Server {
-            opts: opts.clone(),
-            broadcaster: RefCell::new(broadcaster),
-            db_client: DynamoStorage::from_opts(
+        let db_client = Box::new(if opts.db_dsn.is_empty() {
+            DynamoStorage::from_opts(
                 &opts._message_table_name,
                 &opts._router_table_name,
                 metrics.clone(),
-            )?,
+            )
+            .compat()?
+        } else {
+            PostgresStorage::from_opts(
+                &opts.db_dsn,
+                &opts.message_table,
+                &opts.router_table,
+                opts.meta_table,
+                metrics.clone(),
+            )?
+        });
+
+        let srv = Rc::new(Server {
+            opts: opts.clone(),
+            broadcaster: RefCell::new(broadcaster),
+            db_client,
             clients: Arc::new(ClientRegistry::default()),
             open_connections: Cell::new(0),
             handle: core.handle(),
@@ -370,7 +385,7 @@ impl Server {
                             // Perform the websocket handshake on each
                             // connection, but don't let it take too long.
                             let ws = accept_hdr_async(socket, callback)
-                                .chain_err(|| "failed to accept client");
+                                .map_err(|| "failed to accept client");
                             let ws = timeout(ws, srv2.opts.open_handshake_timeout, &handle2);
 
                             // Once the handshake is done we'll start the main
@@ -380,7 +395,7 @@ impl Server {
                             Box::new(
                                 ws.and_then(move |ws| {
                                     PingManager::new(&srv2, ws, uarx)
-                                        .chain_err(|| "failed to make ping handler")
+                                        .map_err(|| "failed to make ping handler")?
                                 })
                                 .flatten(),
                             )
@@ -707,9 +722,9 @@ impl Future for PingManager {
         }
 
         // Be sure to always flush out any buffered messages/pings
-        socket
-            .poll_complete()
-            .chain_err(|| "failed routine `poll_complete` call")?;
+        socket.poll_complete().map_err(|_| {
+            ApiErrorKind::GeneralError("failed routine `poll_complete` call".to_owned())
+        })?;
         drop(socket);
 
         // At this point looks our state of ping management A-OK, so try to
@@ -763,7 +778,7 @@ impl<T> WebpushSocket<T> {
                 let server_msg = ServerMessage::Broadcast {
                     broadcasts: Broadcast::vec_into_hashmap(broadcasts),
                 };
-                let s = server_msg.to_json().chain_err(|| "failed to serialize")?;
+                let s = server_msg.to_json().map_err(|| "failed to serialize")?;
                 Message::Text(s)
             } else {
                 debug!("sending a ws ping");
@@ -790,9 +805,8 @@ where
     Error: From<T::Error>,
 {
     type Item = ClientMessage;
-    type Error = Error;
 
-    fn poll(&mut self) -> Poll<Option<ClientMessage>, Error> {
+    fn poll_next(&mut self) -> Poll<Option<ClientMessage>> {
         loop {
             let msg = match self.inner.poll()? {
                 Async::Ready(Some(msg)) => msg,
@@ -802,7 +816,7 @@ where
                     // elapsed (set above) then this is where we start
                     // triggering errors.
                     if self.ws_pong_timeout {
-                        return Err(ErrorKind::PongTimeout.into());
+                        return Err(ApiErrorKind::PongTimeout.into());
                     }
                     return Ok(Async::NotReady);
                 }
@@ -812,13 +826,13 @@ where
                     trace!("text message {}", s);
                     let msg = s
                         .parse()
-                        .chain_err(|| ErrorKind::InvalidClientMessage(s.to_owned()))?;
+                        .map_err(|_| ApiErrorKind::InvalidClientMessage(s.to_owned()))?;
                     return Ok(Some(msg).into());
                 }
 
                 Message::Binary(_) => {
                     return Err(
-                        ErrorKind::InvalidClientMessage("binary content".to_string()).into(),
+                        ApiErrorKind::InvalidClientMessage("binary content".to_string()).into(),
                     );
                 }
 
@@ -835,24 +849,24 @@ where
                 }
 
                 Message::Close(_) => return Err(tungstenite::Error::ConnectionClosed.into()),
+                Message::Frame(_) => {
+                    return Err(ApiErrorKind::InvalidClientMessage("frame content".to_string())).into()
+                }
             }
         }
     }
 }
 
-impl<T> Sink for WebpushSocket<T>
+impl<T> Sink<ServerMessage> for WebpushSocket<T>
 where
-    T: Sink<SinkItem = Message>,
+    T: Sink<Message>,
     Error: From<T::SinkError>,
 {
-    type SinkItem = ServerMessage;
-    type SinkError = Error;
-
     fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, Error> {
         if self.send_ws_ping()?.is_not_ready() {
             return Ok(AsyncSink::NotReady(msg));
         }
-        let s = msg.to_json().chain_err(|| "failed to serialize")?;
+        let s = msg.to_json()?;
         match self.inner.start_send(Message::Text(s))? {
             AsyncSink::Ready => Ok(AsyncSink::Ready),
             AsyncSink::NotReady(_) => Ok(AsyncSink::NotReady(msg)),
@@ -882,15 +896,15 @@ fn write_status(socket: WebpushIo) -> MyFuture<()> {
 }
 
 /// Return a static copy of `version.json` from compile time.
-pub fn write_version_file(socket: WebpushIo) -> MyFuture<()> {
+pub async fn write_version_file(socket: WebpushIo) -> ApiResult<()> {
     write_json(
         socket,
         StatusCode::OK,
         serde_json::Value::from(include_str!("../../../version.json")),
-    )
+    ).await
 }
 
-fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
+async fn write_log_check(socket: WebpushIo) -> ApiResult<()> {
     let status = StatusCode::IM_A_TEAPOT;
     let code: u16 = status.into();
 
@@ -911,10 +925,14 @@ fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
                 "error": "Test Failure",
                 "mesage": "FAILURE:Success",
         }),
-    )
+    ).await
 }
 
-fn write_json(socket: WebpushIo, status: StatusCode, body: serde_json::Value) -> MyFuture<()> {
+async fn write_json(
+    socket: WebpushIo,
+    status: StatusCode,
+    body: serde_json::Value,
+) -> ApiResult<()> {
     let body = body.to_string();
     let data = format!(
         "\
@@ -931,9 +949,10 @@ fn write_json(socket: WebpushIo, status: StatusCode, body: serde_json::Value) ->
         len = body.len(),
         body = body,
     );
-    Box::new(
-        tokio_io::io::write_all(socket, data.into_bytes())
-            .map(|_| ())
-            .chain_err(|| "failed to write status response"),
-    )
+
+    tokio_io::io::write_all(socket, data.into_bytes())
+        .map(|_| ())
+        .map_err(|_| ApiErrorKind::GeneralError("failed to write status response".to_owned()))
+        .await?;
+    Ok(())
 }

@@ -55,7 +55,7 @@ pub async fn register_uaid_route(
         state.settings.endpoint_url().as_str(),
         &state.fernet,
     )
-    .map_err(ApiErrorKind::EndpointUrl)?;
+    .map_err(|e| ApiErrorKind::EndpointUrl(e.to_string()))?;
     trace!("endpoint = {}", endpoint_url);
 
     // Create the secret
@@ -145,7 +145,7 @@ pub async fn new_channel_route(
         state.settings.endpoint_url().as_str(),
         &state.fernet,
     )
-    .map_err(ApiErrorKind::EndpointUrl)?;
+    .map_err(|e| ApiErrorKind::EndpointUrl(e.to_string()))?;
     trace!("endpoint = {}", endpoint_url);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({

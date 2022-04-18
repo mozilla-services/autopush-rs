@@ -9,17 +9,16 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::rc::Rc;
+use std::task::Poll;
 
 use autopush_common::errors::*;
-use futures::future;
-use futures::{Future, Poll};
 use openssl::dh::Dh;
 use openssl::pkey::PKey;
 use openssl::ssl::{SslAcceptor, SslMethod, SslMode};
 use openssl::x509::X509;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_openssl::{SslAcceptorExt, SslStream};
+use tokio_openssl::SslStream;
 
 use crate::server::{Server, ServerOptions};
 
@@ -77,15 +76,13 @@ pub fn configure(opts: &ServerOptions) -> Option<SslAcceptor> {
 /// listener. If the server is configured without TLS then this will immediately
 /// return with a plaintext socket, or otherwise it will perform an asynchronous
 /// TLS handshake and only resolve once that's completed.
-pub fn accept(srv: &Rc<Server>, socket: TcpStream) -> MyFuture<MaybeTlsStream<TcpStream>> {
+pub async fn accept(srv: &Rc<Server>, socket: TcpStream) -> ApiResult<MaybeTlsStream<TcpStream>> {
     match srv.tls_acceptor {
-        Some(ref acceptor) => Box::new(
-            acceptor
-                .accept_async(socket)
-                .map(MaybeTlsStream::Tls)
-                .chain_err(|| "failed to accept TLS socket"),
-        ),
-        None => Box::new(future::ok(MaybeTlsStream::Plain(socket))),
+        Some(ref acceptor) => Ok(acceptor
+            .accept_async(socket)
+            .map(MaybeTlsStream::Tls)
+            .map_err(|| "failed to accept TLS socket")),
+        None => Ok(MaybeTlsStream::Plain(socket)),
     }
 }
 

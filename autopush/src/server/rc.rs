@@ -1,7 +1,8 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
+use std::task::Poll;
 
-use futures::{Poll, Sink, StartSend, Stream};
+use futures::{Sink, StartSend, Stream};
 
 /// Helper object to turn `Rc<RefCell<T>>` into a `Stream` and `Sink`
 ///
@@ -22,7 +23,6 @@ impl<T> RcObject<T> {
 
 impl<T: Stream> Stream for RcObject<T> {
     type Item = T::Item;
-    type Error = T::Error;
 
     fn poll(&mut self) -> Poll<Option<T::Item>, T::Error> {
         self.0.borrow_mut().poll()

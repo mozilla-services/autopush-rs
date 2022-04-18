@@ -13,16 +13,15 @@ use futures::future::Either;
 
 use futures::future::ok;
 use futures::{Future, Stream};
-use hyper::{self, service::Service, Body, Method, StatusCode};
+use hyper::{self, service::Service, Body, Method, Request, StatusCode};
 use uuid::Uuid;
 
 use crate::server::registry::ClientRegistry;
 
 pub struct Push(pub Arc<ClientRegistry>);
 
-impl Service for Push {
-    type ReqBody = Body;
-    type ResBody = Body;
+impl Service<Request> for Push {
+    type Response = Body;
     type Error = hyper::Error;
     type Future = Box<dyn Future<Item = hyper::Response<Body>, Error = hyper::Error> + Send>;
 

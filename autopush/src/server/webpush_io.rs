@@ -7,9 +7,9 @@
 //! means we'll parse headers twice, but alas!
 
 use std::io::{self, Read, Write};
+use std::task::Poll;
 
 use bytes::BytesMut;
-use futures::Poll;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 

@@ -68,11 +68,11 @@ impl Default for Settings {
 impl Settings {
     /// Load the settings from the config file if supplied, then the environment.
     pub fn with_env_and_config_file(filename: &Option<String>) -> Result<Self, ConfigError> {
-        let mut s = Config::default();
+        let mut s = Config::builder();
 
         // Merge the config file if supplied
         if let Some(config_filename) = filename {
-            s.merge(File::with_name(config_filename))?;
+            s = s.add_source(File::with_name(config_filename));
         }
 
         // Merge the environment overrides
@@ -83,29 +83,36 @@ impl Settings {
         // overloads separator and group_separator with no way to differentiate. The
         // better solution is to NOT specify `separator()` and use the default
         // `_` group separator.
-        s.merge(Environment::with_prefix(ENV_PREFIX).separator("__"))?;
+        s = s.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
 
-        if s.get::<Option<String>>("db_dsn")?.is_some() {
-            s.set("use_ddb", false)?;
+        let built = s.build()?;
+
+        let mut settings = built
+            .try_deserialize::<Self>()
+            .map_err(|error| match error {
+                // Configuration errors are not very sysop friendly, Try to make them
+                // a bit more 3AM useful.
+                ConfigError::Message(error_msg) => {
+                    println!("Bad configuration: {:?}", &error_msg);
+                    println!("Please set in config file or use environment variable.");
+                    println!(
+                        "For example to set `database_url` use env var `{}_DATABASE_URL`\n",
+                        ENV_PREFIX.to_uppercase()
+                    );
+                    error!("Configuration error: Value undefined {:?}", &error_msg);
+                    ConfigError::NotFound(error_msg)
+                }
+                _ => {
+                    error!("Configuration error: Other: {:?}", &error);
+                    error
+                }
+            })?;
+
+        if settings.db_dsn.is_some() {
+            settings.use_ddb = true;
         }
-        s.try_into::<Self>().map_err(|error| match error {
-            // Configuration errors are not very sysop friendly, Try to make them
-            // a bit more 3AM useful.
-            ConfigError::Message(error_msg) => {
-                println!("Bad configuration: {:?}", &error_msg);
-                println!("Please set in config file or use environment variable.");
-                println!(
-                    "For example to set `database_url` use env var `{}_DATABASE_URL`\n",
-                    ENV_PREFIX.to_uppercase()
-                );
-                error!("Configuration error: Value undefined {:?}", &error_msg);
-                ConfigError::NotFound(error_msg)
-            }
-            _ => {
-                error!("Configuration error: Other: {:?}", &error);
-                error
-            }
-        })
+
+        Ok(settings)
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.

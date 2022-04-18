@@ -10,7 +10,8 @@ use futures::{Async, Future, Poll, Sink, Stream};
 use reqwest::Client as ReqClient;
 // use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
-use state_machine_future::{transition, RentToOwn, StateMachineFuture};
+// use state_machine_future::{transition, RentToOwn, StateMachineFuture};
+use rust_fsm::{StateMachine, StateMachineImpl};
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
@@ -272,6 +273,38 @@ where
     }
 }
 
+#[derive(Debug)]
+/// State machine definitions for the Client.
+pub enum CommandInputs {
+    Welcome,    // Hello message valid and accepted
+    Connected,  // Connection connected
+    Authorized, // Connection authorized
+    Done,       // Command finished
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CommandStates {
+    Hello,
+    Connect,
+    Complete,
+    Disconnect,
+    Register,
+    Unauth,
+}
+
+#[derive(Debug)]
+struct CommandOutput;
+
+#[derive(Debug)]
+struct ClientMachine;
+
+impl StateMachineImpl for ClientMachine {
+    type Input = CommandInputs;
+    type State = CommandStates;
+    type Output = CommandOutput;
+}
+
+/*
 #[derive(StateMachineFuture)]
 pub enum UnAuthClientState<T>
 where
@@ -329,6 +362,8 @@ where
     #[state_machine_future(error)]
     GeneralUnauthClientError(Error),
 }
+
+*/
 
 impl<T> PollUnAuthClientState<T> for UnAuthClientState<T>
 where
@@ -842,10 +877,7 @@ where
             if !smessages.is_empty() {
                 trace!("Sending {} {:#?}", smessages.len(), smessages);
                 let item = smessages.remove(0);
-                let ret = data
-                    .ws
-                    .start_send(item)
-                    .chain_err(|| ErrorKind::SendError)?;
+                let ret = data.ws.start_send(item).map_err(|| ErrorKind::SendError)?;
                 match ret {
                     AsyncSink::Ready => true,
                     AsyncSink::NotReady(returned) => {

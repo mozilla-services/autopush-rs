@@ -6,9 +6,9 @@ use std::sync::Arc;
 use cadence::StatsdClient;
 use futures::{future, Future};
 use futures_backoff::retry_if;
-use postgres::{Client, Connection, Socket};
+use tokio_postgres::{Client, Connection, Socket};
 
-use crate::errors::*;
+use crate::errors::{ApiError, ApiErrorKind, ApiResult};
 use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
@@ -30,7 +30,7 @@ impl PostgresStorage {
         router_table: &str,
         meta_table: Option<&str>,
         metrics: Arc<StatsdClient>,
-    ) -> std::result::Result<Self, Error> {
+    ) -> ApiResult<Self> {
         Ok(Self {
             db_client: Self::connect(dsn).await?,
             metrics,
@@ -40,7 +40,7 @@ impl PostgresStorage {
         })
     }
 
-    async fn connect(dsn: &str) -> std::result::Result<Client, Error> {
+    async fn connect(dsn: &str) -> ApiResult<Client> {
         let parsed = url::Url::parse(dsn).unwrap(); // TODO: FIX ERRORS!!
         let pg_connect = format!(
             "user={:?} password={:?} host={:?} port={:?} dbname={:?}",
@@ -54,7 +54,7 @@ impl PostgresStorage {
                 .unwrap_or_default()[0]
         );
 
-        let (client, connection) = Client(&pg_connect, postgres::NoTls)
+        let (client, connection) = tokio_postgres::connect(&pg_connect, tokio_postgres::NoTls)
             .await
             .unwrap();
         tokio::spawn(async move {

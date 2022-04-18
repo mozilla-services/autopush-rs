@@ -72,9 +72,6 @@ pub enum ApiErrorKind {
     #[error("Error while creating secret")]
     RegistrationSecretHash(#[source] openssl::error::ErrorStack),
 
-    #[error("Error while creating endpoint URL: {0}")]
-    EndpointUrl(#[source] autopush_common::errors::Error),
-
     #[error("Database error: {0}")]
     Database(#[from] DbError),
 
@@ -112,6 +109,9 @@ pub enum ApiErrorKind {
 
     #[error("Invalid Local Auth {0}")]
     InvalidLocalAuth(String),
+
+    #[error("Could not create endpoint: {0}")]
+    EndpointUrl(String),
 
     #[error("ERROR:Success")]
     LogCheck,

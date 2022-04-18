@@ -21,8 +21,10 @@
 //! tungstenite library, which'll duplicate header parsing but we don't have
 //! many other options for now!
 
+use std::task::Poll;
+
 use bytes::BytesMut;
-use futures::{try_ready, Future, Poll};
+use futures::{try_ready, Future};
 use tokio_core::net::TcpStream;
 use tokio_io::AsyncRead;
 
@@ -55,9 +57,8 @@ impl Dispatch {
 
 impl Future for Dispatch {
     type Item = (WebpushIo, RequestType);
-    type Error = Error;
 
-    fn poll(&mut self) -> Poll<(WebpushIo, RequestType), Error> {
+    fn poll(&mut self) -> Poll<(WebpushIo, RequestType)> {
         loop {
             if self.data.len() == self.data.capacity() {
                 self.data.reserve(16); // get some extra space
