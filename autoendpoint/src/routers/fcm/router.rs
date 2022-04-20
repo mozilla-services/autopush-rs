@@ -79,8 +79,10 @@ impl Router for FcmRouter {
         router_data_input: &RouterDataInput,
         app_id: &str,
     ) -> Result<HashMap<String, Value>, RouterError> {
-        if !self.clients.contains_key(app_id) {
-            return Err(FcmError::InvalidAppId.into());
+        let quotes: &[_] = &['"', '\''];
+        let mapp = app_id.trim_matches(quotes);
+        if !self.clients.contains_key(mapp) {
+            return Err(FcmError::InvalidAppId(app_id.to_owned()).into());
         }
 
         let mut router_data = HashMap::new();
@@ -88,7 +90,7 @@ impl Router for FcmRouter {
             "token".to_string(),
             serde_json::to_value(&router_data_input.token).unwrap(),
         );
-        router_data.insert("app_id".to_string(), serde_json::to_value(app_id).unwrap());
+        router_data.insert("app_id".to_string(), serde_json::to_value(mapp).unwrap());
 
         Ok(router_data)
     }
@@ -118,8 +120,14 @@ impl Router for FcmRouter {
         let message_data = build_message_data(notification)?;
 
         // Send the notification to FCM
-        let client = self.clients.get(app_id).ok_or(FcmError::InvalidAppId)?;
-        trace!("Sending message to FCM: {:?}", message_data);
+        // (Sigh, errors do not have tags support. )
+        let quotes: &[_] = &['"', '\''];
+        let mapp = app_id.trim_matches(quotes);
+        let client = self
+            .clients
+            .get(mapp)
+            .ok_or_else(|| FcmError::InvalidAppId(app_id.to_owned()))?;
+        trace!("Sending message to FCM: [{:?}] {:?}", &mapp, message_data);
         if let Err(e) = client.send(message_data, fcm_token.to_string(), ttl).await {
             return Err(handle_error(
                 e,
@@ -287,18 +295,20 @@ mod tests {
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder().expect(0).create();
         let mut router_data = default_router_data();
+        let app_id = "app_id".to_string();
         router_data.insert(
-            "app_id".to_string(),
+            app_id.clone(),
             serde_json::to_value("unknown-app-id").unwrap(),
         );
         let notification = make_notification(router_data, None, RouterType::FCM);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
+        dbg!(&result.as_ref().unwrap_err().kind);
         assert!(
             matches!(
-                result.as_ref().unwrap_err().kind,
-                ApiErrorKind::Router(RouterError::Fcm(FcmError::InvalidAppId))
+                &result.as_ref().unwrap_err().kind,
+                ApiErrorKind::Router(RouterError::Fcm(FcmError::InvalidAppId(_app_id)))
             ),
             "result = {:?}",
             result

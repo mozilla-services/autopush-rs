@@ -23,15 +23,15 @@ pub enum FcmError {
     #[error("No app ID found for user")]
     NoAppId,
 
-    #[error("User has invalid app ID")]
-    InvalidAppId,
+    #[error("User has invalid app ID {0}")]
+    InvalidAppId(String),
 }
 
 impl FcmError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId => {
+            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId(_) => {
                 StatusCode::GONE
             }
 
@@ -46,7 +46,9 @@ impl FcmError {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId => Some(106),
+            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId(_) => {
+                Some(106)
+            }
 
             FcmError::CredentialDecode(_)
             | FcmError::OAuthClientBuild(_)
