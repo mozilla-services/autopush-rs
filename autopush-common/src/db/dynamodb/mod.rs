@@ -4,18 +4,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use cadence::StatsdClient;
-use futures::{future, Future};
-use futures_backoff::retry_if;
 
-use crate::db::DbSocketClient;
+use crate::db::DbStorageClient;
 use crate::errors::{ApiError, ApiErrorKind, ApiResult};
 use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
-use commands::{
-    retryable_batchwriteitem_error, retryable_delete_error, retryable_putitem_error,
-    retryable_updateitem_error, FetchMessageResponse,
-};
+use commands::FetchMessageResponse;
 
 pub use rusoto_core::{HttpClient, Region};
 pub use rusoto_credential::StaticProvider;
@@ -41,7 +36,7 @@ pub struct DynamoStorage {
 }
 
 #[async_trait::async_trait]
-impl DbSocketClient for DynamoStorage {
+impl DbStorageClient for DynamoStorage {
     async fn hello(
         &self,
         connected_at: u64,
@@ -350,7 +345,7 @@ impl DbSocketClient for DynamoStorage {
         } else {
             timestamp
         };
-        let next_query = {
+        let _next_query = {
             if response.messages.is_empty() || response.timestamp.is_some() {
                 commands::fetch_timestamp_messages(
                     ddb,

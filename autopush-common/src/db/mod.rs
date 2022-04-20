@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::db::util::generate_last_connect;
-use crate::errors::{ApiError, ApiErrorKind, ApiResult};
+use crate::errors::ApiResult;
 use crate::notification::Notification;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
@@ -43,7 +43,7 @@ where
 /// works with the older futures/rusoto/future_state_machine mess.
 /// If there's a better option, I am absolutely in favor of it.
 #[async_trait]
-pub trait DbSocketClient: Send + Sync {
+pub trait DbStorageClient: Send + Sync {
     //*
     async fn hello(
         &self,

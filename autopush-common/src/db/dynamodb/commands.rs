@@ -6,8 +6,6 @@ use uuid::Uuid;
 
 use cadence::{CountedExt, StatsdClient};
 use chrono::Utc;
-use futures::{future, Future};
-use futures_backoff::retry_if;
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemError, DeleteItemError, DeleteItemInput, DeleteItemOutput,
@@ -18,8 +16,8 @@ use rusoto_dynamodb::{
 
 use super::super::util::generate_last_connect;
 use super::super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
-use crate::db::{error::DbError, NotificationRecord, UserRecord};
-use crate::errors::{ApiError, ApiErrorKind, ApiResult};
+use crate::db::{NotificationRecord, UserRecord};
+use crate::errors::{ApiErrorKind, ApiResult};
 use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 

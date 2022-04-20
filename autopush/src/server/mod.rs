@@ -1,3 +1,20 @@
+/// The original version of Autopush server predates a fair bit of modern
+/// architecture.
+/// This version uses a custom crafted HTTP futures server that upgrades
+/// to websockets. This is because it was created before "actix" was a
+/// thing. There's a LOT of code in here that is disposable once a modern
+/// framework is integrated.
+///
+/// For instance, internally there's a complex state machine that currently
+/// needs to be maintained due to the heavy `.poll` nature of the code. In
+/// a more modern approach the states are far simpler. A connection goes
+/// from Unauthorized (a new connection, waiting for the initial `hello`),
+/// into a Command loop for the remainder of the connection. The Command
+/// loop checks for pending messages, handles any request transactions and
+/// waits for the next event (either an outbound message or a inbound
+/// command). On connection termination, run a "cleanup" routine to remove
+/// the connection info from the router table.
+///
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::env;
@@ -7,20 +24,20 @@ use std::panic;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::Poll;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use cadence::StatsdClient;
 use chrono::Utc;
 use fernet::{Fernet, MultiFernet};
-use futures::sync::oneshot;
-use futures::{task, try_ready};
-use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
+use futures::{channel::oneshot, Future, Sink, Stream};
 use hyper::{server::conn::Http, StatusCode};
 use openssl::ssl::SslAcceptor;
 use sentry::{self, capture_message};
 use serde_json::{self, json};
-use tokio_core::net::TcpListener;
+use tokio::time::timeout;
+use tokio_core::net::{TcpListener, TcpStream};
 use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
@@ -29,12 +46,11 @@ use tungstenite::{self, Message};
 use autopush_common::db::dynamodb::DynamoStorage;
 // use autopush_common::db::postgres::PostgresStorage;
 use autopush_common::db::postgres::PostgresStorage;
-use autopush_common::db::DbSocketClient;
-use autopush_common::errors::*;
-use autopush_common::errors::{Error, Result};
+use autopush_common::db::DbStorageClient;
+use autopush_common::errors::{ApiError, ApiErrorKind, ApiResult};
 use autopush_common::logging;
 use autopush_common::notification::Notification;
-use autopush_common::util::timeout;
+//use autopush_common::util::timeout;
 
 use crate::client::Client;
 use crate::http;
@@ -217,7 +233,7 @@ impl ServerOptions {
 pub struct Server {
     pub clients: Arc<ClientRegistry>,
     broadcaster: RefCell<BroadcastChangeTracker>,
-    pub db_client: Box<dyn DbSocketClient>,
+    pub db_client: Box<dyn DbStorageClient>,
     open_connections: Cell<u32>,
     tls_acceptor: Option<SslAcceptor>,
     pub opts: Arc<ServerOptions>,
@@ -280,7 +296,7 @@ impl Server {
     }
 
     #[allow(clippy::single_char_add_str)]
-    fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Core)> {
+    async fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Core)> {
         let core = Core::new()?;
         let broadcaster = if let Some(ref megaphone_url) = opts.megaphone_api_url {
             let megaphone_token = opts
@@ -326,99 +342,102 @@ impl Server {
 
         let handle = core.handle();
         let srv2 = srv.clone();
-        let ws_srv = ws_listener
-            .incoming()
-            .map_err(Error::from)
-            .for_each(move |(socket, addr)| {
-                // Make sure we're not handling too many clients before we start the
-                // websocket handshake.
-                let max = srv.opts.max_connections.unwrap_or(u32::max_value());
-                if srv.open_connections.get() >= max {
-                    info!(
-                        "dropping {} as we already have too many open \
+        let ws_srv =
+            ws_listener
+                .incoming()
+                .map_err(ApiError::from)
+                .for_each(|(socket, addr)| async move {
+                    // Make sure we're not handling too many clients before we start the
+                    // websocket handshake.
+                    let max = srv.opts.max_connections.unwrap_or(u32::max_value());
+                    if srv.open_connections.get() >= max {
+                        info!(
+                            "dropping {} as we already have too many open \
                          connections",
-                        addr
-                    );
-                    return Ok(());
-                }
-                srv.open_connections.set(srv.open_connections.get() + 1);
-
-                // TODO: TCP socket options here?
-
-                // Process TLS (if configured)
-                let socket = tls::accept(&srv, socket);
-
-                // Figure out if this is a websocket or a `/status` request,
-                let request = socket.and_then(Dispatch::new);
-
-                // Time out both the TLS accept (if any) along with the dispatch
-                // to figure out where we're going.
-                let request = timeout(request, srv.opts.open_handshake_timeout, &handle);
-                let srv2 = srv.clone();
-                let handle2 = handle.clone();
-
-                // Setup oneshot to extract the user-agent from the header callback
-                let (uatx, uarx) = oneshot::channel();
-                let callback = |req: &Request| {
-                    if let Some(value) = req.headers.find_first(UAHEADER) {
-                        let mut valstr = String::new();
-                        for c in value.iter() {
-                            let c = *c as char;
-                            valstr.push(c);
-                        }
-                        debug!("Found user-agent string"; "user-agent" => valstr.as_str());
-                        uatx.send(valstr).unwrap();
+                            addr
+                        );
+                        return Ok(());
                     }
-                    debug!("No agent string found");
-                    Ok(None)
-                };
+                    srv.open_connections.set(srv.open_connections.get() + 1);
 
-                let client = request.and_then(move |(socket, request)| -> MyFuture<_> {
-                    match request {
-                        RequestType::Status => write_status(socket),
-                        RequestType::LBHeartBeat => {
-                            write_json(socket, StatusCode::OK, serde_json::Value::from(""))
-                        }
-                        RequestType::Version => write_version_file(socket),
-                        RequestType::LogCheck => write_log_check(socket),
-                        RequestType::Websocket => {
-                            // Perform the websocket handshake on each
-                            // connection, but don't let it take too long.
-                            let ws = accept_hdr_async(socket, callback)
-                                .map_err(|| "failed to accept client");
-                            let ws = timeout(ws, srv2.opts.open_handshake_timeout, &handle2);
+                    // TODO: TCP socket options here?
 
-                            // Once the handshake is done we'll start the main
-                            // communication with the client, managing pings
-                            // here and deferring to `Client` to start driving
-                            // the internal state machine.
-                            Box::new(
-                                ws.and_then(move |ws| {
-                                    PingManager::new(&srv2, ws, uarx)
-                                        .map_err(|| "failed to make ping handler")?
-                                })
-                                .flatten(),
-                            )
-                        }
-                    }
-                });
+                    // Process TLS (if configured)
+                    let socket = tls::accept(&srv, socket).await?;
 
-                let srv = srv.clone();
-                handle.spawn(client.then(move |res| {
-                    srv.open_connections.set(srv.open_connections.get() - 1);
-                    if let Err(e) = res {
-                        let mut error = e.to_string();
-                        for err in e.iter().skip(1) {
-                            error.push_str("\n");
-                            error.push_str(&err.to_string());
+                    // Figure out if this is a websocket or a `/status` request,
+                    let request = Dispatch::new;
+
+                    // Time out both the TLS accept (if any) along with the dispatch
+                    // to figure out where we're going.
+                    let request =
+                        timeout(srv.opts.open_handshake_timeout.unwrap_or_default(), request);
+                    let srv2 = srv.clone();
+                    let handle2 = handle.clone();
+
+                    // Setup oneshot to extract the user-agent from the header callback
+                    let (uatx, uarx) = oneshot::channel();
+                    let callback = |req: &Request| {
+                        if let Some(value) = req.headers.find_first(UAHEADER) {
+                            let mut valstr = String::new();
+                            for c in value.iter() {
+                                let c = *c as char;
+                                valstr.push(c);
+                            }
+                            debug!("Found user-agent string"; "user-agent" => valstr.as_str());
+                            uatx.send(valstr).unwrap();
                         }
-                        debug!("{}: {}", addr, error);
-                    }
+                        debug!("No agent string found");
+                        Ok(None)
+                    };
+
+                    let client = request.await?.map(|(socket, request)| async move {
+                        match request {
+                            RequestType::Status => write_status(socket),
+                            RequestType::LBHeartBeat => {
+                                write_json(socket, StatusCode::OK, serde_json::Value::from(""))
+                            }
+                            RequestType::Version => write_version_file(socket),
+                            RequestType::LogCheck => write_log_check(socket),
+                            RequestType::Websocket => {
+                                // Perform the websocket handshake on each
+                                // connection, but don't let it take too long.
+                                let ws = accept_hdr_async(socket, callback)
+                                    .map_err(|| "failed to accept client");
+                                let ws = timeout(srv2.opts.open_handshake_timeout, ws);
+
+                                // Once the handshake is done we'll start the main
+                                // communication with the client, managing pings
+                                // here and deferring to `Client` to start driving
+                                // the internal state machine.
+                                Box::new(
+                                    ws.await?
+                                        .map(|ws| {
+                                            PingManager::new(&srv2, ws, uarx)
+                                                .map_err(|| "failed to make ping handler")?
+                                        })
+                                        .flatten(),
+                                )
+                            }
+                        }
+                    });
+
+                    let srv = srv.clone();
+                    handle.spawn(client.await?.map(move |res| {
+                        srv.open_connections.set(srv.open_connections.get() - 1);
+                        if let Err(e) = res {
+                            let mut error = e.to_string();
+                            for err in e.iter().skip(1) {
+                                error.push_str("\n");
+                                error.push_str(&err.to_string());
+                            }
+                            debug!("{}: {}", addr, error);
+                        }
+                        Ok(())
+                    }));
+
                     Ok(())
-                }));
-
-                Ok(())
-            });
+                });
 
         if let Some(ref megaphone_url) = opts.megaphone_api_url {
             let megaphone_token = opts
@@ -498,7 +517,7 @@ impl Server {
 
 enum MegaphoneState {
     Waiting,
-    Requesting(MyFuture<MegaphoneAPIResponse>),
+    Requesting(MegaphoneAPIResponse),
 }
 
 struct MegaphoneUpdater {
@@ -508,7 +527,7 @@ struct MegaphoneUpdater {
     state: MegaphoneState,
     timeout: Timeout,
     poll_interval: Duration,
-    client: reqwest::r#async::Client,
+    client: reqwest::Client,
 }
 
 impl MegaphoneUpdater {
@@ -518,7 +537,7 @@ impl MegaphoneUpdater {
         poll_interval: Duration,
         srv: &Rc<Server>,
     ) -> io::Result<MegaphoneUpdater> {
-        let client = reqwest::r#async::Client::builder()
+        let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()
             .expect("Unable to build reqwest client");
@@ -535,14 +554,12 @@ impl MegaphoneUpdater {
 }
 
 impl Future for MegaphoneUpdater {
-    type Item = ();
-    type Error = Error;
+    type Output = ();
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<(), ApiError> {
         loop {
             let new_state = match self.state {
                 MegaphoneState::Waiting => {
-                    try_ready!(self.timeout.poll());
                     debug!("Sending megaphone API request");
                     let fut = self
                         .client
@@ -633,10 +650,9 @@ impl PingManager {
 }
 
 impl Future for PingManager {
-    type Item = ();
-    type Error = Error;
+    type Output = ();
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<(), ApiError> {
         let mut socket = self.socket.borrow_mut();
         loop {
             if socket.ws_ping {
@@ -732,7 +748,7 @@ impl Future for PingManager {
         // closing handshake.
         loop {
             match self.client {
-                CloseState::Exchange(ref mut client) => try_ready!(client.poll()),
+                CloseState::Exchange(ref mut client) => client.poll(),
                 CloseState::Closing => return self.socket.borrow_mut().close(),
             }
 
@@ -767,10 +783,9 @@ impl<T> WebpushSocket<T> {
         }
     }
 
-    fn send_ws_ping(&mut self) -> Poll<(), Error>
+    fn send_ws_ping(&mut self) -> Poll<(), ApiError>
     where
         T: Sink<SinkItem = Message>,
-        Error: From<T::SinkError>,
     {
         if self.ws_ping {
             let msg = if let Some(broadcasts) = self.broadcast_delta.clone() {
@@ -802,7 +817,6 @@ impl<T> WebpushSocket<T> {
 impl<T> Stream for WebpushSocket<T>
 where
     T: Stream<Item = Message>,
-    Error: From<T::Error>,
 {
     type Item = ClientMessage;
 
@@ -845,12 +859,15 @@ where
                 Message::Pong(_) => {
                     self.ws_pong_received = true;
                     self.ws_pong_timeout = false;
-                    task::current().notify();
+                    std::thread::current().notify();
                 }
 
                 Message::Close(_) => return Err(tungstenite::Error::ConnectionClosed.into()),
                 Message::Frame(_) => {
-                    return Err(ApiErrorKind::InvalidClientMessage("frame content".to_string())).into()
+                    return Err(ApiErrorKind::InvalidClientMessage(
+                        "frame content".to_string(),
+                    ))
+                    .into()
                 }
             }
         }
@@ -860,9 +877,8 @@ where
 impl<T> Sink<ServerMessage> for WebpushSocket<T>
 where
     T: Sink<Message>,
-    Error: From<T::SinkError>,
 {
-    fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, Error> {
+    fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, ApiError> {
         if self.send_ws_ping()?.is_not_ready() {
             return Ok(AsyncSink::NotReady(msg));
         }
@@ -901,7 +917,8 @@ pub async fn write_version_file(socket: WebpushIo) -> ApiResult<()> {
         socket,
         StatusCode::OK,
         serde_json::Value::from(include_str!("../../../version.json")),
-    ).await
+    )
+    .await
 }
 
 async fn write_log_check(socket: WebpushIo) -> ApiResult<()> {
@@ -925,7 +942,8 @@ async fn write_log_check(socket: WebpushIo) -> ApiResult<()> {
                 "error": "Test Failure",
                 "mesage": "FAILURE:Success",
         }),
-    ).await
+    )
+    .await
 }
 
 async fn write_json(

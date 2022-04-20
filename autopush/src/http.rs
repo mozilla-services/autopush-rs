@@ -12,7 +12,7 @@ use std::{str, sync::Arc};
 use futures::future::Either;
 
 use futures::future::ok;
-use futures::{Future, Stream};
+use futures::Future;
 use hyper::{self, service::Service, Body, Method, Request, StatusCode};
 use uuid::Uuid;
 

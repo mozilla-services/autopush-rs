@@ -1,22 +1,16 @@
-use std::collections::HashSet;
-use std::env;
+/// This is very much a work-in-progress, and still needs impl DbStorageClient
+///
 use std::panic::panic_any;
 use std::sync::Arc;
 
 use cadence::StatsdClient;
-use futures::{future, Future};
-use futures_backoff::retry_if;
-use tokio_postgres::{Client, Connection, Socket};
+use tokio_postgres::Client;
 
-use crate::errors::{ApiError, ApiErrorKind, ApiResult};
-use crate::notification::Notification;
-use crate::util::timing::sec_since_epoch;
+use crate::errors::ApiResult;
 
-use super::{CheckStorageResponse, HelloResponse, RegisterResponse, MAX_EXPIRY};
-use super::{NotificationRecord, UserRecord};
-
+#[allow(dead_code)] // TODO: Remove before flight
 pub struct PostgresStorage {
-    db_client: Client,
+    db_client: Client,     // temporarily silence
     metrics: Arc<StatsdClient>,
     router_table_name: String,
     pub message_table_name: String,
@@ -65,3 +59,102 @@ impl PostgresStorage {
         return Ok(client);
     }
 }
+
+/* TODO
+
+impl DbStorageClient for PostgresStorage {
+    async fn hello(
+        &self,
+        connected_at: u64,
+        uaid: Option<&Uuid>,
+        router_url: &str,
+        defer_registration: bool,
+    ) -> ApiResult<HelloResponse>{
+
+    }
+
+    async fn register(
+        &self,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        message_month: &str,
+        endpoint: &str,
+        register_user: Option<&UserRecord>,
+    ) -> ApiResult<RegisterResponse>{
+
+    }
+
+    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()>{
+
+    }
+
+    async fn unregister(
+        &self,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        message_month: &str,
+    ) -> ApiResult<bool>{
+
+    }
+
+    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()>{
+
+    }
+
+    async fn store_message(
+        &self,
+        uaid: &Uuid,
+        message_month: String,
+        message: Notification,
+    ) -> ApiResult<()>{
+
+    }
+
+    async fn store_messages(
+        &self,
+        uaid: &Uuid,
+        message_month: &str,
+        messages: Vec<Notification>,
+    ) -> ApiResult<()>{
+
+    }
+
+    async fn delete_message(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        notif: &Notification,
+    ) -> ApiResult<()>{
+
+    }
+
+    async fn check_storage(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        include_topic: bool,
+        timestamp: Option<u64>,
+    ) -> ApiResult<CheckStorageResponse>{
+
+    }
+
+    async fn get_user(&self, uaid: &Uuid) -> ApiResult<Option<UserRecord>>{
+
+    }
+
+    async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
+        -> ApiResult<HashSet<Uuid>>{
+
+        }
+
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: String,
+        connected_at: u64,
+    ) -> ApiResult<()>{
+
+    }
+
+}
+*/

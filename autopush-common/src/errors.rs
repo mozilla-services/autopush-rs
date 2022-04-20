@@ -1,10 +1,8 @@
 //! Error handling for Rust
 
 use std::any::Any;
-use std::error;
 use std::error::Error;
 use std::fmt::{self, Display};
-use std::io;
 use std::num;
 
 use actix_web::http::StatusCode;

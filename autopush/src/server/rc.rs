@@ -1,8 +1,10 @@
+/// [ed] I'm pretty sure that this is no longer needed.
+
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
-use std::task::Poll;
+// use std::task::Poll;
 
-use futures::{Sink, StartSend, Stream};
+// use futures::{Sink, Stream};
 
 /// Helper object to turn `Rc<RefCell<T>>` into a `Stream` and `Sink`
 ///
@@ -21,6 +23,7 @@ impl<T> RcObject<T> {
     }
 }
 
+/*
 impl<T: Stream> Stream for RcObject<T> {
     type Item = T::Item;
 
@@ -51,3 +54,4 @@ impl<T> Clone for RcObject<T> {
         RcObject(self.0.clone())
     }
 }
+*/

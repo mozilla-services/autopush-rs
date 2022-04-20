@@ -24,7 +24,7 @@
 use std::task::Poll;
 
 use bytes::BytesMut;
-use futures::{try_ready, Future};
+use futures::Future;
 use tokio_core::net::TcpStream;
 use tokio_io::AsyncRead;
 
@@ -56,47 +56,51 @@ impl Dispatch {
 }
 
 impl Future for Dispatch {
-    type Item = (WebpushIo, RequestType);
+    type Output = (WebpushIo, RequestType);
 
     fn poll(&mut self) -> Poll<(WebpushIo, RequestType)> {
-        loop {
-            if self.data.len() == self.data.capacity() {
-                self.data.reserve(16); // get some extra space
-            }
-            if try_ready!(self.socket.as_mut().unwrap().read_buf(&mut self.data)) == 0 {
-                return Err("early eof".into());
-            }
-            let ty = {
-                let mut headers = [httparse::EMPTY_HEADER; 32];
-                let mut req = httparse::Request::new(&mut headers);
-                match req.parse(&self.data)? {
-                    httparse::Status::Complete(_) => {}
-                    httparse::Status::Partial => continue,
+        async move {
+            loop {
+                if self.data.len() == self.data.capacity() {
+                    self.data.reserve(16); // get some extra space
                 }
+                if self.socket.as_mut().unwrap().read_buf(&mut self.data).await == 0 {
+                    return Err("early eof".into());
+                }
+                let ty = {
+                    let mut headers = [httparse::EMPTY_HEADER; 32];
+                    let mut req = httparse::Request::new(&mut headers);
+                    match req.parse(&self.data)? {
+                        httparse::Status::Complete(_) => {}
+                        httparse::Status::Partial => continue,
+                    }
 
-                if req.headers.iter().any(|h| h.name == "Upgrade") {
-                    RequestType::Websocket
-                } else {
-                    match req.path {
-                        Some(path) if path.starts_with("/status") || path == "/__heartbeat__" => {
-                            RequestType::Status
-                        }
-                        Some(path) if path == "/__lbheartbeat__" => RequestType::LBHeartBeat,
-                        Some(path) if path == "/__version__" => RequestType::Version,
-                        // legacy:
-                        Some(path) if path.starts_with("/v1/err/crit") => RequestType::LogCheck,
-                        // standardized:
-                        Some(path) if path == ("/__error__") => RequestType::LogCheck,
-                        _ => {
-                            debug!("unknown http request {:?}", req);
-                            return Err("unknown http request".into());
+                    if req.headers.iter().any(|h| h.name == "Upgrade") {
+                        RequestType::Websocket
+                    } else {
+                        match req.path {
+                            Some(path)
+                                if path.starts_with("/status") || path == "/__heartbeat__" =>
+                            {
+                                RequestType::Status
+                            }
+                            Some(path) if path == "/__lbheartbeat__" => RequestType::LBHeartBeat,
+                            Some(path) if path == "/__version__" => RequestType::Version,
+                            // legacy:
+                            Some(path) if path.starts_with("/v1/err/crit") => RequestType::LogCheck,
+                            // standardized:
+                            Some(path) if path == ("/__error__") => RequestType::LogCheck,
+                            _ => {
+                                debug!("unknown http request {:?}", req);
+                                return Err("unknown http request".into());
+                            }
                         }
                     }
-                }
-            };
+                };
 
-            let tcp = self.socket.take().unwrap();
-            return Ok((WebpushIo::new(tcp, self.data.take()), ty).into());
+                let tcp = self.socket.take().unwrap();
+                return Ok((WebpushIo::new(tcp, self.data.take()), ty).into());
+            }
         }
     }
 }
