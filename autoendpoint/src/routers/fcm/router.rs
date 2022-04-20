@@ -304,7 +304,6 @@ mod tests {
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
-        dbg!(&result.as_ref().unwrap_err().kind);
         assert!(
             matches!(
                 &result.as_ref().unwrap_err().kind,
