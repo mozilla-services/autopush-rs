@@ -108,14 +108,24 @@ impl Router for FcmRouter {
             .router_data
             .as_ref()
             .ok_or(FcmError::NoRegistrationToken)?;
-        let fcm_token = router_data
-            .get("token")
-            .and_then(Value::as_str)
-            .ok_or(FcmError::NoRegistrationToken)?;
-        let app_id = router_data
-            .get("app_id")
-            .and_then(Value::as_str)
-            .ok_or(FcmError::NoAppId)?;
+
+        // Older "GCM" set the router data as "auth", "senderID"
+        // Newer "FCM" set the router data as "token", "app_id"
+        // Try reading as FCM and fall back to GCM.
+        let fcm_token = match router_data.get("token").and_then(Value::as_str) {
+            Some(v) => v,
+            None => router_data
+                .get("auth")
+                .and_then(Value::as_str)
+                .ok_or(FcmError::NoRegistrationToken)?,
+        };
+        let app_id = match router_data.get("app_id").and_then(Value::as_str) {
+            Some(v) => v,
+            None => router_data
+                .get("senderID")
+                .and_then(Value::as_str)
+                .ok_or(FcmError::NoAppId)?,
+        };
         let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
         let message_data = build_message_data(notification)?;
 
@@ -186,6 +196,10 @@ mod tests {
                     "dev": {
                         "project_id": PROJECT_ID,
                         "credential": credential
+                    },
+                    "old": {
+                        "project_id": PROJECT_ID,
+                        "credential": credential
                     }
                 })
                 .to_string(),
@@ -208,6 +222,13 @@ mod tests {
             serde_json::to_value(FCM_TOKEN).unwrap(),
         );
         map.insert("app_id".to_string(), serde_json::to_value("dev").unwrap());
+        map
+    }
+
+    fn gcm_router_data() -> HashMap<String, serde_json::Value> {
+        let mut map = HashMap::new();
+        map.insert("auth".to_string(), serde_json::to_value(FCM_TOKEN).unwrap());
+        map.insert("senderID".to_string(), serde_json::to_value("old").unwrap());
         map
     }
 
@@ -236,6 +257,41 @@ mod tests {
             )
             .create();
         let notification = make_notification(default_router_data(), None, RouterType::FCM);
+
+        let result = router.route_notification(&notification).await;
+        assert!(result.is_ok(), "result = {:?}", result);
+        assert_eq!(
+            result.unwrap(),
+            RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
+        );
+        fcm_mock.assert();
+    }
+
+    /// A notification with no data is sent to FCM
+    #[tokio::test]
+    async fn successful_gcm_fallback() {
+        let ddb = MockDbClient::new().into_boxed_arc();
+        let router = make_router(String::from_utf8(make_service_key()).unwrap(), ddb).await;
+        assert!(router.active());
+        let _token_mock = mock_token_endpoint();
+        let fcm_mock = mock_fcm_endpoint_builder()
+            .match_body(
+                serde_json::json!({
+                    "message": {
+                        "android": {
+                            "data": {
+                                "chid": CHANNEL_ID
+                            },
+                            "ttl": "60s"
+                        },
+                        "token": "test-token"
+                    }
+                })
+                .to_string()
+                .as_str(),
+            )
+            .create();
+        let notification = make_notification(gcm_router_data(), None, RouterType::FCM);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
