@@ -5,6 +5,9 @@
 //! After that, for tungstenite the websocket library, we'll want to replay the
 //! data we already read as there's no ability to pass this in currently. That
 //! means we'll parse headers twice, but alas!
+//!
+//! More overhead for framework free webpush. Can probably be dropped once actix
+//! is running.
 
 use std::io::{self, Read, Write};
 use std::task::Poll;

@@ -10,10 +10,10 @@ use cadence::{prelude::*, StatsdClient};
 use error_chain::ChainedError;
 use futures::future::Either;
 //use futures::sync::mpsc;
-use futures::channel::{oneshot::Receiver, mpsc};
+use futures::channel::{mpsc, oneshot::Receiver};
 //use futures::AsyncSink;
-use futures::{future};
-use futures::{ Future, task::Poll, Sink, Stream};
+use futures::future;
+use futures::{task::Poll, Future, Sink, Stream};
 use reqwest::Client as ReqClient;
 // use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
@@ -32,8 +32,8 @@ use autopush_common::notification::Notification;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
 
 use crate::megaphone::{Broadcast, BroadcastSubs};
+use crate::server::old_server::Server;
 use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
-use crate::server::Server;
 use crate::user_agent::parse_user_agent;
 
 // Created and handed to the AutopushServer
@@ -43,13 +43,13 @@ pub struct RegisteredClient {
     pub tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
+/// Client data wrapper. Used principally by Megaphone. Contains references to
+/// the various state elements and data references for the attached client.
 pub struct Client<T>
 where
-    T: Stream<Item = ClientMessage>
-        + Sink<ServerMessage>
-        + 'static,
+    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
 {
-    state_machine: UnAuthClientStateFuture<T>,
+    // state_machine: UnAuthClientStateFuture<T>,
     srv: Rc<Server>,
     broadcast_subs: Rc<RefCell<BroadcastSubs>>,
     tx: mpsc::UnboundedSender<ServerNotification>,
@@ -57,9 +57,7 @@ where
 
 impl<T> Client<T>
 where
-    T: Stream<Item = ClientMessage>
-        + Sink<ServerMessage>
-        + 'static,
+    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
 {
     /// Spins up a new client communicating over the websocket `ws` specified.
     ///
@@ -90,6 +88,7 @@ where
         };
 
         let broadcast_subs = Rc::new(RefCell::new(Default::default()));
+        /*
         let sm = UnAuthClientState::start(
             UnAuthClientData {
                 srv: srv.clone(),
@@ -101,9 +100,10 @@ where
             tx.clone(),
             rx,
         );
+        // */
 
         Self {
-            state_machine: sm,
+            // state_machine: sm,
             srv,
             broadcast_subs,
             tx,
@@ -122,11 +122,8 @@ where
 
 impl<T> Future for Client<T>
 where
-    T: Stream<Item = ClientMessage>
-        + Sink<ServerMessage>
-        + 'static,
+    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
 {
-
     fn poll(&mut self) -> Poll<()> {
         self.state_machine.poll()
     }
@@ -231,9 +228,7 @@ pub struct UnAuthClientData<T> {
 
 impl<T> UnAuthClientData<T>
 where
-    T: Stream<Item = ClientMessage>
-        + Sink<ServerMessage>
-        + 'static,
+    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
 {
     fn input_with_timeout(&mut self, timeout: &mut Timeout) -> Poll<ClientMessage> {
         let item = match timeout.poll()? {
@@ -257,9 +252,7 @@ pub struct AuthClientData<T> {
 
 impl<T> AuthClientData<T>
 where
-    T: Stream<Item = ClientMessage>
-        + Sink<ServerMessage>
-        + 'static,
+    T: Stream<Item = ClientMessage> + Sink<ServerMessage> + 'static,
 {
     fn input_or_notif(&mut self) -> Poll<Either<ClientMessage, ServerNotification>> {
         let mut webpush = self.webpush.borrow_mut();
@@ -309,6 +302,16 @@ impl StateMachineImpl for ClientMachine {
 }
 
 /*
+// The following is the original state machine. It's commented
+// here because it's fairly broken as is.
+// This state machine carries a lot of extra states beccause of
+// the primitive nature of the original code. Ultimately, there
+// are two states. Unauthorized (where we await a valid "hello",
+// which validates the user and establishes the connection) and
+// a Command Loop, where the websocket protocol messages are
+// exchanged between the client and server (register, unregister,
+// ping, notification, etc. )
+//
 #[derive(StateMachineFuture)]
 pub enum UnAuthClientState<T>
 where
@@ -367,7 +370,7 @@ where
     GeneralUnauthClientError(Error),
 }
 
-*/
+ // */
 
 impl<T> PollUnAuthClientState<T> for UnAuthClientState<T>
 where

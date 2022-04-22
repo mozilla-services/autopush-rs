@@ -4,6 +4,9 @@
 //! `AsyncRead`/`AsyncWrite` stream, so this provides a `MaybeTlsStream` type
 //! which dispatches at runtime whether it's a plaintext or TLS stream after a
 //! connection is established.
+//!
+//! I believe that actix currently deals with this, and that this is
+//! no longer needed.
 
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -20,7 +23,7 @@ use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_openssl::SslStream;
 
-use crate::server::{Server, ServerOptions};
+use crate::server::{old_server::Server, ServerOptions};
 
 /// Creates an `SslAcceptor`, if needed, ready to accept TLS connections.
 ///

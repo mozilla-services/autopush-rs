@@ -1,5 +1,6 @@
+/// RefCell wrapper for websocket streams and data.
+///
 /// [ed] I'm pretty sure that this is no longer needed.
-
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 // use std::task::Poll;

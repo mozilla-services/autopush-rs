@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::protocol::ServerNotification;
 use super::Notification;
-use crate::client::RegisteredClient;
+use crate::old_client::RegisteredClient;
 use autopush_common::errors::ApiError;
 
 /// `notify` + `check_storage` are used under hyper (http.rs) which `Send`

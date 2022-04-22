@@ -11,14 +11,14 @@ use docopt::Docopt;
 use autopush_common::errors::ApiResult;
 use autopush_common::logging;
 
-mod client;
 mod http;
 mod megaphone;
+mod old_client;
 mod server;
 mod settings;
 mod user_agent;
 
-use crate::server::{AutopushServer, ServerOptions};
+use crate::server::{old_server::AutopushServer, ServerOptions};
 use crate::settings::Settings;
 
 const USAGE: &str = "

@@ -10,7 +10,7 @@ use crate::errors::ApiResult;
 
 #[allow(dead_code)] // TODO: Remove before flight
 pub struct PostgresStorage {
-    db_client: Client,     // temporarily silence
+    db_client: Client, // temporarily silence
     metrics: Arc<StatsdClient>,
     router_table_name: String,
     pub message_table_name: String,

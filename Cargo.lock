@@ -21,6 +21,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "actix"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f728064aca1c318585bf4bb04ffcfac9e75e508ab4e8b1bd9ba5dfe04e2cbed5"
+dependencies = [
+ "actix-rt",
+ "actix_derive",
+ "bitflags",
+ "bytes 1.1.0",
+ "crossbeam-channel",
+ "futures-core",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+ "log",
+ "once_cell",
+ "parking_lot 0.12.0",
+ "pin-project-lite 0.2.8",
+ "smallvec 1.8.0",
+ "tokio 1.17.0",
+ "tokio-util 0.7.1",
+]
+
+[[package]]
 name = "actix-codec"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -227,12 +251,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "actix-web-actors"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31efe7896f3933ce03dd4710be560254272334bb321a18fd8ff62b1a557d9d19"
+dependencies = [
+ "actix",
+ "actix-codec",
+ "actix-http",
+ "actix-web",
+ "bytes 1.1.0",
+ "bytestring",
+ "futures-core",
+ "pin-project-lite 0.2.8",
+ "tokio 1.17.0",
+]
+
+[[package]]
 name = "actix-web-codegen"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7525bedf54704abb1d469e88d7e7e9226df73778798a69cea5022d53b2ae91bc"
 dependencies = [
  "actix-router",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "actix_derive"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d44b8fee1ced9671ba043476deddef739dd0959bf77030b26b738cc591737a7"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn",
@@ -408,6 +460,10 @@ dependencies = [
 name = "autopush"
 version = "1.61.0"
 dependencies = [
+ "actix",
+ "actix-cors",
+ "actix-web",
+ "actix-web-actors",
  "autopush_common",
  "base64 0.13.0",
  "bytes 1.1.0",
@@ -419,8 +475,10 @@ dependencies = [
  "env_logger",
  "error-chain",
  "fernet",
+ "futures 0.1.31",
  "futures 0.3.21",
  "futures-locks",
+ "futures-util",
  "hex",
  "httparse",
  "hyper 0.14.18",
@@ -1304,6 +1362,7 @@ version = "0.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b7abd5d659d9b90c8cba917f6ec750a74e2dc23902ef9cd4cc8c8b22e6036a"
 dependencies = [
+ "futures 0.1.31",
  "futures-channel",
  "futures-core",
  "futures-io",
