@@ -70,6 +70,51 @@ impl FcmRouter {
     pub fn active(&self) -> bool {
         !self.clients.is_empty()
     }
+
+    /// Do the gauntlet check to get the router credentials.
+    /// FCM stores the values in the top hash as `token` & `app_id`, GCM stores them
+    /// in a sub-hash as `creds.auth` and `creds.senderID`.
+    /// If any of these error out, it's probably because of a corrupted key.
+    fn get_creds(&self, router_data: &HashMap<String, Value>) -> ApiResult<(String, String)> {
+        let creds = router_data.get("creds").and_then(Value::as_object);
+        // I'm sure that there's a clever way to collapse these using `.map` or `.and_then`, but
+        // this is readable to me.
+        let auth = match router_data.get("token").and_then(Value::as_str) {
+            Some(v) => v.to_owned(),
+            None => {
+                if creds.is_none() {
+                    return Err(FcmError::NoRegistrationToken.into());
+                }
+                match creds
+                    .unwrap()
+                    .get("auth")
+                    .map(|v| v.as_str())
+                    .unwrap_or(None)
+                {
+                    Some(v) => v.to_owned(),
+                    None => return Err(FcmError::NoRegistrationToken.into()),
+                }
+            }
+        };
+        let app_id = match router_data.get("app_id").and_then(Value::as_str) {
+            Some(v) => v.to_owned(),
+            None => {
+                if creds.is_none() {
+                    return Err(FcmError::NoRegistrationToken.into());
+                }
+                match creds
+                    .unwrap()
+                    .get("senderID")
+                    .map(|v| v.as_str())
+                    .unwrap_or(None)
+                {
+                    Some(v) => v.to_owned(),
+                    None => return Err(FcmError::NoRegistrationToken.into()),
+                }
+            }
+        };
+        Ok((auth, app_id))
+    }
 }
 
 #[async_trait(?Send)]
@@ -112,20 +157,7 @@ impl Router for FcmRouter {
         // Older "GCM" set the router data as "auth", "senderID"
         // Newer "FCM" set the router data as "token", "app_id"
         // Try reading as FCM and fall back to GCM.
-        let fcm_token = match router_data.get("token").and_then(Value::as_str) {
-            Some(v) => v,
-            None => router_data
-                .get("auth")
-                .and_then(Value::as_str)
-                .ok_or(FcmError::NoRegistrationToken)?,
-        };
-        let app_id = match router_data.get("app_id").and_then(Value::as_str) {
-            Some(v) => v,
-            None => router_data
-                .get("senderID")
-                .and_then(Value::as_str)
-                .ok_or(FcmError::NoAppId)?,
-        };
+        let (fcm_token, app_id) = self.get_creds(router_data)?;
         let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
         let message_data = build_message_data(notification)?;
 
@@ -144,7 +176,7 @@ impl Router for FcmRouter {
                 &self.metrics,
                 self.ddb.as_ref(),
                 "fcmv1",
-                app_id,
+                &app_id,
                 notification.subscription.user.uaid,
             )
             .await);
@@ -152,7 +184,7 @@ impl Router for FcmRouter {
 
         // Sent successfully, update metrics and make response
         trace!("FCM request was successful");
-        incr_success_metrics(&self.metrics, "fcmv1", app_id, notification);
+        incr_success_metrics(&self.metrics, "fcmv1", &app_id, notification);
 
         Ok(RouterResponse::success(
             self.endpoint_url
@@ -227,9 +259,11 @@ mod tests {
 
     fn gcm_router_data() -> HashMap<String, serde_json::Value> {
         let mut map = HashMap::new();
-        map.insert("auth".to_string(), serde_json::to_value(FCM_TOKEN).unwrap());
-        map.insert("senderID".to_string(), serde_json::to_value("old").unwrap());
-        map
+        let mut creds = HashMap::new();
+        map.insert("auth".to_string(), FCM_TOKEN.to_string());
+        map.insert("senderID".to_string(), "old".to_string());
+        creds.insert("creds".to_string(), serde_json::to_value(map).unwrap());
+        creds
     }
 
     /// A notification with no data is sent to FCM
