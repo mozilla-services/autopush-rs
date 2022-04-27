@@ -57,6 +57,8 @@ validator = "0.14"
 validator_derive = "0.14"
 yup-oauth2 = "4.1.2"  # 5.0+ requires tokio 1.1+
 
+ureq={ version="2.4", features=["json"] }
+
 [dev-dependencies]
 mockall = "0.8.3"  # 0.9+ requires reworking tests
 mockito = "0.30.0"

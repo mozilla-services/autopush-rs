@@ -193,6 +193,7 @@ pub mod tests {
             subscription: Subscription {
                 user: DynamoDbUser {
                     router_data: Some(router_data),
+                    router_type: router_type.to_string(),
                     ..Default::default()
                 },
                 channel_id: channel_id(),

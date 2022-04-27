@@ -11,6 +11,24 @@ pub struct FcmSettings {
     pub min_ttl: usize,
     /// A JSON dict of `FcmCredential`s. This must be a `String` because
     /// environment variables cannot encode a `HashMap<String, FcmCredential>`
+    /// This contains both GCM and FCM credentials.
+    /// FCM (the more modern credential set) is specified as
+    ///
+    /// ```json
+    /// {"_project_id_":{"projectid": "_project_id_", "auth": "_key_"}, ...}
+    /// ```
+    ///
+    /// GCM follows the same pattern, where
+    ///
+    /// `_project_id_` == senderID and `_key_` == auth
+    /// e.g. for a FCM of "bar-project" and a GCM of "f00"
+    ///
+    /// ```json
+    /// {"bar-project":{"projectid": "bar-project-1234", "auth": "keys/bar-project-12345abcd.json"},
+    ///  "f00": {"projectid": "f00", "auth": "abcd0123457"},
+    ///  ...
+    /// }
+    /// ```
     pub credentials: String,
     /// The max size of notification data in bytes
     pub max_data: usize,
@@ -21,7 +39,7 @@ pub struct FcmSettings {
 }
 
 /// Credential information for each application
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct FcmCredential {
     pub project_id: String,
     pub credential: String,
