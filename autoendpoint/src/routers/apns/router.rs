@@ -202,9 +202,7 @@ impl Router for ApnsRouter {
         router_input: &RouterDataInput,
         app_id: &str,
     ) -> Result<HashMap<String, Value>, RouterError> {
-        let quotes: &[_] = &['"', '\''];
-        let mapp = app_id.trim_matches(quotes);
-        if !self.clients.contains_key(mapp) {
+        if !self.clients.contains_key(app_id) {
             return Err(ApnsError::InvalidReleaseChannel.into());
         }
 

@@ -126,9 +126,7 @@ impl Router for FcmRouter {
         router_data_input: &RouterDataInput,
         app_id: &str,
     ) -> Result<HashMap<String, Value>, RouterError> {
-        let quotes: &[_] = &['"', '\''];
-        let mapp = app_id.trim_matches(quotes);
-        if !self.clients.contains_key(mapp) {
+        if !self.clients.contains_key(app_id) {
             return Err(FcmError::InvalidAppId(app_id.to_owned()).into());
         }
 
@@ -137,7 +135,7 @@ impl Router for FcmRouter {
             "token".to_string(),
             serde_json::to_value(&router_data_input.token).unwrap(),
         );
-        router_data.insert("app_id".to_string(), serde_json::to_value(mapp).unwrap());
+        router_data.insert("app_id".to_string(), serde_json::to_value(app_id).unwrap());
 
         Ok(router_data)
     }
