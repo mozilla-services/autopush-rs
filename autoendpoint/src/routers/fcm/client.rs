@@ -30,12 +30,16 @@ impl FcmClient {
         credential: FcmCredential,
         http: reqwest::Client,
     ) -> std::io::Result<Self> {
+        // `map`ping off of `serde_json::from_str` gets hairy and weird, requiring async blocks and a number of
+        // other specialty items. Doing a very stupid json detection does not. GCM keys are base64 values, so
+        // `{` will never appear in a GCM key. FCM keys are serialized JSON constructs.
+        // These are both set in the settings and come from the `credentials` value.
         let auth = if credential.credential.contains('{') {
             let key_data = serde_json::from_str::<ServiceAccountKey>(&credential.credential)?;
             Some(
                 ServiceAccountAuthenticator::builder(key_data)
                     .build()
-                    .await?,
+                    .await?
             )
         } else {
             None
