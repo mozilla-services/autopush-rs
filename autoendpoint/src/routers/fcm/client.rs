@@ -79,6 +79,8 @@ impl FcmClient {
         // mockito reports the error in the status line. e.g.
         // 501 Mock not found ...
         // reqwest eats the status line, therefore we use ureq here.
+        // You can also turn on internal debugging, see
+        // https://docs.rs/mockito/latest/mockito/#debug
         dbg!(self.endpoint.clone().as_str());
         let rr = ureq::post(self.endpoint.clone().as_str())
             .set("Authorization", format!("key={}", self.credential.credential.as_str()).as_str())

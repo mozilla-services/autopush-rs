@@ -453,7 +453,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio 0.2.25",
- "ureq",
  "url 2.2.2",
  "uuid 0.8.2",
  "validator",
@@ -794,12 +793,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chunked_transfer"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fff857943da45f546682664a79488be82e69e43c1a7a2307679ab9afb3a66d2e"
-
-[[package]]
 name = "cloudabi"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1061,7 +1054,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d3686f5fa27dbc1d76c751300376e167c5a43387f44bb451fd1c24776e49113"
 dependencies = [
- "sct 0.6.1",
+ "sct",
 ]
 
 [[package]]
@@ -1872,8 +1865,8 @@ dependencies = [
  "rustls 0.16.0",
  "tokio 0.2.25",
  "tokio-rustls 0.12.3",
- "webpki 0.21.4",
- "webpki-roots 0.17.0",
+ "webpki",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -1891,7 +1884,7 @@ dependencies = [
  "rustls-native-certs",
  "tokio 0.2.25",
  "tokio-rustls 0.13.1",
- "webpki 0.21.4",
+ "webpki",
 ]
 
 [[package]]
@@ -3361,8 +3354,8 @@ dependencies = [
  "base64 0.10.1",
  "log",
  "ring",
- "sct 0.6.1",
- "webpki 0.21.4",
+ "sct",
+ "webpki",
 ]
 
 [[package]]
@@ -3374,20 +3367,8 @@ dependencies = [
  "base64 0.11.0",
  "log",
  "ring",
- "sct 0.6.1",
- "webpki 0.21.4",
-]
-
-[[package]]
-name = "rustls"
-version = "0.20.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fbfeb8d0ddb84706bc597a5574ab8912817c52a397f819e5b614e2265206921"
-dependencies = [
- "log",
- "ring",
- "sct 0.7.0",
- "webpki 0.22.0",
+ "sct",
+ "webpki",
 ]
 
 [[package]]
@@ -3441,16 +3422,6 @@ name = "sct"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b362b83898e0e69f38515b82ee15aa80636befe47c3b6d3d89a911e78fc228ce"
-dependencies = [
- "ring",
- "untrusted",
-]
-
-[[package]]
-name = "sct"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d53dcdb7c9f8158937a7981b48accfd39a43af418591a5d008c7b22b5e1b7ca4"
 dependencies = [
  "ring",
  "untrusted",
@@ -4501,7 +4472,7 @@ dependencies = [
  "futures-core",
  "rustls 0.16.0",
  "tokio 0.2.25",
- "webpki 0.21.4",
+ "webpki",
 ]
 
 [[package]]
@@ -4513,7 +4484,7 @@ dependencies = [
  "futures-core",
  "rustls 0.17.0",
  "tokio 0.2.25",
- "webpki 0.21.4",
+ "webpki",
 ]
 
 [[package]]
@@ -4846,25 +4817,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
-name = "ureq"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9399fa2f927a3d327187cbd201480cee55bee6ac5d3c77dd27f0c6814cff16d5"
-dependencies = [
- "base64 0.13.0",
- "chunked_transfer",
- "flate2",
- "log",
- "once_cell",
- "rustls 0.20.4",
- "serde 1.0.136",
- "serde_json",
- "url 2.2.2",
- "webpki 0.22.0",
- "webpki-roots 0.22.3",
-]
-
-[[package]]
 name = "url"
 version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5104,31 +5056,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "webpki"
-version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f095d78192e208183081cc07bc5515ef55216397af48b873e5edcd72637fa1bd"
-dependencies = [
- "ring",
- "untrusted",
-]
-
-[[package]]
 name = "webpki-roots"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a262ae37dd9d60f60dd473d1158f9fbebf110ba7b6a5051c8160460f6043718b"
 dependencies = [
- "webpki 0.21.4",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "0.22.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44d8de8415c823c8abd270ad483c6feeac771fad964890779f9a8cb24fbbc1bf"
-dependencies = [
- "webpki 0.22.0",
+ "webpki",
 ]
 
 [[package]]
