@@ -335,7 +335,7 @@ mod tests {
     /// A notification with no data is sent to GCM if the subscription specifies it.
     #[tokio::test]
     async fn successful_gcm_fallback() {
-        let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM";
+        let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
         let project_id = GCM_PROJECT_ID;
         let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(make_service_key(), auth_key.to_owned(), ddb).await;

@@ -313,7 +313,7 @@ pub mod tests {
     #[tokio::test]
     async fn sends_correct_gcm_request() {
         // from settings, the projects Auth Key.
-        let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM";
+        let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
         let project_id = GCM_PROJECT_ID;
         // GCM_ACCESS_TOKEN comes from the device, it's the registration_id
         // sent as part of message registration for a GCM capable client.
