@@ -39,7 +39,7 @@ impl FcmClient {
             Some(
                 ServiceAccountAuthenticator::builder(key_data)
                     .build()
-                    .await?
+                    .await?,
             )
         } else {
             None
