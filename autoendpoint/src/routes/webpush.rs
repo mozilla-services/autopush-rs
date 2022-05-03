@@ -1,7 +1,9 @@
-use crate::error::ApiResult;
+use std::str::FromStr;
+
+use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::message_id::MessageId;
 use crate::extractors::notification::Notification;
-use crate::extractors::routers::Routers;
+use crate::extractors::routers::{RouterType, Routers};
 use crate::server::ServerState;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
@@ -11,7 +13,10 @@ pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
 ) -> ApiResult<HttpResponse> {
-    let router = routers.get(notification.subscription.router_type);
+    let router = routers.get(
+        RouterType::from_str(&notification.subscription.user.router_type)
+            .map_err(|_| ApiErrorKind::InvalidRouterType)?,
+    );
 
     let response = router.route_notification(&notification).await?;
 

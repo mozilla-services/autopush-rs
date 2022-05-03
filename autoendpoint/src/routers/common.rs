@@ -197,7 +197,6 @@ pub mod tests {
                     ..Default::default()
                 },
                 channel_id: channel_id(),
-                router_type,
                 vapid: None,
             },
             headers: NotificationHeaders {

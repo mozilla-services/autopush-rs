@@ -5,6 +5,9 @@ use crate::routers::RouterError;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use std::time::Duration;
 use url::Url;
 use yup_oauth2::authenticator::DefaultAuthenticator;
@@ -30,11 +33,16 @@ impl FcmClient {
         credential: FcmCredential,
         http: reqwest::Client,
     ) -> std::io::Result<Self> {
-        // `map`ping off of `serde_json::from_str` gets hairy and weird, requiring async blocks and a number of
-        // other specialty items. Doing a very stupid json detection does not. GCM keys are base64 values, so
-        // `{` will never appear in a GCM key. FCM keys are serialized JSON constructs.
+        // `map`ping off of `serde_json::from_str` gets hairy and weird, requiring
+        // async blocks and a number of other specialty items. Doing a very stupid
+        // json detection does not. GCM keys are base64 values, so  `{` will never
+        // appear in a GCM key. FCM keys are serialized JSON constructs.
         // These are both set in the settings and come from the `credentials` value.
         let auth = if credential.credential.contains('{') {
+            trace!(
+                "Reading credential for {} from string...",
+                &credential.project_id
+            );
             let key_data = serde_json::from_str::<ServiceAccountKey>(&credential.credential)?;
             Some(
                 ServiceAccountAuthenticator::builder(key_data)
@@ -42,7 +50,25 @@ impl FcmClient {
                     .await?,
             )
         } else {
-            None
+            // check to see if this is a path to a file, and read in the credentials.
+            if Path::new(&credential.credential).exists() {
+                warn!(
+                    "Reading credential for {} from file...",
+                    &credential.project_id
+                );
+                let mut file = File::open(&credential.credential)?;
+                let mut content = String::new();
+                file.read_to_string(&mut content)?;
+                let key_data = serde_json::from_str::<ServiceAccountKey>(&content)?;
+                Some(
+                    ServiceAccountAuthenticator::builder(key_data)
+                        .build()
+                        .await?,
+                )
+            } else {
+                trace!("Presuming {} is GCM", &credential.project_id);
+                None
+            }
         };
         Ok(FcmClient {
             endpoint: settings
@@ -87,7 +113,8 @@ impl FcmClient {
         // https://docs.rs/mockito/latest/mockito/#debug
         dbg!(self.endpoint.clone().as_str());
         let rr = ureq::post(self.endpoint.clone().as_str())
-            .set("Authorization", format!("key={}", self.credential.credential.as_str()).as_str())
+            .set("Authorization",
+                    format!("key={}", self.credential.credential.as_str()).as_str())
             .set("Content-Type", "application/json")
             .send_json(&message).unwrap();
         dbg!(rr.status(), rr.status_text());

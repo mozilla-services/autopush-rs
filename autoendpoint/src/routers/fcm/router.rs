@@ -79,8 +79,8 @@ impl FcmRouter {
     /// If any of these error out, it's probably because of a corrupted key.
     fn get_creds(&self, router_data: &HashMap<String, Value>) -> ApiResult<(String, String)> {
         let creds = router_data.get("creds").and_then(Value::as_object);
-        // I'm sure that there's a clever way to collapse these using `.map` or `.and_then`, but
-        // this is readable to me.
+        // I'm sure that there's a clever way to collapse these using `.map` or
+        // `.and_then`, but  this is readable to me.
         let auth = match router_data.get("token").and_then(Value::as_str) {
             Some(v) => v.to_owned(),
             None => {
@@ -102,7 +102,7 @@ impl FcmRouter {
             Some(v) => v.to_owned(),
             None => {
                 if creds.is_none() {
-                    return Err(FcmError::NoRegistrationToken.into());
+                    return Err(FcmError::NoAppId.into());
                 }
                 match creds
                     .unwrap()
@@ -111,7 +111,7 @@ impl FcmRouter {
                     .unwrap_or(None)
                 {
                     Some(v) => v.to_owned(),
-                    None => return Err(FcmError::NoRegistrationToken.into()),
+                    None => return Err(FcmError::NoAppId.into()),
                 }
             }
         };

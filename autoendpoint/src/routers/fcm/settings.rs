@@ -15,17 +15,21 @@ pub struct FcmSettings {
     /// FCM (the more modern credential set) is specified as
     ///
     /// ```json
-    /// {"_project_id_":{"projectid": "_project_id_", "auth": "_key_"}, ...}
+    /// {"_project_id_":{"project_id": "_project_id_", "auth": "_key_"}, ...}
     /// ```
+    /// For FCM, `auth` keys can be either a serialized JSON string, or the
+    /// path to the JSON key file.
     ///
     /// GCM follows the same pattern, where
     ///
     /// `_project_id_` == senderID and `_key_` == auth
-    /// e.g. for a FCM of "bar-project" and a GCM of "f00"
+    /// e.g. "bar-project" is via FCM, with a serialized JSON key,
+    /// e.g. "gorp-project" is via FCM, a and a GCM of "f00"
     ///
     /// ```json
-    /// {"bar-project":{"projectid": "bar-project-1234", "auth": "keys/bar-project-12345abcd.json"},
-    ///  "f00": {"projectid": "f00", "auth": "abcd0123457"},
+    /// {"bar-project":{"project_id": "bar-project-1234", "auth": "{\"type\": ...}"},
+    ///  "gorp-project":{"project_id": "gorp-project-abcd", "auth": "keys/gorp-project.json"},
+    ///  "f00": {"project_id": "f00", "auth": "abcd0123457"},
     ///  ...
     /// }
     /// ```
