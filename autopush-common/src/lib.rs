@@ -10,6 +10,9 @@ pub mod db;
 pub mod endpoint;
 pub mod errors;
 pub mod logging;
+pub mod metrics;
 pub mod notification;
+pub mod tags;
+
 #[macro_use]
 pub mod util;

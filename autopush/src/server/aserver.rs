@@ -9,6 +9,14 @@ use actix_web::{
 use actix_web_actors::ws;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
+use crate::server::metrics;
+use crate::server::middleware::sentry::SentryWrapper;
+use autopush_common::tags::Tags;
+use autopush_common::db::DbCommandClient;
+use autopush_common::db::client::DbClient;
+use autopush_common::db::dynamodb::DynamoStorage;
+use autopush_common::db::postgres::PostgressStorage;
+
 
 use crate::settings::Settings;
 // TODO: Port DbClient from autoendpoint to autopush_common?
@@ -79,7 +87,7 @@ impl Server {
         ws::start(SocketHandler::new(), &req, stream)
     }
 
-    async fn with_settings(settings: &Settings) -> ApiResult<dev::Server> {
+    async fn with_settings(&self, settings: &Settings) -> ApiResult<dev::Server> {
         let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());

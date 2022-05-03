@@ -149,8 +149,12 @@ pub enum ApiErrorKind {
     #[error("unable to send to client")]
     SendError(),
 
-    #[error("Database Error: {0}")]
-    DatabaseError(String),
+    #[error("Database Error:")]
+    DatabaseError(#[from] crate::db::error::DbError),
+
+    // TODO: option this.
+    #[error("Rusoto Error: {0}")]
+    RusotoError(String),
 
     #[error("General Error: {0}")]
     GeneralError(String),
@@ -188,6 +192,7 @@ impl ApiErrorKind {
             Self::MessageFetch() => "message_fetch",
             Self::SendError() => "send_error",
             Self::DatabaseError(_) => "database_error",
+            Self::RusotoError(_) => "rusoto_error",
             Self::GeneralError(_) => "general_error",
         }
     }

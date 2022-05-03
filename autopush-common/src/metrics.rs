@@ -3,16 +3,15 @@
 use std::net::UdpSocket;
 
 use cadence::{BufferedUdpMetricSink, NopMetricSink, QueuingMetricSink, StatsdClient};
-
-use crate::server::ServerOptions;
+use crate::errors::ApiResult;
 
 /// Create a cadence StatsdClient from the given options
-pub fn metrics_from_opts(opts: &ServerOptions) -> Result<StatsdClient> {
-    let builder = if let Some(statsd_host) = opts.statsd_host.as_ref() {
+pub fn new(host: Option<String>, port: u16) -> ApiResult<StatsdClient> {
+    let builder = if let Some(statsd_host) = host.as_ref() {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.set_nonblocking(true)?;
 
-        let host = (statsd_host.as_str(), opts.statsd_port);
+        let host = (statsd_host.as_str(), port);
         let udp_sink = BufferedUdpMetricSink::from(host, socket)?;
         let sink = QueuingMetricSink::from(udp_sink);
         StatsdClient::builder("autopush", sink)

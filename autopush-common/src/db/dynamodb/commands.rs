@@ -71,7 +71,7 @@ pub async fn list_tables(
     Ok(ddb
         .list_tables(input)
         .await
-        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?)
+        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?)
 }
 
 pub async fn fetch_messages(
@@ -97,7 +97,7 @@ pub async fn fetch_messages(
     let output = ddb
         .query(input.clone())
         .await
-        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
     let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
         debug!("Got response of: {:?}", items);
         items
@@ -163,7 +163,7 @@ pub async fn fetch_timestamp_messages(
     let output = ddb
         .query(input.clone())
         .await
-        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
     let messages = output.items.map_or_else(Vec::new, |items| {
         debug!("Got response of: {:?}", items);
         items
@@ -201,7 +201,7 @@ pub async fn drop_user(
     };
     ddb.delete_item(input.clone())
         .await
-        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()).into())
+        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()).into())
 }
 
 pub async fn get_uaid(
@@ -217,7 +217,7 @@ pub async fn get_uaid(
     };
     ddb.get_item(input.clone())
         .await
-        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()).into())
+        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()).into())
 }
 
 pub async fn register_user(
@@ -228,7 +228,7 @@ pub async fn register_user(
     trace!("### Registering User...");
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
-        Err(e) => return Err(ApiErrorKind::DatabaseError(e.to_string()).into()),
+        Err(e) => return Err(ApiErrorKind::RusotoError(e.to_string()).into()),
     };
     let router_table = router_table.to_string();
     let attr_values = hashmap! {
@@ -255,7 +255,7 @@ pub async fn register_user(
         ..Default::default()
     })
     .await
-    .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()).into())
+    .map_err(|e| ApiErrorKind::RusotoError(e.to_string()).into())
 }
 
 pub async fn update_user_message_month(
@@ -281,7 +281,7 @@ pub async fn update_user_message_month(
 
     match ddb.update_item(update_item.clone()).await {
         Ok(_) => Ok(()),
-        Err(e) => Err(ApiErrorKind::DatabaseError(e.to_string()).into()),
+        Err(e) => Err(ApiErrorKind::RusotoError(e.to_string()).into()),
     }
 }
 
@@ -311,7 +311,7 @@ pub async fn all_channels(
                 })?
                 .unwrap_or_default()
         })
-        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
 
     Ok(res.unwrap_or_default())
 }
@@ -341,7 +341,7 @@ pub async fn save_channels(
 
     ddb.update_item(update_item.clone())
         .await
-        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
     Ok(())
 }
 
@@ -369,7 +369,7 @@ pub async fn unregister_channel_id(
     Ok(ddb
         .update_item(update_item.clone())
         .await
-        .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?)
+        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -397,7 +397,7 @@ pub async fn lookup_user(
         connected_at,
         ..Default::default()
     };
-    let user = handle_user_result(
+    let user = check_user(
         &cur_month,
         &messages_tables,
         connected_at,
@@ -422,7 +422,7 @@ pub async fn lookup_user(
                 .send();
             drop_user(ddb, &uaid2, &router_table)
                 .await
-                .map_err(|e| ApiErrorKind::DatabaseError(e.to_string()))?;
+                .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
             (hello_response, None)
         }
     })
@@ -430,7 +430,7 @@ pub async fn lookup_user(
 
 /// Helper function for determining if a returned user record is valid for use
 /// or if it should be dropped and a new one created.
-fn handle_user_result(
+fn check_user(
     cur_month: &str,
     messages_tables: &[String],
     connected_at: u64,

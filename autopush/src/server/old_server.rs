@@ -29,7 +29,7 @@ use tungstenite::handshake::server::Request;
 use autopush_common::db::dynamodb::DynamoStorage;
 // use autopush_common::db::postgres::PostgresStorage;
 use autopush_common::db::postgres::PostgresStorage;
-use autopush_common::db::DbStorageClient;
+use autopush_common::db::DbCommandClient;
 use autopush_common::errors::{ApiError, ApiErrorKind};
 use autopush_common::logging;
 
@@ -96,7 +96,7 @@ impl AutopushServer {
 pub struct Server {
     pub clients: Arc<ClientRegistry>,
     broadcaster: RefCell<BroadcastChangeTracker>,
-    pub db_client: Box<dyn DbStorageClient>,
+    pub db_client: Box<dyn DbCommandClient>,
     open_connections: Cell<u32>,
     tls_acceptor: Option<SslAcceptor>,
     pub opts: Arc<ServerOptions>,
