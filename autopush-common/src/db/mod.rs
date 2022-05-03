@@ -35,7 +35,6 @@ pub struct DbSettings {
     pub meta_tablename: Option<String>,
 }
 
-
 /// Custom Uuid serializer
 ///
 /// Serializes a Uuid as a simple string instead of hyphenated
@@ -51,75 +50,74 @@ where
 /// various commands for the endpoint
 #[async_trait]
 pub trait DbCommandClient: Send + Sync {
-        //*
-        async fn hello(
-            &self,
-            connected_at: u64,
-            uaid: Option<&Uuid>,
-            router_url: &str,
-            defer_registration: bool,
-        ) -> ApiResult<HelloResponse>;
+    //*
+    async fn hello(
+        &self,
+        connected_at: u64,
+        uaid: Option<&Uuid>,
+        router_url: &str,
+        defer_registration: bool,
+    ) -> ApiResult<HelloResponse>;
 
-        async fn register(
-            &self,
-            uaid: &Uuid,
-            channel_id: &Uuid,
-            message_month: &str,
-            endpoint: &str,
-            register_user: Option<&UserRecord>,
-        ) -> ApiResult<RegisterResponse>;
+    async fn register(
+        &self,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        message_month: &str,
+        endpoint: &str,
+        register_user: Option<&UserRecord>,
+    ) -> ApiResult<RegisterResponse>;
 
-        async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()>;
+    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()>;
 
-        async fn unregister(
-            &self,
-            uaid: &Uuid,
-            channel_id: &Uuid,
-            message_month: &str,
-        ) -> ApiResult<bool>;
+    async fn unregister(
+        &self,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        message_month: &str,
+    ) -> ApiResult<bool>;
 
-        async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()>;
+    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()>;
 
-        async fn store_message(
-            &self,
-            uaid: &Uuid,
-            message_month: String,
-            message: Notification,
-        ) -> ApiResult<()>;
+    async fn store_message(
+        &self,
+        uaid: &Uuid,
+        message_month: String,
+        message: Notification,
+    ) -> ApiResult<()>;
 
-        async fn store_messages(
-            &self,
-            uaid: &Uuid,
-            message_month: &str,
-            messages: Vec<Notification>,
-        ) -> ApiResult<()>;
+    async fn store_messages(
+        &self,
+        uaid: &Uuid,
+        message_month: &str,
+        messages: Vec<Notification>,
+    ) -> ApiResult<()>;
 
-        async fn delete_message(
-            &self,
-            table_name: &str,
-            uaid: &Uuid,
-            notif: &Notification,
-        ) -> ApiResult<()>;
+    async fn delete_message(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        notif: &Notification,
+    ) -> ApiResult<()>;
 
-        async fn check_storage(
-            &self,
-            table_name: &str,
-            uaid: &Uuid,
-            include_topic: bool,
-            timestamp: Option<u64>,
-        ) -> ApiResult<CheckStorageResponse>;
+    async fn check_storage(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        include_topic: bool,
+        timestamp: Option<u64>,
+    ) -> ApiResult<CheckStorageResponse>;
 
-        async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
-            -> ApiResult<HashSet<Uuid>>;
+    async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
+        -> ApiResult<HashSet<Uuid>>;
 
-        async fn remove_node_id(
-            &self,
-            uaid: &Uuid,
-            node_id: String,
-            connected_at: u64,
-        ) -> ApiResult<()>;
-        // */
-
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: String,
+        connected_at: u64,
+    ) -> ApiResult<()>;
+    // */
 }
 
 /// Basic requirements for notification content to deliver to websocket client

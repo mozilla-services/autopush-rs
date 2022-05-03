@@ -19,6 +19,7 @@ use crate::server::web::BytesMut;
 use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
+use autopush_common::db::DbSettings;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use std::sync::Arc;
@@ -44,14 +45,20 @@ impl Server {
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
+        let db_settings = DbSettings {
+            dsn: settings.db_dsn,
+            message_tablename: settings.message_tablename,
+            router_tablename: settings.router_tablename,
+            meta_tablename: settings.meta_tablename,
+        };
         let db: Box<dyn DbClient> = match settings.use_ddb {
             true => {
                 trace!("Using DDB Client");
-                Box::new(DdbClientImpl::new(metrics.clone(), &settings)?)
+                Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?)
             }
             false => {
                 trace!("Using postgres Client");
-                Box::new(PgClientImpl::new(metrics.clone(), &settings).await?)
+                Box::new(PgClientImpl::new(metrics.clone(), &db_settings).await?)
             }
         };
         let http = reqwest::Client::new();

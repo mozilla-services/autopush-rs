@@ -2,11 +2,11 @@
 
 use std::net::UdpSocket;
 
-use cadence::{BufferedUdpMetricSink, NopMetricSink, QueuingMetricSink, StatsdClient};
 use crate::errors::ApiResult;
+use cadence::{BufferedUdpMetricSink, NopMetricSink, QueuingMetricSink, StatsdClient};
 
 /// Create a cadence StatsdClient from the given options
-pub fn new(host: Option<String>, port: u16) -> ApiResult<StatsdClient> {
+pub fn new_metrics(host: Option<String>, port: u16) -> ApiResult<StatsdClient> {
     let builder = if let Some(statsd_host) = host.as_ref() {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.set_nonblocking(true)?;

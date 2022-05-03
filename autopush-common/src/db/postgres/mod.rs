@@ -3,30 +3,31 @@ use std::panic::panic_any;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use tokio_postgres::{Client, NoTls}; // Client is sync.
 use serde_json::json;
+use tokio_postgres::{types::ToSql, Client, NoTls}; // Client is sync.
 
+use crate::db::client::DbClient;
 use async_trait::async_trait;
 use cadence::StatsdClient;
-use crate::db::client::DbClient;
 use uuid::Uuid;
 
-use crate::db::{DbCommandClient, DbSettings, HelloResponse, UserRecord, USER_RECORD_VERSION};
 use crate::db::error::{DbError, DbResult};
+use crate::db::{
+    DbCommandClient, DbSettings, HelloResponse, RegisterResponse, UserRecord, USER_RECORD_VERSION,
+};
 use crate::errors::ApiResult;
 use crate::notification::Notification;
 // use autopush_common::util::sec_since_epoch;
-
 
 #[allow(dead_code)] // TODO: Remove before flight
 #[derive(Clone)]
 pub struct PostgresStorage {
     client: Arc<Client>,
     _metrics: Arc<StatsdClient>,
-    router_table: String,  // Routing information
-    message_table: String, // Message storage information
-    meta_table: String,    // Channels and meta info for a user.
-    current_message_month: Option<String> // For table rotation
+    router_table: String,                  // Routing information
+    message_table: String,                 // Message storage information
+    meta_table: String,                    // Channels and meta info for a user.
+    current_message_month: Option<String>, // For table rotation
 }
 
 impl PostgresStorage {
@@ -93,7 +94,6 @@ impl PostgresStorage {
         });
         return Ok(client);
     }
-
 
     /// Does the given table exist
     async fn table_exists(&self, table_name: String) -> DbResult<bool> {
@@ -238,18 +238,68 @@ impl DbClient for PostgresStorage {
 
     /// update list of channel_ids for uaid in meta table
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
+        let key = format!(
+            "{}:{}",
+            uaid.to_simple().to_string(),
+            channel_id.to_simple().to_string()
+        );
         self.client
             .execute(
                 &format!(
-                    "INSERT INTO {tablename} (uaid, channel_id) VALUES (?, ?);",
+                    "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES (?, ?);",
                     tablename = self.meta_table
                 ),
-                &[
-                    &uaid.to_simple().to_string(),
-                    &channel_id.to_simple().to_string(),
-                ],
+                &[&uaid.to_simple().to_string(), &key],
             )
             .await?;
+        Ok(())
+    }
+
+    /// Save all channels in a list
+    async fn save_channels(
+        &self,
+        uaid: &Uuid,
+        channel_list: HashSet<&Uuid>,
+        _message_month: &str,
+    ) -> DbResult<()> {
+        if channel_list.is_empty() {
+            trace!("No channels to save.");
+            return Ok(());
+        };
+        let uaid_str = uaid.to_simple().to_string();
+        // tokio-postgres doesn't tuples as values, so you can't just construct
+        // the query as `INSERT into ... (a, b) VALUES (?,?), (?,?)`
+        // It does accept them as numericly specified values.
+        // The following is a gross hack that does basically that.
+        // The other option would be to just repeatedly call `self.add_channel()`
+        // but that seems far worse.
+        //
+        // first, collect the values into a flat fector. We force the type in
+        // the first item so that the second one is assumed.
+        let params: Vec<_> = channel_list
+            .iter()
+            .flat_map(|v| {
+                [
+                    &uaid_str.clone() as &(dyn ToSql + Sync),
+                    &format!("{}:{}", &uaid_str, v.to_simple().to_string()),
+                ]
+            })
+            .collect();
+
+        // Now construct the statement, iterate over the parameters we've got
+        // and redistribute them into tuples.
+        let statement = format!(
+            "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES {vars}",
+            tablename = self.meta_table,
+            vars = Vec::from_iter((0..params.len()).step_by(2).map(|v| format!(
+                "(${}, ${})",
+                v,
+                v + 1
+            )))
+            .join(",")
+        );
+        // finally, do the insert.
+        self.client.execute(&statement, &params).await?;
         Ok(())
     }
 
@@ -260,15 +310,18 @@ impl DbClient for PostgresStorage {
             .client
             .query(
                 &format!(
-                    "SELECT channel_id FROM {tablename} WHERE uaid = ?;",
+                    "SELECT uaid_channel_id FROM {tablename} WHERE uaid = ?;",
                     tablename = self.meta_table
                 ),
                 &[&uaid.to_simple().to_string()],
             )
             .await?;
         for row in rows.iter() {
+            // the primary key combination of uaid_channel_id is separated by a ':'
+            // we only want the channelid, so strip the uaid element.
             let s = row
-                .try_get::<&str, &str>("channel_id")
+                .try_get::<&str, &str>("uaid_channel_id")
+                .map(|v| v.split(':').last().unwrap_or(v))
                 .map_err(DbError::PgError)?;
             result.insert(Uuid::from_str(s).map_err(|e| DbError::General(e.to_string()))?);
         }
@@ -281,13 +334,14 @@ impl DbClient for PostgresStorage {
             .client
             .execute(
                 &format!(
-                    "DELETE FROM {tablename} WHERE uaid=? AND channel_id = ?;",
+                    "DELETE FROM {tablename} WHERE uaid_channel_id = ?;",
                     tablename = self.meta_table
                 ),
-                &[
+                &[&format!(
+                    "{}:{}",
                     &uaid.to_simple().to_string(),
                     &channel_id.to_simple().to_string(),
-                ],
+                )],
             )
             .await
             .is_ok())
@@ -371,15 +425,14 @@ impl DbClient for PostgresStorage {
     }
 }
 
-
 /// Higher level command handler for Postgres Storage.
-struct DbPgHandler{
+struct DbPgHandler {
     client: PostgresStorage,
 }
 
 impl DbPgHandler {
     async fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> ApiResult<Self> {
-        Ok(Self{
+        Ok(Self {
             client: PostgresStorage::new(metrics, settings).await?,
         })
     }
@@ -387,9 +440,7 @@ impl DbPgHandler {
 
 //* TODO
 #[async_trait]
-impl DbCommandClient for DbPgHandler
-{
-
+impl DbCommandClient for DbPgHandler {
     /// Handle the initial "HELLO" message type.
     ///
     /// Fetch and check the existing UAID
@@ -399,25 +450,22 @@ impl DbCommandClient for DbPgHandler
         uaid: Option<&Uuid>,
         router_url: &str,
         defer_registration: bool,
-    ) -> ApiResult<HelloResponse>{
-
+    ) -> ApiResult<HelloResponse> {
         trace!(
             "### uaid {:?}, defer_registration: {:?}",
             &uaid,
             &defer_registration,
         );
         let mut user = if let Some(uaid) = uaid {
-            self.client.get_user(
-                uaid,
-            ).await?.map(|mut user| {
+            self.client.get_user(uaid).await?.map(|mut user| {
                 // update the connected at timestamp
                 user.connected_at = connected_at;
                 user
-            }
-            )
+            })
         } else {
             None
-        }.unwrap_or_else(|| UserRecord{
+        }
+        .unwrap_or_else(|| UserRecord {
             current_month: self.client.current_message_month,
             node_id: Some(router_url.to_owned()),
             connected_at,
@@ -433,26 +481,26 @@ impl DbCommandClient for DbPgHandler
             // TODO: reset the UAID if resp.record_version < USER_RECORD_VERSION
         }
 
-        Ok(HelloResponse{
-                    connected_at,
-                    message_month: self.client.current_message_month.unwrap_or_default(),
-                    check_storage: true,
-                    rotate_message_table: if let Some(month) = self.client.current_message_month {
-                        user.current_month.unwrap_or_default() == month
-                    } else {
-                        false
-                    },
-                    uaid : Some(user.uaid),
-                    reset_uaid: user.record_version.unwrap_or(0) < USER_RECORD_VERSION,
-                    deferred_user_registration: if defer_registration {
-                        // Wait 'til later to register this user.
-                        Some(user)
-                    } else {
-                        // Register the new user now.
-                        self.client.add_user(&user).await?;
-                        None
-                    }
-                })
+        Ok(HelloResponse {
+            connected_at,
+            message_month: self.client.current_message_month.unwrap_or_default(),
+            check_storage: true,
+            rotate_message_table: if let Some(month) = self.client.current_message_month {
+                user.current_month.unwrap_or_default() == month
+            } else {
+                false
+            },
+            uaid: Some(user.uaid),
+            reset_uaid: user.record_version.unwrap_or(0) < USER_RECORD_VERSION,
+            deferred_user_registration: if defer_registration {
+                // Wait 'til later to register this user.
+                Some(user)
+            } else {
+                // Register the new user now.
+                self.client.add_user(&user).await?;
+                None
+            },
+        })
     }
 
     async fn register(
@@ -462,34 +510,67 @@ impl DbCommandClient for DbPgHandler
         message_month: &str,
         endpoint: &str,
         register_user: Option<&UserRecord>,
-    ) -> ApiResult<RegisterResponse>{
+    ) -> ApiResult<RegisterResponse> {
+        let mut chids = HashSet::new();
+        let endpoint = endpoint.to_owned();
+        chids.insert(channel_id);
 
+        if let Some(user) = register_user {
+            trace!(
+                "Endpoint Request: User not yet registered... {:?}\nmessage_month: {:?}",
+                &uaid,
+                &message_month
+            );
+            let uaid2 = *uaid;
+            let message_month2 = message_month.to_owned();
+            self.client.add_user(user).await?;
+            trace!("Saving channels: {:#?}", chids);
+            match self
+                .client
+                .save_channels(&uaid2, chids, &message_month2)
+                .await
+            {
+                Ok(_) => {
+                    trace!("sending endpoint: {}", endpoint);
+                    return Ok(RegisterResponse::Success { endpoint });
+                }
+                Err(e) => {
+                    trace!("--- failed to register channel. {:?}", e);
+                    return Ok(RegisterResponse::Error {
+                        status: 503,
+                        error_msg: "Failed to register channel".to_owned(),
+                    });
+                }
+            }
+        };
+        trace!("Continuing");
+        return match self.client.save_channels(uaid, chids, message_month).await {
+            Ok(_) => Ok(RegisterResponse::Success { endpoint }),
+            Err(_) => Ok(RegisterResponse::Error {
+                status: 503,
+                error_msg: "Failed to register channel".to_string(),
+            }),
+        };
     }
 
-    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()>{
-
-    }
+    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()> {}
 
     async fn unregister(
         &self,
         uaid: &Uuid,
         channel_id: &Uuid,
         message_month: &str,
-    ) -> ApiResult<bool>{
-
+    ) -> ApiResult<bool> {
     }
 
-    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()>{
-
-    }
+    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()> {}
 
     async fn store_message(
         &self,
         uaid: &Uuid,
         message_month: String,
         message: Notification,
-    ) -> ApiResult<()>{
-
+    ) -> ApiResult<()> {
     }
 
     async fn store_messages(
@@ -497,8 +578,7 @@ impl DbCommandClient for DbPgHandler
         uaid: &Uuid,
         message_month: &str,
         messages: Vec<Notification>,
-    ) -> ApiResult<()>{
-
+    ) -> ApiResult<()> {
     }
 
     async fn delete_message(
@@ -506,8 +586,7 @@ impl DbCommandClient for DbPgHandler
         table_name: &str,
         uaid: &Uuid,
         notif: &Notification,
-    ) -> ApiResult<()>{
-
+    ) -> ApiResult<()> {
     }
 
     async fn check_storage(
@@ -516,23 +595,22 @@ impl DbCommandClient for DbPgHandler
         uaid: &Uuid,
         include_topic: bool,
         timestamp: Option<u64>,
-    ) -> ApiResult<CheckStorageResponse>{
-
+    ) -> ApiResult<CheckStorageResponse> {
     }
 
-    async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
-        -> ApiResult<HashSet<Uuid>>{
-
-        }
+    async fn get_user_channels(
+        &self,
+        uaid: &Uuid,
+        message_table: &str,
+    ) -> ApiResult<HashSet<Uuid>> {
+    }
 
     async fn remove_node_id(
         &self,
         uaid: &Uuid,
         node_id: String,
         connected_at: u64,
-    ) -> ApiResult<()>{
-
+    ) -> ApiResult<()> {
     }
-
 }
 // */

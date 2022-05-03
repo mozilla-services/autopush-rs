@@ -52,6 +52,7 @@ use autopush_common::db::postgres::PostgresStorage;
 use autopush_common::db::DbCommandClient;
 use autopush_common::errors::{ApiError, ApiErrorKind, ApiResult};
 use autopush_common::logging;
+use autopush_common::metrics::new_metrics;
 use autopush_common::notification::Notification;
 //use autopush_common::util::timeout;
 

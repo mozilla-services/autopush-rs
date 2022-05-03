@@ -23,7 +23,7 @@ pub struct Settings {
     pub db_dsn: Option<String>,
     pub router_tablename: String,
     pub message_tablename: String,
-    pub meta_table_name: Option<String>,
+    pub meta_tablename: Option<String>,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
@@ -50,7 +50,7 @@ impl Default for Settings {
             db_dsn: None,
             router_tablename: "router".to_string(), // be consistent with autopush-rs
             message_tablename: "message".to_string(),
-            meta_table_name: None,
+            meta_tablename: None,
             max_data_bytes: 4096,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),

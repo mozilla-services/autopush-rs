@@ -51,7 +51,7 @@ impl PgClientImpl {
                 router_table: settings.router_tablename.clone(),
                 message_table: settings.message_tablename.clone(),
                 meta_table: settings
-                    .meta_table_name
+                    .meta_tablename
                     .clone()
                     .unwrap_or_else(|| "meta".to_owned()),
             });

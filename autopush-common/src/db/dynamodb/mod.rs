@@ -1,15 +1,15 @@
 use crate::db::client::DbClient;
-use crate::db::error::{DbError, DbResult};
 use crate::db::dynamodb::retry::{
     retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
     retryable_putitem_error, retryable_updateitem_error,
 };
-use crate::db::DbSettings;
+use crate::db::error::{DbError, DbResult};
+use crate::db::{DbSettings, MAX_EXPIRY};
 
-use async_trait::async_trait;
 use crate::db::{NotificationRecord, UserRecord, MAX_CHANNEL_TTL};
 use crate::notification::Notification;
 use crate::util::sec_since_epoch;
+use async_trait::async_trait;
 // use crate::db::dynamodb::{ddb_item, hashmap, val};
 use cadence::StatsdClient;
 use rusoto_core::credential::StaticProvider;
@@ -206,6 +206,36 @@ impl DbClient for DdbClientImpl {
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
+        Ok(())
+    }
+
+    async fn save_channels(
+        &self,
+        uaid: &Uuid,
+        channel_list: HashSet<&Uuid>,
+        _message_month: &str,
+    ) -> DbResult<()> {
+        let chids: Vec<String> = channel_list
+            .into_iter()
+            .map(|v| v.to_simple().to_string())
+            .collect();
+        let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
+        let attr_values = hashmap! {
+            ":chids".to_string() => val!(SS => chids),
+            ":expiry".to_string() => val!(N => expiry),
+        };
+        let update_item = UpdateItemInput {
+            key: ddb_item! {
+                uaid: s => uaid.to_simple().to_string(),
+                chidmessageid: s => " ".to_string()
+            },
+            update_expression: Some("ADD chids :chids SET expiry=:expiry".to_string()),
+            expression_attribute_values: Some(attr_values),
+            table_name: self.message_table,
+            ..Default::default()
+        };
+
+        self.client.update_item(update_item.clone()).await?;
         Ok(())
     }
 

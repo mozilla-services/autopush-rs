@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::server::metrics;
+use crate::server::middleware::sentry::SentryWrapper;
 use actix::{Actor, StreamHandler};
 use actix_cors::Cors;
 use actix_web::{
@@ -7,16 +9,13 @@ use actix_web::{
     HttpServer,
 };
 use actix_web_actors::ws;
-use cadence::StatsdClient;
-use fernet::MultiFernet;
-use crate::server::metrics;
-use crate::server::middleware::sentry::SentryWrapper;
-use autopush_common::tags::Tags;
-use autopush_common::db::DbCommandClient;
 use autopush_common::db::client::DbClient;
 use autopush_common::db::dynamodb::DynamoStorage;
 use autopush_common::db::postgres::PostgressStorage;
-
+use autopush_common::db::DbCommandClient;
+use autopush_common::tags::Tags;
+use cadence::StatsdClient;
+use fernet::MultiFernet;
 
 use crate::settings::Settings;
 // TODO: Port DbClient from autoendpoint to autopush_common?

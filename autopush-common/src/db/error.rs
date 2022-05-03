@@ -1,10 +1,10 @@
 use thiserror::Error;
 
-use tokio_postgres::Error as PgError;
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     DeleteItemError, DescribeTableError, GetItemError, PutItemError, UpdateItemError,
 };
+use tokio_postgres::Error as PgError;
 
 pub type DbResult<T> = Result<T, DbError>;
 
@@ -38,6 +38,5 @@ pub enum DbError {
     ConnectionError(String),
 
     #[error("Unknown Database Error {0}")]
-    General(String)
-
+    General(String),
 }
