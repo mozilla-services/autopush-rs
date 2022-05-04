@@ -293,9 +293,12 @@ mod tests {
     fn gcm_router_data(credential: String) -> HashMap<String, serde_json::Value> {
         let mut map = HashMap::new();
         let mut creds = HashMap::new();
-        map.insert("auth".to_string(), credential);
         map.insert("senderID".to_string(), GCM_PROJECT_ID.to_string());
         creds.insert("creds".to_string(), serde_json::to_value(map).unwrap());
+        creds.insert(
+            "token".to_string(),
+            serde_json::to_value(credential).unwrap(),
+        );
         creds
     }
 
@@ -338,13 +341,14 @@ mod tests {
     #[tokio::test]
     async fn successful_gcm_fallback() {
         let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
+        let registration_id = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         let project_id = GCM_PROJECT_ID;
         let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(make_service_key(), auth_key.to_owned(), ddb).await;
         assert!(router.active());
         // body must match the composed body in `gcm_send` exactly (order, values, etc.)
         let body = serde_json::json!({
-            "registration_ids": [auth_key],
+            "registration_ids": [registration_id],
             "time_to_live": 60_i32,
             "delay_while_idle": false,
             "data": {
@@ -358,8 +362,11 @@ mod tests {
             .match_header("Content-Type", "application/json")
             .match_body(body.as_str())
             .create();
-        let notification =
-            make_notification(gcm_router_data(auth_key.to_owned()), None, RouterType::GCM);
+        let notification = make_notification(
+            gcm_router_data(registration_id.to_owned()),
+            None,
+            RouterType::GCM,
+        );
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
