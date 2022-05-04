@@ -1,5 +1,4 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
-use crate::extractors::routers::RouterType;
 use crate::extractors::token_info::{ApiVersion, TokenInfo};
 use crate::extractors::user::validate_user;
 use crate::headers::crypto_key::CryptoKeyHeader;
@@ -28,7 +27,6 @@ const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 pub struct Subscription {
     pub user: DynamoDbUser,
     pub channel_id: Uuid,
-    pub router_type: RouterType,
     pub vapid: Option<VapidHeaderWithKey>,
 }
 
@@ -89,7 +87,7 @@ impl FromRequest for Subscription {
                 .get_user(uaid)
                 .await?
                 .ok_or(ApiErrorKind::NoSubscription)?;
-            let router_type = validate_user(&user, &channel_id, &state).await?;
+            validate_user(&user, &channel_id, &state).await?;
 
             // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
@@ -103,7 +101,6 @@ impl FromRequest for Subscription {
             Ok(Subscription {
                 user,
                 channel_id,
-                router_type,
                 vapid,
             })
         }

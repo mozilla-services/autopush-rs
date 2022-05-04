@@ -27,7 +27,7 @@ impl FromStr for RouterType {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        match s.to_lowercase().as_str() {
             "webpush" => Ok(RouterType::WebPush),
             "fcm" => Ok(RouterType::FCM),
             "gcm" => Ok(RouterType::GCM),
