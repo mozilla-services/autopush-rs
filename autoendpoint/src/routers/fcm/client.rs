@@ -1,6 +1,6 @@
 use crate::routers::common::message_size_check;
 use crate::routers::fcm::error::FcmError;
-use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
+use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
 use crate::routers::RouterError;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -21,16 +21,16 @@ pub struct FcmClient {
     endpoint: Url,
     timeout: Duration,
     max_data: usize,
-    auth: Option<DefaultAuthenticator>,
-    http: reqwest::Client,
-    credential: FcmCredential, // Only used for legacy GCM
+    fcm_authenticator: Option<DefaultAuthenticator>,
+    http_client: reqwest::Client,
+    server_credential: FcmServerCredential, // Only used for legacy GCM
 }
 
 impl FcmClient {
     /// Create an `FcmClient` using the provided credential
     pub async fn new(
         settings: &FcmSettings,
-        credential: FcmCredential,
+        server_credential: FcmServerCredential,
         http: reqwest::Client,
     ) -> std::io::Result<Self> {
         // `map`ping off of `serde_json::from_str` gets hairy and weird, requiring
@@ -38,12 +38,13 @@ impl FcmClient {
         // json detection does not. GCM keys are base64 values, so  `{` will never
         // appear in a GCM key. FCM keys are serialized JSON constructs.
         // These are both set in the settings and come from the `credentials` value.
-        let auth = if credential.credential.contains('{') {
+        let auth = if server_credential.server_access_token.contains('{') {
             trace!(
                 "Reading credential for {} from string...",
-                &credential.project_id
+                &server_credential.project_id
             );
-            let key_data = serde_json::from_str::<ServiceAccountKey>(&credential.credential)?;
+            let key_data =
+                serde_json::from_str::<ServiceAccountKey>(&server_credential.server_access_token)?;
             Some(
                 ServiceAccountAuthenticator::builder(key_data)
                     .build()
@@ -51,12 +52,12 @@ impl FcmClient {
             )
         } else {
             // check to see if this is a path to a file, and read in the credentials.
-            if Path::new(&credential.credential).exists() {
+            if Path::new(&server_credential.server_access_token).exists() {
                 warn!(
                     "Reading credential for {} from file...",
-                    &credential.project_id
+                    &server_credential.project_id
                 );
-                let mut file = File::open(&credential.credential)?;
+                let mut file = File::open(&server_credential.server_access_token)?;
                 let mut content = String::new();
                 file.read_to_string(&mut content)?;
                 let key_data = serde_json::from_str::<ServiceAccountKey>(&content)?;
@@ -66,7 +67,7 @@ impl FcmClient {
                         .await?,
                 )
             } else {
-                trace!("Presuming {} is GCM", &credential.project_id);
+                trace!("Presuming {} is GCM", &server_credential.project_id);
                 None
             }
         };
@@ -75,14 +76,14 @@ impl FcmClient {
                 .base_url
                 .join(&format!(
                     "v1/projects/{}/messages:send",
-                    credential.project_id
+                    server_credential.project_id
                 ))
                 .expect("Project ID is not URL-safe"),
             timeout: Duration::from_secs(settings.timeout as u64),
             max_data: settings.max_data,
-            auth,
-            http,
-            credential,
+            fcm_authenticator: auth,
+            http_client: http,
+            server_credential,
         })
     }
 
@@ -90,7 +91,7 @@ impl FcmClient {
     pub async fn send_gcm(
         &self,
         data: HashMap<&'static str, String>,
-        auth: String,
+        registration_id: String,
         ttl: usize,
     ) -> Result<(), RouterError> {
         let data_json = serde_json::to_string(&data).unwrap();
@@ -98,7 +99,7 @@ impl FcmClient {
 
         // Build the GCM message
         let message = serde_json::json!({
-            "registration_ids": [auth],
+            "registration_ids": [registration_id],
             "time_to_live": ttl,
             "delay_while_idle": false,
             "data": data
@@ -121,13 +122,11 @@ impl FcmClient {
         // */
 
         // Make the request
+        let server_access_token = &self.server_credential.server_access_token;
         let response = self
-            .http
+            .http_client
             .post(self.endpoint.clone())
-            .header(
-                "Authorization",
-                format!("key={}", self.credential.credential.as_str()),
-            )
+            .header("Authorization", format!("key={}", server_access_token))
             .header("Content-Type", "application/json")
             .json(&message)
             .timeout(self.timeout)
@@ -170,7 +169,7 @@ impl FcmClient {
     pub async fn send(
         &self,
         data: HashMap<&'static str, String>,
-        token: String,
+        routing_token: String,
         ttl: usize,
     ) -> Result<(), RouterError> {
         // Check the payload size. FCM only cares about the `data` field when
@@ -181,7 +180,7 @@ impl FcmClient {
         // Build the FCM message
         let message = serde_json::json!({
             "message": {
-                "token": token,
+                "token": routing_token,
                 "android": {
                     "ttl": format!("{}s", ttl),
                     "data": data
@@ -189,8 +188,8 @@ impl FcmClient {
             }
         });
 
-        let access_token = self
-            .auth
+        let server_access_token = self
+            .fcm_authenticator
             .as_ref()
             .unwrap()
             .token(OAUTH_SCOPES)
@@ -199,9 +198,12 @@ impl FcmClient {
 
         // Make the request
         let response = self
-            .http
+            .http_client
             .post(self.endpoint.clone())
-            .header("Authorization", format!("Bearer {}", access_token.as_str()))
+            .header(
+                "Authorization",
+                format!("Bearer {}", server_access_token.as_str()),
+            )
             .json(&message)
             .timeout(self.timeout)
             .send()
@@ -254,7 +256,7 @@ struct FcmErrorResponse {
 #[cfg(test)]
 pub mod tests {
     use crate::routers::fcm::client::FcmClient;
-    use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
+    use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
     use crate::routers::RouterError;
     use std::collections::HashMap;
     use url::Url;
@@ -303,11 +305,11 @@ pub mod tests {
     }
 
     /// Make a FcmClient from the service auth data
-    async fn make_client(credential: FcmCredential) -> FcmClient {
+    async fn make_client(credential: FcmServerCredential) -> FcmClient {
         FcmClient::new(
             &FcmSettings {
                 base_url: Url::parse(&mockito::server_url()).unwrap(),
-                credentials: serde_json::json!(credential).to_string(),
+                server_credentials: serde_json::json!(credential).to_string(),
                 ..Default::default()
             },
             credential,
@@ -321,9 +323,9 @@ pub mod tests {
     /// expected FCM request.
     #[tokio::test]
     async fn sends_correct_fcm_request() {
-        let client = make_client(FcmCredential {
+        let client = make_client(FcmServerCredential {
             project_id: PROJECT_ID.to_owned(),
-            credential: make_service_key(),
+            server_access_token: make_service_key(),
         })
         .await;
         let _token_mock = mock_token_endpoint();
@@ -344,25 +346,25 @@ pub mod tests {
     #[tokio::test]
     async fn sends_correct_gcm_request() {
         // from settings, the projects Auth Key.
-        let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
+        let registration_id = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
         let project_id = GCM_PROJECT_ID;
         // GCM_ACCESS_TOKEN comes from the device, it's the registration_id
         // sent as part of message registration for a GCM capable client.
-        let client = make_client(FcmCredential {
+        let client = make_client(FcmServerCredential {
             project_id: project_id.to_owned(),
-            credential: auth_key.to_owned(),
+            server_access_token: registration_id.to_owned(),
         })
         .await;
         let _token_mock = mock_token_endpoint();
-        let body = format!("{{\"data\":{{\"is_test\":\"true\"}},\"delay_while_idle\":false,\"registration_ids\":[\"{}\"],\"time_to_live\":42}}", &auth_key);
+        let body = format!("{{\"data\":{{\"is_test\":\"true\"}},\"delay_while_idle\":false,\"registration_ids\":[\"{}\"],\"time_to_live\":42}}", &registration_id);
         let fcm_mock = mock_fcm_endpoint_builder(project_id)
-            .match_header("Authorization", format!("key={}", auth_key).as_str())
+            .match_header("Authorization", format!("key={}", registration_id).as_str())
             .match_header("Content-Type", "application/json")
             .match_body(body.as_str())
             .create();
         let mut data = HashMap::new();
         data.insert("is_test", "true".to_string());
-        let result = client.send_gcm(data, auth_key.to_owned(), 42).await;
+        let result = client.send_gcm(data, registration_id.to_owned(), 42).await;
         assert!(result.is_ok(), "result={:?}", result);
         fcm_mock.assert();
     }
@@ -370,9 +372,9 @@ pub mod tests {
     /// Authorization errors are handled
     #[tokio::test]
     async fn unauthorized() {
-        let client = make_client(FcmCredential {
+        let client = make_client(FcmServerCredential {
             project_id: PROJECT_ID.to_owned(),
-            credential: make_service_key(),
+            server_access_token: make_service_key(),
         })
         .await;
         let _token_mock = mock_token_endpoint();
@@ -395,9 +397,9 @@ pub mod tests {
     /// 404 errors are handled
     #[tokio::test]
     async fn not_found() {
-        let client = make_client(FcmCredential {
+        let client = make_client(FcmServerCredential {
             project_id: PROJECT_ID.to_owned(),
-            credential: make_service_key(),
+            server_access_token: make_service_key(),
         })
         .await;
         let _token_mock = mock_token_endpoint();
@@ -420,9 +422,9 @@ pub mod tests {
     /// Unhandled errors (where an error object is returned) are wrapped and returned
     #[tokio::test]
     async fn other_fcm_error() {
-        let client = make_client(FcmCredential {
+        let client = make_client(FcmServerCredential {
             project_id: PROJECT_ID.to_owned(),
-            credential: make_service_key(),
+            server_access_token: make_service_key(),
         })
         .await;
         let _token_mock = mock_token_endpoint();
@@ -449,9 +451,9 @@ pub mod tests {
     /// Unknown errors (where an error object is NOT returned) is handled
     #[tokio::test]
     async fn unknown_fcm_error() {
-        let client = make_client(FcmCredential {
+        let client = make_client(FcmServerCredential {
             project_id: PROJECT_ID.to_owned(),
-            credential: make_service_key(),
+            server_access_token: make_service_key(),
         })
         .await;
         let _token_mock = mock_token_endpoint();

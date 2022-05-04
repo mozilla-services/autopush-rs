@@ -6,7 +6,7 @@ use crate::extractors::routers::RouterType;
 use crate::routers::common::{build_message_data, handle_error, incr_success_metrics};
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
-use crate::routers::fcm::settings::{FcmCredential, FcmSettings};
+use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use cadence::StatsdClient;
@@ -37,8 +37,8 @@ impl FcmRouter {
         metrics: StatsdClient,
         ddb: Box<dyn DbClient>,
     ) -> Result<Self, FcmError> {
-        let credentials = settings.credentials()?;
-        let clients = Self::create_clients(&settings, credentials, http.clone())
+        let server_credentials = settings.credentials()?;
+        let clients = Self::create_clients(&settings, server_credentials, http.clone())
             .await
             .map_err(FcmError::OAuthClientBuild)?;
         Ok(Self {
@@ -53,15 +53,15 @@ impl FcmRouter {
     /// Create FCM clients for each application
     async fn create_clients(
         settings: &FcmSettings,
-        credentials: HashMap<String, FcmCredential>,
+        server_credentials: HashMap<String, FcmServerCredential>,
         http: reqwest::Client,
     ) -> std::io::Result<HashMap<String, FcmClient>> {
         let mut clients = HashMap::new();
 
-        for (profile, credential) in credentials {
+        for (profile, server_credential) in server_credentials {
             clients.insert(
                 profile,
-                FcmClient::new(settings, credential, http.clone()).await?,
+                FcmClient::new(settings, server_credential, http.clone()).await?,
             );
         }
         trace!("Initialized {} FCM clients", clients.len());
@@ -73,15 +73,16 @@ impl FcmRouter {
         !self.clients.is_empty()
     }
 
-    /// Do the gauntlet check to get the router credentials.
+    /// Do the gauntlet check to get the routing credentials, these are the
+    /// sender/project ID, and the subscription specific user routing token.
     /// FCM stores the values in the top hash as `token` & `app_id`, GCM stores them
     /// in a sub-hash as `creds.auth` and `creds.senderID`.
     /// If any of these error out, it's probably because of a corrupted key.
-    fn get_creds(&self, router_data: &HashMap<String, Value>) -> ApiResult<(String, String)> {
+    fn routing_info(&self, router_data: &HashMap<String, Value>) -> ApiResult<(String, String)> {
         let creds = router_data.get("creds").and_then(Value::as_object);
         // I'm sure that there's a clever way to collapse these using `.map` or
         // `.and_then`, but  this is readable to me.
-        let auth = match router_data.get("token").and_then(Value::as_str) {
+        let routing_token = match router_data.get("token").and_then(Value::as_str) {
             Some(v) => v.to_owned(),
             None => {
                 if creds.is_none() {
@@ -115,7 +116,7 @@ impl FcmRouter {
                 }
             }
         };
-        Ok((auth, app_id))
+        Ok((routing_token, app_id))
     }
 }
 
@@ -154,10 +155,16 @@ impl Router for FcmRouter {
             .as_ref()
             .ok_or(FcmError::NoRegistrationToken)?;
 
-        // Older "GCM" set the router data as "auth", "senderID"
-        // Newer "FCM" set the router data as "token", "app_id"
+        // Older "GCM" set the router data as "senderID" : "auth"
+        // Newer "FCM" set the router data as "app_id": "token"
+        // The first element is the project identifier, which is
+        // matched against the values specified in the settings to
+        // get the authentication method. The second is the client
+        // provided routing token. This is a proprietary identifier
+        // that is sent by the client at registration.
+        //
         // Try reading as FCM and fall back to GCM.
-        let (token, app_id) = self.get_creds(router_data)?;
+        let (routing_token, app_id) = self.routing_info(router_data)?;
         let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
         let message_data = build_message_data(notification)?;
 
@@ -167,9 +174,10 @@ impl Router for FcmRouter {
             .clients
             .get(&app_id)
             .ok_or_else(|| FcmError::InvalidAppId(app_id.clone()))?;
+
         // GCM is the older message format for android, and it's not possible to generate
-        // new test keys. It operates by using the client generated "auth" as a bearer
-        // token. FCM operates by using the more complex token as part of an OAuth2
+        // new test keys. It operates by using a project level bearer token as authorization.
+        // FCM operates by using the more complex token as part of an OAuth2
         // transaction. According to the documentation, GCM and FCM are interoperable,
         // meaning that the client provided tokens should match up, and that the structure
         // of the data should also not make a huge difference. (Although, that's untested.)
@@ -178,8 +186,8 @@ impl Router for FcmRouter {
             .unwrap_or(RouterType::FCM)
         {
             RouterType::GCM => {
-                trace!("Sending message to GCM: [{:?}] {:?}", &app_id, message_data);
-                if let Err(e) = client.send_gcm(message_data, token.to_string(), ttl).await {
+                trace!("Sending message to GCM: [{:?}]", &app_id);
+                if let Err(e) = client.send_gcm(message_data, routing_token, ttl).await {
                     return Err(handle_error(
                         e,
                         &self.metrics,
@@ -193,8 +201,8 @@ impl Router for FcmRouter {
                 incr_success_metrics(&self.metrics, "gcm", &app_id, notification);
             }
             _ => {
-                trace!("Sending message to FCM: [{:?}] {:?}", &app_id, message_data);
-                if let Err(e) = client.send(message_data, token.to_string(), ttl).await {
+                trace!("Sending message to FCM: [{:?}]", &app_id);
+                if let Err(e) = client.send(message_data, routing_token, ttl).await {
                     return Err(handle_error(
                         e,
                         &self.metrics,
@@ -255,7 +263,7 @@ mod tests {
         FcmRouter::new(
             FcmSettings {
                 base_url: Url::parse(url).unwrap(),
-                credentials: serde_json::json!({
+                server_credentials: serde_json::json!({
                     "dev": {
                         "project_id": PROJECT_ID,
                         "credential": fcm_credential
@@ -288,10 +296,12 @@ mod tests {
         map
     }
 
-    fn gcm_router_data(auth: String) -> HashMap<String, serde_json::Value> {
+    /// Get the GCM credential data from the database (this needs to read
+    /// historic values).
+    fn gcm_router_data(credential: String) -> HashMap<String, serde_json::Value> {
         let mut map = HashMap::new();
         let mut creds = HashMap::new();
-        map.insert("auth".to_string(), auth);
+        map.insert("auth".to_string(), credential);
         map.insert("senderID".to_string(), GCM_PROJECT_ID.to_string());
         creds.insert("creds".to_string(), serde_json::to_value(map).unwrap());
         creds
