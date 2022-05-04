@@ -80,23 +80,15 @@ impl FcmRouter {
     /// If any of these error out, it's probably because of a corrupted key.
     fn routing_info(&self, router_data: &HashMap<String, Value>) -> ApiResult<(String, String)> {
         let creds = router_data.get("creds").and_then(Value::as_object);
-        // I'm sure that there's a clever way to collapse these using `.map` or
-        // `.and_then`, but  this is readable to me.
+        // GCM and FCM both should store the client registration_token as token in the router_data.
+        // There was some confusion about router table records that may store the client
+        // routing token in `creds.auth`, but it's believed that this a duplicate of the
+        // server authentication token and can be ignored since we use the value specified
+        // in the settings.
         let routing_token = match router_data.get("token").and_then(Value::as_str) {
             Some(v) => v.to_owned(),
             None => {
-                if creds.is_none() {
-                    return Err(FcmError::NoRegistrationToken.into());
-                }
-                match creds
-                    .unwrap()
-                    .get("auth")
-                    .map(|v| v.as_str())
-                    .unwrap_or(None)
-                {
-                    Some(v) => v.to_owned(),
-                    None => return Err(FcmError::NoRegistrationToken.into()),
-                }
+                return Err(FcmError::NoRegistrationToken.into());
             }
         };
         let app_id = match router_data.get("app_id").and_then(Value::as_str) {
