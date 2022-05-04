@@ -5,8 +5,6 @@ use crate::routers::RouterError;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::time::Duration;
 use url::Url;
@@ -57,9 +55,7 @@ impl FcmClient {
                     "Reading credential for {} from file...",
                     &server_credential.project_id
                 );
-                let mut file = File::open(&server_credential.server_access_token)?;
-                let mut content = String::new();
-                file.read_to_string(&mut content)?;
+                let content = std::fs::read_to_string(&server_credential.server_access_token)?;
                 let key_data = serde_json::from_str::<ServiceAccountKey>(&content)?;
                 Some(
                     ServiceAccountAuthenticator::builder(key_data)
