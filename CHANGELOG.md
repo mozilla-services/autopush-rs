@@ -1,3 +1,11 @@
+<a name="1.62.0"></a>
+## 1.62.0 (2022-05-05)
+
+##### Bug Fixes:
+
+ *  bug: add app_id to error message, Add GCM data sends ([d2cd2ee5](https://github.com/mozilla-services/autopush-rs/commit/d2cd2ee52204ed4924b305ed651744a1cab2ebe9), closes [#303](https://github.com/mozilla-services/autopush-rs/issues/303)))
+
+
 <a name="1.61.0"></a>
 ## 1.61.0 (2022-03-22)
 
