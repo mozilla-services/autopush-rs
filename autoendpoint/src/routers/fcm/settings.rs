@@ -11,7 +11,31 @@ pub struct FcmSettings {
     pub min_ttl: usize,
     /// A JSON dict of `FcmCredential`s. This must be a `String` because
     /// environment variables cannot encode a `HashMap<String, FcmCredential>`
-    pub credentials: String,
+    /// This contains both GCM and FCM credentials.
+    /// FCM (the more modern credential set) is specified as
+    ///
+    /// ```json
+    /// {"_project_id_":{"project_id": "_project_id_", "credential": "_key_"}, ...}
+    /// ```
+    /// For FCM, `credential` keys can be either a serialized JSON string, or the
+    /// path to the JSON key file.
+    ///
+    /// GCM follows the same pattern, where
+    ///
+    /// `_project_id_` == senderID and `_key_` == credential
+    /// e.g. "bar-project" is via FCM, with a serialized JSON key,
+    /// e.g. "gorp-project" is via FCM, with a key path,
+    /// and a GCM project with SenderID of "f00" specifies the server key as credential
+    ///
+    /// ```json
+    /// {"bar-project":{"project_id": "bar-project-1234", "credential": "{\"type\": ...}"},
+    ///  "gorp-project":{"project_id": "gorp-project-abcd", "credential": "keys/gorp-project.json"},
+    ///  "f00": {"project_id": "f00", "credential": "abcd0123457"},
+    ///  ...
+    /// }
+    /// ```
+    #[serde(rename = "credentials")]
+    pub server_credentials: String,
     /// The max size of notification data in bytes
     pub max_data: usize,
     /// The base URL to use for FCM requests
@@ -21,17 +45,18 @@ pub struct FcmSettings {
 }
 
 /// Credential information for each application
-#[derive(Clone, Debug, serde::Deserialize)]
-pub struct FcmCredential {
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct FcmServerCredential {
     pub project_id: String,
-    pub credential: String,
+    #[serde(rename = "credential")]
+    pub server_access_token: String,
 }
 
 impl Default for FcmSettings {
     fn default() -> Self {
         Self {
             min_ttl: 60,
-            credentials: "{}".to_string(),
+            server_credentials: "{}".to_string(),
             max_data: 4096,
             base_url: Url::parse("https://fcm.googleapis.com").unwrap(),
             timeout: 3,
@@ -41,13 +66,7 @@ impl Default for FcmSettings {
 
 impl FcmSettings {
     /// Read the credentials from the provided JSON
-    pub fn credentials(&self) -> serde_json::Result<HashMap<String, FcmCredential>> {
-        match serde_json::from_str(&self.credentials) {
-            Ok(v) => Ok(v),
-            Err(e) => {
-                print!("{:?}\n{}", e, &self.credentials);
-                Err(e)
-            }
-        }
+    pub fn credentials(&self) -> serde_json::Result<HashMap<String, FcmServerCredential>> {
+        serde_json::from_str(&self.server_credentials)
     }
 }

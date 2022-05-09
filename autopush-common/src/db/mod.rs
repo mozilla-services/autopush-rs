@@ -42,7 +42,7 @@ pub fn uuid_serializer<S>(x: &Uuid, s: S) -> StdResult<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    s.serialize_str(&x.to_simple().to_string())
+    s.serialize_str(&x.simple().to_string())
 }
 
 /// DbCommandClient trait

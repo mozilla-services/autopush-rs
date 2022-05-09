@@ -193,10 +193,10 @@ pub mod tests {
             subscription: Subscription {
                 user: UserRecord {
                     router_data: Some(router_data),
+                    router_type: router_type.to_string(),
                     ..Default::default()
                 },
                 channel_id: channel_id(),
-                router_type,
                 vapid: None,
             },
             headers: NotificationHeaders {

@@ -105,7 +105,7 @@ impl DbClient for DdbClientImpl {
         user_map.remove("uaid");
         let input = UpdateItemInput {
             table_name: self.router_table.clone(),
-            key: ddb_item! { uaid: s => user.uaid.to_simple().to_string() },
+            key: ddb_item! { uaid: s => user.uaid.simple().to_string() },
             update_expression: Some(format!(
                 "SET {}",
                 user_map
@@ -146,7 +146,7 @@ impl DbClient for DdbClientImpl {
         let input = GetItemInput {
             table_name: self.router_table.clone(),
             consistent_read: Some(true),
-            key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+            key: ddb_item! { uaid: s => uaid.simple().to_string() },
             ..Default::default()
         };
 
@@ -165,7 +165,7 @@ impl DbClient for DdbClientImpl {
     async fn remove_user(&self, uaid: Uuid) -> DbResult<()> {
         let input = DeleteItemInput {
             table_name: self.router_table.clone(),
-            key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+            key: ddb_item! { uaid: s => uaid.simple().to_string() },
             ..Default::default()
         };
 
@@ -182,7 +182,7 @@ impl DbClient for DdbClientImpl {
         let input = UpdateItemInput {
             table_name: self.message_table.clone(),
             key: ddb_item! {
-                uaid: s => uaid.to_simple().to_string(),
+                uaid: s => uaid.simple().to_string(),
                 chidmessageid: s => " ".to_string()
             },
             update_expression: Some("ADD chids :channel_id SET expiry = :expiry".to_string()),
@@ -209,7 +209,7 @@ impl DbClient for DdbClientImpl {
             table_name: self.message_table.clone(),
             consistent_read: Some(true),
             key: ddb_item! {
-                uaid: s => uaid.to_simple().to_string(),
+                uaid: s => uaid.simple().to_string(),
                 chidmessageid: s => " ".to_string()
             },
             ..Default::default()
@@ -245,7 +245,7 @@ impl DbClient for DdbClientImpl {
         let input = UpdateItemInput {
             table_name: self.message_table.clone(),
             key: ddb_item! {
-                uaid: s => uaid.to_simple().to_string(),
+                uaid: s => uaid.simple().to_string(),
                 chidmessageid: s => " ".to_string()
             },
             update_expression: Some("DELETE chids :channel_id SET expiry = :expiry".to_string()),
@@ -276,7 +276,7 @@ impl DbClient for DdbClientImpl {
 
     async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {
         let input = UpdateItemInput {
-            key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+            key: ddb_item! { uaid: s => uaid.simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),
             condition_expression: Some("(node_id = :node) and (connected_at = :conn)".to_string()),
             expression_attribute_values: Some(hashmap! {
@@ -318,7 +318,7 @@ impl DbClient for DdbClientImpl {
         let input = DeleteItemInput {
             table_name: self.message_table.clone(),
             key: ddb_item! {
-               uaid: s => uaid.to_simple().to_string(),
+               uaid: s => uaid.simple().to_string(),
                chidmessageid: s => sort_key
             },
             ..Default::default()

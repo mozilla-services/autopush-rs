@@ -90,7 +90,7 @@ impl DbClient for PgClientImpl {
                     record_version=EXCLUDED.record_version,
                     current_month=EXCLUDED.current_month;
             ", tablename=self.router_table),
-            &[&user.uaid.to_simple().to_string(),   // TODO: Investigate serialization?
+            &[&user.uaid.simple().to_string(),   // TODO: Investigate serialization?
             &(user.connected_at as i64),
             &user.router_type,
             &json!(user.router_data).to_string(),
@@ -121,7 +121,7 @@ impl DbClient for PgClientImpl {
                     tablename = self.router_table
                 ),
                 &[
-                    &user.uaid.to_simple().to_string(),
+                    &user.uaid.simple().to_string(),
                     &(user.connected_at as i64),
                     &user.router_type,
                     &json!(user.router_data).to_string(),
@@ -144,7 +144,7 @@ impl DbClient for PgClientImpl {
                 "select connected_at, router_type, router_data, last_connect, node_id, record_version, current_month from {tablename} where uaid = ?",
                 tablename=self.router_table
             ),
-            &[&uaid.to_simple().to_string()]
+            &[&uaid.simple().to_string()]
         )
         .await?;
         if row.is_empty() {
@@ -192,7 +192,7 @@ impl DbClient for PgClientImpl {
                 WHERE uaid = $1",
                     tablename = self.router_table
                 ),
-                &[&uaid.to_simple().to_string()],
+                &[&uaid.simple().to_string()],
             )
             .await
             .map_err(DbError::Postgres)?;
@@ -208,8 +208,8 @@ impl DbClient for PgClientImpl {
                     tablename = self.meta_table
                 ),
                 &[
-                    &uaid.to_simple().to_string(),
-                    &channel_id.to_simple().to_string(),
+                    &uaid.simple().to_string(),
+                    &channel_id.simple().to_string(),
                 ],
             )
             .await?;
@@ -226,7 +226,7 @@ impl DbClient for PgClientImpl {
                     "SELECT channel_id FROM {tablename} WHERE uaid = ?;",
                     tablename = self.meta_table
                 ),
-                &[&uaid.to_simple().to_string()],
+                &[&uaid.simple().to_string()],
             )
             .await?;
         for row in rows.iter() {
@@ -248,8 +248,8 @@ impl DbClient for PgClientImpl {
                     tablename = self.meta_table
                 ),
                 &[
-                    &uaid.to_simple().to_string(),
-                    &channel_id.to_simple().to_string(),
+                    &uaid.simple().to_string(),
+                    &channel_id.simple().to_string(),
                 ],
             )
             .await
@@ -261,7 +261,7 @@ impl DbClient for PgClientImpl {
         self.client
         .execute(
             &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.router_table),
-            &[&uaid.to_simple().to_string(), &node_id, &(connected_at as i64)]
+            &[&uaid.simple().to_string(), &node_id, &(connected_at as i64)]
         ).await?;
         Ok(())
     }
@@ -282,8 +282,8 @@ impl DbClient for PgClientImpl {
                     tablename = &self.message_table
                 ),
                 &[
-                    &uaid.to_simple().to_string(),
-                    &message.channel_id.to_simple().to_string(),
+                    &uaid.simple().to_string(),
+                    &message.channel_id.simple().to_string(),
                     &message.version,
                     &(message.ttl as i64), // Postgres has no auto TTL.
                     &message.topic,
@@ -305,7 +305,7 @@ impl DbClient for PgClientImpl {
                     "DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;",
                     tablename = self.message_table
                 ),
-                &[&uaid.to_simple().to_string(), &sort_key],
+                &[&uaid.simple().to_string(), &sort_key],
             )
             .await?;
 

@@ -82,7 +82,7 @@ pub async fn fetch_messages(
     limit: u32,
 ) -> ApiResult<FetchMessageResponse> {
     let attr_values = hashmap! {
-        ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
+        ":uaid".to_string() => val!(S => uaid.simple().to_string()),
         ":cmi".to_string() => val!(S => "02"),
     };
     let input = QueryInput {
@@ -148,7 +148,7 @@ pub async fn fetch_timestamp_messages(
         "01;".to_string()
     };
     let attr_values = hashmap! {
-        ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
+        ":uaid".to_string() => val!(S => uaid.simple().to_string()),
         ":cmi".to_string() => val!(S => range_key),
     };
     let input = QueryInput {
@@ -196,7 +196,7 @@ pub async fn drop_user(
 ) -> ApiResult<DeleteItemOutput> {
     let input = DeleteItemInput {
         table_name: router_table_name.to_string(),
-        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.simple().to_string() },
         ..Default::default()
     };
     ddb.delete_item(input.clone())
@@ -212,7 +212,7 @@ pub async fn get_uaid(
     let input = GetItemInput {
         table_name: router_table_name.to_string(),
         consistent_read: Some(true),
-        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.simple().to_string() },
         ..Default::default()
     };
     ddb.get_item(input.clone())
@@ -270,7 +270,7 @@ pub async fn update_user_message_month(
     };
     trace!("Setting current_month: {:?}", &message_month);
     let update_item = UpdateItemInput {
-        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.simple().to_string() },
         update_expression: Some(
             "SET current_month=:curmonth, last_connect=:lastconnect".to_string(),
         ),
@@ -294,7 +294,7 @@ pub async fn all_channels(
         table_name: message_table_name.to_string(),
         consistent_read: Some(true),
         key: ddb_item! {
-            uaid: s => uaid.to_simple().to_string(),
+            uaid: s => uaid.simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         ..Default::default()
@@ -330,7 +330,7 @@ pub async fn save_channels(
     };
     let update_item = UpdateItemInput {
         key: ddb_item! {
-            uaid: s => uaid.to_simple().to_string(),
+            uaid: s => uaid.simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         update_expression: Some("ADD chids :chids SET expiry=:expiry".to_string()),
@@ -357,7 +357,7 @@ pub async fn unregister_channel_id(
     };
     let update_item = UpdateItemInput {
         key: ddb_item! {
-            uaid: s => uaid.to_simple().to_string(),
+            uaid: s => uaid.simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         update_expression: Some("DELETE chids :channel_id".to_string()),

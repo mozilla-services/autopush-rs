@@ -126,7 +126,7 @@ impl DbClient for PostgresStorage {
                     record_version=EXCLUDED.record_version,
                     current_month=EXCLUDED.current_month;
             ", tablename=self.router_table),
-            &[&user.uaid.to_simple().to_string(),   // TODO: Investigate serialization?
+            &[&user.uaid.simple().to_string(),   // TODO: Investigate serialization?
             &(user.connected_at as i64),
             &user.router_type,
             &json!(user.router_data).to_string(),
@@ -157,7 +157,7 @@ impl DbClient for PostgresStorage {
                     tablename = self.router_table
                 ),
                 &[
-                    &user.uaid.to_simple().to_string(),
+                    &user.uaid.simple().to_string(),
                     &(user.connected_at as i64),
                     &user.router_type,
                     &json!(user.router_data).to_string(),
@@ -180,7 +180,7 @@ impl DbClient for PostgresStorage {
                 "select connected_at, router_type, router_data, last_connect, node_id, record_version, current_month from {tablename} where uaid = ?",
                 tablename=self.router_table
             ),
-            &[&uaid.to_simple().to_string()]
+            &[&uaid.simple().to_string()]
         )
         .await?;
         if row.is_empty() {
@@ -229,7 +229,7 @@ impl DbClient for PostgresStorage {
                 WHERE uaid = $1",
                     tablename = self.router_table
                 ),
-                &[&uaid.to_simple().to_string()],
+                &[&uaid.simple().to_string()],
             )
             .await
             .map_err(DbError::PgError)?;
@@ -240,8 +240,8 @@ impl DbClient for PostgresStorage {
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
         let key = format!(
             "{}:{}",
-            uaid.to_simple().to_string(),
-            channel_id.to_simple().to_string()
+            uaid.simple().to_string(),
+            channel_id.simple().to_string()
         );
         self.client
             .execute(
@@ -249,7 +249,7 @@ impl DbClient for PostgresStorage {
                     "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES (?, ?);",
                     tablename = self.meta_table
                 ),
-                &[&uaid.to_simple().to_string(), &key],
+                &[&uaid.simple().to_string(), &key],
             )
             .await?;
         Ok(())
@@ -266,7 +266,7 @@ impl DbClient for PostgresStorage {
             trace!("No channels to save.");
             return Ok(());
         };
-        let uaid_str = uaid.to_simple().to_string();
+        let uaid_str = uaid.simple().to_string();
         // tokio-postgres doesn't tuples as values, so you can't just construct
         // the query as `INSERT into ... (a, b) VALUES (?,?), (?,?)`
         // It does accept them as numericly specified values.
@@ -281,7 +281,7 @@ impl DbClient for PostgresStorage {
             .flat_map(|v| {
                 [
                     &uaid_str.clone() as &(dyn ToSql + Sync),
-                    &format!("{}:{}", &uaid_str, v.to_simple().to_string()),
+                    &format!("{}:{}", &uaid_str, v.simple().to_string()),
                 ]
             })
             .collect();
@@ -313,7 +313,7 @@ impl DbClient for PostgresStorage {
                     "SELECT uaid_channel_id FROM {tablename} WHERE uaid = ?;",
                     tablename = self.meta_table
                 ),
-                &[&uaid.to_simple().to_string()],
+                &[&uaid.simple().to_string()],
             )
             .await?;
         for row in rows.iter() {
@@ -339,8 +339,8 @@ impl DbClient for PostgresStorage {
                 ),
                 &[&format!(
                     "{}:{}",
-                    &uaid.to_simple().to_string(),
-                    &channel_id.to_simple().to_string(),
+                    &uaid.simple().to_string(),
+                    &channel_id.simple().to_string(),
                 )],
             )
             .await
@@ -352,7 +352,7 @@ impl DbClient for PostgresStorage {
         self.client
         .execute(
             &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.router_table),
-            &[&uaid.to_simple().to_string(), &node_id, &(connected_at as i64)]
+            &[&uaid.simple().to_string(), &node_id, &(connected_at as i64)]
         ).await?;
         Ok(())
     }
@@ -373,8 +373,8 @@ impl DbClient for PostgresStorage {
                     tablename = &self.message_table
                 ),
                 &[
-                    &uaid.to_simple().to_string(),
-                    &message.channel_id.to_simple().to_string(),
+                    &uaid.simple().to_string(),
+                    &message.channel_id.simple().to_string(),
                     &message.version,
                     &(message.ttl as i64), // Postgres has no auto TTL.
                     &message.topic,
@@ -396,7 +396,7 @@ impl DbClient for PostgresStorage {
                     "DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;",
                     tablename = self.message_table
                 ),
-                &[&uaid.to_simple().to_string(), &sort_key],
+                &[&uaid.simple().to_string(), &sort_key],
             )
             .await?;
 

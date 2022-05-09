@@ -1,7 +1,7 @@
 [package]
 name = "autopush_common"
 # Should match version in ../autopush/Cargo.toml
-version = "1.61.0"
+version = "1.62.0"
 authors = [
   "Ben Bangert <ben@groovie.org>",
   "JR Conlin <jrconlin@mozilla.com>",
@@ -14,6 +14,7 @@ edition = "2021"
 name = "autopush_common"
 
 [dependencies]
+again = "0.1"
 actix-web = "4.0"
 async-trait = "0.1"
 base64 = "0.13"
@@ -34,9 +35,9 @@ openssl = "0.10"
 rand = "0.8"
 regex = "1.4"
 reqwest = "0.11"
-rusoto_core = { version="0.47", default-features=false, features=["rustls"] }
-rusoto_credential = { version="0.47"}
-rusoto_dynamodb = { version="0.47", default-features=false, features=["rustls"]}
+rusoto_core = { version="0.48", default-features=false, features=["rustls"] }
+rusoto_credential = { version="0.48"}
+rusoto_dynamodb = { version="0.48", default-features=false, features=["rustls"]}
 sentry = { version = "0.25" }
 serde = "1.0"
 serde_derive = "1.0"
@@ -55,4 +56,4 @@ tokio-core = "0.1.17"
 tokio-postgres = "0.7"
 tungstenite = { version = "0.17", default-features = false }
 url = "2.2"
-uuid = { version = "0.8", features = ["serde", "v4"] }
+uuid = { version = "1.0", features = ["serde", "v4"] }

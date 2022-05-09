@@ -508,7 +508,7 @@ where
             message_month,
             connected_at,
             stats: SessionStatistics {
-                uaid: uaid.to_simple().to_string(),
+                uaid: uaid.simple().to_string(),
                 uaid_reset: reset_uaid,
                 existing_uaid: check_storage,
                 connection_type: String::from("webpush"),
@@ -524,7 +524,7 @@ where
                 .and_then(move |_| {
                     // generate the response message back to the client.
                     Ok(ServerMessage::Hello {
-                        uaid: uaid.to_simple().to_string(),
+                        uaid: uaid.simple().to_string(),
                         status: 200,
                         use_webpush: Some(true),
                         broadcasts,
@@ -654,7 +654,7 @@ where
         let error = if let Some(ref err) = error {
             let mut event = sentry::event_from_error(err);
             event.user = Some(sentry::User {
-                id: Some(webpush.uaid.to_simple().to_string()),
+                id: Some(webpush.uaid.simple().to_string()),
                 ..Default::default()
             });
             event
@@ -758,7 +758,7 @@ fn save_and_notify_undelivered_messages(
             })
             .and_then(|(client, uaid, node_id)| {
                 // Send the notify to the user
-                let notify_url = format!("{}/notif/{}", node_id, uaid.to_simple());
+                let notify_url = format!("{}/notif/{}", node_id, uaid.simple());
                 client
                     .put(&notify_url)
                     .send()
