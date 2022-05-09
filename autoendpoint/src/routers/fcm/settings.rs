@@ -24,7 +24,8 @@ pub struct FcmSettings {
     ///
     /// `_project_id_` == senderID and `_key_` == credential
     /// e.g. "bar-project" is via FCM, with a serialized JSON key,
-    /// e.g. "gorp-project" is via FCM, a and a GCM of "f00"
+    /// e.g. "gorp-project" is via FCM, with a key path,
+    /// and a GCM project with SenderID of "f00" specifies the server key as credential
     ///
     /// ```json
     /// {"bar-project":{"project_id": "bar-project-1234", "credential": "{\"type\": ...}"},
