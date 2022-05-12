@@ -25,7 +25,7 @@ def config(env_args: os._Environ) -> argparse.Namespace:
     parser.add_argument(
         '--root', '-r',
         default=env_args.get("AUTOEND_ENDPOINT_URL"),
-        help="Server root (e.g. 'https://example.com')")
+        help="Server root (e.g. 'example.com')")
     args = parser.parse_args()
     if not args.key:
         raise Exception("Missing key")
@@ -50,7 +50,7 @@ def gendpoint(key: bytes, args: argparse.Namespace) -> str:
         list((bytes.fromhex(args.uaid.replace('-', '')) +
               bytes.fromhex(args.chid.replace('-', '')))))
     ekey = fernet.encrypt(base).strip(b'=').decode('utf-8')
-    return f"{args.root}/v1/{ekey}"
+    return f"https://{args.root}/wpush/v1/{ekey}"
 
 
 main()
