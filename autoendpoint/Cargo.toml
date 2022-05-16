@@ -38,8 +38,8 @@ openssl = "0.10"
 regex = "1.4"
 reqwest = "0.11"
 # datbases
-rusoto_core = {version="0.47", default-features = false, features = ["rustls"]}
-rusoto_dynamodb = {version="0.47", default-features = false, features = ["rustls"]}
+rusoto_core = {version="0.48", default-features = false, features = ["rustls"]}
+rusoto_dynamodb = {version="0.48", default-features = false, features = ["rustls"]}
 # postgres = "0.19" # sync
 tokio-postgres = "0.7"  # async
 
@@ -60,9 +60,9 @@ smallvec = "1.6"  # for RUSTSEC-2021-0003
 tokio = { version = "1.17", features = ["fs"] }  # 1.1+ requires futures 0.3+
 thiserror = "1.0"
 url = "2.2"
-uuid = { version = "0.8", features = ["serde", "v4"] }
-validator = "0.14"
-validator_derive = "0.14"
+uuid = { version = "1.0", features = ["serde", "v4"] }
+validator = "0.15"
+validator_derive = "0.15"
 yup-oauth2 = "6.5"
 
 # For mockito test debugging
@@ -70,6 +70,6 @@ yup-oauth2 = "6.5"
 
 [dev-dependencies]
 mockall = "0.8.3"  # 0.9+ requires reworking tests
-mockito = "0.30.0"
+mockito = "0.31.0"
 tempfile = "3.2.0"
 tokio = { version = "1.17", features = ["macros"] }

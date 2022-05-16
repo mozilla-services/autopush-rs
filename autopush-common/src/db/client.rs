@@ -5,6 +5,12 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use uuid::Uuid;
 
+#[derive(Default, Debug)]
+pub struct FetchMessageResponse {
+    pub timestamp: Option<u64>,
+    pub messages: Vec<Notification>,
+}
+
 /// Provides high-level operations for data management.
 #[async_trait]
 pub trait DbClient: Send + Sync {
@@ -47,6 +53,9 @@ pub trait DbClient: Send + Sync {
 
     /// Save a message to the message table
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()>;
+
+    /// Fetch stored messages for a user
+    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>;
 
     /// Delete a notification
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;

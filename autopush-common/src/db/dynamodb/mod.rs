@@ -30,7 +30,7 @@ pub mod retry;
 
 #[derive(Clone)]
 pub struct DdbClientImpl {
-    client: DynamoDbClient,
+    db_client: DynamoDbClient,
     metrics: Arc<StatsdClient>,
     router_table: String,
     message_table: String,
@@ -52,7 +52,7 @@ impl DdbClientImpl {
         };
 
         Ok(Self {
-            client: ddb,
+            db_client: ddb,
             metrics,
             router_table: settings.router_tablename.clone(),
             message_table: settings.message_tablename.clone(),
@@ -65,7 +65,7 @@ impl DdbClientImpl {
 
         let output = match retry_policy()
             .retry_if(
-                || self.client.describe_table(input.clone()),
+                || self.db_client.describe_table(input.clone()),
                 retryable_describe_table_error(self.metrics.clone()),
             )
             .await
@@ -93,14 +93,14 @@ impl DbClient for DdbClientImpl {
     async fn add_user(&self, user: &UserRecord) -> DbResult<()> {
         let input = PutItemInput {
             table_name: self.router_table.clone(),
-            item: serde_dynamodb::to_hashmap(user)?,
+            item: serde_dynamodb::to_hashmap(user).map_err(|e| e.into())?,
             condition_expression: Some("attribute_not_exists(uaid)".to_string()),
             ..Default::default()
         };
 
         retry_policy()
             .retry_if(
-                || self.client.put_item(input.clone()),
+                || self.db_client.put_item(input.clone()),
                 retryable_putitem_error(self.metrics.clone()),
             )
             .await?;
@@ -142,7 +142,7 @@ impl DbClient for DdbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.client.update_item(input.clone()),
+                || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
@@ -159,7 +159,7 @@ impl DbClient for DdbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.client.get_item(input.clone()),
+                || self.db_client.get_item(input.clone()),
                 retryable_getitem_error(self.metrics.clone()),
             )
             .await?
@@ -178,7 +178,7 @@ impl DbClient for DdbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.client.delete_item(input.clone()),
+                || self.db_client.delete_item(input.clone()),
                 retryable_delete_error(self.metrics.clone()),
             )
             .await?;
@@ -202,7 +202,7 @@ impl DbClient for DdbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.client.update_item(input.clone()),
+                || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
@@ -235,7 +235,7 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        self.client.update_item(update_item.clone()).await?;
+        self.db_client.update_item(update_item.clone()).await?;
         Ok(())
     }
 
@@ -254,7 +254,7 @@ impl DbClient for DdbClientImpl {
 
         let output = retry_policy()
             .retry_if(
-                || self.client.get_item(input.clone()),
+                || self.db_client.get_item(input.clone()),
                 retryable_getitem_error(self.metrics.clone()),
             )
             .await?;
@@ -296,7 +296,7 @@ impl DbClient for DdbClientImpl {
 
         let output = retry_policy()
             .retry_if(
-                || self.client.update_item(input.clone()),
+                || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
@@ -326,7 +326,7 @@ impl DbClient for DdbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.client.update_item(input.clone()),
+                || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
@@ -343,7 +343,7 @@ impl DbClient for DdbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.client.put_item(input.clone()),
+                || self.db_client.put_item(input.clone()),
                 retryable_putitem_error(self.metrics.clone()),
             )
             .await?;
@@ -363,7 +363,7 @@ impl DbClient for DdbClientImpl {
 
         retry_policy()
             .retry_if(
-                || self.client.delete_item(input.clone()),
+                || self.db_client.delete_item(input.clone()),
                 retryable_delete_error(self.metrics.clone()),
             )
             .await?;

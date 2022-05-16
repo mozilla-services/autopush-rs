@@ -138,6 +138,7 @@ pub struct HelloResponse {
     pub deferred_user_registration: Option<UserRecord>,
 }
 
+#[derive(Clone, Default, Debug)]
 pub struct CheckStorageResponse {
     pub include_topic: bool,
     pub messages: Vec<Notification>,

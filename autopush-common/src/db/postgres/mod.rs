@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::panic::panic_any;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -13,16 +13,18 @@ use uuid::Uuid;
 
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
-    DbCommandClient, DbSettings, HelloResponse, RegisterResponse, UserRecord, USER_RECORD_VERSION,
+    DbCommandClient, DbSettings, CheckStorageResponse, HelloResponse, RegisterResponse, UserRecord, USER_RECORD_VERSION,
 };
 use crate::errors::ApiResult;
 use crate::notification::Notification;
+
+use super::client::FetchMessageResponse;
 // use autopush_common::util::sec_since_epoch;
 
 #[allow(dead_code)] // TODO: Remove before flight
 #[derive(Clone)]
 pub struct PostgresStorage {
-    client: Arc<Client>,
+    db_client: Arc<Client>,
     _metrics: Arc<StatsdClient>,
     router_table: String,                  // Routing information
     message_table: String,                 // Message storage information
@@ -50,7 +52,7 @@ impl PostgresStorage {
                 }
             });
             return Ok(Self {
-                client: Arc::new(client),
+                db_client: Arc::new(client),
                 _metrics: metrics,
                 router_table: settings.router_tablename.clone(),
                 message_table: settings.message_tablename.clone(),
@@ -98,7 +100,7 @@ impl PostgresStorage {
     /// Does the given table exist
     async fn table_exists(&self, table_name: String) -> DbResult<bool> {
         let rows = self
-            .client
+            .db_client
             .query(
                 &format!("SELECT EXISTS (SELECT FROM pg_tables where schemaname='public' AND tablename={tablename});", tablename=table_name),
                 &[],
@@ -113,7 +115,7 @@ impl PostgresStorage {
 impl DbClient for PostgresStorage {
     /// add user to router_table if not exists uaid
     async fn add_user(&self, user: &UserRecord) -> DbResult<()> {
-        self.client.execute(
+        self.db_client.execute(
             &format!("
             INSERT INTO {tablename}(uaid, connected_at, router_type, router_data, last_connect, node_id, record_version, current_month)
             VALUES($1, $2::INTEGER, $3, $4, $5, $6, $7, $8)
@@ -140,7 +142,7 @@ impl DbClient for PostgresStorage {
 
     /// update user record in router_table at user.uaid
     async fn update_user(&self, user: &UserRecord) -> DbResult<()> {
-        self.client
+        self.db_client
             .execute(
                 &format!(
                     "
@@ -174,7 +176,7 @@ impl DbClient for PostgresStorage {
 
     /// fetch user information from router_table for uaid.
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<UserRecord>> {
-        let row = self.client
+        let row = self.db_client
         .query_one(
             &format!(
                 "select connected_at, router_type, router_data, last_connect, node_id, record_version, current_month from {tablename} where uaid = ?",
@@ -222,7 +224,7 @@ impl DbClient for PostgresStorage {
 
     /// delete a user at uaid from router_table
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        self.client
+        self.db_client
             .execute(
                 &format!(
                     "DELETE FROM {tablename}
@@ -243,7 +245,7 @@ impl DbClient for PostgresStorage {
             uaid.simple().to_string(),
             channel_id.simple().to_string()
         );
-        self.client
+        self.db_client
             .execute(
                 &format!(
                     "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES (?, ?);",
@@ -299,7 +301,7 @@ impl DbClient for PostgresStorage {
             .join(",")
         );
         // finally, do the insert.
-        self.client.execute(&statement, &params).await?;
+        self.db_client.execute(&statement, &params).await?;
         Ok(())
     }
 
@@ -307,7 +309,7 @@ impl DbClient for PostgresStorage {
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let mut result = HashSet::new();
         let rows = self
-            .client
+            .db_client
             .query(
                 &format!(
                     "SELECT uaid_channel_id FROM {tablename} WHERE uaid = ?;",
@@ -331,7 +333,7 @@ impl DbClient for PostgresStorage {
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         Ok(self
-            .client
+            .db_client
             .execute(
                 &format!(
                     "DELETE FROM {tablename} WHERE uaid_channel_id = ?;",
@@ -349,7 +351,7 @@ impl DbClient for PostgresStorage {
 
     /// remove node info for a uaid from router table
     async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
-        self.client
+        self.db_client
         .execute(
             &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.router_table),
             &[&uaid.simple().to_string(), &node_id, &(connected_at as i64)]
@@ -362,7 +364,7 @@ impl DbClient for PostgresStorage {
         // TODO: write serializer
         // fun fact: serde_postgres exists, but only deserializes (as of 0.2)
 
-        self.client
+        self.db_client
             .execute(
                 &format!(
                     "INSERT INTO {tablename}
@@ -390,7 +392,7 @@ impl DbClient for PostgresStorage {
 
     /// remove a given message from the message table
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        self.client
+        self.db_client
             .execute(
                 &format!(
                     "DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;",
@@ -401,6 +403,49 @@ impl DbClient for PostgresStorage {
             .await?;
 
         Ok(())
+    }
+
+    /// fetch all messages for the user
+    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>{
+        let messages:Vec<Notification> = self.db_client.query(
+            &format!(
+                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers FROM {tablename} WHERE uaid=? LIMIT ? ORDER BY timestamp DESC", // TODO: Check the timestamp DESC here!
+                tablename=&self.message_table,
+            ),
+            &[
+                &uaid.simple().to_string(),
+                &(limit as i64),
+            ]
+        ).await?
+        .iter()
+        .map(|row| {
+            Notification{
+                // TODO: remove unwraps()
+                channel_id: row.try_get::<&str, &str>("channel_id").map(|v| Uuid::from_str(v).unwrap()).unwrap(),
+                version: row.try_get::<&str, String>("version").unwrap(),
+                ttl: row.try_get::<&str, i64>("ttl").map(|v| v as u64).unwrap(),
+                topic: row.try_get::<&str, String>("topic").map(|v| Some(v)).unwrap_or_default(),
+                timestamp: row.try_get::<&str, i64>("timestamp").map(|v| v as u64).unwrap(),
+                data: row.try_get::<&str, String>("data").map(|v| Some(v)).unwrap(),
+                sortkey_timestamp: row.try_get::<&str, i64>("sortkey_timestamp").map(|v| Some(v as u64)).unwrap_or_default(),
+                headers: row.try_get::<&str, &str>("headers").map(|v| {
+                    let hdrs: HashMap<String, String> = serde_json::from_str(v).unwrap();
+                    Some(hdrs)
+                }).unwrap_or_default()
+            }
+        }).collect();
+
+        if messages.is_empty() {
+            return Ok(Default::default())
+        }
+
+        // TODO: DynamoDB specifies the current_timestamp from the
+        let timestamp = Some(messages[0].timestamp);
+
+        Ok(FetchMessageResponse{
+            messages,
+            timestamp
+        })
     }
 
     /// Convenience function to check if the router table exists
@@ -434,6 +479,7 @@ impl DbPgHandler {
     async fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> ApiResult<Self> {
         Ok(Self {
             client: PostgresStorage::new(metrics, settings).await?,
+
         })
     }
 }
@@ -553,7 +599,10 @@ impl DbCommandClient for DbPgHandler {
         };
     }
 
-    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()> {}
+    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()> {
+        self.client.remove_user(uaid).await?;
+        Ok(())
+    }
 
     async fn unregister(
         &self,
@@ -561,9 +610,14 @@ impl DbCommandClient for DbPgHandler {
         channel_id: &Uuid,
         message_month: &str,
     ) -> ApiResult<bool> {
+        self.client.remove_channel(uaid, channel_id).await?;
+        Ok(true)
     }
 
-    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()> {}
+    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()> {
+        warn!("Migrate user not implemented");
+        Ok(())
+    }
 
     async fn store_message(
         &self,
@@ -571,6 +625,8 @@ impl DbCommandClient for DbPgHandler {
         message_month: String,
         message: Notification,
     ) -> ApiResult<()> {
+        self.client.save_message(uaid, message).await?;
+        Ok(())
     }
 
     async fn store_messages(
@@ -579,6 +635,10 @@ impl DbCommandClient for DbPgHandler {
         message_month: &str,
         messages: Vec<Notification>,
     ) -> ApiResult<()> {
+        for message in messages {
+            self.client.save_message(uaid, message).await?;
+        }
+        Ok(())
     }
 
     async fn delete_message(
@@ -587,6 +647,8 @@ impl DbCommandClient for DbPgHandler {
         uaid: &Uuid,
         notif: &Notification,
     ) -> ApiResult<()> {
+        self.client.remove_message(uaid, &notif.sort_key()).await?;
+        Ok(())
     }
 
     async fn check_storage(
@@ -596,6 +658,16 @@ impl DbCommandClient for DbPgHandler {
         include_topic: bool,
         timestamp: Option<u64>,
     ) -> ApiResult<CheckStorageResponse> {
+        const LIMIT_WITH_TOPIC: usize = 11;
+        const LIMIT_WITHOUT_TOPIC: usize = 10;
+
+        let response:FetchMessageResponse = if include_topic {
+            self.client.fetch_messages(uaid, LIMIT_WITH_TOPIC ).await?
+        } else {
+            self.client.fetch_messages(uaid, LIMIT_WITHOUT_TOPIC).await?
+        };
+
+        Ok(Default::default())
     }
 
     async fn get_user_channels(

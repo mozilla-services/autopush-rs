@@ -351,7 +351,7 @@ pub async fn unregister_channel_id(
     channel_id: &Uuid,
     message_table_name: &str,
 ) -> ApiResult<UpdateItemOutput> {
-    let chid = channel_id.to_hyphenated().to_string();
+    let chid = channel_id.hyphenated().to_string();
     let attr_values = hashmap! {
         ":channel_id".to_string() => val!(SS => vec![chid]),
     };
