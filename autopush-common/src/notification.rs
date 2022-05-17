@@ -1,5 +1,6 @@
 //! Notification protocol
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -58,6 +59,26 @@ impl Notification {
 
     pub fn expired(&self, at_sec: u64) -> bool {
         at_sec >= self.timestamp as u64 + self.ttl as u64
+    }
+}
+
+
+/// Semi-generic Message Row to Notification.
+impl From<&tokio_postgres::Row> for Notification {
+    fn from(row: &tokio_postgres::Row) -> Self {
+        Self {
+            channel_id: row.try_get::<&str, &str>("channel_id").map(|v| Uuid::from_str(v).unwrap()).unwrap(),
+            version: row.try_get::<&str, String>("version").unwrap(),
+            ttl: row.try_get::<&str, i64>("ttl").map(|v| v as u64).unwrap(),
+            topic: row.try_get::<&str, String>("topic").map(|v| Some(v)).unwrap_or_default(),
+            timestamp: row.try_get::<&str, i64>("timestamp").map(|v| v as u64).unwrap(),
+            data: row.try_get::<&str, String>("data").map(|v| Some(v)).unwrap(),
+            sortkey_timestamp: row.try_get::<&str, i64>("sortkey_timestamp").map(|v| Some(v as u64)).unwrap_or_default(),
+            headers: row.try_get::<&str, &str>("headers").map(|v| {
+                let hdrs: HashMap<String, String> = serde_json::from_str(v).unwrap();
+                Some(hdrs)
+            }).unwrap_or_default()
+        }
     }
 }
 

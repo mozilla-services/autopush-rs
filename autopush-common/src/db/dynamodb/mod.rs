@@ -1,27 +1,31 @@
+use std::collections::HashSet;
+use std::env;
+use std::sync::Arc;
+use uuid::Uuid;
+use std::result::Result as StdResult;
+use std::fmt::{Display, Debug};
+
 use crate::db::client::DbClient;
 use crate::db::dynamodb::retry::{
     retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
     retryable_putitem_error, retryable_updateitem_error,
 };
+use crate::db::{DbSettings, MAX_EXPIRY,NotificationRecord, UserRecord, client::FetchMessageResponse, MAX_CHANNEL_TTL};
 use crate::db::error::{DbError, DbResult};
-use crate::db::{DbSettings, MAX_EXPIRY};
-
-use crate::db::{NotificationRecord, UserRecord, MAX_CHANNEL_TTL};
+use crate::errors::{ApiErrorKind, ApiError};
 use crate::notification::Notification;
 use crate::util::sec_since_epoch;
+
 use async_trait::async_trait;
 // use crate::db::dynamodb::{ddb_item, hashmap, val};
-use cadence::StatsdClient;
+use cadence::{StatsdClient, CountedExt};
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
     AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
     DynamoDbClient, GetItemInput, PutItemInput, UpdateItemInput,
+    QueryInput,
 };
-use std::collections::HashSet;
-use std::env;
-use std::sync::Arc;
-use uuid::Uuid;
 
 #[macro_use]
 pub mod macros;
@@ -87,13 +91,42 @@ impl DdbClientImpl {
     }
 }
 
+/// Like Result::ok, convert from Result<T, E> to Option<T> but applying a
+/// function to the Err value
+fn ok_or_inspect<T, E, F>(result: StdResult<T, E>, op: F) -> Option<T>
+where
+    F: FnOnce(E),
+{
+    match result {
+        Ok(t) => Some(t),
+        Err(e) => {
+            op(e);
+            None
+        }
+    }
+}
+
+/// Log/metric errors during conversions to Notification
+fn conversion_err<E, F>(metrics: &StatsdClient, err: E, item: F, name: &'static str)
+where
+    E: Display,
+    F: Debug,
+{
+    error!("Failed {}, item: {:?}, conversion: {}", name, item, err);
+    metrics
+        .incr_with_tags("ua.notification_read.error")
+        .with_tag("conversion", name)
+        .send();
+}
+
+
 #[allow(clippy::field_reassign_with_default)]
 #[async_trait]
 impl DbClient for DdbClientImpl {
     async fn add_user(&self, user: &UserRecord) -> DbResult<()> {
         let input = PutItemInput {
             table_name: self.router_table.clone(),
-            item: serde_dynamodb::to_hashmap(user).map_err(|e| e.into())?,
+            item: serde_dynamodb::to_hashmap(user)?,
             condition_expression: Some("attribute_not_exists(uaid)".to_string()),
             ..Default::default()
         };
@@ -231,7 +264,7 @@ impl DbClient for DdbClientImpl {
             },
             update_expression: Some("ADD chids :chids SET expiry=:expiry".to_string()),
             expression_attribute_values: Some(attr_values),
-            table_name: self.message_table,
+            table_name: self.message_table.clone(),
             ..Default::default()
         };
 
@@ -272,7 +305,7 @@ impl DbClient for DdbClientImpl {
         // Convert the IDs from String to Uuid
         let channels = channels
             .into_iter()
-            .filter_map(|s| Uuid::parse_str(s).ok())
+            .filter_map(|s| Uuid::parse_str(&s).ok())
             .collect();
 
         Ok(channels)
@@ -332,6 +365,107 @@ impl DbClient for DdbClientImpl {
             .await?;
 
         Ok(())
+    }
+
+    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
+        // from commands::fetch_messages()
+        let attr_values = hashmap! {
+            ":uaid".to_string() => val!(S => uaid.simple().to_string()),
+            ":cmi".to_string() => val!(S => "02"),
+        };
+        let input = QueryInput {
+            key_condition_expression: Some("uaid = :uaid AND chidmessageid < :cmi".to_string()),
+            expression_attribute_values: Some(attr_values),
+            table_name: self.message_table.to_string(),
+            consistent_read: Some(true),
+            limit: Some(limit as i64),
+            ..Default::default()
+        };
+
+        let output = self.db_client
+            .query(input.clone())
+            .await?;
+        let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
+            debug!("Got response of: {:?}", items);
+            items
+                .into_iter()
+                .inspect(|i| debug!("Item: {:?}", i))
+                .filter_map(|item| {
+                    let item2 = item.clone();
+                    ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                        conversion_err(&self.metrics, e, item2, "serde_dynamodb_from_hashmap")
+                    })
+                })
+                .collect()
+        });
+        if notifs.is_empty() {
+            return Ok(Default::default());
+        }
+
+        // Load the current_timestamp from the subscription registry entry which is
+        // the first DynamoDbNotification and remove it from the vec.
+        let timestamp = notifs.remove(0).current_timestamp;
+        // Convert any remaining DynamoDbNotifications to Notification's
+        let messages = notifs
+            .into_iter()
+            .filter_map(|ddb_notif| {
+                let ddb_notif2 = ddb_notif.clone();
+                ok_or_inspect(ddb_notif.into_notif(), |e| {
+                    conversion_err(&self.metrics, e, ddb_notif2, "into_notif")
+                })
+            })
+            .collect();
+        Ok(FetchMessageResponse {
+            timestamp,
+            messages,
+        })
+    }
+
+    async fn fetch_timestamp_messages(&self, uaid: &Uuid, timestamp: Option<u64>, limit: usize)-> DbResult<FetchMessageResponse> {
+        let range_key = if let Some(ts) = timestamp {
+            format!("02:{}:z", ts)
+        } else {
+            "01;".to_string()
+        };
+        let attr_values = hashmap! {
+            ":uaid".to_string() => val!(S => uaid.simple().to_string()),
+            ":cmi".to_string() => val!(S => range_key),
+        };
+        let input = QueryInput {
+            key_condition_expression: Some("uaid = :uaid AND chidmessageid > :cmi".to_string()),
+            expression_attribute_values: Some(attr_values),
+            table_name: self.message_table.to_string(),
+            consistent_read: Some(true),
+            limit: Some(limit as i64),
+            ..Default::default()
+        };
+
+        let output = self.db_client
+            .query(input.clone())
+            .await?;
+        let messages = output.items.map_or_else(Vec::new, |items| {
+            debug!("Got response of: {:?}", items);
+            items
+                .into_iter()
+                .filter_map(|item| {
+                    let item2 = item.clone();
+                    ok_or_inspect(serde_dynamodb::from_hashmap(item), |e| {
+                        conversion_err(&self.metrics, e, item2, "serde_dynamodb_from_hashmap")
+                    })
+                })
+                .filter_map(|ddb_notif: NotificationRecord| {
+                    let ddb_notif2 = ddb_notif.clone();
+                    ok_or_inspect(ddb_notif.into_notif(), |e| {
+                        conversion_err(&self.metrics, e, ddb_notif2, "into_notif")
+                    })
+                })
+                .collect()
+        });
+        let timestamp = messages.iter().filter_map(|m| m.sortkey_timestamp).max();
+        Ok(FetchMessageResponse {
+            timestamp,
+            messages,
+        })
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {

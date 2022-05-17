@@ -57,6 +57,9 @@ pub trait DbClient: Send + Sync {
     /// Fetch stored messages for a user
     async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>;
 
+    /// Fetch stored messages later than a given
+    async fn fetch_timestamp_messages(&self, uaid: &Uuid, timestamp: Option<u64>, limit: usize)-> DbResult<FetchMessageResponse>;
+
     /// Delete a notification
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;
 

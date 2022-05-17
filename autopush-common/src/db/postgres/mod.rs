@@ -278,15 +278,17 @@ impl DbClient for PostgresStorage {
         //
         // first, collect the values into a flat fector. We force the type in
         // the first item so that the second one is assumed.
-        let params: Vec<_> = channel_list
-            .iter()
-            .flat_map(|v| {
-                [
-                    &uaid_str.clone() as &(dyn ToSql + Sync),
-                    &format!("{}:{}", &uaid_str, v.simple().to_string()),
-                ]
-            })
-            .collect();
+
+        let mut params = Vec::<&(dyn ToSql + Sync)>::new();
+        let mut channels = Vec::<String>::new();
+        for channel in channel_list {
+            let channel_id = format!("{}:{}", &uaid_str, channel.simple().to_string());
+            channels.push(channel_id);
+        }
+        for i in 0..channels.len() {
+            params.push(&uaid_str);
+            params.push(&channels[i]);
+        };
 
         // Now construct the statement, iterate over the parameters we've got
         // and redistribute them into tuples.
@@ -405,7 +407,7 @@ impl DbClient for PostgresStorage {
         Ok(())
     }
 
-    /// fetch all messages for the user
+    /// fetch limit messages for the user
     async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>{
         let messages:Vec<Notification> = self.db_client.query(
             &format!(
@@ -418,33 +420,49 @@ impl DbClient for PostgresStorage {
             ]
         ).await?
         .iter()
-        .map(|row| {
-            Notification{
-                // TODO: remove unwraps()
-                channel_id: row.try_get::<&str, &str>("channel_id").map(|v| Uuid::from_str(v).unwrap()).unwrap(),
-                version: row.try_get::<&str, String>("version").unwrap(),
-                ttl: row.try_get::<&str, i64>("ttl").map(|v| v as u64).unwrap(),
-                topic: row.try_get::<&str, String>("topic").map(|v| Some(v)).unwrap_or_default(),
-                timestamp: row.try_get::<&str, i64>("timestamp").map(|v| v as u64).unwrap(),
-                data: row.try_get::<&str, String>("data").map(|v| Some(v)).unwrap(),
-                sortkey_timestamp: row.try_get::<&str, i64>("sortkey_timestamp").map(|v| Some(v as u64)).unwrap_or_default(),
-                headers: row.try_get::<&str, &str>("headers").map(|v| {
-                    let hdrs: HashMap<String, String> = serde_json::from_str(v).unwrap();
-                    Some(hdrs)
-                }).unwrap_or_default()
-            }
-        }).collect();
+        .map(|row| row.into()).collect();
 
         if messages.is_empty() {
-            return Ok(Default::default())
+            Ok(Default::default())
+        } else {
+            Ok(FetchMessageResponse{
+                timestamp: Some(messages[0].timestamp),
+                messages,
+            })
         }
+    }
 
-        // TODO: DynamoDB specifies the current_timestamp from the
-        let timestamp = Some(messages[0].timestamp);
+    /// Fetch limit messages for a user on or after a given timestamp
+    async fn fetch_timestamp_messages(&self, uaid: &Uuid, timestamp: Option<u64>, limit: usize)-> DbResult<FetchMessageResponse> {
+        let uaid = uaid.simple().to_string();
+        let response = if let Some(ts) = timestamp {
+            self.db_client.query(
+                &format!("SELECT * FROM {} WHERE uaid = ? and timestamp > ? limit ?", self.message_table),
+                &[
+                    &uaid,
+                    &(ts as i64),
+                    &(limit as i64)
+                ]).await
+        } else {
+            self.db_client.query(
+                &format!("SELECT * FROM {} WHERE uaid = ? limit ?", self.message_table),
+                &[
+                    &uaid,
+                    &(limit as i64)
+                ]).await
+
+        }?;
+
+        let messages:Vec<Notification> = response.iter().map(|row| row.into()).collect();
+        let timestamp = if !messages.is_empty() {
+            Some(messages[0].timestamp)
+        } else {
+            None
+        };
 
         Ok(FetchMessageResponse{
-            messages,
-            timestamp
+            timestamp,
+            messages
         })
     }
 
@@ -512,7 +530,7 @@ impl DbCommandClient for DbPgHandler {
             None
         }
         .unwrap_or_else(|| UserRecord {
-            current_month: self.client.current_message_month,
+            current_month: self.client.current_message_month.clone(),
             node_id: Some(router_url.to_owned()),
             connected_at,
             ..Default::default()
@@ -529,10 +547,10 @@ impl DbCommandClient for DbPgHandler {
 
         Ok(HelloResponse {
             connected_at,
-            message_month: self.client.current_message_month.unwrap_or_default(),
+            message_month: self.client.current_message_month.clone().unwrap_or_default(),
             check_storage: true,
-            rotate_message_table: if let Some(month) = self.client.current_message_month {
-                user.current_month.unwrap_or_default() == month
+            rotate_message_table: if let Some(month) = self.client.current_message_month.clone() {
+                user.current_month.clone().unwrap_or_default() == month
             } else {
                 false
             },
@@ -540,7 +558,7 @@ impl DbCommandClient for DbPgHandler {
             reset_uaid: user.record_version.unwrap_or(0) < USER_RECORD_VERSION,
             deferred_user_registration: if defer_registration {
                 // Wait 'til later to register this user.
-                Some(user)
+                Some(user.clone())
             } else {
                 // Register the new user now.
                 self.client.add_user(&user).await?;
@@ -549,6 +567,7 @@ impl DbCommandClient for DbPgHandler {
         })
     }
 
+    /// register a new channel for the user.
     async fn register(
         &self,
         uaid: &Uuid,
@@ -599,11 +618,13 @@ impl DbCommandClient for DbPgHandler {
         };
     }
 
+    /// Delete a user and all associated messages and channels
     async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()> {
         self.client.remove_user(uaid).await?;
         Ok(())
     }
 
+    /// Unregister a channel for a user
     async fn unregister(
         &self,
         uaid: &Uuid,
@@ -614,11 +635,13 @@ impl DbCommandClient for DbPgHandler {
         Ok(true)
     }
 
+    /// Not Implemented
     async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()> {
         warn!("Migrate user not implemented");
         Ok(())
     }
 
+    /// store a single message for a user
     async fn store_message(
         &self,
         uaid: &Uuid,
@@ -629,6 +652,7 @@ impl DbCommandClient for DbPgHandler {
         Ok(())
     }
 
+    /// Store multiple messages for a user
     async fn store_messages(
         &self,
         uaid: &Uuid,
@@ -641,6 +665,7 @@ impl DbCommandClient for DbPgHandler {
         Ok(())
     }
 
+    /// Delete the specific message.
     async fn delete_message(
         &self,
         table_name: &str,
@@ -651,6 +676,7 @@ impl DbCommandClient for DbPgHandler {
         Ok(())
     }
 
+    /// Check to see if there are any pending messages in storage.
     async fn check_storage(
         &self,
         table_name: &str,
@@ -664,25 +690,62 @@ impl DbCommandClient for DbPgHandler {
         let response:FetchMessageResponse = if include_topic {
             self.client.fetch_messages(uaid, LIMIT_WITH_TOPIC ).await?
         } else {
-            self.client.fetch_messages(uaid, LIMIT_WITHOUT_TOPIC).await?
+            Default::default()
         };
 
-        Ok(Default::default())
+        // Return now from this future if we have messages
+        if !response.messages.is_empty() {
+            debug!("Topic message returns: {:?}", response.messages);
+            return Ok(CheckStorageResponse {
+                include_topic: true,
+                messages: response.messages,
+                timestamp: response.timestamp,
+            })
+        }
+
+        // Use the timestamp returned by the topic query if we were looking at the topics
+        let timestamp = if include_topic {
+            response.timestamp
+        } else {
+            timestamp
+        };
+        let _next_query = {
+            if response.messages.is_empty() || response.timestamp.is_some() {
+                self.client.fetch_timestamp_messages(
+                    uaid,
+                    response.timestamp,
+                    10,
+                ).await?
+            } else {
+                Default::default()
+            }
+        };
+        let timestamp = response.timestamp.or(timestamp);
+
+        Ok(CheckStorageResponse{
+            include_topic: false,
+            messages: response.messages,
+            timestamp,
+        })
     }
 
+    /// Return the list of known channels for the UserID
     async fn get_user_channels(
         &self,
         uaid: &Uuid,
-        message_table: &str,
+        _message_table: &str, // We ign
     ) -> ApiResult<HashSet<Uuid>> {
+        self.client.get_channels(uaid).await.map_err(Into::into)
     }
 
+    //TODO: Implement
     async fn remove_node_id(
         &self,
         uaid: &Uuid,
         node_id: String,
         connected_at: u64,
     ) -> ApiResult<()> {
+        self.client.remove_node_id(uaid, &node_id, connected_at).await.map_err(Into::into)
     }
 }
 // */

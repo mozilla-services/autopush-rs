@@ -38,8 +38,8 @@ openssl = "0.10"
 regex = "1.4"
 reqwest = "0.11"
 # datbases
-rusoto_core = {version="0.48", default-features = false, features = ["rustls"]}
-rusoto_dynamodb = {version="0.48", default-features = false, features = ["rustls"]}
+rusoto_core = {version="0.47", default-features = false, features = ["rustls"]} # locked by serde_dynamodb 0.9
+rusoto_dynamodb = {version="0.47", default-features = false, features = ["rustls"]} # locked by serde_dynamodb 0.9
 # postgres = "0.19" # sync
 tokio-postgres = "0.7"  # async
 
