@@ -26,12 +26,13 @@ pub async fn webpush_route(
             if !e.kind.user_still_valid() {
                 // The user record is no longer valid. We should remove it so that the client
                 // can attempt to recover. We don't care if this succeeds or fails at this point.
-                if let Ok(_) = drop_user(
+                if drop_user(
                     notification.subscription.user.uaid,
                     state.ddb.as_ref(),
                     &state.metrics,
                 )
                 .await
+                .is_ok()
                 {};
             }
             Err(e)
