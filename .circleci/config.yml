@@ -205,8 +205,8 @@ workflows:
             tags:
               only: /.*/
       - build:
-          name: build-autopush
-          image: autopush:build
+          name: build-autoconnect
+          image: autoconnect:build
           crate: autopush
           binary: autoconnect
           filters:
@@ -223,11 +223,11 @@ workflows:
               only: /.*/
 
       - deploy:
-          name: deploy-autopush
-          image: autopush:build
+          name: deploy-autoconnect
+          image: autoconnect:build
           repo: ${DOCKERHUB_REPO}
           requires:
-            - build-autopush
+            - build-autoconnect
             - test
           filters:
             tags:
