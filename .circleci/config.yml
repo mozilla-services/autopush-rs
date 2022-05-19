@@ -208,7 +208,7 @@ workflows:
           name: build-autopush
           image: autopush:build
           crate: autopush
-          binary: autopush_rs
+          binary: autoconnect
           filters:
             tags:
               only: /.*/

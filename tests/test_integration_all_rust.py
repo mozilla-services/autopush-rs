@@ -421,7 +421,7 @@ def process_logs(testcase):
     conn_count = sum(queue.qsize() for queue in CN_QUEUES)
     endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
 
-    print_lines_in_queues(CN_QUEUES, "AUTOPUSH: ")
+    print_lines_in_queues(CN_QUEUES, "AUTOCONNECT : ")
     print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
 
     if not STRICT_LOG_COUNTS:
@@ -615,7 +615,7 @@ def setup_module():
 
     setup_mock_server()
 
-    connection_binary = get_rust_binary_path("autopush_rs")
+    connection_binary = get_rust_binary_path("autoconnect")
     setup_connection_server(connection_binary)
     setup_megaphone_server(connection_binary)
     setup_endpoint_server()

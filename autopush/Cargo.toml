@@ -10,7 +10,7 @@ authors = [
 edition = "2021"
 
 [[bin]]
-name = "autopush_rs"
+name = "autoconnect"
 path = "src/main.rs"
 
 [dependencies]
