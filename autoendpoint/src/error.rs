@@ -152,6 +152,16 @@ impl ApiErrorKind {
         }
     }
 
+    /// Should the User record be removed?
+    pub fn user_still_valid(&self) -> bool {
+        match self {
+            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription | ApiErrorKind::InvalidToken => {
+                false
+            }
+            _ => true,
+        }
+    }
+
     /// Specify the label to use for metrics reporting.
     pub fn metric_label(&self) -> &'static str {
         match self {
