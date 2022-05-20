@@ -17,6 +17,7 @@ const OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/firebase.messag
 /// handles sending notifications to Firebase.
 pub struct FcmClient {
     endpoint: Url,
+    gcm_endpoint: Url,
     timeout: Duration,
     max_data: usize,
     fcm_authenticator: Option<DefaultAuthenticator>,
@@ -75,6 +76,10 @@ impl FcmClient {
                     server_credential.project_id
                 ))
                 .expect("Project ID is not URL-safe"),
+            gcm_endpoint: settings
+                .base_url
+                .join("gcm/send")
+                .expect("GCM Project ID is not URL-safe"),
             timeout: Duration::from_secs(settings.timeout as u64),
             max_data: settings.max_data,
             fcm_authenticator: auth,
@@ -121,7 +126,7 @@ impl FcmClient {
         let server_access_token = &self.server_credential.server_access_token;
         let response = self
             .http_client
-            .post(self.endpoint.clone())
+            .post(self.gcm_endpoint.clone())
             .header("Authorization", format!("key={}", server_access_token))
             .header("Content-Type", "application/json")
             .json(&message)
