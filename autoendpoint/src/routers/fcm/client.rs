@@ -145,7 +145,7 @@ impl FcmClient {
                 .map_err(FcmError::DeserializeResponse)?;
 
             return Err(match (status, data.error) {
-                (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
+                (StatusCode::UNAUTHORIZED, _) => RouterError::GCMAuthentication,
                 (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
                 (_, Some(error)) => RouterError::Upstream {
                     status: error.status,

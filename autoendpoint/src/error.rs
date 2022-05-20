@@ -203,6 +203,9 @@ impl ApiErrorKind {
             self,
             // Ignore common webpush errors
             ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
+            // Ignore GCM router authentication errors otherwise
+            // we could blow through our quota.
+            ApiErrorKind::Router(RouterError::GCMAuthentication) |
             // Ignore common VAPID erros
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::Jwt(_)

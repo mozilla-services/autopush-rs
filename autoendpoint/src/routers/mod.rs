@@ -95,6 +95,9 @@ pub enum RouterError {
     #[error("Bridge authentication error")]
     Authentication,
 
+    #[error("GCM Bridge authentication error")]
+    GCMAuthentication,
+
     #[error("Bridge request timeout")]
     RequestTimeout,
 
@@ -118,6 +121,7 @@ impl RouterError {
 
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
 
+            RouterError::GCMAuthentication | // Treat GCM auth failures as special, we reset the user.
             RouterError::UserWasDeleted | RouterError::NotFound => StatusCode::GONE,
 
             RouterError::TooMuchData(_) => StatusCode::PAYLOAD_TOO_LARGE,
@@ -149,6 +153,8 @@ impl RouterError {
             RouterError::Connect(_) => Some(902),
 
             RouterError::RequestTimeout => Some(903),
+
+            RouterError::GCMAuthentication => Some(904),
 
             RouterError::Upstream { .. } => None,
         }
