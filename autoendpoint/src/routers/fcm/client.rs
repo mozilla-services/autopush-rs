@@ -144,18 +144,25 @@ impl FcmClient {
         // Handle error
         let status = response.status();
         if status.is_client_error() || status.is_server_error() {
-            let data: FcmResponse = response
+            let data: GcmResponse = response
                 .json()
                 .await
                 .map_err(FcmError::DeserializeResponse)?;
 
-            return Err(match (status, data.error) {
+            return Err(match (status, &data.results[0].error) {
                 (StatusCode::UNAUTHORIZED, _) => RouterError::GCMAuthentication,
                 (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
-                (_, Some(error)) => RouterError::Upstream {
-                    status: error.status,
-                    message: error.message,
-                },
+                (_, Some(error)) => {
+                    if error == "NotRegistered" {
+                        // other values? "Unavailable", "InvalidRegistration"
+                        RouterError::NotFound
+                    } else {
+                        RouterError::Upstream {
+                            status: status.to_string(),
+                            message: error.clone(),
+                        }
+                    }
+                }
                 (status, None) => RouterError::Upstream {
                     status: status.to_string(),
                     message: "Unknown reason".to_string(),
@@ -220,26 +227,19 @@ impl FcmClient {
         // Handle error
         let status = response.status();
         if status.is_client_error() || status.is_server_error() {
-            let data: GcmResponse = response
+            let data: FcmResponse = response
                 .json()
                 .await
                 .map_err(FcmError::DeserializeResponse)?;
 
             // we only ever send one.
-            return Err(match (status, &data.results[0].error) {
+            return Err(match (status, data.error) {
                 (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
                 (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
-                (_, Some(error)) => {
-                    if *error == "NotRegistered" {
-                        // other values? "Unavailable", "InvalidRegistration"
-                        RouterError::NotFound
-                    } else {
-                        RouterError::Upstream {
-                            status: status.to_string(),
-                            message: error.clone(),
-                        }
-                    }
-                }
+                (_, Some(error)) => RouterError::Upstream {
+                    status: error.status,
+                    message: error.message,
+                },
                 (status, None) => RouterError::Upstream {
                     status: status.to_string(),
                     message: "Unknown reason".to_string(),
@@ -335,6 +335,10 @@ pub mod tests {
         )
     }
 
+    pub fn mock_gcm_endpoint_builder() -> mockito::Mock {
+        mockito::mock("POST", "/fcm/send")
+    }
+
     /// Make a FcmClient from the service auth data
     async fn make_client(credential: FcmServerCredential) -> FcmClient {
         FcmClient::new(
@@ -386,9 +390,8 @@ pub mod tests {
             server_access_token: registration_id.to_owned(),
         })
         .await;
-        let _token_mock = mock_token_endpoint();
         let body = format!("{{\"data\":{{\"is_test\":\"true\"}},\"delay_while_idle\":false,\"registration_ids\":[\"{}\"],\"time_to_live\":42}}", &registration_id);
-        let fcm_mock = mock_fcm_endpoint_builder(project_id)
+        let gcm_mock = mock_gcm_endpoint_builder()
             .match_header("Authorization", format!("key={}", registration_id).as_str())
             .match_header("Content-Type", "application/json")
             .match_body(body.as_str())
@@ -397,7 +400,7 @@ pub mod tests {
         data.insert("is_test", "true".to_string());
         let result = client.send_gcm(data, registration_id.to_owned(), 42).await;
         assert!(result.is_ok(), "result={:?}", result);
-        fcm_mock.assert();
+        gcm_mock.assert();
     }
 
     /// Authorization errors are handled
@@ -420,6 +423,40 @@ pub mod tests {
         assert!(result.is_err());
         assert!(
             matches!(result.as_ref().unwrap_err(), RouterError::Authentication),
+            "result = {:?}",
+            result
+        );
+    }
+
+    /// Authorization errors are handled
+    #[tokio::test]
+    async fn gcm_unauthorized() {
+        let client = make_client(FcmServerCredential {
+            project_id: PROJECT_ID.to_owned(),
+            server_access_token: make_service_key(),
+        })
+        .await;
+        let _token_mock = mock_token_endpoint();
+        let _gcm_mock = mock_gcm_endpoint_builder()
+            .with_status(401)
+            .with_body(
+                r#"{ "multicast_id": 216,
+            "success": 0,
+            "failure": 1,
+            "canonical_ids": 0,
+            "results": [
+                { "error": "NotRegistered"}
+            ]
+          }"#,
+            )
+            .create();
+
+        let result = client
+            .send_gcm(HashMap::new(), "test-token".to_string(), 42)
+            .await;
+        assert!(result.is_err());
+        assert!(
+            matches!(result.as_ref().unwrap_err(), RouterError::GCMAuthentication),
             "result = {:?}",
             result
         );

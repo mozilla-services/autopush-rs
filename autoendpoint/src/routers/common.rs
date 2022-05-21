@@ -58,7 +58,7 @@ pub async fn handle_error(
             );
         }
         RouterError::GCMAuthentication => {
-            // Don't record the GCM auth error.
+            warn!("GCM Authentication error");
             incr_error_metric(
                 metrics,
                 platform,
