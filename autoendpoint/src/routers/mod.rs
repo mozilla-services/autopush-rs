@@ -121,12 +121,12 @@ impl RouterError {
 
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
 
-            RouterError::GCMAuthentication | // Treat GCM auth failures as special, we reset the user.
             RouterError::UserWasDeleted | RouterError::NotFound => StatusCode::GONE,
 
             RouterError::TooMuchData(_) => StatusCode::PAYLOAD_TOO_LARGE,
 
             RouterError::Authentication
+            | RouterError::GCMAuthentication
             | RouterError::RequestTimeout
             | RouterError::Connect(_)
             | RouterError::Upstream { .. } => StatusCode::BAD_GATEWAY,
