@@ -198,9 +198,6 @@ impl ApiErrorKind {
             self,
             // Ignore common webpush errors
             ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
-            // Do not report GCMAuthentication failures to Sentry since
-            // they're not really actionable and could flood our quota
-            ApiErrorKind::Router(RouterError::GCMAuthentication) |
             // Ignore common VAPID erros
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::Jwt(_)
