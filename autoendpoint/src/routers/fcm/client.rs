@@ -220,18 +220,26 @@ impl FcmClient {
         // Handle error
         let status = response.status();
         if status.is_client_error() || status.is_server_error() {
-            let data: FcmResponse = response
+            let data: GcmResponse = response
                 .json()
                 .await
                 .map_err(FcmError::DeserializeResponse)?;
 
-            return Err(match (status, data.error) {
+            // we only ever send one.
+            return Err(match (status, &data.results[0].error) {
                 (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
                 (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
-                (_, Some(error)) => RouterError::Upstream {
-                    status: error.status,
-                    message: error.message,
-                },
+                (_, Some(error)) => {
+                    if *error == "NotRegistered" {
+                        // other values? "Unavailable", "InvalidRegistration"
+                        RouterError::NotFound
+                    } else {
+                        RouterError::Upstream {
+                            status: status.to_string(),
+                            message: error.clone(),
+                        }
+                    }
+                }
                 (status, None) => RouterError::Upstream {
                     status: status.to_string(),
                     message: "Unknown reason".to_string(),
@@ -252,6 +260,28 @@ struct FcmResponse {
 struct FcmErrorResponse {
     status: String,
     message: String,
+}
+
+#[derive(Deserialize)]
+struct GcmResult {
+    error: Option<String>,
+    #[serde(rename = "message_id")]
+    _message_id: Option<String>,
+    #[serde(rename = "registration_id")]
+    _registration_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GcmResponse {
+    results: Vec<GcmResult>,
+    #[serde(rename = "multicast_id")]
+    _multicast_id: u32,
+    #[serde(rename = "success")]
+    _success: u32,
+    #[serde(rename = "failure")]
+    _failure: u32,
+    #[serde(rename = "canonical_ids")]
+    _canonical_ids: u32,
 }
 
 #[cfg(test)]
