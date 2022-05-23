@@ -159,25 +159,28 @@ impl FcmClient {
             .await
             .map_err(FcmError::DeserializeResponse)?;
         if status.is_client_error() || status.is_server_error() || data.failure > 0 {
-            return Err(match (status, &data.results[0].error) {
-                (StatusCode::UNAUTHORIZED, _) => RouterError::GCMAuthentication,
-                (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
-                (_, Some(error)) => match error.as_str() {
-                    "NotRegistered" | "InvalidRegistration" => RouterError::NotFound,
-                    "Unavailable" => RouterError::Upstream {
-                        status: "USER UNAVAILABLE".to_owned(),
-                        message: "User Unavailable. Try again later.".to_owned(),
+            let invalid = GcmResult::invalid();
+            return Err(
+                match (status, &data.results.get(0).unwrap_or(&invalid).error) {
+                    (StatusCode::UNAUTHORIZED, _) => RouterError::GCMAuthentication,
+                    (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
+                    (_, Some(error)) => match error.as_str() {
+                        "NotRegistered" | "InvalidRegistration" => RouterError::NotFound,
+                        "Unavailable" => RouterError::Upstream {
+                            status: "USER UNAVAILABLE".to_owned(),
+                            message: "User Unavailable. Try again later.".to_owned(),
+                        },
+                        _ => RouterError::Upstream {
+                            status: StatusCode::BAD_GATEWAY.to_string(),
+                            message: format!("Unexpected error: {}", error),
+                        },
                     },
-                    _ => RouterError::Upstream {
-                        status: StatusCode::BAD_GATEWAY.to_string(),
-                        message: format!("Unexpected error: {}", error),
+                    (status, None) => RouterError::Upstream {
+                        status: status.to_string(),
+                        message: "Unknown reason".to_string(),
                     },
                 },
-                (status, None) => RouterError::Upstream {
-                    status: status.to_string(),
-                    message: "Unknown reason".to_string(),
-                },
-            });
+            );
         }
 
         Ok(())
@@ -274,7 +277,7 @@ struct FcmErrorResponse {
 
 /// This is a joint structure that would reflect the status of each delivered
 /// message. (We only send one at a time.)
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug, Default)]
 struct GcmResult {
     error: Option<String>, // Optional, standardized error message
     #[serde(rename = "message_id")]
@@ -283,13 +286,22 @@ struct GcmResult {
     _registration_id: Option<String>, // Optional replacement registration ID
 }
 
+impl GcmResult {
+    pub fn invalid() -> GcmResult {
+        Self {
+            error: Some("Invalid GCM Response".to_string()),
+            ..Default::default()
+        }
+    }
+}
+
 // The expected GCM response message. (Being explicit here because
 // the offical documentation has been removed)
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug, Default)]
 struct GcmResponse {
     results: Vec<GcmResult>,
     #[serde(rename = "multicast_id")]
-    _multicast_id: u32, // ID for this set of messages/results
+    _multicast_id: u64, // ID for this set of messages/results
     #[serde(rename = "success")]
     _success: u32, // Number of messages succeeding.
     failure: u32, // number of messages failing.

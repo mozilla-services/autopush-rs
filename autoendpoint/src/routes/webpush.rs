@@ -4,7 +4,6 @@ use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::message_id::MessageId;
 use crate::extractors::notification::Notification;
 use crate::extractors::routers::{RouterType, Routers};
-use crate::extractors::user::drop_user;
 use crate::server::ServerState;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
@@ -13,31 +12,14 @@ use actix_web::HttpResponse;
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
-    state: Data<ServerState>,
+    _state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
     let router = routers.get(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
     );
 
-    match router.route_notification(&notification).await {
-        Ok(v) => Ok(v.into()),
-        Err(e) => {
-            if !e.kind.user_still_valid() {
-                // The user record is no longer valid. We should remove it so that the client
-                // can attempt to recover. We don't care if this succeeds or fails at this point.
-                if drop_user(
-                    notification.subscription.user.uaid,
-                    state.ddb.as_ref(),
-                    &state.metrics,
-                )
-                .await
-                .is_ok()
-                {};
-            }
-            Err(e)
-        }
-    }
+    Ok(router.route_notification(&notification).await?.into())
 }
 
 /// Handle the `DELETE /m/{message_id}` route
