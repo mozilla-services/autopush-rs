@@ -360,6 +360,9 @@ mod tests {
         let fcm_mock = mock_gcm_endpoint_builder()
             .match_header("Authorization", format!("key={}", &auth_key).as_str())
             .match_header("Content-Type", "application/json")
+            .with_body(
+                r#"{ "multicast_id": 216,"success":1,"failure":0,"canonical_ids":0,"results":[{"message_id":"1:02"}]}"#,
+            )
             .match_body(body.as_str())
             .create();
         let notification = make_notification(

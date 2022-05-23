@@ -89,6 +89,17 @@ impl FcmClient {
     }
 
     /// Send the message as GCM
+    /// Note: GCM is a beyond deprecated protocol, however older clients
+    /// may still use it (which includes about half of our traffic at
+    /// the time this comment was written). GCM documentation was also
+    /// removed from Google's site. It still persists in obscure corners
+    /// of the internet, but I have no idea for how long.
+    /// <https://stuff.mit.edu/afs/sipb/project/android/docs/google/gcm/gcm.html>
+    ///
+    /// There is no way to generate GCM credentials. (They are disabled
+    /// on Google's server side.) There is no way to test GCM compatibility
+    /// other than monitoring errors. Users really should be migrated to the
+    /// new FCM endpoints, but we don't have full control over that.
     pub async fn send_gcm(
         &self,
         data: HashMap<&'static str, String>,
@@ -114,9 +125,9 @@ impl FcmClient {
         // You can also turn on internal debugging, see
         // https://docs.rs/mockito/latest/mockito/#debug
         dbg!(self.endpoint.clone().as_str());
-        let rr = ureq::post(self.endpoint.clone().as_str())
+        let rr = ureq::post(self.gcm_endpoint.clone().as_str())
             .set("Authorization",
-                    format!("key={}", self.credential.credential.as_str()).as_str())
+                    format!("key={}", self.server_credential.server_access_token.as_str()).as_str())
             .set("Content-Type", "application/json")
             .send_json(&message).unwrap();
         dbg!(rr.status(), rr.status_text());
@@ -143,26 +154,25 @@ impl FcmClient {
 
         // Handle error
         let status = response.status();
-        if status.is_client_error() || status.is_server_error() {
-            let data: GcmResponse = response
-                .json()
-                .await
-                .map_err(FcmError::DeserializeResponse)?;
-
+        let data: GcmResponse = response
+            .json()
+            .await
+            .map_err(FcmError::DeserializeResponse)?;
+        if status.is_client_error() || status.is_server_error() || data.failure > 0 {
             return Err(match (status, &data.results[0].error) {
                 (StatusCode::UNAUTHORIZED, _) => RouterError::GCMAuthentication,
                 (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
-                (_, Some(error)) => {
-                    if error == "NotRegistered" {
-                        // other values? "Unavailable", "InvalidRegistration"
-                        RouterError::NotFound
-                    } else {
-                        RouterError::Upstream {
-                            status: status.to_string(),
-                            message: error.clone(),
-                        }
-                    }
-                }
+                (_, Some(error)) => match error.as_str() {
+                    "NotRegistered" | "InvalidRegistration" => RouterError::NotFound,
+                    "Unavailable" => RouterError::Upstream {
+                        status: "USER UNAVAILABLE".to_owned(),
+                        message: "User Unavailable. Try again later.".to_owned(),
+                    },
+                    _ => RouterError::Upstream {
+                        status: StatusCode::BAD_GATEWAY.to_string(),
+                        message: format!("Unexpected error: {}", error),
+                    },
+                },
                 (status, None) => RouterError::Upstream {
                     status: status.to_string(),
                     message: "Unknown reason".to_string(),
@@ -262,26 +272,29 @@ struct FcmErrorResponse {
     message: String,
 }
 
-#[derive(Deserialize)]
+/// This is a joint structure that would reflect the status of each delivered
+/// message. (We only send one at a time.)
+#[derive(Deserialize, Debug)]
 struct GcmResult {
-    error: Option<String>,
+    error: Option<String>, // Optional, standardized error message
     #[serde(rename = "message_id")]
-    _message_id: Option<String>,
+    _message_id: Option<String>, // Optional identifier for a successful send
     #[serde(rename = "registration_id")]
-    _registration_id: Option<String>,
+    _registration_id: Option<String>, // Optional replacement registration ID
 }
 
-#[derive(Deserialize)]
+// The expected GCM response message. (Being explicit here because
+// the offical documentation has been removed)
+#[derive(Deserialize, Debug)]
 struct GcmResponse {
     results: Vec<GcmResult>,
     #[serde(rename = "multicast_id")]
-    _multicast_id: u32,
+    _multicast_id: u32, // ID for this set of messages/results
     #[serde(rename = "success")]
-    _success: u32,
-    #[serde(rename = "failure")]
-    _failure: u32,
+    _success: u32, // Number of messages succeeding.
+    failure: u32, // number of messages failing.
     #[serde(rename = "canonical_ids")]
-    _canonical_ids: u32,
+    _canonical_ids: u32, // number of IDs that are reassigned.
 }
 
 #[cfg(test)]
@@ -390,10 +403,14 @@ pub mod tests {
             server_access_token: registration_id.to_owned(),
         })
         .await;
-        let body = format!("{{\"data\":{{\"is_test\":\"true\"}},\"delay_while_idle\":false,\"registration_ids\":[\"{}\"],\"time_to_live\":42}}", &registration_id);
+        let body = format!(
+            r#"{{"data":{{"is_test":"true"}},"delay_while_idle":false,"registration_ids":["{}"],"time_to_live":42}}"#,
+            &registration_id
+        );
         let gcm_mock = mock_gcm_endpoint_builder()
             .match_header("Authorization", format!("key={}", registration_id).as_str())
             .match_header("Content-Type", "application/json")
+            .with_body(r#"{"multicast_id":216,"success":1,"failure":0,"canonical_ids":0,"results":[{"message_id":"1:02"}]}"#,)
             .match_body(body.as_str())
             .create();
         let mut data = HashMap::new();
@@ -428,35 +445,38 @@ pub mod tests {
         );
     }
 
-    /// Authorization errors are handled
+    /// GCM errors are handled
     #[tokio::test]
-    async fn gcm_unauthorized() {
+    async fn gcm_unavailable() {
+        let token = make_service_key();
         let client = make_client(FcmServerCredential {
             project_id: PROJECT_ID.to_owned(),
-            server_access_token: make_service_key(),
+            server_access_token: token.clone(),
         })
         .await;
         let _token_mock = mock_token_endpoint();
+        // Other potential GCM errors:
+        // "Unavailable" => client unavailable, retry sending.
+        // "InvalidRegistration" => registration corrupted, remove.
         let _gcm_mock = mock_gcm_endpoint_builder()
-            .with_status(401)
-            .with_body(
-                r#"{ "multicast_id": 216,
-            "success": 0,
-            "failure": 1,
-            "canonical_ids": 0,
-            "results": [
-                { "error": "NotRegistered"}
-            ]
-          }"#,
+            .match_body(r#"{"data":{"is_test":"true"},"delay_while_idle":false,"registration_ids":["test-token"],"time_to_live":42}"#)
+            .match_header("Authorization", format!("key={}", token).as_str())
+            .match_header("Content-Type", "application/json")
+            .with_status(200)
+            .with_body(r#"{"multicast_id":216,"success":0,"failure":1,"canonical_ids":0,"results":[{"error":"NotRegistered"}]}"#,
             )
             .create();
 
         let result = client
-            .send_gcm(HashMap::new(), "test-token".to_string(), 42)
+            .send_gcm(
+                HashMap::from([("is_test", "true".to_owned())]),
+                "test-token".to_string(),
+                42,
+            )
             .await;
         assert!(result.is_err());
         assert!(
-            matches!(result.as_ref().unwrap_err(), RouterError::GCMAuthentication),
+            matches!(result.as_ref().unwrap_err(), RouterError::NotFound),
             "result = {:?}",
             result
         );
