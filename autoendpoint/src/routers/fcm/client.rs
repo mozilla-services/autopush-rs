@@ -78,7 +78,7 @@ impl FcmClient {
                 .expect("Project ID is not URL-safe"),
             gcm_endpoint: settings
                 .base_url
-                .join("gcm/send")
+                .join("fcm/send")
                 .expect("GCM Project ID is not URL-safe"),
             timeout: Duration::from_secs(settings.timeout as u64),
             max_data: settings.max_data,
