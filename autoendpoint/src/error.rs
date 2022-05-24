@@ -152,11 +152,6 @@ impl ApiErrorKind {
         }
     }
 
-    /// Should the User record be removed?
-    pub fn user_still_valid(&self) -> bool {
-        !matches!(self, ApiErrorKind::InvalidToken)
-    }
-
     /// Specify the label to use for metrics reporting.
     pub fn metric_label(&self) -> &'static str {
         match self {
