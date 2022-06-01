@@ -17,6 +17,7 @@ const OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/firebase.messag
 /// handles sending notifications to Firebase.
 pub struct FcmClient {
     endpoint: Url,
+    gcm_endpoint: Url,
     timeout: Duration,
     max_data: usize,
     fcm_authenticator: Option<DefaultAuthenticator>,
@@ -75,6 +76,10 @@ impl FcmClient {
                     server_credential.project_id
                 ))
                 .expect("Project ID is not URL-safe"),
+            gcm_endpoint: settings
+                .base_url
+                .join("fcm/send")
+                .expect("GCM Project ID is not URL-safe"),
             timeout: Duration::from_secs(settings.timeout as u64),
             max_data: settings.max_data,
             fcm_authenticator: auth,
@@ -84,6 +89,17 @@ impl FcmClient {
     }
 
     /// Send the message as GCM
+    /// Note: GCM is a beyond deprecated protocol, however older clients
+    /// may still use it (which includes about half of our traffic at
+    /// the time this comment was written). GCM documentation was also
+    /// removed from Google's site. It still persists in obscure corners
+    /// of the internet, but I have no idea for how long.
+    /// <https://stuff.mit.edu/afs/sipb/project/android/docs/google/gcm/gcm.html>
+    ///
+    /// There is no way to generate GCM credentials. (They are disabled
+    /// on Google's server side.) There is no way to test GCM compatibility
+    /// other than monitoring errors. Users really should be migrated to the
+    /// new FCM endpoints, but we don't have full control over that.
     pub async fn send_gcm(
         &self,
         data: HashMap<&'static str, String>,
@@ -109,9 +125,9 @@ impl FcmClient {
         // You can also turn on internal debugging, see
         // https://docs.rs/mockito/latest/mockito/#debug
         dbg!(self.endpoint.clone().as_str());
-        let rr = ureq::post(self.endpoint.clone().as_str())
+        let rr = ureq::post(self.gcm_endpoint.clone().as_str())
             .set("Authorization",
-                    format!("key={}", self.credential.credential.as_str()).as_str())
+                    format!("key={}", self.server_credential.server_access_token.as_str()).as_str())
             .set("Content-Type", "application/json")
             .send_json(&message).unwrap();
         dbg!(rr.status(), rr.status_text());
@@ -121,7 +137,7 @@ impl FcmClient {
         let server_access_token = &self.server_credential.server_access_token;
         let response = self
             .http_client
-            .post(self.endpoint.clone())
+            .post(self.gcm_endpoint.clone())
             .header("Authorization", format!("key={}", server_access_token))
             .header("Content-Type", "application/json")
             .json(&message)
@@ -138,24 +154,33 @@ impl FcmClient {
 
         // Handle error
         let status = response.status();
-        if status.is_client_error() || status.is_server_error() {
-            let data: FcmResponse = response
-                .json()
-                .await
-                .map_err(FcmError::DeserializeResponse)?;
-
-            return Err(match (status, data.error) {
-                (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
-                (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
-                (_, Some(error)) => RouterError::Upstream {
-                    status: error.status,
-                    message: error.message,
+        let data: GcmResponse = response
+            .json()
+            .await
+            .map_err(FcmError::DeserializeResponse)?;
+        if status.is_client_error() || status.is_server_error() || data.failure > 0 {
+            let invalid = GcmResult::invalid();
+            return Err(
+                match (status, &data.results.get(0).unwrap_or(&invalid).error) {
+                    (StatusCode::UNAUTHORIZED, _) => RouterError::GCMAuthentication,
+                    (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
+                    (_, Some(error)) => match error.as_str() {
+                        "NotRegistered" | "InvalidRegistration" => RouterError::NotFound,
+                        "Unavailable" => RouterError::Upstream {
+                            status: "USER UNAVAILABLE".to_owned(),
+                            message: "User Unavailable. Try again later.".to_owned(),
+                        },
+                        _ => RouterError::Upstream {
+                            status: StatusCode::BAD_GATEWAY.to_string(),
+                            message: format!("Unexpected error: {}", error),
+                        },
+                    },
+                    (status, None) => RouterError::Upstream {
+                        status: status.to_string(),
+                        message: "Unknown reason".to_string(),
+                    },
                 },
-                (status, None) => RouterError::Upstream {
-                    status: status.to_string(),
-                    message: "Unknown reason".to_string(),
-                },
-            });
+            );
         }
 
         Ok(())
@@ -220,6 +245,7 @@ impl FcmClient {
                 .await
                 .map_err(FcmError::DeserializeResponse)?;
 
+            // we only ever send one.
             return Err(match (status, data.error) {
                 (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
                 (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
@@ -247,6 +273,40 @@ struct FcmResponse {
 struct FcmErrorResponse {
     status: String,
     message: String,
+}
+
+/// This is a joint structure that would reflect the status of each delivered
+/// message. (We only send one at a time.)
+#[derive(Clone, Deserialize, Debug, Default)]
+struct GcmResult {
+    error: Option<String>, // Optional, standardized error message
+    #[serde(rename = "message_id")]
+    _message_id: Option<String>, // Optional identifier for a successful send
+    #[serde(rename = "registration_id")]
+    _registration_id: Option<String>, // Optional replacement registration ID
+}
+
+impl GcmResult {
+    pub fn invalid() -> GcmResult {
+        Self {
+            error: Some("Invalid GCM Response".to_string()),
+            ..Default::default()
+        }
+    }
+}
+
+// The expected GCM response message. (Being explicit here because
+// the offical documentation has been removed)
+#[derive(Clone, Deserialize, Debug, Default)]
+struct GcmResponse {
+    results: Vec<GcmResult>,
+    #[serde(rename = "multicast_id")]
+    _multicast_id: u64, // ID for this set of messages/results
+    #[serde(rename = "success")]
+    _success: u32, // Number of messages succeeding.
+    failure: u32, // number of messages failing.
+    #[serde(rename = "canonical_ids")]
+    _canonical_ids: u32, // number of IDs that are reassigned.
 }
 
 #[cfg(test)]
@@ -300,6 +360,10 @@ pub mod tests {
         )
     }
 
+    pub fn mock_gcm_endpoint_builder() -> mockito::Mock {
+        mockito::mock("POST", "/fcm/send")
+    }
+
     /// Make a FcmClient from the service auth data
     async fn make_client(credential: FcmServerCredential) -> FcmClient {
         FcmClient::new(
@@ -351,18 +415,21 @@ pub mod tests {
             server_access_token: registration_id.to_owned(),
         })
         .await;
-        let _token_mock = mock_token_endpoint();
-        let body = format!("{{\"data\":{{\"is_test\":\"true\"}},\"delay_while_idle\":false,\"registration_ids\":[\"{}\"],\"time_to_live\":42}}", &registration_id);
-        let fcm_mock = mock_fcm_endpoint_builder(project_id)
+        let body = format!(
+            r#"{{"data":{{"is_test":"true"}},"delay_while_idle":false,"registration_ids":["{}"],"time_to_live":42}}"#,
+            &registration_id
+        );
+        let gcm_mock = mock_gcm_endpoint_builder()
             .match_header("Authorization", format!("key={}", registration_id).as_str())
             .match_header("Content-Type", "application/json")
+            .with_body(r#"{"multicast_id":216,"success":1,"failure":0,"canonical_ids":0,"results":[{"message_id":"1:02"}]}"#,)
             .match_body(body.as_str())
             .create();
         let mut data = HashMap::new();
         data.insert("is_test", "true".to_string());
         let result = client.send_gcm(data, registration_id.to_owned(), 42).await;
         assert!(result.is_ok(), "result={:?}", result);
-        fcm_mock.assert();
+        gcm_mock.assert();
     }
 
     /// Authorization errors are handled
@@ -385,6 +452,43 @@ pub mod tests {
         assert!(result.is_err());
         assert!(
             matches!(result.as_ref().unwrap_err(), RouterError::Authentication),
+            "result = {:?}",
+            result
+        );
+    }
+
+    /// GCM errors are handled
+    #[tokio::test]
+    async fn gcm_unavailable() {
+        let token = make_service_key();
+        let client = make_client(FcmServerCredential {
+            project_id: PROJECT_ID.to_owned(),
+            server_access_token: token.clone(),
+        })
+        .await;
+        let _token_mock = mock_token_endpoint();
+        // Other potential GCM errors:
+        // "Unavailable" => client unavailable, retry sending.
+        // "InvalidRegistration" => registration corrupted, remove.
+        let _gcm_mock = mock_gcm_endpoint_builder()
+            .match_body(r#"{"data":{"is_test":"true"},"delay_while_idle":false,"registration_ids":["test-token"],"time_to_live":42}"#)
+            .match_header("Authorization", format!("key={}", token).as_str())
+            .match_header("Content-Type", "application/json")
+            .with_status(200)
+            .with_body(r#"{"multicast_id":216,"success":0,"failure":1,"canonical_ids":0,"results":[{"error":"NotRegistered"}]}"#,
+            )
+            .create();
+
+        let result = client
+            .send_gcm(
+                HashMap::from([("is_test", "true".to_owned())]),
+                "test-token".to_string(),
+                42,
+            )
+            .await;
+        assert!(result.is_err());
+        assert!(
+            matches!(result.as_ref().unwrap_err(), RouterError::NotFound),
             "result = {:?}",
             result
         );

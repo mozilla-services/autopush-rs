@@ -229,8 +229,8 @@ mod tests {
     use crate::extractors::routers::RouterType;
     use crate::routers::common::tests::{make_notification, CHANNEL_ID};
     use crate::routers::fcm::client::tests::{
-        make_service_key, mock_fcm_endpoint_builder, mock_token_endpoint, GCM_PROJECT_ID,
-        PROJECT_ID,
+        make_service_key, mock_fcm_endpoint_builder, mock_gcm_endpoint_builder,
+        mock_token_endpoint, GCM_PROJECT_ID, PROJECT_ID,
     };
     use crate::routers::fcm::error::FcmError;
     use crate::routers::fcm::router::FcmRouter;
@@ -342,7 +342,7 @@ mod tests {
     async fn successful_gcm_fallback() {
         let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
         let registration_id = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-        let project_id = GCM_PROJECT_ID;
+        // let project_id = GCM_PROJECT_ID;
         let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(make_service_key(), auth_key.to_owned(), ddb).await;
         assert!(router.active());
@@ -357,9 +357,12 @@ mod tests {
         })
         .to_string();
         let _token_mock = mock_token_endpoint();
-        let fcm_mock = mock_fcm_endpoint_builder(project_id)
+        let fcm_mock = mock_gcm_endpoint_builder()
             .match_header("Authorization", format!("key={}", &auth_key).as_str())
             .match_header("Content-Type", "application/json")
+            .with_body(
+                r#"{ "multicast_id": 216,"success":1,"failure":0,"canonical_ids":0,"results":[{"message_id":"1:02"}]}"#,
+            )
             .match_body(body.as_str())
             .create();
         let notification = make_notification(

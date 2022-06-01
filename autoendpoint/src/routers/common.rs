@@ -57,6 +57,17 @@ pub async fn handle_error(
                 error.errno(),
             );
         }
+        RouterError::GCMAuthentication => {
+            warn!("GCM Authentication error");
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "gcm authentication",
+                error.status(),
+                error.errno(),
+            );
+        }
         RouterError::RequestTimeout => {
             warn!("Bridge timeout");
             incr_error_metric(
