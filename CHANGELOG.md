@@ -1,3 +1,21 @@
+<a name="1.63.0"></a>
+## 1.63.0 (2022-06-02)
+
+
+#### Chore
+
+*   tag 1.62.0 (#304) ([1425b896](https://github.com/mozilla-services/autopush-rs/commit/1425b89641db05a44600fbcc01723a9c6f8e5f6f))
+
+#### Bug Fixes
+
+*   Fix GCM handling (#309) ([96cef485](https://github.com/mozilla-services/autopush-rs/commit/96cef485390118c8237f0738cb725856dfa3559e))
+
+#### Features
+
+*   Add tool to generate endpoints (#307) ([2829fa42](https://github.com/mozilla-services/autopush-rs/commit/2829fa42bfeffec1c8d2cdddd367a5555a52630b))
+
+
+
 <a name="1.62.0"></a>
 ## 1.62.0 (2022-05-05)
 
