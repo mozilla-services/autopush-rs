@@ -53,8 +53,8 @@ impl MessageId {
                 topic,
             } => format!(
                 "01:{}:{}:{}",
-                uaid.to_simple_ref(),
-                channel_id.to_simple_ref(),
+                &uaid.as_simple(),
+                &channel_id.as_simple(),
                 topic
             ),
             MessageId::WithoutTopic {
@@ -63,8 +63,8 @@ impl MessageId {
                 timestamp,
             } => format!(
                 "02:{}:{}:{}",
-                uaid.to_simple_ref(),
-                channel_id.to_simple_ref(),
+                uaid.as_simple(),
+                channel_id.as_simple(),
                 timestamp
             ),
         };
@@ -117,12 +117,12 @@ impl MessageId {
         match self {
             MessageId::WithTopic {
                 channel_id, topic, ..
-            } => format!("01:{}:{}", channel_id.to_hyphenated(), topic),
+            } => format!("01:{}:{}", channel_id.as_hyphenated(), topic),
             MessageId::WithoutTopic {
                 channel_id,
                 timestamp,
                 ..
-            } => format!("02:{}:{}", timestamp, channel_id.to_hyphenated()),
+            } => format!("02:{}:{}", timestamp, channel_id.as_hyphenated()),
         }
     }
 }

@@ -10,6 +10,7 @@ use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
 
@@ -20,7 +21,7 @@ use uuid::Uuid;
 /// not available, the notification is stored in the database.
 pub struct WebPushRouter {
     pub ddb: Box<dyn DbClient>,
-    pub metrics: StatsdClient,
+    pub metrics: Arc<StatsdClient>,
     pub http: reqwest::Client,
     pub endpoint_url: Url,
 }

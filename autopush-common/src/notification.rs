@@ -37,7 +37,7 @@ impl Notification {
     /// Old format for non-topic messages that is no longer returned:
     ///     {chid}:{message_id}
     pub fn sort_key(&self) -> String {
-        let chid = self.channel_id.to_hyphenated();
+        let chid = self.channel_id.as_hyphenated();
         if let Some(ref topic) = self.topic {
             format!("01:{}:{}", chid, topic)
         } else if let Some(sortkey_timestamp) = self.sortkey_timestamp {
