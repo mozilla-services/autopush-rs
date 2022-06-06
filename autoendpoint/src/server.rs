@@ -46,10 +46,10 @@ impl Server {
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
         let db_settings = DbSettings {
-            dsn: settings.db_dsn,
-            message_tablename: settings.message_tablename,
-            router_tablename: settings.router_tablename,
-            meta_tablename: settings.meta_tablename,
+            dsn: settings.db_dsn.clone(),
+            message_tablename: settings.message_tablename.clone(),
+            router_tablename: settings.router_tablename.clone(),
+            meta_tablename: settings.meta_tablename.clone(),
         };
         let db: Box<dyn DbClient> = match settings.use_ddb {
             true => {

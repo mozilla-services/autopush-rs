@@ -73,13 +73,13 @@ async fn validate_webpush_user(
 }
 
 /// Drop a user and increment associated metric
-async fn drop_user(uaid: Uuid, db: &dyn DbClient, metrics: &StatsdClient) -> ApiResult<()> {
+pub async fn drop_user(uaid: Uuid, ddb: &dyn DbClient, metrics: &StatsdClient) -> ApiResult<()> {
     metrics
         .incr_with_tags("updates.drop_user")
         .with_tag("errno", "102")
         .send();
 
-    db.remove_user(uaid).await?;
+    ddb.remove_user(uaid).await?;
 
     Ok(())
 }

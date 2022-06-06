@@ -23,7 +23,7 @@ use super::client::FetchMessageResponse;
 
 #[allow(dead_code)] // TODO: Remove before flight
 #[derive(Clone)]
-pub struct PostgresStorage {
+pub struct PgClientImpl {
     db_client: Arc<Client>,
     _metrics: Arc<StatsdClient>,
     router_table: String,                  // Routing information
@@ -32,7 +32,7 @@ pub struct PostgresStorage {
     current_message_month: Option<String>, // For table rotation
 }
 
-impl PostgresStorage {
+impl PgClientImpl {
     /// Create a new Postgres Client.
     ///
     /// This uses the `settings.db_dsn`. to try and connect to the postgres database.
@@ -112,7 +112,7 @@ impl PostgresStorage {
 }
 
 #[async_trait]
-impl DbClient for PostgresStorage {
+impl DbClient for PgClientImpl {
     /// add user to router_table if not exists uaid
     async fn add_user(&self, user: &UserRecord) -> DbResult<()> {
         self.db_client.execute(
@@ -490,13 +490,13 @@ impl DbClient for PostgresStorage {
 
 /// Higher level command handler for Postgres Storage.
 struct DbPgHandler {
-    client: PostgresStorage,
+    client: PgClientImpl,
 }
 
 impl DbPgHandler {
     async fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> ApiResult<Self> {
         Ok(Self {
-            client: PostgresStorage::new(metrics, settings).await?,
+            client: PgClientImpl::new(metrics, settings).await?,
 
         })
     }

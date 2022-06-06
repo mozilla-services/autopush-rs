@@ -12,8 +12,7 @@ use uuid::Uuid;
 
 use crate::db::client::DbClient;
 use crate::db::error::{DbError, DbResult};
-use crate::settings::Settings;
-use autopush_common::db::UserRecord;
+use autopush_common::db::{DbSettings, UserRecord};
 use autopush_common::notification::Notification;
 // use autopush_common::util::sec_since_epoch;
 
@@ -34,8 +33,8 @@ impl PgClientImpl {
     /// for parameter details and requirements.
     /// Example DSN: postgresql://user:password@host/database?option=val
     /// e.g. (postgresql://scott:tiger@dbhost/autopush?connect_timeout=10&keepalives_idle=3600)
-    pub async fn new(metrics: Arc<StatsdClient>, settings: &Settings) -> DbResult<Self> {
-        if let Some(dsn) = settings.db_dsn.clone() {
+    pub async fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
+        if let Some(dsn) = db_settings.dsn.clone() {
             trace!("Postgres Connect {}", &dsn);
             let (client, connection) = tokio_postgres::connect(&dsn, NoTls).await.map_err(|e| {
                 DbError::Connection(format!("Could not connect to postgres {:?}", e))
@@ -48,9 +47,9 @@ impl PgClientImpl {
             return Ok(Self {
                 client: Arc::new(client),
                 _metrics: metrics,
-                router_table: settings.router_tablename.clone(),
-                message_table: settings.message_tablename.clone(),
-                meta_table: settings
+                router_table: db_settings.router_tablename.clone(),
+                message_table: db_settings.message_tablename.clone(),
+                meta_table: db_settings
                     .meta_tablename
                     .clone()
                     .unwrap_or_else(|| "meta".to_owned()),

@@ -95,6 +95,9 @@ pub enum RouterError {
     #[error("Bridge authentication error")]
     Authentication,
 
+    #[error("GCM Bridge authentication error")]
+    GCMAuthentication,
+
     #[error("Bridge request timeout")]
     RequestTimeout,
 
@@ -123,6 +126,7 @@ impl RouterError {
             RouterError::TooMuchData(_) => StatusCode::PAYLOAD_TOO_LARGE,
 
             RouterError::Authentication
+            | RouterError::GCMAuthentication
             | RouterError::RequestTimeout
             | RouterError::Connect(_)
             | RouterError::Upstream { .. } => StatusCode::BAD_GATEWAY,
@@ -149,6 +153,8 @@ impl RouterError {
             RouterError::Connect(_) => Some(902),
 
             RouterError::RequestTimeout => Some(903),
+
+            RouterError::GCMAuthentication => Some(904),
 
             RouterError::Upstream { .. } => None,
         }

@@ -28,7 +28,7 @@ use tungstenite::handshake::server::Request;
 
 use autopush_common::db::dynamodb::DynamoStorage;
 // use autopush_common::db::postgres::PostgresStorage;
-use autopush_common::db::postgres::PostgresStorage;
+use autopush_common::db::postgres::PgClientImpl;
 use autopush_common::db::DbCommandClient;
 use autopush_common::errors::{ApiError, ApiErrorKind};
 use autopush_common::logging;
@@ -181,7 +181,7 @@ impl Server {
             )
             .compat()?
         } else {
-            PostgresStorage::from_opts(
+            PgClientImpl::from_opts(
                 &opts.db_dsn,
                 &opts.message_table,
                 &opts.router_table,

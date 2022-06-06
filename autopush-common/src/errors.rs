@@ -5,13 +5,30 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::num;
 
-use actix_web::http::StatusCode;
+use actix_web::{
+    dev::ServiceResponse,
+    error::{JsonPayloadError, PayloadError, ResponseError},
+    http::StatusCode,
+    middleware::ErrorHandlerResponse,
+    HttpResponse, HttpResponseBuilder, Result,
+};
+
 use backtrace::Backtrace;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use thiserror::Error;
 
 pub type ApiResult<T> = Result<T, ApiError>;
+
+/// Render a 404 response
+pub fn render_404<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
+    // Replace the outbound error message with our own.
+    let resp = HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
+    Ok(ErrorHandlerResponse::Response(
+        res.into_response(resp).map_into_right_body(),
+    ))
+}
+
 
 /// The main error type.
 #[derive(Debug)]

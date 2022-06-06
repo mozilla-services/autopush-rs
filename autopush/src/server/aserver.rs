@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::server::metrics;
 use crate::server::middleware::sentry::SentryWrapper;
 use actix::{Actor, StreamHandler};
 use actix_cors::Cors;
@@ -9,9 +8,11 @@ use actix_web::{
     HttpServer,
 };
 use actix_web_actors::ws;
+use autopush_common::metrics;
+use autopush_common::errors::render_404;
 use autopush_common::db::client::DbClient;
-use autopush_common::db::dynamodb::DynamoStorage;
-use autopush_common::db::postgres::PostgressStorage;
+use autopush_common::db::dynamodb::DdbClientImpl;
+use autopush_common::db::postgres::PgClientImpl;
 use autopush_common::db::DbCommandClient;
 use autopush_common::tags::Tags;
 use cadence::StatsdClient;
@@ -87,7 +88,7 @@ impl Server {
     }
 
     async fn with_settings(&self, settings: &Settings) -> ApiResult<dev::Server> {
-        let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
+        let metrics = Arc::new(metrics::new_metrics(&settings.statsd_host, settings.statsd_port)?);
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
@@ -113,7 +114,7 @@ impl Server {
             App::new
                 .app_data(state.clone())
                 // Middleware
-                .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+                .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
                 .wrap(SentryWrapper::default())
                 .wrap(Cors::default())
                 //Dockerflow

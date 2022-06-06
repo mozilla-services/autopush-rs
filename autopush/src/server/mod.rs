@@ -29,7 +29,7 @@ use std::task::Poll;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use actic_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use cadence::StatsdClient;
 use chrono::Utc;
@@ -48,7 +48,7 @@ use tungstenite::{self, Message};
 
 use autopush_common::db::dynamodb::DynamoStorage;
 // use autopush_common::db::postgres::PostgresStorage;
-use autopush_common::db::postgres::PostgresStorage;
+use autopush_common::db::postgres::PgClientImpl;
 use autopush_common::db::DbCommandClient;
 use autopush_common::errors::{ApiError, ApiErrorKind, ApiResult};
 use autopush_common::logging;

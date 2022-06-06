@@ -4,11 +4,9 @@ use crate::db::error::DbError;
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
-    dev::ServiceResponse,
     error::{JsonPayloadError, PayloadError, ResponseError},
     http::StatusCode,
-    middleware::ErrorHandlerResponse,
-    HttpResponse, HttpResponseBuilder, Result,
+    HttpResponse, Result,
 };
 use backtrace::Backtrace;
 use serde::ser::SerializeMap;
@@ -29,17 +27,6 @@ const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#erro
 pub struct ApiError {
     pub kind: ApiErrorKind,
     pub backtrace: Backtrace,
-}
-
-impl ApiError {
-    /// Render a 404 response
-    pub fn render_404<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
-        // Replace the outbound error message with our own.
-        let resp = HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
-        Ok(ErrorHandlerResponse::Response(
-            res.into_response(resp).map_into_right_body(),
-        ))
-    }
 }
 
 /// The possible errors this application could encounter

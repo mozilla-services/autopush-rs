@@ -66,7 +66,7 @@ validator_derive = "0.15"
 yup-oauth2 = "6.5"
 
 # For mockito test debugging
-# ureq={ version="2.4", features=["json"] }
+#ureq={ version="2.4", features=["json"] }
 
 [dev-dependencies]
 mockall = "0.8.3"  # 0.9+ requires reworking tests
