@@ -13,6 +13,7 @@ use futures::{future, FutureExt};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+// TODO: This should be the same notification in common since it's read by both autoendpoint and the connection server
 /// Extracts notification data from `Subscription` and request data
 #[derive(Clone, Debug)]
 pub struct Notification {

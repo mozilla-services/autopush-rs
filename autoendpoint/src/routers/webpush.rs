@@ -49,7 +49,7 @@ impl Router for WebPushRouter {
         if let Some(node_id) = &user.node_id {
             trace!("User has a node ID, sending notification to node");
 
-            // Try to send the notification to the node
+            // Try to send the notification directly to the foreign node
             match self.send_notification(notification, node_id).await {
                 Ok(response) => {
                     // The node might be busy, make sure it accepted the notification
@@ -134,7 +134,7 @@ impl Router for WebPushRouter {
 }
 
 impl WebPushRouter {
-    /// Send the notification to the node
+    /// Send the notification to a foriegn node
     async fn send_notification(
         &self,
         notification: &Notification,

@@ -20,6 +20,7 @@ use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
 use autopush_common::db::DbSettings;
+use autopush_common::errors::render_404;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use std::sync::Arc;
@@ -103,7 +104,7 @@ impl Server {
             App::new()
                 .app_data(state.clone())
                 // Middleware
-                .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+                .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
                 .wrap(SentryWrapper::default())
                 .wrap(Cors::default())
                 // Extractor configuration

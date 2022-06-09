@@ -463,6 +463,7 @@ version = "1.62.0"
 dependencies = [
  "actix",
  "actix-cors",
+ "actix-http",
  "actix-web",
  "actix-web-actors",
  "autopush_common",

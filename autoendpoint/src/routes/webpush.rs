@@ -12,7 +12,6 @@ use actix_web::HttpResponse;
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
-    _state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
     let router = routers.get(RouterType::from_str(&notification.subscription.user.router_type).map_err(|_| ApiErrorKind::InvalidRouterType)?);
     trace!("sending to {:?}", &notification.subscription.user.router_type);

@@ -16,66 +16,26 @@
 /// command). On connection termination, run a "cleanup" routine to remove
 /// the connection info from the router table.
 ///
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
-use std::env;
-use std::io;
-use std::net::SocketAddr;
 use std::panic;
 use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::task::Poll;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
-use actix_web_actors::ws;
-use cadence::StatsdClient;
 use chrono::Utc;
 use fernet::{Fernet, MultiFernet};
-use futures::{channel::oneshot, Future, Sink, Stream};
-use hyper::{server::conn::Http, StatusCode};
-use openssl::ssl::SslAcceptor;
-use sentry::{self, capture_message};
+use hyper::StatusCode;
 use serde_json::{self, json};
-use tokio::time::timeout;
-use tokio_core::net::{TcpListener, TcpStream};
-use tokio_core::reactor::{Core, Handle, Timeout};
-use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
-use tungstenite::handshake::server::Request;
-use tungstenite::{self, Message};
 
-use autopush_common::db::dynamodb::DynamoStorage;
-// use autopush_common::db::postgres::PostgresStorage;
-use autopush_common::db::postgres::PgClientImpl;
-use autopush_common::db::DbCommandClient;
-use autopush_common::errors::{ApiError, ApiErrorKind, ApiResult};
-use autopush_common::logging;
-use autopush_common::metrics::new_metrics;
+use autopush_common::errors::{ApiErrorKind, ApiResult};
 use autopush_common::notification::Notification;
-//use autopush_common::util::timeout;
 
-use crate::http;
-use crate::megaphone::{
-    Broadcast, BroadcastChangeTracker, BroadcastSubs, BroadcastSubsInit, MegaphoneAPIResponse,
-};
-use crate::old_client::Client;
-use crate::old_client::UnAuthClientStateFuture;
-use crate::server::dispatch::{Dispatch, RequestType};
-use crate::server::metrics::metrics_from_opts;
-use crate::server::protocol::{BroadcastValue, ClientMessage, ServerMessage};
-use crate::server::rc::RcObject;
-use crate::server::registry::ClientRegistry;
 use crate::server::webpush_io::WebpushIo;
 use crate::settings::Settings;
 
-mod aserver;
+pub mod aserver;
 mod dispatch;
 mod megaphone;
 mod middleware;
-pub mod old_server;
-mod old_webpush_socket;
 pub mod protocol;
 mod rc;
 pub mod registry;
@@ -131,7 +91,7 @@ pub struct ServerOptions {
 }
 
 impl ServerOptions {
-    pub fn from_settings(settings: Settings) -> Result<Self> {
+    pub fn from_settings(settings: Settings) -> ApiResult<Self> {
         let crypto_key = &settings.crypto_keys;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
             return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());

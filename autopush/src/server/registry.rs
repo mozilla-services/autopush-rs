@@ -19,6 +19,7 @@ use autopush_common::errors::ApiError;
 /// `MyFuture` isn't, similar to modern futures `BoxLocalFuture`
 pub type MySendFuture<T> = Box<dyn Future<Item = T, Error = ApiError> + Send>;
 
+/// Hash of attached clients for this node, mapped by uaid (type:uuid).
 #[derive(Default)]
 pub struct ClientRegistry {
     clients: RwLock<HashMap<Uuid, RegisteredClient>>,

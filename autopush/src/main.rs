@@ -13,12 +13,18 @@ use autopush_common::logging;
 
 mod http;
 mod megaphone;
-mod old_client;
+//mod old_client;
+mod aclient;
 mod server;
+mod routes;
 mod settings;
 mod user_agent;
 
-use crate::server::{old_server::AutopushServer, ServerOptions};
+use crate::server::{
+    // old_server::AutopushServer,
+    ServerOptions
+};
+use crate::server::aserver;
 use crate::settings::Settings;
 
 const USAGE: &str = "
@@ -63,7 +69,7 @@ async fn main() -> ApiResult<()> {
         &settings.router_tablename
     );
     let server_opts = ServerOptions::from_settings(settings)?;
-    let server = AutopushServer::new(server_opts);
+    let server = aserver::Server::from_opts(server_opts)?;
     server.start();
     signal.recv().unwrap();
     info!("Server closing");

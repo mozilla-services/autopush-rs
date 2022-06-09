@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 actix = "0.13.0"
 actix-cors = "0.6"
+actix-http = "3.0"
 actix-web = "4.0"
 actix-web-actors = "4.0"
 autopush_common = { path = "../autopush-common" }

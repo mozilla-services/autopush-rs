@@ -37,9 +37,13 @@ use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::user_agent::parse_user_agent;
 
 // Created and handed to the AutopushServer
+/// Registered WebSocket Push client.
 pub struct RegisteredClient {
+    /// The UserAgent ID associated with this client
     pub uaid: Uuid,
+    /// Node local UID
     pub uid: Uuid,
+    /// Handle to the receive socket for this connection
     pub tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
@@ -378,6 +382,7 @@ where
         + Sink<SinkItem = ServerMessage, SinkError = Error>
         + 'static,
 {
+    /// Pending initial connection
     fn poll_await_hello<'a>(
         hello: &'a mut RentToOwn<'a, AwaitHello<T>>,
     ) -> Poll<AfterAwaitHello<T>, Error> {
@@ -426,10 +431,13 @@ where
         })
     }
 
+    /// Post "hello", where we prep and register the new websocket connection
     fn poll_await_process_hello<'a>(
         process_hello: &'a mut RentToOwn<'a, AwaitProcessHello<T>>,
     ) -> Poll<AfterAwaitProcessHello<T>, Error> {
         trace!("State: AwaitProcessHello");
+
+        // process the hello and fetch back the various bits of data we need.
         let (
             uaid,
             message_month,
@@ -441,6 +449,8 @@ where
         ) = {
             let res = try_ready!(process_hello.response.poll());
             match res {
+
+                // User is a valid connection
                 HelloResponse {
                     uaid: Some(uaid),
                     message_month,
@@ -461,6 +471,8 @@ where
                         deferred_user_registration,
                     )
                 }
+
+                // user has connected elsewhere
                 HelloResponse { uaid: None, .. } => {
                     trace!("UAID undefined");
                     return Err("Already connected elsewhere".into());
@@ -542,6 +554,7 @@ where
         })
     }
 
+    ///
     fn poll_await_registry_connect<'a>(
         registry_connect: &'a mut RentToOwn<'a, AwaitRegistryConnect<T>>,
     ) -> Poll<AfterAwaitRegistryConnect<T>, Error> {

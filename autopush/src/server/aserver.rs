@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::server::middleware::sentry::SentryWrapper;
 use actix::{Actor, StreamHandler};
 use actix_cors::Cors;
 use actix_web::{
@@ -8,6 +7,9 @@ use actix_web::{
     HttpServer,
 };
 use actix_web_actors::ws;
+use cadence::StatsdClient;
+use fernet::MultiFernet;
+
 use autopush_common::metrics;
 use autopush_common::errors::render_404;
 use autopush_common::db::client::DbClient;
@@ -15,8 +17,9 @@ use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::db::postgres::PgClientImpl;
 use autopush_common::db::DbCommandClient;
 use autopush_common::tags::Tags;
-use cadence::StatsdClient;
-use fernet::MultiFernet;
+use crate::server::middleware::sentry::SentryWrapper;
+use crate::routes::health;
+use crate::http::Push;
 
 use crate::settings::Settings;
 // TODO: Port DbClient from autoendpoint to autopush_common?
@@ -118,9 +121,11 @@ impl Server {
                 .wrap(SentryWrapper::default())
                 .wrap(Cors::default())
                 //Dockerflow
-                .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
-                .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
-                .service(web::resource("/__version__").route(web::get().to(version_route)))
+                .service(web::resource("/push/{uaid}").route(web::put().to(Push::push)))
+                .service(web::resource("/notif/{uaid}").route(web::put().to(Push::notif)))
+                .service(web::resource("/__heartbeat__").route(web::get().to(health::health_route)))
+                .service(web::resource("/__lbheartbeat__").route(web::get().to(health::lb_heartbeat_route)))
+                .service(web::resource("/__version__").route(web::get().to(health::version_route)))
                 // websocket handler
                 .service(web::resource("/".route(web::get().to(self.socket_handler))))
                 .route("/")
