@@ -1,4 +1,5 @@
 use std::net::UdpSocket;
+use std::sync::Arc;
 use std::time::Instant;
 
 use actix_web::{web::Data, FromRequest, HttpRequest};
@@ -22,7 +23,7 @@ pub struct MetricTimer {
 
 #[derive(Debug, Clone)]
 pub struct Metrics {
-    client: Option<StatsdClient>,
+    client: Option<Arc<StatsdClient>>,
     timer: Option<MetricTimer>,
     tags: Option<Tags>,
 }
@@ -83,7 +84,7 @@ impl From<&HttpRequest> for Metrics {
 impl From<StatsdClient> for Metrics {
     fn from(client: StatsdClient) -> Self {
         Metrics {
-            client: Some(client),
+            client: Some(Arc::new(client)),
             tags: None,
             timer: None,
         }
@@ -109,7 +110,7 @@ impl Metrics {
 
     pub fn noop() -> Self {
         Self {
-            client: Some(Self::sink()),
+            client: Some(Arc::new(Self::sink())),
             timer: None,
             tags: None,
         }
@@ -159,7 +160,7 @@ impl Metrics {
     }
 }
 
-pub fn metrics_from_req(req: &HttpRequest) -> StatsdClient {
+pub fn metrics_from_req(req: &HttpRequest) -> Arc<StatsdClient> {
     req.app_data::<Data<ServerState>>()
         .expect("Could not get state in metrics_from_req")
         .metrics

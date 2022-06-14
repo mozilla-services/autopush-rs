@@ -53,6 +53,7 @@ of `<type>: <subject>` where `type` must be one of:
 * **test**: Adding missing tests
 * **chore**: Changes to the build process or auxiliary tools and libraries such as documentation
   generation
+* **breaks**: Contains a *BREAKING_CHANGE* to the existing execution environment.
 
 ### Subject
 

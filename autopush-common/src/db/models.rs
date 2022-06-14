@@ -23,7 +23,7 @@ fn uuid_serializer<S>(x: &Uuid, s: S) -> StdResult<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    s.serialize_str(&x.to_simple().to_string())
+    s.serialize_str(&x.as_simple().to_string())
 }
 
 /// Direct representation of a DynamoDB Notification as we store it in the database
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn test_parse_sort_key_ver1() {
         let chid = Uuid::new_v4();
-        let chidmessageid = format!("01:{}:mytopic", chid.to_hyphenated());
+        let chidmessageid = format!("01:{}:mytopic", chid.as_hyphenated());
         let key = DynamoDbNotification::parse_sort_key(&chidmessageid).unwrap();
         assert_eq!(key.topic, Some("mytopic".to_string()));
         assert_eq!(key.channel_id, chid);
@@ -261,7 +261,7 @@ mod tests {
     fn test_parse_sort_key_ver2() {
         let chid = Uuid::new_v4();
         let sortkey_timestamp = us_since_epoch();
-        let chidmessageid = format!("02:{}:{}", sortkey_timestamp, chid.to_hyphenated());
+        let chidmessageid = format!("02:{}:{}", sortkey_timestamp, chid.as_hyphenated());
         let key = DynamoDbNotification::parse_sort_key(&chidmessageid).unwrap();
         assert_eq!(key.topic, None);
         assert_eq!(key.channel_id, chid);
