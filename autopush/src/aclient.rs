@@ -57,6 +57,10 @@ use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::user_agent::parse_user_agent;
 
 
+// TODO:
+// * Create Actor for websocket connection (See https://actix.rs/docs/websockets/)
+// *
+
 // Created and handed to the AutopushServer
 pub struct RegisteredClient {
     pub uaid: Uuid,
@@ -72,32 +76,52 @@ impl Actor for Client {
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Client {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        // TODO: Start clock on hello?
+        // TODO: Start clock on heartbeat?
         match msg {
             Ok(ws::Message::Ping(msg)) => {
+                // Add Ping handler
                 ctx.pong(&msg)
             },
             Ok(ws::Message::Text(msg)) => {
                 async move {
+                    // TODO: convert to Push Protocol message
                     let message:Value = serde_json::from_slice(msg)?;
-                    self
+                    let resp = self.process_message(msg)?;
+                    // if resp == valid hello, stop hello timer.
+                    ctx.text(resp.as_str())
                 }
                 // process message
             },
-            Ok(ws::Message::Binary(msg)) => {
-                // Not Implemented
-            },
-            _ => {()},
+            _ => {ctx.close(None)},
         }
     }
 }
 
 impl Client {
-    fn process_message(msg: Value) -> ApiResult<()> {
+    /// handle the incoming messages.
+    fn process_message(msg: Value) -> ApiResult<String> {
+        match msg.get("messageType").map(|v| v.as_str().lowercase()) {
+            Some("hello") => {
+
+            }
+        }
 
     }
 }
 
+
+/// Handle the incoming websocket push messages
+///
+/// TODO:
+/// * If we get a connection but no "hello" within the initial timeout, kill the connection
+/// * If we get an error or a malformed communique, kill the connection
+/// * Ensure we get a "hello" first
+/// * Ensure that the "hello" is unique across routing
+/// *
+///
 async fn handle_ws(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
+    // TODO
     let resp = ws::start(Client{}, &req, stream);
     resp
 }
