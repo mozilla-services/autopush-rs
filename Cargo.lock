@@ -445,6 +445,7 @@ dependencies = [
  "mockall",
  "mockito",
  "openssl",
+ "rand 0.8.5",
  "regex",
  "reqwest 0.10.10",
  "rusoto_core 0.45.0",
