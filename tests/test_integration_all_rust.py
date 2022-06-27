@@ -507,6 +507,7 @@ def get_rust_binary_path(binary):
 def write_config_to_env(config, prefix):
     for key, val in config.items():
         new_key = prefix + key
+        log.debug("#### {} => {}".format(new_key, val))
         os.environ[new_key.upper()] = str(val)
 
 
@@ -557,7 +558,11 @@ def setup_mock_server():
 def setup_connection_server(connection_binary):
     global CN_SERVER
 
-    write_config_to_env(CONNECTION_CONFIG, "autopush_")
+    # NOTE:
+    # due to a change in Config, autopush uses a double
+    # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
+    # `settings.fcm.min_ttl`)
+    write_config_to_env(CONNECTION_CONFIG, "autopush__")
     cmd = [connection_binary]
     CN_SERVER = subprocess.Popen(
         cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
@@ -573,7 +578,7 @@ def setup_connection_server(connection_binary):
 def setup_megaphone_server(connection_binary):
     global CN_MP_SERVER
 
-    write_config_to_env(MEGAPHONE_CONFIG, "autopush_")
+    write_config_to_env(MEGAPHONE_CONFIG, "autopush__")
     cmd = [connection_binary]
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
 
@@ -583,7 +588,11 @@ def setup_endpoint_server():
 
     # Set up environment
     os.environ["RUST_LOG"] = "trace"
-    write_config_to_env(ENDPOINT_CONFIG, "autoend_")
+    # NOTE:
+    # due to a change in Config, autoendpoint uses a double
+    # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
+    # `settings.fcm.min_ttl`)
+    write_config_to_env(ENDPOINT_CONFIG, "autoend__")
 
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
@@ -649,6 +658,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def quick_register(self, sslcontext=None):
+        print("#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT),
                         sslcontext=sslcontext)
         yield client.connect()
