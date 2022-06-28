@@ -50,7 +50,6 @@ impl Server {
             metrics.clone(),
             settings.router_table_name.clone(),
             settings.message_table_name.clone(),
-            settings.jitter,
         )?);
         let http = reqwest::Client::new();
         let fcm_router = Arc::new(

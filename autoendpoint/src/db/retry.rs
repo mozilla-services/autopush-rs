@@ -1,12 +1,10 @@
 use again::RetryPolicy;
 use cadence::{CountedExt, StatsdClient};
-use rand::distributions::{Distribution, Uniform};
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     DeleteItemError, DescribeTableError, GetItemError, PutItemError, UpdateItemError,
 };
 use std::sync::Arc;
-use std::time::Duration;
 
 /// Create a retry function for the given error
 macro_rules! retryable_error {
@@ -49,9 +47,6 @@ pub fn retryable_describe_table_error(
 }
 
 /// Build an exponential retry policy
-pub fn retry_policy(jitter: u64) -> RetryPolicy {
-    let dist = Uniform::from(100..100 + jitter);
-    let mut rng = rand::thread_rng();
-    let jitter_val = dist.sample(&mut rng);
-    RetryPolicy::exponential(Duration::from_millis(jitter_val))
+pub fn retry_policy() -> RetryPolicy {
+    RetryPolicy::default().with_jitter(true)
 }

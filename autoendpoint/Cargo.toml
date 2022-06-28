@@ -17,7 +17,7 @@ a2 = { git = "https://github.com/mozilla-services/a2.git", branch = "autoendpoin
 actix-web = "3.3"
 actix-rt = "1.1"   # 2.0+ requires futures 0.3+
 actix-cors = "0.5"
-again = { version = "0.1.2", default-features = false, features = ["log"] }
+again = { version = "0.1.2", default-features = false, features = ["log", "rand"] }
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
 backtrace = "0.3"

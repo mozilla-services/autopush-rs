@@ -21,7 +21,6 @@ pub struct Settings {
 
     pub router_table_name: String,
     pub message_table_name: String,
-    pub jitter: u64,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
@@ -46,7 +45,6 @@ impl Default for Settings {
             port: 8000,
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
-            jitter: 100,
             max_data_bytes: 4096,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),

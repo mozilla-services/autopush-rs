@@ -85,7 +85,6 @@ pub struct DbClientImpl {
     metrics: Arc<StatsdClient>,
     router_table: String,
     message_table: String,
-    jitter: u64,
 }
 
 impl DbClientImpl {
@@ -93,7 +92,6 @@ impl DbClientImpl {
         metrics: Arc<StatsdClient>,
         router_table: String,
         message_table: String,
-        jitter: u64,
     ) -> DbResult<Self> {
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
@@ -113,7 +111,6 @@ impl DbClientImpl {
             metrics,
             router_table,
             message_table,
-            jitter,
         })
     }
 
@@ -121,7 +118,7 @@ impl DbClientImpl {
     async fn table_exists(&self, table_name: String) -> DbResult<bool> {
         let input = DescribeTableInput { table_name };
 
-        let output = match retry_policy(self.jitter)
+        let output = match retry_policy()
             .retry_if(
                 || self.ddb.describe_table(input.clone()),
                 retryable_describe_table_error(self.metrics.clone()),
@@ -156,7 +153,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy(self.jitter)
+        retry_policy()
             .retry_if(
                 || self.ddb.put_item(input.clone()),
                 retryable_putitem_error(self.metrics.clone()),
@@ -198,7 +195,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy(self.jitter)
+        retry_policy()
             .retry_if(
                 || self.ddb.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
@@ -215,7 +212,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy(self.jitter)
+        retry_policy()
             .retry_if(
                 || self.ddb.get_item(input.clone()),
                 retryable_getitem_error(self.metrics.clone()),
@@ -234,7 +231,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy(self.jitter)
+        retry_policy()
             .retry_if(
                 || self.ddb.delete_item(input.clone()),
                 retryable_delete_error(self.metrics.clone()),
@@ -258,7 +255,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy(self.jitter)
+        retry_policy()
             .retry_if(
                 || self.ddb.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
@@ -280,7 +277,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        let output = retry_policy(self.jitter)
+        let output = retry_policy()
             .retry_if(
                 || self.ddb.get_item(input.clone()),
                 retryable_getitem_error(self.metrics.clone()),
@@ -322,7 +319,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        let output = retry_policy(self.jitter)
+        let output = retry_policy()
             .retry_if(
                 || self.ddb.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
@@ -352,7 +349,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy(self.jitter)
+        retry_policy()
             .retry_if(
                 || self.ddb.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
@@ -369,7 +366,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy(self.jitter)
+        retry_policy()
             .retry_if(
                 || self.ddb.put_item(input.clone()),
                 retryable_putitem_error(self.metrics.clone()),
@@ -389,7 +386,7 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy(self.jitter)
+        retry_policy()
             .retry_if(
                 || self.ddb.delete_item(input.clone()),
                 retryable_delete_error(self.metrics.clone()),
