@@ -17,7 +17,7 @@ a2 = { git = "https://github.com/mozilla-services/a2.git", branch = "autoendpoin
 actix-web = "3.3"
 actix-rt = "1.1"   # 2.0+ requires futures 0.3+
 actix-cors = "0.5"
-again = { version = "0.1.2", default-features = false, features = ["log"] }
+again = { version = "0.1.2", default-features = false, features = ["log", "rand"] }
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
 backtrace = "0.3"
@@ -32,6 +32,7 @@ jsonwebtoken = "8.0"
 lazy_static = "1.4.0"
 log = "0.4"
 openssl = "0.10"
+rand = "0.8"
 regex = "1.4"
 reqwest = "0.10.6"  # 0.11+ requires futures 0.3+
 rusoto_core = "0.45.0"  # 0.46+ requires futures 0.3+

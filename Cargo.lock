@@ -317,6 +317,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05802a5ad4d172eaf796f7047b42d0af9db513585d16d4169660a21613d34b93"
 dependencies = [
  "log",
+ "rand 0.7.3",
  "wasm-timer",
 ]
 
@@ -445,6 +446,7 @@ dependencies = [
  "mockall",
  "mockito",
  "openssl",
+ "rand 0.8.5",
  "regex",
  "reqwest 0.10.10",
  "rusoto_core 0.45.0",
