@@ -58,6 +58,9 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     PayloadError(actix_web::Error),
 
+    #[error("Payload Error: {0}")]
+    PayloadErrorS(String),
+
     #[error(transparent)]
     VapidError(#[from] VapidError),
 
@@ -123,6 +126,7 @@ impl ApiErrorKind {
     pub fn status(&self) -> StatusCode {
         match self {
             ApiErrorKind::PayloadError(e) => e.as_response_error().status_code(),
+            ApiErrorKind::PayloadErrorS(_) => StatusCode::BAD_REQUEST,
             ApiErrorKind::Router(e) => e.status(),
 
             ApiErrorKind::Validation(_)
@@ -156,6 +160,7 @@ impl ApiErrorKind {
     pub fn metric_label(&self) -> &'static str {
         match self {
             ApiErrorKind::PayloadError(_) => "payload_error",
+            ApiErrorKind::PayloadErrorS(_) => "payload_error_s",
             ApiErrorKind::Router(_) => "router",
 
             ApiErrorKind::Validation(_) => "validation",
@@ -221,6 +226,8 @@ impl ApiErrorKind {
             {
                 Some(104)
             }
+
+            ApiErrorKind::PayloadErrorS(_) => Some(104),
 
             ApiErrorKind::NoSubscription => Some(106),
 

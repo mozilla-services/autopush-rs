@@ -161,6 +161,7 @@ impl ServerOptions {
             return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
+        debug!("Fernet keys: {:?}", &crypto_key);
         let fernets: Vec<Fernet> = crypto_key
             .split(',')
             .map(|s| s.trim().to_string())
@@ -303,6 +304,7 @@ impl Server {
             metrics,
         });
         let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.port));
+        debug!("{:?}", &addr);
         let ws_listener = TcpListener::bind(&addr, &srv.handle)?;
 
         let handle = core.handle();
@@ -524,7 +526,7 @@ impl Future for MegaphoneUpdater {
             let new_state = match self.state {
                 MegaphoneState::Waiting => {
                     try_ready!(self.timeout.poll());
-                    debug!("Sending megaphone API request");
+                    // debug!("Sending megaphone API request");
                     let fut = self
                         .client
                         .get(&self.api_url)
@@ -539,7 +541,7 @@ impl Future for MegaphoneUpdater {
                     let at = Instant::now() + self.poll_interval;
                     match response.poll() {
                         Ok(Async::Ready(MegaphoneAPIResponse { broadcasts })) => {
-                            debug!("Fetched broadcasts: {:?}", broadcasts);
+                            // debug!("Fetched broadcasts: {:?}", broadcasts);
                             let mut broadcaster = self.srv.broadcaster.borrow_mut();
                             for srv in Broadcast::from_hashmap(broadcasts) {
                                 broadcaster.add_broadcast(srv);

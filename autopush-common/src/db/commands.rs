@@ -228,7 +228,6 @@ pub fn register_user(
     user: &DynamoDbUser,
     router_table: &str,
 ) -> impl Future<Item = PutItemOutput, Error = Error> {
-    trace!("### Registering User...");
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
         Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
@@ -241,7 +240,7 @@ pub fn register_user(
 
     retry_if(
         move || {
-            debug!("Registering user: {:?}", item);
+            debug!("### Registering user into {}: {:?}", router_table, item);
             ddb.put_item(PutItemInput {
                 item: item.clone(),
                 table_name: router_table.clone(),

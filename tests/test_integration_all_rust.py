@@ -2,12 +2,14 @@
 Rust Connection and Endpoint Node Integration Tests
 """
 
+from base64 import urlsafe_b64encode
 import copy
 import json
 import logging
 import os
 import random
 import signal
+import string
 import socket
 import subprocess
 
@@ -110,9 +112,9 @@ MEGAPHONE_CONFIG.update(
     port=MP_CONNECTION_PORT,
     endpoint_port=ENDPOINT_PORT,
     router_port=MP_ROUTER_PORT,
-    auto_ping_interval=0.5,
-    auto_ping_timeout=10.0,
-    close_handshake_timeout=5,
+    auto_ping_interval=50.0,
+    auto_ping_timeout=100.0,
+    close_handshake_timeout=500,
     max_connections=5000,
     megaphone_api_url='http://localhost:{port}/v1/broadcasts'.format(
         port=MOCK_SERVER_PORT
@@ -246,7 +248,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
     def send_notification(self, channel=None, version=None, data=None,
                           use_header=True, status=None, ttl=200,
                           timeout=0.2, vapid=None, endpoint=None,
-                          topic=None):
+                          topic=None, headers=None):
         if not channel:
             channel = random.choice(self.channels.keys())
 
@@ -284,6 +286,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         status = status or 201
 
         log.debug("%s body: %s", method, body)
+        log.debug("  headers: %s", headers)
         http.request(method, url.path.encode("utf-8"), body, headers)
         resp = http.getresponse()
         log.debug("%s Response (%s): %s", method, resp.status, resp.read())
@@ -587,7 +590,7 @@ def setup_endpoint_server():
     global EP_SERVER
 
     # Set up environment
-    os.environ["RUST_LOG"] = "trace"
+    os.environ["RUST_LOG"] = "autopush_rs=debug,error"
     # NOTE:
     # due to a change in Config, autoendpoint uses a double
     # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
@@ -1207,6 +1210,23 @@ class TestRustWebPush(unittest.TestCase):
         yield client.ack(result3["channelID"], result3["version"])
 
         yield self.shut_down(client)
+
+    @inlineCallbacks
+    def test_big_message(self):
+        """Test that we accept a large message. Messages that are encrypted are
+        then base64 encoded so double encoding like this should bump an allowed
+        sized block to the max size we should handle.
+        """
+        import base64;
+        client = yield self.quick_register()
+        data = base64.urlsafe_b64encode(
+            ''.join(random.choice(string.ascii_letters+string.digits)
+            for _ in xrange(0, 4096))
+            )
+        result = yield client.send_notification(data=data)
+        dd = result.get("data")
+        dh = base64.b64decode(dd + "==="[:len(dd) % 4])
+        assert dh == data
 
     # Need to dig into this test a bit more. I'm not sure it's structured correctly
     # since we resolved a bug about returning 202 v. 201, and it's using a dependent

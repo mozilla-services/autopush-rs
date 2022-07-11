@@ -44,7 +44,10 @@ impl FromRequest for Notification {
             // Read data
             let data = web::Bytes::from_request(&req, &mut payload)
                 .await
-                .map_err(ApiErrorKind::PayloadError)?;
+                .map_err(|e| {
+                    debug!("▶▶ Request read payload error: {:?}", &e);
+                    ApiErrorKind::PayloadError(e)
+                })?;
 
             // Convert data to base64
             let data = if data.is_empty() {

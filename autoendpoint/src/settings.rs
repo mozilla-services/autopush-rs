@@ -45,7 +45,7 @@ impl Default for Settings {
             port: 8000,
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
-            max_data_bytes: 4096,
+            max_data_bytes: 5470,   // a 4096b block encrypted and encoded to base64
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             human_logs: false,
@@ -116,7 +116,10 @@ impl Settings {
     pub fn make_fernet(&self) -> MultiFernet {
         let keys = &self.crypto_keys.replace('"', "").replace(' ', "");
         let fernets = Self::read_list_from_str(keys, "Invalid AUTOEND_CRYPTO_KEYS")
-            .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS"))
+            .map(|key| {
+                debug!("Fernet keys: {:?}", &key);
+                Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS")
+            })
             .collect();
         MultiFernet::new(fernets)
     }

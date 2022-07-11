@@ -58,6 +58,7 @@ impl FromRequest for Subscription {
         async move {
             // Collect token info and server state
             let token_info = TokenInfo::extract(&req).await?;
+            trace!("Token info: {:?}", &token_info);
             let state: Data<ServerState> =
                 Data::extract(&req).await.expect("No server state found");
 
@@ -65,12 +66,17 @@ impl FromRequest for Subscription {
             let token = state
                 .fernet
                 .decrypt(&repad_base64(&token_info.token))
-                .map_err(|_| ApiErrorKind::InvalidToken)?;
+                .map_err(|e| {
+                    error!("fernet: {:?}", e);
+                    ApiErrorKind::InvalidToken
+                })?;
 
             // Parse VAPID and extract public key.
             let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &state.metrics)?
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
+
+            trace!("Vapid: {:?}", &vapid);
 
             match token_info.api_version {
                 ApiVersion::Version1 => version_1_validation(&token)?,
@@ -82,11 +88,16 @@ impl FromRequest for Subscription {
             // only returned if the slice length is not 16.
             let uaid = Uuid::from_slice(&token[..16]).unwrap();
             let channel_id = Uuid::from_slice(&token[16..32]).unwrap();
+
+            trace!("UAID: {:?}, CHID: {:?}", uaid, channel_id);
+
             let user = state
                 .ddb
                 .get_user(uaid)
                 .await?
                 .ok_or(ApiErrorKind::NoSubscription)?;
+
+            trace!("user: {:?}", &user);
             validate_user(&user, &channel_id, &state).await?;
 
             // Validate the VAPID JWT token and record the version
@@ -193,7 +204,7 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 
     // Hash the VAPID public key
     let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
-        .map_err(|_| VapidError::InvalidKey)?;
+        .map_err(|e| VapidError::InvalidKey(e.to_string()))?;
     let key_hash = openssl::hash::hash(MessageDigest::sha256(), &public_key)
         .map_err(ApiErrorKind::TokenHashValidation)?;
 
@@ -215,8 +226,11 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     // Check the signature and make sure the expiration is in the future
-    let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
-        .map_err(|_| VapidError::InvalidKey)?;
+    // NOTE: FxA sometimes sends a VAPID public key with incorrect padding.
+    // Prior versions ignored padding errors, so we should too.
+    let public_key =
+        base64::decode_config(public_key.trim_end_matches('='), base64::URL_SAFE_NO_PAD)
+            .map_err(|e| VapidError::InvalidKey(e.to_string()))?;
     // NOTE: This will fail if `exp` is specified as a string instead of a numeric.
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
@@ -292,7 +306,8 @@ mod tests {
             base64::STANDARD,
         )
         .unwrap();
-        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
+        // Specify a potentially invalid padding.
+        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds==".to_owned();
         let domain = "https://push.services.mozilla.org";
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
@@ -311,7 +326,8 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
+        assert!(result.is_ok());
     }
 
     #[test]

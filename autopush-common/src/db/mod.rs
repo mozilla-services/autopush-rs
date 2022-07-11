@@ -76,6 +76,10 @@ impl DynamoStorage {
         router_table_name: &str,
         metrics: Arc<StatsdClient>,
     ) -> Result<Self> {
+        debug!(
+            "Checking tables: {} & {}",
+            &message_table_name, &router_table_name
+        );
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().chain_err(|| "TLS initialization error")?,

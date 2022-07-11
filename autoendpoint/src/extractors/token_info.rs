@@ -6,6 +6,7 @@ use futures::future;
 use std::str::FromStr;
 
 /// Extracts basic token data from the webpush request path and headers
+#[derive(Debug)]
 pub struct TokenInfo {
     pub api_version: ApiVersion,
     pub token: String,
@@ -39,7 +40,7 @@ impl FromRequest for TokenInfo {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ApiVersion {
     Version1,
     Version2,

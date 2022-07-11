@@ -93,6 +93,7 @@ impl DbClientImpl {
         router_table: String,
         message_table: String,
     ) -> DbResult<Self> {
+        debug!("Tables: {} and {}", router_table, message_table);
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
@@ -205,6 +206,11 @@ impl DbClient for DbClientImpl {
     }
 
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
+        trace!(
+            "Looking up user: {:?} in {}",
+            uaid.as_simple().to_string(),
+            self.router_table.clone()
+        );
         let input = GetItemInput {
             table_name: self.router_table.clone(),
             consistent_read: Some(true),
