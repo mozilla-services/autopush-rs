@@ -45,7 +45,7 @@ impl Default for Settings {
             port: 8000,
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
-            max_data_bytes: 5470,   // a 4096b block encrypted and encoded to base64
+            max_data_bytes: 5470, // a 4096b block encrypted and encoded to base64
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             human_logs: false,
