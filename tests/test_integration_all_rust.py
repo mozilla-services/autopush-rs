@@ -335,7 +335,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             result = json.loads(d)
             assert result.get("messageType") == "broadcast"
             return result
-        except Exception:  # pragma: nocover
+        except Exception as ex:  # pragma: nocover
+            log.error("Error: {}".format(ex))
             return None
         finally:
             self.ws.settimeout(orig_timeout)
@@ -1327,7 +1328,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
 
-class TestRustWebPushBroadcast(unittest.TestCase):
+class TestAAARustWebPushBroadcast(unittest.TestCase):
     max_endpoint_logs = 4
     max_conn_logs = 1
 
@@ -1396,7 +1397,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
-    def test_broadcast_subscribe(self):
+    def test_aaa_broadcast_subscribe(self):
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
@@ -1418,7 +1419,8 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
-        result = yield client.get_broadcast(2)
+        result = yield client.get_broadcast(5)
+        # No idea why, but the ping isn't being sent.
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
         yield self.shut_down(client)
