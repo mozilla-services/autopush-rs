@@ -72,6 +72,7 @@ MOCK_SERVER_THREAD = None
 CN_QUEUES = []
 EP_QUEUES = []
 STRICT_LOG_COUNTS = True
+RUST_LOG = "autoendpoint=debug,autopush_rs=debug,autopush_common=debug,error"
 
 
 def get_free_port():
@@ -99,7 +100,7 @@ CONNECTION_CONFIG = dict(
     router_tablename=ROUTER_TABLE,
     message_tablename=MESSAGE_TABLE,
     crypto_key="[{}]".format(CRYPTO_KEY),
-    auto_ping_interval=60.0,
+    auto_ping_interval=30.0,
     auto_ping_timeout=10.0,
     close_handshake_timeout=5,
     max_connections=5000,
@@ -112,9 +113,9 @@ MEGAPHONE_CONFIG.update(
     port=MP_CONNECTION_PORT,
     endpoint_port=ENDPOINT_PORT,
     router_port=MP_ROUTER_PORT,
-    auto_ping_interval=50.0,
-    auto_ping_timeout=100.0,
-    close_handshake_timeout=500,
+    auto_ping_interval=0.5,
+    auto_ping_timeout=10.0,
+    close_handshake_timeout=5,
     max_connections=5000,
     megaphone_api_url='http://localhost:{port}/v1/broadcasts'.format(
         port=MOCK_SERVER_PORT
@@ -591,7 +592,6 @@ def setup_endpoint_server():
     global EP_SERVER
 
     # Set up environment
-    os.environ["RUST_LOG"] = "autopush_rs=debug,error"
     # NOTE:
     # due to a change in Config, autoendpoint uses a double
     # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
@@ -613,7 +613,7 @@ def setup_endpoint_server():
 
 def setup_module():
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
-        STRICT_LOG_COUNTS
+        STRICT_LOG_COUNTS, RUST_LOG
 
     if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
         raise SkipTest("Skipping integration tests")
@@ -628,6 +628,7 @@ def setup_module():
 
     setup_mock_server()
 
+    os.environ["RUST_LOG"] = RUST_LOG
     connection_binary = get_rust_binary_path("autopush_rs")
     setup_connection_server(connection_binary)
     setup_megaphone_server(connection_binary)
@@ -1214,15 +1215,18 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_big_message(self):
-        """Test that we accept a large message. Messages that are encrypted are
-        then base64 encoded so double encoding like this should bump an allowed
-        sized block to the max size we should handle.
+        """Test that we accept a large message.
+
+        Using pywebpush I encoded a 4096 block
+        of random data into a 4216b block. B64 encoding that produced a block that was
+        5624 bytes long. We'll skip the binary bit for a 4216 block of "text" we then
+        b64 encode to send.
         """
         import base64;
         client = yield self.quick_register()
         data = base64.urlsafe_b64encode(
-            ''.join(random.choice(string.ascii_letters+string.digits)
-            for _ in xrange(0, 4096))
+            ''.join(random.choice(string.ascii_letters+string.digits+string.punctuation)
+            for _ in xrange(0, 4216))
             )
         result = yield client.send_notification(data=data)
         dd = result.get("data")
@@ -1328,7 +1332,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
 
-class TestAAARustWebPushBroadcast(unittest.TestCase):
+class TestRustWebPushBroadcast(unittest.TestCase):
     max_endpoint_logs = 4
     max_conn_logs = 1
 
@@ -1397,7 +1401,7 @@ class TestAAARustWebPushBroadcast(unittest.TestCase):
         yield self.shut_down(client)
 
     @inlineCallbacks
-    def test_aaa_broadcast_subscribe(self):
+    def test_broadcast_subscribe(self):
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
@@ -1419,8 +1423,7 @@ class TestAAARustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
-        result = yield client.get_broadcast(5)
-        # No idea why, but the ping isn't being sent.
+        result = yield client.get_broadcast(2)
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
         yield self.shut_down(client)

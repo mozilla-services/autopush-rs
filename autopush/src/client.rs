@@ -1084,14 +1084,14 @@ where
                 // Clients shouldn't ping > than once per minute or we
                 // disconnect them
                 if sec_since_epoch() - webpush.last_ping >= 45 {
-                    debug!("🏓 Got a ping, sending pong");
+                    trace!("🏓 Got a ping, sending pong");
                     webpush.last_ping = sec_since_epoch();
                     transition!(Send {
                         smessages: vec![ServerMessage::Ping],
                         data,
                     })
                 } else {
-                    debug!("🏓 Got a ping too quickly, disconnecting");
+                    trace!("🏓 Got a ping too quickly, disconnecting");
                     Err(ErrorKind::ExcessivePing.into())
                 }
             }
