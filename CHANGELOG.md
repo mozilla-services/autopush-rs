@@ -1,3 +1,29 @@
+<a name="1.64.0"></a>
+##  (2022-07-13)
+
+
+#### Bug Fixes
+
+*   add jitter to retry (#319) ([3272fdec](https://github.com/mozilla-services/autopush-rs/commit/3272fdec1ccd144b0fdff678c64eddf27d45626f))
+*   various mini-patches for FxA integration work (#321) ([b2b6bfd3](https://github.com/mozilla-services/autopush-rs/commit/b2b6bfd3e5f4273e6312f6305fb122013182d55b))
+    * Added more verbose `trace!` and `debug!` logging messages.
+    * ignore padding errors for VAPID keys
+    * bumped up default max bytes to handle base64 encoded 4096 block
+    * record the VapidError as an info before we send it to metrics
+
+#### Chore
+
+*   tag 1.63.0 (#312) ([f40a14a7](https://github.com/mozilla-services/autopush-rs/commit/f40a14a7972f19702d11075d7f49c6f29853b6c2))
+
+#### Breaking Changes
+
+*   Update for Jun 2022: Alters env var key names (#313) ([1ec85899](https://github.com/mozilla-services/autopush-rs/commit/1ec858990dabeefea5953b486dbd9beeada29ca2))
+    Broke: Environment var key changes from:
+
+    `AUTOPUSH_` => `AUTOPUSH__`
+
+    `AUTOEND_` => `AUTOEND__`
+
 <a name="1.63.0"></a>
 ## 1.63.0 (2022-06-02)
 
