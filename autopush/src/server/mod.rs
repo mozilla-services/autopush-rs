@@ -161,6 +161,7 @@ impl ServerOptions {
             return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
+        debug!("Fernet keys: {:?}", &crypto_key);
         let fernets: Vec<Fernet> = crypto_key
             .split(',')
             .map(|s| s.trim().to_string())
@@ -303,6 +304,7 @@ impl Server {
             metrics,
         });
         let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.port));
+        debug!("{:?}", &addr);
         let ws_listener = TcpListener::bind(&addr, &srv.handle)?;
 
         let handle = core.handle();
@@ -375,6 +377,7 @@ impl Server {
                             // the internal state machine.
                             Box::new(
                                 ws.and_then(move |ws| {
+                                    trace!("🏓 starting ping manager");
                                     PingManager::new(&srv2, ws, uarx)
                                         .chain_err(|| "failed to make ping handler")
                                 })
@@ -414,7 +417,7 @@ impl Server {
             )
             .expect("Unable to start megaphone updater");
             core.handle().spawn(fut.then(|res| {
-                debug!("megaphone result: {:?}", res.map(drop));
+                trace!("📢 megaphone result: {:?}", res.map(drop));
                 Ok(())
             }));
         }
@@ -431,7 +434,7 @@ impl Server {
         &self,
         desired_broadcasts: &[Broadcast],
     ) -> (BroadcastSubs, HashMap<String, BroadcastValue>) {
-        debug!("Initialized broadcasts");
+        trace!("📢Initialized broadcasts");
         let bc = self.broadcaster.borrow();
         let BroadcastSubsInit(broadcast_subs, broadcasts) = bc.broadcast_delta(desired_broadcasts);
         let mut response = Broadcast::vec_into_hashmap(broadcasts);
@@ -447,6 +450,7 @@ impl Server {
 
     /// Calculate whether there's new broadcast versions to go out
     pub fn broadcast_delta(&self, broadcast_subs: &mut BroadcastSubs) -> Option<Vec<Broadcast>> {
+        trace!("📢 Checking broadcast_delta");
         self.broadcaster.borrow().change_count_delta(broadcast_subs)
     }
 
@@ -524,7 +528,7 @@ impl Future for MegaphoneUpdater {
             let new_state = match self.state {
                 MegaphoneState::Waiting => {
                     try_ready!(self.timeout.poll());
-                    debug!("Sending megaphone API request");
+                    trace!("📢Sending megaphone API request");
                     let fut = self
                         .client
                         .get(&self.api_url)
@@ -539,15 +543,17 @@ impl Future for MegaphoneUpdater {
                     let at = Instant::now() + self.poll_interval;
                     match response.poll() {
                         Ok(Async::Ready(MegaphoneAPIResponse { broadcasts })) => {
-                            debug!("Fetched broadcasts: {:?}", broadcasts);
+                            trace!("📢Fetched broadcasts: {:?}", broadcasts);
                             let mut broadcaster = self.srv.broadcaster.borrow_mut();
                             for srv in Broadcast::from_hashmap(broadcasts) {
-                                broadcaster.add_broadcast(srv);
+                                let vv = broadcaster.add_broadcast(srv);
+                                trace!("📢   add_broadcast = {}", vv);
+                                // TODO: Notify that Ping required?
                             }
                         }
                         Ok(Async::NotReady) => return Ok(Async::NotReady),
                         Err(error) => {
-                            error!("Failed to get response, queue again {:?}", error);
+                            error!("📢Failed to get response, queue again {:?}", error);
                             capture_message(
                                 &format!("Failed to get response, queue again {:?}", error),
                                 sentry::Level::Error,
@@ -603,6 +609,7 @@ impl PingManager {
         // an `Rc` object. This'll allow us to share it between the ping/pong
         // management and message shuffling.
         let socket = RcObject::new(WebpushSocket::new(socket));
+        trace!("🏓Ping interval {:?}", &srv.opts.auto_ping_interval);
         Ok(PingManager {
             timeout: Timeout::new(srv.opts.auto_ping_interval, &srv.handle)?,
             waiting: WaitingFor::SendPing,
@@ -620,6 +627,7 @@ impl Future for PingManager {
     fn poll(&mut self) -> Poll<(), Error> {
         let mut socket = self.socket.borrow_mut();
         loop {
+            trace!("🏓 PingManager Poll loop");
             if socket.ws_ping {
                 // Don't check if we already have a delta to broadcast
                 if socket.broadcast_delta.is_none() {
@@ -632,8 +640,10 @@ impl Future for PingManager {
                 }
 
                 if socket.send_ws_ping()?.is_ready() {
+                    trace!("🏓 Time to ping");
                     // If we just sent a broadcast, reset the ping interval and clear the delta
                     if socket.broadcast_delta.is_some() {
+                        trace!("📢 Pending");
                         let at = Instant::now() + self.srv.opts.auto_ping_interval;
                         self.timeout.reset(at);
                         socket.broadcast_delta = None;
@@ -650,21 +660,29 @@ impl Future for PingManager {
             debug_assert!(!socket.ws_ping);
             match self.waiting {
                 WaitingFor::SendPing => {
+                    trace!(
+                        "🏓Checking pong timeout:{} pong recv'd:{}",
+                        socket.ws_pong_timeout,
+                        socket.ws_pong_received
+                    );
                     debug_assert!(!socket.ws_pong_timeout);
                     debug_assert!(!socket.ws_pong_received);
                     match self.timeout.poll()? {
                         Async::Ready(()) => {
-                            debug!("scheduling a ws ping to get sent");
+                            trace!("🏓scheduling a ws ping to get sent");
                             socket.ws_ping = true;
                         }
-                        Async::NotReady => break,
+                        Async::NotReady => {
+                            trace!("🏓not ready yet");
+                            break;
+                        }
                     }
                 }
                 WaitingFor::Pong => {
                     if socket.ws_pong_received {
                         // If we received a pong, then switch us back to waiting
                         // to send out a ping
-                        debug!("ws pong received, going back to sending a ping");
+                        trace!("🏓ws pong received, going back to sending a ping");
                         debug_assert!(!socket.ws_pong_timeout);
                         let at = Instant::now() + self.srv.opts.auto_ping_interval;
                         self.timeout.reset(at);
@@ -674,7 +692,7 @@ impl Future for PingManager {
                         // If our socket is waiting to deliver a pong timeout,
                         // then no need to keep checking the timer and we can
                         // keep going
-                        debug!("waiting for socket to see ws pong timed out");
+                        trace!("🏓waiting for socket to see ws pong timed out");
                         break;
                     } else if self.timeout.poll()?.is_ready() {
                         // We may not actually be reading messages from the
@@ -683,7 +701,7 @@ impl Future for PingManager {
                         // error here wait for the stream to return `NotReady`
                         // when looking for messages, as then we're extra sure
                         // that no pong was received after this timeout elapsed.
-                        debug!("waited too long for a ws pong");
+                        trace!("🏓waited too long for a ws pong");
                         socket.ws_pong_timeout = true;
                     } else {
                         break;
@@ -753,28 +771,32 @@ impl<T> WebpushSocket<T> {
         T: Sink<SinkItem = Message>,
         Error: From<T::SinkError>,
     {
+        trace!("🏓 checking ping");
         if self.ws_ping {
+            trace!("🏓 Ping present");
             let msg = if let Some(broadcasts) = self.broadcast_delta.clone() {
-                debug!("sending a broadcast delta");
+                trace!("🏓sending a broadcast delta");
                 let server_msg = ServerMessage::Broadcast {
                     broadcasts: Broadcast::vec_into_hashmap(broadcasts),
                 };
                 let s = server_msg.to_json().chain_err(|| "failed to serialize")?;
                 Message::Text(s)
             } else {
-                debug!("sending a ws ping");
+                trace!("🏓sending a ws ping");
                 Message::Ping(Vec::new())
             };
             match self.inner.start_send(msg)? {
                 AsyncSink::Ready => {
-                    debug!("ws ping sent");
+                    trace!("🏓ws ping sent");
                     self.ws_ping = false;
                 }
                 AsyncSink::NotReady(_) => {
-                    debug!("ws ping not ready to be sent");
+                    trace!("🏓ws ping not ready to be sent");
                     return Ok(Async::NotReady);
                 }
             }
+        } else {
+            trace!("🏓No Ping");
         }
         Ok(Async::Ready(()))
     }
@@ -805,7 +827,7 @@ where
             };
             match msg {
                 Message::Text(ref s) => {
-                    trace!("text message {}", s);
+                    trace!("🚟 text message {}", s);
                     let msg = s
                         .parse()
                         .chain_err(|| ErrorKind::InvalidClientMessage(s.to_owned()))?;

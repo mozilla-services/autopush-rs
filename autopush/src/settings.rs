@@ -216,15 +216,21 @@ mod tests {
         use std::env;
         let port = format!("{}__PORT", ENV_PREFIX).to_uppercase();
         let msg_limit = format!("{}__MSG_LIMIT", ENV_PREFIX).to_uppercase();
+        let fernet = format!("{}__CRYPTO_KEY", ENV_PREFIX).to_uppercase();
 
         let v1 = env::var(&port);
         let v2 = env::var(&msg_limit);
         env::set_var(&port, "9123");
         env::set_var(&msg_limit, "123");
+        env::set_var(&fernet, "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]");
         let settings = Settings::with_env_and_config_files(&Vec::new()).unwrap();
         assert_eq!(settings.endpoint_hostname, "localhost".to_owned());
         assert_eq!(&settings.port, &9123);
         assert_eq!(&settings.msg_limit, &123);
+        assert_eq!(
+            &settings.crypto_key,
+            "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]"
+        );
 
         // reset (just in case)
         if let Ok(p) = v1 {
@@ -239,5 +245,6 @@ mod tests {
         } else {
             env::remove_var(&msg_limit);
         }
+        env::remove_var(&fernet);
     }
 }

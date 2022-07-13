@@ -85,8 +85,8 @@ pub enum VapidError {
     InvalidVapid(String),
     #[error("Missing VAPID public key")]
     MissingKey,
-    #[error("Invalid VAPID public key")]
-    InvalidKey,
+    #[error("Invalid VAPID public key: {0}")]
+    InvalidKey(String),
     #[error("Invalid VAPID audience")]
     InvalidAudience,
     #[error("Invalid VAPID expiry")]

@@ -2,12 +2,14 @@
 Rust Connection and Endpoint Node Integration Tests
 """
 
+from base64 import urlsafe_b64encode
 import copy
 import json
 import logging
 import os
 import random
 import signal
+import string
 import socket
 import subprocess
 
@@ -70,6 +72,7 @@ MOCK_SERVER_THREAD = None
 CN_QUEUES = []
 EP_QUEUES = []
 STRICT_LOG_COUNTS = True
+RUST_LOG = "autoendpoint=debug,autopush_rs=debug,autopush_common=debug,error"
 
 
 def get_free_port():
@@ -97,7 +100,7 @@ CONNECTION_CONFIG = dict(
     router_tablename=ROUTER_TABLE,
     message_tablename=MESSAGE_TABLE,
     crypto_key="[{}]".format(CRYPTO_KEY),
-    auto_ping_interval=60.0,
+    auto_ping_interval=30.0,
     auto_ping_timeout=10.0,
     close_handshake_timeout=5,
     max_connections=5000,
@@ -246,7 +249,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
     def send_notification(self, channel=None, version=None, data=None,
                           use_header=True, status=None, ttl=200,
                           timeout=0.2, vapid=None, endpoint=None,
-                          topic=None):
+                          topic=None, headers=None):
         if not channel:
             channel = random.choice(self.channels.keys())
 
@@ -284,6 +287,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         status = status or 201
 
         log.debug("%s body: %s", method, body)
+        log.debug("  headers: %s", headers)
         http.request(method, url.path.encode("utf-8"), body, headers)
         resp = http.getresponse()
         log.debug("%s Response (%s): %s", method, resp.status, resp.read())
@@ -332,7 +336,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             result = json.loads(d)
             assert result.get("messageType") == "broadcast"
             return result
-        except Exception:  # pragma: nocover
+        except Exception as ex:  # pragma: nocover
+            log.error("Error: {}".format(ex))
             return None
         finally:
             self.ws.settimeout(orig_timeout)
@@ -587,7 +592,6 @@ def setup_endpoint_server():
     global EP_SERVER
 
     # Set up environment
-    os.environ["RUST_LOG"] = "trace"
     # NOTE:
     # due to a change in Config, autoendpoint uses a double
     # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
@@ -609,7 +613,7 @@ def setup_endpoint_server():
 
 def setup_module():
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, \
-        STRICT_LOG_COUNTS
+        STRICT_LOG_COUNTS, RUST_LOG
 
     if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
         raise SkipTest("Skipping integration tests")
@@ -624,6 +628,7 @@ def setup_module():
 
     setup_mock_server()
 
+    os.environ["RUST_LOG"] = RUST_LOG
     connection_binary = get_rust_binary_path("autopush_rs")
     setup_connection_server(connection_binary)
     setup_megaphone_server(connection_binary)
@@ -1207,6 +1212,26 @@ class TestRustWebPush(unittest.TestCase):
         yield client.ack(result3["channelID"], result3["version"])
 
         yield self.shut_down(client)
+
+    @inlineCallbacks
+    def test_big_message(self):
+        """Test that we accept a large message.
+
+        Using pywebpush I encoded a 4096 block
+        of random data into a 4216b block. B64 encoding that produced a block that was
+        5624 bytes long. We'll skip the binary bit for a 4216 block of "text" we then
+        b64 encode to send.
+        """
+        import base64;
+        client = yield self.quick_register()
+        data = base64.urlsafe_b64encode(
+            ''.join(random.choice(string.ascii_letters+string.digits+string.punctuation)
+            for _ in xrange(0, 4216))
+            )
+        result = yield client.send_notification(data=data)
+        dd = result.get("data")
+        dh = base64.b64decode(dd + "==="[:len(dd) % 4])
+        assert dh == data
 
     # Need to dig into this test a bit more. I'm not sure it's structured correctly
     # since we resolved a bug about returning 202 v. 201, and it's using a dependent
