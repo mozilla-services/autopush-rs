@@ -35,6 +35,11 @@ pub fn sentry_middleware(
                 if let Some(api_err) = error.as_error::<ApiError>() {
                     // if it's not reportable, and we have access to the metrics, record it as a metric.
                     if !api_err.kind.is_sentry_event() {
+                        // The error (e.g. VapidErrorKind::InvalidKey(String)) might be too cardinal,
+                        // but we may need that information to debug a production issue. We can
+                        // add an info here, temporarily turn on info level debugging on a given server,
+                        // capture it, and then turn it off before we run out of money.
+                        info!("Sending error to metrics: {:?}", api_err.kind);
                         if let Some(state) = state {
                             match state
                                 .metrics
