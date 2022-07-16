@@ -190,6 +190,21 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
     Ok(())
 }
 
+/// Decode a public key string
+///
+/// NOTE: Some customers send a VAPID public key with incorrect padding and
+/// in standard base64 encoding. (Both of these violate the VAPID RFC)
+/// Prior python versions ignored these errors, so we should too.
+fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
+    let encoding = if public_key.contains('/') || public_key.contains('+') {
+        base64::STANDARD_NO_PAD
+    } else {
+        base64::URL_SAFE_NO_PAD
+    };
+    base64::decode_config(public_key.trim_end_matches('='), encoding)
+        .map_err(|e| VapidError::InvalidKey(e.to_string()).into())
+}
+
 /// `/webpush/v2/` validations
 fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> ApiResult<()> {
     if token.len() != 64 {
@@ -203,8 +218,7 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
     let public_key = &vapid.ok_or(VapidError::MissingKey)?.public_key;
 
     // Hash the VAPID public key
-    let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
-        .map_err(|e| VapidError::InvalidKey(e.to_string()))?;
+    let public_key = decode_public_key(public_key)?;
     let key_hash = openssl::hash::hash(MessageDigest::sha256(), &public_key)
         .map_err(ApiErrorKind::TokenHashValidation)?;
 
@@ -225,18 +239,7 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()> {
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
-    // Check the signature and make sure the expiration is in the future
-    // NOTE: FxA sometimes sends a VAPID public key with incorrect padding and
-    // in standard base64 encoding. (Both of these violate the VAPID RFC)
-    // Prior python versions ignored these errors, so we should too.
-    let encoding = if public_key.contains('/') || public_key.contains('+') {
-        base64::STANDARD_NO_PAD
-    } else {
-        base64::URL_SAFE_NO_PAD
-    };
-    let public_key = base64::decode_config(public_key.trim_end_matches('='), encoding)
-        .map_err(|e| VapidError::InvalidKey(e.to_string()))?;
-    // NOTE: This will fail if `exp` is specified as anything instead of a numeric.
+    let public_key = decode_public_key(public_key)?;
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
         &DecodingKey::from_ec_der(&public_key),
@@ -244,6 +247,7 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
     ) {
         Ok(v) => v,
         Err(e) => match e.kind() {
+            // NOTE: This will fail if `exp` is specified as anything instead of a numeric or if a required field is empty
             jsonwebtoken::errors::ErrorKind::Json(e) => {
                 if e.is_data() {
                     return Err(VapidError::InvalidVapid(
@@ -259,7 +263,7 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
         },
     };
 
-    // Make sure the expiration isn't too far into the future
+    // Check the signature and make sure the expiration is in the future, but not too far
     if token_data.claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
