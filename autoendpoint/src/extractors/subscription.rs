@@ -196,7 +196,7 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 /// in standard base64 encoding. (Both of these violate the VAPID RFC)
 /// Prior python versions ignored these errors, so we should too.
 fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
-    let encoding = if public_key.contains('/') || public_key.contains('+') {
+    let encoding = if public_key.contains(['/', '+']) {
         base64::STANDARD_NO_PAD
     } else {
         base64::URL_SAFE_NO_PAD
