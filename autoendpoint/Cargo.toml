@@ -51,7 +51,7 @@ slog-scope = "4.4"
 slog-stdlog = "4.1"
 slog-term = "2.6"
 smallvec = "1.6"  # for RUSTSEC-2021-0003
-tokio = { version = "0.2", features = ["fs"] }  # 1.1+ requires futures 0.3+
+tokio = { version = "1.18", features = ["fs"] }  # 1.1+ requires futures 0.3+
 thiserror = "1.0"
 url = "2.2"
 uuid = { version = "1.1", features = ["serde", "v4"] }
@@ -66,4 +66,4 @@ yup-oauth2 = "4.1.2"  # 5.0+ requires tokio 1.1+
 mockall = "0.8.3"  # 0.9+ requires reworking tests
 mockito = "0.31"
 tempfile = "3.2.0"
-tokio = { version = "0.2", features = ["macros"] }
+tokio = { version = "1.18", features = ["macros"] }
