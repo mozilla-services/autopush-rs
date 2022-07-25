@@ -1,3 +1,17 @@
+<a name="1.65.0"></a>
+## 1.65.0 (2022-07-20)
+
+
+#### Features
+
+*   allow for standard base64 private keys (#323) ([7ec9e541](https://github.com/mozilla-services/autopush-rs/commit/7ec9e5410db12ff9f17f97b3eb3da0f06f6d6c14))
+
+#### Chore
+
+*   tag 1.64.0 (#322) ([3b888782](https://github.com/mozilla-services/autopush-rs/commit/3b88878285a0efd06a560d3ecc5b97b705c93105))
+
+
+
 <a name="1.64.0"></a>
 ##  (2022-07-13)
 
