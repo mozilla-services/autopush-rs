@@ -466,7 +466,7 @@ where
             message_month,
             connected_at,
             stats: SessionStatistics {
-                uaid: uaid.to_simple().to_string(),
+                uaid: uaid.as_simple().to_string(),
                 uaid_reset: reset_uaid,
                 existing_uaid: check_storage,
                 connection_type: String::from("webpush"),
@@ -482,7 +482,7 @@ where
                 .and_then(move |_| {
                     // generate the response message back to the client.
                     Ok(ServerMessage::Hello {
-                        uaid: uaid.to_simple().to_string(),
+                        uaid: uaid.as_simple().to_string(),
                         status: 200,
                         use_webpush: Some(true),
                         broadcasts,
@@ -612,7 +612,7 @@ where
         let error = if let Some(ref err) = error {
             let mut event = event_from_error_chain(err);
             event.user = Some(sentry::User {
-                id: Some(webpush.uaid.to_simple().to_string()),
+                id: Some(webpush.uaid.as_simple().to_string()),
                 ..Default::default()
             });
             event
@@ -718,7 +718,7 @@ fn save_and_notify_undelivered_messages(
             })
             .and_then(|(client, uaid, node_id)| {
                 // Send the notify to the user
-                let notify_url = format!("{}/notif/{}", node_id, uaid.to_simple());
+                let notify_url = format!("{}/notif/{}", node_id, uaid.as_simple());
                 client
                     .put(&notify_url)
                     .send()
@@ -842,7 +842,7 @@ where
                 ..
             } = **send;
             if !smessages.is_empty() {
-                trace!("Sending {} {:#?}", smessages.len(), smessages);
+                trace!("🚟 Sending {} msgs: {:#?}", smessages.len(), smessages);
                 let item = smessages.remove(0);
                 let ret = data
                     .ws
@@ -919,6 +919,8 @@ where
         r#await: &'a mut RentToOwn<'a, AwaitInput<T>>,
     ) -> Poll<AfterAwaitInput<T>, Error> {
         trace!("State: AwaitInput");
+        // The following is a blocking call. No action is taken until we either get a
+        // websocket data packet or there's an incoming notification.
         let input = try_ready!(r#await.data.input_or_notif());
         let AwaitInput { data } = r#await.take();
         let webpush_rc = data.webpush.clone();
@@ -963,7 +965,7 @@ where
                         channel_id_str
                     ))
                 })?;
-                if channel_id.to_hyphenated().to_string() != channel_id_str {
+                if channel_id.as_hyphenated().to_string() != channel_id_str {
                     return Err(ErrorKind::InvalidClientMessage(format!(
                         "Invalid UUID format, not lower-case/dashed: {}",
                         channel_id
@@ -1082,14 +1084,14 @@ where
                 // Clients shouldn't ping > than once per minute or we
                 // disconnect them
                 if sec_since_epoch() - webpush.last_ping >= 45 {
-                    debug!("Got a ping, sending pong");
+                    trace!("🏓 Got a ping, sending pong");
                     webpush.last_ping = sec_since_epoch();
                     transition!(Send {
                         smessages: vec![ServerMessage::Ping],
                         data,
                     })
                 } else {
-                    debug!("Got a ping too quickly, disconnecting");
+                    trace!("🏓 Got a ping too quickly, disconnecting");
                     Err(ErrorKind::ExcessivePing.into())
                 }
             }

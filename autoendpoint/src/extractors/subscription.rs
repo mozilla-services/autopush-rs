@@ -58,6 +58,7 @@ impl FromRequest for Subscription {
         async move {
             // Collect token info and server state
             let token_info = TokenInfo::extract(&req).await?;
+            trace!("Token info: {:?}", &token_info);
             let state: Data<ServerState> =
                 Data::extract(&req).await.expect("No server state found");
 
@@ -65,12 +66,17 @@ impl FromRequest for Subscription {
             let token = state
                 .fernet
                 .decrypt(&repad_base64(&token_info.token))
-                .map_err(|_| ApiErrorKind::InvalidToken)?;
+                .map_err(|e| {
+                    error!("fernet: {:?}", e);
+                    ApiErrorKind::InvalidToken
+                })?;
 
             // Parse VAPID and extract public key.
             let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &state.metrics)?
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
+
+            trace!("Vapid: {:?}", &vapid);
 
             match token_info.api_version {
                 ApiVersion::Version1 => version_1_validation(&token)?,
@@ -82,11 +88,16 @@ impl FromRequest for Subscription {
             // only returned if the slice length is not 16.
             let uaid = Uuid::from_slice(&token[..16]).unwrap();
             let channel_id = Uuid::from_slice(&token[16..32]).unwrap();
+
+            trace!("UAID: {:?}, CHID: {:?}", uaid, channel_id);
+
             let user = state
                 .ddb
                 .get_user(uaid)
                 .await?
                 .ok_or(ApiErrorKind::NoSubscription)?;
+
+            trace!("user: {:?}", &user);
             validate_user(&user, &channel_id, &state).await?;
 
             // Validate the VAPID JWT token and record the version
@@ -179,6 +190,21 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
     Ok(())
 }
 
+/// Decode a public key string
+///
+/// NOTE: Some customers send a VAPID public key with incorrect padding and
+/// in standard base64 encoding. (Both of these violate the VAPID RFC)
+/// Prior python versions ignored these errors, so we should too.
+fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
+    let encoding = if public_key.contains(['/', '+']) {
+        base64::STANDARD_NO_PAD
+    } else {
+        base64::URL_SAFE_NO_PAD
+    };
+    base64::decode_config(public_key.trim_end_matches('='), encoding)
+        .map_err(|e| VapidError::InvalidKey(e.to_string()).into())
+}
+
 /// `/webpush/v2/` validations
 fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> ApiResult<()> {
     if token.len() != 64 {
@@ -192,8 +218,7 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
     let public_key = &vapid.ok_or(VapidError::MissingKey)?.public_key;
 
     // Hash the VAPID public key
-    let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
-        .map_err(|_| VapidError::InvalidKey)?;
+    let public_key = decode_public_key(public_key)?;
     let key_hash = openssl::hash::hash(MessageDigest::sha256(), &public_key)
         .map_err(ApiErrorKind::TokenHashValidation)?;
 
@@ -214,10 +239,7 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()> {
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
-    // Check the signature and make sure the expiration is in the future
-    let public_key = base64::decode_config(public_key, base64::URL_SAFE_NO_PAD)
-        .map_err(|_| VapidError::InvalidKey)?;
-    // NOTE: This will fail if `exp` is specified as a string instead of a numeric.
+    let public_key = decode_public_key(public_key)?;
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
         &DecodingKey::from_ec_der(&public_key),
@@ -225,6 +247,7 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
     ) {
         Ok(v) => v,
         Err(e) => match e.kind() {
+            // NOTE: This will fail if `exp` is specified as anything instead of a numeric or if a required field is empty
             jsonwebtoken::errors::ErrorKind::Json(e) => {
                 if e.is_data() {
                     return Err(VapidError::InvalidVapid(
@@ -240,7 +263,7 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
         },
     };
 
-    // Make sure the expiration isn't too far into the future
+    // Check the signature and make sure the expiration is in the future, but not too far
     if token_data.claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
@@ -292,7 +315,8 @@ mod tests {
             base64::STANDARD,
         )
         .unwrap();
-        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
+        // Specify a potentially invalid padding.
+        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds==".to_owned();
         let domain = "https://push.services.mozilla.org";
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
@@ -311,7 +335,8 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -390,6 +415,76 @@ mod tests {
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
         ])
+    }
+
+    #[test]
+    fn vapid_public_key_variants() {
+        #[derive(Debug, Deserialize, Serialize)]
+        struct StrExpVapidClaims {
+            exp: String,
+            aud: String,
+            sub: String,
+        }
+
+        let priv_key = base64::decode_config(
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
+                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+            base64::STANDARD,
+        )
+        .unwrap();
+        // pretty much matches the kind of key we get from some partners.
+        let public_key_standard = "BM3bVjW/wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf+1odb8hds=".to_owned();
+        let public_key_url_safe = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds=".to_owned();
+        let domain = "https://push.services.mozilla.org";
+        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let claims = VapidClaims {
+            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            aud: domain.to_owned(),
+            sub: "mailto:admin@example.com".to_owned(),
+        };
+        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
+        // try standard form with padding
+        let header = VapidHeaderWithKey {
+            public_key: public_key_standard.clone(),
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token: token.clone(),
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        // try standard form with no padding
+        let header = VapidHeaderWithKey {
+            public_key: public_key_standard.trim_end_matches('=').to_owned(),
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token: token.clone(),
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        // try URL safe form with padding
+        let header = VapidHeaderWithKey {
+            public_key: public_key_url_safe.clone(),
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token: token.clone(),
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        // try URL safe form without padding
+        let header = VapidHeaderWithKey {
+            public_key: public_key_url_safe.trim_end_matches('=').to_owned(),
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token,
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
     }
 
     #[test]

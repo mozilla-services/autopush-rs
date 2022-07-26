@@ -21,7 +21,7 @@ pub struct AuthorizationCheck;
 
 impl AuthorizationCheck {
     pub fn generate_token(auth_key: &str, user: &Uuid) -> Result<String, ErrorStack> {
-        sign_with_key(auth_key.as_bytes(), user.to_simple().to_string().as_bytes())
+        sign_with_key(auth_key.as_bytes(), user.as_simple().to_string().as_bytes())
     }
 
     pub fn validate_token(
@@ -32,7 +32,7 @@ impl AuthorizationCheck {
         // Check the token against the expected token for each key
         for key in auth_keys {
             let expected_token =
-                sign_with_key(key.as_bytes(), uaid.to_simple().to_string().as_bytes())
+                sign_with_key(key.as_bytes(), uaid.as_simple().to_string().as_bytes())
                     .map_err(ApiErrorKind::RegistrationSecretHash)?;
 
             debug!("expected: {:?}, recv'd {:?}", &expected_token, &token);

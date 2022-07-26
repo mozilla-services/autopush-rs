@@ -45,7 +45,11 @@ impl Default for Settings {
             port: 8000,
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
-            max_data_bytes: 4096,
+            /// max data is a bit hard to figure out, due to encryption. Using something
+            /// like pywebpush, if you encode a block of 4096 bytes, you'll get a
+            /// 4216 byte data block. Since we're going to be receiving this, we have to
+            /// presume base64 encoding, so we can bump things up to 5624 bytes max.
+            max_data_bytes: 5624,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             human_logs: false,
@@ -62,36 +66,40 @@ impl Default for Settings {
 impl Settings {
     /// Load the settings from the config file if supplied, then the environment.
     pub fn with_env_and_config_file(filename: &Option<String>) -> Result<Self, ConfigError> {
-        let mut config = Config::new();
+        let mut config = Config::builder();
 
         // Merge the config file if supplied
         if let Some(config_filename) = filename {
-            config.merge(File::with_name(config_filename))?;
+            config = config.add_source(File::with_name(config_filename));
         }
 
         // Merge the environment overrides
         // Note: Specify the separator here so that the shell can properly pass args
         // down to the sub structures.
-        config.merge(Environment::with_prefix(ENV_PREFIX).separator("__"))?;
+        config = config.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
 
-        config.try_into::<Self>().map_err(|error| match error {
-            // Configuration errors are not very sysop friendly, Try to make them
-            // a bit more 3AM useful.
-            ConfigError::Message(error_msg) => {
-                println!("Bad configuration: {:?}", &error_msg);
-                println!("Please set in config file or use environment variable.");
-                println!(
-                    "For example to set `database_url` use env var `{}_DATABASE_URL`\n",
-                    ENV_PREFIX.to_uppercase()
-                );
-                error!("Configuration error: Value undefined {:?}", &error_msg);
-                ConfigError::NotFound(error_msg)
-            }
-            _ => {
-                error!("Configuration error: Other: {:?}", &error);
-                error
-            }
-        })
+        let built = config.build()?;
+
+        built
+            .try_deserialize::<Self>()
+            .map_err(|error| match error {
+                // Configuration errors are not very sysop friendly, Try to make them
+                // a bit more 3AM useful.
+                ConfigError::Message(error_msg) => {
+                    println!("Bad configuration: {:?}", &error_msg);
+                    println!("Please set in config file or use environment variable.");
+                    println!(
+                        "For example to set `database_url` use env var `{}_DATABASE_URL`\n",
+                        ENV_PREFIX.to_uppercase()
+                    );
+                    error!("Configuration error: Value undefined {:?}", &error_msg);
+                    ConfigError::NotFound(error_msg)
+                }
+                _ => {
+                    error!("Configuration error: Other: {:?}", &error);
+                    error
+                }
+            })
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.
@@ -112,7 +120,10 @@ impl Settings {
     pub fn make_fernet(&self) -> MultiFernet {
         let keys = &self.crypto_keys.replace('"', "").replace(' ', "");
         let fernets = Self::read_list_from_str(keys, "Invalid AUTOEND_CRYPTO_KEYS")
-            .map(|key| Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS"))
+            .map(|key| {
+                debug!("Fernet keys: {:?}", &key);
+                Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS")
+            })
             .collect();
         MultiFernet::new(fernets)
     }
@@ -187,5 +198,36 @@ mod tests {
             .unwrap()
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_default_settings() {
+        // Test that the Config works the way we expect it to.
+        let port = format!("{}__PORT", super::ENV_PREFIX).to_uppercase();
+        let timeout = format!("{}__FCM__TIMEOUT", super::ENV_PREFIX).to_uppercase();
+
+        use std::env;
+        let v1 = env::var(&port);
+        let v2 = env::var(&timeout);
+        env::set_var(&port, "9123");
+        env::set_var(&timeout, "123");
+
+        let settings = Settings::with_env_and_config_file(&None).unwrap();
+        assert_eq!(&settings.port, &9123);
+        assert_eq!(&settings.fcm.timeout, &123);
+        assert_eq!(settings.host, "127.0.0.1".to_owned());
+        // reset (just in case)
+        if let Ok(p) = v1 {
+            trace!("Resetting {}", &port);
+            env::set_var(&port, p);
+        } else {
+            env::remove_var(&port);
+        }
+        if let Ok(p) = v2 {
+            trace!("Resetting {}", &timeout);
+            env::set_var(&timeout, p);
+        } else {
+            env::remove_var(&timeout);
+        }
     }
 }

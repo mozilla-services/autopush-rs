@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::result::Result as StdResult;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use cadence::{CountedExt, StatsdClient};
@@ -76,13 +77,13 @@ pub fn list_tables_sync(
 
 pub fn fetch_messages(
     ddb: DynamoDbClient,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
 ) -> impl Future<Item = FetchMessageResponse, Error = Error> {
     let attr_values = hashmap! {
-        ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
+        ":uaid".to_string() => val!(S => uaid.as_simple().to_string()),
         ":cmi".to_string() => val!(S => "02"),
     };
     let input = QueryInput {
@@ -137,7 +138,7 @@ pub fn fetch_messages(
 
 pub fn fetch_timestamp_messages(
     ddb: DynamoDbClient,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     table_name: &str,
     uaid: &Uuid,
     timestamp: Option<u64>,
@@ -149,7 +150,7 @@ pub fn fetch_timestamp_messages(
         "01;".to_string()
     };
     let attr_values = hashmap! {
-        ":uaid".to_string() => val!(S => uaid.to_simple().to_string()),
+        ":uaid".to_string() => val!(S => uaid.as_simple().to_string()),
         ":cmi".to_string() => val!(S => range_key),
     };
     let input = QueryInput {
@@ -197,7 +198,7 @@ pub fn drop_user(
 ) -> impl Future<Item = DeleteItemOutput, Error = Error> {
     let input = DeleteItemInput {
         table_name: router_table_name.to_string(),
-        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
         ..Default::default()
     };
     retry_if(
@@ -215,7 +216,7 @@ pub fn get_uaid(
     let input = GetItemInput {
         table_name: router_table_name.to_string(),
         consistent_read: Some(true),
-        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
         ..Default::default()
     };
     retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
@@ -227,7 +228,6 @@ pub fn register_user(
     user: &DynamoDbUser,
     router_table: &str,
 ) -> impl Future<Item = PutItemOutput, Error = Error> {
-    trace!("### Registering User...");
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
         Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
@@ -240,7 +240,7 @@ pub fn register_user(
 
     retry_if(
         move || {
-            debug!("Registering user: {:?}", item);
+            debug!("### Registering user into {}: {:?}", router_table, item);
             ddb.put_item(PutItemInput {
                 item: item.clone(),
                 table_name: router_table.clone(),
@@ -275,7 +275,7 @@ pub fn update_user_message_month(
         ":lastconnect".to_string() => val!(N => generate_last_connect().to_string()),
     };
     let update_item = UpdateItemInput {
-        key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+        key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
         update_expression: Some(
             "SET current_month=:curmonth, last_connect=:lastconnect".to_string(),
         ),
@@ -303,7 +303,7 @@ pub fn all_channels(
         table_name: message_table_name.to_string(),
         consistent_read: Some(true),
         key: ddb_item! {
-            uaid: s => uaid.to_simple().to_string(),
+            uaid: s => uaid.as_simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         ..Default::default()
@@ -338,7 +338,7 @@ pub fn save_channels(
     };
     let update_item = UpdateItemInput {
         key: ddb_item! {
-            uaid: s => uaid.to_simple().to_string(),
+            uaid: s => uaid.as_simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         update_expression: Some("ADD chids :chids SET expiry=:expiry".to_string()),
@@ -363,13 +363,13 @@ pub fn unregister_channel_id(
     channel_id: &Uuid,
     message_table_name: &str,
 ) -> impl Future<Item = UpdateItemOutput, Error = Error> {
-    let chid = channel_id.to_hyphenated().to_string();
+    let chid = channel_id.as_hyphenated().to_string();
     let attr_values = hashmap! {
         ":channel_id".to_string() => val!(SS => vec![chid]),
     };
     let update_item = UpdateItemInput {
         key: ddb_item! {
-            uaid: s => uaid.to_simple().to_string(),
+            uaid: s => uaid.as_simple().to_string(),
             chidmessageid: s => " ".to_string()
         },
         update_expression: Some("DELETE chids :channel_id".to_string()),
@@ -388,7 +388,7 @@ pub fn unregister_channel_id(
 #[allow(clippy::too_many_arguments)]
 pub fn lookup_user(
     ddb: DynamoDbClient,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     uaid: &Uuid,
     connected_at: u64,
     router_url: &str,

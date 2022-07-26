@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::env;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use cadence::StatsdClient;
@@ -63,7 +64,7 @@ pub enum RegisterResponse {
 #[derive(Clone)]
 pub struct DynamoStorage {
     ddb: DynamoDbClient,
-    metrics: StatsdClient,
+    metrics: Arc<StatsdClient>,
     router_table_name: String,
     pub message_table_names: Vec<String>,
     pub current_message_month: String,
@@ -73,8 +74,12 @@ impl DynamoStorage {
     pub fn from_opts(
         message_table_name: &str,
         router_table_name: &str,
-        metrics: StatsdClient,
+        metrics: Arc<StatsdClient>,
     ) -> Result<Self> {
+        debug!(
+            "Checking tables: {} & {}",
+            &message_table_name, &router_table_name
+        );
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().chain_err(|| "TLS initialization error")?,
@@ -122,7 +127,7 @@ impl DynamoStorage {
         };
         let update_input = UpdateItemInput {
             key: ddb_item! {
-                uaid: s => uaid.to_simple().to_string(),
+                uaid: s => uaid.as_simple().to_string(),
                 chidmessageid: s => " ".to_string()
             },
             update_expression: Some("SET current_timestamp=:timestamp, expiry=:expiry".to_string()),
@@ -226,7 +231,7 @@ impl DynamoStorage {
         let ddb = self.ddb.clone();
         let mut chids = HashSet::new();
         let endpoint = endpoint.to_owned();
-        chids.insert(channel_id.to_hyphenated().to_string());
+        chids.insert(channel_id.as_hyphenated().to_string());
 
         if let Some(user) = register_user {
             trace!(
@@ -385,7 +390,7 @@ impl DynamoStorage {
         let delete_input = DeleteItemInput {
             table_name: table_name.to_string(),
             key: ddb_item! {
-               uaid: s => uaid.to_simple().to_string(),
+               uaid: s => uaid.as_simple().to_string(),
                chidmessageid: s => notif.sort_key()
             },
             ..Default::default()
@@ -507,7 +512,7 @@ impl DynamoStorage {
     ) -> impl Future<Item = (), Error = Error> {
         let ddb = self.ddb.clone();
         let update_item = UpdateItemInput {
-            key: ddb_item! { uaid: s => uaid.to_simple().to_string() },
+            key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),
             condition_expression: Some("(node_id = :node) and (connected_at = :conn)".to_string()),
             expression_attribute_values: Some(hashmap! {

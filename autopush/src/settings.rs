@@ -6,8 +6,13 @@ use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 
+const ENV_PREFIX: &str = "autopush";
+
 lazy_static! {
-    static ref HOSTNAME: String = mozsvc_common::get_hostname().expect("Couldn't get_hostname");
+    static ref HOSTNAME: String = mozsvc_common::get_hostname()
+        .expect("Couldn't get_hostname")
+        .into_string()
+        .expect("Couldn't convert get_hostname");
     static ref RESOLVED_HOSTNAME: String = resolve_ip(&HOSTNAME)
         .unwrap_or_else(|_| panic!("Failed to resolve hostname: {}", *HOSTNAME));
 }
@@ -25,7 +30,8 @@ fn include_port(scheme: &str, port: u16) -> bool {
     !((scheme == "http" && port == 80) || (scheme == "https" && port == 443))
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub port: u16,
     pub hostname: Option<String>,
@@ -55,40 +61,55 @@ pub struct Settings {
     pub msg_limit: u32,
 }
 
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            port: 8080,
+            hostname: None,
+            resolve_hostname: false,
+            router_port: 8081,
+            router_hostname: None,
+            router_tablename: "router".to_owned(),
+            message_tablename: "message".to_owned(),
+            router_ssl_key: None,
+            router_ssl_cert: None,
+            router_ssl_dh_param: None,
+            auto_ping_interval: 300.0,
+            auto_ping_timeout: 4.0,
+            max_connections: 0,
+            close_handshake_timeout: 0,
+            endpoint_scheme: "http".to_owned(),
+            endpoint_hostname: "localhost".to_owned(),
+            endpoint_port: 8082,
+            crypto_key: format!("[{}]", Fernet::generate_key()),
+            statsd_host: "localhost".to_owned(),
+            statsd_port: 8125,
+            aws_ddb_endpoint: None,
+            megaphone_api_url: None,
+            megaphone_api_token: None,
+            megaphone_poll_interval: 30,
+            human_logs: false,
+            msg_limit: 100,
+        }
+    }
+}
+
 impl Settings {
     /// Load the settings from the config files in order first then the environment.
     pub fn with_env_and_config_files(filenames: &[String]) -> Result<Self, ConfigError> {
-        let mut s = Config::default();
-        // Set our defaults, this can be fixed up drastically later after:
-        // https://github.com/mehcode/config-rs/issues/60
-        s.set_default("debug", false)?;
-        s.set_default("port", 8080)?;
-        s.set_default("resolve_hostname", false)?;
-        s.set_default("router_port", 8081)?;
-        s.set_default("router_tablename", "router")?;
-        s.set_default("message_tablename", "message")?;
-        s.set_default("auto_ping_interval", 300)?;
-        s.set_default("auto_ping_timeout", 4)?;
-        s.set_default("max_connections", 0)?;
-        s.set_default("close_handshake_timeout", 0)?;
-        s.set_default("endpoint_scheme", "http")?;
-        s.set_default("endpoint_hostname", "localhost")?;
-        s.set_default("endpoint_port", 8082)?;
-        s.set_default("crypto_key", format!("[{}]", Fernet::generate_key()))?;
-        s.set_default("statsd_host", "localhost")?;
-        s.set_default("statsd_port", 8125)?;
-        s.set_default("megaphone_poll_interval", 30)?;
-        s.set_default("human_logs", false)?;
-        s.set_default("msg_limit", 100)?;
+        let mut s = Config::builder();
 
         // Merge the configs from the files
         for filename in filenames {
-            s.merge(File::with_name(filename))?;
+            s = s.add_source(File::with_name(filename));
         }
 
         // Merge the environment overrides
-        s.merge(Environment::with_prefix("autopush"))?;
-        s.try_into()
+        s = s.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
+        // s = s.add_source(Environment::with_prefix(ENV_PREFIX));
+
+        let built = s.build()?;
+        built.try_deserialize::<Settings>()
     }
 
     pub fn router_url(&self) -> String {
@@ -187,5 +208,43 @@ mod tests {
         settings.endpoint_port = 8080;
         let url = settings.endpoint_url();
         assert_eq!("https://testname:8080", url);
+    }
+
+    #[test]
+    fn test_default_settings() {
+        // Test that the Config works the way we expect it to.
+        use std::env;
+        let port = format!("{}__PORT", ENV_PREFIX).to_uppercase();
+        let msg_limit = format!("{}__MSG_LIMIT", ENV_PREFIX).to_uppercase();
+        let fernet = format!("{}__CRYPTO_KEY", ENV_PREFIX).to_uppercase();
+
+        let v1 = env::var(&port);
+        let v2 = env::var(&msg_limit);
+        env::set_var(&port, "9123");
+        env::set_var(&msg_limit, "123");
+        env::set_var(&fernet, "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]");
+        let settings = Settings::with_env_and_config_files(&Vec::new()).unwrap();
+        assert_eq!(settings.endpoint_hostname, "localhost".to_owned());
+        assert_eq!(&settings.port, &9123);
+        assert_eq!(&settings.msg_limit, &123);
+        assert_eq!(
+            &settings.crypto_key,
+            "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]"
+        );
+
+        // reset (just in case)
+        if let Ok(p) = v1 {
+            trace!("Resetting {}", &port);
+            env::set_var(&port, p);
+        } else {
+            env::remove_var(&port);
+        }
+        if let Ok(p) = v2 {
+            trace!("Resetting {}", msg_limit);
+            env::set_var(&msg_limit, p);
+        } else {
+            env::remove_var(&msg_limit);
+        }
+        env::remove_var(&fernet);
     }
 }
