@@ -143,6 +143,8 @@ pub struct DynamoDbNotification {
     // value before sending it to storage or a connection node.
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    meta: Option<String>,
 }
 
 impl DynamoDbNotification {
@@ -216,6 +218,7 @@ impl DynamoDbNotification {
             data: self.data,
             headers: self.headers.map(|m| m.into()),
             sortkey_timestamp: key.sortkey_timestamp,
+            meta: self.meta,
         })
     }
 

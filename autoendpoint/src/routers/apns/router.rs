@@ -2,6 +2,7 @@ use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
+use crate::extractors::subscription::Subscription;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::apns::settings::{ApnsChannel, ApnsSettings};
 use crate::routers::common::{
@@ -20,7 +21,6 @@ use serde_json::{Number, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
-use uuid::Uuid;
 
 /// Apple Push Notification Service router
 pub struct ApnsRouter {
@@ -124,7 +124,12 @@ impl ApnsRouter {
     }
 
     /// Handle an error by logging, updating metrics, etc
-    async fn handle_error(&self, error: a2::Error, uaid: Uuid, channel: &str) -> ApiError {
+    async fn handle_error(
+        &self,
+        error: a2::Error,
+        subscription: &Subscription,
+        channel: &str,
+    ) -> ApiError {
         match &error {
             a2::Error::ResponseError(response) => {
                 // capture the APNs error as a metric response. This allows us to spot trends.
@@ -136,10 +141,18 @@ impl ApnsRouter {
                     .map(|r| format!("{:?}", r.reason))
                     .unwrap_or_else(|| "Unknown".to_owned());
                 let code = StatusCode::from_u16(response.code).unwrap_or(StatusCode::BAD_GATEWAY);
-                incr_error_metric(&self.metrics, "apns", channel, &reason, code, None);
+                incr_error_metric(
+                    &self.metrics,
+                    "apns",
+                    channel,
+                    &reason,
+                    code,
+                    None,
+                    subscription.meta(),
+                );
                 if response.code == 410 {
                     debug!("APNS recipient has been unregistered, removing user");
-                    if let Err(e) = self.ddb.remove_user(uaid).await {
+                    if let Err(e) = self.ddb.remove_user(subscription.user.uaid).await {
                         warn!("Error while removing user due to APNS 410: {}", e);
                     }
 
@@ -157,6 +170,7 @@ impl ApnsRouter {
                     "connection_unavailable",
                     StatusCode::SERVICE_UNAVAILABLE,
                     None,
+                    subscription.meta(),
                 );
             }
             _ => {
@@ -168,6 +182,7 @@ impl ApnsRouter {
                     "unknown",
                     StatusCode::BAD_GATEWAY,
                     None,
+                    subscription.meta(),
                 );
             }
         }
@@ -294,7 +309,7 @@ impl Router for ApnsRouter {
         trace!("Sending message to APNS: {:?}", payload);
         if let Err(e) = client.send(payload).await {
             return Err(self
-                .handle_error(e, notification.subscription.user.uaid, channel)
+                .handle_error(e, &notification.subscription, channel)
                 .await);
         }
 

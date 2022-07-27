@@ -2,6 +2,7 @@ use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::message_id::MessageId;
 use crate::extractors::notification_headers::NotificationHeaders;
 use crate::extractors::subscription::Subscription;
+use crate::headers::vapid::VapidClaims;
 use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
@@ -37,6 +38,18 @@ impl FromRequest for Notification {
 
         async move {
             let subscription = Subscription::extract(&req).await?;
+            let claims = if let Some(vapid) = &subscription.vapid {
+                Some(VapidClaims::from_token(
+                    &vapid.vapid.token,
+                    &vapid.public_key,
+                )?)
+            } else {
+                None
+            };
+            let meta = claims.map(|c| c.meta).unwrap_or_default();
+            if meta.is_some() {
+                trace!("👀 recv'd {}", meta.clone().unwrap());
+            }
             let state = Data::<ServerState>::extract(&req)
                 .await
                 .expect("No server state found");
@@ -108,6 +121,7 @@ impl From<Notification> for autopush_common::notification::Notification {
                     Some(headers)
                 }
             },
+            meta: notification.subscription.meta(),
         }
     }
 }
@@ -170,6 +184,11 @@ impl Notification {
 
             let headers: HashMap<_, _> = self.headers.clone().into();
             map.insert("headers", serde_json::to_value(&headers).unwrap());
+        }
+
+        if let Some(meta) = &self.subscription.meta() {
+            trace!("👀 Serializing for delivery: {}", &meta);
+            map.insert("meta", serde_json::to_value(&meta).unwrap());
         }
 
         map

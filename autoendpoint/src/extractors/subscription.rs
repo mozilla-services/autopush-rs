@@ -2,7 +2,9 @@ use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::extractors::token_info::{ApiVersion, TokenInfo};
 use crate::extractors::user::validate_user;
 use crate::headers::crypto_key::CryptoKeyHeader;
-use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
+use crate::headers::vapid::{
+    VapidClaims, VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData, ONE_DAY_IN_SECONDS,
+};
 use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
@@ -12,15 +14,11 @@ use autopush_common::util::sec_since_epoch;
 use cadence::{CountedExt, StatsdClient};
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::str::FromStr;
 use url::Url;
 use uuid::Uuid;
-
-const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 #[derive(Clone, Debug)]
@@ -28,22 +26,12 @@ pub struct Subscription {
     pub user: DynamoDbUser,
     pub channel_id: Uuid,
     pub vapid: Option<VapidHeaderWithKey>,
+    pub claims: Option<VapidClaims>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VapidClaims {
-    exp: u64,
-    aud: String,
-    sub: String,
-}
-
-impl Default for VapidClaims {
-    fn default() -> Self {
-        Self {
-            exp: sec_since_epoch() + ONE_DAY_IN_SECONDS,
-            aud: "No audience".to_owned(),
-            sub: "No sub".to_owned(),
-        }
+impl Subscription {
+    pub fn meta(&self) -> Option<String> {
+        self.claims.clone().map(|c| c.meta).unwrap_or_default()
     }
 }
 
@@ -101,18 +89,22 @@ impl FromRequest for Subscription {
             validate_user(&user, &channel_id, &state).await?;
 
             // Validate the VAPID JWT token and record the version
-            if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid, &state.settings.endpoint_url())?;
+            let claims = if let Some(vapid) = &vapid {
+                let claims = validate_vapid_jwt(vapid, &state.settings.endpoint_url())?;
 
                 state
                     .metrics
                     .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
-            }
+                Some(claims)
+            } else {
+                None
+            };
 
             Ok(Subscription {
                 user,
                 channel_id,
                 vapid,
+                claims,
             })
         }
         .boxed_local()
@@ -195,7 +187,7 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 /// NOTE: Some customers send a VAPID public key with incorrect padding and
 /// in standard base64 encoding. (Both of these violate the VAPID RFC)
 /// Prior python versions ignored these errors, so we should too.
-fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
+pub fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
     let encoding = if public_key.contains(['/', '+']) {
         base64::STANDARD_NO_PAD
     } else {
@@ -236,43 +228,21 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 /// - Make sure the expiration isn't too far into the future
 ///
 /// This is mostly taken care of by the jsonwebtoken library
-fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()> {
+fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<VapidClaims> {
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
-    let public_key = decode_public_key(public_key)?;
-    let token_data = match jsonwebtoken::decode::<VapidClaims>(
-        &vapid.token,
-        &DecodingKey::from_ec_der(&public_key),
-        &Validation::new(Algorithm::ES256),
-    ) {
-        Ok(v) => v,
-        Err(e) => match e.kind() {
-            // NOTE: This will fail if `exp` is specified as anything instead of a numeric or if a required field is empty
-            jsonwebtoken::errors::ErrorKind::Json(e) => {
-                if e.is_data() {
-                    return Err(VapidError::InvalidVapid(
-                        "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":null). Please correct and retry.".to_owned(),
-                    )
-                    .into());
-                }
-                // Other errors are always possible. Try to be helpful by returning
-                // the Json parse error.
-                return Err(VapidError::InvalidVapid(e.to_string()).into());
-            }
-            _ => return Err(e.into()),
-        },
-    };
+    let claims = VapidClaims::from_token(&vapid.token, public_key)?;
 
     // Check the signature and make sure the expiration is in the future, but not too far
-    if token_data.claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
+    if claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
     }
 
-    let aud = match Url::from_str(&token_data.claims.aud) {
+    let aud = match Url::from_str(&claims.aud) {
         Ok(v) => v,
         Err(_) => {
-            error!("Bad Aud: Invalid audience {:?}", &token_data.claims.aud);
+            error!("Bad Aud: Invalid audience {:?}", &claims.aud);
             return Err(VapidError::InvalidAudience.into());
         }
     };
@@ -282,7 +252,7 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
         return Err(VapidError::InvalidAudience.into());
     }
 
-    Ok(())
+    Ok(claims)
 }
 
 #[cfg(test)]
@@ -324,6 +294,7 @@ mod tests {
             exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
+            ..Default::default()
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
 
@@ -356,6 +327,7 @@ mod tests {
             exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
+            ..Default::default()
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         let header = VapidHeaderWithKey {
@@ -443,6 +415,7 @@ mod tests {
             exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
+            meta: Some("MetaData:1234567890".to_owned()),
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         // try standard form with padding
@@ -454,7 +427,9 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
+        assert!(result.is_ok());
+        dbg!(result.unwrap());
         // try standard form with no padding
         let header = VapidHeaderWithKey {
             public_key: public_key_standard.trim_end_matches('=').to_owned(),

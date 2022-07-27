@@ -1,8 +1,64 @@
-use crate::headers::util::split_key_value;
 use std::collections::HashMap;
+
+use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::error::ApiResult;
+use crate::extractors::subscription::decode_public_key;
+use crate::headers::util::split_key_value;
+
+use autopush_common::util::sec_since_epoch;
+
 pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
+pub const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct VapidClaims {
+    pub exp: u64,
+    pub aud: String,
+    pub sub: String,
+    pub meta: Option<String>,
+}
+
+impl Default for VapidClaims {
+    fn default() -> Self {
+        Self {
+            exp: sec_since_epoch() + ONE_DAY_IN_SECONDS,
+            aud: "No audience".to_owned(),
+            sub: "No sub".to_owned(),
+            meta: None,
+        }
+    }
+}
+
+impl VapidClaims {
+    pub fn from_token(token: &str, public_key: &str) -> ApiResult<Self> {
+        let public_key = decode_public_key(public_key)?;
+        match jsonwebtoken::decode::<VapidClaims>(
+            token,
+            &DecodingKey::from_ec_der(&public_key),
+            &Validation::new(Algorithm::ES256),
+        ) {
+            Ok(v) => Ok(v.claims),
+            Err(e) => match e.kind() {
+                // NOTE: This will fail if `exp` is specified as anything instead of a numeric or if a required field is empty
+                jsonwebtoken::errors::ErrorKind::Json(e) => {
+                    if e.is_data() {
+                        return Err(VapidError::InvalidVapid(
+                            "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":null). Please correct and retry.".to_owned(),
+                        )
+                        .into());
+                    }
+                    // Other errors are always possible. Try to be helpful by returning
+                    // the Json parse error.
+                    Err(VapidError::InvalidVapid(e.to_string()).into())
+                }
+                _ => Err(e.into()),
+            },
+        }
+    }
+}
 
 /// Parses the VAPID authorization header
 #[derive(Clone, Debug, PartialEq)]

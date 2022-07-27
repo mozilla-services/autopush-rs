@@ -124,7 +124,7 @@ impl Router for AdmRouter {
                     self.ddb.as_ref(),
                     "adm",
                     profile,
-                    notification.subscription.user.uaid,
+                    &notification.subscription,
                 )
                 .await)
             }

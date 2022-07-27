@@ -135,6 +135,7 @@ impl Router for FcmRouter {
     }
 
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+        let meta = notification.subscription.meta();
         debug!(
             "Sending FCM notification to UAID {}",
             notification.subscription.user.uaid
@@ -179,7 +180,7 @@ impl Router for FcmRouter {
             .unwrap_or(RouterType::FCM)
         {
             RouterType::GCM => {
-                trace!("Sending message to GCM: [{:?}]", &app_id);
+                trace!("Sending message to GCM: [{:?}] {:?}", &app_id, &meta);
                 if let Err(e) = client.send_gcm(message_data, routing_token, ttl).await {
                     return Err(handle_error(
                         e,
@@ -187,7 +188,7 @@ impl Router for FcmRouter {
                         self.ddb.as_ref(),
                         "gcm",
                         &app_id,
-                        notification.subscription.user.uaid,
+                        &notification.subscription,
                     )
                     .await);
                 }
@@ -202,7 +203,7 @@ impl Router for FcmRouter {
                         self.ddb.as_ref(),
                         "fcmv1",
                         &app_id,
-                        notification.subscription.user.uaid,
+                        &notification.subscription,
                     )
                     .await);
                 }

@@ -141,8 +141,12 @@ impl WebPushRouter {
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
         let url = format!("{}/push/{}", node_id, notification.subscription.user.uaid);
+        let meta = notification.subscription.clone().meta();
         let notification = notification.serialize_for_delivery();
 
+        if let Some(meta) = meta {
+            trace!("👀 Sending {} to {}", meta, url);
+        }
         self.http.put(&url).json(&notification).send().await
     }
 
@@ -204,6 +208,10 @@ impl WebPushRouter {
                 notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
             )
             .with_tag("destination", destination_tag)
+            .with_tag(
+                "internal",
+                &notification.subscription.meta().is_some().to_string(),
+            )
             .send();
 
         RouterResponse {

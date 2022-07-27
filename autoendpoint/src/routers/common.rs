@@ -1,12 +1,11 @@
 use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
-use crate::extractors::notification::Notification;
+use crate::extractors::{notification::Notification, subscription::Subscription};
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, CountedExt, StatsdClient};
 use std::collections::HashMap;
-use uuid::Uuid;
 
 /// Convert a notification into a WebPush message
 pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'static str, String>> {
@@ -43,7 +42,7 @@ pub async fn handle_error(
     ddb: &dyn DbClient,
     platform: &str,
     app_id: &str,
-    uaid: Uuid,
+    subscription: &Subscription,
 ) -> ApiError {
     match &error {
         RouterError::Authentication => {
@@ -55,6 +54,7 @@ pub async fn handle_error(
                 "authentication",
                 error.status(),
                 error.errno(),
+                subscription.meta(),
             );
         }
         RouterError::GCMAuthentication => {
@@ -66,6 +66,7 @@ pub async fn handle_error(
                 "gcm authentication",
                 error.status(),
                 error.errno(),
+                subscription.meta(),
             );
         }
         RouterError::RequestTimeout => {
@@ -77,6 +78,7 @@ pub async fn handle_error(
                 "timeout",
                 error.status(),
                 error.errno(),
+                subscription.meta(),
             );
         }
         RouterError::Connect(e) => {
@@ -88,6 +90,7 @@ pub async fn handle_error(
                 "connection_unavailable",
                 error.status(),
                 error.errno(),
+                subscription.meta(),
             );
         }
         RouterError::NotFound => {
@@ -99,9 +102,10 @@ pub async fn handle_error(
                 "recipient_gone",
                 error.status(),
                 error.errno(),
+                subscription.meta(),
             );
 
-            if let Err(e) = ddb.remove_user(uaid).await {
+            if let Err(e) = ddb.remove_user(subscription.user.uaid).await {
                 warn!("Error while removing user due to bridge not_found: {}", e);
             }
         }
@@ -114,6 +118,7 @@ pub async fn handle_error(
                 "server_error",
                 error.status(),
                 error.errno(),
+                subscription.meta(),
             );
         }
         _ => {
@@ -125,6 +130,7 @@ pub async fn handle_error(
                 "unknown",
                 error.status(),
                 error.errno(),
+                subscription.meta(),
             );
         }
     }
@@ -140,6 +146,7 @@ pub fn incr_error_metric(
     reason: &str,
     status: StatusCode,
     errno: Option<usize>,
+    meta: Option<String>,
 ) {
     // I'd love to extract the status and errno from the passed ApiError, but a2 error handling makes that impossible.
     metrics
@@ -149,6 +156,7 @@ pub fn incr_error_metric(
         .with_tag("reason", reason)
         .with_tag("error", &status.to_string())
         .with_tag("errno", &errno.unwrap_or(0).to_string())
+        .with_tag("internal", &meta.is_some().to_string())
         .send();
 }
 
@@ -163,6 +171,10 @@ pub fn incr_success_metrics(
         .incr_with_tags("notification.bridge.sent")
         .with_tag("platform", platform)
         .with_tag("app_id", app_id)
+        .with_tag(
+            "internal",
+            &notification.subscription.meta().is_some().to_string(),
+        )
         .send();
     metrics
         .count_with_tags(
@@ -172,6 +184,10 @@ pub fn incr_success_metrics(
         .with_tag("platform", platform)
         .with_tag("app_id", app_id)
         .with_tag("destination", "Direct")
+        .with_tag(
+            "internal",
+            &notification.subscription.meta().is_some().to_string(),
+        )
         .send();
 }
 
@@ -209,6 +225,7 @@ pub mod tests {
                 },
                 channel_id: channel_id(),
                 vapid: None,
+                claims: None,
             },
             headers: NotificationHeaders {
                 ttl: 0,
