@@ -12,6 +12,7 @@ use cadence::CountedExt;
 use fernet::MultiFernet;
 use futures::{future, FutureExt};
 use std::collections::HashMap;
+use std::time;
 use uuid::Uuid;
 
 /// Extracts notification data from `Subscription` and request data
@@ -20,8 +21,8 @@ pub struct Notification {
     pub message_id: String,
     pub subscription: Subscription,
     pub headers: NotificationHeaders,
-    /// UNIX timestamp in seconds
-    pub timestamp: u64,
+    /// Reciept time
+    pub timestamp: time::Instant,
     /// UNIX timestamp in milliseconds
     pub sort_key_timestamp: u64,
     pub data: Option<String>,
@@ -70,7 +71,7 @@ impl FromRequest for Notification {
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
-            let timestamp = sec_since_epoch();
+            let timestamp = time::Instant::now();
             let sort_key_timestamp = ms_since_epoch();
             let message_id = Self::generate_message_id(
                 &state.fernet,
@@ -105,12 +106,13 @@ impl FromRequest for Notification {
 
 impl From<Notification> for autopush_common::notification::Notification {
     fn from(notification: Notification) -> Self {
+        let timestamp = notification.timestamp_to_epoch_secs();
         autopush_common::notification::Notification {
             channel_id: notification.subscription.channel_id,
             version: notification.message_id,
             ttl: notification.headers.ttl as u64,
             topic: notification.headers.topic.clone(),
-            timestamp: notification.timestamp,
+            timestamp,
             data: notification.data,
             sortkey_timestamp: Some(notification.sort_key_timestamp),
             headers: {
@@ -177,7 +179,10 @@ impl Notification {
         map.insert("version", serde_json::to_value(&self.message_id).unwrap());
         map.insert("ttl", serde_json::to_value(self.headers.ttl).unwrap());
         map.insert("topic", serde_json::to_value(&self.headers.topic).unwrap());
-        map.insert("timestamp", serde_json::to_value(self.timestamp).unwrap());
+        map.insert(
+            "timestamp",
+            serde_json::to_value(self.timestamp_to_epoch_secs()).unwrap(),
+        );
 
         if let Some(data) = &self.data {
             map.insert("data", serde_json::to_value(&data).unwrap());
@@ -192,5 +197,13 @@ impl Notification {
         }
 
         map
+    }
+
+    pub fn timestamp_to_epoch_secs(&self) -> u64 {
+        sec_since_epoch() + self.timestamp.elapsed().as_secs()
+    }
+
+    pub fn timestamp_to_epoch_millis(&self) -> u64 {
+        ms_since_epoch() + (self.timestamp.elapsed().as_millis() as u64)
     }
 }

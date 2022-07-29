@@ -4,7 +4,7 @@ use crate::extractors::{notification::Notification, subscription::Subscription};
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
 use autopush_common::util::InsertOpt;
-use cadence::{Counted, CountedExt, StatsdClient};
+use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use std::collections::HashMap;
 
 /// Convert a notification into a WebPush message
@@ -167,10 +167,21 @@ pub fn incr_success_metrics(
     app_id: &str,
     notification: &Notification,
 ) {
+    if let Some(meta) = notification.subscription.meta() {
+        trace!("Notification Handoff {:?}", meta);
+    };
     metrics
         .incr_with_tags("notification.bridge.sent")
         .with_tag("platform", platform)
         .with_tag("app_id", app_id)
+        .with_tag(
+            "internal",
+            &notification.subscription.meta().is_some().to_string(),
+        )
+        .send();
+    metrics
+        .time_with_tags("notif.to_router.lifespan", notification.timestamp.elapsed())
+        .with_tag("platform", platform)
         .with_tag(
             "internal",
             &notification.subscription.meta().is_some().to_string(),
@@ -200,6 +211,7 @@ pub mod tests {
     use crate::extractors::subscription::Subscription;
     use autopush_common::db::DynamoDbUser;
     use std::collections::HashMap;
+    use std::time::Instant;
     use uuid::Uuid;
 
     pub const CHANNEL_ID: &str = "deadbeef-13f9-4639-87f9-2ff731824f34";
@@ -235,7 +247,7 @@ pub mod tests {
                 encryption_key: Some("test-encryption-key".to_string()),
                 crypto_key: Some("test-crypto-key".to_string()),
             },
-            timestamp: 0,
+            timestamp: Instant::now(),
             sort_key_timestamp: 0,
             data,
         }

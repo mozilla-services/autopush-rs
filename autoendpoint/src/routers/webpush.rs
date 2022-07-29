@@ -5,6 +5,7 @@ use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::DynamoDbUser;
+use cadence::Timed;
 use cadence::{Counted, CountedExt, StatsdClient};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
@@ -40,8 +41,9 @@ impl Router for WebPushRouter {
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
         let user = &notification.subscription.user;
         debug!(
-            "Routing WebPush notification to UAID {}",
-            notification.subscription.user.uaid
+            "Routing WebPush notification for UAID {} {}",
+            notification.subscription.user.uaid,
+            notification.subscription.meta().unwrap_or_default()
         );
         trace!("Notification = {:?}", notification);
 
@@ -55,10 +57,40 @@ impl Router for WebPushRouter {
                     // The node might be busy, make sure it accepted the notification
                     if response.status() == 200 {
                         // The node has received the notification
-                        trace!("Node received notification");
+                        trace!(
+                            "Node received notification: {}",
+                            notification.subscription.meta().unwrap_or_default()
+                        );
+                        self.metrics
+                            .time_with_tags(
+                                "notif.to_router.lifespan",
+                                notification.timestamp.elapsed().as_millis() as u64,
+                            )
+                            .with_tag("route", "webpush")
+                            .with_tag(
+                                "internal",
+                                &notification.subscription.meta().is_some().to_string(),
+                            )
+                            .send();
+                        self.metrics
+                            .incr_with_tags("notif.route.success")
+                            .with_tag("route", "webpush")
+                            .with_tag(
+                                "internal",
+                                &notification.subscription.meta().is_some().to_string(),
+                            )
+                            .send();
                         return Ok(self.make_delivered_response(notification));
                     }
-
+                    self.metrics
+                        .incr_with_tags("notif.route.error")
+                        .with_tag("route", "webpush")
+                        .with_tag("error", &response.status().to_string())
+                        .with_tag(
+                            "internal",
+                            &notification.subscription.meta().is_some().to_string(),
+                        )
+                        .send();
                     trace!(
                         "Node did not receive the notification, response = {:?}",
                         response
@@ -67,6 +99,15 @@ impl Router for WebPushRouter {
                 Err(error) => {
                     // We should stop sending notifications to this node for this user
                     debug!("Error while sending webpush notification: {}", error);
+                    self.metrics
+                        .incr_with_tags("routing.error")
+                        .with_tag("route", "webpush")
+                        .with_tag("error", &error.to_string())
+                        .with_tag(
+                            "internal",
+                            &notification.subscription.meta().is_some().to_string(),
+                        )
+                        .send();
                     self.remove_node_id(user, node_id.clone()).await?;
                 }
             }
@@ -77,6 +118,27 @@ impl Router for WebPushRouter {
                 "Notification has a TTL of zero and was not successfully \
                  delivered, dropping it"
             );
+            self.metrics
+                .incr_with_tags("notif.route.error")
+                .with_tag("route", "webpush")
+                .with_tag("error", "expired")
+                .with_tag(
+                    "internal",
+                    &notification.subscription.meta().is_some().to_string(),
+                )
+                .send();
+
+            self.metrics
+                .time_with_tags(
+                    "notif.route.error",
+                    notification.timestamp.elapsed().as_millis() as u64,
+                )
+                .with_tag("route", "webpush")
+                .with_tag(
+                    "internal",
+                    &notification.subscription.meta().is_some().to_string(),
+                )
+                .send();
             return Ok(self.make_delivered_response(notification));
         }
 
@@ -91,11 +153,29 @@ impl Router for WebPushRouter {
             Ok(Some(user)) => user,
             Ok(None) => {
                 trace!("No user found, must have been deleted");
+                self.metrics
+                    .incr_with_tags("notif.route.error")
+                    .with_tag("route", "webpush")
+                    .with_tag("error", "no_user_found")
+                    .with_tag(
+                        "internal",
+                        &notification.subscription.meta().is_some().to_string(),
+                    )
+                    .send();
                 return Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into());
             }
             Err(e) => {
                 // Database error, but we already stored the message so it's ok
                 debug!("Database error while re-fetching user: {}", e);
+                self.metrics
+                    .incr_with_tags("notif.route.error")
+                    .with_tag("route", "webpush")
+                    .with_tag("error", "db_error")
+                    .with_tag(
+                        "internal",
+                        &notification.subscription.meta().is_some().to_string(),
+                    )
+                    .send();
                 return Ok(self.make_stored_response(notification));
             }
         };
@@ -106,6 +186,15 @@ impl Router for WebPushRouter {
             // The user is not connected to a node, nothing more to do
             None => {
                 trace!("User is not connected to a node, returning stored response");
+                self.metrics
+                    .incr_with_tags("notif.route.stored")
+                    .with_tag("route", "webpush")
+                    .with_tag(
+                        "internal",
+                        &notification.subscription.meta().is_some().to_string(),
+                    )
+                    .send();
+
                 return Ok(self.make_stored_response(notification));
             }
         };
@@ -117,6 +206,26 @@ impl Router for WebPushRouter {
                 trace!("Response = {:?}", response);
                 if response.status() == 200 {
                     trace!("Node has delivered the message");
+                    self.metrics
+                        .time_with_tags(
+                            "notif.route.lifespan",
+                            notification.timestamp.elapsed().as_millis() as u64,
+                        )
+                        .with_tag("route", "webpush")
+                        .with_tag(
+                            "internal",
+                            &notification.subscription.meta().is_some().to_string(),
+                        )
+                        .send();
+                    self.metrics
+                        .incr_with_tags("notif.route.success")
+                        .with_tag("route", "webpush")
+                        .with_tag(
+                            "internal",
+                            &notification.subscription.meta().is_some().to_string(),
+                        )
+                        .send();
+
                     Ok(self.make_delivered_response(notification))
                 } else {
                     trace!("Node has not delivered the message, returning stored response");
@@ -126,6 +235,26 @@ impl Router for WebPushRouter {
             Err(error) => {
                 // Can't communicate with the node, so we should stop using it
                 debug!("Error while triggering notification check: {}", error);
+                self.metrics
+                    .time_with_tags(
+                        "notif.route.error",
+                        notification.timestamp.elapsed().as_millis() as u64,
+                    )
+                    .with_tag("route", "webpush")
+                    .with_tag(
+                        "internal",
+                        &notification.subscription.meta().is_some().to_string(),
+                    )
+                    .send();
+                self.metrics
+                    .incr_with_tags("notif.route.error")
+                    .with_tag("route", "webpush")
+                    .with_tag("error", &error.to_string())
+                    .with_tag(
+                        "internal",
+                        &notification.subscription.meta().is_some().to_string(),
+                    )
+                    .send();
                 self.remove_node_id(&user, node_id.clone()).await?;
                 Ok(self.make_stored_response(notification))
             }

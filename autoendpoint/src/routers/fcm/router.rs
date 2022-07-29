@@ -9,7 +9,7 @@ use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
-use cadence::StatsdClient;
+use cadence::{StatsdClient, Timed};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -182,6 +182,15 @@ impl Router for FcmRouter {
             RouterType::GCM => {
                 trace!("Sending message to GCM: [{:?}] {:?}", &app_id, &meta);
                 if let Err(e) = client.send_gcm(message_data, routing_token, ttl).await {
+                    self.metrics
+                        .time_with_tags("notif.route.error", notification.timestamp.elapsed())
+                        .with_tag("platform", "gcm")
+                        .with_tag("error", &e.to_string())
+                        .with_tag(
+                            "internal",
+                            &notification.subscription.meta().is_some().to_string(),
+                        )
+                        .send();
                     return Err(handle_error(
                         e,
                         &self.metrics,
@@ -197,6 +206,15 @@ impl Router for FcmRouter {
             _ => {
                 trace!("Sending message to FCM: [{:?}]", &app_id);
                 if let Err(e) = client.send(message_data, routing_token, ttl).await {
+                    self.metrics
+                        .time_with_tags("notif.route.error", notification.timestamp.elapsed())
+                        .with_tag("platform", "gcm")
+                        .with_tag("error", &e.to_string())
+                        .with_tag(
+                            "internal",
+                            &notification.subscription.meta().is_some().to_string(),
+                        )
+                        .send();
                     return Err(handle_error(
                         e,
                         &self.metrics,

@@ -14,7 +14,7 @@ use a2::request::payload::{APSAlert, Payload, APS};
 use a2::{self, Endpoint, NotificationOptions, Priority, Response};
 use actix_web::http::StatusCode;
 use async_trait::async_trait;
-use cadence::StatsdClient;
+use cadence::{StatsdClient, Timed};
 use futures::{StreamExt, TryStreamExt};
 use serde::Deserialize;
 use serde_json::{Number, Value};
@@ -282,6 +282,7 @@ impl Router for ApnsRouter {
             .clients
             .get(channel)
             .ok_or(ApnsError::InvalidReleaseChannel)?;
+        let expr = notification.timestamp_to_epoch_secs() + notification.headers.ttl as u64;
         let payload = Payload {
             aps,
             data: message_data
@@ -294,7 +295,7 @@ impl Router for ApnsRouter {
                 apns_priority: Some(Priority::High),
                 apns_topic: Some(topic),
                 apns_collapse_id: None,
-                apns_expiration: Some(notification.timestamp + notification.headers.ttl as u64),
+                apns_expiration: Some(expr),
             },
         };
 
@@ -306,12 +307,32 @@ impl Router for ApnsRouter {
         message_size_check(payload_json.as_bytes(), self.settings.max_data)?;
 
         // Send to APNS
-        trace!("Sending message to APNS: {:?}", payload);
+        trace!(
+            "Sending message to APNS: {:?}",
+            notification.subscription.meta().unwrap_or_default()
+        );
         if let Err(e) = client.send(payload).await {
+            self.metrics
+                .time_with_tags("notif.route.error", notification.timestamp.elapsed())
+                .with_tag("platform", "apns")
+                .with_tag("error", &e.to_string())
+                .with_tag(
+                    "internal",
+                    &notification.subscription.meta().is_some().to_string(),
+                )
+                .send();
             return Err(self
                 .handle_error(e, &notification.subscription, channel)
                 .await);
         }
+        self.metrics
+            .time_with_tags("notif.route.lifespan", notification.timestamp.elapsed())
+            .with_tag("platform", "apns")
+            .with_tag(
+                "internal",
+                &notification.subscription.meta().is_some().to_string(),
+            )
+            .send();
 
         // Sent successfully, update metrics and make response
         trace!("APNS request was successful");
