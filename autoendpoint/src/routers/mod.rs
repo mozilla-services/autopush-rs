@@ -34,7 +34,7 @@ pub trait Router {
 }
 
 /// The response returned when a router routes a notification
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct RouterResponse {
     pub status: StatusCode,
     pub headers: HashMap<&'static str, String>,
