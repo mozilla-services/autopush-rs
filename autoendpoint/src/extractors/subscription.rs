@@ -12,9 +12,9 @@ use autopush_common::util::sec_since_epoch;
 use cadence::{CountedExt, StatsdClient};
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::borrow::Cow;
 use std::str::FromStr;
 use url::Url;
@@ -32,7 +32,7 @@ pub struct Subscription {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VapidClaims {
-    exp: u64,
+    exp: Value,
     aud: String,
     sub: String,
 }
@@ -40,7 +40,7 @@ pub struct VapidClaims {
 impl Default for VapidClaims {
     fn default() -> Self {
         Self {
-            exp: sec_since_epoch() + ONE_DAY_IN_SECONDS,
+            exp: Value::from(sec_since_epoch() + ONE_DAY_IN_SECONDS),
             aud: "No audience".to_owned(),
             sub: "No sub".to_owned(),
         }
@@ -240,10 +240,15 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
+    // disable automagic exp validation. (It's too strict, it requires a numeric exp, even though
+    // many vapid libraries don't provide it that way.)
+    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::ES256);
+    validation.validate_exp = false;
+    validation.required_spec_claims.remove("exp");
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
-        &DecodingKey::from_ec_der(&public_key),
-        &Validation::new(Algorithm::ES256),
+        &jsonwebtoken::DecodingKey::from_ec_der(&public_key),
+        &validation,
     ) {
         Ok(v) => v,
         Err(e) => match e.kind() {
@@ -259,12 +264,30 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
                 // the Json parse error.
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
-            _ => return Err(e.into()),
+            _ => return {
+                Err(e.into())
+            },
         },
     };
 
-    // Check the signature and make sure the expiration is in the future, but not too far
-    if token_data.claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
+    let exp = if token_data.claims.exp.is_string() {
+            u64::from_str(token_data.claims.exp.as_str().unwrap_or_default()).unwrap_or_default()
+        } else if token_data.claims.exp.is_u64() {
+            token_data.claims.exp.as_u64().unwrap_or_default()
+        } else {
+            warn!("Invalid exp value {:?}", &token_data.claims.exp);
+            0
+        };
+
+    if exp == 0 {
+        warn!("Invalid exp value {:?}", token_data.claims.exp);
+        return Err(VapidError::InvalidVapid(
+            "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":null). Please correct and retry.".to_owned(),
+        )
+        .into());
+    };
+
+    if exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
     }
@@ -293,6 +316,7 @@ mod tests {
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
     use autopush_common::util::sec_since_epoch;
     use serde::{Deserialize, Serialize};
+    use serde_json::Value;
     use std::str::FromStr;
     use url::Url;
 
@@ -321,7 +345,7 @@ mod tests {
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
         let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: Value::from(sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100),
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
@@ -353,7 +377,7 @@ mod tests {
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
         let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: Value::from(sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100),
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
@@ -408,14 +432,51 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let vv = validate_vapid_jwt(&header, &Url::from_str("http://example.org").unwrap())
-            .unwrap_err()
-            .kind;
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn vapid_exp_is_float() {
+        #[derive(Debug, Deserialize, Serialize)]
+        struct StrExpVapidClaims {
+            exp: f64,
+            aud: String,
+            sub: String,
+        }
+
+        let priv_key = base64::decode_config(
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
+                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+            base64::STANDARD,
+        )
+        .unwrap();
+        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
+        let domain = "https://push.services.mozilla.org";
+        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let claims = StrExpVapidClaims {
+            exp: (sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100) as f64,
+            aud: domain.to_owned(),
+            sub: "mailto:admin@example.com".to_owned(),
+        };
+        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
+        let header = VapidHeaderWithKey {
+            public_key,
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token,
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
         assert!(matches![
-            vv,
+            result.unwrap_err().kind,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
         ])
     }
+
 
     #[test]
     fn vapid_public_key_variants() {
@@ -440,7 +501,7 @@ mod tests {
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
         let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: Value::from(sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100),
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
