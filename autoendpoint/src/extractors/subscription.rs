@@ -264,20 +264,18 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
                 // the Json parse error.
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
-            _ => return {
-                Err(e.into())
-            },
+            _ => return Err(e.into()),
         },
     };
 
     let exp = if token_data.claims.exp.is_string() {
-            u64::from_str(token_data.claims.exp.as_str().unwrap_or_default()).unwrap_or_default()
-        } else if token_data.claims.exp.is_u64() {
-            token_data.claims.exp.as_u64().unwrap_or_default()
-        } else {
-            warn!("Invalid exp value {:?}", &token_data.claims.exp);
-            0
-        };
+        u64::from_str(token_data.claims.exp.as_str().unwrap_or_default()).unwrap_or_default()
+    } else if token_data.claims.exp.is_u64() {
+        token_data.claims.exp.as_u64().unwrap_or_default()
+    } else {
+        warn!("Invalid exp value {:?}", &token_data.claims.exp);
+        0
+    };
 
     if exp == 0 {
         warn!("Invalid exp value {:?}", token_data.claims.exp);
@@ -476,7 +474,6 @@ mod tests {
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
         ])
     }
-
 
     #[test]
     fn vapid_public_key_variants() {
