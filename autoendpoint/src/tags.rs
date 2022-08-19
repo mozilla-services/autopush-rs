@@ -73,6 +73,14 @@ impl Tags {
         self.tags.extend(tags);
     }
 
+    pub fn tag(&mut self, key: String, value: String) {
+        self.tags.insert(key, value);
+    }
+
+    pub fn extra(&mut self, key: String, value: String) {
+        self.extra.insert(key, value);
+    }
+
     pub fn tag_tree(self) -> BTreeMap<String, String> {
         let mut result = BTreeMap::new();
 

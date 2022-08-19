@@ -3,7 +3,9 @@ use crate::extractors::token_info::{ApiVersion, TokenInfo};
 use crate::extractors::user::validate_user;
 use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
+use crate::metrics::Metrics;
 use crate::server::ServerState;
+use crate::tags::Tags;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
@@ -61,6 +63,7 @@ impl FromRequest for Subscription {
             trace!("Token info: {:?}", &token_info);
             let state: Data<ServerState> =
                 Data::extract(&req).await.expect("No server state found");
+            let metrics = Metrics::from(&state);
 
             // Decrypt the token
             let token = state
@@ -102,7 +105,7 @@ impl FromRequest for Subscription {
 
             // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid, &state.settings.endpoint_url())?;
+                validate_vapid_jwt(vapid, &state.settings.endpoint_url(), &metrics)?;
 
                 state
                     .metrics
@@ -236,7 +239,11 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 /// - Make sure the expiration isn't too far into the future
 ///
 /// This is mostly taken care of by the jsonwebtoken library
-fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()> {
+fn validate_vapid_jwt(
+    vapid: &VapidHeaderWithKey,
+    domain: &Url,
+    metrics: &Metrics,
+) -> ApiResult<()> {
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
@@ -252,8 +259,12 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
     ) {
         Ok(v) => v,
         Err(e) => match e.kind() {
-            // NOTE: This will fail if `exp` is specified as anything instead of a numeric or if a required field is empty
             jsonwebtoken::errors::ErrorKind::Json(e) => {
+                let mut tags = Tags::default();
+                tags.tag("error".to_owned(), e.to_string());
+                metrics
+                    .clone()
+                    .incr_with_tags("notification.auth.bad_vapid.json", Some(tags));
                 if e.is_data() {
                     return Err(VapidError::InvalidVapid(
                         "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":null). Please correct and retry.".to_owned(),
@@ -264,13 +275,18 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
                 // the Json parse error.
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
-            _ => return Err(e.into()),
+            _ => {
+                metrics.clone().incr("notification.auth.bad_vapid.other");
+                return Err(e.into());
+            }
         },
     };
 
     let exp = if token_data.claims.exp.is_string() {
+        metrics.clone().incr("notification.auth.str_exp");
         u64::from_str(token_data.claims.exp.as_str().unwrap_or_default()).unwrap_or_default()
     } else if token_data.claims.exp.is_u64() {
+        metrics.clone().incr("notification.auth.num_exp");
         token_data.claims.exp.as_u64().unwrap_or_default()
     } else {
         warn!("Invalid exp value {:?}", &token_data.claims.exp);
@@ -279,6 +295,7 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
 
     if exp == 0 {
         warn!("Invalid exp value {:?}", token_data.claims.exp);
+        metrics.clone().incr("notification.auth.bad_vapid.exp");
         return Err(VapidError::InvalidVapid(
             "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":null). Please correct and retry.".to_owned(),
         )
@@ -294,12 +311,14 @@ fn validate_vapid_jwt(vapid: &VapidHeaderWithKey, domain: &Url) -> ApiResult<()>
         Ok(v) => v,
         Err(_) => {
             error!("Bad Aud: Invalid audience {:?}", &token_data.claims.aud);
+            metrics.clone().incr("notification.auth.bad_vapid.aud");
             return Err(VapidError::InvalidAudience.into());
         }
     };
 
     if domain != &aud {
         error!("Bad Aud: I am <{:?}>, asked for <{:?}> ", domain, aud);
+        metrics.clone().incr("notification.auth.bad_vapid.domain");
         return Err(VapidError::InvalidAudience.into());
     }
 
@@ -312,6 +331,7 @@ mod tests {
     use crate::error::ApiErrorKind;
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
+    use crate::metrics::Metrics;
     use autopush_common::util::sec_since_epoch;
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
@@ -357,7 +377,7 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop());
         assert!(result.is_ok());
     }
 
@@ -389,9 +409,13 @@ mod tests {
             },
         };
         assert!(matches!(
-            validate_vapid_jwt(&header, &Url::from_str("http://example.org").unwrap())
-                .unwrap_err()
-                .kind,
+            validate_vapid_jwt(
+                &header,
+                &Url::from_str("http://example.org").unwrap(),
+                &Metrics::noop()
+            )
+            .unwrap_err()
+            .kind,
             ApiErrorKind::VapidError(VapidError::InvalidAudience)
         ));
     }
@@ -430,7 +454,7 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop());
         assert!(result.is_ok());
     }
 
@@ -468,7 +492,7 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop());
         assert!(matches![
             result.unwrap_err().kind,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
@@ -512,7 +536,9 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        assert!(
+            validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop()).is_ok()
+        );
         // try standard form with no padding
         let header = VapidHeaderWithKey {
             public_key: public_key_standard.trim_end_matches('=').to_owned(),
@@ -522,7 +548,9 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        assert!(
+            validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop()).is_ok()
+        );
         // try URL safe form with padding
         let header = VapidHeaderWithKey {
             public_key: public_key_url_safe.clone(),
@@ -532,7 +560,9 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        assert!(
+            validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop()).is_ok()
+        );
         // try URL safe form without padding
         let header = VapidHeaderWithKey {
             public_key: public_key_url_safe.trim_end_matches('=').to_owned(),
@@ -542,7 +572,9 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &Url::from_str(domain).unwrap()).is_ok());
+        assert!(
+            validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop()).is_ok()
+        );
     }
 
     #[test]
@@ -579,9 +611,13 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let vv = validate_vapid_jwt(&header, &Url::from_str("http://example.org").unwrap())
-            .unwrap_err()
-            .kind;
+        let vv = validate_vapid_jwt(
+            &header,
+            &Url::from_str("http://example.org").unwrap(),
+            &Metrics::noop(),
+        )
+        .unwrap_err()
+        .kind;
         assert!(matches![
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
