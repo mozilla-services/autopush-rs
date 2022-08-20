@@ -611,11 +611,7 @@ mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let vv = validate_vapid_jwt(
-            &header,
-            &Url::from_str(domain).unwrap(),
-            &Metrics::noop(),
-        );
+        let vv = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop());
         assert!(vv.is_ok());
         /*
         See https://www.rfc-editor.org/rfc/rfc8292.html#section-2.1
