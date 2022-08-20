@@ -36,7 +36,7 @@ pub struct Subscription {
 pub struct VapidClaims {
     exp: Value,
     aud: String,
-    sub: String,
+    sub: Option<String>,
 }
 
 impl Default for VapidClaims {
@@ -44,7 +44,7 @@ impl Default for VapidClaims {
         Self {
             exp: Value::from(sec_since_epoch() + ONE_DAY_IN_SECONDS),
             aud: "No audience".to_owned(),
-            sub: "No sub".to_owned(),
+            sub: None,
         }
     }
 }
@@ -365,7 +365,7 @@ mod tests {
         let claims = VapidClaims {
             exp: Value::from(sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100),
             aud: domain.to_owned(),
-            sub: "mailto:admin@example.com".to_owned(),
+            sub: Some("mailto:admin@example.com".to_owned()),
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
 
@@ -397,7 +397,7 @@ mod tests {
         let claims = VapidClaims {
             exp: Value::from(sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100),
             aud: domain.to_owned(),
-            sub: "mailto:admin@example.com".to_owned(),
+            sub: Some("mailto:admin@example.com".to_owned()),
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         let header = VapidHeaderWithKey {
@@ -524,7 +524,7 @@ mod tests {
         let claims = VapidClaims {
             exp: Value::from(sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100),
             aud: domain.to_owned(),
-            sub: "mailto:admin@example.com".to_owned(),
+            sub: None,
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         // try standard form with padding
