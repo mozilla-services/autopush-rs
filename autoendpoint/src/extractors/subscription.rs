@@ -613,14 +613,12 @@ mod tests {
         };
         let vv = validate_vapid_jwt(
             &header,
-            &Url::from_str("http://example.org").unwrap(),
+            &Url::from_str(domain).unwrap(),
             &Metrics::noop(),
-        )
-        .unwrap_err()
-        .kind;
-        assert!(matches![
-            vv,
-            ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
-        ])
+        );
+        assert!(vv.is_ok());
+        /*
+        See https://www.rfc-editor.org/rfc/rfc8292.html#section-2.1
+        */
     }
 }
