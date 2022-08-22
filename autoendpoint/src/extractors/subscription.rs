@@ -288,6 +288,9 @@ fn validate_vapid_jwt(
     } else if token_data.claims.exp.is_u64() {
         metrics.clone().incr("notification.auth.num_exp");
         token_data.claims.exp.as_u64().unwrap_or_default()
+    } else if token_data.claims.exp.is_f64() {
+        metrics.clone().incr("notification.auth.num_exp");
+        token_data.claims.exp.as_f64().unwrap_or_default().floor() as u64
     } else {
         warn!("Invalid exp value {:?}", &token_data.claims.exp);
         0
