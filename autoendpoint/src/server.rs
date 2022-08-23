@@ -24,6 +24,7 @@ use actix_web::{
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -51,7 +52,11 @@ impl Server {
             settings.router_table_name.clone(),
             settings.message_table_name.clone(),
         )?);
-        let http = reqwest::Client::new();
+        let http = reqwest::ClientBuilder::new()
+            .connect_timeout(Duration::from_millis(settings.connection_timeout_millis))
+            .timeout(Duration::from_millis(settings.request_timeout_millis))
+            .build()
+            .expect("Could not generate request client");
         let fcm_router = Arc::new(
             FcmRouter::new(
                 settings.fcm.clone(),
