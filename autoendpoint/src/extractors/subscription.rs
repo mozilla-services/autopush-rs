@@ -22,6 +22,7 @@ use std::str::FromStr;
 use url::Url;
 use uuid::Uuid;
 
+const EXP_GRACE_PERIOD_SECS: u64 = 3600;
 const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
@@ -244,6 +245,7 @@ fn validate_vapid_jwt(
     domain: &Url,
     metrics: &Metrics,
 ) -> ApiResult<()> {
+
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
@@ -261,7 +263,12 @@ fn validate_vapid_jwt(
         Err(e) => match e.kind() {
             jsonwebtoken::errors::ErrorKind::Json(e) => {
                 let mut tags = Tags::default();
-                tags.tag("error".to_owned(), e.to_string());
+                tags.tag("error".to_owned(), match e.classify() {
+                    serde_json::error::Category::Io => "IO_ERROR",
+                    serde_json::error::Category::Syntax => "SYNTAX_ERROR",
+                    serde_json::error::Category::Data => "DATA_ERROR",
+                    serde_json::error::Category::Eof => "EOF_ERROR",
+                }.to_owned());
                 metrics
                     .clone()
                     .incr_with_tags("notification.auth.bad_vapid.json", Some(tags));
@@ -305,6 +312,10 @@ fn validate_vapid_jwt(
         .into());
     };
 
+    if exp < (sec_since_epoch() - EXP_GRACE_PERIOD_SECS) {
+        return Err(VapidError::InvalidExpiry.into())
+    }
+
     if exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
@@ -330,7 +341,7 @@ fn validate_vapid_jwt(
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_vapid_jwt, VapidClaims};
+    use super::{validate_vapid_jwt, VapidClaims, EXP_GRACE_PERIOD_SECS};
     use crate::error::ApiErrorKind;
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
@@ -504,6 +515,51 @@ mod tests {
         ])
         // */
     }
+
+    #[test]
+    fn vapid_exp_is_exp() {
+        #[derive(Debug, Deserialize, Serialize)]
+        struct StrExpVapidClaims {
+            exp: u64,
+            aud: String,
+            sub: String,
+        }
+
+        let priv_key = base64::decode_config(
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
+                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+            base64::STANDARD,
+        )
+        .unwrap();
+        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
+        let domain = "https://push.services.mozilla.org";
+        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let claims = StrExpVapidClaims {
+            exp: sec_since_epoch() - (EXP_GRACE_PERIOD_SECS + 100),
+            aud: domain.to_owned(),
+            sub: "mailto:admin@example.com".to_owned(),
+        };
+        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
+        let header = VapidHeaderWithKey {
+            public_key,
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token,
+                version_data: VapidVersionData::Version1,
+            },
+        };
+        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop());
+        // assert!(result.is_ok())
+        //*
+        assert!(matches![
+            result.unwrap_err().kind,
+            ApiErrorKind::VapidError(VapidError::InvalidExpiry)
+        ])
+        // */
+    }
+
 
     #[test]
     fn vapid_public_key_variants() {
