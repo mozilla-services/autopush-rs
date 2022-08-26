@@ -6,6 +6,9 @@
 //! loop handler, and those will need to be ported over to aserver.
 //! Broadcast functions should probably be extricated and put into
 //! a specific broadcast module.
+//!
+//! see crate::server::aserver for the new server stuff.
+//!
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;

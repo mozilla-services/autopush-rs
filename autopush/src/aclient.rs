@@ -46,7 +46,7 @@ use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
 use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse, UserRecord};
-use autopush_common::error::ApiResult;
+use autopush_common::errors::ApiResult;
 use autopush_common::endpoint::make_endpoint;
 use autopush_common::notification::Notification;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
@@ -68,10 +68,17 @@ pub struct RegisteredClient {
     pub tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
-struct Client;
+#[derive(Default)]
+pub struct Client;
 
 impl Actor for Client {
     type Context = ws::WebsocketContext<Self>;
+
+    /// TODO: finish
+    fn started(&mut self, ctx: &mut Self::Context) {
+        // TODO: if !authorized timeout 'til "hello"
+        // if authorized, set ping timeout
+    }
 }
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Client {

@@ -7,7 +7,9 @@ use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 
 lazy_static! {
-    static ref HOSTNAME: String = mozsvc_common::get_hostname().expect("Couldn't get_hostname");
+    static ref HOSTNAME: String = mozsvc_common::get_hostname().expect("Couldn't get_hostname").into_string().unwrap_or_else(
+        |e| panic!("Could not decode hostname {:?}", e)
+    );
     static ref RESOLVED_HOSTNAME: String = resolve_ip(&HOSTNAME)
         .unwrap_or_else(|_| panic!("Failed to resolve hostname: {}", *HOSTNAME));
 }
@@ -96,18 +98,18 @@ impl Default for Settings {
 impl Settings {
     /// Load the settings from the config files in order first then the environment.
     pub fn with_env_and_config_files(filenames: &[String]) -> Result<Self, ConfigError> {
-        let mut s = Config::default();
+        let mut s = Config::builder();
         // Set our defaults, this can be fixed up drastically later after:
         // https://github.com/mehcode/config-rs/issues/60
 
         // Merge the configs from the files
         for filename in filenames {
-            s.merge(File::with_name(filename))?;
+            s.add_source(File::with_name(filename));
         }
 
         // Merge the environment overrides
-        s.merge(Environment::with_prefix("autopush").separator("__"))?;
-        s.try_into::<Settings>()
+        s.add_source(Environment::with_prefix("autopush").separator("__"));
+        s.build().try_into()
     }
 
     pub fn router_url(&self) -> String {

@@ -1,7 +1,10 @@
+//! actix4 based websocket compliant server
+
 use std::sync::Arc;
 
-use actix::{Actor, StreamHandler};
+use actix::{Actor, StreamHandler, ActorContext};
 use actix_cors::Cors;
+use actix_http::ws::{CloseReason, CloseCode};
 use actix_web::{
     dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpRequest, HttpResponse,
     HttpServer,
@@ -17,6 +20,8 @@ use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::db::postgres::PgClientImpl;
 use autopush_common::db::DbCommandClient;
 use autopush_common::tags::Tags;
+use autopush_common::errors::{ApiError, ApiErrorKind};
+use crate::aclient::Client;
 use crate::server::middleware::sentry::SentryWrapper;
 use crate::routes::health;
 use crate::http::Push;
@@ -26,6 +31,7 @@ use crate::settings::Settings;
 // TODO: Port SentryWrapper from autoendpoint to autopush_common?
 use autopush_common::errors::ApiResult;
 
+/*
 /// Generic socket handler WebSocket connections.
 pub struct SocketHandler;
 
@@ -41,13 +47,14 @@ impl Actor for SocketHandler {
 
 // TODO: finish this
 // handle the various websocket message types, passing off to proper functions.
+// duplicate with aclient::Client::handle()
 impl StreamHandler<ApiResult<ws::Message>> for SocketHandler {
     fn handle(&mut self, msg: ApiResult<ws::Message>, ctx: &mut Self::Context) {
         // process websocket messages
         match msg {
-            Ok(ws::Message::Ping(_)) => {
+            Ok(ws::Message::Ping(m)) => {
                 // TODO: Megaphone?
-                ctx.pong(&msg);
+                ctx.pong(&m);
             }
             Ok(ws::Message::Pong(_)) => {
                 // whatever
@@ -55,18 +62,38 @@ impl StreamHandler<ApiResult<ws::Message>> for SocketHandler {
             Ok(ws::Message::Text(text)) => return self.do_command(text),
             Ok(ws::Message::Binary(_)) => {
                 error!("Unsupported call");
-                ctx.close("Unsupported");
-                ctx.stop();
+                ctx.close(Some(CloseReason{
+                    code: CloseCode::Invalid,
+                    description: Some("Unsupported".to_owned())
+                }));
+                ctx.terminate();
             }
             Ok(ws::Message::Close(reason)) => {
                 info!("Closing, reason: {:?}", reason);
-                ctx.close(reason);
-                ctx.stop();
+                ctx.close(Some(CloseReason{
+                    code: CloseCode::Invalid,
+                    description: Some("Unsupported".to_owned())
+                }));
+                ctx.terminate();
             }
-            _ => ctx.stop(),
+            _ =>
+            {
+                ctx.close(Some(CloseReason{
+                    code: CloseCode::Invalid,
+                    description: Some("Unsupported".to_owned())
+                }));
+                ctx.terminate();
+            }
         }
     }
 }
+
+impl SocketHandler {
+    pub async fn do_command(&mut self, cmd: &[u8]) -> ApiResult<()> {
+        //
+    }
+}
+// */
 
 /// common server data
 pub struct PushServerData;
@@ -87,12 +114,12 @@ impl Server {
         req: HttpRequest,
         stream: web::Payload,
     ) -> ApiResult<HttpResponse> {
-        ws::start(SocketHandler::new(), &req, stream)
+        ws::start(Client::default(), &req, stream).map_err(|e| ApiErrorKind::GeneralError(e.to_string()).into())
     }
 
     async fn with_settings(&self, settings: &Settings) -> ApiResult<dev::Server> {
-        let metrics = Arc::new(metrics::new_metrics(&settings.statsd_host, settings.statsd_port)?);
-        let bind_address = format!("{}:{}", settings.host, settings.port);
+        let metrics = Arc::new(metrics::new_metrics(Some(settings.statsd_host), settings.statsd_port)?);
+        let bind_address = format!("{}:{}", settings.hostname.unwrap_or("localhost".into()), settings.port);
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
         let db: Box<dyn DbClient> = match settings.use_ddb {
@@ -127,7 +154,7 @@ impl Server {
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(health::lb_heartbeat_route)))
                 .service(web::resource("/__version__").route(web::get().to(health::version_route)))
                 // websocket handler
-                .service(web::resource("/".route(web::get().to(self.socket_handler))))
+                .service(web::resource("/").route(web::get().to(self.socket_handler)))
                 .route("/")
         })
         .bind(bind_address))

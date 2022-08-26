@@ -63,7 +63,7 @@ impl Write for WebpushIo {
 impl AsyncRead for WebpushIo {}
 
 impl AsyncWrite for WebpushIo {
-    fn shutdown(&mut self) -> Poll<(), io::Error> {
+    fn shutdown(&mut self) -> Poll<()> {
         AsyncWrite::shutdown(&mut self.tcp)
     }
 }

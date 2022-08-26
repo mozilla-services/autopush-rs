@@ -66,7 +66,7 @@ impl MegaphoneUpdater {
 impl Future for MegaphoneUpdater {
     type Output = ();
 
-    fn poll(&mut self) -> Poll<(), ApiError> {
+    fn poll(&mut self) -> Poll<()> {
         loop {
             let new_state = match self.state {
                 MegaphoneState::Waiting => {
@@ -162,7 +162,7 @@ impl PingManager {
 impl Future for PingManager {
     type Output = ();
 
-    fn poll(&mut self) -> Poll<(), ApiError> {
+    fn poll(&mut self) -> Poll<()> {
         let mut socket = self.socket.borrow_mut();
         loop {
             if socket.ws_ping {

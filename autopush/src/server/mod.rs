@@ -29,17 +29,17 @@ use serde_json::{self, json};
 use autopush_common::errors::{ApiErrorKind, ApiResult};
 use autopush_common::notification::Notification;
 
-use crate::server::webpush_io::WebpushIo;
+// use crate::server::webpush_io::WebpushIo;
 use crate::settings::Settings;
 
 pub mod aserver;
-mod dispatch;
+// mod dispatch;
 mod megaphone;
 mod middleware;
 pub mod protocol;
 mod rc;
 pub mod registry;
-mod tls;
+// mod tls;
 mod webpush_io;
 
 const UAHEADER: &str = "User-Agent";
@@ -146,6 +146,7 @@ impl ServerOptions {
     }
 }
 
+/*
 /// Return a static copy of `version.json` from compile time.
 pub async fn write_version_file(socket: WebpushIo) -> ApiResult<()> {
     write_json(
@@ -209,3 +210,4 @@ async fn write_json(
         .await?;
     Ok(())
 }
+*/

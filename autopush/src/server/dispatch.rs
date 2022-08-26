@@ -31,7 +31,7 @@ use tokio_io::AsyncRead;
 use autopush_common::errors::*;
 
 use crate::server::tls::MaybeTlsStream;
-use crate::server::webpush_io::WebpushIo;
+// use crate::server::webpush_io::WebpushIo;
 
 pub struct Dispatch {
     socket: Option<MaybeTlsStream<TcpStream>>,
