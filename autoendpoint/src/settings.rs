@@ -27,6 +27,9 @@ pub struct Settings {
     pub auth_keys: String,
     pub human_logs: bool,
 
+    pub connection_timeout_millis: u64,
+    pub request_timeout_millis: u64,
+
     pub statsd_host: Option<String>,
     pub statsd_port: u16,
     pub statsd_label: String,
@@ -53,6 +56,8 @@ impl Default for Settings {
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             human_logs: false,
+            connection_timeout_millis: 1000,
+            request_timeout_millis: 3000,
             statsd_host: None,
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
