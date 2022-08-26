@@ -245,7 +245,6 @@ fn validate_vapid_jwt(
     domain: &Url,
     metrics: &Metrics,
 ) -> ApiResult<()> {
-
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
@@ -263,12 +262,16 @@ fn validate_vapid_jwt(
         Err(e) => match e.kind() {
             jsonwebtoken::errors::ErrorKind::Json(e) => {
                 let mut tags = Tags::default();
-                tags.tag("error".to_owned(), match e.classify() {
-                    serde_json::error::Category::Io => "IO_ERROR",
-                    serde_json::error::Category::Syntax => "SYNTAX_ERROR",
-                    serde_json::error::Category::Data => "DATA_ERROR",
-                    serde_json::error::Category::Eof => "EOF_ERROR",
-                }.to_owned());
+                tags.tag(
+                    "error".to_owned(),
+                    match e.classify() {
+                        serde_json::error::Category::Io => "IO_ERROR",
+                        serde_json::error::Category::Syntax => "SYNTAX_ERROR",
+                        serde_json::error::Category::Data => "DATA_ERROR",
+                        serde_json::error::Category::Eof => "EOF_ERROR",
+                    }
+                    .to_owned(),
+                );
                 metrics
                     .clone()
                     .incr_with_tags("notification.auth.bad_vapid.json", Some(tags));
@@ -313,7 +316,7 @@ fn validate_vapid_jwt(
     };
 
     if exp < (sec_since_epoch() - EXP_GRACE_PERIOD_SECS) {
-        return Err(VapidError::InvalidExpiry.into())
+        return Err(VapidError::InvalidExpiry.into());
     }
 
     if exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
@@ -559,7 +562,6 @@ mod tests {
         ])
         // */
     }
-
 
     #[test]
     fn vapid_public_key_variants() {
