@@ -1345,6 +1345,10 @@ fn emit_metrics_for_send(metrics: &StatsdClient, notif: &Notification, source: &
         metrics.incr("ua.notification.topic").ok();
     }
     metrics
+        .incr_with_tags("ua.notification.sent")
+        .with_tag("source", source)
+        .send();
+    metrics
         .count_with_tags(
             "ua.message_data",
             notif.data.as_ref().map_or(0, |data| data.len() as i64),

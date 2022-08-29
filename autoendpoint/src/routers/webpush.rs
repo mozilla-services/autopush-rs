@@ -77,6 +77,7 @@ impl Router for WebPushRouter {
                 "Notification has a TTL of zero and was not successfully \
                  delivered, dropping it"
             );
+            self.metrics.incr("notification.message.expired")?;
             return Ok(self.make_delivered_response(notification));
         }
 
@@ -166,6 +167,9 @@ impl WebPushRouter {
             )
             .await
             .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
+            .map(|_| {
+                self.metrics.incr("notification.message.stored").ok();
+            })
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer
