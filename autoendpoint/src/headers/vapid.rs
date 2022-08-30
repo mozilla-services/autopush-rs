@@ -61,7 +61,7 @@ impl VapidClaims {
 }
 
 /// Parses the VAPID authorization header
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VapidHeader {
     pub scheme: String,
     pub token: String,
@@ -77,7 +77,7 @@ pub struct VapidHeaderWithKey {
 }
 
 /// Version-specific VAPID data. Also used to identify the VAPID version.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VapidVersionData {
     Version1,
     Version2 { public_key: String },
@@ -133,7 +133,7 @@ impl VapidHeader {
     }
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub enum VapidError {
     #[error("Missing VAPID token")]
     MissingToken,

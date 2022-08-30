@@ -63,7 +63,7 @@ impl From<HashMap<String, String>> for NotificationHeaders {
     }
 }
 
-#[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
+#[derive(Deserialize, Eq, PartialEq, Debug, Clone, Serialize)]
 pub struct DynamoDbUser {
     // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
