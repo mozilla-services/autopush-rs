@@ -168,7 +168,11 @@ impl WebPushRouter {
             .await
             .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
             .map(|_| {
-                self.metrics.incr("notification.message.stored").ok();
+                self.metrics
+                    .incr_with_tags("notification.message.stored")
+                    .with_tag("topic", &notification.headers.topic.is_some().to_string())
+                    // TODO: include `internal` if meta is set.
+                    .send();
             })
     }
 

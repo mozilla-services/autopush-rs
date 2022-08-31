@@ -349,11 +349,15 @@ impl DynamoStorage {
         messages: Vec<Notification>,
     ) -> impl Future<Item = (), Error = Error> {
         let ddb = self.ddb.clone();
-        let item_count = messages.len();
         let metrics = self.metrics.clone();
         let put_items: Vec<WriteRequest> = messages
             .into_iter()
             .filter_map(|n| {
+                // eventually include `internal` if `meta` defined.
+                metrics
+                    .incr_with_tags("notification.message.stored")
+                    .with_tag("topic", &n.topic.is_some().to_string())
+                    .send();
                 serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, n))
                     .ok()
                     .map(|hm| WriteRequest {
@@ -371,12 +375,7 @@ impl DynamoStorage {
             move || ddb.batch_write_item(batch_input.clone()),
             retryable_batchwriteitem_error,
         )
-        .and_then(move |_| {
-            metrics
-                .count("notification.message.stored", item_count as i64)
-                .ok();
-            future::ok(())
-        })
+        .and_then(move |_| future::ok(()))
         .map_err(|err| {
             debug!("Error saving notification: {:?}", err);
             err
@@ -442,10 +441,10 @@ impl DynamoStorage {
             // Return now from this future if we have messages
             if !resp.messages.is_empty() {
                 debug!("Topic message returns: {:?}", resp.messages);
-                // should we incidcate that these are topic messages?
                 rmetrics
-                    .count("notification.message.retrieved", resp.messages.len() as i64)
-                    .ok();
+                    .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
+                    .with_tag("topic", "true")
+                    .send();
                 return Box::new(future::ok(CheckStorageResponse {
                     include_topic: true,
                     messages: resp.messages,
@@ -477,8 +476,9 @@ impl DynamoStorage {
                 // value if passed one
                 let timestamp = resp.timestamp.or(timestamp);
                 rmetrics
-                    .count("notification.message.retrieved", resp.messages.len() as i64)
-                    .ok();
+                    .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
+                    .with_tag("topic", "false")
+                    .send();
                 Ok(CheckStorageResponse {
                     include_topic: false,
                     messages: resp.messages,
