@@ -375,7 +375,7 @@ impl DynamoStorage {
             move || ddb.batch_write_item(batch_input.clone()),
             retryable_batchwriteitem_error,
         )
-        .and_then(move |_| future::ok(()))
+        .and_then(|_| future::ok(()))
         .map_err(|err| {
             debug!("Error saving notification: {:?}", err);
             err
