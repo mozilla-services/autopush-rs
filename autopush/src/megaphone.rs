@@ -67,7 +67,7 @@ struct BroadcastRevision {
 
 // A provided Broadcast/Version used for `BroadcastSubsInit`, client comparisons, and outgoing
 // deltas
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Broadcast {
     broadcast_id: String,
     version: String,
