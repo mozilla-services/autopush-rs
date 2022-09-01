@@ -3,7 +3,7 @@ use std::env;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use cadence::StatsdClient;
+use cadence::{Counted, CountedExt, StatsdClient};
 use futures::{future, Future};
 use futures_backoff::retry_if;
 use rusoto_core::{HttpClient, Region};
@@ -329,12 +329,15 @@ impl DynamoStorage {
             table_name: message_month,
             ..Default::default()
         };
-
+        let metrics = self.metrics.clone();
         retry_if(
             move || ddb.put_item(put_item.clone()),
             retryable_putitem_error,
         )
-        .and_then(|_| future::ok(()))
+        .and_then(move |_| {
+            metrics.incr("notification.db.stored").ok();
+            future::ok(())
+        })
         .chain_err(|| "Error saving notification")
     }
 
@@ -346,9 +349,15 @@ impl DynamoStorage {
         messages: Vec<Notification>,
     ) -> impl Future<Item = (), Error = Error> {
         let ddb = self.ddb.clone();
+        let metrics = self.metrics.clone();
         let put_items: Vec<WriteRequest> = messages
             .into_iter()
             .filter_map(|n| {
+                // eventually include `internal` if `meta` defined.
+                metrics
+                    .incr_with_tags("notification.message.stored")
+                    .with_tag("topic", &n.topic.is_some().to_string())
+                    .send();
                 serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, n))
                     .ok()
                     .map(|hm| WriteRequest {
@@ -426,11 +435,16 @@ impl DynamoStorage {
         let table_name = table_name.to_string();
         let ddb = self.ddb.clone();
         let metrics = self.metrics.clone();
+        let rmetrics = metrics.clone();
 
         response.and_then(move |resp| -> MyFuture<_> {
             // Return now from this future if we have messages
             if !resp.messages.is_empty() {
                 debug!("Topic message returns: {:?}", resp.messages);
+                rmetrics
+                    .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
+                    .with_tag("topic", "true")
+                    .send();
                 return Box::new(future::ok(CheckStorageResponse {
                     include_topic: true,
                     messages: resp.messages,
@@ -461,6 +475,10 @@ impl DynamoStorage {
                 // If we didn't get a timestamp off the last query, use the original
                 // value if passed one
                 let timestamp = resp.timestamp.or(timestamp);
+                rmetrics
+                    .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
+                    .with_tag("topic", "false")
+                    .send();
                 Ok(CheckStorageResponse {
                     include_topic: false,
                     messages: resp.messages,

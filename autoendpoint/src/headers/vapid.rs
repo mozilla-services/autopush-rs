@@ -13,7 +13,7 @@ use autopush_common::util::sec_since_epoch;
 pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 pub const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct VapidClaims {
     pub exp: u64,
     pub aud: String,

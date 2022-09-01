@@ -299,6 +299,13 @@ impl WebPushRouter {
             )
             .await
             .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
+            .map(|_| {
+                self.metrics
+                    .incr_with_tags("notification.message.stored")
+                    .with_tag("topic", &notification.headers.topic.is_some().to_string())
+                    // TODO: include `internal` if meta is set.
+                    .send();
+            })
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer
