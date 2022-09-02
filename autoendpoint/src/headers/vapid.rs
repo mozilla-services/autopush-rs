@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
+use actix_web::HttpRequest;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::extractors::subscription::decode_public_key;
-use crate::headers::util::split_key_value;
+use crate::headers::{crypto_key::CryptoKeyHeader, util::split_key_value};
 
 use autopush_common::util::sec_since_epoch;
 
@@ -60,6 +61,39 @@ impl VapidClaims {
     }
 }
 
+impl TryFrom<&HttpRequest> for VapidClaims {
+    type Error = ApiError;
+
+    fn try_from(req: &HttpRequest) -> Result<Self, Self::Error> {
+        let header = req
+            .headers()
+            .get("Authorization")
+            .ok_or(ApiErrorKind::InvalidAuthentication)?;
+        let vapid_header = VapidHeader::parse(
+            header
+                .to_str()
+                .map_err(|_| ApiErrorKind::InvalidAuthentication)?,
+        )?;
+        let key = match vapid_header.version_data {
+            VapidVersionData::Version1 => {
+                let cheader_raw = req
+                    .headers()
+                    .get("Crypto-Key")
+                    .ok_or(ApiErrorKind::InvalidAuthentication)?
+                    .to_str()
+                    .map_err(|_| ApiErrorKind::InvalidAuthentication)?;
+                let cheader = CryptoKeyHeader::parse(cheader_raw)
+                    .ok_or(ApiErrorKind::InvalidAuthentication)?;
+                cheader
+                    .get_by_key("dh")
+                    .ok_or(ApiErrorKind::InvalidAuthentication)?
+                    .to_owned()
+            }
+            VapidVersionData::Version2 { public_key } => public_key,
+        };
+        VapidClaims::from_token(&vapid_header.token, &key)
+    }
+}
 /// Parses the VAPID authorization header
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VapidHeader {

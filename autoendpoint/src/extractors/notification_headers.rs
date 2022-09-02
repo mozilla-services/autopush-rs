@@ -1,6 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::util::{get_header, get_owned_header};
+use crate::headers::vapid::VapidClaims;
 use actix_web::HttpRequest;
 use autopush_common::util::InsertOpt;
 use lazy_static::lazy_static;
@@ -46,6 +47,8 @@ pub struct NotificationHeaders {
     pub encryption: Option<String>,
     pub encryption_key: Option<String>,
     pub crypto_key: Option<String>,
+    // Internal Use Only
+    pub meta: Option<String>,
 }
 
 impl From<NotificationHeaders> for HashMap<String, String> {
@@ -56,6 +59,7 @@ impl From<NotificationHeaders> for HashMap<String, String> {
         map.insert_opt("encryption", headers.encryption);
         map.insert_opt("encryption_key", headers.encryption_key);
         map.insert_opt("crypto_key", headers.crypto_key);
+        map.insert_opt("meta", headers.meta);
 
         map
     }
@@ -75,6 +79,12 @@ impl NotificationHeaders {
             .ok_or(ApiErrorKind::NoTTL)?;
         let topic = get_owned_header(req, "topic");
 
+        let meta = if req.headers().contains_key("Authorization") {
+            VapidClaims::try_from(req).map(|v| v.meta)?
+        } else {
+            None
+        };
+
         let headers = if has_data {
             NotificationHeaders {
                 ttl,
@@ -83,6 +93,7 @@ impl NotificationHeaders {
                 encryption: get_owned_header(req, "encryption").map(Self::strip_header),
                 encryption_key: get_owned_header(req, "encryption-key"),
                 crypto_key: get_owned_header(req, "crypto-key").map(Self::strip_header),
+                meta,
             }
         } else {
             // Messages without a body shouldn't pass along unnecessary headers
@@ -93,6 +104,7 @@ impl NotificationHeaders {
                 encryption: None,
                 encryption_key: None,
                 crypto_key: None,
+                meta,
             }
         };
 
@@ -363,7 +375,8 @@ mod tests {
                 encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: None,
-                crypto_key: Some("dh=bar".to_string())
+                crypto_key: Some("dh=bar".to_string()),
+                meta: None,
             }
         );
     }
@@ -388,7 +401,8 @@ mod tests {
                 encoding: Some("aes128gcm".to_string()),
                 encryption: Some("notsalt=foo".to_string()),
                 encryption_key: None,
-                crypto_key: Some("notdh=bar".to_string())
+                crypto_key: Some("notdh=bar".to_string()),
+                meta: None
             }
         );
     }
@@ -414,7 +428,8 @@ mod tests {
                 encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: None,
-                crypto_key: Some("keyid=p256dh;dh=deadbeef".to_string())
+                crypto_key: Some("keyid=p256dh;dh=deadbeef".to_string()),
+                meta: None,
             }
         );
     }

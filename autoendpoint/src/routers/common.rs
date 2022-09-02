@@ -246,6 +246,7 @@ pub mod tests {
                 encryption: Some("test-encryption".to_string()),
                 encryption_key: Some("test-encryption-key".to_string()),
                 crypto_key: Some("test-crypto-key".to_string()),
+                meta: None,
             },
             timestamp: Instant::now(),
             sort_key_timestamp: 0,
