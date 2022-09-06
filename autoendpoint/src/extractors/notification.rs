@@ -25,6 +25,7 @@ pub struct Notification {
     pub timestamp: time::Instant,
     /// UNIX timestamp in milliseconds
     pub sort_key_timestamp: u64,
+    pub meta: Option<String>,
     pub data: Option<String>,
 }
 
@@ -97,6 +98,7 @@ impl FromRequest for Notification {
                 headers,
                 timestamp,
                 sort_key_timestamp,
+                meta,
                 data,
             })
         }

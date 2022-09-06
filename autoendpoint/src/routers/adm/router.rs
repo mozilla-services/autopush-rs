@@ -230,7 +230,7 @@ mod tests {
             )
             .with_body(r#"{"registrationID":"test-registration-id"}"#)
             .create();
-        let notification = make_notification(default_router_data(), None, RouterType::ADM);
+        let notification = make_notification(default_router_data(), None, RouterType::ADM, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -266,7 +266,8 @@ mod tests {
             .with_body(r#"{"registrationID":"test-registration-id"}"#)
             .create();
         let data = "test-data".to_string();
-        let notification = make_notification(default_router_data(), Some(data), RouterType::ADM);
+        let notification =
+            make_notification(default_router_data(), Some(data), RouterType::ADM, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -290,7 +291,7 @@ mod tests {
             "creds".to_string(),
             serde_json::json!({ "profile": "unknown-profile" }),
         );
-        let notification = make_notification(router_data, None, RouterType::ADM);
+        let notification = make_notification(router_data, None, RouterType::ADM, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
@@ -308,7 +309,7 @@ mod tests {
     /// If the ADM user no longer exists (404), we drop the user from our database
     #[tokio::test]
     async fn no_adm_user() {
-        let notification = make_notification(default_router_data(), None, RouterType::ADM);
+        let notification = make_notification(default_router_data(), None, RouterType::ADM, None);
         let mut ddb = MockDbClient::new();
         ddb.expect_remove_user()
             .with(predicate::eq(notification.subscription.user.uaid))
@@ -337,7 +338,7 @@ mod tests {
     /// If ADM returns a new registration token, update our copy to match
     #[tokio::test]
     async fn update_registration_token() {
-        let notification = make_notification(default_router_data(), None, RouterType::ADM);
+        let notification = make_notification(default_router_data(), None, RouterType::ADM, None);
         let mut ddb = MockDbClient::new();
         ddb.expect_update_user()
             .withf(|user: &DynamoDbUser| {

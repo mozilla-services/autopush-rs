@@ -11,6 +11,10 @@ use std::collections::HashMap;
 pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'static str, String>> {
     let mut message_data = HashMap::new();
     message_data.insert("chid", notification.subscription.channel_id.to_string());
+    // Add `meta` data if present
+    if let Some(meta) = &notification.meta {
+        message_data.insert("meta", meta.to_owned());
+    }
 
     // Only add the other headers if there's data
     if let Some(data) = &notification.data {
@@ -226,6 +230,7 @@ pub mod tests {
         router_data: HashMap<String, serde_json::Value>,
         data: Option<String>,
         router_type: RouterType,
+        meta: Option<String>,
     ) -> Notification {
         Notification {
             message_id: "test-message-id".to_string(),
@@ -251,6 +256,7 @@ pub mod tests {
             timestamp: Instant::now(),
             sort_key_timestamp: 0,
             data,
+            meta,
         }
     }
 }

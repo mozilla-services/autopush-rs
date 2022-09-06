@@ -347,7 +347,7 @@ mod tests {
                 .as_str(),
             )
             .create();
-        let notification = make_notification(default_router_data(), None, RouterType::FCM);
+        let notification = make_notification(default_router_data(), None, RouterType::FCM, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -390,6 +390,7 @@ mod tests {
             gcm_router_data(registration_id.to_owned()),
             None,
             RouterType::GCM,
+            None,
         );
 
         let result = router.route_notification(&notification).await;
@@ -430,7 +431,8 @@ mod tests {
             )
             .create();
         let data = "test-data".to_string();
-        let notification = make_notification(default_router_data(), Some(data), RouterType::FCM);
+        let notification =
+            make_notification(default_router_data(), Some(data), RouterType::FCM, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -455,7 +457,7 @@ mod tests {
             app_id.clone(),
             serde_json::to_value("unknown-app-id").unwrap(),
         );
-        let notification = make_notification(router_data, None, RouterType::FCM);
+        let notification = make_notification(router_data, None, RouterType::FCM, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
@@ -473,7 +475,7 @@ mod tests {
     /// If the FCM user no longer exists (404), we drop the user from our database
     #[tokio::test]
     async fn no_fcm_user() {
-        let notification = make_notification(default_router_data(), None, RouterType::FCM);
+        let notification = make_notification(default_router_data(), None, RouterType::FCM, None);
         let mut ddb = MockDbClient::new();
         ddb.expect_remove_user()
             .with(predicate::eq(notification.subscription.user.uaid))

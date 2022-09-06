@@ -462,7 +462,7 @@ mod tests {
         });
         let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(client, ddb);
-        let notification = make_notification(default_router_data(), None, RouterType::APNS);
+        let notification = make_notification(default_router_data(), None, RouterType::APNS, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -500,7 +500,8 @@ mod tests {
         let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(client, ddb);
         let data = "test-data".to_string();
-        let notification = make_notification(default_router_data(), Some(data), RouterType::APNS);
+        let notification =
+            make_notification(default_router_data(), Some(data), RouterType::APNS, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok(), "result = {:?}", result);
@@ -522,7 +523,7 @@ mod tests {
             "rel_channel".to_string(),
             serde_json::to_value("unknown-app-id").unwrap(),
         );
-        let notification = make_notification(router_data, None, RouterType::APNS);
+        let notification = make_notification(router_data, None, RouterType::APNS, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
@@ -550,7 +551,7 @@ mod tests {
                 code: 410,
             }))
         });
-        let notification = make_notification(default_router_data(), None, RouterType::APNS);
+        let notification = make_notification(default_router_data(), None, RouterType::APNS, None);
         let mut ddb = MockDbClient::new();
         ddb.expect_remove_user()
             .with(predicate::eq(notification.subscription.user.uaid))
@@ -585,7 +586,7 @@ mod tests {
         });
         let ddb = MockDbClient::new().into_boxed_arc();
         let router = make_router(client, ddb);
-        let notification = make_notification(default_router_data(), None, RouterType::APNS);
+        let notification = make_notification(default_router_data(), None, RouterType::APNS, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
@@ -619,7 +620,7 @@ mod tests {
             "aps".to_string(),
             serde_json::json!({"mutable-content": "should be a number"}),
         );
-        let notification = make_notification(router_data, None, RouterType::APNS);
+        let notification = make_notification(router_data, None, RouterType::APNS, None);
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
