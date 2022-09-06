@@ -12,14 +12,25 @@ use actix_web::HttpResponse;
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
-    _state: Data<ServerState>,
+    state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
     let router = routers.get(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
     );
 
-    Ok(router.route_notification(&notification).await?.into())
+    let resp = router.route_notification(&notification).await?;
+    if router.is_mobile() {
+        // set the `connected_at` timestamp for the user.
+        // Here, we'll use a successful bridged notification route as a proxy
+        // for the UA having connected to us. `connected_at` allows us to age
+        // out "orphaned" push endpoints.
+        state
+            .ddb
+            .update_user(&notification.subscription.user)
+            .await?;
+    };
+    Ok(resp.into())
 }
 
 /// Handle the `DELETE /m/{message_id}` route

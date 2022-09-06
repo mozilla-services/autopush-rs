@@ -131,6 +131,11 @@ impl Router for WebPushRouter {
             }
         }
     }
+
+    /// Currently, only the clients that use webpush are desktop based.
+    fn is_mobile(&self) -> bool {
+        false
+    }
 }
 
 impl WebPushRouter {

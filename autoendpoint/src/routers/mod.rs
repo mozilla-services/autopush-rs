@@ -31,6 +31,9 @@ pub trait Router {
 
     /// Route a notification to the user
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse>;
+
+    /// Currently, only websocket based routers are desktop based, all others are mobile.
+    fn is_mobile(&self) -> bool;
 }
 
 /// The response returned when a router routes a notification
