@@ -229,10 +229,10 @@ pub fn register_user(
     ddb: DynamoDbClient,
     user: &DynamoDbUser,
     router_table: &str,
-) -> MyFuture<PutItemOutput> {
+) -> impl Future<Item = PutItemOutput, Error = Error> {
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
-        Err(e) => return Box::new(future::err(Error::DatabaseError(e.to_string()))),
+        Err(e) => return future::Either::A(future::err(Error::DatabaseError(e.to_string()))),
     };
     let router_table = router_table.to_string();
     let attr_values = hashmap! {
@@ -240,7 +240,7 @@ pub fn register_user(
         ":connected_at".to_string() => val!(N => user.connected_at),
     };
 
-    Box::new(retry_if(
+    future::Either::B(retry_if(
         move || {
             debug!("### Registering user into {}: {:?}", router_table, item);
             ddb.put_item(PutItemInput {
