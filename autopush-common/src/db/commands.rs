@@ -229,11 +229,10 @@ pub fn register_user(
     ddb: DynamoDbClient,
     user: &DynamoDbUser,
     router_table: &str,
-) -> impl Future<Item = PutItemOutput, Error = Error> {
+) -> MyFuture<PutItemOutput> {
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
-        //Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
-        Err(e) => return future::err(Error::DatabaseError(e.to_string())),
+        Err(e) => return Box::new(future::err(Error::DatabaseError(e.to_string()))),
     };
     let router_table = router_table.to_string();
     let attr_values = hashmap! {
@@ -241,7 +240,7 @@ pub fn register_user(
         ":connected_at".to_string() => val!(N => user.connected_at),
     };
 
-    retry_if(
+    Box::new(retry_if(
         move || {
             debug!("### Registering user into {}: {:?}", router_table, item);
             ddb.put_item(PutItemInput {
@@ -264,7 +263,7 @@ pub fn register_user(
         },
         retryable_putitem_error,
     )
-    .map_err(|_| Error::DatabaseError("fail".to_string()))
+    .map_err(|_| Error::DatabaseError("fail".to_string())))
     //.chain_err(|| "Error storing user record")
 }
 
