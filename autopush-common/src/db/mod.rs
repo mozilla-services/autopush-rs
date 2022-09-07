@@ -82,7 +82,7 @@ impl DynamoStorage {
         );
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
-                HttpClient::new().chain_err(|| "TLS initialization error")?,
+                HttpClient::new().map_err(|e| Error::GeneralError(format!("TLS initialization error {:?}", e)))?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
                 Region::Custom {
                     name: "us-east-1".to_string(),
@@ -94,14 +94,15 @@ impl DynamoStorage {
         };
 
         let mut message_table_names = list_message_tables(&ddb, message_table_name)
-            .map_err(|_| "Failed to locate message tables")?;
+            .map_err(|_| Error::DatabaseError("Failed to locate message tables".into()))?;
         // Valid message months are the current and last 2 months
         message_table_names.sort_unstable_by(|a, b| b.cmp(a));
         message_table_names.truncate(3);
         message_table_names.reverse();
         let current_message_month = message_table_names
             .last()
-            .ok_or("No last message month found")?
+            .ok_or("No last message month found")
+            .map_err(|_e| Error::GeneralError("No last message month found".into()))?
             .to_string();
 
         Ok(Self {
@@ -140,7 +141,7 @@ impl DynamoStorage {
             move || ddb.update_item(update_input.clone()),
             retryable_updateitem_error,
         )
-        .chain_err(|| "Error incrementing storage")
+        .map_err(|e| Error::DatabaseError(e.to_string()))
     }
 
     pub fn hello(
@@ -273,7 +274,7 @@ impl DynamoStorage {
     pub fn drop_uaid(&self, uaid: &Uuid) -> impl Future<Item = (), Error = Error> {
         commands::drop_user(self.ddb.clone(), uaid, &self.router_table_name)
             .and_then(|_| future::ok(()))
-            .chain_err(|| "Unable to drop user record")
+            .map_err(|_| Error::DatabaseError("Unable to drop user record".into()))
     }
 
     pub fn unregister(
@@ -312,7 +313,7 @@ impl DynamoStorage {
                 commands::update_user_message_month(ddb2, &uaid, &router_table_name, &cur_month2)
             })
             .and_then(|_| future::ok(()))
-            .chain_err(|| "Unable to migrate user")
+            .map_err(|e| Error::DatabaseError("Unable to migrate user".into()))
     }
 
     /// Store a single message
@@ -335,7 +336,7 @@ impl DynamoStorage {
             retryable_putitem_error,
         )
         .and_then(|_| future::ok(()))
-        .chain_err(|| "Error saving notification")
+        .map_err(|_| Error::DatabaseError("Error saving notification".into()))
     }
 
     /// Store a batch of messages when shutting down
@@ -372,7 +373,7 @@ impl DynamoStorage {
             err
         })
         // TODO: Use Sentry to capture/report this error
-        .chain_err(|| "Error saving notifications")
+        .map_err(|e| Error::DatabaseError("Error saving notifications".into()))
     }
 
     /// Delete a given notification from the database
@@ -401,7 +402,7 @@ impl DynamoStorage {
             retryable_delete_error,
         )
         .and_then(|_| future::ok(()))
-        .chain_err(|| "Error deleting notification")
+        .map_err(|_| Error::DatabaseError("Error deleting notification".into()))
     }
 
     pub fn check_storage(
@@ -479,7 +480,7 @@ impl DynamoStorage {
                     .item
                     .map(|item| {
                         let user = serde_dynamodb::from_hashmap(item);
-                        user.chain_err(|| "Error deserializing")
+                        user.map_err(|_| Error::DatabaseError("Error deserializing".into()))
                     })
                     .transpose(),
             )
@@ -528,7 +529,7 @@ impl DynamoStorage {
             retryable_updateitem_error,
         )
         .and_then(|_| future::ok(()))
-        .chain_err(|| "Error removing node ID")
+        .map_err(|_| Error::DatabaseError("Error removing node ID".into()))
     }
 }
 

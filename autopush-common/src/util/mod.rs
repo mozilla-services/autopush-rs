@@ -33,7 +33,7 @@ where
     Box::new(f.select2(timeout).then(|res| match res {
         Ok(Either::A((item, _timeout))) => Ok(item),
         Err(Either::A((e, _timeout))) => Err(e.into()),
-        Ok(Either::B(((), _item))) => Err("timed out".into()),
+        Ok(Either::B(((), _item))) => Err(Error::GeneralError("timed out".into())),
         Err(Either::B((e, _item))) => Err(e.into()),
     }))
 }

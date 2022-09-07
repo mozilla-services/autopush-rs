@@ -72,7 +72,7 @@ pub fn list_tables_sync(
     };
     ddb.list_tables(input)
         .sync()
-        .chain_err(|| "Unable to list tables")
+        .map_err(|_| Error::DatabaseError("Unable to list tables".into()))
 }
 
 pub fn fetch_messages(
@@ -96,7 +96,7 @@ pub fn fetch_messages(
     };
 
     retry_if(move || ddb.query(input.clone()), retryable_query_error)
-        .chain_err(|| ErrorKind::MessageFetch)
+        .map_err(|_| Error::MessageFetch)
         .and_then(move |output| {
             let mut notifs: Vec<DynamoDbNotification> =
                 output.items.map_or_else(Vec::new, |items| {
@@ -163,7 +163,7 @@ pub fn fetch_timestamp_messages(
     };
 
     retry_if(move || ddb.query(input.clone()), retryable_query_error)
-        .chain_err(|| ErrorKind::MessageFetch)
+        .map_err(|_| Error::MessageFetch)
         .and_then(move |output| {
             let messages = output.items.map_or_else(Vec::new, |items| {
                 debug!("Got response of: {:?}", items);
@@ -205,7 +205,7 @@ pub fn drop_user(
         move || ddb.delete_item(input.clone()),
         retryable_delete_error,
     )
-    .chain_err(|| "Error dropping user")
+    .map_err(|_| Error::DatabaseError("Error dropping user".into()))
 }
 
 pub fn get_uaid(
@@ -219,8 +219,10 @@ pub fn get_uaid(
         key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
         ..Default::default()
     };
-    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
-        .chain_err(|| "Error fetching user")
+    retry_if(
+        move || ddb.get_item(input.clone()),
+        retryable_getitem_error)
+        .map_err(|_| Error::DatabaseError("Error fetching user".into()))
 }
 
 pub fn register_user(
@@ -230,7 +232,8 @@ pub fn register_user(
 ) -> impl Future<Item = PutItemOutput, Error = Error> {
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
-        Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
+        //Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),
+        Err(e) => return future::err(Error::DatabaseError(e.to_string())),
     };
     let router_table = router_table.to_string();
     let attr_values = hashmap! {
@@ -261,7 +264,8 @@ pub fn register_user(
         },
         retryable_putitem_error,
     )
-    .chain_err(|| "Error storing user record")
+    .map_err(|_| Error::DatabaseError("fail".to_string()))
+    //.chain_err(|| "Error storing user record")
 }
 
 pub fn update_user_message_month(
@@ -291,7 +295,8 @@ pub fn update_user_message_month(
         },
         retryable_updateitem_error,
     )
-    .chain_err(|| "Error updating user message month")
+    .map_err(|e| Error::DatabaseError("Error updating user message month".into()))
+    //.chain_err(|| "Error updating user message month")
 }
 
 pub fn all_channels(
@@ -354,7 +359,8 @@ pub fn save_channels(
         },
         retryable_updateitem_error,
     )
-    .chain_err(|| "Error saving channels")
+    .map_err(|_e| Error::DatabaseError("Error saving channels".into()))
+    // .chain_err(|| "Error saving channels")
 }
 
 pub fn unregister_channel_id(
@@ -382,7 +388,8 @@ pub fn unregister_channel_id(
         move || ddb.update_item(update_item.clone()),
         retryable_updateitem_error,
     )
-    .chain_err(|| "Error unregistering channel")
+    .map_err(|_e| Error::DatabaseError("Error unregistering channel".into()))
+    //.chain_err(|| "Error unregistering channel")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -435,7 +442,8 @@ pub fn lookup_user(
                     .send();
                 let response = drop_user(ddb, &uaid2, &router_table)
                     .and_then(|_| future::ok((hello_response, None)))
-                    .chain_err(|| "Unable to drop user");
+                    .map_err(|_e| Error::DatabaseError("Unable to drop user".into()));
+                    //.chain_err(|| "Unable to drop user");
                 Box::new(response)
             }
         }

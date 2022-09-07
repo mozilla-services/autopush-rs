@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::errors::Result;
+use crate::errors::{Result, Error};
 
 use mozsvc_common::{aws::get_ec2_instance_id, get_hostname};
 use slog::{self, Drain};
@@ -11,7 +11,8 @@ pub fn init_logging(json: bool) -> Result<()> {
         let hostname = get_ec2_instance_id()
             .map(&str::to_owned)
             .or_else(get_hostname)
-            .ok_or("Couldn't get_hostname")?;
+            .ok_or("Couldn't get_hostname")
+            .map_err(|e| Error::GeneralError(e.to_owned()))?;
 
         let drain = MozLogJson::new(io::stdout())
             .logger_name(format!(

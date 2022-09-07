@@ -19,6 +19,7 @@ cadence = "0.29"
 chrono = "0.4"
 config = "0.13"
 error-chain = "0.12"
+thiserror = "1.0"
 fernet = "0.1.3"
 futures = "0.1.29" # 0.1.30 requires hyper 0.13+
 futures-backoff = "0.1.0"

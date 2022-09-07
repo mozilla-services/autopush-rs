@@ -1,3 +1,5 @@
+// this version of tags requires actix-web >= 3.3 and futures >= 0.3
+// which means that it's currently not suitable for autoconnect. 
 use std::collections::{BTreeMap, HashMap};
 
 use actix_web::{

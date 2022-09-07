@@ -1,6 +1,6 @@
 //! Management of connected clients to a WebPush server
 use cadence::{prelude::*, StatsdClient};
-use error_chain::ChainedError;
+use thiserror::Error;
 use futures::future::Either;
 use futures::sync::mpsc;
 use futures::sync::oneshot::Receiver;

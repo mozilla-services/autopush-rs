@@ -23,7 +23,9 @@ chrono = "0.4"
 config = "0.13"
 docopt = "1.1.0"
 env_logger = "0.9"
-error-chain = "0.12"
+#error-chain = "0.12"
+thiserror = "1.0"
+
 fernet = "0.1.3"
 futures = "0.1.29" # XXX: pin to 0.1 until likely hyper 0.13
 futures-locks = "0.5" # pin to 0.5 until futures update
