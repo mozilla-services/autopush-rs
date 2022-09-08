@@ -83,7 +83,7 @@ pub fn accept(srv: &Rc<Server>, socket: TcpStream) -> MyFuture<MaybeTlsStream<Tc
             acceptor
                 .accept_async(socket)
                 .map(MaybeTlsStream::Tls)
-                .chain_err(|| "failed to accept TLS socket"),
+                .map_err(|_e| Error::GeneralError("failed to accept TLS socket".into())),
         ),
         None => Box::new(future::ok(MaybeTlsStream::Plain(socket))),
     }

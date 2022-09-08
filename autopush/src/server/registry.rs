@@ -44,7 +44,7 @@ impl ClientRegistry {
                     }
                     ok(())
                 })
-                .map_err(|_| Error::from("clients lock poisoned")),
+                .map_err(|_| Error::GeneralError("clients lock poisoned".into())),
         )
 
         //.map_err(|_| "clients lock poisioned")
@@ -69,7 +69,7 @@ impl ClientRegistry {
                 }
                 err(())
             })
-            .map_err(|_| Error::from("User not connected"));
+            .map_err(|_| Error::GeneralError("User not connected".into()));
         Box::new(fut)
     }
 
@@ -88,7 +88,7 @@ impl ClientRegistry {
                 }
                 err(())
             })
-            .map_err(|_| Error::from("User not connected"));
+            .map_err(|_| Error::GeneralError("User not connected".into()));
         Box::new(fut)
     }
 
@@ -111,7 +111,7 @@ impl ClientRegistry {
                 }
                 err(())
             })
-            .map_err(|_| Error::from("User not connected"));
+            .map_err(|_| Error::GeneralError("User not connected".into()));
         Box::new(fut)
     }
 }

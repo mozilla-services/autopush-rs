@@ -1,4 +1,4 @@
-use crate::errors::{Result, Error};
+use crate::errors::{Error, Result};
 use fernet::MultiFernet;
 use openssl::hash;
 use url::Url;
@@ -16,16 +16,16 @@ pub fn make_endpoint(
     endpoint_url: &str,
     fernet: &MultiFernet,
 ) -> Result<String> {
-    let root = Url::parse(endpoint_url)?
-        .join("wpush/")?;
+    let root = Url::parse(endpoint_url)?.join("wpush/")?;
     let mut base = uaid.as_bytes().to_vec();
     base.extend(chid.as_bytes());
 
     if let Some(k) = key {
-        let raw_key =
-            base64::decode_config(k, base64::URL_SAFE).map_err(|_e| Error::PayloadError("Error encrypting payload".to_owned()))?;
-        let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key)
-            .map_err(|_e| Error::PayloadError("Error creating message digest for key".to_owned()))?;
+        let raw_key = base64::decode_config(k, base64::URL_SAFE)
+            .map_err(|_e| Error::PayloadError("Error encrypting payload".to_owned()))?;
+        let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key).map_err(|_e| {
+            Error::PayloadError("Error creating message digest for key".to_owned())
+        })?;
         base.extend(key_digest.iter());
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
         let final_url = root

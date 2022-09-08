@@ -63,7 +63,7 @@ impl Future for Dispatch {
                 self.data.reserve(16); // get some extra space
             }
             if try_ready!(self.socket.as_mut().unwrap().read_buf(&mut self.data)) == 0 {
-                return Err("early eof".into());
+                return Err(Error::GeneralError("early eof".into()));
             }
             let ty = {
                 let mut headers = [httparse::EMPTY_HEADER; 32];
@@ -88,7 +88,7 @@ impl Future for Dispatch {
                         Some(path) if path == ("/__error__") => RequestType::LogCheck,
                         _ => {
                             debug!("unknown http request {:?}", req);
-                            return Err("unknown http request".into());
+                            return Err(Error::GeneralError("unknown http request".into()));
                         }
                     }
                 }

@@ -82,7 +82,9 @@ impl DynamoStorage {
         );
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
-                HttpClient::new().map_err(|e| Error::GeneralError(format!("TLS initialization error {:?}", e)))?,
+                HttpClient::new().map_err(|e| {
+                    Error::GeneralError(format!("TLS initialization error {:?}", e))
+                })?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
                 Region::Custom {
                     name: "us-east-1".to_string(),
@@ -313,7 +315,7 @@ impl DynamoStorage {
                 commands::update_user_message_month(ddb2, &uaid, &router_table_name, &cur_month2)
             })
             .and_then(|_| future::ok(()))
-            .map_err(|e| Error::DatabaseError("Unable to migrate user".into()))
+            .map_err(|_e| Error::DatabaseError("Unable to migrate user".into()))
     }
 
     /// Store a single message
@@ -373,7 +375,7 @@ impl DynamoStorage {
             err
         })
         // TODO: Use Sentry to capture/report this error
-        .map_err(|e| Error::DatabaseError("Error saving notifications".into()))
+        .map_err(|_e| Error::DatabaseError("Error saving notifications".into()))
     }
 
     /// Delete a given notification from the database

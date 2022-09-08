@@ -18,7 +18,7 @@ use futures::{task, try_ready};
 use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
 use hyper::{server::conn::Http, StatusCode};
 use openssl::ssl::SslAcceptor;
-use sentry::{self, capture_message, integrations::panic::register_panic_handler};
+use sentry::{self, capture_message};
 use serde_json::{self, json};
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::{Core, Handle, Timeout};
@@ -81,7 +81,7 @@ struct ShutdownHandle(oneshot::Sender<()>, thread::JoinHandle<()>);
 pub struct AutopushServer {
     opts: Arc<ServerOptions>,
     shutdown_handles: Cell<Option<Vec<ShutdownHandle>>>,
-    _guard: Option<sentry::internals::ClientInitGuard>,
+    _guard: Option<sentry::ClientInitGuard>,
 }
 
 impl AutopushServer {
@@ -94,7 +94,7 @@ impl AutopushServer {
                     ..Default::default()
                 },
             ));
-            register_panic_handler();
+            // register_panic_handler();
             Some(guard)
         } else {
             None
@@ -120,7 +120,7 @@ impl AutopushServer {
             for ShutdownHandle(tx, thread) in shutdown_handles {
                 let _ = tx.send(());
                 if let Err(err) = thread.join() {
-                    result = Err(From::from(ErrorKind::Thread(err)));
+                    result = Err(Error::Thread(err));
                 }
             }
         }
@@ -158,7 +158,7 @@ impl ServerOptions {
     pub fn from_settings(settings: Settings) -> Result<Self> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
-            return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
+            return Err(Error::GeneralError("Invalid AUTOPUSH_CRYPTO_KEY".into()));
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
         debug!("Fernet keys: {:?}", &crypto_key);
@@ -367,8 +367,9 @@ impl Server {
                         RequestType::Websocket => {
                             // Perform the websocket handshake on each
                             // connection, but don't let it take too long.
-                            let ws = accept_hdr_async(socket, callback)
-                                .chain_err(|| "failed to accept client");
+                            let ws = accept_hdr_async(socket, callback).map_err(|_e| {
+                                Error::GeneralError("failed to accept client".into())
+                            });
                             let ws = timeout(ws, srv2.opts.open_handshake_timeout, &handle2);
 
                             // Once the handshake is done we'll start the main
@@ -378,8 +379,9 @@ impl Server {
                             Box::new(
                                 ws.and_then(move |ws| {
                                     trace!("🏓 starting ping manager");
-                                    PingManager::new(&srv2, ws, uarx)
-                                        .chain_err(|| "failed to make ping handler")
+                                    PingManager::new(&srv2, ws, uarx).map_err(|_e| {
+                                        Error::GeneralError("failed to make ping handler".into())
+                                    })
                                 })
                                 .flatten(),
                             )
@@ -391,12 +393,14 @@ impl Server {
                 handle.spawn(client.then(move |res| {
                     srv.open_connections.set(srv.open_connections.get() - 1);
                     if let Err(e) = res {
-                        let mut error = e.to_string();
+                        /*
+                        let error = e.to_string();
                         for err in e.iter().skip(1) {
                             error.push_str("\n");
                             error.push_str(&err.to_string());
                         }
-                        debug!("{}: {}", addr, error);
+                        // */
+                        debug!("{}: {}", addr, e.to_string());
                     }
                     Ok(())
                 }));
@@ -536,7 +540,9 @@ impl Future for MegaphoneUpdater {
                         .send()
                         .and_then(|response| response.error_for_status())
                         .and_then(|mut response| response.json())
-                        .map_err(|_| "Unable to query/decode the API query".into());
+                        .map_err(|_| {
+                            Error::GeneralError("Unable to query/decode the API query".into())
+                        });
                     MegaphoneState::Requesting(Box::new(fut))
                 }
                 MegaphoneState::Requesting(ref mut response) => {
@@ -714,7 +720,7 @@ impl Future for PingManager {
                             client.shutdown();
                         }
                         // So did the shutdown not work? We must call shutdown but no client here?
-                        return Err("close handshake took too long".into());
+                        return Err(Error::GeneralError("close handshake took too long".into()));
                     }
                 }
             }
@@ -723,7 +729,7 @@ impl Future for PingManager {
         // Be sure to always flush out any buffered messages/pings
         socket
             .poll_complete()
-            .chain_err(|| "failed routine `poll_complete` call")?;
+            .map_err(|_e| Error::GeneralError("failed routine `poll_complete` call".into()))?;
         drop(socket);
 
         // At this point looks our state of ping management A-OK, so try to
@@ -779,7 +785,7 @@ impl<T> WebpushSocket<T> {
                 let server_msg = ServerMessage::Broadcast {
                     broadcasts: Broadcast::vec_into_hashmap(broadcasts),
                 };
-                let s = server_msg.to_json().chain_err(|| "failed to serialize")?;
+                let s = server_msg.to_json()?;
                 Message::Text(s)
             } else {
                 trace!("🏓sending a ws ping");
@@ -820,7 +826,7 @@ where
                     // elapsed (set above) then this is where we start
                     // triggering errors.
                     if self.ws_pong_timeout {
-                        return Err(ErrorKind::PongTimeout.into());
+                        return Err(Error::PongTimeout);
                     }
                     return Ok(Async::NotReady);
                 }
@@ -830,14 +836,12 @@ where
                     trace!("🚟 text message {}", s);
                     let msg = s
                         .parse()
-                        .chain_err(|| ErrorKind::InvalidClientMessage(s.to_owned()))?;
+                        .map_err(|_e| Error::InvalidClientMessage(s.to_owned()))?;
                     return Ok(Some(msg).into());
                 }
 
                 Message::Binary(_) => {
-                    return Err(
-                        ErrorKind::InvalidClientMessage("binary content".to_string()).into(),
-                    );
+                    return Err(Error::InvalidClientMessage("binary content".to_string()));
                 }
 
                 // sending a pong is already managed by lower layers, just go to
@@ -870,7 +874,9 @@ where
         if self.send_ws_ping()?.is_not_ready() {
             return Ok(AsyncSink::NotReady(msg));
         }
-        let s = msg.to_json().chain_err(|| "failed to serialize")?;
+        let s = msg
+            .to_json()
+            .map_err(|_e| Error::GeneralError("failed to serialize".into()))?;
         match self.inner.start_send(Message::Text(s))? {
             AsyncSink::Ready => Ok(AsyncSink::Ready),
             AsyncSink::NotReady(_) => Ok(AsyncSink::NotReady(msg)),
@@ -952,6 +958,6 @@ fn write_json(socket: WebpushIo, status: StatusCode, body: serde_json::Value) ->
     Box::new(
         tokio_io::io::write_all(socket, data.into_bytes())
             .map(|_| ())
-            .chain_err(|| "failed to write status response"),
+            .map_err(|_e| Error::GeneralError("failed to write status response".into())),
     )
 }

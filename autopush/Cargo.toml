@@ -38,7 +38,7 @@ mozsvc-common = "0.2"
 openssl = "0.10"
 reqwest = "0.9.24" # XXX: pin to < 0.10 until futures 0.3
 rusoto_dynamodb = "0.42.0" # XXX: pin to 0.42 until futures 0.3
-sentry = { version = "0.18.1", features = ["with_error_chain"] }  # pin to 0.18 for "error_chain" feature
+sentry = { version = "0.27", features = ["slog",  "test"] }
 serde = "1.0"
 serde_derive = "1.0"
 serde_dynamodb = "0.4.1"  # 0.7+ requires rusoto 0.46+

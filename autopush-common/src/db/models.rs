@@ -212,7 +212,10 @@ impl DynamoDbNotification {
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),
-            timestamp: self.timestamp.ok_or("No timestamp found").map_err(|e| Error::GeneralError(e.to_string()))?,
+            timestamp: self
+                .timestamp
+                .ok_or("No timestamp found")
+                .map_err(|e| Error::GeneralError(e.to_string()))?,
             topic: key.topic,
             data: self.data,
             headers: self.headers.map(|m| m.into()),

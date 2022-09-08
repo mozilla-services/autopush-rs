@@ -219,9 +219,7 @@ pub fn get_uaid(
         key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
         ..Default::default()
     };
-    retry_if(
-        move || ddb.get_item(input.clone()),
-        retryable_getitem_error)
+    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
         .map_err(|_| Error::DatabaseError("Error fetching user".into()))
 }
 
@@ -240,31 +238,32 @@ pub fn register_user(
         ":connected_at".to_string() => val!(N => user.connected_at),
     };
 
-    future::Either::B(retry_if(
-        move || {
-            debug!("### Registering user into {}: {:?}", router_table, item);
-            ddb.put_item(PutItemInput {
-                item: item.clone(),
-                table_name: router_table.clone(),
-                expression_attribute_values: Some(attr_values.clone()),
-                condition_expression: Some(
-                    r#"(
+    future::Either::B(
+        retry_if(
+            move || {
+                debug!("### Registering user into {}: {:?}", router_table, item);
+                ddb.put_item(PutItemInput {
+                    item: item.clone(),
+                    table_name: router_table.clone(),
+                    expression_attribute_values: Some(attr_values.clone()),
+                    condition_expression: Some(
+                        r#"(
                             attribute_not_exists(router_type) or
                             (router_type = :router_type)
                         ) and (
                             attribute_not_exists(node_id) or
                             (connected_at < :connected_at)
                         )"#
-                    .to_string(),
-                ),
-                return_values: Some("ALL_OLD".to_string()),
-                ..Default::default()
-            })
-        },
-        retryable_putitem_error,
+                        .to_string(),
+                    ),
+                    return_values: Some("ALL_OLD".to_string()),
+                    ..Default::default()
+                })
+            },
+            retryable_putitem_error,
+        )
+        .map_err(|_| Error::DatabaseError("fail".to_string())),
     )
-    .map_err(|_| Error::DatabaseError("fail".to_string())))
-    //.chain_err(|| "Error storing user record")
 }
 
 pub fn update_user_message_month(
@@ -294,7 +293,7 @@ pub fn update_user_message_month(
         },
         retryable_updateitem_error,
     )
-    .map_err(|e| Error::DatabaseError("Error updating user message month".into()))
+    .map_err(|_e| Error::DatabaseError("Error updating user message month".into()))
     //.chain_err(|| "Error updating user message month")
 }
 
@@ -442,7 +441,7 @@ pub fn lookup_user(
                 let response = drop_user(ddb, &uaid2, &router_table)
                     .and_then(|_| future::ok((hello_response, None)))
                     .map_err(|_e| Error::DatabaseError("Unable to drop user".into()));
-                    //.chain_err(|| "Unable to drop user");
+                //.chain_err(|| "Unable to drop user");
                 Box::new(response)
             }
         }

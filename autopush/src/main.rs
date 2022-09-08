@@ -8,7 +8,7 @@ use std::{env, os::raw::c_int, thread};
 
 use docopt::Docopt;
 
-use autopush_common::errors::{Result, ResultExt};
+use autopush_common::errors::{Error, Result};
 
 mod client;
 mod http;
@@ -57,7 +57,9 @@ fn main() -> Result<()> {
     let server = AutopushServer::new(server_opts);
     server.start();
     signal.recv().unwrap();
-    server.stop().chain_err(|| "Failed to shutdown properly")
+    server
+        .stop()
+        .map_err(|_e| Error::GeneralError("Failed to shutdown properly".into()))
 }
 
 /// Create a new channel subscribed to the given signals

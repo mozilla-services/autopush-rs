@@ -33,9 +33,8 @@ use std::any::Any;
 use std::io;
 use std::num;
 
-use thiserror::Error;
 use futures::Future;
-
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -72,7 +71,11 @@ pub enum Error {
     MessageFetch,
     #[error("unable to send to client")]
     SendError,
+    #[error("client sent too many pings")]
+    ExcessivePing,
 
+    #[error("Broadcast Error: {0}")]
+    BroadcastError(String),
     #[error("Payload Error: {0}")]
     PayloadError(String),
     #[error("General Error: {0}")]

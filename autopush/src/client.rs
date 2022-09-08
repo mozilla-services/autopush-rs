@@ -1,6 +1,5 @@
 //! Management of connected clients to a WebPush server
 use cadence::{prelude::*, StatsdClient};
-use thiserror::Error;
 use futures::future::Either;
 use futures::sync::mpsc;
 use futures::sync::oneshot::Receiver;
@@ -9,7 +8,6 @@ use futures::{future, try_ready};
 use futures::{Async, Future, Poll, Sink, Stream};
 use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
-use sentry::integrations::error_chain::event_from_error_chain;
 use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use std::cell::RefCell;
 use std::mem;
@@ -232,9 +230,9 @@ where
 {
     fn input_with_timeout(&mut self, timeout: &mut Timeout) -> Poll<ClientMessage, Error> {
         let item = match timeout.poll()? {
-            Async::Ready(_) => return Err("Client timed out".into()),
+            Async::Ready(_) => return Err(Error::BroadcastError("Client timed out".into())),
             Async::NotReady => match self.ws.poll()? {
-                Async::Ready(None) => return Err("Client dropped".into()),
+                Async::Ready(None) => return Err(Error::BroadcastError("Client dropped".into())),
                 Async::Ready(Some(msg)) => Async::Ready(msg),
                 Async::NotReady => Async::NotReady,
             },
@@ -260,13 +258,15 @@ where
         let mut webpush = self.webpush.borrow_mut();
         let item = match webpush.rx.poll() {
             Ok(Async::Ready(Some(notif))) => Either::B(notif),
-            Ok(Async::Ready(None)) => return Err("Sending side dropped".into()),
+            Ok(Async::Ready(None)) => {
+                return Err(Error::BroadcastError("Sending side dropped".into()))
+            }
             Ok(Async::NotReady) => match self.ws.poll()? {
-                Async::Ready(None) => return Err("Client dropped".into()),
+                Async::Ready(None) => return Err(Error::BroadcastError("Client dropped".into())),
                 Async::Ready(Some(msg)) => Either::A(msg),
                 Async::NotReady => return Ok(Async::NotReady),
             },
-            Err(_) => return Err("Unexpected error".into()),
+            Err(_) => return Err(Error::BroadcastError("Unexpected error".into())),
         };
         Ok(Async::Ready(item))
     }
@@ -356,7 +356,11 @@ where
                     uaid.and_then(|uaid| Uuid::parse_str(uaid.as_str()).ok()),
                     Broadcast::from_hashmap(broadcasts.unwrap_or_default()),
                 ),
-                _ => return Err("Invalid message, must be hello".into()),
+                _ => {
+                    return Err(Error::BroadcastError(
+                        "Invalid message, must be hello".into(),
+                    ))
+                }
             }
         };
 
@@ -421,7 +425,7 @@ where
                 }
                 HelloResponse { uaid: None, .. } => {
                     trace!("UAID undefined");
-                    return Err("Already connected elsewhere".into());
+                    return Err(Error::BroadcastError("Already connected elsewhere".into()));
                 }
             }
         };
@@ -541,14 +545,14 @@ where
             match session_complete.auth_state_machine.poll() {
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
                 Ok(Async::Ready(_))
-                | Err(Error(ErrorKind::Ws(_), _))
-                | Err(Error(ErrorKind::Io(_), _))
-                | Err(Error(ErrorKind::PongTimeout, _))
-                | Err(Error(ErrorKind::RepeatUaidDisconnect, _))
-                | Err(Error(ErrorKind::ExcessivePing, _))
-                | Err(Error(ErrorKind::InvalidStateTransition(_, _), _))
-                | Err(Error(ErrorKind::InvalidClientMessage(_), _))
-                | Err(Error(ErrorKind::SendError, _)) => None,
+                | Err(Error::Ws(_))
+                | Err(Error::Io(_))
+                | Err(Error::PongTimeout)
+                | Err(Error::RepeatUaidDisconnect)
+                | Err(Error::ExcessivePing)
+                | Err(Error::InvalidStateTransition(_, _))
+                | Err(Error::InvalidClientMessage(_))
+                | Err(Error::SendError) => None,
                 Err(e) => Some(e),
             }
         };
@@ -610,7 +614,7 @@ where
 
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {
-            let mut event = event_from_error_chain(err);
+            let mut event = sentry::event_from_error(err);
             event.user = Some(sentry::User {
                 id: Some(webpush.uaid.as_simple().to_string()),
                 ..Default::default()
@@ -631,7 +635,7 @@ where
                 .tags
                 .insert("ua_browser_ver".to_string(), ua_result.version.to_string());
             sentry::capture_event(event);
-            err.display_chain().to_string()
+            err.to_string()
         } else {
             "".to_string()
         };
@@ -694,15 +698,16 @@ fn save_and_notify_undelivered_messages(
                 srv2.ddb.get_user(&uaid)
             })
             .and_then(move |user| {
-                let user = match user.ok_or_else(|| "No user record found".into()) {
-                    Ok(user) => user,
-                    Err(e) => return future::err(e),
-                };
+                let user =
+                    match user.ok_or_else(|| Error::DatabaseError("No user record found".into())) {
+                        Ok(user) => user,
+                        Err(e) => return future::err(e),
+                    };
 
                 // Return an err to stop processing if the user hasn't reconnected yet, otherwise
                 // attempt to construct a client to make the request
                 if user.connected_at == connected_at {
-                    future::err("No notify needed".into())
+                    future::err(Error::GeneralError("No notify needed".into()))
                 } else if let Some(node_id) = user.node_id {
                     let result = AsyncClient::builder()
                         .timeout(Duration::from_secs(1))
@@ -710,10 +715,12 @@ fn save_and_notify_undelivered_messages(
                     if let Ok(client) = result {
                         future::ok((client, user.uaid, node_id))
                     } else {
-                        future::err("Unable to build http client".into())
+                        future::err(Error::GeneralError("Unable to build http client".into()))
                     }
                 } else {
-                    future::err("No new node_id, notify not needed".into())
+                    future::err(Error::GeneralError(
+                        "No new node_id, notify not needed".into(),
+                    ))
                 }
             })
             .and_then(|(client, uaid, node_id)| {
@@ -722,7 +729,7 @@ fn save_and_notify_undelivered_messages(
                 client
                     .put(&notify_url)
                     .send()
-                    .map_err(|_| "Failed to send".into())
+                    .map_err(|_| Error::GeneralError("Failed to send".into()))
             })
             .then(|_| {
                 debug!("Finished cleanup");
@@ -844,10 +851,7 @@ where
             if !smessages.is_empty() {
                 trace!("🚟 Sending {} msgs: {:#?}", smessages.len(), smessages);
                 let item = smessages.remove(0);
-                let ret = data
-                    .ws
-                    .start_send(item)
-                    .chain_err(|| ErrorKind::SendError)?;
+                let ret = data.ws.start_send(item).map_err(|_e| Error::SendError)?;
                 match ret {
                     AsyncSink::Ready => true,
                     AsyncSink::NotReady(returned) => {
@@ -926,11 +930,10 @@ where
         let webpush_rc = data.webpush.clone();
         let mut webpush = webpush_rc.borrow_mut();
         match input {
-            Either::A(ClientMessage::Hello { .. }) => Err(ErrorKind::InvalidStateTransition(
+            Either::A(ClientMessage::Hello { .. }) => Err(Error::InvalidStateTransition(
                 "AwaitInput".to_string(),
                 "Hello".to_string(),
-            )
-            .into()),
+            )),
             Either::A(ClientMessage::BroadcastSubscribe { broadcasts }) => {
                 let broadcast_delta = {
                     let mut broadcast_subs = data.broadcast_subs.borrow_mut();
@@ -959,18 +962,14 @@ where
                        "uaid" => &webpush.uaid.to_string(),
                        "channel_id" => &channel_id_str,
                 );
-                let channel_id = Uuid::parse_str(&channel_id_str).chain_err(|| {
-                    ErrorKind::InvalidClientMessage(format!(
-                        "Invalid channelID: {}",
-                        channel_id_str
-                    ))
+                let channel_id = Uuid::parse_str(&channel_id_str).map_err(|_e| {
+                    Error::InvalidClientMessage(format!("Invalid channelID: {}", channel_id_str))
                 })?;
                 if channel_id.as_hyphenated().to_string() != channel_id_str {
-                    return Err(ErrorKind::InvalidClientMessage(format!(
+                    return Err(Error::InvalidClientMessage(format!(
                         "Invalid UUID format, not lower-case/dashed: {}",
                         channel_id
-                    ))
-                    .into());
+                    )));
                 }
 
                 let uaid = webpush.uaid;
@@ -1092,7 +1091,7 @@ where
                     })
                 } else {
                     trace!("🏓 Got a ping too quickly, disconnecting");
-                    Err(ErrorKind::ExcessivePing.into())
+                    Err(Error::ExcessivePing)
                 }
             }
             Either::B(ServerNotification::Notification(notif)) => {
@@ -1113,7 +1112,7 @@ where
             }
             Either::B(ServerNotification::Disconnect) => {
                 debug!("Got told to disconnect, connecting client has our uaid");
-                Err(ErrorKind::RepeatUaidDisconnect.into())
+                Err(Error::RepeatUaidDisconnect)
             }
         }
     }
@@ -1126,7 +1125,7 @@ where
         let webpush = webpush_rc.borrow();
         let timestamp = webpush
             .unacked_stored_highest
-            .ok_or("unacked_stored_highest unset")?
+            .ok_or_else(|| Error::GeneralError("unacked_stored_highest unset".into()))?
             .to_string();
         let response = Box::new(increment_storage.data.srv.ddb.increment_storage(
             &webpush.message_month,
