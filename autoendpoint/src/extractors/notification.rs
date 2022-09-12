@@ -21,10 +21,11 @@ pub struct Notification {
     pub message_id: String,
     pub subscription: Subscription,
     pub headers: NotificationHeaders,
-    /// Reciept time
+    /// Receipt time
     pub timestamp: time::Instant,
     /// UNIX timestamp in milliseconds
     pub sort_key_timestamp: u64,
+    /// Optional 
     pub meta: Option<String>,
     pub data: Option<String>,
 }
