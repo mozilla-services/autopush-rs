@@ -429,7 +429,6 @@ mod tests {
         };
         let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap());
         assert!(result.is_ok());
-        dbg!(result.unwrap());
         // try standard form with no padding
         let header = VapidHeaderWithKey {
             public_key: public_key_standard.trim_end_matches('=').to_owned(),
