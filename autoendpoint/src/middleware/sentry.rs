@@ -48,7 +48,7 @@ pub fn sentry_middleware(
                                 Ok(_) | Err(_) => {}
                             };
                         }
-                        debug!("Not reporting error (service error): {:?}", error);
+                        debug!("‼Not reporting error (service error): {:?}", error);
                         return Err(error);
                     }
                 }
@@ -63,7 +63,7 @@ pub fn sentry_middleware(
         if let Some(error) = response.response().error() {
             if let Some(api_err) = error.as_error::<ApiError>() {
                 if !api_err.kind.is_sentry_event() {
-                    debug!("Not reporting error (service error): {:?}", error);
+                    debug!("💥Not reporting error (service error): {:?}", error);
                     drop(_scope_guard);
                     return Ok(response);
                 }

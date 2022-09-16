@@ -66,6 +66,12 @@ impl FromRequest for Subscription {
 
             trace!("Vapid: {:?}", &vapid);
 
+            if let Some(vapid_header) = vapid.clone() {
+                let claims =
+                    VapidClaims::from_token(&vapid_header.vapid.token, &vapid_header.public_key)?;
+                trace!("Claims: {:?}", claims);
+            }
+
             match token_info.api_version {
                 ApiVersion::Version1 => version_1_validation(&token)?,
                 ApiVersion::Version2 => version_2_validation(&token, vapid.as_ref())?,

@@ -392,7 +392,10 @@ def _get_vapid(key=None, payload=None, endpoint=None):
         key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
     vk = key.get_verifying_key()
     auth = jws.sign(payload, key, algorithm="ES256").strip('=')
-    crypto_key = base64url_encode('\4' + vk.to_string())
+    vks = vk.to_string()
+    assert len(vks) == 64, "invalid vks?"
+    # convert to inline DER format
+    crypto_key = base64url_encode('\4' + vks)
     return {"auth": auth,
             "crypto-key": crypto_key,
             "key": key}

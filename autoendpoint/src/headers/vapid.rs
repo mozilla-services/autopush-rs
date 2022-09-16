@@ -36,6 +36,9 @@ impl Default for VapidClaims {
 impl VapidClaims {
     pub fn from_token(token: &str, public_key: &str) -> ApiResult<Self> {
         let public_key = decode_public_key(public_key)?;
+        if public_key.len() < 64 || public_key.len() > 65 {
+            trace!("⚠ Potentially invalid public key! {}", public_key.len())
+        }
         match jsonwebtoken::decode::<VapidClaims>(
             token,
             &DecodingKey::from_ec_der(&public_key),
@@ -85,7 +88,7 @@ impl TryFrom<&HttpRequest> for VapidClaims {
                 let cheader = CryptoKeyHeader::parse(cheader_raw)
                     .ok_or(ApiErrorKind::InvalidAuthentication)?;
                 cheader
-                    .get_by_key("dh")
+                    .get_by_key("p256ecdsa")
                     .ok_or(ApiErrorKind::InvalidAuthentication)?
                     .to_owned()
             }
