@@ -5,7 +5,7 @@ use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::DynamoDbUser;
-use cadence::{Counted, CountedExt, StatsdClient};
+use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::hash_map::RandomState;
@@ -118,6 +118,17 @@ impl Router for WebPushRouter {
                 trace!("Response = {:?}", response);
                 if response.status() == 200 {
                     trace!("Node has delivered the message");
+                    self.metrics
+                        .time_with_tags(
+                            "notification.total_request_time",
+                            (notification.timestamp - autopush_common::util::sec_since_epoch())
+                                * 1000,
+                        )
+                        .with_tag("platform", "websocket")
+                        .with_tag("app_id", "direct")
+                        .with_tag("stored", &notification.stored.to_string())
+                        .send();
+
                     Ok(self.make_delivered_response(notification))
                 } else {
                     trace!("Node has not delivered the message, returning stored response");
@@ -160,11 +171,10 @@ impl WebPushRouter {
 
     /// Store a notification in the database
     async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
+        let mut bundle = notification.clone();
+        bundle.stored = true;
         self.ddb
-            .save_message(
-                notification.subscription.user.uaid,
-                notification.clone().into(),
-            )
+            .save_message(notification.subscription.user.uaid, bundle.into())
             .await
             .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
             .map(|_| {

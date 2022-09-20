@@ -413,6 +413,7 @@ impl DynamoStorage {
         .chain_err(|| "Error deleting notification")
     }
 
+    /// Check to see if we have pending messages and return them if we do.
     pub fn check_storage(
         &self,
         table_name: &str,
@@ -550,6 +551,8 @@ impl DynamoStorage {
     }
 }
 
+/// Get the list of current, valid message tables (Note: This is legacy for DynamoDB, but may still
+/// be used for Stand Alone systems )
 pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<String>> {
     let mut names: Vec<String> = Vec::new();
     let mut start_key = None;

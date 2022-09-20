@@ -270,6 +270,7 @@ impl DbClient for DbClientImpl {
         Ok(())
     }
 
+    // Return the list of active channelIDs for a given user.
     async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
         // Channel IDs are stored in a special row in the message table, where
         // chidmessageid = " "

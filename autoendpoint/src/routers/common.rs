@@ -4,7 +4,7 @@ use crate::extractors::notification::Notification;
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
 use autopush_common::util::InsertOpt;
-use cadence::{Counted, CountedExt, StatsdClient};
+use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -173,6 +173,14 @@ pub fn incr_success_metrics(
         .with_tag("app_id", app_id)
         .with_tag("destination", "Direct")
         .send();
+    metrics
+        .time_with_tags(
+            "notification.total_request_time",
+            (autopush_common::util::sec_since_epoch() - notification.timestamp) * 1000,
+        )
+        .with_tag("platform", platform)
+        .with_tag("app_id", app_id)
+        .send();
 }
 
 /// Common router test code
@@ -221,6 +229,7 @@ pub mod tests {
             timestamp: 0,
             sort_key_timestamp: 0,
             data,
+            stored: false,
         }
     }
 }

@@ -16,14 +16,20 @@ use uuid::Uuid;
 /// Extracts notification data from `Subscription` and request data
 #[derive(Clone, Debug)]
 pub struct Notification {
+    /// Unique message_id for this notification
     pub message_id: String,
+    /// The subscription information block
     pub subscription: Subscription,
+    /// Set of associated crypto headers
     pub headers: NotificationHeaders,
     /// UNIX timestamp in seconds
     pub timestamp: u64,
     /// UNIX timestamp in milliseconds
     pub sort_key_timestamp: u64,
+    /// The encrypted notification body
     pub data: Option<String>,
+    /// has the notification been pulled from storage?
+    pub stored: bool,
 }
 
 impl FromRequest for Notification {
@@ -84,6 +90,7 @@ impl FromRequest for Notification {
                 timestamp,
                 sort_key_timestamp,
                 data,
+                stored: false,
             })
         }
         .boxed_local()
@@ -108,6 +115,7 @@ impl From<Notification> for autopush_common::notification::Notification {
                     Some(headers)
                 }
             },
+            stored: notification.stored,
         }
     }
 }
