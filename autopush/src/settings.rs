@@ -155,6 +155,9 @@ impl Settings {
             HOSTNAME.clone()
         }
     }
+
+    //TODO: add make_fernet() /* generate MultiFernet object */
+    //TODO: add get_storage_type() /* return enum for storage to use */
 }
 
 #[cfg(test)]

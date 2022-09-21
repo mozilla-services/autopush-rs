@@ -103,7 +103,7 @@ impl From<&actix_web::web::Data<ServerState>> for Metrics {
 }
 
 impl Metrics {
-    #![allow(unused)] // TODO: Start using metrics
+    #![allow(unused)]
 
     pub fn sink() -> StatsdClient {
         StatsdClient::builder("", NopMetricSink).build()

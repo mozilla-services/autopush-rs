@@ -41,7 +41,7 @@ fn insert_if_not_empty(label: &str, val: &str, tags: &mut HashMap<String, String
 }
 
 impl Tags {
-    #![allow(unused)] // TODO: Start using tags
+    #![allow(unused)]
 
     pub fn from_request_head(req_head: &RequestHead) -> Tags {
         req_head.into()

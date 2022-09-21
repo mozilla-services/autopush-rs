@@ -4,6 +4,8 @@
 //! inside of the old_server::Server that should also be pulled
 //! into here.
 
+// TODO: update this to be async favorable. It currently HEAVILY uses
+// old futures poll()/ready. git 
 use std::io;
 use std::rc::Rc;
 use std::task::Poll;

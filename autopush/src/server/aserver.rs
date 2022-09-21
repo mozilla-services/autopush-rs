@@ -117,19 +117,24 @@ impl Server {
         ws::start(Client::default(), &req, stream).map_err(|e| ApiErrorKind::GeneralError(e.to_string()).into())
     }
 
+    // TODO: Finish this as an Async Server builder.
     async fn with_settings(&self, settings: &Settings) -> ApiResult<dev::Server> {
         let metrics = Arc::new(metrics::new_metrics(Some(settings.statsd_host), settings.statsd_port)?);
         let bind_address = format!("{}:{}", settings.hostname.unwrap_or("localhost".into()), settings.port);
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
-        let db: Box<dyn DbClient> = match settings.use_ddb {
-            true => {
+        let db_settings: autopush_common::db::DbSettings = settings.into();
+        let db: Box<dyn DbClient> = match settings.get_storage_type() {
+            settings::Storage_Type::DDB => {
                 trace!("Using DDB Client");
-                Box::new(DdbClientImpl::new(metrics.clone(), &settings)?)
+                Box::new(DdbClientImpl::new(metrics.clone(), settings)?)
             }
-            false => {
+            settings::Storage_Type::Postgres => {
                 trace!("Using postgres Client");
-                Box::new(PgClientImpl::new(metrics.clone(), &settings).await?)
+                Box::new(PgClientImpl::new(metrics.clone(), settings).await?)
+            }
+            _ => {
+                panic!("Unsupported storage type");
             }
         };
         let state = ServerState {

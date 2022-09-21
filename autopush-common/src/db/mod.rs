@@ -34,6 +34,8 @@ pub struct DbSettings {
     pub message_tablename: String,
     pub meta_tablename: Option<String>,
 }
+//TODO: add `From<autopush::settings::Settings> for DbSettings`?
+//TODO: add `From<autoendpoint::settings::Settings> for DbSettings`?
 
 /// Custom Uuid serializer
 ///
