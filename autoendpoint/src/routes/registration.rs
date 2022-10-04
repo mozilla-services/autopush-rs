@@ -185,7 +185,7 @@ pub async fn get_channels_route(
         state.ddb.update_user(&user).await?;
     } else {
         warn!("An orphan is still checking in {}", path_args.uaid);
-        return Err(ApiErrorKind::NoUser.into())
+        return Err(ApiErrorKind::NoUser.into());
     }
 
     debug!("Getting channel IDs for UAID {}", path_args.uaid);
