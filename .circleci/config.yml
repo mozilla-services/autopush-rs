@@ -87,7 +87,11 @@ jobs:
           name: Check formatting
           command: |
             cargo fmt -- --check
-            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
+            # clippy for rust 1.64+ tags the proc_macro generated "start_in" from
+            # state_machine_future as "dead_code". There's no way to isolate just
+            # those calls, so we have to disable dead_code checks globally.
+            # `-A dead_code` must be removed when we remove `state_machine_future`
+            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro -A dead_code
       - run:
           name: Integration tests
           command: py.test -v

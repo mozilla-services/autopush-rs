@@ -49,6 +49,7 @@ slog-mozlog-json = "0.1.0"
 slog-scope = "4.4"
 smallvec = "1.6"  # for RUSTSEC-2021-0003
 # state_machine_future = { version = "0.1.6", features = ["debug_code_generation"] }
+# NOTE: See comment in `.circleci/config.yml` when removing `state_machine_future`
 state_machine_future = "0.2.0"
 tokio-core = "0.1"
 tokio-io = "0.1.13"
