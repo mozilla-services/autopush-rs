@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::db::util::generate_last_connect;
 use crate::errors::*;
 use crate::notification::Notification;
+use crate::util::generate_expiry;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use crate::util::InsertOpt;
 
@@ -70,6 +71,8 @@ pub struct DynamoDbUser {
     pub uaid: Uuid,
     // Time in milliseconds that the user last connected at
     pub connected_at: u64,
+    // When a user is considered abandoned (updated frequently)
+    pub expiry: u64,
     // Router type of the user
     pub router_type: String,
     // Router-specific data
@@ -98,6 +101,7 @@ impl Default for DynamoDbUser {
             router_type: "webpush".to_string(),
             router_data: None,
             last_connect: Some(generate_last_connect()),
+            expiry: generate_expiry() as u64,
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
             current_month: None,

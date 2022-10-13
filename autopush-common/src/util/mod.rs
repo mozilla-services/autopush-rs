@@ -3,9 +3,11 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::time::Duration;
 
+use chrono::Utc;
 use futures::future::{Either, Future, IntoFuture};
 use tokio_core::reactor::{Handle, Timeout};
 
+use crate::db::MAX_EXPIRY;
 use crate::errors::*;
 
 mod send_all;
@@ -49,4 +51,10 @@ impl<K: Eq + Hash, V> InsertOpt<K, V> for HashMap<K, V> {
             self.insert(key.into(), value.into());
         }
     }
+}
+
+/// Generate the expiration data for the user
+pub fn generate_expiry() -> u64 {
+    let today = Utc::now();
+    today.timestamp() as u64 + MAX_EXPIRY
 }

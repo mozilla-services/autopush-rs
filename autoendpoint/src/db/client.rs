@@ -6,7 +6,7 @@ use crate::db::retry::{
 use async_trait::async_trait;
 use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
 use autopush_common::notification::Notification;
-use autopush_common::util::sec_since_epoch;
+use autopush_common::util::{generate_expiry, sec_since_epoch};
 use autopush_common::{ddb_item, hashmap, val};
 use cadence::StatsdClient;
 use rusoto_core::credential::StaticProvider;
@@ -164,6 +164,8 @@ impl DbClient for DbClientImpl {
     }
 
     async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+        let mut muser = user.clone();
+        muser.expiry = generate_expiry();
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {

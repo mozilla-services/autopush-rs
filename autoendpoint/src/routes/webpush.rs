@@ -21,10 +21,10 @@ pub async fn webpush_route(
 
     let resp = router.route_notification(&notification).await?;
     if router.is_mobile() {
-        // set the `connected_at` timestamp for the user.
+        // set the `connected_at` and `expiry` timestamps for the user.
         // Here, we'll use a successful bridged notification route as a proxy
-        // for the UA having connected to us. `connected_at` allows us to age
-        // out "orphaned" push endpoints.
+        // for the UA having connected to us. `expiry` allows us to automatically
+        // age  out "orphaned" push endpoints.
         state
             .ddb
             .update_user(&notification.subscription.user)

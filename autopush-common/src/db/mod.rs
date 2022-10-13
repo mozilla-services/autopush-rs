@@ -29,7 +29,7 @@ use self::commands::{
 };
 pub use self::models::{DynamoDbNotification, DynamoDbUser};
 
-const MAX_EXPIRY: u64 = 2_592_000;
+pub const MAX_EXPIRY: u64 = 2_592_000; // 30 days.
 const USER_RECORD_VERSION: u8 = 1;
 
 /// Basic requirements for notification content to deliver to websocket client
