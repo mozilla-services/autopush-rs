@@ -322,6 +322,7 @@ impl DynamoStorage {
         message_month: String,
         message: Notification,
     ) -> impl Future<Item = (), Error = Error> {
+        let topic = message.headers.as_ref().is_some().to_string();
         let ddb = self.ddb.clone();
         let put_item = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, message))
@@ -335,7 +336,12 @@ impl DynamoStorage {
             retryable_putitem_error,
         )
         .and_then(move |_| {
-            metrics.incr("notification.db.stored").ok();
+            let mut metric = metrics.incr_with_tags("notification.message.stored");
+            // TODO: include `internal` if meta is set.
+            if !topic.is_empty() {
+                metric = metric.with_tag("topic", &topic);
+            }
+            metric.send();
             future::ok(())
         })
         .chain_err(|| "Error saving notification")
@@ -395,7 +401,9 @@ impl DynamoStorage {
         uaid: &Uuid,
         notif: &Notification,
     ) -> impl Future<Item = (), Error = Error> {
+        let topic = notif.headers.as_ref().is_some().to_string();
         let ddb = self.ddb.clone();
+        let metrics = self.metrics.clone();
         let delete_input = DeleteItemInput {
             table_name: table_name.to_string(),
             key: ddb_item! {
@@ -409,7 +417,15 @@ impl DynamoStorage {
             move || ddb.delete_item(delete_input.clone()),
             retryable_delete_error,
         )
-        .and_then(|_| future::ok(()))
+        .and_then(move |_| {
+            let mut metric = metrics.incr_with_tags("notification.message.deleted");
+            // TODO: include `internal` if meta is set.
+            if !topic.is_empty() {
+                metric = metric.with_tag("topic", &topic);
+            }
+            metric.send();
+            future::ok(())
+        })
         .chain_err(|| "Error deleting notification")
     }
 

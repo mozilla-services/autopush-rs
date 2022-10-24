@@ -1193,25 +1193,22 @@ where
         // Filter out TTL expired messages
         let now = sec_since_epoch();
         let srv = data.srv.clone();
-        messages = messages
-            .into_iter()
-            .filter(|n| {
-                if !n.expired(now) {
-                    return true;
-                }
-                if n.sortkey_timestamp.is_none() {
-                    srv.handle.spawn(
-                        srv.ddb
-                            .delete_message(&webpush.message_month, &webpush.uaid, n)
-                            .then(|_| {
-                                debug!("Deleting expired message without sortkey_timestamp");
-                                Ok(())
-                            }),
-                    );
-                }
-                false
-            })
-            .collect();
+        messages.retain(|n| {
+            if !n.expired(now) {
+                return true;
+            }
+            if n.sortkey_timestamp.is_none() {
+                srv.handle.spawn(
+                    srv.ddb
+                        .delete_message(&webpush.message_month, &webpush.uaid, n)
+                        .then(|_| {
+                            debug!("Deleting expired message without sortkey_timestamp");
+                            Ok(())
+                        }),
+                );
+            }
+            false
+        });
         webpush.flags.increment_storage = !include_topic && timestamp.is_some();
         // If there's still messages send them out
         if !messages.is_empty() {
@@ -1341,12 +1338,11 @@ where
 }
 
 fn emit_metrics_for_send(metrics: &StatsdClient, notif: &Notification, source: &'static str) {
-    if notif.topic.is_some() {
-        metrics.incr("ua.notification.topic").ok();
-    }
     metrics
         .incr_with_tags("ua.notification.sent")
         .with_tag("source", source)
+        .with_tag("topic", &notif.topic.is_some().to_string())
+        // TODO: include `internal` if meta is set
         .send();
     metrics
         .count_with_tags(

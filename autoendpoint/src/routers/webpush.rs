@@ -73,11 +73,16 @@ impl Router for WebPushRouter {
         }
 
         if notification.headers.ttl == 0 {
+            let topic = notification.headers.topic.is_some().to_string();
             trace!(
                 "Notification has a TTL of zero and was not successfully \
                  delivered, dropping it"
             );
-            self.metrics.incr("notification.message.expired")?;
+            self.metrics
+                .incr_with_tags("notification.message.expired")
+                // TODO: include `internal` if meta is set.
+                .with_tag("topic", &topic)
+                .send();
             return Ok(self.make_delivered_response(notification));
         }
 
@@ -177,13 +182,6 @@ impl WebPushRouter {
             .save_message(notification.subscription.user.uaid, bundle.into())
             .await
             .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
-            .map(|_| {
-                self.metrics
-                    .incr_with_tags("notification.message.stored")
-                    .with_tag("topic", &notification.headers.topic.is_some().to_string())
-                    // TODO: include `internal` if meta is set.
-                    .send();
-            })
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer
