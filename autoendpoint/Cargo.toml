@@ -61,9 +61,9 @@ tokio = { version = "1.17", features = ["fs"] }  # 1.1+ requires futures 0.3+
 thiserror = "1.0"
 url = "2.2"
 uuid = { version = "1.0", features = ["serde", "v4"] }
-validator = "0.15"
-validator_derive = "0.15"
-yup-oauth2 = "6.5"
+validator = "0.16"
+validator_derive = "0.16"
+yup-oauth2 = "7.0"
 
 # For mockito test debugging
 #ureq={ version="2.4", features=["json"] }

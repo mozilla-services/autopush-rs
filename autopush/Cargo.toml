@@ -29,9 +29,9 @@ config = "0.13"
 docopt = "1.1.0"
 env_logger = "0.9"
 error-chain = "0.12"
-fernet = "0.1.3"
+fernet = "0.2"
 futures = "0.3"
-futures_01 = {version="0.1", package = "futures"}
+futures_01 = {version="0.3", package = "futures"}
 futures-util = {version="0.3", features=["async-await", "compat", "sink", "io"]}
 futures-locks = "0.7"
 hex = "0.4.2"
@@ -44,8 +44,8 @@ openssl = "0.10"
 reqwest = "0.11"
 rusoto_core = { version="0.48", default-features=false, features=["rustls"] }
 rusoto_dynamodb = {version="0.48", default-features=false, features=["rustls"]}
-sentry = { version = "0.25"}
-sentry-backtrace = "0.25"
+sentry = { version = "0.27"}
+sentry-backtrace = "0.27"
 serde = "1.0"
 serde_derive = "1.0"
 serde_dynamodb = "0.9"  # 0.7+ requires rusoto 0.46+

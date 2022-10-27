@@ -69,7 +69,7 @@ async fn main() -> ApiResult<()> {
         &settings.router_tablename
     );
     let server_opts = ServerOptions::from_settings(settings)?;
-    let server = aserver::Server::from_opts(server_opts)?;
+    let server = aserver::Server{}.from_opts(server_opts)?;
     server.start();
     signal.recv().unwrap();
     info!("Server closing");

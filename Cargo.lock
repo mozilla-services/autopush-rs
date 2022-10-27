@@ -463,7 +463,7 @@ dependencies = [
  "cadence",
  "config",
  "docopt",
- "fernet",
+ "fernet 0.1.4",
  "futures 0.3.21",
  "hex",
  "jsonwebtoken",
@@ -519,8 +519,7 @@ dependencies = [
  "docopt",
  "env_logger",
  "error-chain",
- "fernet",
- "futures 0.1.31",
+ "fernet 0.2.0",
  "futures 0.3.21",
  "futures-locks",
  "futures-util",
@@ -535,8 +534,8 @@ dependencies = [
  "rusoto_core 0.48.0",
  "rusoto_dynamodb 0.48.0",
  "rust-fsm",
- "sentry 0.25.0",
- "sentry-backtrace 0.25.0",
+ "sentry 0.27.0",
+ "sentry-backtrace 0.27.0",
  "serde",
  "serde_derive",
  "serde_dynamodb",
@@ -571,7 +570,7 @@ dependencies = [
  "cadence",
  "chrono",
  "config",
- "fernet",
+ "fernet 0.1.4",
  "futures 0.3.21",
  "futures-backoff",
  "hex",
@@ -1210,6 +1209,19 @@ name = "fernet"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93804560e638370a8be6d59ce71ed803e55e230abdbf42598e666b41adda9b1f"
+dependencies = [
+ "base64 0.13.0",
+ "byteorder",
+ "getrandom 0.2.6",
+ "openssl",
+ "zeroize",
+]
+
+[[package]]
+name = "fernet"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6dedfc944f4ac38cac8b74cb1c7b4fb73c175db232d6fa98e9bd1fd81908b89"
 dependencies = [
  "base64 0.13.0",
  "byteorder",
@@ -4416,9 +4428,9 @@ dependencies = [
 
 [[package]]
 name = "validator"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f07b0a1390e01c0fc35ebb26b28ced33c9a3808f7f9fbe94d3cc01e233bfeed5"
+checksum = "32ad5bf234c7d3ad1042e5252b7eddb2c4669ee23f32c7dd0e9b7705f07ef591"
 dependencies = [
  "idna",
  "lazy_static",
@@ -4431,9 +4443,9 @@ dependencies = [
 
 [[package]]
 name = "validator_derive"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea7ed5e8cf2b6bdd64a6c4ce851da25388a89327b17b88424ceced6bd5017923"
+checksum = "bc44ca3088bb3ba384d9aecf40c6a23a676ce23e09bdaca2073d99c207f864af"
 dependencies = [
  "if_chain",
  "lazy_static",
@@ -4447,9 +4459,9 @@ dependencies = [
 
 [[package]]
 name = "validator_types"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2ddf34293296847abfc1493b15c6e2f5d3cd19f57ad7d22673bf4c6278da329"
+checksum = "111abfe30072511849c5910134e8baf8dc05de4c0e5903d681cbd5c9c4d611e3"
 dependencies = [
  "proc-macro2",
  "syn",
@@ -4747,9 +4759,9 @@ dependencies = [
 
 [[package]]
 name = "yup-oauth2"
-version = "6.7.0"
+version = "7.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87d859e5b7fb10b5956b30eb1a6da981cdf0d3195fe2c6ff1840424522ca0d51"
+checksum = "98748970d2ddf05253e6525810d989740334aa7509457864048a829902db76f3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4768,6 +4780,7 @@ dependencies = [
  "serde_json",
  "time 0.3.9",
  "tokio 1.19.2",
+ "tower-service",
  "url",
 ]
 
