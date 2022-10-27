@@ -6,6 +6,10 @@ use uuid::Uuid;
 
 use crate::util::ms_since_epoch;
 
+fn bool_true() -> bool {
+    true
+}
+
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
 pub struct Notification {
     #[serde(rename = "channelID")]
@@ -23,7 +27,7 @@ pub struct Notification {
     pub sortkey_timestamp: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
-    #[serde(skip_serializing)]
+    #[serde(default="bool_true", skip_serializing)]
     pub stored: bool,
 }
 
