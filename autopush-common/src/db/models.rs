@@ -148,7 +148,7 @@ pub struct DynamoDbNotification {
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,
     // This message was stored
-    #[serde(default="bool_true")]
+    #[serde(default = "bool_true")]
     stored: bool,
 }
 
