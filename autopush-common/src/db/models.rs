@@ -105,6 +105,10 @@ impl Default for DynamoDbUser {
     }
 }
 
+fn bool_true() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DynamoDbNotification {
     // DynamoDB <Hash key>
@@ -144,6 +148,7 @@ pub struct DynamoDbNotification {
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,
     // This message was stored
+    #[serde(default="bool_true")]
     stored: bool,
 }
 
