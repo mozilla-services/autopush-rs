@@ -1,3 +1,61 @@
+<a name="1.65.0"></a>
+## 1.65.0 (2022-07-20)
+
+
+#### Features
+
+*   allow for standard base64 private keys (#323) ([7ec9e541](https://github.com/mozilla-services/autopush-rs/commit/7ec9e5410db12ff9f17f97b3eb3da0f06f6d6c14))
+
+#### Chore
+
+*   tag 1.64.0 (#322) ([3b888782](https://github.com/mozilla-services/autopush-rs/commit/3b88878285a0efd06a560d3ecc5b97b705c93105))
+
+
+
+<a name="1.64.0"></a>
+##  (2022-07-13)
+
+
+#### Bug Fixes
+
+*   add jitter to retry (#319) ([3272fdec](https://github.com/mozilla-services/autopush-rs/commit/3272fdec1ccd144b0fdff678c64eddf27d45626f))
+*   various mini-patches for FxA integration work (#321) ([b2b6bfd3](https://github.com/mozilla-services/autopush-rs/commit/b2b6bfd3e5f4273e6312f6305fb122013182d55b))
+    * Added more verbose `trace!` and `debug!` logging messages.
+    * ignore padding errors for VAPID keys
+    * bumped up default max bytes to handle base64 encoded 4096 block
+    * record the VapidError as an info before we send it to metrics
+
+#### Chore
+
+*   tag 1.63.0 (#312) ([f40a14a7](https://github.com/mozilla-services/autopush-rs/commit/f40a14a7972f19702d11075d7f49c6f29853b6c2))
+
+#### Breaking Changes
+
+*   Update for Jun 2022: Alters env var key names (#313) ([1ec85899](https://github.com/mozilla-services/autopush-rs/commit/1ec858990dabeefea5953b486dbd9beeada29ca2))
+    Broke: Environment var key changes from:
+
+    `AUTOPUSH_` => `AUTOPUSH__`
+
+    `AUTOEND_` => `AUTOEND__`
+
+<a name="1.63.0"></a>
+## 1.63.0 (2022-06-02)
+
+
+#### Chore
+
+*   tag 1.62.0 (#304) ([1425b896](https://github.com/mozilla-services/autopush-rs/commit/1425b89641db05a44600fbcc01723a9c6f8e5f6f))
+
+#### Bug Fixes
+
+*   Fix GCM handling (#309) ([96cef485](https://github.com/mozilla-services/autopush-rs/commit/96cef485390118c8237f0738cb725856dfa3559e))
+
+#### Features
+
+*   Add tool to generate endpoints (#307) ([2829fa42](https://github.com/mozilla-services/autopush-rs/commit/2829fa42bfeffec1c8d2cdddd367a5555a52630b))
+
+
+
 <a name="1.62.0"></a>
 ## 1.62.0 (2022-05-05)
 

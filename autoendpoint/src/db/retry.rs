@@ -49,5 +49,5 @@ pub fn retryable_describe_table_error(
 
 /// Build an exponential retry policy
 pub fn retry_policy() -> RetryPolicy {
-    RetryPolicy::exponential(Duration::from_millis(100))
+    RetryPolicy::default().with_jitter(true)
 }

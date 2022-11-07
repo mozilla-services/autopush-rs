@@ -41,6 +41,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
     let settings = settings::Settings::with_env_and_config_file(&args.flag_config)?;
+    let host_port = format!("{}:{}", &settings.host, &settings.port);
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
     debug!("Starting up...");
     trace!(
@@ -56,7 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let server = server::Server::with_settings(settings)
         .await
         .expect("Could not start server");
-    info!("Server started");
+    info!("Server started: {}", host_port);
     server.await?;
 
     // Shutdown

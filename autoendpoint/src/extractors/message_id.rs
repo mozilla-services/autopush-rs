@@ -62,8 +62,8 @@ impl MessageId {
                 timestamp,
             } => format!(
                 "02:{}:{}:{}",
-                &uaid.as_simple(),
-                &channel_id.as_simple(),
+                &uaid.simple(),
+                &channel_id.simple(),
                 timestamp
             ),
         };

@@ -5,7 +5,7 @@ use thiserror::Error;
 pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 
 /// Parses the VAPID authorization header
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VapidHeader {
     pub scheme: String,
     pub token: String,
@@ -21,7 +21,7 @@ pub struct VapidHeaderWithKey {
 }
 
 /// Version-specific VAPID data. Also used to identify the VAPID version.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VapidVersionData {
     Version1,
     Version2 { public_key: String },
@@ -77,7 +77,7 @@ impl VapidHeader {
     }
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub enum VapidError {
     #[error("Missing VAPID token")]
     MissingToken,
@@ -85,8 +85,8 @@ pub enum VapidError {
     InvalidVapid(String),
     #[error("Missing VAPID public key")]
     MissingKey,
-    #[error("Invalid VAPID public key")]
-    InvalidKey,
+    #[error("Invalid VAPID public key: {0}")]
+    InvalidKey(String),
     #[error("Invalid VAPID audience")]
     InvalidAudience,
     #[error("Invalid VAPID expiry")]

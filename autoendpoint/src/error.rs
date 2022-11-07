@@ -187,7 +187,9 @@ impl ApiErrorKind {
             | ApiErrorKind::InvalidAuthentication
             | ApiErrorKind::InvalidLocalAuth(_) |
             // Ignore missing or invalid user errors
-            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription,
+            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
+            // Ignore overflow errors
+            ApiErrorKind::Router(RouterError::TooMuchData(_)),
         )
     }
 

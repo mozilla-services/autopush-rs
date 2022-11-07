@@ -895,7 +895,7 @@ where
                 ..
             } = **send;
             if !smessages.is_empty() {
-                trace!("Sending {} {:#?}", smessages.len(), smessages);
+                trace!("🚟 Sending {} msgs: {:#?}", smessages.len(), smessages);
                 let item = smessages.remove(0);
                 let ret = data.ws.start_send(item).map_err(|| ErrorKind::SendError)?;
                 match ret {
@@ -969,6 +969,8 @@ where
         r#await: &'a mut RentToOwn<'a, AwaitInput<T>>,
     ) -> Poll<AfterAwaitInput<T>, Error> {
         trace!("State: AwaitInput");
+        // The following is a blocking call. No action is taken until we either get a
+        // websocket data packet or there's an incoming notification.
         let input = try_ready!(r#await.data.input_or_notif());
         let AwaitInput { data } = r#await.take();
         let webpush_rc = data.webpush.clone();
@@ -1013,7 +1015,7 @@ where
                         channel_id_str
                     ))
                 })?;
-                if channel_id.to_hyphenated().to_string() != channel_id_str {
+                if channel_id.as_hyphenated().to_string() != channel_id_str {
                     return Err(ErrorKind::InvalidClientMessage(format!(
                         "Invalid UUID format, not lower-case/dashed: {}",
                         channel_id
@@ -1136,14 +1138,14 @@ where
                 // Clients shouldn't ping > than once per minute or we
                 // disconnect them
                 if sec_since_epoch() - webpush.last_ping >= 45 {
-                    debug!("Got a ping, sending pong");
+                    trace!("🏓 Got a ping, sending pong");
                     webpush.last_ping = sec_since_epoch();
                     transition!(Send {
                         smessages: vec![ServerMessage::Ping],
                         data,
                     })
                 } else {
-                    debug!("Got a ping too quickly, disconnecting");
+                    trace!("🏓 Got a ping too quickly, disconnecting");
                     Err(ErrorKind::ExcessivePing.into())
                 }
             }

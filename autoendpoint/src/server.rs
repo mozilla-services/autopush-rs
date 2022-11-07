@@ -24,6 +24,7 @@ use autopush_common::errors::render_404;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -62,7 +63,11 @@ impl Server {
                 Box::new(PgClientImpl::new(metrics.clone(), &db_settings).await?)
             }
         };
-        let http = reqwest::Client::new();
+        let http = reqwest::ClientBuilder::new()
+            .connect_timeout(Duration::from_millis(settings.connection_timeout_millis))
+            .timeout(Duration::from_millis(settings.request_timeout_millis))
+            .build()
+            .expect("Could not generate request client");
         let fcm_router = Arc::new(
             FcmRouter::new(
                 settings.fcm.clone(),

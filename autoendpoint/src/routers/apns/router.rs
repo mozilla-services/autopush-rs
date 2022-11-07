@@ -335,6 +335,7 @@ mod tests {
     const DEVICE_TOKEN: &str = "test-token";
     const APNS_ID: &str = "deadbeef-4f5e-4403-be8f-35d0251655f5";
 
+    #[allow(clippy::type_complexity)]
     /// A mock APNS client which allows one to supply a custom APNS response/error
     struct MockApnsClient {
         send_fn: Box<dyn Fn(Payload<'_>) -> Result<a2::Response, a2::Error> + Send + Sync>,

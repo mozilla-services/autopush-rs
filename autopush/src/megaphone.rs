@@ -67,7 +67,7 @@ struct BroadcastRevision {
 
 // A provided Broadcast/Version used for `BroadcastSubsInit`, client comparisons, and outgoing
 // deltas
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Broadcast {
     broadcast_id: String,
     version: String,
@@ -162,6 +162,7 @@ impl BroadcastChangeTracker {
     /// Note: If the broadcast already exists, it will be updated instead.
     pub fn add_broadcast(&mut self, broadcast: Broadcast) -> u32 {
         if let Ok(change_count) = self.update_broadcast(broadcast.clone()) {
+            trace!("📢 returning change count {}", &change_count);
             return change_count;
         }
         self.change_count += 1;
@@ -180,6 +181,8 @@ impl BroadcastChangeTracker {
     ///
     /// Returns an error if the `broadcast` was never initialized/added.
     pub fn update_broadcast(&mut self, broadcast: Broadcast) -> Result<u32> {
+        let b_id = broadcast.broadcast_id.clone();
+        let old_count = self.change_count;
         let key = self
             .broadcast_registry
             .lookup_key(&broadcast.broadcast_id)
@@ -191,9 +194,11 @@ impl BroadcastChangeTracker {
             }
             *ver = broadcast.version;
         } else {
+            trace!("📢 Not found: {}", &b_id);
             return Err("Broadcast not found".into());
         }
 
+        trace!("📢 New version of {}", &b_id);
         // Check to see if this broadcast has been updated since initialization
         let bcast_index = self
             .broadcast_list
@@ -209,14 +214,19 @@ impl BroadcastChangeTracker {
             .next();
         self.change_count += 1;
         if let Some(bcast_index) = bcast_index {
+            trace!("📢  {} index: {}", &b_id, &bcast_index);
             let mut bcast = self.broadcast_list.remove(bcast_index);
             bcast.change_count = self.change_count;
             self.broadcast_list.push(bcast);
         } else {
+            trace!("📢 adding broadcast list for {}", &b_id);
             self.broadcast_list.push(BroadcastRevision {
                 change_count: self.change_count,
                 broadcast: key,
             })
+        }
+        if old_count != self.change_count {
+            trace!("📢 New Change available");
         }
         Ok(self.change_count)
     }

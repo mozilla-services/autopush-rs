@@ -21,14 +21,17 @@ pub struct Settings {
 
     pub use_ddb: bool,
     pub db_dsn: Option<String>,
-    pub router_tablename: String,
-    pub message_tablename: String,
+    pub router_table_name: String,
+    pub message_table_name: String,
     pub meta_tablename: Option<String>,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
     pub auth_keys: String,
     pub human_logs: bool,
+
+    pub connection_timeout_millis: u64,
+    pub request_timeout_millis: u64,
 
     pub statsd_host: Option<String>,
     pub statsd_port: u16,
@@ -48,13 +51,19 @@ impl Default for Settings {
             port: 8000,
             use_ddb: true,
             db_dsn: None,
-            router_tablename: "router".to_string(), // be consistent with autopush-rs
-            message_tablename: "message".to_string(),
+            router_table_name: "router".to_string(), // be consistent with autopush-rs
+            message_table_name: "message".to_string(),
             meta_tablename: None,
-            max_data_bytes: 4096,
+            /// max data is a bit hard to figure out, due to encryption. Using something
+            /// like pywebpush, if you encode a block of 4096 bytes, you'll get a
+            /// 4216 byte data block. Since we're going to be receiving this, we have to
+            /// presume base64 encoding, so we can bump things up to 5624 bytes max.
+            max_data_bytes: 5624,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             human_logs: false,
+            connection_timeout_millis: 1000,
+            request_timeout_millis: 3000,
             statsd_host: None,
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
@@ -68,26 +77,21 @@ impl Default for Settings {
 impl Settings {
     /// Load the settings from the config file if supplied, then the environment.
     pub fn with_env_and_config_file(filename: &Option<String>) -> Result<Self, ConfigError> {
-        let mut s = Config::builder();
+        let mut config = Config::builder();
 
         // Merge the config file if supplied
         if let Some(config_filename) = filename {
-            s = s.add_source(File::with_name(config_filename));
+            config = config.add_source(File::with_name(config_filename));
         }
 
         // Merge the environment overrides
         // Note: Specify the separator here so that the shell can properly pass args
-        // down to the sub structures. Also, with config 0.12 the `separator` impacts
-        // which vars are read. (e.g. `separator('__') ignores "AUTOEND_FOO__BAR" since
-        // the "key" would be determined as "AUTOEND_FOO"). Config::Environment
-        // overloads separator and group_separator with no way to differentiate. The
-        // better solution is to NOT specify `separator()` and use the default
-        // `_` group separator.
-        s = s.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
+        // down to the sub structures.
+        config = config.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
 
-        let built = s.build()?;
+        let built = config.build()?;
 
-        let mut settings = built
+        built
             .try_deserialize::<Self>()
             .map_err(|error| match error {
                 // Configuration errors are not very sysop friendly, Try to make them
@@ -210,5 +214,36 @@ mod tests {
             .unwrap()
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_default_settings() {
+        // Test that the Config works the way we expect it to.
+        let port = format!("{}__PORT", super::ENV_PREFIX).to_uppercase();
+        let timeout = format!("{}__FCM__TIMEOUT", super::ENV_PREFIX).to_uppercase();
+
+        use std::env;
+        let v1 = env::var(&port);
+        let v2 = env::var(&timeout);
+        env::set_var(&port, "9123");
+        env::set_var(&timeout, "123");
+
+        let settings = Settings::with_env_and_config_file(&None).unwrap();
+        assert_eq!(&settings.port, &9123);
+        assert_eq!(&settings.fcm.timeout, &123);
+        assert_eq!(settings.host, "127.0.0.1".to_owned());
+        // reset (just in case)
+        if let Ok(p) = v1 {
+            trace!("Resetting {}", &port);
+            env::set_var(&port, p);
+        } else {
+            env::remove_var(&port);
+        }
+        if let Ok(p) = v2 {
+            trace!("Resetting {}", &timeout);
+            env::set_var(&timeout, p);
+        } else {
+            env::remove_var(&timeout);
+        }
     }
 }

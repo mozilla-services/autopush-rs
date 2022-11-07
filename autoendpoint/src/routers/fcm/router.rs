@@ -15,6 +15,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 use url::Url;
 
 /// 28 days
@@ -238,6 +239,7 @@ mod tests {
     use crate::routers::fcm::settings::FcmSettings;
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
+    use std::sync::Arc;
 
     use cadence::StatsdClient;
     use mockall::predicate;

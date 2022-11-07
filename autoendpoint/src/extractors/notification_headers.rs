@@ -308,7 +308,10 @@ mod tests {
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().topic, Some("test-topic".to_string()));
+        assert_eq!(
+            result.unwrap().topic,
+            Some("a-test-topic-which-is-just-right".to_string())
+        );
     }
 
     /// Topic names which are too long return an error

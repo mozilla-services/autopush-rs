@@ -1,6 +1,6 @@
 [package]
 name = "autopush"
-version = "1.62.0"
+version = "1.65.0"
 authors = [
   "Ben Bangert <ben@groovie.org>",
   "JR Conlin <jrconlin@mozilla.com>",
@@ -30,7 +30,7 @@ docopt = "1.1.0"
 env_logger = "0.9"
 error-chain = "0.12"
 fernet = "0.2"
-futures = "0.3"
+#futures = "0.3"
 futures_01 = {version="0.3", package = "futures"}
 futures-util = {version="0.3", features=["async-await", "compat", "sink", "io"]}
 futures-locks = "0.7"
