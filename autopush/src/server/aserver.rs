@@ -53,11 +53,13 @@ impl StreamHandler<ApiResult<ws::Message>> for SocketHandler {
         // process websocket messages
         match msg {
             Ok(ws::Message::Ping(m)) => {
-                // TODO: Megaphone?
+                // TODO: Add in Megaphone's function here?
+                // Megaphone supplements the "ping" message with a data packet response.
+                // normally, the server sends pings out the the client.
                 ctx.pong(&m);
             }
             Ok(ws::Message::Pong(_)) => {
-                // whatever
+                // TODO: Probably safe to ignore, unless you want to do a Megaphone exchange as well.
             }
             Ok(ws::Message::Text(text)) => return self.do_command(text),
             Ok(ws::Message::Binary(_)) => {
@@ -125,11 +127,11 @@ impl Server {
         let endpoint_url = settings.endpoint_url();
         let db_settings: autopush_common::db::DbSettings = settings.into();
         let db: Box<dyn DbClient> = match settings.get_storage_type() {
-            settings::Storage_Type::DDB => {
+            crate::settings::Storage_Type::DDB => {
                 trace!("Using DDB Client");
                 Box::new(DdbClientImpl::new(metrics.clone(), settings)?)
             }
-            settings::Storage_Type::Postgres => {
+            crate::settings::Storage_Type::Postgres => {
                 trace!("Using postgres Client");
                 Box::new(PgClientImpl::new(metrics.clone(), settings).await?)
             }

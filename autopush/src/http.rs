@@ -27,10 +27,13 @@ pub struct Push(pub Arc<ClientRegistry>);
 impl Push {
     /// Get the UAID from the URI
     pub fn get_uaid(req: &HttpRequest) -> ApiResult<String> {
-        let candidate = req.match_info().get("uaid").unwrap_or_else(|| {
-            return Err(ApiErrorKind::GeneralError("Missing UAID from path".to_string()).into())
-        })?;
-        Ok(Uuid::parse_str(candidate))
+        let candidate = match req.match_info().get("uaid") {
+            Some(v) => v,
+            None => {
+                return Err(ApiErrorKind::GeneralError("Missing UAID from path".to_string()).into())
+            }
+        };
+        Ok(Uuid::parse_str(candidate)?.as_simple().to_string())
 
     }
 

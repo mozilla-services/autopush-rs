@@ -8,6 +8,19 @@ use serde_derive::Deserialize;
 
 const ENV_PREFIX: &str = "autopush";
 
+#[derive(Clone, Debug)]
+pub enum Storage_Type {
+    Postgres,
+    DDB,
+    BigTable,
+}
+
+impl Default for Storage_Type {
+    fn default() -> Self {
+        Self::DDB
+    }
+}
+
 lazy_static! {
     static ref HOSTNAME: String = mozsvc_common::get_hostname()
         .expect("Couldn't get_hostname")
@@ -38,9 +51,9 @@ pub struct Settings {
     pub resolve_hostname: bool,
     pub router_port: u16,
     pub router_hostname: Option<String>,
-    pub router_tablename: String,
-    pub message_tablename: String,
-    pub meta_tablename: Option<String>,
+    pub router_table_name: String,
+    pub message_table_name: String,
+    pub meta_table_name: Option<String>,
     pub router_ssl_key: Option<String>,
     pub router_ssl_cert: Option<String>,
     pub router_ssl_dh_param: Option<String>,
@@ -71,9 +84,9 @@ impl Default for Settings {
             resolve_hostname: false,
             router_port: 8081,
             router_hostname: None,
-            router_tablename: "router".to_owned(),
-            message_tablename: "message".to_owned(),
-            meta_tablename: None,
+            router_table_name: "router".to_owned(),
+            message_table_name: "message".to_owned(),
+            meta_table_name: None,
             router_ssl_key: None,
             router_ssl_cert: None,
             router_ssl_dh_param: None,
@@ -94,39 +107,6 @@ impl Default for Settings {
             human_logs: false,
             msg_limit: 100,
             db_dsn: None,
-        }
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            port: 8080,
-            hostname: None,
-            resolve_hostname: false,
-            router_port: 8081,
-            router_hostname: None,
-            router_tablename: "router".to_owned(),
-            message_tablename: "message".to_owned(),
-            router_ssl_key: None,
-            router_ssl_cert: None,
-            router_ssl_dh_param: None,
-            auto_ping_interval: 300.0,
-            auto_ping_timeout: 4.0,
-            max_connections: 0,
-            close_handshake_timeout: 0,
-            endpoint_scheme: "http".to_owned(),
-            endpoint_hostname: "localhost".to_owned(),
-            endpoint_port: 8082,
-            crypto_key: format!("[{}]", Fernet::generate_key()),
-            statsd_host: "localhost".to_owned(),
-            statsd_port: 8125,
-            aws_ddb_endpoint: None,
-            megaphone_api_url: None,
-            megaphone_api_token: None,
-            megaphone_poll_interval: 30,
-            human_logs: false,
-            msg_limit: 100,
         }
     }
 }
@@ -268,7 +248,7 @@ mod tests {
         assert_eq!(&settings.port, &9123);
         assert_eq!(&settings.msg_limit, &123);
         assert_eq!(
-            &settings.crypto_key,
+            &settings.crypto_keys,
             "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]"
         );
 

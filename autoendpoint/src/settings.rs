@@ -91,7 +91,7 @@ impl Settings {
 
         let built = config.build()?;
 
-        built
+        let mut settings = built
             .try_deserialize::<Self>()
             .map_err(|error| match error {
                 // Configuration errors are not very sysop friendly, Try to make them

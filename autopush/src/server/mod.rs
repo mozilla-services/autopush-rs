@@ -117,9 +117,9 @@ impl ServerOptions {
                 Some(settings.statsd_host)
             },
             statsd_port: settings.statsd_port,
-            _message_table_name: settings.message_tablename,
-            _router_table_name: settings.router_tablename,
-            _meta_table_name: settings.meta_tablename,
+            _message_table_name: settings.message_table_name,
+            _router_table_name: settings.router_table_name,
+            _meta_table_name: settings.meta_table_name,
             router_url,
             endpoint_url,
             ssl_key: settings.router_ssl_key.map(PathBuf::from),

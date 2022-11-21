@@ -15,7 +15,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::str::FromStr;
-use std::sync::Arc;
 use url::Url;
 
 /// 28 days
@@ -240,11 +239,10 @@ mod tests {
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
     use std::sync::Arc;
+    use std::collections::HashMap;
 
     use cadence::StatsdClient;
     use mockall::predicate;
-    use std::collections::HashMap;
-    use std::sync::Arc;
     use url::Url;
 
     const FCM_TOKEN: &str = "test-token";

@@ -65,8 +65,8 @@ async fn main() -> ApiResult<()> {
     info!("Server starting on port {}", &settings.port);
     trace!(
         "message {:?}, router: {:?}",
-        &settings.message_tablename,
-        &settings.router_tablename
+        &settings.message_table_name,
+        &settings.router_table_name
     );
     let server_opts = ServerOptions::from_settings(settings)?;
     let server = aserver::Server{}.from_opts(server_opts)?;

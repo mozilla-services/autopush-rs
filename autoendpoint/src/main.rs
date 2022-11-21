@@ -46,8 +46,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     debug!("Starting up...");
     trace!(
         "message {:?}, router: {:?}",
-        &settings.message_tablename,
-        &settings.router_tablename
+        &settings.message_table_name,
+        &settings.router_table_name
     );
 
     // Configure sentry error capture

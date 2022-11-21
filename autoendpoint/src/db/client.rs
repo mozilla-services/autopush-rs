@@ -7,8 +7,6 @@ use std::env;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use uuid::Uuid;
-
 /// Provides high-level operations over the DynamoDB database
 #[async_trait]
 pub trait DbClient: Send + Sync {
