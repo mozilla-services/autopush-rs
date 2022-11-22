@@ -5,8 +5,10 @@ use uuid::Uuid;
 
 use crate::util::InsertOpt;
 
-/// Direct representation of a DynamoDB Notification as we store it in the database
-/// Most attributes are optional
+/// Direct representation of an incoming subscription notification header set
+/// as we store it in the database.
+/// It is possible to have a "data free" notification, which does not have a 
+/// message component, and thus, no headers. 
 #[derive(Default, Deserialize, PartialEq, Debug, Clone, Serialize)]
 pub(crate) struct NotificationHeaders {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -42,10 +44,15 @@ impl From<HashMap<String, String>> for NotificationHeaders {
     }
 }
 
+/// Contains some meta info regarding the message we're handling.
 pub(crate) struct RangeKey {
+    /// The channel_identifier
     pub(crate) channel_id: Uuid,
+    /// The optional topic identifier
     pub(crate) topic: Option<String>,
+    /// The encoded sortkey and timestamp
     pub(crate) sortkey_timestamp: Option<u64>,
+    /// Which version of this message are we handling
     pub(crate) legacy_version: Option<String>,
 }
 

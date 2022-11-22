@@ -1,3 +1,14 @@
+/// Contains the general Database access bits
+/// 
+/// Database access is abstracted into a DbClient impl
+/// which contains the required trait functions the 
+/// application will need to perform in the database.
+/// Each of the abstractions contains a DbClientImpl 
+/// that is responsible for carrying out the requested
+/// functions. Each of the data stores are VERY
+/// different, although the requested functions 
+/// are fairly simple. 
+
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
@@ -28,11 +39,25 @@ const USER_RECORD_VERSION: u8 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
+/// The universal settings for the database
+/// abstractor.
 #[derive(Clone, Debug, Default)]
 pub struct DbSettings {
+    /// Database connector string
     pub dsn: Option<String>,
+    // TODO: These should probably go into the DbClientImpl, since
+    // they're not really universal.
+    /// Name of the router table.
+    /// This table contains the routing information for how to
+    /// get data to the requested UserAgent
     pub router_tablename: String,
+    /// Name of the message table
+    /// This table contains the message information table. 
     pub message_tablename: String,
+    /// Optional name of the "meta" table
+    /// This is a table that contains database relational
+    /// information for the UAID, (e.g. a list of the 
+    /// associated ChannelIDs (CHIDs))
     pub meta_tablename: Option<String>,
 }
 //TODO: add `From<autopush::settings::Settings> for DbSettings`?
@@ -54,25 +79,42 @@ where
 #[async_trait]
 pub trait DbCommandClient: Send + Sync {
     //*
+    /// `hello` registers a new UAID or records a 
+    /// returning UAID.
     async fn hello(
         &self,
+        /// when the UAID connected
         connected_at: u64,
+        /// either the returning UAID or a request for a new one.
         uaid: Option<&Uuid>,
+        /// The router that the UAID connected to
         router_url: &str,
+        /// Hold of actually registering this.
+        /// (Some UAIDs only connect to rec'v broadcast messages)
         defer_registration: bool,
     ) -> ApiResult<HelloResponse>;
 
+    /// register a new channel for this UAID
     async fn register(
         &self,
+        /// The requesting UAID
         uaid: &Uuid,
+        /// The incoming channelID (Note: we must maintain this ID the
+        /// same way that we recv'd it. (e.g. with dashes or not, case, 
+        /// etc.) )
         channel_id: &Uuid,
+        /// Legacy field from table rotation
         message_month: &str,
+        /// TODO??
         endpoint: &str,
+        /// The user record associated with this UAID
         register_user: Option<&UserRecord>,
     ) -> ApiResult<RegisterResponse>;
 
+    /// Delete this user and all information associated with them
     async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()>;
 
+    /// Delete this Channel ID for the user
     async fn unregister(
         &self,
         uaid: &Uuid,
@@ -80,8 +122,10 @@ pub trait DbCommandClient: Send + Sync {
         message_month: &str,
     ) -> ApiResult<bool>;
 
+    /// LEGACY: move this user to the most recent message table
     async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()>;
 
+    /// store the message for this user
     async fn store_message(
         &self,
         uaid: &Uuid,
@@ -89,6 +133,7 @@ pub trait DbCommandClient: Send + Sync {
         message: Notification,
     ) -> ApiResult<()>;
 
+    /// store multiple messages for this user.
     async fn store_messages(
         &self,
         uaid: &Uuid,
@@ -96,6 +141,7 @@ pub trait DbCommandClient: Send + Sync {
         messages: Vec<Notification>,
     ) -> ApiResult<()>;
 
+    /// Delete a message for this user.
     async fn delete_message(
         &self,
         table_name: &str,
@@ -103,6 +149,7 @@ pub trait DbCommandClient: Send + Sync {
         notif: &Notification,
     ) -> ApiResult<()>;
 
+    /// Fetch any pending messages for this user
     async fn check_storage(
         &self,
         table_name: &str,
@@ -111,9 +158,14 @@ pub trait DbCommandClient: Send + Sync {
         timestamp: Option<u64>,
     ) -> ApiResult<CheckStorageResponse>;
 
+    /// Get a list of known channels for this user.
+    /// (Used by daily mobile client check-in)
     async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
         -> ApiResult<HashSet<Uuid>>;
 
+    /// Remove the node information for this user (the
+    /// user has disconnected from a node and is considered
+    /// inactive or logged out.)
     async fn remove_node_id(
         &self,
         uaid: &Uuid,
@@ -131,11 +183,17 @@ pub trait DbCommandClient: Send + Sync {
 ///  - headers    (hash of crypto headers: encoding, encrypption, crypto-key, encryption-key)
 #[derive(Default, Clone)]
 pub struct HelloResponse {
+    /// The UAID the client should use.
     pub uaid: Option<Uuid>,
+    /// LEGACY the message month for this user
     pub message_month: String,
+    /// Do you need to fetch pending messages.
     pub check_storage: bool,
+    /// Give the UA a new ID.
     pub reset_uaid: bool,
+    /// LEGACY move the user to a new message month
     pub rotate_message_table: bool,
+    /// the time that the user connected.
     pub connected_at: u64,
     // Exists when we didn't register this user during HELLO
     pub deferred_user_registration: Option<UserRecord>,
@@ -143,37 +201,50 @@ pub struct HelloResponse {
 
 #[derive(Clone, Default, Debug)]
 pub struct CheckStorageResponse {
+    /// The messages include a "topic"
+    /// "topics" are messages that replace prior messages of that topic.
+    /// (e.g. you can only have one message for a topic of "foo")
     pub include_topic: bool,
+    /// The list of pending messages.
     pub messages: Vec<Notification>,
+    /// All the messages up to this timestampl
     pub timestamp: Option<u64>,
 }
 
+/// A new endpoint has been registered. (heh, should this be a RESULT?)
 pub enum RegisterResponse {
+    /// Hooray! Things worked, here's your endpoint URL
     Success { endpoint: String },
+    /// Crap, there was an error.
     Error { error_msg: String, status: u32 },
 }
 
+/// A user data record. 
 #[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
 pub struct UserRecord {
+    /// The UAID. This is generally a UUID4. It needs to be globally
+    /// unique.
     // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     pub uaid: Uuid,
-    // Time in milliseconds that the user last connected at
+    /// Time in milliseconds that the user last connected at
     pub connected_at: u64,
-    // Router type of the user
+    /// Router type of the user
     pub router_type: String,
-    // Router-specific data
+    /// Router-specific data
     pub router_data: Option<HashMap<String, serde_json::Value>>,
-    // Keyed time in a month the user last connected at with limited key range for indexing
+    /// Keyed time in a month the user last connected at with limited 
+    /// key range for indexing 
+    // [ed. --sigh. don't use custom timestamps kids.]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_connect: Option<u64>,
-    // Last node/port the client was or may be connected to
+    /// Last node/port the client was or may be connected to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
-    // Record version
+    /// Record version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_version: Option<u8>,
-    // Current month table in the database the user is on
+    /// LEGACY: Current month table in the database the user is on
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_month: Option<String>,
 }
@@ -195,8 +266,11 @@ impl Default for UserRecord {
     }
 }
 
+/// The outbound message record.
+/// This is different that the stored `Notification`
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct NotificationRecord {
+    /// The UserAgent Identifier (UAID)
     // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     uaid: Uuid,
@@ -207,35 +281,39 @@ pub struct NotificationRecord {
     //    New Messages:
     //        02:{timestamp int in microseconds}:{channel id}
     chidmessageid: String,
-    // Magic entry stored in the first Message record that indicates the highest
-    // non-topic timestamp we've read into
+    /// Magic entry stored in the first Message record that indicates the highest
+    /// non-topic timestamp we've read into
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_timestamp: Option<u64>,
-    // Magic entry stored in the first Message record that indicates the valid
-    // channel id's
+    /// Magic entry stored in the first Message record that indicates the valid
+    /// channel id's
     #[serde(skip_serializing)]
     pub chids: Option<HashSet<String>>,
-    // Time in seconds from epoch
+    /// Time in seconds from epoch
     #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<u64>,
-    // DynamoDB expiration timestamp per
-    //    https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
+    /// DynamoDB expiration timestamp per
+    ///    https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
     expiry: u64,
-    // TTL value provided by application server for the message
+    /// TTL value provided by application server for the message
     #[serde(skip_serializing_if = "Option::is_none")]
     ttl: Option<u64>,
+    /// The message data
     #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<String>,
+    /// Selected, associated message headers. These can contain additional
+    /// decryption information for the UserAgent.  
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<NotificationHeaders>,
-    // This is the acknowledgement-id used for clients to ack that they have received the
-    // message. Some Python code refers to this as a message_id. Endpoints generate this
-    // value before sending it to storage or a connection node.
+    /// This is the acknowledgement-id used for clients to ack that they have received the
+    /// message. Some Python code refers to this as a message_id. Endpoints generate this
+    /// value before sending it to storage or a connection node.
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,
 }
 
 impl NotificationRecord {
+    /// read the custom sort_key and convert it into something the database can use. 
     fn parse_sort_key(key: &str) -> ApiResult<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet =
@@ -247,6 +325,7 @@ impl NotificationRecord {
 
         let v: Vec<&str> = key.split(':').collect();
         match v[0] {
+            // This is a topic message (There Can Only Be One. <guitar riff>)
             "01" => {
                 if v.len() != 3 {
                     return Err("Invalid topic key".into());
@@ -260,6 +339,7 @@ impl NotificationRecord {
                     legacy_version: None,
                 })
             }
+            // A "normal" pending message.
             "02" => {
                 if v.len() != 3 {
                     return Err("Invalid topic key".into());
@@ -273,6 +353,9 @@ impl NotificationRecord {
                     legacy_version: None,
                 })
             }
+            // Ok, that's odd, but try to make some sense of it.
+            // (This is a bit of legacy code that we should be 
+            // able to drop.)
             _ => {
                 if v.len() != 2 {
                     return Err("Invalid topic key".into());
@@ -290,6 +373,7 @@ impl NotificationRecord {
     }
 
     // TODO: Implement as TryFrom whenever that lands
+    /// Convert the 
     pub fn into_notif(self) -> ApiResult<Notification> {
         let key = Self::parse_sort_key(&self.chidmessageid)?;
         let version = key
