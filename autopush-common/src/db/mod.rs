@@ -20,6 +20,7 @@ pub mod dynamodb;
 pub mod error;
 pub mod models;
 pub mod postgres;
+// pub mod bigtable;
 mod util;
 
 const MAX_EXPIRY: u64 = 2_592_000;
