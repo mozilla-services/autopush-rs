@@ -5,7 +5,7 @@
 //! into here.
 
 // TODO: update this to be async favorable. It currently HEAVILY uses
-// old futures poll()/ready. git 
+// old futures poll()/ready. git
 use std::io;
 use std::rc::Rc;
 use std::task::Poll;

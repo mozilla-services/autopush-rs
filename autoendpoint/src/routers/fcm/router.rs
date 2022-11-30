@@ -13,8 +13,8 @@ use autopush_common::errors::ApiErrorKind;
 use cadence::StatsdClient;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 use url::Url;
 
 /// 28 days
@@ -238,8 +238,8 @@ mod tests {
     use crate::routers::fcm::settings::FcmSettings;
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
-    use std::sync::Arc;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     use cadence::StatsdClient;
     use mockall::predicate;
@@ -308,7 +308,12 @@ mod tests {
     #[tokio::test]
     async fn successful_routing_no_data() {
         let db_client = MockDbClient::new().into_boxed_arc();
-        let router = make_router(String::from_utf8(make_service_key().into_bytes()).unwrap(),  "whatever".to_string(), db_client).await;
+        let router = make_router(
+            String::from_utf8(make_service_key().into_bytes()).unwrap(),
+            "whatever".to_string(),
+            db_client,
+        )
+        .await;
         assert!(router.active());
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
@@ -386,7 +391,12 @@ mod tests {
     #[tokio::test]
     async fn successful_routing_with_data() {
         let db_client = MockDbClient::new().into_boxed_arc();
-        let router = make_router(String::from_utf8(make_service_key().into_bytes()).unwrap(), "whatever".to_string(), db_client).await;
+        let router = make_router(
+            String::from_utf8(make_service_key().into_bytes()).unwrap(),
+            "whatever".to_string(),
+            db_client,
+        )
+        .await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
             .match_body(
@@ -427,7 +437,12 @@ mod tests {
     #[tokio::test]
     async fn missing_client() {
         let db_client = MockDbClient::new().into_boxed_arc();
-        let router = make_router(String::from_utf8(make_service_key().into_bytes()).unwrap(),"whatever".to_string(), db_client).await;
+        let router = make_router(
+            String::from_utf8(make_service_key().into_bytes()).unwrap(),
+            "whatever".to_string(),
+            db_client,
+        )
+        .await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID).expect(0).create();
         let mut router_data = default_router_data();

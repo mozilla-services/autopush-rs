@@ -15,12 +15,12 @@ use crate::notification::Notification;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
 
+pub mod bigtable;
 pub mod client;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
 pub mod postgres;
-// pub mod bigtable;
 mod util;
 
 const MAX_EXPIRY: u64 = 2_592_000;

@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use actix::{Actor, StreamHandler, ActorContext};
+use actix::{Actor, ActorContext, StreamHandler};
 use actix_cors::Cors;
-use actix_http::ws::{CloseReason, CloseCode};
+use actix_http::ws::{CloseCode, CloseReason};
 use actix_web::{
     dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpRequest, HttpResponse,
     HttpServer,
@@ -13,18 +13,18 @@ use actix_web_actors::ws;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 
-use autopush_common::metrics;
-use autopush_common::errors::render_404;
+use crate::aclient::Client;
+use crate::http::Push;
+use crate::routes::health;
+use crate::server::middleware::sentry::SentryWrapper;
 use autopush_common::db::client::DbClient;
 use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::db::postgres::PgClientImpl;
 use autopush_common::db::DbCommandClient;
-use autopush_common::tags::Tags;
+use autopush_common::errors::render_404;
 use autopush_common::errors::{ApiError, ApiErrorKind};
-use crate::aclient::Client;
-use crate::server::middleware::sentry::SentryWrapper;
-use crate::routes::health;
-use crate::http::Push;
+use autopush_common::metrics;
+use autopush_common::tags::Tags;
 
 use crate::settings::Settings;
 // TODO: Port DbClient from autoendpoint to autopush_common?
@@ -116,13 +116,21 @@ impl Server {
         req: HttpRequest,
         stream: web::Payload,
     ) -> ApiResult<HttpResponse> {
-        ws::start(Client::default(), &req, stream).map_err(|e| ApiErrorKind::GeneralError(e.to_string()).into())
+        ws::start(Client::default(), &req, stream)
+            .map_err(|e| ApiErrorKind::GeneralError(e.to_string()).into())
     }
 
     // TODO: Finish this as an Async Server builder.
     async fn with_settings(&self, settings: &Settings) -> ApiResult<dev::Server> {
-        let metrics = Arc::new(metrics::new_metrics(Some(settings.statsd_host), settings.statsd_port)?);
-        let bind_address = format!("{}:{}", settings.hostname.unwrap_or("localhost".into()), settings.port);
+        let metrics = Arc::new(metrics::new_metrics(
+            Some(settings.statsd_host),
+            settings.statsd_port,
+        )?);
+        let bind_address = format!(
+            "{}:{}",
+            settings.hostname.unwrap_or("localhost".into()),
+            settings.port
+        );
         let fernet = Arc::new(settings.make_fernet());
         let endpoint_url = settings.endpoint_url();
         let db_settings: autopush_common::db::DbSettings = settings.into();
@@ -158,7 +166,10 @@ impl Server {
                 .service(web::resource("/push/{uaid}").route(web::put().to(Push::push)))
                 .service(web::resource("/notif/{uaid}").route(web::put().to(Push::notif)))
                 .service(web::resource("/__heartbeat__").route(web::get().to(health::health_route)))
-                .service(web::resource("/__lbheartbeat__").route(web::get().to(health::lb_heartbeat_route)))
+                .service(
+                    web::resource("/__lbheartbeat__")
+                        .route(web::get().to(health::lb_heartbeat_route)),
+                )
                 .service(web::resource("/__version__").route(web::get().to(health::version_route)))
                 // websocket handler
                 .service(web::resource("/").route(web::get().to(self.socket_handler)))

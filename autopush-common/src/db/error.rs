@@ -2,9 +2,11 @@ use thiserror::Error;
 
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
-    DeleteItemError, DescribeTableError, GetItemError, PutItemError, UpdateItemError, QueryError,
+    DeleteItemError, DescribeTableError, GetItemError, PutItemError, QueryError, UpdateItemError,
 };
 use tokio_postgres::Error as PgError;
+
+use crate::db::bigtable::BigTableError;
 
 pub type DbResult<T> = Result<T, DbError>;
 
@@ -28,8 +30,14 @@ pub enum DbError {
     #[error("Database error while performing Query")]
     DdbQuery(#[from] RusotoError<QueryError>),
 
+    #[error("Error while performing DynamoDB (de)serialization: {0}")]
+    DdbSerialization(#[from] serde_dynamodb::Error),
+
+    #[error("BigTable error {0}")]
+    BTError(#[from] BigTableError),
+
     #[error("Error while performing (de)serialization: {0}")]
-    Serialization(#[from] serde_dynamodb::Error),
+    Serialization(String),
 
     #[error("Unable to determine table status")]
     TableStatusUnknown,

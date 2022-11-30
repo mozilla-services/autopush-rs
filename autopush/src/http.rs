@@ -10,17 +10,17 @@
 use std::{str, sync::Arc};
 
 use actix_http::Payload;
-use actix_web::web;
-use actix_web::{HttpResponse, HttpRequest};
 use actix_web::http::Uri;
+use actix_web::web;
+use actix_web::{HttpRequest, HttpResponse};
 use hyper::{self, service::Service, Body, Method, Request, StatusCode};
 use uuid::Uuid;
 
 use autopush_common::errors::{ApiErrorKind, ApiResult};
 use autopush_common::notification::Notification;
 
-use crate::server::ServerOptions;
 use crate::server::registry::ClientRegistry;
+use crate::server::ServerOptions;
 
 pub struct Push(pub Arc<ClientRegistry>);
 
@@ -34,11 +34,14 @@ impl Push {
             }
         };
         Ok(Uuid::parse_str(candidate)?.as_simple().to_string())
-
     }
 
     /// receive a push notification directly from an endpoint server.
-    pub async fn push(req: &HttpRequest, payload: &mut Payload, state: web::Data<ServerOptions>) -> ApiResult<HttpResponse>{
+    pub async fn push(
+        req: &HttpRequest,
+        payload: &mut Payload,
+        state: web::Data<ServerOptions>,
+    ) -> ApiResult<HttpResponse> {
         let mut response = req.response();
         let uaid = Self::get_uaid(&req)?;
         trace!("## PUT /push/ {}", uaid);
@@ -60,13 +63,15 @@ impl Push {
     /// wake a connected UAID to read it's pending queue.
     /// /notif/ messages carry no body, since the notification is already saved. Their role is to
     /// wake the node's uaid to fetch the new, pending message.
-    pub async fn notif(req: HttpRequest, state: web::Data<ServerOptions>) -> ApiResult<HttpResponse> {
+    pub async fn notif(
+        req: HttpRequest,
+        state: web::Data<ServerOptions>,
+    ) -> ApiResult<HttpResponse> {
         let mut response = req.response();
         let uaid = Self::get_uaid(&req);
         //TODO: get the local list of registered UAIDs and send a bump message to that
         // socket handler so that it updates.
         Ok(response)
-
     }
 }
 

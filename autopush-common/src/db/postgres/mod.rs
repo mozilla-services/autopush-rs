@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::panic::panic_any;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -13,7 +13,8 @@ use uuid::Uuid;
 
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
-    DbCommandClient, DbSettings, CheckStorageResponse, HelloResponse, RegisterResponse, UserRecord, USER_RECORD_VERSION,
+    CheckStorageResponse, DbCommandClient, DbSettings, HelloResponse, RegisterResponse, UserRecord,
+    USER_RECORD_VERSION,
 };
 use crate::errors::ApiResult;
 use crate::notification::Notification;
@@ -288,7 +289,7 @@ impl DbClient for PgClientImpl {
         for i in 0..channels.len() {
             params.push(&uaid_str);
             params.push(&channels[i]);
-        };
+        }
 
         // Now construct the statement, iterate over the parameters we've got
         // and redistribute them into tuples.
@@ -408,24 +409,25 @@ impl DbClient for PgClientImpl {
     }
 
     /// fetch limit messages for the user
-    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>{
-        let messages:Vec<Notification> = self.db_client.query(
-            &format!(
+    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
+        let messages: Vec<Notification> = self
+            .db_client
+            .query(
+                &format!(
                 "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers FROM {tablename} WHERE uaid=? LIMIT ? ORDER BY timestamp DESC", // TODO: Check the timestamp DESC here!
                 tablename=&self.message_table,
             ),
-            &[
-                &uaid.simple().to_string(),
-                &(limit as i64),
-            ]
-        ).await?
-        .iter()
-        .map(|row| row.into()).collect();
+                &[&uaid.simple().to_string(), &(limit as i64)],
+            )
+            .await?
+            .iter()
+            .map(|row| row.into())
+            .collect();
 
         if messages.is_empty() {
             Ok(Default::default())
         } else {
-            Ok(FetchMessageResponse{
+            Ok(FetchMessageResponse {
                 timestamp: Some(messages[0].timestamp),
                 messages,
             })
@@ -433,36 +435,45 @@ impl DbClient for PgClientImpl {
     }
 
     /// Fetch limit messages for a user on or after a given timestamp
-    async fn fetch_timestamp_messages(&self, uaid: &Uuid, timestamp: Option<u64>, limit: usize)-> DbResult<FetchMessageResponse> {
+    async fn fetch_timestamp_messages(
+        &self,
+        uaid: &Uuid,
+        timestamp: Option<u64>,
+        limit: usize,
+    ) -> DbResult<FetchMessageResponse> {
         let uaid = uaid.simple().to_string();
         let response = if let Some(ts) = timestamp {
-            self.db_client.query(
-                &format!("SELECT * FROM {} WHERE uaid = ? and timestamp > ? limit ?", self.message_table),
-                &[
-                    &uaid,
-                    &(ts as i64),
-                    &(limit as i64)
-                ]).await
+            self.db_client
+                .query(
+                    &format!(
+                        "SELECT * FROM {} WHERE uaid = ? and timestamp > ? limit ?",
+                        self.message_table
+                    ),
+                    &[&uaid, &(ts as i64), &(limit as i64)],
+                )
+                .await
         } else {
-            self.db_client.query(
-                &format!("SELECT * FROM {} WHERE uaid = ? limit ?", self.message_table),
-                &[
-                    &uaid,
-                    &(limit as i64)
-                ]).await
-
+            self.db_client
+                .query(
+                    &format!(
+                        "SELECT * FROM {} WHERE uaid = ? limit ?",
+                        self.message_table
+                    ),
+                    &[&uaid, &(limit as i64)],
+                )
+                .await
         }?;
 
-        let messages:Vec<Notification> = response.iter().map(|row| row.into()).collect();
+        let messages: Vec<Notification> = response.iter().map(|row| row.into()).collect();
         let timestamp = if !messages.is_empty() {
             Some(messages[0].timestamp)
         } else {
             None
         };
 
-        Ok(FetchMessageResponse{
+        Ok(FetchMessageResponse {
             timestamp,
-            messages
+            messages,
         })
     }
 
@@ -497,7 +508,6 @@ impl DbPgHandler {
     async fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> ApiResult<Self> {
         Ok(Self {
             client: PgClientImpl::new(metrics, settings).await?,
-
         })
     }
 }
@@ -547,7 +557,11 @@ impl DbCommandClient for DbPgHandler {
 
         Ok(HelloResponse {
             connected_at,
-            message_month: self.client.current_message_month.clone().unwrap_or_default(),
+            message_month: self
+                .client
+                .current_message_month
+                .clone()
+                .unwrap_or_default(),
             check_storage: true,
             rotate_message_table: if let Some(month) = self.client.current_message_month.clone() {
                 user.current_month.clone().unwrap_or_default() == month
@@ -687,8 +701,8 @@ impl DbCommandClient for DbPgHandler {
         const LIMIT_WITH_TOPIC: usize = 11;
         const LIMIT_WITHOUT_TOPIC: usize = 10;
 
-        let response:FetchMessageResponse = if include_topic {
-            self.client.fetch_messages(uaid, LIMIT_WITH_TOPIC ).await?
+        let response: FetchMessageResponse = if include_topic {
+            self.client.fetch_messages(uaid, LIMIT_WITH_TOPIC).await?
         } else {
             Default::default()
         };
@@ -700,7 +714,7 @@ impl DbCommandClient for DbPgHandler {
                 include_topic: true,
                 messages: response.messages,
                 timestamp: response.timestamp,
-            })
+            });
         }
 
         // Use the timestamp returned by the topic query if we were looking at the topics
@@ -711,18 +725,16 @@ impl DbCommandClient for DbPgHandler {
         };
         let _next_query = {
             if response.messages.is_empty() || response.timestamp.is_some() {
-                self.client.fetch_timestamp_messages(
-                    uaid,
-                    response.timestamp,
-                    10,
-                ).await?
+                self.client
+                    .fetch_timestamp_messages(uaid, response.timestamp, 10)
+                    .await?
             } else {
                 Default::default()
             }
         };
         let timestamp = response.timestamp.or(timestamp);
 
-        Ok(CheckStorageResponse{
+        Ok(CheckStorageResponse {
             include_topic: false,
             messages: response.messages,
             timestamp,
@@ -745,7 +757,10 @@ impl DbCommandClient for DbPgHandler {
         node_id: String,
         connected_at: u64,
     ) -> ApiResult<()> {
-        self.client.remove_node_id(uaid, &node_id, connected_at).await.map_err(Into::into)
+        self.client
+            .remove_node_id(uaid, &node_id, connected_at)
+            .await
+            .map_err(Into::into)
     }
 }
 // */

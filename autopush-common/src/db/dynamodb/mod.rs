@@ -1,30 +1,32 @@
 use std::collections::HashSet;
 use std::env;
+use std::fmt::{Debug, Display};
+use std::result::Result as StdResult;
 use std::sync::Arc;
 use uuid::Uuid;
-use std::result::Result as StdResult;
-use std::fmt::{Display, Debug};
 
 use crate::db::client::DbClient;
 use crate::db::dynamodb::retry::{
     retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
     retryable_putitem_error, retryable_updateitem_error,
 };
-use crate::db::{DbSettings, MAX_EXPIRY,NotificationRecord, UserRecord, client::FetchMessageResponse, MAX_CHANNEL_TTL};
 use crate::db::error::{DbError, DbResult};
-use crate::errors::{ApiErrorKind, ApiError};
+use crate::db::{
+    client::FetchMessageResponse, DbSettings, NotificationRecord, UserRecord, MAX_CHANNEL_TTL,
+    MAX_EXPIRY,
+};
+use crate::errors::{ApiError, ApiErrorKind};
 use crate::notification::Notification;
 use crate::util::sec_since_epoch;
 
 use async_trait::async_trait;
 // use crate::db::dynamodb::{ddb_item, hashmap, val};
-use cadence::{StatsdClient, CountedExt};
+use cadence::{CountedExt, StatsdClient};
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
     AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
-    DynamoDbClient, GetItemInput, PutItemInput, UpdateItemInput,
-    QueryInput,
+    DynamoDbClient, GetItemInput, PutItemInput, QueryInput, UpdateItemInput,
 };
 
 #[macro_use]
@@ -118,7 +120,6 @@ where
         .with_tag("conversion", name)
         .send();
 }
-
 
 #[allow(clippy::field_reassign_with_default)]
 #[async_trait]
@@ -382,9 +383,7 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        let output = self.db_client
-            .query(input.clone())
-            .await?;
+        let output = self.db_client.query(input.clone()).await?;
         let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
             debug!("Got response of: {:?}", items);
             items
@@ -421,7 +420,12 @@ impl DbClient for DdbClientImpl {
         })
     }
 
-    async fn fetch_timestamp_messages(&self, uaid: &Uuid, timestamp: Option<u64>, limit: usize)-> DbResult<FetchMessageResponse> {
+    async fn fetch_timestamp_messages(
+        &self,
+        uaid: &Uuid,
+        timestamp: Option<u64>,
+        limit: usize,
+    ) -> DbResult<FetchMessageResponse> {
         let range_key = if let Some(ts) = timestamp {
             format!("02:{}:z", ts)
         } else {
@@ -440,9 +444,7 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        let output = self.db_client
-            .query(input.clone())
-            .await?;
+        let output = self.db_client.query(input.clone()).await?;
         let messages = output.items.map_or_else(Vec::new, |items| {
             debug!("Got response of: {:?}", items);
             items

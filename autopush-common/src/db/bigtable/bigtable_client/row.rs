@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::time::SystemTime;
 
-use super::{cell::Cell, Qualifier, RowKey};
+use super::{cell::Cell, error::BigTableError, FamilyId, RowKey};
 
 /// A finished row. A row consists of a hash of one or more cells per
 /// qualifer (cell name).
@@ -10,7 +11,7 @@ pub struct Row {
     // This may be any ByteArray value.
     pub row_key: RowKey,
     /// The row's collection of cells, indexed by the family ID.
-    pub cells: HashMap<Qualifier, Vec<Cell>>,
+    pub cells: HashMap<FamilyId, Vec<Cell>>,
 }
 
 impl Row {
@@ -28,5 +29,29 @@ impl Row {
         } else {
             None
         }
+    }
+
+    pub fn add_cell(
+        &mut self,
+        family: &str,
+        qualifier: &str,
+        value: &Vec<u8>,
+        ttl: Option<SystemTime>,
+    ) -> Result<Cell, BigTableError> {
+        let mut cell = Cell {
+            family: family.to_owned(),
+            qualifier: qualifier.to_owned(),
+            value: value.clone(),
+            ..Default::default()
+        };
+        if let Some(ttl) = ttl {
+            cell.timestamp = ttl;
+        }
+        self.cells
+            .insert(family.to_owned(), [cell].to_vec())
+            .ok_or(BigTableError::InvalidRowResponse(
+                "Could not insert cell".to_owned(),
+            ))?;
+        Ok(cell)
     }
 }

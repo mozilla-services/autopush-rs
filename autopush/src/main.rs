@@ -15,16 +15,13 @@ mod http;
 mod megaphone;
 //mod old_client;
 mod aclient;
-mod server;
 mod routes;
+mod server;
 mod settings;
 mod user_agent;
 
-use crate::server::{
-    // old_server::AutopushServer,
-    ServerOptions
-};
 use crate::server::aserver;
+use crate::server::ServerOptions;
 use crate::settings::Settings;
 
 const USAGE: &str = "
@@ -69,7 +66,7 @@ async fn main() -> ApiResult<()> {
         &settings.router_table_name
     );
     let server_opts = ServerOptions::from_settings(settings)?;
-    let server = aserver::Server{}.from_opts(server_opts)?;
+    let server = aserver::Server {}.from_opts(server_opts)?;
     server.start();
     signal.recv().unwrap();
     info!("Server closing");

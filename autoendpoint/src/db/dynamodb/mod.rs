@@ -21,7 +21,6 @@ use std::env;
 use std::sync::Arc;
 use uuid::Uuid;
 
-
 /*
 #[derive(Clone)]
 pub struct DbClientImpl {

@@ -206,10 +206,7 @@ impl DbClient for PgClientImpl {
                     "INSERT INTO {tablename} (uaid, channel_id) VALUES (?, ?);",
                     tablename = self.meta_table
                 ),
-                &[
-                    &uaid.simple().to_string(),
-                    &channel_id.simple().to_string(),
-                ],
+                &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
             )
             .await?;
         Ok(())
@@ -246,10 +243,7 @@ impl DbClient for PgClientImpl {
                     "DELETE FROM {tablename} WHERE uaid=? AND channel_id = ?;",
                     tablename = self.meta_table
                 ),
-                &[
-                    &uaid.simple().to_string(),
-                    &channel_id.simple().to_string(),
-                ],
+                &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
             )
             .await
             .is_ok())

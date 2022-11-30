@@ -29,7 +29,6 @@ pub fn render_404<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>>
     ))
 }
 
-
 /// The main error type.
 #[derive(Debug)]
 pub struct ApiError {

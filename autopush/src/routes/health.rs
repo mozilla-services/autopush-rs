@@ -1,10 +1,10 @@
 //! Health and Dockerflow routes
 
-use autopush_common::db::error::DbResult;
-use autopush_common::errors::{ApiErrorKind, ApiResult};
 use crate::server::ServerOptions;
 use actix_web::web::{Data, Json};
 use actix_web::HttpResponse;
+use autopush_common::db::error::DbResult;
+use autopush_common::errors::{ApiErrorKind, ApiResult};
 use reqwest::StatusCode;
 use serde_json::json;
 use std::thread;

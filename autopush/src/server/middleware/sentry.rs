@@ -13,8 +13,8 @@ use std::task::Poll;
 
 use autopush_common::errors::ApiError;
 
-use autopush_common::metrics;
 use crate::server::ServerOptions;
+use autopush_common::metrics;
 use autopush_common::tags::Tags;
 use sentry_backtrace::parse_stacktrace;
 
@@ -75,9 +75,9 @@ where
     fn call(&self, sreq: ServiceRequest) -> Self::Future {
         let mut tags = Tags::from(sreq.head());
         sreq.extensions_mut().insert(tags.clone());
-        let metrics = sreq.app_data::<Data<ServerOptions>>().map(|state| {
-            metrics::new_metrics(state.statsd_host, state.statsd_port)
-        });
+        let metrics = sreq
+            .app_data::<Data<ServerOptions>>()
+            .map(|state| metrics::new_metrics(state.statsd_host, state.statsd_port));
 
         Box::pin(self.service.call(sreq).and_then(move |mut sresp| {
             // handed an actix_error::error::Error;

@@ -592,7 +592,8 @@ dependencies = [
  "fernet 0.1.4",
  "futures 0.3.25",
  "futures-backoff",
- "google-cloud-rust",
+ "google-cloud-rust-raw",
+ "grpcio",
  "hex",
  "httparse",
  "hyper 0.14.22",
@@ -600,6 +601,7 @@ dependencies = [
  "log",
  "mozsvc-common",
  "openssl",
+ "protobuf",
  "rand 0.8.5",
  "regex",
  "reqwest",
@@ -1601,17 +1603,6 @@ name = "glob"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
-
-[[package]]
-name = "google-cloud-rust"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b447df92865dcae3494332fb60296a509ca40cf0c367c73bdd449bae89807f66"
-dependencies = [
- "futures 0.3.25",
- "google-cloud-rust-raw",
- "grpcio",
-]
 
 [[package]]
 name = "google-cloud-rust-raw"

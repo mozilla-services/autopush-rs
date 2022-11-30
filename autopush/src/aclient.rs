@@ -19,7 +19,6 @@
 /// times out after
 
 /// TODO: actually build out all of that, based on actix-websocket
-
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
@@ -46,8 +45,8 @@ use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
 use autopush_common::db::{CheckStorageResponse, HelloResponse, RegisterResponse, UserRecord};
-use autopush_common::errors::ApiResult;
 use autopush_common::endpoint::make_endpoint;
+use autopush_common::errors::ApiResult;
 use autopush_common::notification::Notification;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
 
@@ -55,7 +54,6 @@ use crate::megaphone::{Broadcast, BroadcastSubs};
 use crate::server::aserver::Server;
 use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::user_agent::parse_user_agent;
-
 
 // TODO:
 // * Create Actor for websocket connection (See https://actix.rs/docs/websockets/)
@@ -89,18 +87,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Client {
             Ok(ws::Message::Ping(msg)) => {
                 // Add Ping handler
                 ctx.pong(&msg)
-            },
+            }
             Ok(ws::Message::Text(msg)) => {
                 async move {
                     // TODO: convert to Push Protocol message
-                    let message:Value = serde_json::from_slice(msg)?;
+                    let message: Value = serde_json::from_slice(msg)?;
                     let resp = self.process_message(msg)?;
                     // if resp == valid hello, stop hello timer.
                     ctx.text(resp.as_str())
                 }
                 // process message
-            },
-            _ => {ctx.close(None)},
+            }
+            _ => ctx.close(None),
         }
     }
 }
@@ -109,14 +107,10 @@ impl Client {
     /// handle the incoming messages.
     fn process_message(msg: Value) -> ApiResult<String> {
         match msg.get("messageType").map(|v| v.as_str().lowercase()) {
-            Some("hello") => {
-
-            }
+            Some("hello") => {}
         }
-
     }
 }
-
 
 /// Handle the incoming websocket push messages
 ///
@@ -129,7 +123,7 @@ impl Client {
 ///
 async fn handle_ws(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
     // TODO
-    let resp = ws::start(Client{}, &req, stream);
+    let resp = ws::start(Client {}, &req, stream);
     resp
 }
 

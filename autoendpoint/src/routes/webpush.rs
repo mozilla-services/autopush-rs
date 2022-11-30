@@ -13,8 +13,14 @@ pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
 ) -> ApiResult<HttpResponse> {
-    let router = routers.get(RouterType::from_str(&notification.subscription.user.router_type).map_err(|_| ApiErrorKind::InvalidRouterType)?);
-    trace!("sending to {:?}", &notification.subscription.user.router_type);
+    let router = routers.get(
+        RouterType::from_str(&notification.subscription.user.router_type)
+            .map_err(|_| ApiErrorKind::InvalidRouterType)?,
+    );
+    trace!(
+        "sending to {:?}",
+        &notification.subscription.user.router_type
+    );
 
     Ok(router.route_notification(&notification).await?.into())
 }
