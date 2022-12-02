@@ -6,7 +6,10 @@ use futures::StreamExt;
 use google_cloud_rust_raw::bigtable::v2::bigtable::{ReadRowsResponse, ReadRowsResponse_CellChunk};
 use grpcio::ClientSStreamReceiver;
 
-use super::{cell::Cell, error::BigTableError, row::Row, FamilyId, Qualifier, RowKey};
+use super::{
+    cell::Cell, error::BigTableError, row::Row, FamilyId, Qualifier, RowKey, MESSAGE_FAMILY,
+    MESSAGE_TOPIC_FAMILY,
+};
 
 /// List of the potential states when we are reading each value from the
 /// returned stream and composing a "row"
@@ -393,9 +396,11 @@ impl RowMerger {
         Ok(self)
     }
 
-    /// Iterate through all the returned chunks and compile them into finished cells.
+    /// Iterate through all the returned chunks and compile them into a hash of finished cells indexed by row_key
     pub async fn process_chunks(
         mut stream: ClientSStreamReceiver<ReadRowsResponse>,
+        timestamp_filter: Option<u64>,
+        limit: Option<u64>,
     ) -> Result<HashMap<RowKey, Row>, BigTableError> {
         // Work object
         let mut merger = Self::default();
@@ -404,6 +409,11 @@ impl RowMerger {
         let mut rows = HashMap::<RowKey, Row>::new();
 
         while let (Some(row_resp_res), s) = stream.into_future().await {
+            if let Some(limit) = limit {
+                if rows.len() > limit as usize {
+                    break;
+                }
+            }
             stream = s;
             let row = match row_resp_res {
                 Ok(v) => v,
@@ -453,8 +463,23 @@ impl RowMerger {
                 }
                 if merger.state == ReadState::RowComplete {
                     debug! {"🟧 row complete"};
-                    let finished_row = merger.row_complete(&mut chunk).await?;
-                    rows.insert(finished_row.row_key.clone(), finished_row);
+                    // Check to see if we can add this row, or if it's blocked by the timestamp filter.
+                    let mut finished_row = merger.row_complete(&mut chunk).await?;
+                    if let Some(ts_filter) = timestamp_filter {
+                        const TS_COL: &str = "sortkey_timestamp";
+                        let ts_val = finished_row
+                            .get_cell(MESSAGE_FAMILY, TS_COL)
+                            .unwrap_or_else(|| {
+                                finished_row
+                                    .get_cell(MESSAGE_TOPIC_FAMILY, TS_COL)
+                                    .unwrap_or_default()
+                            });
+                        if ts_val.value > ts_filter.to_be_bytes().to_vec() {
+                            rows.insert(finished_row.row_key.clone(), finished_row);
+                        }
+                    } else {
+                        rows.insert(finished_row.row_key.clone(), finished_row);
+                    }
                 } else if chunk.has_commit_row() {
                     return Err(BigTableError::InvalidChunk(format!(
                         "Chunk tried to commit in row in wrong state {:?}",

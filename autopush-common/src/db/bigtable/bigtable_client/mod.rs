@@ -50,6 +50,18 @@ pub struct BigTableClientImpl {
     client: BigtableClient,
 }
 
+// TODO: Eventually make these Froms?
+pub fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
+    let v: [u8; 8] = value
+        .try_into()
+        .map_err(|_| DbError::DeserializeU64(name.to_owned()))?;
+    Ok(u64::from_be_bytes(v))
+}
+
+pub fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
+    String::from_utf8(value).map_err(|_| DbError::DeserializeString(name.to_owned()))
+}
+
 impl BigTableClientImpl {
     pub fn new(_metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         let channel_creds = ChannelCredentials::google_default_credentials()
@@ -77,7 +89,11 @@ impl BigTableClientImpl {
     }
 
     /// Read a given row from the row key.
-    pub async fn read_row(&self, row_key: &str) -> Result<Option<row::Row>, error::BigTableError> {
+    pub async fn read_row(
+        &self,
+        row_key: &str,
+        timestamp_filter: Option<u64>,
+    ) -> Result<Option<row::Row>, error::BigTableError> {
         debug!("Row key: {}", row_key);
 
         let mut row_keys = RepeatedField::default();
@@ -90,23 +106,25 @@ impl BigTableClientImpl {
         req.set_table_name(self.table_name.clone());
         req.set_rows(row_set);
 
-        let rows = self.read_rows(req).await?;
+        let rows = self.read_rows(req, timestamp_filter, None).await?;
         Ok(rows.get(row_key).cloned())
     }
 
-    /// Take a big table ReadRowsRequest (containing the keys and filters) and return a set of row data.
+    /// Take a big table ReadRowsRequest (containing the keys and filters) and return a set of row data indexed by row key.
     ///
     ///
     pub async fn read_rows(
         &self,
         req: ReadRowsRequest,
+        timestamp_filter: Option<u64>,
+        limit: Option<u64>,
     ) -> Result<HashMap<RowKey, row::Row>, error::BigTableError> {
         let resp = self
             .client
             .clone()
             .read_rows(&req)
             .map_err(|e| error::BigTableError::BigTableRead(e.to_string()))?;
-        merge::RowMerger::process_chunks(resp).await
+        merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
     /// write a given row.
@@ -210,6 +228,66 @@ impl BigTableClientImpl {
             .map_err(|e| error::BigTableError::BigTableWrite(e.to_string()))?;
         Ok(())
     }
+
+    fn rows_to_response(
+        &self,
+        rows: HashMap<String, Row>,
+    ) -> Result<FetchMessageResponse, crate::db::error::DbError> {
+        let mut messages: Vec<Notification> = Vec::new();
+        let mut max_timestamp: u64 = 0;
+
+        for (key, row) in rows {
+            let family = row
+                .get_families()
+                .pop()
+                .unwrap_or(MESSAGE_FAMILY.to_string());
+            // get the dominant family type for this row.
+            let mut notif = Notification::default();
+            if let Some(cell) = row.get_cell(&family, "channel_id") {
+                notif.channel_id =
+                    Uuid::from_str(&to_string(cell.value, "channel_id")?).map_err(|e| {
+                        DbError::Serialization(format!(
+                            "Could not deserialize chid to uuid: {:?}",
+                            e
+                        ))
+                    })?;
+            }
+            if let Some(cell) = row.get_cell(&family, "version") {
+                notif.version = to_string(cell.value, "version")?;
+            }
+            if let Some(cell) = row.get_cell(&family, "topic") {
+                notif.topic = Some(to_string(cell.value, "topic")?);
+            }
+
+            if let Some(cell) = row.get_cell(&family, "ttl") {
+                notif.ttl = to_u64(cell.value, "ttl")?;
+            }
+
+            if let Some(cell) = row.get_cell(&family, "data") {
+                notif.data = Some(to_string(cell.value, "data")?);
+            }
+            if let Some(cell) = row.get_cell(&family, "sortkey_timestamp") {
+                notif.sortkey_timestamp = Some(to_u64(cell.value, "sortkey_timestamp")?);
+            }
+            if let Some(cell) = row.get_cell(&family, "timestamp") {
+                notif.timestamp = to_u64(cell.value, "timestamp")?;
+                if notif.timestamp > max_timestamp {
+                    max_timestamp = notif.timestamp;
+                }
+            }
+
+            messages.push(notif);
+        }
+
+        Ok(FetchMessageResponse {
+            messages,
+            timestamp: if max_timestamp > 0 {
+                Some(max_timestamp)
+            } else {
+                None
+            },
+        })
+    }
 }
 
 #[async_trait]
@@ -303,7 +381,7 @@ impl DbClient for BigTableClientImpl {
             ..Default::default()
         };
 
-        if let Some(record) = self.read_row(&key).await? {
+        if let Some(record) = self.read_row(&key, None).await? {
             trace!("Found a record for that user");
             if let Some(cells) = record.get_cells(ROUTER_FAMILY, "connected_at") {
                 if let Some(cell) = cells.pop() {
@@ -482,7 +560,7 @@ impl DbClient for BigTableClientImpl {
         };
 
         for key in self
-            .read_rows(req)
+            .read_rows(req, None, None)
             .await?
             .keys()
             .map(|v| v.to_owned())
@@ -542,7 +620,12 @@ impl DbClient for BigTableClientImpl {
         } else {
             MESSAGE_FAMILY
         };
-
+        row.add_cell(
+            family,
+            "ttl",
+            &message.ttl.to_be_bytes().to_vec(),
+            Some(ttl),
+        );
         row.add_cell(
             family,
             "version",
@@ -610,7 +693,23 @@ impl DbClient for BigTableClientImpl {
 
     async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
         // TODO
+        // limit rowset to `uaid#` to `uaid#ffffffffffffffffffffffffffffffff`?
 
+        let mut req = ReadRowsRequest::default();
+        req.set_table_name(self.table_name.clone());
+        req.set_filter({
+            let mut regex_filter = data::RowFilter::default();
+            // channels for a given UAID all begin with `{uaid}#`
+            regex_filter.set_row_key_regex_filter(
+                format!("^{}#", uaid.simple().to_string())
+                    .as_bytes()
+                    .to_vec(),
+            );
+            regex_filter
+        });
+
+        let rows = self.read_rows(req, None, Some(limit as u64)).await?;
+        self.rows_to_response(rows)
     }
 
     async fn fetch_timestamp_messages(
@@ -619,7 +718,57 @@ impl DbClient for BigTableClientImpl {
         timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        // TODO
+        let mut req = ReadRowsRequest::default();
+        req.set_table_name(self.table_name.clone());
 
+        // We can fetch data and do [some remote filtering](https://cloud.google.com/bigtable/docs/filters),
+        // unfortunately I don't think the filtering we need will be super helpful.
+        //
+        // In this case, we want to filter data for a specific cell's value. Complicating things,
+        // Bigtable uses "timestamp" in odd ways, and filters work strangely.
+        // You can filter based on column values, but only for a given Column Family, and
+        // then, only for all cells that are higher than that value.
+        // Sadly, the better way to deal with this is to read in all the data and then
+        // to local filtering here.
+        let filter = {
+            // Filters! Assemble!
+            let mut repeat_field = RepeatedField::default();
+
+            // first, only look for channelids for the given UAID.
+            let mut regex_filter = data::RowFilter::default();
+            // channels for a given UAID all begin with `{uaid}#`
+            regex_filter.set_row_key_regex_filter(
+                format!("^{}#", uaid.simple().to_string())
+                    .as_bytes()
+                    .to_vec(),
+            );
+            repeat_field.push(regex_filter);
+
+            let mut chain = data::RowFilter_Chain {
+                filters: repeat_field,
+                ..Default::default()
+            };
+
+            let mut filter = data::RowFilter::default();
+            filter.set_chain(chain);
+            filter
+        };
+        req.set_filter(filter);
+        let rows = self.read_rows(req, timestamp, Some(limit as u64)).await?;
+        self.rows_to_response(rows)
+    }
+
+    async fn router_table_exists(&self) -> DbResult<bool> {
+        Ok(true)
+    }
+    async fn message_table_exists(&self) -> DbResult<bool> {
+        Ok(true)
+    }
+    fn message_table(&self) -> &str {
+        &self.table_name
+    }
+
+    fn box_clone(&self) -> Box<dyn DbClient> {
+        Box::new(self.clone())
     }
 }

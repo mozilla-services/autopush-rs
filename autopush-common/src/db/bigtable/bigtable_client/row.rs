@@ -31,6 +31,18 @@ impl Row {
         }
     }
 
+    /// get only the "top" cell value. Ignore other values.
+    pub fn get_cell(&mut self, family: &str, column: &str) -> Option<Cell> {
+        if let Some(cells) = self.get_cells(family, column) {
+            return cells.pop();
+        }
+        None
+    }
+
+    pub fn get_families(&mut self) -> Vec<String> {
+        self.cells.keys().map(|v| v.to_string()).collect()
+    }
+
     pub fn add_cell(
         &mut self,
         family: &str,

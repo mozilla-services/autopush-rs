@@ -7,8 +7,8 @@ use crate::util::InsertOpt;
 
 /// Direct representation of an incoming subscription notification header set
 /// as we store it in the database.
-/// It is possible to have a "data free" notification, which does not have a 
-/// message component, and thus, no headers. 
+/// It is possible to have a "data free" notification, which does not have a
+/// message component, and thus, no headers.
 #[derive(Default, Deserialize, PartialEq, Debug, Clone, Serialize)]
 pub(crate) struct NotificationHeaders {
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -39,6 +39,12 @@ pub enum DbError {
     #[error("Error while performing (de)serialization: {0}")]
     Serialization(String),
 
+    #[error("Error deserializing to u64: {0}")]
+    DeserializeU64(String),
+
+    #[error("Error deserializing to String: {0}")]
+    DeserializeString(String),
+
     #[error("Unable to determine table status")]
     TableStatusUnknown,
 

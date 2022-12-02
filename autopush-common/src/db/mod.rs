@@ -1,14 +1,13 @@
 /// Contains the general Database access bits
-/// 
+///
 /// Database access is abstracted into a DbClient impl
-/// which contains the required trait functions the 
+/// which contains the required trait functions the
 /// application will need to perform in the database.
-/// Each of the abstractions contains a DbClientImpl 
+/// Each of the abstractions contains a DbClientImpl
 /// that is responsible for carrying out the requested
 /// functions. Each of the data stores are VERY
-/// different, although the requested functions 
-/// are fairly simple. 
-
+/// different, although the requested functions
+/// are fairly simple.
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
@@ -52,11 +51,11 @@ pub struct DbSettings {
     /// get data to the requested UserAgent
     pub router_tablename: String,
     /// Name of the message table
-    /// This table contains the message information table. 
+    /// This table contains the message information table.
     pub message_tablename: String,
     /// Optional name of the "meta" table
     /// This is a table that contains database relational
-    /// information for the UAID, (e.g. a list of the 
+    /// information for the UAID, (e.g. a list of the
     /// associated ChannelIDs (CHIDs))
     pub meta_tablename: Option<String>,
 }
@@ -79,7 +78,7 @@ where
 #[async_trait]
 pub trait DbCommandClient: Send + Sync {
     //*
-    /// `hello` registers a new UAID or records a 
+    /// `hello` registers a new UAID or records a
     /// returning UAID.
     async fn hello(
         &self,
@@ -100,7 +99,7 @@ pub trait DbCommandClient: Send + Sync {
         /// The requesting UAID
         uaid: &Uuid,
         /// The incoming channelID (Note: we must maintain this ID the
-        /// same way that we recv'd it. (e.g. with dashes or not, case, 
+        /// same way that we recv'd it. (e.g. with dashes or not, case,
         /// etc.) )
         channel_id: &Uuid,
         /// Legacy field from table rotation
@@ -219,7 +218,7 @@ pub enum RegisterResponse {
     Error { error_msg: String, status: u32 },
 }
 
-/// A user data record. 
+/// A user data record.
 #[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
 pub struct UserRecord {
     /// The UAID. This is generally a UUID4. It needs to be globally
@@ -233,8 +232,8 @@ pub struct UserRecord {
     pub router_type: String,
     /// Router-specific data
     pub router_data: Option<HashMap<String, serde_json::Value>>,
-    /// Keyed time in a month the user last connected at with limited 
-    /// key range for indexing 
+    /// Keyed time in a month the user last connected at with limited
+    /// key range for indexing
     // [ed. --sigh. don't use custom timestamps kids.]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_connect: Option<u64>,
@@ -313,7 +312,7 @@ pub struct NotificationRecord {
 }
 
 impl NotificationRecord {
-    /// read the custom sort_key and convert it into something the database can use. 
+    /// read the custom sort_key and convert it into something the database can use.
     fn parse_sort_key(key: &str) -> ApiResult<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet =
@@ -354,7 +353,7 @@ impl NotificationRecord {
                 })
             }
             // Ok, that's odd, but try to make some sense of it.
-            // (This is a bit of legacy code that we should be 
+            // (This is a bit of legacy code that we should be
             // able to drop.)
             _ => {
                 if v.len() != 2 {
@@ -373,7 +372,7 @@ impl NotificationRecord {
     }
 
     // TODO: Implement as TryFrom whenever that lands
-    /// Convert the 
+    /// Convert the
     pub fn into_notif(self) -> ApiResult<Notification> {
         let key = Self::parse_sort_key(&self.chidmessageid)?;
         let version = key
