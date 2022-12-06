@@ -1,4 +1,4 @@
-use woothee::parser::{Parser};
+use woothee::parser::Parser;
 
 // List of valid user-agent attributes to keep, anything not in this
 // list is considered 'Other'. We log the user-agent on connect always
