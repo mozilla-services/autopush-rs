@@ -44,11 +44,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host_port = format!("{}:{}", &settings.host, &settings.port);
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
     debug!("Starting up...");
-    trace!(
-        "message {:?}, router: {:?}",
-        &settings.message_table_name,
-        &settings.router_table_name
-    );
 
     // Configure sentry error capture
     let _sentry_guard = configure_sentry();

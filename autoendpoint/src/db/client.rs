@@ -42,7 +42,7 @@ pub trait DbClient: Send + Sync {
         &self,
         uaid: Uuid,
         node_id: String,
-        connected_at: SystemTime,
+        connected_at: u64,
     ) -> DbResult<()>;
 
     /// Save a message to the message table

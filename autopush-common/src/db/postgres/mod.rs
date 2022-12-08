@@ -6,31 +6,53 @@ use std::sync::Arc;
 use serde_json::json;
 use tokio_postgres::{types::ToSql, Client, NoTls}; // Client is sync.
 
-use crate::db::client::DbClient;
 use async_trait::async_trait;
 use cadence::StatsdClient;
+use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::db::client::DbClient;
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
     CheckStorageResponse, DbCommandClient, DbSettings, HelloResponse, RegisterResponse, UserRecord,
     USER_RECORD_VERSION,
 };
-use crate::errors::ApiResult;
+use crate::errors::{ApiResult, ApiErrorKind};
 use crate::notification::Notification;
 
 use super::client::FetchMessageResponse;
 // use autopush_common::util::sec_since_epoch;
+
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PostgresDbSettings{
+    pub router_table: String,   // Routing info
+    pub message_table: String,  // Message storage info
+    pub meta_table: String,     // Channels and meta info
+    current_message_month: Option<String>,  // For table rotation
+}
+
+impl Default for PostgresDbSettings {
+    fn default() -> Self {
+        Self { router_table: "router".to_owned(), message_table: "message".to_owned(), meta_table: "meta".to_owned(), current_message_month: None }
+    }
+}
+
+impl TryFrom<&str> for PostgresDbSettings {
+    type Error = DbError;
+    fn try_from(setting_string:&str) -> Result<Self, Self::Error> {
+        serde_json::from_str(setting_string).map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))
+    }
+}
+
+
 
 #[allow(dead_code)] // TODO: Remove before flight
 #[derive(Clone)]
 pub struct PgClientImpl {
     db_client: Arc<Client>,
     _metrics: Arc<StatsdClient>,
-    router_table: String,                  // Routing information
-    message_table: String,                 // Message storage information
-    meta_table: String,                    // Channels and meta info for a user.
-    current_message_month: Option<String>, // For table rotation
+    db_settings: PostgresDbSettings,
 }
 
 impl PgClientImpl {
@@ -52,16 +74,11 @@ impl PgClientImpl {
                     panic_any(format!("PG Connection error {:?}", e));
                 }
             });
+            let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref())?;
             return Ok(Self {
                 db_client: Arc::new(client),
                 _metrics: metrics,
-                router_table: settings.router_tablename.clone(),
-                message_table: settings.message_tablename.clone(),
-                meta_table: settings
-                    .meta_tablename
-                    .clone()
-                    .unwrap_or_else(|| "meta".to_owned()),
-                current_message_month: None,
+                db_settings,
             });
         };
         Err(DbError::ConnectionError("No DSN specified".to_owned()))
@@ -128,7 +145,7 @@ impl DbClient for PgClientImpl {
                     node_id=EXCLUDED.node_id,
                     record_version=EXCLUDED.record_version,
                     current_month=EXCLUDED.current_month;
-            ", tablename=self.router_table),
+            ", tablename=self.db_settings.router_table),
             &[&user.uaid.simple().to_string(),   // TODO: Investigate serialization?
             &(user.connected_at as i64),
             &user.router_type,
@@ -157,7 +174,7 @@ impl DbClient for PgClientImpl {
             WHERE
                 uaid = $1;
             ",
-                    tablename = self.router_table
+                    tablename = self.db_settings.router_table
                 ),
                 &[
                     &user.uaid.simple().to_string(),
@@ -181,7 +198,7 @@ impl DbClient for PgClientImpl {
         .query_one(
             &format!(
                 "select connected_at, router_type, router_data, last_connect, node_id, record_version, current_month from {tablename} where uaid = ?",
-                tablename=self.router_table
+                tablename=self.db_settings.router_table
             ),
             &[&uaid.simple().to_string()]
         )
@@ -230,7 +247,7 @@ impl DbClient for PgClientImpl {
                 &format!(
                     "DELETE FROM {tablename}
                 WHERE uaid = $1",
-                    tablename = self.router_table
+                    tablename = self.db_settings.router_table
                 ),
                 &[&uaid.simple().to_string()],
             )
@@ -250,7 +267,7 @@ impl DbClient for PgClientImpl {
             .execute(
                 &format!(
                     "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES (?, ?);",
-                    tablename = self.meta_table
+                    tablename = self.db_settings.meta_table
                 ),
                 &[&uaid.simple().to_string(), &key],
             )
@@ -295,7 +312,7 @@ impl DbClient for PgClientImpl {
         // and redistribute them into tuples.
         let statement = format!(
             "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES {vars}",
-            tablename = self.meta_table,
+            tablename = self.db_settings.meta_table,
             vars = Vec::from_iter((0..params.len()).step_by(2).map(|v| format!(
                 "(${}, ${})",
                 v,
@@ -316,7 +333,7 @@ impl DbClient for PgClientImpl {
             .query(
                 &format!(
                     "SELECT uaid_channel_id FROM {tablename} WHERE uaid = ?;",
-                    tablename = self.meta_table
+                    tablename = self.db_settings.meta_table
                 ),
                 &[&uaid.simple().to_string()],
             )
@@ -340,7 +357,7 @@ impl DbClient for PgClientImpl {
             .execute(
                 &format!(
                     "DELETE FROM {tablename} WHERE uaid_channel_id = ?;",
-                    tablename = self.meta_table
+                    tablename = self.db_settings.meta_table
                 ),
                 &[&format!(
                     "{}:{}",
@@ -356,7 +373,7 @@ impl DbClient for PgClientImpl {
     async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
         self.db_client
         .execute(
-            &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.router_table),
+            &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.db_settings.router_table),
             &[&uaid.simple().to_string(), &node_id, &(connected_at as i64)]
         ).await?;
         Ok(())
@@ -375,7 +392,7 @@ impl DbClient for PgClientImpl {
                 VALUES
                 (?, ?, ?, ?, ?, ?, ?, ?, ?);
             ",
-                    tablename = &self.message_table
+                    tablename = &self.db_settings.message_table
                 ),
                 &[
                     &uaid.simple().to_string(),
@@ -399,7 +416,7 @@ impl DbClient for PgClientImpl {
             .execute(
                 &format!(
                     "DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;",
-                    tablename = self.message_table
+                    tablename = self.db_settings.message_table
                 ),
                 &[&uaid.simple().to_string(), &sort_key],
             )
@@ -415,7 +432,7 @@ impl DbClient for PgClientImpl {
             .query(
                 &format!(
                 "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers FROM {tablename} WHERE uaid=? LIMIT ? ORDER BY timestamp DESC", // TODO: Check the timestamp DESC here!
-                tablename=&self.message_table,
+                tablename=&self.db_settings.message_table,
             ),
                 &[&uaid.simple().to_string(), &(limit as i64)],
             )
@@ -447,7 +464,7 @@ impl DbClient for PgClientImpl {
                 .query(
                     &format!(
                         "SELECT * FROM {} WHERE uaid = ? and timestamp > ? limit ?",
-                        self.message_table
+                        self.db_settings.message_table
                     ),
                     &[&uaid, &(ts as i64), &(limit as i64)],
                 )
@@ -457,7 +474,7 @@ impl DbClient for PgClientImpl {
                 .query(
                     &format!(
                         "SELECT * FROM {} WHERE uaid = ? limit ?",
-                        self.message_table
+                        self.db_settings.message_table
                     ),
                     &[&uaid, &(limit as i64)],
                 )
@@ -479,18 +496,18 @@ impl DbClient for PgClientImpl {
 
     /// Convenience function to check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.router_table.clone()).await
+        self.table_exists(self.db_settings.router_table.clone()).await
     }
 
     /// Convenience function to check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.message_table.clone()).await
+        self.table_exists(self.db_settings.message_table.clone()).await
     }
 
     /// Convenience function for the message table name
     fn message_table(&self) -> &str {
-        trace!("pg message table {:?}", &self.message_table);
-        &self.message_table
+        trace!("pg message table {:?}", &self.db_settings.message_table);
+        &self.db_settings.message_table
     }
 
     /// Convenience function to return self as a Boxed DbClient
@@ -540,7 +557,7 @@ impl DbCommandClient for DbPgHandler {
             None
         }
         .unwrap_or_else(|| UserRecord {
-            current_month: self.client.current_message_month.clone(),
+            current_month: self.client.db_settings.current_message_month.clone(),
             node_id: Some(router_url.to_owned()),
             connected_at,
             ..Default::default()
@@ -559,11 +576,12 @@ impl DbCommandClient for DbPgHandler {
             connected_at,
             message_month: self
                 .client
+                .db_settings
                 .current_message_month
                 .clone()
                 .unwrap_or_default(),
             check_storage: true,
-            rotate_message_table: if let Some(month) = self.client.current_message_month.clone() {
+            rotate_message_table: if let Some(month) = self.client.db_settings.current_message_month.clone() {
                 user.current_month.clone().unwrap_or_default() == month
             } else {
                 false

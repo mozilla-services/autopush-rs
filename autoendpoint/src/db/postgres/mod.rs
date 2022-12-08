@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::db::client::DbClient;
 use crate::db::error::{DbError, DbResult};
 use autopush_common::db::{DbSettings, UserRecord};
+use autopush_common::db::postgres::PostgresDbSettings;
 use autopush_common::notification::Notification;
 // use autopush_common::util::sec_since_epoch;
 
@@ -20,9 +21,7 @@ use autopush_common::notification::Notification;
 pub struct PgClientImpl {
     client: Arc<Client>,
     _metrics: Arc<StatsdClient>,
-    router_table: String,  // Routing information
-    message_table: String, // Message storage information
-    meta_table: String,    // Channels and meta info for a user.
+    db_settings: PostgresDbSettings,
 }
 
 impl PgClientImpl {
@@ -33,8 +32,8 @@ impl PgClientImpl {
     /// for parameter details and requirements.
     /// Example DSN: postgresql://user:password@host/database?option=val
     /// e.g. (postgresql://scott:tiger@dbhost/autopush?connect_timeout=10&keepalives_idle=3600)
-    pub async fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
-        if let Some(dsn) = db_settings.dsn.clone() {
+    pub async fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
+        if let Some(dsn) = settings.dsn.clone() {
             trace!("Postgres Connect {}", &dsn);
             let (client, connection) = tokio_postgres::connect(&dsn, NoTls).await.map_err(|e| {
                 DbError::Connection(format!("Could not connect to postgres {:?}", e))
@@ -44,15 +43,11 @@ impl PgClientImpl {
                     panic_any(format!("PG Connection error {:?}", e));
                 }
             });
+            let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref()).map_err(|e| DbError::General(e.to_string()))?;
             return Ok(Self {
                 client: Arc::new(client),
                 _metrics: metrics,
-                router_table: db_settings.router_tablename.clone(),
-                message_table: db_settings.message_tablename.clone(),
-                meta_table: db_settings
-                    .meta_tablename
-                    .clone()
-                    .unwrap_or_else(|| "meta".to_owned()),
+                db_settings,
             });
         };
         Err(DbError::Connection("No DSN specified".to_owned()))
@@ -88,7 +83,7 @@ impl DbClient for PgClientImpl {
                     node_id=EXCLUDED.node_id,
                     record_version=EXCLUDED.record_version,
                     current_month=EXCLUDED.current_month;
-            ", tablename=self.router_table),
+            ", tablename=self.db_settings.router_table),
             &[&user.uaid.simple().to_string(),   // TODO: Investigate serialization?
             &(user.connected_at as i64),
             &user.router_type,
@@ -117,7 +112,7 @@ impl DbClient for PgClientImpl {
             WHERE
                 uaid = $1;
             ",
-                    tablename = self.router_table
+                    tablename = self.db_settings.router_table
                 ),
                 &[
                     &user.uaid.simple().to_string(),
@@ -141,7 +136,7 @@ impl DbClient for PgClientImpl {
         .query_one(
             &format!(
                 "select connected_at, router_type, router_data, last_connect, node_id, record_version, current_month from {tablename} where uaid = ?",
-                tablename=self.router_table
+                tablename=self.db_settings.router_table
             ),
             &[&uaid.simple().to_string()]
         )
@@ -189,7 +184,7 @@ impl DbClient for PgClientImpl {
                 &format!(
                     "DELETE FROM {tablename}
                 WHERE uaid = $1",
-                    tablename = self.router_table
+                    tablename = self.db_settings.router_table
                 ),
                 &[&uaid.simple().to_string()],
             )
@@ -204,7 +199,7 @@ impl DbClient for PgClientImpl {
             .execute(
                 &format!(
                     "INSERT INTO {tablename} (uaid, channel_id) VALUES (?, ?);",
-                    tablename = self.meta_table
+                    tablename = self.db_settings.meta_table
                 ),
                 &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
             )
@@ -220,7 +215,7 @@ impl DbClient for PgClientImpl {
             .query(
                 &format!(
                     "SELECT channel_id FROM {tablename} WHERE uaid = ?;",
-                    tablename = self.meta_table
+                    tablename = self.db_settings.meta_table
                 ),
                 &[&uaid.simple().to_string()],
             )
@@ -241,7 +236,7 @@ impl DbClient for PgClientImpl {
             .execute(
                 &format!(
                     "DELETE FROM {tablename} WHERE uaid=? AND channel_id = ?;",
-                    tablename = self.meta_table
+                    tablename = self.db_settings.meta_table
                 ),
                 &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
             )
@@ -253,7 +248,7 @@ impl DbClient for PgClientImpl {
     async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()> {
         self.client
         .execute(
-            &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.router_table),
+            &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ?;", tablename=self.db_settings.router_table),
             &[&uaid.simple().to_string(), &node_id, &(connected_at as i64)]
         ).await?;
         Ok(())
@@ -272,7 +267,7 @@ impl DbClient for PgClientImpl {
                 VALUES
                 (?, ?, ?, ?, ?, ?, ?, ?, ?);
             ",
-                    tablename = &self.message_table
+                    tablename = &self.db_settings.message_table
                 ),
                 &[
                     &uaid.simple().to_string(),
@@ -296,7 +291,7 @@ impl DbClient for PgClientImpl {
             .execute(
                 &format!(
                     "DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;",
-                    tablename = self.message_table
+                    tablename = self.db_settings.message_table
                 ),
                 &[&uaid.simple().to_string(), &sort_key],
             )
@@ -307,18 +302,18 @@ impl DbClient for PgClientImpl {
 
     /// Convenience function to check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.router_table.clone()).await
+        self.table_exists(self.db_settings.router_table.clone()).await
     }
 
     /// Convenience function to check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.message_table.clone()).await
+        self.table_exists(self.db_settings.message_table.clone()).await
     }
 
     /// Convenience function for the message table name
     fn message_table(&self) -> &str {
-        trace!("pg message table {:?}", &self.message_table);
-        &self.message_table
+        trace!("pg message table {:?}", &self.db_settings.message_table);
+        &self.db_settings.message_table
     }
 
     /// Convenience function to return self as a Boxed DbClient

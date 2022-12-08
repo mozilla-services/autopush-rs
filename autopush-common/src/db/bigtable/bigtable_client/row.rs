@@ -33,7 +33,7 @@ impl Row {
 
     /// get only the "top" cell value. Ignore other values.
     pub fn get_cell(&mut self, family: &str, column: &str) -> Option<Cell> {
-        if let Some(cells) = self.get_cells(family, column) {
+        if let Some(mut cells) = self.get_cells(family, column) {
             return cells.pop();
         }
         None
@@ -60,7 +60,7 @@ impl Row {
             cell.timestamp = ttl;
         }
         self.cells
-            .insert(family.to_owned(), [cell].to_vec())
+            .insert(family.to_owned(), [cell.clone()].to_vec())
             .ok_or(BigTableError::InvalidRowResponse(
                 "Could not insert cell".to_owned(),
             ))?;

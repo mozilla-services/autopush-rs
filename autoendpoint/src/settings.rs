@@ -21,9 +21,7 @@ pub struct Settings {
 
     pub use_ddb: bool,
     pub db_dsn: Option<String>,
-    pub router_table_name: String,
-    pub message_table_name: String,
-    pub meta_tablename: Option<String>,
+    pub db_settings: String,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
@@ -51,9 +49,7 @@ impl Default for Settings {
             port: 8000,
             use_ddb: true,
             db_dsn: None,
-            router_table_name: "router".to_string(), // be consistent with autopush-rs
-            message_table_name: "message".to_string(),
-            meta_tablename: None,
+            db_settings: Default::default(),
             /// max data is a bit hard to figure out, due to encryption. Using something
             /// like pywebpush, if you encode a block of 4096 bytes, you'll get a
             /// 4216 byte data block. Since we're going to be receiving this, we have to

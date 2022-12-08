@@ -28,18 +28,40 @@ use rusoto_dynamodb::{
     AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
     DynamoDbClient, GetItemInput, PutItemInput, QueryInput, UpdateItemInput,
 };
+use serde::{Deserialize};
 
 #[macro_use]
 pub mod macros;
 pub mod commands;
 pub mod retry;
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct DynamoDbSettings {
+    pub router_table: String,
+    pub message_table: String,
+}
+
+impl Default for DynamoDbSettings {
+    fn default() -> Self {
+        Self{
+        router_table: "router".to_string(),
+        message_table: "message".to_string(),
+        }
+    }
+}
+
+impl TryFrom<&str> for DynamoDbSettings {
+    type Error = DbError;
+    fn try_from(setting_string:&str) -> Result<Self, Self::Error> {
+        serde_json::from_str(setting_string).map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)).into())
+    }
+}
+
 #[derive(Clone)]
 pub struct DdbClientImpl {
     db_client: DynamoDbClient,
     metrics: Arc<StatsdClient>,
-    router_table: String,
-    message_table: String,
+    settings: DynamoDbSettings,
 }
 
 impl DdbClientImpl {
@@ -57,11 +79,12 @@ impl DdbClientImpl {
             DynamoDbClient::new(Region::default())
         };
 
+        let settings = DynamoDbSettings::try_from(settings.db_settings.as_ref())?;
+
         Ok(Self {
             db_client: ddb,
             metrics,
-            router_table: settings.router_tablename.clone(),
-            message_table: settings.message_tablename.clone(),
+            settings,
         })
     }
 
@@ -126,7 +149,7 @@ where
 impl DbClient for DdbClientImpl {
     async fn add_user(&self, user: &UserRecord) -> DbResult<()> {
         let input = PutItemInput {
-            table_name: self.router_table.clone(),
+            table_name: self.settings.router_table.clone(),
             item: serde_dynamodb::to_hashmap(user)?,
             condition_expression: Some("attribute_not_exists(uaid)".to_string()),
             ..Default::default()
@@ -145,7 +168,7 @@ impl DbClient for DdbClientImpl {
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {
-            table_name: self.router_table.clone(),
+            table_name: self.settings.router_table.clone(),
             key: ddb_item! { uaid: s => user.uaid.simple().to_string() },
             update_expression: Some(format!(
                 "SET {}",
@@ -185,7 +208,7 @@ impl DbClient for DdbClientImpl {
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<UserRecord>> {
         let input = GetItemInput {
-            table_name: self.router_table.clone(),
+            table_name: self.settings.router_table.clone(),
             consistent_read: Some(true),
             key: ddb_item! { uaid: s => uaid.simple().to_string() },
             ..Default::default()
@@ -205,7 +228,7 @@ impl DbClient for DdbClientImpl {
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
         let input = DeleteItemInput {
-            table_name: self.router_table.clone(),
+            table_name: self.settings.router_table.clone(),
             key: ddb_item! { uaid: s => uaid.simple().to_string() },
             ..Default::default()
         };
@@ -221,7 +244,7 @@ impl DbClient for DdbClientImpl {
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
         let input = UpdateItemInput {
-            table_name: self.message_table.clone(),
+            table_name: self.settings.message_table.clone(),
             key: ddb_item! {
                 uaid: s => uaid.simple().to_string(),
                 chidmessageid: s => " ".to_string()
@@ -265,7 +288,7 @@ impl DbClient for DdbClientImpl {
             },
             update_expression: Some("ADD chids :chids SET expiry=:expiry".to_string()),
             expression_attribute_values: Some(attr_values),
-            table_name: self.message_table.clone(),
+            table_name: self.settings.message_table.clone(),
             ..Default::default()
         };
 
@@ -277,7 +300,7 @@ impl DbClient for DdbClientImpl {
         // Channel IDs are stored in a special row in the message table, where
         // chidmessageid = " "
         let input = GetItemInput {
-            table_name: self.message_table.clone(),
+            table_name: self.settings.message_table.clone(),
             consistent_read: Some(true),
             key: ddb_item! {
                 uaid: s => uaid.simple().to_string(),
@@ -314,7 +337,7 @@ impl DbClient for DdbClientImpl {
 
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let input = UpdateItemInput {
-            table_name: self.message_table.clone(),
+            table_name: self.settings.message_table.clone(),
             key: ddb_item! {
                 uaid: s => uaid.simple().to_string(),
                 chidmessageid: s => " ".to_string()
@@ -354,7 +377,7 @@ impl DbClient for DdbClientImpl {
                 ":node".to_string() => val!(S => node_id),
                 ":conn".to_string() => val!(N => connected_at.to_string())
             }),
-            table_name: self.router_table.clone(),
+            table_name: self.settings.router_table.clone(),
             ..Default::default()
         };
 
@@ -377,7 +400,7 @@ impl DbClient for DdbClientImpl {
         let input = QueryInput {
             key_condition_expression: Some("uaid = :uaid AND chidmessageid < :cmi".to_string()),
             expression_attribute_values: Some(attr_values),
-            table_name: self.message_table.to_string(),
+            table_name: self.settings.message_table.to_string(),
             consistent_read: Some(true),
             limit: Some(limit as i64),
             ..Default::default()
@@ -438,7 +461,7 @@ impl DbClient for DdbClientImpl {
         let input = QueryInput {
             key_condition_expression: Some("uaid = :uaid AND chidmessageid > :cmi".to_string()),
             expression_attribute_values: Some(attr_values),
-            table_name: self.message_table.to_string(),
+            table_name: self.settings.message_table.to_string(),
             consistent_read: Some(true),
             limit: Some(limit as i64),
             ..Default::default()
@@ -473,7 +496,7 @@ impl DbClient for DdbClientImpl {
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
         let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(&uaid, message))?,
-            table_name: self.message_table.clone(),
+            table_name: self.settings.message_table.clone(),
             ..Default::default()
         };
 
@@ -489,7 +512,7 @@ impl DbClient for DdbClientImpl {
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
         let input = DeleteItemInput {
-            table_name: self.message_table.clone(),
+            table_name: self.settings.message_table.clone(),
             key: ddb_item! {
                uaid: s => uaid.simple().to_string(),
                chidmessageid: s => sort_key.to_owned()
@@ -507,16 +530,16 @@ impl DbClient for DdbClientImpl {
     }
 
     async fn router_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.router_table.clone()).await
+        self.table_exists(self.settings.router_table.clone()).await
     }
 
     async fn message_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.message_table.clone()).await
+        self.table_exists(self.settings.message_table.clone()).await
     }
 
     fn message_table(&self) -> &str {
-        trace!("ddb message table {:?}", &self.message_table);
-        &self.message_table
+        trace!("ddb message table {:?}", &self.settings.message_table);
+        &self.settings.message_table
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {

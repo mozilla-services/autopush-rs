@@ -49,10 +49,10 @@ impl Server {
         let endpoint_url = settings.endpoint_url();
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
-            message_tablename: settings.message_table_name.clone(),
-            router_tablename: settings.router_table_name.clone(),
-            meta_tablename: settings.meta_tablename.clone(),
+            db_settings: settings.db_settings.clone(),
         };
+        // TODO: pick db based on setting?
+        // TODO: convert to using autopush_common db handlers.
         let db: Box<dyn DbClient> = match settings.use_ddb {
             true => {
                 trace!("Using DDB Client");

@@ -12,6 +12,7 @@ use google_cloud_rust_raw::bigtable::v2::{
 };
 use grpcio::{ChannelBuilder, ChannelCredentials, EnvBuilder};
 use protobuf::RepeatedField;
+use serde::Deserialize;
 use serde_json::{from_str, json};
 use uuid::Uuid;
 
@@ -21,10 +22,8 @@ use crate::db::{
     DbSettings, Notification, UserRecord,
 };
 
-use self::cell::Cell;
 use self::row::Row;
-
-use super::BigTableError;
+use super::BigTableDbSettings;
 
 pub mod cell;
 pub mod error;
@@ -41,12 +40,12 @@ const ROUTER_FAMILY: &str = "router";
 const MESSAGE_FAMILY: &str = "message";
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 
+
 #[derive(Clone)]
 /// Wrapper for the BigTable connection
 pub struct BigTableClientImpl {
-    /// The name of the table. This is used when generating a request.
-    pub(crate) table_name: String,
-    /// The client connection to BigTable.
+    pub(crate) db_settings: BigTableDbSettings,
+    // The client connection to BigTable.
     client: BigtableClient,
 }
 
@@ -75,7 +74,7 @@ impl BigTableClientImpl {
                 ))
             }
         };
-        let table_name = &settings.message_tablename;
+        let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         let chan = ChannelBuilder::new(env)
             .max_send_message_len(1 << 28)
             .max_receive_message_len(1 << 28)
@@ -83,7 +82,7 @@ impl BigTableClientImpl {
             .connect(endpoint);
 
         Ok(Self {
-            table_name: table_name.to_owned(),
+            db_settings,
             client: BigtableClient::new(chan),
         })
     }
@@ -103,7 +102,7 @@ impl BigTableClientImpl {
         row_set.set_row_keys(row_keys);
 
         let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(self.table_name.clone());
+        req.set_table_name(self.db_settings.table_name.clone());
         req.set_rows(row_set);
 
         let rows = self.read_rows(req, timestamp_filter, None).await?;
@@ -138,7 +137,7 @@ impl BigTableClientImpl {
         // mutations, clearing them, etc. It's all up for grabs until we commit
         // below. For now, let's just presume a write and be done.
         let mut mutations = protobuf::RepeatedField::default();
-        req.set_table_name(self.table_name.clone());
+        req.set_table_name(self.db_settings.table_name.clone());
         req.set_row_key(row.row_key.into_bytes());
         for (_family, cells) in row.cells {
             for cell in cells {
@@ -180,7 +179,7 @@ impl BigTableClientImpl {
         time_range: Option<&data::TimestampRange>,
     ) -> Result<(), error::BigTableError> {
         let mut req = bigtable::MutateRowRequest::default();
-        req.set_table_name(self.table_name.clone());
+        req.set_table_name(self.db_settings.table_name.clone());
         let mut mutations = protobuf::RepeatedField::default();
         req.set_row_key(row_key.to_owned().into_bytes());
         for column in column_names {
@@ -212,7 +211,7 @@ impl BigTableClientImpl {
     /// Delete all the cells for the given row. NOTE: This will drop the row.
     pub async fn delete_row(&self, row_key: &str) -> Result<(), error::BigTableError> {
         let mut req = bigtable::MutateRowRequest::default();
-        req.set_table_name(self.table_name.clone());
+        req.set_table_name(self.db_settings.table_name.clone());
         let mut mutations = protobuf::RepeatedField::default();
         req.set_row_key(row_key.to_owned().into_bytes());
         let mut mutation = data::Mutation::default();
@@ -236,7 +235,7 @@ impl BigTableClientImpl {
         let mut messages: Vec<Notification> = Vec::new();
         let mut max_timestamp: u64 = 0;
 
-        for (key, row) in rows {
+        for (_key, mut row) in rows {
             let family = row
                 .get_families()
                 .pop()
@@ -310,15 +309,15 @@ impl DbClient for BigTableClientImpl {
         row.add_cell(
             ROUTER_FAMILY,
             "router_type",
-            &user.router_type.into_bytes().to_vec(),
+            &user.router_type.clone().into_bytes().to_vec(),
             None,
         )
         .map_err(|e| DbError::Serialization(format!("Could not write router_type {:?}", e)))?;
-        if let Some(router_data) = user.router_data {
+        if let Some(router_data) = &user.router_data {
             row.add_cell(
                 ROUTER_FAMILY,
                 "router_data",
-                &json!(user.router_data).to_string().as_bytes().to_vec(),
+                &json!(router_data).to_string().as_bytes().to_vec(),
                 None,
             )
             .map_err(|e| DbError::Serialization(format!("Could not write router_data {:?}", e)))?;
@@ -332,11 +331,11 @@ impl DbClient for BigTableClientImpl {
             )
             .map_err(|e| DbError::Serialization(format!("Could not write last_connect {:?}", e)))?;
         };
-        if let Some(node_id) = user.node_id {
+        if let Some(node_id) = &user.node_id {
             row.add_cell(
                 ROUTER_FAMILY,
                 "node_id",
-                &node_id.into_bytes().to_vec(),
+                &node_id.clone().into_bytes().to_vec(),
                 None,
             )
             .map_err(|e| DbError::Serialization(format!("Could not write node_id {:?}", e)))?;
@@ -352,11 +351,11 @@ impl DbClient for BigTableClientImpl {
                 DbError::Serialization(format!("Could not write record_version {:?}", e))
             })?;
         };
-        if let Some(current_month) = user.current_month {
+        if let Some(current_month) = &user.current_month {
             row.add_cell(
                 ROUTER_FAMILY,
                 "current_month",
-                &current_month.into_bytes().to_vec(),
+                &current_month.clone().into_bytes().to_vec(),
                 None,
             )
             .map_err(|e| {
@@ -383,7 +382,7 @@ impl DbClient for BigTableClientImpl {
 
         if let Some(record) = self.read_row(&key, None).await? {
             trace!("Found a record for that user");
-            if let Some(cells) = record.get_cells(ROUTER_FAMILY, "connected_at") {
+            if let Some(mut cells) = record.get_cells(ROUTER_FAMILY, "connected_at") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
@@ -395,7 +394,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(cells) = record.get_cells(ROUTER_FAMILY, "router_type") {
+            if let Some(mut cells) = record.get_cells(ROUTER_FAMILY, "router_type") {
                 if let Some(cell) = cells.pop() {
                     result.router_type = String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -406,7 +405,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(cells) = record.get_cells(ROUTER_FAMILY, "router_data") {
+            if let Some(mut cells) = record.get_cells(ROUTER_FAMILY, "router_data") {
                 if let Some(cell) = cells.pop() {
                     result.router_data = from_str(&String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -423,7 +422,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(cells) = record.get_cells(ROUTER_FAMILY, "last_connect") {
+            if let Some(mut cells) = record.get_cells(ROUTER_FAMILY, "last_connect") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
@@ -435,7 +434,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(cells) = record.get_cells(ROUTER_FAMILY, "node_id") {
+            if let Some(mut cells) = record.get_cells(ROUTER_FAMILY, "node_id") {
                 if let Some(cell) = cells.pop() {
                     result.node_id = Some(String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -446,15 +445,16 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(cells) = record.get_cells(ROUTER_FAMILY, "record_version") {
-                if let Some(cell) = cells.pop() {
+            if let Some(mut cells) = record.get_cells(ROUTER_FAMILY, "record_version") {
+                if let Some(mut cell) = cells.pop() {
+                    // there's only one byte, so pop it off and use it.
                     if let Some(b) = cell.value.pop() {
                         result.record_version = Some(b)
                     }
                 }
             }
 
-            if let Some(cells) = record.get_cells(ROUTER_FAMILY, "current_month") {
+            if let Some(mut cells) = record.get_cells(ROUTER_FAMILY, "current_month") {
                 if let Some(cell) = cells.pop() {
                     result.node_id = Some(String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -553,7 +553,7 @@ impl DbClient for BigTableClientImpl {
             };
 
             let mut req = bigtable::ReadRowsRequest::default();
-            req.set_table_name(self.table_name.clone());
+            req.set_table_name(self.db_settings.table_name.clone());
             req.set_filter(filter);
 
             req
@@ -583,7 +583,7 @@ impl DbClient for BigTableClientImpl {
     }
 
     /// Remove the node_id. Can't really "surgically strike" this
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
+    async fn remove_node_id(&self, uaid: &Uuid, _node_id: &str, connected_at: u64) -> DbResult<()> {
         trace!(
             "Removing node_ids for {} up to {:?} ",
             &uaid.simple().to_string(),
@@ -625,7 +625,7 @@ impl DbClient for BigTableClientImpl {
             "ttl",
             &message.ttl.to_be_bytes().to_vec(),
             Some(ttl),
-        );
+        )?;
         row.add_cell(
             family,
             "version",
@@ -640,9 +640,9 @@ impl DbClient for BigTableClientImpl {
             "timestamp",
             &message.timestamp.to_be_bytes().to_vec(),
             Some(ttl),
-        );
+        )?;
         if let Some(data) = message.data {
-            row.add_cell(family, "data", &data.into_bytes().to_vec(), Some(ttl));
+            row.add_cell(family, "data", &data.into_bytes().to_vec(), Some(ttl))?;
         }
         if let Some(sortkey_timestamp) = message.sortkey_timestamp {
             row.add_cell(
@@ -650,14 +650,14 @@ impl DbClient for BigTableClientImpl {
                 "sortkey_timestamp",
                 &sortkey_timestamp.to_be_bytes().to_vec(),
                 Some(ttl),
-            );
+            )?;
         }
         row.add_cell(
             family,
             "headers",
             &json!(message.headers).to_string().into_bytes().to_vec(),
             Some(ttl),
-        );
+        )?;
 
         trace!("Adding row");
         self.write_row(row).await.map_err(|e| e.into())
@@ -665,7 +665,7 @@ impl DbClient for BigTableClientImpl {
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
         // parse the sort_key to get the message's CHID
-        let parts: Vec<&str> = sort_key.split(':').collect();
+        let mut parts: Vec<&str> = sort_key.split(':').collect();
         let family = match parts.pop() {
             Some("01") => MESSAGE_TOPIC_FAMILY,
             Some("02") => MESSAGE_FAMILY,
@@ -696,7 +696,7 @@ impl DbClient for BigTableClientImpl {
         // limit rowset to `uaid#` to `uaid#ffffffffffffffffffffffffffffffff`?
 
         let mut req = ReadRowsRequest::default();
-        req.set_table_name(self.table_name.clone());
+        req.set_table_name(self.db_settings.table_name.clone());
         req.set_filter({
             let mut regex_filter = data::RowFilter::default();
             // channels for a given UAID all begin with `{uaid}#`
@@ -719,7 +719,7 @@ impl DbClient for BigTableClientImpl {
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
-        req.set_table_name(self.table_name.clone());
+        req.set_table_name(self.db_settings.table_name.clone());
 
         // We can fetch data and do [some remote filtering](https://cloud.google.com/bigtable/docs/filters),
         // unfortunately I don't think the filtering we need will be super helpful.
@@ -744,7 +744,7 @@ impl DbClient for BigTableClientImpl {
             );
             repeat_field.push(regex_filter);
 
-            let mut chain = data::RowFilter_Chain {
+            let chain = data::RowFilter_Chain {
                 filters: repeat_field,
                 ..Default::default()
             };
@@ -765,7 +765,7 @@ impl DbClient for BigTableClientImpl {
         Ok(true)
     }
     fn message_table(&self) -> &str {
-        &self.table_name
+        &self.db_settings.table_name
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {

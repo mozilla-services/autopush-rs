@@ -11,6 +11,7 @@
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
+use std::time::SystemTime;
 
 use async_trait::async_trait;
 use lazy_static::lazy_static;
@@ -44,20 +45,12 @@ pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 pub struct DbSettings {
     /// Database connector string
     pub dsn: Option<String>,
-    // TODO: These should probably go into the DbClientImpl, since
-    // they're not really universal.
-    /// Name of the router table.
-    /// This table contains the routing information for how to
-    /// get data to the requested UserAgent
-    pub router_tablename: String,
-    /// Name of the message table
-    /// This table contains the message information table.
-    pub message_tablename: String,
-    /// Optional name of the "meta" table
-    /// This is a table that contains database relational
-    /// information for the UAID, (e.g. a list of the
-    /// associated ChannelIDs (CHIDs))
-    pub meta_tablename: Option<String>,
+    /// A JSON formatted dictionary containing Database settings that
+    /// are specific to the type of Data storage specified in the `dsn`
+    /// See the respective settings structures for
+    /// [crate::db::bigtable::BigTableDbSettings], [crate::db::dynamodb::DynamoDbSettings],
+    /// [crate::db::postgres::PostgresDbSettings]
+    pub db_settings: String,
 }
 //TODO: add `From<autopush::settings::Settings> for DbSettings`?
 //TODO: add `From<autoendpoint::settings::Settings> for DbSettings`?
@@ -82,31 +75,31 @@ pub trait DbCommandClient: Send + Sync {
     /// returning UAID.
     async fn hello(
         &self,
-        /// when the UAID connected
+        // when the UAID connected
         connected_at: u64,
-        /// either the returning UAID or a request for a new one.
+        // either the returning UAID or a request for a new one.
         uaid: Option<&Uuid>,
-        /// The router that the UAID connected to
+        // The router that the UAID connected to
         router_url: &str,
-        /// Hold of actually registering this.
-        /// (Some UAIDs only connect to rec'v broadcast messages)
+        // Hold of actually registering this.
+        // (Some UAIDs only connect to rec'v broadcast messages)
         defer_registration: bool,
     ) -> ApiResult<HelloResponse>;
 
     /// register a new channel for this UAID
     async fn register(
         &self,
-        /// The requesting UAID
+        // The requesting UAID
         uaid: &Uuid,
-        /// The incoming channelID (Note: we must maintain this ID the
-        /// same way that we recv'd it. (e.g. with dashes or not, case,
-        /// etc.) )
+        // The incoming channelID (Note: we must maintain this ID the
+        // same way that we recv'd it. (e.g. with dashes or not, case,
+        // etc.) )
         channel_id: &Uuid,
-        /// Legacy field from table rotation
+        // Legacy field from table rotation
         message_month: &str,
-        /// TODO??
+        // TODO??
         endpoint: &str,
-        /// The user record associated with this UAID
+        // The user record associated with this UAID
         register_user: Option<&UserRecord>,
     ) -> ApiResult<RegisterResponse>;
 
@@ -301,7 +294,7 @@ pub struct NotificationRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<String>,
     /// Selected, associated message headers. These can contain additional
-    /// decryption information for the UserAgent.  
+    /// decryption information for the UserAgent.
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<NotificationHeaders>,
     /// This is the acknowledgement-id used for clients to ack that they have received the
