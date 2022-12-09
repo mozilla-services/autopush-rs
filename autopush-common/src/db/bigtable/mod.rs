@@ -28,14 +28,15 @@ impl Default for BigTableDbSettings {
             dsn: "NO DSN DEFINED".to_owned(),
             router_family: "router_family".to_owned(),
             message_family: "message_family".to_owned(),
-            message_topic_family: "message_topic_family".to_owned()
+            message_topic_family: "message_topic_family".to_owned(),
         }
     }
 }
 
 impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
-    fn try_from(setting_string:&str) -> Result<Self, Self::Error> {
-        serde_json::from_str(setting_string).map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)).into())
+    fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
+        serde_json::from_str(setting_string)
+            .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)).into())
     }
 }

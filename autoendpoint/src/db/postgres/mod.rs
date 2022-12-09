@@ -12,8 +12,8 @@ use uuid::Uuid;
 
 use crate::db::client::DbClient;
 use crate::db::error::{DbError, DbResult};
-use autopush_common::db::{DbSettings, UserRecord};
 use autopush_common::db::postgres::PostgresDbSettings;
+use autopush_common::db::{DbSettings, UserRecord};
 use autopush_common::notification::Notification;
 // use autopush_common::util::sec_since_epoch;
 
@@ -43,7 +43,8 @@ impl PgClientImpl {
                     panic_any(format!("PG Connection error {:?}", e));
                 }
             });
-            let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref()).map_err(|e| DbError::General(e.to_string()))?;
+            let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref())
+                .map_err(|e| DbError::General(e.to_string()))?;
             return Ok(Self {
                 client: Arc::new(client),
                 _metrics: metrics,
@@ -302,12 +303,14 @@ impl DbClient for PgClientImpl {
 
     /// Convenience function to check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.db_settings.router_table.clone()).await
+        self.table_exists(self.db_settings.router_table.clone())
+            .await
     }
 
     /// Convenience function to check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.db_settings.message_table.clone()).await
+        self.table_exists(self.db_settings.message_table.clone())
+            .await
     }
 
     /// Convenience function for the message table name

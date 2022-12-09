@@ -17,35 +17,38 @@ use crate::db::{
     CheckStorageResponse, DbCommandClient, DbSettings, HelloResponse, RegisterResponse, UserRecord,
     USER_RECORD_VERSION,
 };
-use crate::errors::{ApiResult, ApiErrorKind};
+use crate::errors::{ApiErrorKind, ApiResult};
 use crate::notification::Notification;
 
 use super::client::FetchMessageResponse;
 // use autopush_common::util::sec_since_epoch;
 
-
 #[derive(Debug, Clone, Deserialize)]
-pub struct PostgresDbSettings{
-    pub router_table: String,   // Routing info
-    pub message_table: String,  // Message storage info
-    pub meta_table: String,     // Channels and meta info
-    current_message_month: Option<String>,  // For table rotation
+pub struct PostgresDbSettings {
+    pub router_table: String,              // Routing info
+    pub message_table: String,             // Message storage info
+    pub meta_table: String,                // Channels and meta info
+    current_message_month: Option<String>, // For table rotation
 }
 
 impl Default for PostgresDbSettings {
     fn default() -> Self {
-        Self { router_table: "router".to_owned(), message_table: "message".to_owned(), meta_table: "meta".to_owned(), current_message_month: None }
+        Self {
+            router_table: "router".to_owned(),
+            message_table: "message".to_owned(),
+            meta_table: "meta".to_owned(),
+            current_message_month: None,
+        }
     }
 }
 
 impl TryFrom<&str> for PostgresDbSettings {
     type Error = DbError;
-    fn try_from(setting_string:&str) -> Result<Self, Self::Error> {
-        serde_json::from_str(setting_string).map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))
+    fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
+        serde_json::from_str(setting_string)
+            .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))
     }
 }
-
-
 
 #[allow(dead_code)] // TODO: Remove before flight
 #[derive(Clone)]
@@ -496,12 +499,14 @@ impl DbClient for PgClientImpl {
 
     /// Convenience function to check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.db_settings.router_table.clone()).await
+        self.table_exists(self.db_settings.router_table.clone())
+            .await
     }
 
     /// Convenience function to check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.db_settings.message_table.clone()).await
+        self.table_exists(self.db_settings.message_table.clone())
+            .await
     }
 
     /// Convenience function for the message table name
@@ -581,7 +586,9 @@ impl DbCommandClient for DbPgHandler {
                 .clone()
                 .unwrap_or_default(),
             check_storage: true,
-            rotate_message_table: if let Some(month) = self.client.db_settings.current_message_month.clone() {
+            rotate_message_table: if let Some(month) =
+                self.client.db_settings.current_message_month.clone()
+            {
                 user.current_month.clone().unwrap_or_default() == month
             } else {
                 false

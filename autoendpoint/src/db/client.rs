@@ -38,12 +38,7 @@ pub trait DbClient: Send + Sync {
     /// Remove the node ID from a user in the router table.
     /// The node ID will only be cleared if `connected_at` matches up with the
     /// item's `connected_at`.
-    async fn remove_node_id(
-        &self,
-        uaid: Uuid,
-        node_id: String,
-        connected_at: u64,
-    ) -> DbResult<()>;
+    async fn remove_node_id(&self, uaid: Uuid, node_id: String, connected_at: u64) -> DbResult<()>;
 
     /// Save a message to the message table
     async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()>;

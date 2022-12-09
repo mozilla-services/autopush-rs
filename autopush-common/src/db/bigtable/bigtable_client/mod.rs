@@ -40,7 +40,6 @@ const ROUTER_FAMILY: &str = "router";
 const MESSAGE_FAMILY: &str = "message";
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 
-
 #[derive(Clone)]
 /// Wrapper for the BigTable connection
 pub struct BigTableClientImpl {

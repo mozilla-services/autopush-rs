@@ -5,8 +5,8 @@ use crate::db::retry::{
     retryable_putitem_error, retryable_updateitem_error,
 };
 use async_trait::async_trait;
-use autopush_common::db::{DbSettings, NotificationRecord, UserRecord, MAX_CHANNEL_TTL};
 use autopush_common::db::dynamodb::DynamoDbSettings;
+use autopush_common::db::{DbSettings, NotificationRecord, UserRecord, MAX_CHANNEL_TTL};
 use autopush_common::notification::Notification;
 use autopush_common::util::sec_since_epoch;
 use autopush_common::{ddb_item, hashmap, val};
@@ -368,7 +368,7 @@ impl DbClient for DbClientImpl {
 pub struct DdbClientImpl {
     client: DynamoDbClient,
     metrics: Arc<StatsdClient>,
-    db_settings: DynamoDbSettings
+    db_settings: DynamoDbSettings,
 }
 
 impl DdbClientImpl {
@@ -386,7 +386,8 @@ impl DdbClientImpl {
             DynamoDbClient::new(Region::default())
         };
 
-        let db_settings = DynamoDbSettings::try_from(settings.db_settings.as_ref()).map_err(|e| DbError::General(e.to_string()))?;
+        let db_settings = DynamoDbSettings::try_from(settings.db_settings.as_ref())
+            .map_err(|e| DbError::General(e.to_string()))?;
         Ok(Self {
             client: ddb,
             metrics,
@@ -676,11 +677,13 @@ impl DbClient for DdbClientImpl {
     }
 
     async fn router_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.db_settings.router_table.clone()).await
+        self.table_exists(self.db_settings.router_table.clone())
+            .await
     }
 
     async fn message_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.db_settings.message_table.clone()).await
+        self.table_exists(self.db_settings.message_table.clone())
+            .await
     }
 
     fn message_table(&self) -> &str {

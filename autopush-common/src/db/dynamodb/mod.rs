@@ -28,7 +28,7 @@ use rusoto_dynamodb::{
     AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
     DynamoDbClient, GetItemInput, PutItemInput, QueryInput, UpdateItemInput,
 };
-use serde::{Deserialize};
+use serde::Deserialize;
 
 #[macro_use]
 pub mod macros;
@@ -43,17 +43,18 @@ pub struct DynamoDbSettings {
 
 impl Default for DynamoDbSettings {
     fn default() -> Self {
-        Self{
-        router_table: "router".to_string(),
-        message_table: "message".to_string(),
+        Self {
+            router_table: "router".to_string(),
+            message_table: "message".to_string(),
         }
     }
 }
 
 impl TryFrom<&str> for DynamoDbSettings {
     type Error = DbError;
-    fn try_from(setting_string:&str) -> Result<Self, Self::Error> {
-        serde_json::from_str(setting_string).map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)).into())
+    fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
+        serde_json::from_str(setting_string)
+            .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)).into())
     }
 }
 
