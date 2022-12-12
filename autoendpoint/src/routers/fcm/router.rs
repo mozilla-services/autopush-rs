@@ -221,10 +221,6 @@ impl Router for FcmRouter {
         ))
     }
 
-    /// Currently, only the clients that use webpush are desktop based.
-    fn is_mobile(&self) -> bool {
-        true
-    }
 }
 
 #[cfg(test)]
