@@ -310,7 +310,6 @@ impl Router for ApnsRouter {
             notification.headers.ttl as usize,
         ))
     }
-
 }
 
 #[cfg(test)]

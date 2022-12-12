@@ -158,7 +158,6 @@ impl Router for AdmRouter {
             notification.headers.ttl as usize,
         ))
     }
-
 }
 
 #[cfg(test)]

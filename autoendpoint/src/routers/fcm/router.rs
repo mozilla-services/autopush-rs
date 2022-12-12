@@ -220,7 +220,6 @@ impl Router for FcmRouter {
             notification.headers.ttl as usize,
         ))
     }
-
 }
 
 #[cfg(test)]
