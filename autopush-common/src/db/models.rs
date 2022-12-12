@@ -153,7 +153,7 @@ impl DynamoDbNotification {
     fn parse_sort_key(key: &str) -> Result<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet =
-                RegexSet::new(&[r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
+                RegexSet::new([r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
         }
         if !RE.is_match(key) {
             return Err("Invalid chidmessageid".into());

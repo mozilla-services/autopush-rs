@@ -158,7 +158,7 @@ impl Notification {
 
         map.insert(
             "channelID",
-            serde_json::to_value(&self.subscription.channel_id).unwrap(),
+            serde_json::to_value(self.subscription.channel_id).unwrap(),
         );
         map.insert("version", serde_json::to_value(&self.message_id).unwrap());
         map.insert("ttl", serde_json::to_value(self.headers.ttl).unwrap());
@@ -166,7 +166,7 @@ impl Notification {
         map.insert("timestamp", serde_json::to_value(self.timestamp).unwrap());
 
         if let Some(data) = &self.data {
-            map.insert("data", serde_json::to_value(&data).unwrap());
+            map.insert("data", serde_json::to_value(data).unwrap());
 
             let headers: HashMap<_, _> = self.headers.clone().into();
             map.insert("headers", serde_json::to_value(&headers).unwrap());
