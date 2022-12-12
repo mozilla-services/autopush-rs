@@ -5,5 +5,28 @@ members = [
     "autoendpoint",
 ]
 
+[workspace.package]
+version = "1.65.0"
+authors = [
+  "Ben Bangert <ben@groovie.org>",
+  "JR Conlin <jrconlin@mozilla.com>",
+  "Alex Crichton <alex@alexcrichton.com>",
+  "Phil Jenvey <pjenvey@underboss.org>",
+  "Mark Drobnak <mdrobnak@mozilla.com>"
+]
+edition = "2021"
+
+[workspace.dependencies]
+fernet = "0.2"
+base64 = "0.13"  ## 0.20+ breaks `decode_config`
+sentry = { version = "0.19", features = ["debug-logs","with_error_chain"] }  # Keep on 0.19 in order to work with our backend and keep error_chain
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_info"] }
+slog-async = "2.6"
+slog-envlogger = "2.2.0"
+slog-term = "2.6"
+slog-mozlog-json = "0.1"
+slog-scope = "4.4"
+slog-stdlog = "4.1"
+
 [profile.release]
 debug = 1

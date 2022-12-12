@@ -18,7 +18,7 @@ use futures::{task, try_ready};
 use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
 use hyper::{server::conn::Http, StatusCode};
 use openssl::ssl::SslAcceptor;
-use sentry::{self, capture_message, integrations::panic::register_panic_handler};
+use sentry::{self, capture_message};
 use serde_json::{self, json};
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::{Core, Handle, Timeout};
@@ -94,7 +94,7 @@ impl AutopushServer {
                     ..Default::default()
                 },
             ));
-            register_panic_handler();
+            //register_panic_handler();
             Some(guard)
         } else {
             None

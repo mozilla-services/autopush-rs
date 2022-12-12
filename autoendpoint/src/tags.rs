@@ -92,19 +92,6 @@ impl Tags {
     }
 }
 
-impl slog::KV for Tags {
-    fn serialize(
-        &self,
-        _record: &slog::Record<'_>,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        for (key, val) in &self.tags {
-            serializer.emit_str(slog::Key::from(key.clone()), val)?;
-        }
-        Ok(())
-    }
-}
-
 impl FromRequest for Tags {
     type Config = ();
     type Error = Error;

@@ -177,7 +177,7 @@ impl Notification {
 
         map.insert(
             "channelID",
-            serde_json::to_value(&self.subscription.channel_id).unwrap(),
+            serde_json::to_value(self.subscription.channel_id).unwrap(),
         );
         map.insert("version", serde_json::to_value(&self.message_id).unwrap());
         map.insert("ttl", serde_json::to_value(self.headers.ttl).unwrap());
@@ -188,7 +188,7 @@ impl Notification {
         );
 
         if let Some(data) = &self.data {
-            map.insert("data", serde_json::to_value(&data).unwrap());
+            map.insert("data", serde_json::to_value(data).unwrap());
 
             let headers: HashMap<_, _> = self.headers.clone().into();
             map.insert("headers", serde_json::to_value(&headers).unwrap());
@@ -196,7 +196,7 @@ impl Notification {
 
         if let Some(meta) = &self.subscription.meta() {
             trace!("👀 Serializing for delivery: {}", &meta);
-            map.insert("meta", serde_json::to_value(&meta).unwrap());
+            map.insert("meta", serde_json::to_value(meta).unwrap());
         }
 
         map
