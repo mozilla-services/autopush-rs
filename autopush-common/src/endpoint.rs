@@ -24,16 +24,11 @@ pub fn make_endpoint(
     base.extend(chid.as_bytes());
 
     if let Some(k) = key {
-        let padding = if k.contains('=') {
-            base64::engine::fast_portable::PAD
-        } else {
-            base64::engine::fast_portable::NO_PAD
-        };
         let raw_key = base64::decode_engine(
-            k,
+            k.trim_end_matches('='),
             &base64::engine::fast_portable::FastPortable::from(
                 &base64::alphabet::URL_SAFE,
-                padding,
+                base64::engine::fast_portable::NO_PAD,
             ),
         )
         .chain_err(|| "Error encrypting payload")?;

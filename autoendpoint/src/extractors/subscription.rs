@@ -196,18 +196,21 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 /// in standard base64 encoding. (Both of these violate the VAPID RFC)
 /// Prior python versions ignored these errors, so we should too.
 fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
-    let padding = if public_key.contains('=') {
-        base64::engine::fast_portable::PAD
-    } else {
-        base64::engine::fast_portable::NO_PAD
-    };
     let engine = if public_key.contains(['/', '+']) {
-        base64::engine::fast_portable::FastPortable::from(&base64::alphabet::STANDARD, padding)
+        base64::engine::fast_portable::FastPortable::from(
+            &base64::alphabet::STANDARD,
+            base64::engine::fast_portable::NO_PAD,
+        )
     } else {
-        base64::engine::fast_portable::FastPortable::from(&base64::alphabet::URL_SAFE, padding)
+        base64::engine::fast_portable::FastPortable::from(
+            &base64::alphabet::URL_SAFE,
+            base64::engine::fast_portable::NO_PAD,
+        )
     };
-    base64::decode_engine(public_key.trim_end_matches('='), &engine)
-        .map_err(|e| VapidError::InvalidKey(e.to_string()).into())
+    base64::decode_engine(public_key.trim_end_matches('='), &engine).map_err(|e| {
+        error!("decode_public_key: {:?}", e);
+        VapidError::InvalidKey(e.to_string()).into()
+    })
 }
 
 /// `/webpush/v2/` validations
