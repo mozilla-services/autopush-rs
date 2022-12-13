@@ -196,12 +196,18 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 /// in standard base64 encoding. (Both of these violate the VAPID RFC)
 /// Prior python versions ignored these errors, so we should too.
 fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
-    let encoding = if public_key.contains(['/', '+']) {
-        base64::STANDARD_NO_PAD
+    let engine = if public_key.contains(['/', '+']) {
+        base64::engine::fast_portable::FastPortable::from(
+            &base64::alphabet::STANDARD,
+            base64::engine::fast_portable::NO_PAD,
+        )
     } else {
-        base64::URL_SAFE_NO_PAD
+        base64::engine::fast_portable::FastPortable::from(
+            &base64::alphabet::URL_SAFE,
+            base64::engine::fast_portable::NO_PAD,
+        )
     };
-    base64::decode_config(public_key.trim_end_matches('='), encoding)
+    base64::decode_engine(public_key.trim_end_matches('='), &engine)
         .map_err(|e| VapidError::InvalidKey(e.to_string()).into())
 }
 
@@ -308,11 +314,14 @@ mod tests {
 
     #[test]
     fn vapid_aud_valid() {
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &base64::engine::fast_portable::FastPortable::from(
+                &base64::alphabet::STANDARD,
+                base64::engine::fast_portable::NO_PAD,
+            ),
         )
         .unwrap();
         // Specify a potentially invalid padding.
@@ -341,11 +350,14 @@ mod tests {
 
     #[test]
     fn vapid_aud_invalid() {
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &base64::engine::fast_portable::FastPortable::from(
+                &base64::alphabet::STANDARD,
+                base64::engine::fast_portable::NO_PAD,
+            ),
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
@@ -383,11 +395,14 @@ mod tests {
             sub: String,
         }
 
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &base64::engine::fast_portable::FastPortable::from(
+                &base64::alphabet::STANDARD,
+                base64::engine::fast_portable::NO_PAD,
+            ),
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
@@ -426,11 +441,14 @@ mod tests {
             sub: String,
         }
 
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &base64::engine::fast_portable::FastPortable::from(
+                &base64::alphabet::STANDARD,
+                base64::engine::fast_portable::NO_PAD,
+            ),
         )
         .unwrap();
         // pretty much matches the kind of key we get from some partners.
@@ -496,11 +514,14 @@ mod tests {
             sub: Option<String>,
         }
 
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &base64::engine::fast_portable::FastPortable::from(
+                &base64::alphabet::STANDARD,
+                base64::engine::fast_portable::NO_PAD,
+            ),
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();

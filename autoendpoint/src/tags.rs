@@ -92,6 +92,7 @@ impl Tags {
     }
 }
 
+/*
 impl slog::KV for Tags {
     fn serialize(
         &self,
@@ -104,6 +105,7 @@ impl slog::KV for Tags {
         Ok(())
     }
 }
+*/
 
 impl FromRequest for Tags {
     type Config = ();

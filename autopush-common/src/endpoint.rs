@@ -24,8 +24,14 @@ pub fn make_endpoint(
     base.extend(chid.as_bytes());
 
     if let Some(k) = key {
-        let raw_key =
-            base64::decode_config(k, base64::URL_SAFE).chain_err(|| "Error encrypting payload")?;
+        let raw_key = base64::decode_engine(
+            k,
+            &base64::engine::fast_portable::FastPortable::from(
+                &base64::alphabet::URL_SAFE,
+                base64::engine::fast_portable::PAD,
+            ),
+        )
+        .chain_err(|| "Error encrypting payload")?;
         let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key)
             .chain_err(|| "Error creating message digest for key")?;
         base.extend(key_digest.iter());

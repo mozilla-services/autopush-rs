@@ -53,7 +53,13 @@ impl FromRequest for Notification {
             let data = if data.is_empty() {
                 None
             } else {
-                Some(base64::encode_config(data, base64::URL_SAFE_NO_PAD))
+                Some(base64::encode_engine(
+                    data,
+                    &base64::engine::fast_portable::FastPortable::from(
+                        &base64::alphabet::URL_SAFE,
+                        base64::engine::fast_portable::NO_PAD,
+                    ), //base64::URL_SAFE_NO_PAD
+                ))
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
@@ -158,7 +164,7 @@ impl Notification {
 
         map.insert(
             "channelID",
-            serde_json::to_value(&self.subscription.channel_id).unwrap(),
+            serde_json::to_value(self.subscription.channel_id).unwrap(),
         );
         map.insert("version", serde_json::to_value(&self.message_id).unwrap());
         map.insert("ttl", serde_json::to_value(self.headers.ttl).unwrap());
@@ -166,7 +172,7 @@ impl Notification {
         map.insert("timestamp", serde_json::to_value(self.timestamp).unwrap());
 
         if let Some(data) = &self.data {
-            map.insert("data", serde_json::to_value(&data).unwrap());
+            map.insert("data", serde_json::to_value(data).unwrap());
 
             let headers: HashMap<_, _> = self.headers.clone().into();
             map.insert("headers", serde_json::to_value(&headers).unwrap());
