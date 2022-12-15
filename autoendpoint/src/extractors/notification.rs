@@ -170,7 +170,7 @@ impl Notification {
             map.insert("data", serde_json::to_value(data).unwrap());
 
             let headers: HashMap<_, _> = self.headers.clone().into();
-            map.insert("headers", serde_json::to_value(&headers).unwrap());
+            map.insert("headers", serde_json::to_value(headers).unwrap());
         }
 
         map
