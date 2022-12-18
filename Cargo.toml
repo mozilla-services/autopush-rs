@@ -5,5 +5,43 @@ members = [
     "autoendpoint",
 ]
 
+[workspace.package]
+version = "1.65.1"
+authors = [
+  "Ben Bangert <ben@groovie.org>",
+  "JR Conlin <jrconlin@mozilla.com>",
+  "Phil Jenvey <pjenvey@underboss.org>",
+  "Alex Crichton <alex@alexcrichton.com>",
+  "Mark Drobnak <mdrobnak@mozilla.com>",
+]
+edition = "2021"
+
+[workspace.dependencies]
+# ideally, this would contain any crates that are shared between crates.
+# there are some lingering code interdependencies that prevent that, but it should
+# remain a goal for the overall refactor.
+base64 = "0.20"
+cadence = "0.29"
+config = "0.13"
+fernet = "0.2.0"
+hex = "0.4.2"
+lazy_static = "1.4"
+log = { version = "0.4", features = ["max_level_info", "release_max_level_info"] }
+openssl = "0.10"
+# Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
+sentry = { version = "0.19", features = ["debug-logs", "with_error_chain"] }  # Keep on 0.19 in order to work with our backend and use `with_error_chain`
+serde = "1.0"
+serde_derive = "1.0"
+serde_dynamodb = "0.4"  # 0.7+ requires carg 0.46+
+serde_json = "1.0"
+slog = { version = "2.7", features = ["dynamic-keys", "max_level_trace", "release_max_level_info"] }
+slog-async = "2.6"
+slog-envlogger = "2.2.0"
+slog-mozlog-json = "0.1"
+slog-scope = "4.4"
+slog-stdlog = "4.1"
+slog-term = "2.6"
+uuid = { version = "1.1", features = ["serde", "v4"] }
+
 [profile.release]
 debug = 1
