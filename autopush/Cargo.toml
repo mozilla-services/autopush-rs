@@ -9,29 +9,17 @@ name = "autopush_rs"
 path = "src/main.rs"
 
 [dependencies]
-actix.workspace = true
-actix-cors.workspace = true
-actix-http.workspace = true
-actix-web.workspace = true
-actix-web-actors.workspace = true
-backtrace.workspace = true
 base64.workspace = true
 cadence.workspace = true
 config.workspace = true
 fernet.workspace = true
-futures.workspace = true
-futures-util.workspace = true
-futures-locks.workspace = true
 hex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 openssl.workspace = true
-rand.workspace = true
-regex.workspace = true
 sentry.workspace = true
-serde_derive.workspace = true
-sentry-backtrace.workspace = true
 serde.workspace = true
+serde_derive.workspace = true
 serde_json.workspace = true
 slog.workspace = true
 slog-async.workspace = true
@@ -40,14 +28,6 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
-tokio.workspace = true
-#tokio-compat-02.worspace  = true
-tokio-core.workspace = true
-tokio-openssl.workspace = true
-tokio-service.workspace = true
-tokio-tungstenite.workspace = true
-thiserror.workspace = true
-url.workspace = true
 uuid.workspace = true
 
 autopush_common = { path = "../autopush-common" }
@@ -57,13 +37,21 @@ chrono = "0.4"
 docopt = "1.1.0"
 env_logger = "0.9"
 error-chain = "0.12"
-# futures_01 = {version="0.3", package = "futures"}
+futures = "0.1.29" # XXX: pin to 0.1 until likely hyper 0.13
+futures-locks = "0.5" # pin to 0.5 until futures update
 httparse = "1.3"
 hyper = "0.14"
 mozsvc-common = "0.2"
 reqwest = "0.11"
-rusoto_core = { version="0.48", default-features=false, features=["rustls"] }
-rusoto_dynamodb = {version="0.48", default-features=false, features=["rustls"]}
 signal-hook = "0.3"
-rust-fsm = "0.6"
+smallvec = "1.6"  # for RUSTSEC-2021-0003
+# state_machine_future = { version = "0.1.6", features = ["debug_code_generation"] }
+state_machine_future = "0.2.0"
+tokio-core = "0.1"
+tokio-io = "0.1.13"
+tokio-openssl = "0.3.0" # XXX: pin to < 0.4 until hyper 0.13
+tokio-service = "0.1.0"
+# XXX: pin tokio-tungstenite & tungstenite until hyper 0.13
+tokio-tungstenite = { version = "0.9.0", default-features = false }  # 0.10+ requires tokio 0.3+
+tungstenite = { version = "0.9.2", default-features = false }  # 0.10+ requires tokio 0.3+
 woothee = "0.13"

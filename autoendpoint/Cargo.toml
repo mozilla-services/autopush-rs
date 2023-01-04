@@ -1,6 +1,5 @@
 [package]
 name = "autoendpoint"
-# Should match version in ../autopush/Cargo.toml
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -23,9 +22,14 @@ log.workspace = true
 openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
+rusoto_core.workspace = true
+rusoto_credential.workspace = true
+rusoto_dynamodb.workspace = true
+serde_dynamodb.workspace = true
 sentry.workspace = true
-sentry-backtrace.workspace = true
+sentry-backtrace.workspace  = true
 serde.workspace = true
+serde_derive.workspace = true
 serde_json.workspace = true
 slog.workspace = true
 slog-async.workspace = true
@@ -55,11 +59,7 @@ awc = "3.0"
 docopt = "1.1.0"
 jsonwebtoken = "8.0"
 reqwest = "0.11"
-# datbases
-rusoto_core = {version="0.47", default-features = false, features = ["rustls"]} # locked by serde_dynamodb 0.9
-rusoto_dynamodb = {version="0.47", default-features = false, features = ["rustls"]} # locked by serde_dynamodb 0.9
 
-serde_dynamodb = "0.9"
 smallvec = "1.6"  # for RUSTSEC-2021-0003
 validator = "0.16"
 validator_derive = "0.16"

@@ -8,12 +8,12 @@ use slog_mozlog_json::MozLogJson;
 
 pub fn init_logging(json: bool) -> ApiResult<()> {
     let logger = if json {
-        let hostname = match get_ec2_instance_id() {
+        let hostname = match get_ec2_instance_id(){
             Some(v) => v.to_owned(),
             None => match get_hostname() {
                 Ok(v) => v.to_string_lossy().to_string(),
-                Err(e) => return Err(e.into()),
-            },
+                Err(e) => return Err(e.into())
+            }
         };
 
         let drain = MozLogJson::new(io::stdout())

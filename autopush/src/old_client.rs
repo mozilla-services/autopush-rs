@@ -1040,10 +1040,13 @@ where
                         &endpoint,
                         webpush.deferred_user_registration.as_ref(),
                     ),
-                    Err(_) => Box::new(future::ok(RegisterResponse::Error {
-                        error_msg: "Failed to generate endpoint".to_string(),
-                        status: 400,
-                    })),
+                    Err(e) => {
+                        error!("make_endpoint: {:?}", e);
+                        Box::new(future::ok(RegisterResponse::Error {
+                            error_msg: "Failed to generate endpoint".to_string(),
+                            status: 400,
+                        }))
+                    }
                 };
                 transition!(AwaitRegister {
                     channel_id,
@@ -1247,6 +1250,7 @@ where
         // Filter out TTL expired messages
         let now = sec_since_epoch();
         let srv = data.srv.clone();
+<<<<<<< HEAD:autopush/src/old_client.rs
         messages = messages
             .into_iter()
             .filter(|n| {
@@ -1266,6 +1270,24 @@ where
                 false
             })
             .collect();
+=======
+        messages.retain(|n| {
+            if !n.expired(now) {
+                return true;
+            }
+            if n.sortkey_timestamp.is_none() {
+                srv.handle.spawn(
+                    srv.ddb
+                        .delete_message(&webpush.message_month, &webpush.uaid, n)
+                        .then(|_| {
+                            debug!("Deleting expired message without sortkey_timestamp");
+                            Ok(())
+                        }),
+                );
+            }
+            false
+        });
+>>>>>>> 07b67bda22e6b48195afd9ab16211d28fe46ec61:autopush/src/client.rs
         webpush.flags.increment_storage = !include_topic && timestamp.is_some();
         // If there's still messages send them out
         if !messages.is_empty() {

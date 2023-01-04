@@ -6,13 +6,13 @@ members = [
 ]
 
 [workspace.package]
-version = "1.65.0"
+version = "1.65.1"
 authors = [
   "Ben Bangert <ben@groovie.org>",
   "JR Conlin <jrconlin@mozilla.com>",
-  "Alex Crichton <alex@alexcrichton.com>",
   "Phil Jenvey <pjenvey@underboss.org>",
-  "Mark Drobnak <mdrobnak@mozilla.com>"
+  "Alex Crichton <alex@alexcrichton.com>",
+  "Mark Drobnak <mdrobnak@mozilla.com>",
 ]
 edition = "2021"
 
@@ -26,36 +26,42 @@ actix-test = "0.1"
 actix-web = "4.0"
 actix-web-actors = "4.0"
 
-backtrace="0.3"
-base64 = "0.13"
-cadence = "0.29"
-config = "0.13"
-fernet = "0.2"
-
 futures = "0.3"
 futures-util = {version="0.3", features=["async-await", "compat", "sink", "io"]}
 futures-locks = "0.7"
 
+# ideally, this would contain any crates that are shared between crates.
+# there are some lingering code interdependencies that prevent that, but it should
+# remain a goal for the overall refactor.
+backtrace="0.3"
+base64 = "0.20"
+cadence = "0.29"
+config = "0.13"
+fernet = "0.2.0"
 hex = "0.4.2"
-lazy_static = "1.4.0"
-log = {version="0.4", features = ["max_level_info", "release_max_level_info"] }
+lazy_static = "1.4"
+log = { version = "0.4", features = ["max_level_info", "release_max_level_info"] }
 openssl = "0.10"
 rand = "0.8"
 regex = "1.4"
+rusoto_core = { version="0.47", default-features=false, features=["rustls"] } # locked by serde_dynamodb 0.9
+rusoto_credential = { version="0.47"} # locked by serde_dynamodb 0.9
+rusoto_dynamodb = { version="0.47", default-features=false, features=["rustls"]} # locked by serde_dynamodb 0.9
 # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
-sentry = { version = "0.29", features = ["debug-logs"] }
+sentry = {version="0.29", features=["debug-logs"]}
 sentry-backtrace = "0.29"
-serde = { version = "1.0", features = ["derive"] }
-serde_derive = "1.0"
+serde = "1.0"
 serde_dynamodb = "0.9"
+serde_derive = "1.0"
 serde_json = "1.0"
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_error", "dynamic-keys"] }
+slog = { version = "2.7", features = ["dynamic-keys", "max_level_trace", "release_max_level_info"] }
 slog-async = "2.6"
 slog-envlogger = "2.2.0"
 slog-mozlog-json = "0.1"
 slog-scope = "4.4"
 slog-stdlog = "4.1"
 slog-term = "2.6"
+thiserror = "1.0"
 tokio = { version = "1.17", features = ["fs"] }  # 1.1+ requires futures 0.3+
 tokio-compat-02 = "0.2"
 tokio-core = "0.1"
@@ -64,7 +70,6 @@ tokio-openssl = "0.6"
 tokio-postgres = "0.7"
 tokio-service = "0.1"
 tokio-tungstenite = { version = "0.17", default-features = false }
-thiserror = "1.0"
 tungstenite = { version = "0.17", default-features = false }
 uuid = { version = "1.0", features = ["serde", "v4"] }
 url = "2.2"
