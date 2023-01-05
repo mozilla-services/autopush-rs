@@ -26,13 +26,13 @@ use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
 
-use autopush_common::db::DynamoStorage;
-use autopush_common::errors::*;
-use autopush_common::errors::{Error, Result};
+use autopush_common::db::dynamodb::DdbClientImpl;
+use autopush_common::errors::{ApiError, ApiErrorKind, ApiResult};
 use autopush_common::logging;
 use autopush_common::notification::Notification;
-use autopush_common::util::timeout;
+//use autopush_common::util::timeout;
 
+use crate::{MyFuture, timeout};
 use crate::client::Client;
 use crate::http;
 use crate::megaphone::{
@@ -113,13 +113,13 @@ impl AutopushServer {
 
     /// Blocks execution of the calling thread until the helper thread with the
     /// tokio reactor has exited.
-    pub fn stop(&self) -> Result<()> {
+    pub fn stop(&self) -> ApiResult<()> {
         let mut result = Ok(());
         if let Some(shutdown_handles) = self.shutdown_handles.take() {
             for ShutdownHandle(tx, thread) in shutdown_handles {
                 let _ = tx.send(());
                 if let Err(err) = thread.join() {
-                    result = Err(From::from(ErrorKind::Thread(err)));
+                    result = Err(ApiErrorKind::Thread(err));
                 }
             }
         }
@@ -154,7 +154,7 @@ pub struct ServerOptions {
 }
 
 impl ServerOptions {
-    pub fn from_settings(settings: Settings) -> Result<Self> {
+    pub fn from_settings(settings: Settings) -> ApiResult<Self> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
             return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
@@ -211,7 +211,7 @@ impl ServerOptions {
 pub struct Server {
     pub clients: Arc<ClientRegistry>,
     broadcaster: RefCell<BroadcastChangeTracker>,
-    pub ddb: DynamoStorage,
+    pub ddb: DdbClientImpl,
     open_connections: Cell<u32>,
     tls_acceptor: Option<SslAcceptor>,
     pub opts: Arc<ServerOptions>,
@@ -225,7 +225,7 @@ impl Server {
     /// This will spawn a new server with the `opts` specified, spinning up a
     /// separate thread for the tokio reactor. The returned ShutdownHandles can
     /// be used to interact with it (e.g. shut it down).
-    fn start(opts: &Arc<ServerOptions>) -> Result<Vec<ShutdownHandle>> {
+    fn start(opts: &Arc<ServerOptions>) -> ApiResult<Vec<ShutdownHandle>> {
         let mut shutdown_handles = vec![];
 
         let (inittx, initrx) = oneshot::channel();
@@ -274,7 +274,7 @@ impl Server {
     }
 
     #[allow(clippy::single_char_add_str)]
-    fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Core)> {
+    fn new(opts: &Arc<ServerOptions>) -> ApiResult<(Rc<Server>, Core)> {
         let core = Core::new()?;
         let broadcaster = if let Some(ref megaphone_url) = opts.megaphone_api_url {
             let megaphone_token = opts
@@ -291,7 +291,7 @@ impl Server {
         let srv = Rc::new(Server {
             opts: opts.clone(),
             broadcaster: RefCell::new(broadcaster),
-            ddb: DynamoStorage::from_opts(
+            ddb: DdbClientImpl::from_opts(
                 &opts._message_table_name,
                 &opts._router_table_name,
                 metrics.clone(),
@@ -310,7 +310,7 @@ impl Server {
         let srv2 = srv.clone();
         let ws_srv = ws_listener
             .incoming()
-            .map_err(Error::from)
+            .map_err(ApiError::from)
             .for_each(move |(socket, addr)| {
                 // Make sure we're not handling too many clients before we start the
                 // websocket handshake.
@@ -520,9 +520,9 @@ impl MegaphoneUpdater {
 
 impl Future for MegaphoneUpdater {
     type Item = ();
-    type Error = Error;
+    type Error = ApiError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<(), ApiError> {
         loop {
             let new_state = match self.state {
                 MegaphoneState::Waiting => {
@@ -621,9 +621,9 @@ impl PingManager {
 
 impl Future for PingManager {
     type Item = ();
-    type Error = Error;
+    type Error = ApiError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<(), ApiError> {
         let mut socket = self.socket.borrow_mut();
         loop {
             trace!("🏓 PingManager Poll loop");
@@ -765,10 +765,10 @@ impl<T> WebpushSocket<T> {
         }
     }
 
-    fn send_ws_ping(&mut self) -> Poll<(), Error>
+    fn send_ws_ping(&mut self) -> Poll<(), ApiError>
     where
         T: Sink<SinkItem = Message>,
-        Error: From<T::SinkError>,
+        ApiError: From<T::SinkError>,
     {
         trace!("🏓 checking ping");
         if self.ws_ping {
@@ -804,12 +804,12 @@ impl<T> WebpushSocket<T> {
 impl<T> Stream for WebpushSocket<T>
 where
     T: Stream<Item = Message>,
-    Error: From<T::Error>,
+    ApiError: From<T::Error>,
 {
     type Item = ClientMessage;
-    type Error = Error;
+    type Error = ApiError;
 
-    fn poll(&mut self) -> Poll<Option<ClientMessage>, Error> {
+    fn poll(&mut self) -> Poll<Option<ClientMessage>, ApiError> {
         loop {
             let msg = match self.inner.poll()? {
                 Async::Ready(Some(msg)) => msg,
@@ -819,7 +819,7 @@ where
                     // elapsed (set above) then this is where we start
                     // triggering errors.
                     if self.ws_pong_timeout {
-                        return Err(ErrorKind::PongTimeout.into());
+                        return Err(ApiErrorKind::PongTimeout.into());
                     }
                     return Ok(Async::NotReady);
                 }
@@ -829,13 +829,13 @@ where
                     trace!("🚟 text message {}", s);
                     let msg = s
                         .parse()
-                        .chain_err(|| ErrorKind::InvalidClientMessage(s.to_owned()))?;
+                        .chain_err(|| ApiErrorKind::InvalidClientMessage(s.to_owned()))?;
                     return Ok(Some(msg).into());
                 }
 
                 Message::Binary(_) => {
                     return Err(
-                        ErrorKind::InvalidClientMessage("binary content".to_string()).into(),
+                        ApiErrorKind::InvalidClientMessage("binary content".to_string()).into(),
                     );
                 }
 
@@ -860,12 +860,12 @@ where
 impl<T> Sink for WebpushSocket<T>
 where
     T: Sink<SinkItem = Message>,
-    Error: From<T::SinkError>,
+    ApiError: From<T::SinkError>,
 {
     type SinkItem = ServerMessage;
-    type SinkError = Error;
+    type SinkError = ApiError;
 
-    fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, Error> {
+    fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, ApiError> {
         if self.send_ws_ping()?.is_not_ready() {
             return Ok(AsyncSink::NotReady(msg));
         }
@@ -876,12 +876,12 @@ where
         }
     }
 
-    fn poll_complete(&mut self) -> Poll<(), Error> {
+    fn poll_complete(&mut self) -> Poll<(), ApiError> {
         try_ready!(self.send_ws_ping());
         Ok(self.inner.poll_complete()?)
     }
 
-    fn close(&mut self) -> Poll<(), Error> {
+    fn close(&mut self) -> Poll<(), ApiError> {
         try_ready!(self.poll_complete());
         Ok(self.inner.close()?)
     }

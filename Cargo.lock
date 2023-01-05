@@ -676,11 +676,11 @@ dependencies = [
  "docopt",
  "env_logger",
  "fernet",
- "futures 0.3.25",
+ "futures 0.1.31",
  "futures-locks",
  "hex",
  "httparse",
- "hyper 0.14.23",
+ "hyper 0.12.36",
  "lazy_static",
  "log",
  "mozsvc-common",
@@ -1851,13 +1851,13 @@ checksum = "00f5fb52a06bdcadeb54e8d3671f8888a39697dcb0b81b23b55174030427f4eb"
 
 [[package]]
 name = "futures-locks"
-version = "0.7.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45ec6fe3675af967e67c5536c0b9d44e34e6c52f86bedc4ea49c5317b8e94d06"
+checksum = "e4297dd1d9d6268237e4f93aeb9c90fc1bf0d8cec7e1cef22798939e4c43a251"
 dependencies = [
- "futures-channel",
- "futures-task",
- "tokio 1.23.0",
+ "futures 0.1.31",
+ "tokio-current-thread",
+ "tokio-executor",
 ]
 
 [[package]]

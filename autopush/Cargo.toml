@@ -13,10 +13,10 @@ base64.workspace = true
 cadence.workspace = true
 config.workspace = true
 fernet.workspace = true
-futures.workspace = true
-futures-locks.workspace = true
+#futures.workspace = true
+#futures-locks.workspace = true
 hex.workspace = true
-hyper.workspace = true
+#hyper.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 openssl.workspace = true
@@ -32,8 +32,8 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
-tokio-core.workspace = true
-tokio-io.workspace = true
+#tokio-core.workspace = true
+#tokio-io.workspace = true
 uuid.workspace = true
 
 autopush_common = { path = "../autopush-common" }
@@ -42,7 +42,10 @@ crossbeam-channel = "0.5"
 chrono = "0.4"
 docopt = "1.1.0"
 env_logger = "0.9"
+futures = "0.1.29"
+futures-locks = "0.5"
 httparse = "1.3"
+hyper = "^0.12.36"
 mozsvc-common = "0.2"
 reqwest = "0.9.24" # XXX: pin to < 0.10 until futures 0.3
 rusoto_dynamodb = "0.42.0" # XXX: pin to 0.42 until futures 0.3
@@ -50,6 +53,8 @@ signal-hook = "0.3"
 smallvec = "1.6"  # for RUSTSEC-2021-0003
 # state_machine_future = { version = "0.1.6", features = ["debug_code_generation"] }
 state_machine_future = "0.2.0"
+tokio-core="0.1"
+tokio-io="0.1.13"
 tokio-openssl = "0.3.0" # XXX: pin to < 0.4 until hyper 0.13
 # XXX: pin tokio-tungstenite & tungstenite until hyper 0.13
 tokio-tungstenite = { version = "0.9.0", default-features = false }  # 0.10+ requires tokio 0.3+

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde_derive::{Deserialize, Serialize};
 
-use autopush_common::errors::Result;
+use autopush_common::errors::ApiResult;
 
 use crate::server::protocol::BroadcastValue;
 
@@ -180,7 +180,7 @@ impl BroadcastChangeTracker {
     /// Update a `broadcast` to a new revision, triggering a change_count increase.
     ///
     /// Returns an error if the `broadcast` was never initialized/added.
-    pub fn update_broadcast(&mut self, broadcast: Broadcast) -> Result<u32> {
+    pub fn update_broadcast(&mut self, broadcast: Broadcast) -> ApiResult<u32> {
         let b_id = broadcast.broadcast_id.clone();
         let old_count = self.change_count;
         let key = self

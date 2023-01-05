@@ -26,7 +26,7 @@ use futures::{try_ready, Future, Poll};
 use tokio_core::net::TcpStream;
 use tokio_io::AsyncRead;
 
-use autopush_common::errors::*;
+use autopush_common::errors::{ApiError, ApiErrorKind};
 
 use crate::server::tls::MaybeTlsStream;
 use crate::server::webpush_io::WebpushIo;
@@ -55,9 +55,9 @@ impl Dispatch {
 
 impl Future for Dispatch {
     type Item = (WebpushIo, RequestType);
-    type Error = Error;
+    type Error = ApiError;
 
-    fn poll(&mut self) -> Poll<(WebpushIo, RequestType), Error> {
+    fn poll(&mut self) -> Poll<(WebpushIo, RequestType), ApiError> {
         loop {
             if self.data.len() == self.data.capacity() {
                 self.data.reserve(16); // get some extra space

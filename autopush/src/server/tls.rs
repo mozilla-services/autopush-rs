@@ -10,7 +10,9 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 use std::rc::Rc;
 
-use autopush_common::errors::*;
+use crate::MyFuture;
+
+// use autopush_common::errors::*;
 use futures::future;
 use futures::{Future, Poll};
 use openssl::dh::Dh;

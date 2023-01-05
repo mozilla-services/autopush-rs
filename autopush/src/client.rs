@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use autopush_common::db::{CheckStorageResponse, UserRecord, HelloResponse, RegisterResponse};
 use autopush_common::endpoint::make_endpoint;
-use autopush_common::errors::{ApiError, ApiResult};
+use autopush_common::errors::{ApiError, ApiErrorKind, ApiResult};
 use autopush_common::notification::Notification;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
 
@@ -28,6 +28,7 @@ use crate::megaphone::{Broadcast, BroadcastSubs};
 use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::server::Server;
 use crate::user_agent::parse_user_agent;
+use crate::MyFuture;
 
 // Created and handed to the AutopushServer
 pub struct RegisteredClient {
@@ -320,25 +321,25 @@ where
         srv: Rc<Server>,
         user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
-        error: Option<Error>,
+        error: Option<ApiError>,
     },
 
     #[state_machine_future(ready)]
     UnAuthDone(()),
 
     #[state_machine_future(error)]
-    GeneralUnauthClientError(Error),
+    GeneralUnauthClientError(ApiError),
 }
 
 impl<T> PollUnAuthClientState<T> for UnAuthClientState<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
     fn poll_await_hello<'a>(
         hello: &'a mut RentToOwn<'a, AwaitHello<T>>,
-    ) -> Poll<AfterAwaitHello<T>, Error> {
+    ) -> Poll<AfterAwaitHello<T>, ApiError> {
         trace!("State: AwaitHello");
         let (uaid, desired_broadcasts) = {
             let AwaitHello {
@@ -386,7 +387,7 @@ where
 
     fn poll_await_process_hello<'a>(
         process_hello: &'a mut RentToOwn<'a, AwaitProcessHello<T>>,
-    ) -> Poll<AfterAwaitProcessHello<T>, Error> {
+    ) -> Poll<AfterAwaitProcessHello<T>, ApiError> {
         trace!("State: AwaitProcessHello");
         let (
             uaid,
@@ -502,7 +503,7 @@ where
 
     fn poll_await_registry_connect<'a>(
         registry_connect: &'a mut RentToOwn<'a, AwaitRegistryConnect<T>>,
-    ) -> Poll<AfterAwaitRegistryConnect<T>, Error> {
+    ) -> Poll<AfterAwaitRegistryConnect<T>, ApiError> {
         trace!("State: AwaitRegistryConnect");
         let hello_response = try_ready!(registry_connect.response.poll());
 
@@ -535,20 +536,20 @@ where
 
     fn poll_await_session_complete<'a>(
         session_complete: &'a mut RentToOwn<'a, AwaitSessionComplete<T>>,
-    ) -> Poll<AfterAwaitSessionComplete, Error> {
+    ) -> Poll<AfterAwaitSessionComplete, ApiError> {
         trace!("State: AwaitSessionComplete");
         let error = {
             match session_complete.auth_state_machine.poll() {
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
                 Ok(Async::Ready(_))
-                | Err(Error(ErrorKind::Ws(_), _))
-                | Err(Error(ErrorKind::Io(_), _))
-                | Err(Error(ErrorKind::PongTimeout, _))
-                | Err(Error(ErrorKind::RepeatUaidDisconnect, _))
-                | Err(Error(ErrorKind::ExcessivePing, _))
-                | Err(Error(ErrorKind::InvalidStateTransition(_, _), _))
-                | Err(Error(ErrorKind::InvalidClientMessage(_), _))
-                | Err(Error(ErrorKind::SendError, _)) => None,
+                | Err(ApiErrorKind::Ws(_), _)
+                | Err(ApiErrorKind::Io(_), _)
+                | Err(ApiErrorKind::PongTimeout(_), _)
+                | Err(ApiErrorKind::RepeatUaidDisconnect(_), _)
+                | Err(ApiErrorKind::ExcessivePing(_), _)
+                | Err(ApiErrorKind::InvalidStateTransition(_, _), _)
+                | Err(ApiErrorKind::InvalidClientMessage(_), _)
+                | Err(ApiErrorKind::SendError(_), _) => None,
                 Err(e) => Some(e),
             }
         };
@@ -575,7 +576,7 @@ where
 
     fn poll_await_registry_disconnect<'a>(
         registry_disconnect: &'a mut RentToOwn<'a, AwaitRegistryDisconnect>,
-    ) -> Poll<AfterAwaitRegistryDisconnect, Error> {
+    ) -> Poll<AfterAwaitRegistryDisconnect, ApiError> {
         trace!("State: AwaitRegistryDisconnect");
         try_ready!(registry_disconnect.response.poll());
 
@@ -734,8 +735,8 @@ fn save_and_notify_undelivered_messages(
 #[derive(StateMachineFuture)]
 pub enum AuthClientState<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
     #[state_machine_future(start, transitions(AwaitSend, DetermineAck))]
@@ -824,16 +825,16 @@ where
     AuthDone(()),
 
     #[state_machine_future(error)]
-    GeneralAuthClientStateError(Error),
+    GeneralAuthClientStateError(ApiError),
 }
 
 impl<T> PollAuthClientState<T> for AuthClientState<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
-    fn poll_send<'a>(send: &'a mut RentToOwn<'a, Send<T>>) -> Poll<AfterSend<T>, Error> {
+    fn poll_send<'a>(send: &'a mut RentToOwn<'a, Send<T>>) -> Poll<AfterSend<T>, ApiError> {
         trace!("State: Send");
         let sent = {
             let Send {
@@ -847,7 +848,7 @@ where
                 let ret = data
                     .ws
                     .start_send(item)
-                    .chain_err(|| ErrorKind::SendError)?;
+                    .chain_err(|| ApiErrorKind::SendError)?;
                 match ret {
                     AsyncSink::Ready => true,
                     AsyncSink::NotReady(returned) => {
@@ -869,7 +870,7 @@ where
 
     fn poll_await_send<'a>(
         await_send: &'a mut RentToOwn<'a, AwaitSend<T>>,
-    ) -> Poll<AfterAwaitSend<T>, Error> {
+    ) -> Poll<AfterAwaitSend<T>, ApiError> {
         trace!("State: AwaitSend");
         try_ready!(await_send.data.ws.poll_complete());
 
@@ -890,7 +891,7 @@ where
 
     fn poll_determine_ack<'a>(
         detack: &'a mut RentToOwn<'a, DetermineAck<T>>,
-    ) -> Poll<AfterDetermineAck<T>, Error> {
+    ) -> Poll<AfterDetermineAck<T>, ApiError> {
         let DetermineAck { data } = detack.take();
         let webpush_rc = data.webpush.clone();
         let webpush = webpush_rc.borrow();
@@ -917,7 +918,7 @@ where
 
     fn poll_await_input<'a>(
         r#await: &'a mut RentToOwn<'a, AwaitInput<T>>,
-    ) -> Poll<AfterAwaitInput<T>, Error> {
+    ) -> Poll<AfterAwaitInput<T>, ApiError> {
         trace!("State: AwaitInput");
         // The following is a blocking call. No action is taken until we either get a
         // websocket data packet or there's an incoming notification.
@@ -926,7 +927,7 @@ where
         let webpush_rc = data.webpush.clone();
         let mut webpush = webpush_rc.borrow_mut();
         match input {
-            Either::A(ClientMessage::Hello { .. }) => Err(ErrorKind::InvalidStateTransition(
+            Either::A(ClientMessage::Hello { .. }) => Err(ApiErrorKind::InvalidStateTransition(
                 "AwaitInput".to_string(),
                 "Hello".to_string(),
             )
@@ -960,13 +961,13 @@ where
                        "channel_id" => &channel_id_str,
                 );
                 let channel_id = Uuid::parse_str(&channel_id_str).chain_err(|| {
-                    ErrorKind::InvalidClientMessage(format!(
+                    ApiErrorKind::InvalidClientMessage(format!(
                         "Invalid channelID: {}",
                         channel_id_str
                     ))
                 })?;
                 if channel_id.as_hyphenated().to_string() != channel_id_str {
-                    return Err(ErrorKind::InvalidClientMessage(format!(
+                    return Err(ApiErrorKind::InvalidClientMessage(format!(
                         "Invalid UUID format, not lower-case/dashed: {}",
                         channel_id
                     ))
@@ -1095,7 +1096,7 @@ where
                     })
                 } else {
                     trace!("🏓 Got a ping too quickly, disconnecting");
-                    Err(ErrorKind::ExcessivePing.into())
+                    Err(ApiErrorKind::ExcessivePing.into())
                 }
             }
             Either::B(ServerNotification::Notification(notif)) => {
@@ -1116,14 +1117,14 @@ where
             }
             Either::B(ServerNotification::Disconnect) => {
                 debug!("Got told to disconnect, connecting client has our uaid");
-                Err(ErrorKind::RepeatUaidDisconnect.into())
+                Err(ApiErrorKind::RepeatUaidDisconnect.into())
             }
         }
     }
 
     fn poll_increment_storage<'a>(
         increment_storage: &'a mut RentToOwn<'a, IncrementStorage<T>>,
-    ) -> Poll<AfterIncrementStorage<T>, Error> {
+    ) -> Poll<AfterIncrementStorage<T>, ApiError> {
         trace!("State: IncrementStorage");
         let webpush_rc = increment_storage.data.webpush.clone();
         let webpush = webpush_rc.borrow();
@@ -1144,7 +1145,7 @@ where
 
     fn poll_await_increment_storage<'a>(
         await_increment_storage: &'a mut RentToOwn<'a, AwaitIncrementStorage<T>>,
-    ) -> Poll<AfterAwaitIncrementStorage<T>, Error> {
+    ) -> Poll<AfterAwaitIncrementStorage<T>, ApiError> {
         trace!("State: AwaitIncrementStorage");
         try_ready!(await_increment_storage.response.poll());
         let AwaitIncrementStorage { data, .. } = await_increment_storage.take();
@@ -1155,7 +1156,7 @@ where
 
     fn poll_check_storage<'a>(
         check_storage: &'a mut RentToOwn<'a, CheckStorage<T>>,
-    ) -> Poll<AfterCheckStorage<T>, Error> {
+    ) -> Poll<AfterCheckStorage<T>, ApiError> {
         trace!("State: CheckStorage");
         let CheckStorage { data } = check_storage.take();
         let response = Box::new({
@@ -1172,7 +1173,7 @@ where
 
     fn poll_await_check_storage<'a>(
         await_check_storage: &'a mut RentToOwn<'a, AwaitCheckStorage<T>>,
-    ) -> Poll<AfterAwaitCheckStorage<T>, Error> {
+    ) -> Poll<AfterAwaitCheckStorage<T>, ApiError> {
         trace!("State: AwaitCheckStorage");
         let CheckStorageResponse {
             include_topic,
@@ -1233,7 +1234,7 @@ where
 
     fn poll_await_migrate_user<'a>(
         await_migrate_user: &'a mut RentToOwn<'a, AwaitMigrateUser<T>>,
-    ) -> Poll<AfterAwaitMigrateUser<T>, Error> {
+    ) -> Poll<AfterAwaitMigrateUser<T>, ApiError> {
         trace!("State: AwaitMigrateUser");
         try_ready!(await_migrate_user.response.poll());
         let AwaitMigrateUser { data, .. } = await_migrate_user.take();
@@ -1247,7 +1248,7 @@ where
 
     fn poll_await_drop_user<'a>(
         await_drop_user: &'a mut RentToOwn<'a, AwaitDropUser<T>>,
-    ) -> Poll<AfterAwaitDropUser, Error> {
+    ) -> Poll<AfterAwaitDropUser, ApiError> {
         trace!("State: AwaitDropUser");
         try_ready!(await_drop_user.response.poll());
         transition!(AuthDone(()))
@@ -1255,7 +1256,7 @@ where
 
     fn poll_await_register<'a>(
         await_register: &'a mut RentToOwn<'a, AwaitRegister<T>>,
-    ) -> Poll<AfterAwaitRegister<T>, Error> {
+    ) -> Poll<AfterAwaitRegister<T>, ApiError> {
         trace!("State: AwaitRegister");
         let msg = match try_ready!(await_register.response.poll()) {
             RegisterResponse::Success { endpoint } => {
@@ -1299,7 +1300,7 @@ where
 
     fn poll_await_unregister<'a>(
         await_unregister: &'a mut RentToOwn<'a, AwaitUnregister<T>>,
-    ) -> Poll<AfterAwaitUnregister<T>, Error> {
+    ) -> Poll<AfterAwaitUnregister<T>, ApiError> {
         trace!("State: AwaitUnRegister");
         let msg = if try_ready!(await_unregister.response.poll()) {
             debug!("Got the unregister response");
@@ -1331,7 +1332,7 @@ where
 
     fn poll_await_delete<'a>(
         await_delete: &'a mut RentToOwn<'a, AwaitDelete<T>>,
-    ) -> Poll<AfterAwaitDelete<T>, Error> {
+    ) -> Poll<AfterAwaitDelete<T>, ApiError> {
         trace!("State: AwaitDelete");
         try_ready!(await_delete.response.poll());
         transition!(DetermineAck {

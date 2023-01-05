@@ -5,10 +5,13 @@ extern crate slog_scope;
 extern crate serde_derive;
 
 use std::{env, os::raw::c_int, thread};
+use std::time::Duration;
 
 use docopt::Docopt;
 
-use autopush_common::errors::ApiResult;
+use autopush_common::errors::{ApiResult, ApiError};
+use futures::{Future, future::Either};
+use tokio_core::reactor::{Handle, Timeout};
 
 mod client;
 mod http;
@@ -19,6 +22,8 @@ mod user_agent;
 
 use crate::server::{AutopushServer, ServerOptions};
 use crate::settings::Settings;
+
+pub type MyFuture<T> = Box<dyn Future<Item = T, Error = autopush_common::errors::ApiError>>;
 
 const USAGE: &str = "
 Usage: autopush_rs [options]
@@ -72,4 +77,29 @@ fn notify(signals: &[c_int]) -> ApiResult<crossbeam_channel::Receiver<c_int>> {
         }
     });
     Ok(r)
+}
+
+
+/// Convenience future to time out the resolution of `f` provided within the
+/// duration provided.
+///
+/// If the `dur` is `None` then the returned future is equivalent to `f` (no
+/// timeout) and otherwise the returned future will cancel `f` and resolve to an
+/// error if the `dur` timeout elapses before `f` resolves.
+pub fn timeout<F>(f: F, dur: Option<Duration>, handle: &Handle) -> MyFuture<F::Item>
+where
+    F: Future + 'static,
+    F::Error: Into<ApiError>,
+{
+    let dur = match dur {
+        Some(dur) => dur,
+        None => return Box::new(f.map_err(|e| e.into())),
+    };
+    let timeout = Timeout::new(dur, handle).into_future().flatten();
+    Box::new(f.select2(timeout).then(|res| match res {
+        Ok(Either::A((item, _timeout))) => Ok(item),
+        Err(Either::A((e, _timeout))) => Err(e.into()),
+        Ok(Either::B(((), _item))) => Err("timed out".into()),
+        Err(Either::B((e, _item))) => Err(e.into()),
+    }))
 }
