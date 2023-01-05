@@ -8,7 +8,7 @@ use std::{env, os::raw::c_int, thread};
 
 use docopt::Docopt;
 
-use autopush_common::errors::{Result, ResultExt};
+use autopush_common::errors::ApiResult;
 
 mod client;
 mod http;
@@ -35,7 +35,7 @@ struct Args {
     flag_config_shared: Option<String>,
 }
 
-fn main() -> Result<()> {
+fn main() -> ApiResult<()> {
     env_logger::init();
     let signal = notify(&[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])?;
     let args: Args = Docopt::new(USAGE)
@@ -61,7 +61,7 @@ fn main() -> Result<()> {
 }
 
 /// Create a new channel subscribed to the given signals
-fn notify(signals: &[c_int]) -> Result<crossbeam_channel::Receiver<c_int>> {
+fn notify(signals: &[c_int]) -> ApiResult<crossbeam_channel::Receiver<c_int>> {
     let (s, r) = crossbeam_channel::bounded(100);
     let mut signals = signal_hook::iterator::Signals::new(signals)?;
     thread::spawn(move || {

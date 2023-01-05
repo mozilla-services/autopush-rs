@@ -1,6 +1,6 @@
 //! Management of connected clients to a WebPush server
 use cadence::{prelude::*, StatsdClient};
-use error_chain::ChainedError;
+//use error_chain::ChainedError;
 use futures::future::Either;
 use futures::sync::mpsc;
 use futures::sync::oneshot::Receiver;
@@ -18,9 +18,9 @@ use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
-use autopush_common::db::{CheckStorageResponse, DynamoDbUser, HelloResponse, RegisterResponse};
+use autopush_common::db::{CheckStorageResponse, UserRecord, HelloResponse, RegisterResponse};
 use autopush_common::endpoint::make_endpoint;
-use autopush_common::errors::*;
+use autopush_common::errors::{ApiError, ApiResult};
 use autopush_common::notification::Notification;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
 
@@ -38,8 +38,8 @@ pub struct RegisteredClient {
 
 pub struct Client<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
     state_machine: UnAuthClientStateFuture<T>,
@@ -50,8 +50,8 @@ where
 
 impl<T> Client<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
     /// Spins up a new client communicating over the websocket `ws` specified.
@@ -115,14 +115,14 @@ where
 
 impl<T> Future for Client<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
     type Item = ();
-    type Error = Error;
+    type Error = ApiError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<(), ApiError> {
         self.state_machine.poll()
     }
 }
@@ -162,7 +162,7 @@ pub struct WebPushClient {
     sent_from_storage: u32,
     last_ping: u64,
     stats: SessionStatistics,
-    deferred_user_registration: Option<DynamoDbUser>,
+    deferred_user_registration: Option<UserRecord>,
 }
 
 impl Default for WebPushClient {
@@ -226,11 +226,11 @@ pub struct UnAuthClientData<T> {
 
 impl<T> UnAuthClientData<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
-    fn input_with_timeout(&mut self, timeout: &mut Timeout) -> Poll<ClientMessage, Error> {
+    fn input_with_timeout(&mut self, timeout: &mut Timeout) -> Poll<ClientMessage, ApiError> {
         let item = match timeout.poll()? {
             Async::Ready(_) => return Err("Client timed out".into()),
             Async::NotReady => match self.ws.poll()? {
@@ -252,11 +252,11 @@ pub struct AuthClientData<T> {
 
 impl<T> AuthClientData<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
-    fn input_or_notif(&mut self) -> Poll<Either<ClientMessage, ServerNotification>, Error> {
+    fn input_or_notif(&mut self) -> Poll<Either<ClientMessage, ServerNotification>, ApiError> {
         let mut webpush = self.webpush.borrow_mut();
         let item = match webpush.rx.poll() {
             Ok(Async::Ready(Some(notif))) => Either::B(notif),
@@ -275,8 +275,8 @@ where
 #[derive(StateMachineFuture)]
 pub enum UnAuthClientState<T>
 where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
+    T: Stream<Item = ClientMessage, Error = ApiError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
         + 'static,
 {
     #[state_machine_future(start, transitions(AwaitProcessHello))]

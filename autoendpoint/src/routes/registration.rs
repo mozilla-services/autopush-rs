@@ -9,7 +9,7 @@ use crate::headers::util::get_header;
 use crate::server::ServerState;
 use actix_web::web::{Data, Json};
 use actix_web::{HttpRequest, HttpResponse};
-use autopush_common::db::DynamoDbUser;
+use autopush_common::db::UserRecord;
 use autopush_common::endpoint::make_endpoint;
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
@@ -33,7 +33,7 @@ pub async fn register_uaid_route(
     incr_metric("ua.command.register", &state.metrics, &request);
 
     // Register user and channel in database
-    let user = DynamoDbUser {
+    let user = UserRecord {
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),
         current_month: Some(state.ddb.message_table().to_string()),
@@ -55,7 +55,7 @@ pub async fn register_uaid_route(
         state.settings.endpoint_url().as_str(),
         &state.fernet,
     )
-    .map_err(ApiErrorKind::EndpointUrl)?;
+    .map_err(|e| ApiErrorKind::EndpointUrl(e.to_string()))?;
     trace!("endpoint = {}", endpoint_url);
 
     // Create the secret
@@ -105,7 +105,7 @@ pub async fn update_token_route(
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
 
     // Update the user in the database
-    let user = DynamoDbUser {
+    let user = UserRecord {
         uaid: path_args.uaid,
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),
@@ -142,7 +142,7 @@ pub async fn new_channel_route(
         state.settings.endpoint_url().as_str(),
         &state.fernet,
     )
-    .map_err(ApiErrorKind::EndpointUrl)?;
+    .map_err(|e| ApiErrorKind::EndpointUrl(e.to_string()))?;
     trace!("endpoint = {}", endpoint_url);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({

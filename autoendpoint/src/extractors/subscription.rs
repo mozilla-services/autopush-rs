@@ -7,7 +7,7 @@ use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
-use autopush_common::db::DynamoDbUser;
+use autopush_common::db::UserRecord;
 use autopush_common::endpoint::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use autopush_common::util::sec_since_epoch;
 use cadence::{CountedExt, StatsdClient};
@@ -26,7 +26,7 @@ const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 #[derive(Clone, Debug)]
 pub struct Subscription {
-    pub user: DynamoDbUser,
+    pub user: UserRecord,
     pub channel_id: Uuid,
     pub vapid: Option<VapidHeaderWithKey>,
 }

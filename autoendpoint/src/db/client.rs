@@ -4,7 +4,7 @@ use crate::db::retry::{
     retryable_putitem_error, retryable_updateitem_error,
 };
 use async_trait::async_trait;
-use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
+use autopush_common::db::{NotificationRecord, UserRecord};
 use autopush_common::notification::Notification;
 use autopush_common::util::sec_since_epoch;
 use autopush_common::{ddb_item, hashmap, val};
@@ -28,15 +28,15 @@ const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 pub trait DbClient: Send + Sync {
     /// Add a new user to the database. An error will occur if the user already
     /// exists.
-    async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()>;
+    async fn add_user(&self, user: &UserRecord) -> DbResult<()>;
 
     /// Update a user in the database. An error will occur if the user does not
     /// already exist, has a different router type, or has a newer
     /// `connected_at` timestamp.
-    async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()>;
+    async fn update_user(&self, user: &UserRecord) -> DbResult<()>;
 
     /// Read a user from the database
-    async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>>;
+    async fn get_user(&self, uaid: Uuid) -> DbResult<Option<UserRecord>>;
 
     /// Delete a user from the router table
     async fn remove_user(&self, uaid: Uuid) -> DbResult<()>;
@@ -146,7 +146,7 @@ impl DbClientImpl {
 #[allow(clippy::field_reassign_with_default)]
 #[async_trait]
 impl DbClient for DbClientImpl {
-    async fn add_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+    async fn add_user(&self, user: &UserRecord) -> DbResult<()> {
         let input = PutItemInput {
             table_name: self.router_table.clone(),
             item: serde_dynamodb::to_hashmap(user)?,
@@ -163,7 +163,7 @@ impl DbClient for DbClientImpl {
         Ok(())
     }
 
-    async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()> {
+    async fn update_user(&self, user: &UserRecord) -> DbResult<()> {
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {
@@ -205,7 +205,7 @@ impl DbClient for DbClientImpl {
         Ok(())
     }
 
-    async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>> {
+    async fn get_user(&self, uaid: Uuid) -> DbResult<Option<UserRecord>> {
         trace!(
             "Looking up user: {:?} in {}",
             uaid.as_simple().to_string(),
@@ -294,7 +294,7 @@ impl DbClient for DbClientImpl {
         let channels = output
             .item
             // Deserialize the notification
-            .map(serde_dynamodb::from_hashmap::<DynamoDbNotification, _>)
+            .map(serde_dynamodb::from_hashmap::<NotificationRecord, _>)
             .transpose()?
             // Extract the channel IDs
             .and_then(|n| n.chids)
@@ -367,7 +367,7 @@ impl DbClient for DbClientImpl {
 
     async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
         let input = PutItemInput {
-            item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(&uaid, message))?,
+            item: serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(&uaid, message))?,
             table_name: self.message_table.clone(),
             ..Default::default()
         };

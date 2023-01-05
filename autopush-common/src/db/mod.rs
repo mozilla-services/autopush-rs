@@ -1,36 +1,170 @@
-use std::collections::HashSet;
-use std::env;
-use std::sync::Arc;
+/// Contains the general Database access bits
+///
+/// Database access is abstracted into a DbClient impl
+/// which contains the required trait functions the
+/// application will need to perform in the database.
+/// Each of the abstractions contains a DbClientImpl
+/// that is responsible for carrying out the requested
+/// functions. Each of the data stores are VERY
+/// different, although the requested functions
+/// are fairly simple.
+use std::cmp::min;
+use std::collections::{HashMap, HashSet};
+use std::result::Result as StdResult;
+
+use async_trait::async_trait;
+use lazy_static::lazy_static;
+use regex::RegexSet;
+use serde::Serializer;
+use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use cadence::StatsdClient;
-use futures::{future, Future};
-use futures_backoff::retry_if;
-use rusoto_core::{HttpClient, Region};
-use rusoto_credential::StaticProvider;
-use rusoto_dynamodb::{
-    AttributeValue, BatchWriteItemInput, DeleteItemInput, DynamoDb, DynamoDbClient, PutItemInput,
-    PutRequest, UpdateItemInput, UpdateItemOutput, WriteRequest,
-};
-
-#[macro_use]
-mod macros;
-mod commands;
-mod models;
-mod util;
-
-use crate::errors::*;
+use crate::db::util::generate_last_connect;
+use crate::errors::ApiResult;
 use crate::notification::Notification;
-use crate::util::timing::sec_since_epoch;
+use crate::util::timing::{ms_since_epoch, sec_since_epoch};
+use models::{NotificationHeaders, RangeKey};
 
-use self::commands::{
-    retryable_batchwriteitem_error, retryable_delete_error, retryable_putitem_error,
-    retryable_updateitem_error, FetchMessageResponse,
-};
-pub use self::models::{DynamoDbNotification, DynamoDbUser};
+pub mod client;
+pub mod dynamodb;
+pub mod error;
+pub mod models;
+//pub mod bigtable;
+//pub mod postgres;
+mod util;
 
 const MAX_EXPIRY: u64 = 2_592_000;
 const USER_RECORD_VERSION: u8 = 1;
+/// The maximum TTL for channels, 30 days
+pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
+
+/// The universal settings for the database
+/// abstractor.
+#[derive(Clone, Debug, Default)]
+pub struct DbSettings {
+    /// Database connector string
+    pub dsn: Option<String>,
+    /// A JSON formatted dictionary containing Database settings that
+    /// are specific to the type of Data storage specified in the `dsn`
+    /// See the respective settings structures for
+    /// [crate::db::bigtable::BigTableDbSettings], [crate::db::dynamodb::DynamoDbSettings],
+    /// [crate::db::postgres::PostgresDbSettings]
+    pub db_settings: String,
+}
+//TODO: add `From<autopush::settings::Settings> for DbSettings`?
+//TODO: add `From<autoendpoint::settings::Settings> for DbSettings`?
+
+/// Custom Uuid serializer
+///
+/// Serializes a Uuid as a simple string instead of hyphenated
+pub fn uuid_serializer<S>(x: &Uuid, s: S) -> StdResult<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_str(&x.simple().to_string())
+}
+
+/// DbCommandClient trait
+/// Define a set of traits for handling the data access portions of the
+/// various commands for the endpoint
+#[async_trait]
+pub trait DbCommandClient: Send + Sync {
+    //*
+    /// `hello` registers a new UAID or records a
+    /// returning UAID.
+    async fn hello(
+        &self,
+        // when the UAID connected
+        connected_at: u64,
+        // either the returning UAID or a request for a new one.
+        uaid: Option<&Uuid>,
+        // The router that the UAID connected to
+        router_url: &str,
+        // Hold of actually registering this.
+        // (Some UAIDs only connect to rec'v broadcast messages)
+        defer_registration: bool,
+    ) -> ApiResult<HelloResponse>;
+
+    /// register a new channel for this UAID
+    async fn register(
+        &self,
+        // The requesting UAID
+        uaid: &Uuid,
+        // The incoming channelID (Note: we must maintain this ID the
+        // same way that we recv'd it. (e.g. with dashes or not, case,
+        // etc.) )
+        channel_id: &Uuid,
+        // Legacy field from table rotation
+        message_month: &str,
+        // TODO??
+        endpoint: &str,
+        // The user record associated with this UAID
+        register_user: Option<&UserRecord>,
+    ) -> ApiResult<RegisterResponse>;
+
+    /// Delete this user and all information associated with them
+    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()>;
+
+    /// Delete this Channel ID for the user
+    async fn unregister(
+        &self,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        message_month: &str,
+    ) -> ApiResult<bool>;
+
+    /// LEGACY: move this user to the most recent message table
+    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()>;
+
+    /// store the message for this user
+    async fn store_message(
+        &self,
+        uaid: &Uuid,
+        message_month: String,
+        message: Notification,
+    ) -> ApiResult<()>;
+
+    /// store multiple messages for this user.
+    async fn store_messages(
+        &self,
+        uaid: &Uuid,
+        message_month: &str,
+        messages: Vec<Notification>,
+    ) -> ApiResult<()>;
+
+    /// Delete a message for this user.
+    async fn delete_message(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        notif: &Notification,
+    ) -> ApiResult<()>;
+
+    /// Fetch any pending messages for this user
+    async fn check_storage(
+        &self,
+        table_name: &str,
+        uaid: &Uuid,
+        include_topic: bool,
+        timestamp: Option<u64>,
+    ) -> ApiResult<CheckStorageResponse>;
+
+    /// Get a list of known channels for this user.
+    /// (Used by daily mobile client check-in)
+    async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
+        -> ApiResult<HashSet<Uuid>>;
+
+    /// Remove the node information for this user (the
+    /// user has disconnected from a node and is considered
+    /// inactive or logged out.)
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: String,
+        connected_at: u64,
+    ) -> ApiResult<()>;
+    // */
+}
 
 /// Basic requirements for notification content to deliver to websocket client
 ///  - channelID  (the subscription website intended for)
@@ -40,514 +174,227 @@ const USER_RECORD_VERSION: u8 = 1;
 ///  - headers    (hash of crypto headers: encoding, encrypption, crypto-key, encryption-key)
 #[derive(Default, Clone)]
 pub struct HelloResponse {
+    /// The UAID the client should use.
     pub uaid: Option<Uuid>,
+    /// LEGACY the message month for this user
     pub message_month: String,
+    /// Do you need to fetch pending messages.
     pub check_storage: bool,
+    /// Give the UA a new ID.
     pub reset_uaid: bool,
+    /// LEGACY move the user to a new message month
     pub rotate_message_table: bool,
+    /// the time that the user connected.
     pub connected_at: u64,
     // Exists when we didn't register this user during HELLO
-    pub deferred_user_registration: Option<DynamoDbUser>,
+    pub deferred_user_registration: Option<UserRecord>,
 }
 
+#[derive(Clone, Default, Debug)]
 pub struct CheckStorageResponse {
+    /// The messages include a "topic"
+    /// "topics" are messages that replace prior messages of that topic.
+    /// (e.g. you can only have one message for a topic of "foo")
     pub include_topic: bool,
+    /// The list of pending messages.
     pub messages: Vec<Notification>,
+    /// All the messages up to this timestampl
     pub timestamp: Option<u64>,
 }
 
+/// A new endpoint has been registered. (heh, should this be a RESULT?)
 pub enum RegisterResponse {
+    /// Hooray! Things worked, here's your endpoint URL
     Success { endpoint: String },
+    /// Crap, there was an error.
     Error { error_msg: String, status: u32 },
 }
 
-#[derive(Clone)]
-pub struct DynamoStorage {
-    ddb: DynamoDbClient,
-    metrics: Arc<StatsdClient>,
-    router_table_name: String,
-    pub message_table_names: Vec<String>,
-    pub current_message_month: String,
+/// A user data record.
+#[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
+pub struct UserRecord {
+    /// The UAID. This is generally a UUID4. It needs to be globally
+    /// unique.
+    // DynamoDB <Hash key>
+    #[serde(serialize_with = "uuid_serializer")]
+    pub uaid: Uuid,
+    /// Time in milliseconds that the user last connected at
+    pub connected_at: u64,
+    /// Router type of the user
+    pub router_type: String,
+    /// Router-specific data
+    pub router_data: Option<HashMap<String, serde_json::Value>>,
+    /// Keyed time in a month the user last connected at with limited
+    /// key range for indexing
+    // [ed. --sigh. don't use custom timestamps kids.]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_connect: Option<u64>,
+    /// Last node/port the client was or may be connected to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    /// Record version
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record_version: Option<u8>,
+    /// LEGACY: Current month table in the database the user is on
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_month: Option<String>,
 }
 
-impl DynamoStorage {
-    pub fn from_opts(
-        message_table_name: &str,
-        router_table_name: &str,
-        metrics: Arc<StatsdClient>,
-    ) -> Result<Self> {
-        debug!(
-            "Checking tables: {} & {}",
-            &message_table_name, &router_table_name
-        );
-        let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
-            DynamoDbClient::new_with(
-                HttpClient::new().chain_err(|| "TLS initialization error")?,
-                StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
-                Region::Custom {
-                    name: "us-east-1".to_string(),
-                    endpoint,
-                },
-            )
-        } else {
-            DynamoDbClient::new(Region::default())
-        };
-
-        let mut message_table_names = list_message_tables(&ddb, message_table_name)
-            .map_err(|_| "Failed to locate message tables")?;
-        // Valid message months are the current and last 2 months
-        message_table_names.sort_unstable_by(|a, b| b.cmp(a));
-        message_table_names.truncate(3);
-        message_table_names.reverse();
-        let current_message_month = message_table_names
-            .last()
-            .ok_or("No last message month found")?
-            .to_string();
-
-        Ok(Self {
-            ddb,
-            metrics,
-            router_table_name: router_table_name.to_owned(),
-            message_table_names,
-            current_message_month,
-        })
-    }
-
-    pub fn increment_storage(
-        &self,
-        table_name: &str,
-        uaid: &Uuid,
-        timestamp: &str,
-    ) -> impl Future<Item = UpdateItemOutput, Error = Error> {
-        let ddb = self.ddb.clone();
-        let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
-        let attr_values = hashmap! {
-            ":timestamp".to_string() => val!(N => timestamp),
-            ":expiry".to_string() => val!(N => expiry),
-        };
-        let update_input = UpdateItemInput {
-            key: ddb_item! {
-                uaid: s => uaid.as_simple().to_string(),
-                chidmessageid: s => " ".to_string()
-            },
-            update_expression: Some("SET current_timestamp=:timestamp, expiry=:expiry".to_string()),
-            expression_attribute_values: Some(attr_values),
-            table_name: table_name.to_string(),
-            ..Default::default()
-        };
-
-        retry_if(
-            move || ddb.update_item(update_input.clone()),
-            retryable_updateitem_error,
-        )
-        .chain_err(|| "Error incrementing storage")
-    }
-
-    pub fn hello(
-        &self,
-        connected_at: u64,
-        uaid: Option<&Uuid>,
-        router_url: &str,
-        defer_registration: bool,
-    ) -> impl Future<Item = HelloResponse, Error = Error> {
-        trace!(
-            "### uaid {:?}, defer_registration: {:?}",
-            &uaid,
-            &defer_registration
-        );
-        let response: MyFuture<(HelloResponse, Option<DynamoDbUser>)> = if let Some(uaid) = uaid {
-            commands::lookup_user(
-                self.ddb.clone(),
-                self.metrics.clone(),
-                uaid,
-                connected_at,
-                router_url,
-                &self.router_table_name,
-                &self.message_table_names,
-                &self.current_message_month,
-            )
-        } else {
-            Box::new(future::ok((
-                HelloResponse {
-                    message_month: self.current_message_month.clone(),
-                    connected_at,
-                    ..Default::default()
-                },
-                None,
-            )))
-        };
-        let ddb = self.ddb.clone();
-        let router_url = router_url.to_string();
-        let router_table_name = self.router_table_name.clone();
-        let connected_at = connected_at;
-
-        response.and_then(move |(mut hello_response, user_opt)| {
-            trace!(
-                "### Hello Response: {:?}, {:?}",
-                hello_response.uaid,
-                user_opt
-            );
-            let hello_message_month = hello_response.message_month.clone();
-            let user = user_opt.unwrap_or_else(|| DynamoDbUser {
-                current_month: Some(hello_message_month),
-                node_id: Some(router_url),
-                connected_at,
-                ..Default::default()
-            });
-            let uaid = user.uaid;
-            trace!("### UAID = {:?}", &uaid);
-            let mut err_response = hello_response.clone();
-            err_response.connected_at = connected_at;
-            if !defer_registration {
-                future::Either::A(
-                    commands::register_user(ddb, &user, &router_table_name)
-                        .and_then(move |result| {
-                            debug!("Success adding user, item output: {:?}", result);
-                            hello_response.uaid = Some(uaid);
-                            future::ok(hello_response)
-                        })
-                        .or_else(move |e| {
-                            debug!("Error registering user: {:?}", e);
-                            future::ok(err_response)
-                        }),
-                )
-            } else {
-                debug!("Deferring user registration {:?}", &uaid);
-                hello_response.uaid = Some(uaid);
-                hello_response.deferred_user_registration = Some(user);
-                future::Either::B(Box::new(future::ok(hello_response)))
-            }
-        })
-    }
-
-    pub fn register(
-        &self,
-        uaid: &Uuid,
-        channel_id: &Uuid,
-        message_month: &str,
-        endpoint: &str,
-        register_user: Option<&DynamoDbUser>,
-    ) -> MyFuture<RegisterResponse> {
-        let ddb = self.ddb.clone();
-        let mut chids = HashSet::new();
-        let endpoint = endpoint.to_owned();
-        chids.insert(channel_id.as_hyphenated().to_string());
-
-        if let Some(user) = register_user {
-            trace!(
-                "### Endpoint Request: User not yet registered... {:?}",
-                &user.uaid
-            );
-            let uaid2 = *uaid;
-            let message_month2 = message_month.to_owned();
-            let response = commands::register_user(ddb.clone(), user, &self.router_table_name)
-                .and_then(move |_| {
-                    trace!("### Saving channels: {:#?}", chids);
-                    commands::save_channels(ddb, &uaid2, chids, &message_month2)
-                        .and_then(move |_| {
-                            trace!("### sending endpoint: {}", endpoint);
-                            future::ok(RegisterResponse::Success { endpoint })
-                        })
-                        .or_else(move |r| {
-                            trace!("--- failed to register channel. {:?}", r);
-                            future::ok(RegisterResponse::Error {
-                                status: 503,
-                                error_msg: "Failed to register channel".to_string(),
-                            })
-                        })
-                });
-            return Box::new(response);
-        };
-        trace!("### Continuing...");
-        let response = commands::save_channels(ddb, uaid, chids, message_month)
-            .and_then(move |_| future::ok(RegisterResponse::Success { endpoint }))
-            .or_else(move |_| {
-                future::ok(RegisterResponse::Error {
-                    status: 503,
-                    error_msg: "Failed to register channel".to_string(),
-                })
-            });
-        Box::new(response)
-    }
-
-    pub fn drop_uaid(&self, uaid: &Uuid) -> impl Future<Item = (), Error = Error> {
-        commands::drop_user(self.ddb.clone(), uaid, &self.router_table_name)
-            .and_then(|_| future::ok(()))
-            .chain_err(|| "Unable to drop user record")
-    }
-
-    pub fn unregister(
-        &self,
-        uaid: &Uuid,
-        channel_id: &Uuid,
-        message_month: &str,
-    ) -> impl Future<Item = bool, Error = Error> {
-        commands::unregister_channel_id(self.ddb.clone(), uaid, channel_id, message_month)
-            .and_then(|_| future::ok(true))
-            .or_else(|_| future::ok(false))
-    }
-
-    /// Migrate a user to a new month table
-    pub fn migrate_user(
-        &self,
-        uaid: &Uuid,
-        message_month: &str,
-    ) -> impl Future<Item = (), Error = Error> {
-        let uaid = *uaid;
-        let ddb = self.ddb.clone();
-        let ddb2 = self.ddb.clone();
-        let cur_month = self.current_message_month.to_string();
-        let cur_month2 = cur_month.clone();
-        let router_table_name = self.router_table_name.clone();
-
-        commands::all_channels(self.ddb.clone(), &uaid, message_month)
-            .and_then(move |channels| -> MyFuture<_> {
-                if channels.is_empty() {
-                    Box::new(future::ok(()))
-                } else {
-                    Box::new(commands::save_channels(ddb, &uaid, channels, &cur_month))
-                }
-            })
-            .and_then(move |_| {
-                commands::update_user_message_month(ddb2, &uaid, &router_table_name, &cur_month2)
-            })
-            .and_then(|_| future::ok(()))
-            .chain_err(|| "Unable to migrate user")
-    }
-
-    /// Store a single message
-    pub fn store_message(
-        &self,
-        uaid: &Uuid,
-        message_month: String,
-        message: Notification,
-    ) -> impl Future<Item = (), Error = Error> {
-        let ddb = self.ddb.clone();
-        let put_item = PutItemInput {
-            item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, message))
-                .unwrap(),
-            table_name: message_month,
-            ..Default::default()
-        };
-
-        retry_if(
-            move || ddb.put_item(put_item.clone()),
-            retryable_putitem_error,
-        )
-        .and_then(|_| future::ok(()))
-        .chain_err(|| "Error saving notification")
-    }
-
-    /// Store a batch of messages when shutting down
-    pub fn store_messages(
-        &self,
-        uaid: &Uuid,
-        message_month: &str,
-        messages: Vec<Notification>,
-    ) -> impl Future<Item = (), Error = Error> {
-        let ddb = self.ddb.clone();
-        let put_items: Vec<WriteRequest> = messages
-            .into_iter()
-            .filter_map(|n| {
-                serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, n))
-                    .ok()
-                    .map(|hm| WriteRequest {
-                        put_request: Some(PutRequest { item: hm }),
-                        delete_request: None,
-                    })
-            })
-            .collect();
-        let batch_input = BatchWriteItemInput {
-            request_items: hashmap! { message_month.to_string() => put_items },
-            ..Default::default()
-        };
-
-        retry_if(
-            move || ddb.batch_write_item(batch_input.clone()),
-            retryable_batchwriteitem_error,
-        )
-        .and_then(|_| future::ok(()))
-        .map_err(|err| {
-            debug!("Error saving notification: {:?}", err);
-            err
-        })
-        // TODO: Use Sentry to capture/report this error
-        .chain_err(|| "Error saving notifications")
-    }
-
-    /// Delete a given notification from the database
-    ///
-    /// No checks are done to see that this message came from the database or has
-    /// sufficient properties for a delete as that is expected to have been done
-    /// before this is called.
-    pub fn delete_message(
-        &self,
-        table_name: &str,
-        uaid: &Uuid,
-        notif: &Notification,
-    ) -> impl Future<Item = (), Error = Error> {
-        let ddb = self.ddb.clone();
-        let delete_input = DeleteItemInput {
-            table_name: table_name.to_string(),
-            key: ddb_item! {
-               uaid: s => uaid.as_simple().to_string(),
-               chidmessageid: s => notif.sort_key()
-            },
-            ..Default::default()
-        };
-
-        retry_if(
-            move || ddb.delete_item(delete_input.clone()),
-            retryable_delete_error,
-        )
-        .and_then(|_| future::ok(()))
-        .chain_err(|| "Error deleting notification")
-    }
-
-    pub fn check_storage(
-        &self,
-        table_name: &str,
-        uaid: &Uuid,
-        include_topic: bool,
-        timestamp: Option<u64>,
-    ) -> impl Future<Item = CheckStorageResponse, Error = Error> {
-        let response: MyFuture<FetchMessageResponse> = if include_topic {
-            Box::new(commands::fetch_messages(
-                self.ddb.clone(),
-                self.metrics.clone(),
-                table_name,
-                uaid,
-                11,
-            ))
-        } else {
-            Box::new(future::ok(Default::default()))
-        };
-        let uaid = *uaid;
-        let table_name = table_name.to_string();
-        let ddb = self.ddb.clone();
-        let metrics = self.metrics.clone();
-
-        response.and_then(move |resp| -> MyFuture<_> {
-            // Return now from this future if we have messages
-            if !resp.messages.is_empty() {
-                debug!("Topic message returns: {:?}", resp.messages);
-                return Box::new(future::ok(CheckStorageResponse {
-                    include_topic: true,
-                    messages: resp.messages,
-                    timestamp: resp.timestamp,
-                }));
-            }
-            // Use the timestamp returned by the topic query if we were looking at the topics
-            let timestamp = if include_topic {
-                resp.timestamp
-            } else {
-                timestamp
-            };
-            let next_query: MyFuture<_> = {
-                if resp.messages.is_empty() || resp.timestamp.is_some() {
-                    Box::new(commands::fetch_timestamp_messages(
-                        ddb,
-                        metrics,
-                        table_name.as_ref(),
-                        &uaid,
-                        timestamp,
-                        10,
-                    ))
-                } else {
-                    Box::new(future::ok(Default::default()))
-                }
-            };
-            let next_query = next_query.and_then(move |resp: FetchMessageResponse| {
-                // If we didn't get a timestamp off the last query, use the original
-                // value if passed one
-                let timestamp = resp.timestamp.or(timestamp);
-                Ok(CheckStorageResponse {
-                    include_topic: false,
-                    messages: resp.messages,
-                    timestamp,
-                })
-            });
-            Box::new(next_query)
-        })
-    }
-
-    pub fn get_user(&self, uaid: &Uuid) -> impl Future<Item = Option<DynamoDbUser>, Error = Error> {
-        let ddb = self.ddb.clone();
-        let result = commands::get_uaid(ddb, uaid, &self.router_table_name).and_then(|result| {
-            future::result(
-                result
-                    .item
-                    .map(|item| {
-                        let user = serde_dynamodb::from_hashmap(item);
-                        user.chain_err(|| "Error deserializing")
-                    })
-                    .transpose(),
-            )
-        });
-        Box::new(result)
-    }
-
-    /// Get the set of channel IDs for a user
-    pub fn get_user_channels(
-        &self,
-        uaid: &Uuid,
-        message_table: &str,
-    ) -> impl Future<Item = HashSet<Uuid>, Error = Error> {
-        commands::all_channels(self.ddb.clone(), uaid, message_table).and_then(|channels| {
-            channels
-                .into_iter()
-                .map(|channel| channel.parse().map_err(Error::from))
-                .collect::<Result<_>>()
-        })
-    }
-
-    /// Remove the node ID from a user in the router table.
-    /// The node ID will only be cleared if `connected_at` matches up
-    /// with the item's `connected_at`.
-    pub fn remove_node_id(
-        &self,
-        uaid: &Uuid,
-        node_id: String,
-        connected_at: u64,
-    ) -> impl Future<Item = (), Error = Error> {
-        let ddb = self.ddb.clone();
-        let update_item = UpdateItemInput {
-            key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
-            update_expression: Some("REMOVE node_id".to_string()),
-            condition_expression: Some("(node_id = :node) and (connected_at = :conn)".to_string()),
-            expression_attribute_values: Some(hashmap! {
-                ":node".to_string() => val!(S => node_id),
-                ":conn".to_string() => val!(N => connected_at.to_string())
-            }),
-            table_name: self.router_table_name.clone(),
-            ..Default::default()
-        };
-
-        retry_if(
-            move || ddb.update_item(update_item.clone()),
-            retryable_updateitem_error,
-        )
-        .and_then(|_| future::ok(()))
-        .chain_err(|| "Error removing node ID")
+impl Default for UserRecord {
+    fn default() -> Self {
+        let uaid = Uuid::new_v4();
+        //trace!(">>> Setting default uaid: {:?}", &uaid);
+        Self {
+            uaid,
+            connected_at: ms_since_epoch(),
+            router_type: "webpush".to_string(),
+            router_data: None,
+            last_connect: Some(generate_last_connect()),
+            node_id: None,
+            record_version: Some(USER_RECORD_VERSION),
+            current_month: None,
+        }
     }
 }
 
-pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<String>> {
-    let mut names: Vec<String> = Vec::new();
-    let mut start_key = None;
-    loop {
-        let result = commands::list_tables_sync(ddb, start_key)?;
-        start_key = result.last_evaluated_table_name;
-        if let Some(table_names) = result.table_names {
-            names.extend(table_names);
+/// The outbound message record.
+/// This is different that the stored `Notification`
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct NotificationRecord {
+    /// The UserAgent Identifier (UAID)
+    // DynamoDB <Hash key>
+    #[serde(serialize_with = "uuid_serializer")]
+    uaid: Uuid,
+    // DynamoDB <Range key>
+    // Format:
+    //    Topic Messages:
+    //        01:{channel id}:{topic}
+    //    New Messages:
+    //        02:{timestamp int in microseconds}:{channel id}
+    chidmessageid: String,
+    /// Magic entry stored in the first Message record that indicates the highest
+    /// non-topic timestamp we've read into
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_timestamp: Option<u64>,
+    /// Magic entry stored in the first Message record that indicates the valid
+    /// channel id's
+    #[serde(skip_serializing)]
+    pub chids: Option<HashSet<String>>,
+    /// Time in seconds from epoch
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timestamp: Option<u64>,
+    /// DynamoDB expiration timestamp per
+    ///    https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
+    expiry: u64,
+    /// TTL value provided by application server for the message
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ttl: Option<u64>,
+    /// The message data
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<String>,
+    /// Selected, associated message headers. These can contain additional
+    /// decryption information for the UserAgent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    headers: Option<NotificationHeaders>,
+    /// This is the acknowledgement-id used for clients to ack that they have received the
+    /// message. Some Python code refers to this as a message_id. Endpoints generate this
+    /// value before sending it to storage or a connection node.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updateid: Option<String>,
+}
+
+impl NotificationRecord {
+    /// read the custom sort_key and convert it into something the database can use.
+    fn parse_sort_key(key: &str) -> ApiResult<RangeKey> {
+        lazy_static! {
+            static ref RE: RegexSet =
+                RegexSet::new(&[r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
         }
-        if start_key.is_none() {
-            break;
+        if !RE.is_match(key) {
+            return Err("Invalid chidmessageid".into());
+        }
+
+        let v: Vec<&str> = key.split(':').collect();
+        match v[0] {
+            // This is a topic message (There Can Only Be One. <guitar riff>)
+            "01" => {
+                if v.len() != 3 {
+                    return Err("Invalid topic key".into());
+                }
+                let (channel_id, topic) = (v[1], v[2]);
+                let channel_id = Uuid::parse_str(channel_id)?;
+                Ok(RangeKey {
+                    channel_id,
+                    topic: Some(topic.to_string()),
+                    sortkey_timestamp: None,
+                    legacy_version: None,
+                })
+            }
+            // A "normal" pending message.
+            "02" => {
+                if v.len() != 3 {
+                    return Err("Invalid topic key".into());
+                }
+                let (sortkey, channel_id) = (v[1], v[2]);
+                let channel_id = Uuid::parse_str(channel_id)?;
+                Ok(RangeKey {
+                    channel_id,
+                    topic: None,
+                    sortkey_timestamp: Some(sortkey.parse()?),
+                    legacy_version: None,
+                })
+            }
+            // Ok, that's odd, but try to make some sense of it.
+            // (This is a bit of legacy code that we should be
+            // able to drop.)
+            _ => {
+                if v.len() != 2 {
+                    return Err("Invalid topic key".into());
+                }
+                let (channel_id, legacy_version) = (v[0], v[1]);
+                let channel_id = Uuid::parse_str(channel_id)?;
+                Ok(RangeKey {
+                    channel_id,
+                    topic: None,
+                    sortkey_timestamp: None,
+                    legacy_version: Some(legacy_version.to_string()),
+                })
+            }
         }
     }
-    let names = names
-        .into_iter()
-        .filter(|name| name.starts_with(prefix))
-        .collect();
-    Ok(names)
+
+    // TODO: Implement as TryFrom whenever that lands
+    /// Convert the
+    pub fn into_notif(self) -> ApiResult<Notification> {
+        let key = Self::parse_sort_key(&self.chidmessageid)?;
+        let version = key
+            .legacy_version
+            .or(self.updateid)
+            .ok_or("No valid updateid/version found")?;
+
+        Ok(Notification {
+            channel_id: key.channel_id,
+            version,
+            ttl: self.ttl.unwrap_or(0),
+            timestamp: self.timestamp.ok_or("No timestamp found")?,
+            topic: key.topic,
+            data: self.data,
+            headers: self.headers.map(|m| m.into()),
+            sortkey_timestamp: key.sortkey_timestamp,
+        })
+    }
+
+    pub fn from_notif(uaid: &Uuid, val: Notification) -> Self {
+        Self {
+            uaid: *uaid,
+            chidmessageid: val.sort_key(),
+            timestamp: Some(val.timestamp),
+            expiry: sec_since_epoch() + min(val.ttl, MAX_EXPIRY),
+            ttl: Some(val.ttl),
+            data: val.data,
+            headers: val.headers.map(|h| h.into()),
+            updateid: Some(val.version),
+            ..Default::default()
+        }
+    }
 }

@@ -20,6 +20,7 @@ use validator::{ValidationErrors, ValidationErrorsKind};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
+// pub type MyFuture<T> = Box<dyn Future<Item = T, Error = ApiError>>;
 
 /// A link for more info on the returned error
 const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#error-codes";
@@ -74,7 +75,7 @@ pub enum ApiErrorKind {
     RegistrationSecretHash(#[source] openssl::error::ErrorStack),
 
     #[error("Error while creating endpoint URL: {0}")]
-    EndpointUrl(#[source] autopush_common::errors::Error),
+    EndpointUrl(String),
 
     #[error("Database error: {0}")]
     Database(#[from] DbError),
