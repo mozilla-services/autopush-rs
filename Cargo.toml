@@ -1,8 +1,9 @@
 [workspace]
 members = [
     "autopush-common",
-    "autopush",
+    #"autopush",
     "autoendpoint",
+    "autoconnect",
 ]
 
 [workspace.package]
@@ -22,15 +23,16 @@ edition = "2021"
 # remain a goal for the overall refactor.
 actix = "0.13"
 actix-cors = "0.6"
-actix-http = "3.0"
+actix-http = "3.2"
 actix-rt = "2.7"
 actix-test = "0.1"
-actix-web = "4.0"
-actix-web-actors = "4.0"
+actix-web = "4.2"
+actix-web-actors = "4.1"
 backtrace = "0.3"
 base64 = "0.20"
 cadence = "0.29"
 config = "0.13"
+env_logger = "0.10"
 fernet = "0.2.0"
 # autoendpoint used futures 0.3
 futures = {version="0.3", features=["compat"]}
@@ -40,12 +42,16 @@ hex = "0.4.2"
 hyper = "0.14"
 lazy_static = "1.4"
 log = { version = "0.4", features = ["max_level_info", "release_max_level_info"] }
+mozsvc-common = "0.2"
 openssl = "0.10"
+reqwest = "0.11"
 rusoto_core = { version="0.47", default-features=false, features=["rustls"] } # locked by serde_dynamodb 0.9
 rusoto_credential = { version="0.47"} # locked by serde_dynamodb 0.9
 rusoto_dynamodb = { version="0.47", default-features=false, features=["rustls"]} # locked by serde_dynamodb 0.9
 # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
-sentry = { version = "0.19", features = ["debug-logs", "with_error_chain"] }  # Keep on 0.19 in order to work with our backend and use `with_error_chain`
+sentry = { version = "0.29", features = ["debug-logs"] }  # Keep on 0.19 in order to work with our backend and use `with_error_chain`
+sentry-actix = "0.29"
+sentry-backtrace = "0.29"
 serde = "1.0"
 serde_derive = "1.0"
 serde_dynamodb = "0.9"

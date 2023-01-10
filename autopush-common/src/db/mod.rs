@@ -38,6 +38,18 @@ const USER_RECORD_VERSION: u8 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
+#[derive(Eq, PartialEq)]
+pub enum StorageType {
+    DYNAMODB,
+}
+
+impl StorageType {
+    /// currently, there is only one.
+    pub fn from_dsn(_dsn: &str) -> Self {
+        return Self::DYNAMODB
+    }
+}
+
 /// The universal settings for the database
 /// abstractor.
 #[derive(Clone, Debug, Default)]

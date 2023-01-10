@@ -1,0 +1,118 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+
+use fernet::{Fernet, MultiFernet};
+
+use crate::server::metrics;
+use crate::settings::Settings;
+use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings};
+use autopush_common::errors::ApiResult;
+
+fn ito_dur(seconds: u32) -> Option<Duration> {
+    if seconds == 0 {
+        None
+    } else {
+        Some(Duration::new(seconds.into(), 0))
+    }
+}
+
+fn fto_dur(seconds: f64) -> Option<Duration> {
+    if seconds == 0.0 {
+        None
+    } else {
+        Some(Duration::new(
+            seconds as u64,
+            (seconds.fract() * 1_000_000_000.0) as u32,
+        ))
+    }
+}
+
+#[derive(Clone)]
+pub struct ServerOptions {
+    pub router_port: u16,
+    pub port: u16,
+    pub fernet: MultiFernet,
+    pub metrics: Arc<cadence::StatsdClient>,
+    pub db_client: Box<dyn DbClient>,
+    pub ssl_key: Option<PathBuf>,
+    pub ssl_cert: Option<PathBuf>,
+    pub ssl_dh_param: Option<PathBuf>,
+    pub open_handshake_timeout: Option<Duration>,
+    pub auto_ping_interval: Duration,
+    pub auto_ping_timeout: Duration,
+    pub max_connections: Option<u32>,
+    pub close_handshake_timeout: Option<Duration>,
+    pub _message_table_name: String,
+    pub _router_table_name: String,
+    pub router_url: String,
+    pub endpoint_url: String,
+    pub statsd_host: Option<String>,
+    pub statsd_port: u16,
+    pub megaphone_api_url: Option<String>,
+    pub megaphone_api_token: Option<String>,
+    pub megaphone_poll_interval: Duration,
+    pub human_logs: bool,
+    pub msg_limit: u32,
+}
+
+impl ServerOptions {
+    pub fn from_settings(settings: &Settings) -> ApiResult<Self> {
+        let crypto_key = &settings.crypto_key;
+        if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
+            return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
+        }
+        let crypto_key = &crypto_key[1..crypto_key.len() - 1];
+        debug!("Fernet keys: {:?}", &crypto_key);
+        let fernets: Vec<Fernet> = crypto_key
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .map(|key| Fernet::new(&key).expect("Invalid AUTOPUSH_CRYPTO_KEY"))
+            .collect();
+        let fernet = MultiFernet::new(fernets);
+        let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
+
+        let router_url = settings.router_url();
+        let endpoint_url = settings.endpoint_url();
+
+        // TODO: add bigtable impl here.
+        let db_settings = DbSettings {
+            dsn: settings.db_dsn.clone(),
+            db_settings: settings.db_settings.clone(),
+        };
+        let db_client = Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?);
+        Ok(Self {
+            port: settings.port,
+            fernet,
+            metrics,
+            db_client,
+            router_port: settings.router_port,
+            statsd_host: settings.statsd_host.clone(),
+            statsd_port: settings.statsd_port,
+            _message_table_name: settings.message_tablename.clone(),
+            _router_table_name: settings.router_tablename.clone(),
+            router_url,
+            endpoint_url,
+            ssl_key: settings.router_ssl_key.clone().map(PathBuf::from),
+            ssl_cert: settings.router_ssl_cert.clone().map(PathBuf::from),
+            ssl_dh_param: settings.router_ssl_dh_param.clone().map(PathBuf::from),
+            auto_ping_interval: fto_dur(settings.auto_ping_interval)
+                .expect("auto ping interval cannot be 0"),
+            auto_ping_timeout: fto_dur(settings.auto_ping_timeout)
+                .expect("auto ping timeout cannot be 0"),
+            close_handshake_timeout: ito_dur(settings.close_handshake_timeout),
+            max_connections: if settings.max_connections == 0 {
+                None
+            } else {
+                Some(settings.max_connections)
+            },
+            open_handshake_timeout: ito_dur(5),
+            megaphone_api_url: settings.megaphone_api_url.clone(),
+            megaphone_api_token: settings.megaphone_api_token.clone(),
+            megaphone_poll_interval: ito_dur(settings.megaphone_poll_interval)
+                .expect("megaphone poll interval cannot be 0"),
+            human_logs: settings.human_logs,
+            msg_limit: settings.msg_limit,
+        })
+    }
+}

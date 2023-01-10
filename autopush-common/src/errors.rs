@@ -7,10 +7,9 @@ use std::num;
 
 use actix_web::{
     dev::ServiceResponse,
-    error::{JsonPayloadError, PayloadError, ResponseError},
     http::StatusCode,
     middleware::ErrorHandlerResponse,
-    HttpResponse, HttpResponseBuilder, Result,
+    HttpResponseBuilder, Result,
 };
 
 use backtrace::Backtrace;
@@ -174,6 +173,9 @@ pub enum ApiErrorKind {
 
     #[error("General Error: {0}")]
     GeneralError(String),
+
+    #[error("Log Check: OK")]
+    LogCheck(),
 }
 
 impl ApiErrorKind {
@@ -182,6 +184,7 @@ impl ApiErrorKind {
         trace!("Returning error: {}", self.metric_label());
         //TODO: Fill these in
         match self {
+            Self::LogCheck() => StatusCode::IM_A_TEAPOT,
             _ => StatusCode::from_u16(500).unwrap(),
         }
     }
@@ -210,6 +213,7 @@ impl ApiErrorKind {
             Self::DatabaseError(_) => "database_error",
             Self::RusotoError(_) => "rusoto_error",
             Self::GeneralError(_) => "general_error",
+            Self::LogCheck() => "log_check",
         }
     }
 }

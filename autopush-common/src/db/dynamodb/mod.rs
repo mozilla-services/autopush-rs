@@ -15,7 +15,6 @@ use crate::db::{
     client::FetchMessageResponse, DbSettings, NotificationRecord, UserRecord, MAX_CHANNEL_TTL,
     MAX_EXPIRY,
 };
-use crate::errors::{ApiError, ApiErrorKind};
 use crate::notification::Notification;
 use crate::util::sec_since_epoch;
 
