@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "autopush-common",
-    #"autopush",
+    "autopush",
     "autoendpoint",
     "autoconnect",
 ]

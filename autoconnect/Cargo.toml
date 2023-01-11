@@ -39,3 +39,7 @@ uuid.workspace = true
 
 autopush_common = {path = "../autopush-common"}
 docopt = "1.1"
+# for sentry middleware
+
+futures-util = { version = "0.3.5", default-features = false }
+sentry-core = { version = "0.29.1", default-features = false, features = ["client"] }

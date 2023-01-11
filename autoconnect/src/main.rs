@@ -4,7 +4,7 @@ extern crate slog_scope;
 #[macro_use]
 extern crate serde_derive;
 
-use std::{env, sync::Arc, vec::Vec};
+use std::{env, sync::Arc, vec::Vec, collections::BTreeMap};
 
 use actix::{Actor, ActorContext, StreamHandler};
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
@@ -12,6 +12,7 @@ use actix_web_actors::ws;
 use docopt::Docopt;
 
 use autopush_common::errors::{ApiErrorKind, ApiResult};
+use autopush_common::util::user_agent;
 use settings::Settings;
 
 mod server;
@@ -65,12 +66,6 @@ async fn ws_handler(req: HttpRequest, stream: web::Payload) -> Result<HttpRespon
     resp
 }
 
-/// Modify the reported sentry event.
-fn before_send(
-    mut _event: sentry::protocol::Event<'static>,
-) -> Option<sentry::protocol::Event<'static>> {
-    Some(_event.clone())
-}
 
 #[actix_web::main]
 async fn main() -> ApiResult<()> {
@@ -111,7 +106,6 @@ async fn main() -> ApiResult<()> {
         auto_session_tracking: true,                // new session per request
         // attach_stacktrace: true, // attach a stack trace to ALL messages (not just exceptions)
         // send_default_pii: false, // do not include PII in message
-        before_send: Some(Arc::new(Box::new(before_send))),
         ..Default::default()
     });
 
@@ -121,6 +115,8 @@ async fn main() -> ApiResult<()> {
         App::new()
             .app_data(server_opts.clone())
             //.wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+            // use the default sentry wrapper for now.
+            // TODO: Look into the sentry_actx hub scope? How do we pass actix service request data in?
             .wrap(sentry_actix::Sentry::new()) // Use the default wrapper
             .route("/ws/", web::get().to(ws_handler))
             // Add router info

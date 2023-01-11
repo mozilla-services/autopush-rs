@@ -9,7 +9,6 @@ use futures::{future, try_ready};
 use futures::{Async, Future, Poll, Sink, Stream};
 use reqwest::r#async::Client as AsyncClient;
 use rusoto_dynamodb::UpdateItemOutput;
-use sentry::integrations::error_chain::event_from_error_chain;
 use state_machine_future::{transition, RentToOwn, StateMachineFuture};
 use std::cell::RefCell;
 use std::mem;
@@ -22,12 +21,11 @@ use autopush_common::db::{CheckStorageResponse, UserRecord, HelloResponse, Regis
 use autopush_common::endpoint::make_endpoint;
 use autopush_common::errors::{ApiError, ApiErrorKind, ApiResult};
 use autopush_common::notification::Notification;
-use autopush_common::util::{ms_since_epoch, sec_since_epoch};
+use autopush_common::util::{ms_since_epoch, sec_since_epoch, user_agent::parse_user_agent};
 
 use crate::megaphone::{Broadcast, BroadcastSubs};
 use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::server::Server;
-use crate::user_agent::parse_user_agent;
 use crate::MyFuture;
 
 // Created and handed to the AutopushServer

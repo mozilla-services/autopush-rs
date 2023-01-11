@@ -4,6 +4,7 @@ use std::hash::Hash;
 
 // mod send_all; // kill?
 pub mod timing;
+pub mod user_agent;
 
 // pub use self::send_all::MySendAll;
 pub use self::timing::{ms_since_epoch, sec_since_epoch, us_since_epoch};

@@ -18,7 +18,6 @@ mod http;
 mod megaphone;
 mod server;
 mod settings;
-mod user_agent;
 
 use crate::server::{AutopushServer, ServerOptions};
 use crate::settings::Settings;
