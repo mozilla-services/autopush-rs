@@ -2,12 +2,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};
 
-use crate::server::metrics;
-use crate::settings::Settings;
+use crate::Settings;
 use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings};
-use autopush_common::errors::ApiResult;
+use autopush_common::{errors::ApiResult, metrics::new_metrics};
 
 fn ito_dur(seconds: u32) -> Option<Duration> {
     if seconds == 0 {
@@ -33,7 +33,7 @@ pub struct ServerOptions {
     pub router_port: u16,
     pub port: u16,
     pub fernet: MultiFernet,
-    pub metrics: Arc<cadence::StatsdClient>,
+    pub metrics: Arc<StatsdClient>,
     pub db_client: Box<dyn DbClient>,
     pub ssl_key: Option<PathBuf>,
     pub ssl_cert: Option<PathBuf>,
@@ -70,7 +70,7 @@ impl ServerOptions {
             .map(|key| Fernet::new(&key).expect("Invalid AUTOPUSH_CRYPTO_KEY"))
             .collect();
         let fernet = MultiFernet::new(fernets);
-        let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
+        let metrics = Arc::new(new_metrics(settings.statsd_host.clone(), settings.statsd_port)?);
 
         let router_url = settings.router_url();
         let endpoint_url = settings.endpoint_url();

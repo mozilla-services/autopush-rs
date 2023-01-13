@@ -1,3 +1,10 @@
+pub mod options;
+
+extern crate slog;
+#[macro_use]
+extern crate slog_scope;
+extern crate serde_derive;
+
 use std::io;
 use std::net::ToSocketAddrs;
 
@@ -165,6 +172,7 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slog_scope::trace;
 
     #[test]
     fn test_router_url() {

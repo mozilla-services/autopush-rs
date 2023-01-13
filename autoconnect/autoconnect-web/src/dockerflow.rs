@@ -1,11 +1,13 @@
 //! Health and Dockerflow routes
+use std::thread;
 
-use crate::server::options::ServerOptions;
 use actix_web::web::{Data, Json};
 use actix_web::HttpResponse;
 use reqwest::StatusCode;
 use serde_json::json;
-use std::thread;
+
+use autoconnect_settings::options::ServerOptions;
+
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(_state: Data<ServerOptions>) -> Json<serde_json::Value> {

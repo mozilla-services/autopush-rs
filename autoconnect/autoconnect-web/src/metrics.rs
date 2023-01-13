@@ -1,3 +1,5 @@
+// TODO: Convert autopush-common::metrics to this?
+
 use std::net::UdpSocket;
 use std::sync::Arc;
 use std::time::Instant;
@@ -8,8 +10,7 @@ use cadence::{
     StatsdClient, Timed,
 };
 
-use crate::server::options::ServerOptions;
-use crate::settings::Settings;
+use autoconnect_settings::{options::ServerOptions, Settings};
 use actix_web::HttpMessage;
 use autopush_common::tags::Tags;
 

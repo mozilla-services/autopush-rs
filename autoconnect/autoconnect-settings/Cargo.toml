@@ -1,0 +1,18 @@
+[package]
+name = "autoconnect-settings"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+cadence.workspace = true
+config.workspace = true
+fernet.workspace = true
+lazy_static.workspace = true
+mozsvc-common.workspace = true
+serde.workspace = true
+serde_derive.workspace = true
+slog.workspace = true
+slog-scope.workspace = true
+
+autopush_common = {path = "../../autopush-common"}

@@ -1,9 +1,11 @@
 [workspace]
 members = [
     "autopush-common",
-    "autopush",
+    # "autopush",
     "autoendpoint",
     "autoconnect",
+    "autoconnect/autoconnect-settings",
+    "autoconnect/autoconnect-web",
 ]
 
 [workspace.package]
@@ -44,7 +46,7 @@ lazy_static = "1.4"
 log = { version = "0.4", features = ["max_level_info", "release_max_level_info"] }
 mozsvc-common = "0.2"
 openssl = "0.10"
-reqwest = "0.11"
+reqwest = {version="0.11", features = ["json"] }
 rusoto_core = { version="0.47", default-features=false, features=["rustls"] } # locked by serde_dynamodb 0.9
 rusoto_credential = { version="0.47"} # locked by serde_dynamodb 0.9
 rusoto_dynamodb = { version="0.47", default-features=false, features=["rustls"]} # locked by serde_dynamodb 0.9

@@ -12,11 +12,10 @@ use actix_web_actors::ws;
 use docopt::Docopt;
 
 use autopush_common::errors::{ApiErrorKind, ApiResult};
-use autopush_common::util::user_agent;
-use settings::Settings;
+use autoconnect_settings::{Settings, options::ServerOptions};
+use autoconnect_web::dockerflow;
 
 mod server;
-mod settings;
 
 struct AutoConnect;
 
@@ -109,7 +108,7 @@ async fn main() -> ApiResult<()> {
         ..Default::default()
     });
 
-    let server_opts = server::options::ServerOptions::from_settings(&settings)?;
+    let server_opts = ServerOptions::from_settings(&settings)?;
 
     HttpServer::new(move || {
         App::new()
@@ -120,21 +119,21 @@ async fn main() -> ApiResult<()> {
             .wrap(sentry_actix::Sentry::new()) // Use the default wrapper
             .route("/ws/", web::get().to(ws_handler))
             // Add router info
-            .service(web::resource("/status").route(web::get().to(server::health::status_route)))
-            .service(web::resource("/health").route(web::get().to(server::health::health_route)))
-            .service(web::resource("/v1/err").route(web::get().to(server::health::log_check)))
+            .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
+            .service(web::resource("/health").route(web::get().to(dockerflow::health_route)))
+            .service(web::resource("/v1/err").route(web::get().to(dockerflow::log_check)))
             // standardized
-            .service(web::resource("/__error__").route(web::get().to(server::health::log_check)))
+            .service(web::resource("/__error__").route(web::get().to(dockerflow::log_check)))
             // Dockerflow
             .service(
-                web::resource("/__heartbeat__").route(web::get().to(server::health::health_route)),
+                web::resource("/__heartbeat__").route(web::get().to(dockerflow::health_route)),
             )
             .service(
                 web::resource("/__lbheartbeat__")
-                    .route(web::get().to(server::health::lb_heartbeat_route)),
+                    .route(web::get().to(dockerflow::lb_heartbeat_route)),
             )
             .service(
-                web::resource("/__version__").route(web::get().to(server::health::version_route)),
+                web::resource("/__version__").route(web::get().to(dockerflow::version_route)),
             )
     })
     .bind(("0.0.0.0", settings.port))?

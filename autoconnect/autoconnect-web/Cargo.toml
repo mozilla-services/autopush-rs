@@ -1,0 +1,15 @@
+[package]
+name = "autoconnect-web"
+authors.workspace = true
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+actix.workspace = true
+actix-web.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+slog.workspace = true
+slog-scope.workspace = true
+
+autoconnect-settings = {path="../autoconnect-settings"}
