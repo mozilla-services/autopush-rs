@@ -101,7 +101,7 @@ impl Default for DynamoDbUser {
             router_type: "webpush".to_string(),
             router_data: None,
             last_connect: Some(generate_last_connect()),
-            expiry: generate_expiry() as u64,
+            expiry: generate_expiry(),
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
             current_month: None,

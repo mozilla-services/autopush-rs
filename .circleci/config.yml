@@ -85,13 +85,16 @@ jobs:
             cargo build
       - run:
           name: Check formatting
+          # Rust 1.65+ is stricter about dead_code and flags auto-generated methods created by
+          # state_machine_future. Since these are auto-generated, it's not possible to tag them as
+          # allowed. Adding `-A dead_code` until state_machine_future is removed.
           command: |
             cargo fmt -- --check
             # clippy for rust 1.64+ tags the proc_macro generated "start_in" from
             # state_machine_future as "dead_code". There's no way to isolate just
             # those calls, so we have to disable dead_code checks globally.
-            # `-A dead_code` must be removed when we remove `state_machine_future`
-            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro -A dead_code
+            # `--allow=dead_code` must be removed when we remove `state_machine_future`
+            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro --allow=dead_code
       - run:
           name: Integration tests
           command: py.test -v
