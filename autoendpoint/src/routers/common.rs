@@ -229,7 +229,6 @@ pub mod tests {
             timestamp: 0,
             sort_key_timestamp: 0,
             data,
-            stored: false,
         }
     }
 }

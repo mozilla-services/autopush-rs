@@ -322,7 +322,7 @@ impl DynamoStorage {
         message_month: String,
         message: Notification,
     ) -> impl Future<Item = (), Error = Error> {
-        let topic = message.headers.as_ref().is_some().to_string();
+        let topic = message.topic.is_some().to_string();
         let ddb = self.ddb.clone();
         let put_item = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, message))
@@ -338,9 +338,7 @@ impl DynamoStorage {
         .and_then(move |_| {
             let mut metric = metrics.incr_with_tags("notification.message.stored");
             // TODO: include `internal` if meta is set.
-            if !topic.is_empty() {
-                metric = metric.with_tag("topic", &topic);
-            }
+            metric = metric.with_tag("topic", &topic);
             metric.send();
             future::ok(())
         })
@@ -401,7 +399,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         notif: &Notification,
     ) -> impl Future<Item = (), Error = Error> {
-        let topic = notif.headers.as_ref().is_some().to_string();
+        let topic = notif.topic.is_some().to_string();
         let ddb = self.ddb.clone();
         let metrics = self.metrics.clone();
         let delete_input = DeleteItemInput {
@@ -420,9 +418,7 @@ impl DynamoStorage {
         .and_then(move |_| {
             let mut metric = metrics.incr_with_tags("notification.message.deleted");
             // TODO: include `internal` if meta is set.
-            if !topic.is_empty() {
-                metric = metric.with_tag("topic", &topic);
-            }
+            metric = metric.with_tag("topic", &topic);
             metric.send();
             future::ok(())
         })

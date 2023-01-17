@@ -131,7 +131,6 @@ impl Router for WebPushRouter {
                         )
                         .with_tag("platform", "websocket")
                         .with_tag("app_id", "direct")
-                        .with_tag("stored", &notification.stored.to_string())
                         .send();
 
                     Ok(self.make_delivered_response(notification))
@@ -176,10 +175,11 @@ impl WebPushRouter {
 
     /// Store a notification in the database
     async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
-        let mut bundle = notification.clone();
-        bundle.stored = true;
         self.ddb
-            .save_message(notification.subscription.user.uaid, bundle.into())
+            .save_message(
+                notification.subscription.user.uaid,
+                notification.clone().into(),
+            )
             .await
             .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
     }

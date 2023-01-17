@@ -242,7 +242,6 @@ impl DynamoDbNotification {
             data: self.data,
             headers: self.headers.map(|m| m.into()),
             sortkey_timestamp: key.sortkey_timestamp,
-            stored: true,
         })
     }
 

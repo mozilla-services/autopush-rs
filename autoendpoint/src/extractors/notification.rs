@@ -28,8 +28,6 @@ pub struct Notification {
     pub sort_key_timestamp: u64,
     /// The encrypted notification body
     pub data: Option<String>,
-    /// has the notification been pulled from storage?
-    pub stored: bool,
 }
 
 impl FromRequest for Notification {
@@ -90,7 +88,6 @@ impl FromRequest for Notification {
                 timestamp,
                 sort_key_timestamp,
                 data,
-                stored: false,
             })
         }
         .boxed_local()
@@ -115,7 +112,6 @@ impl From<Notification> for autopush_common::notification::Notification {
                     Some(headers)
                 }
             },
-            stored: notification.stored,
         }
     }
 }
@@ -177,7 +173,7 @@ impl Notification {
             map.insert("data", serde_json::to_value(data).unwrap());
 
             let headers: HashMap<_, _> = self.headers.clone().into();
-            map.insert("headers", serde_json::to_value(&headers).unwrap());
+            map.insert("headers", serde_json::to_value(headers).unwrap());
         }
 
         map
