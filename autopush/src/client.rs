@@ -994,10 +994,13 @@ where
                         &endpoint,
                         webpush.deferred_user_registration.as_ref(),
                     ),
-                    Err(_) => Box::new(future::ok(RegisterResponse::Error {
-                        error_msg: "Failed to generate endpoint".to_string(),
-                        status: 400,
-                    })),
+                    Err(e) => {
+                        error!("make_endpoint: {:?}", e);
+                        Box::new(future::ok(RegisterResponse::Error {
+                            error_msg: "Failed to generate endpoint".to_string(),
+                            status: 400,
+                        }))
+                    }
                 };
                 transition!(AwaitRegister {
                     channel_id,

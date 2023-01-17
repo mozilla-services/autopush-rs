@@ -8,6 +8,7 @@ use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::DynamoDbUser;
+use autopush_common::endpoint::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use autopush_common::util::sec_since_epoch;
 use cadence::{CountedExt, StatsdClient};
 use futures::future::LocalBoxFuture;
@@ -196,13 +197,15 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 /// in standard base64 encoding. (Both of these violate the VAPID RFC)
 /// Prior python versions ignored these errors, so we should too.
 fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
-    let encoding = if public_key.contains(['/', '+']) {
-        base64::STANDARD_NO_PAD
+    let engine = if public_key.contains(['/', '+']) {
+        STANDARD_NO_PAD
     } else {
-        base64::URL_SAFE_NO_PAD
+        URL_SAFE_NO_PAD
     };
-    base64::decode_config(public_key.trim_end_matches('='), encoding)
-        .map_err(|e| VapidError::InvalidKey(e.to_string()).into())
+    base64::decode_engine(public_key.trim_end_matches('='), &engine).map_err(|e| {
+        error!("decode_public_key: {:?}", e);
+        VapidError::InvalidKey(e.to_string()).into()
+    })
 }
 
 /// `/webpush/v2/` validations
@@ -291,6 +294,7 @@ mod tests {
     use crate::error::ApiErrorKind;
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
+    use autopush_common::endpoint::STANDARD_NO_PAD;
     use autopush_common::util::sec_since_epoch;
     use serde::{Deserialize, Serialize};
     use std::str::FromStr;
@@ -308,11 +312,11 @@ mod tests {
 
     #[test]
     fn vapid_aud_valid() {
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &STANDARD_NO_PAD,
         )
         .unwrap();
         // Specify a potentially invalid padding.
@@ -341,11 +345,11 @@ mod tests {
 
     #[test]
     fn vapid_aud_invalid() {
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &STANDARD_NO_PAD,
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
@@ -383,11 +387,11 @@ mod tests {
             sub: String,
         }
 
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &STANDARD_NO_PAD,
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
@@ -426,11 +430,11 @@ mod tests {
             sub: String,
         }
 
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &STANDARD_NO_PAD,
         )
         .unwrap();
         // pretty much matches the kind of key we get from some partners.
@@ -496,11 +500,11 @@ mod tests {
             sub: Option<String>,
         }
 
-        let priv_key = base64::decode_config(
+        let priv_key = base64::decode_engine(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            base64::STANDARD,
+            &STANDARD_NO_PAD,
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();

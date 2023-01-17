@@ -57,7 +57,7 @@ impl Notification {
     }
 
     pub fn expired(&self, at_sec: u64) -> bool {
-        at_sec >= self.timestamp as u64 + self.ttl
+        at_sec >= self.timestamp + self.ttl
     }
 }
 
