@@ -105,10 +105,6 @@ impl Default for DynamoDbUser {
     }
 }
 
-fn bool_true() -> bool {
-    true
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DynamoDbNotification {
     // DynamoDB <Hash key>
@@ -147,9 +143,6 @@ pub struct DynamoDbNotification {
     // value before sending it to storage or a connection node.
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,
-    // This message was stored
-    #[serde(default = "bool_true")]
-    stored: bool,
 }
 
 /// Ensure that the default for 'stored' is true.
@@ -166,7 +159,6 @@ impl Default for DynamoDbNotification {
             data: None,
             headers: None,
             updateid: None,
-            stored: true,
         }
     }
 }
