@@ -793,6 +793,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "autoconnect-ws"
+version = "1.65.1"
+
+[[package]]
+name = "autoconnect-ws-clientsm"
+version = "1.65.1"
+
+[[package]]
 name = "autoendpoint"
 version = "1.65.1"
 dependencies = [
