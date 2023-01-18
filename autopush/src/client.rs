@@ -312,7 +312,6 @@ where
     AwaitSessionComplete {
         auth_state_machine: AuthClientStateFuture<T>,
         srv: Rc<Server>,
-        //user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
     },
 
@@ -320,7 +319,6 @@ where
     AwaitRegistryDisconnect {
         response: MyFuture<()>,
         srv: Rc<Server>,
-        //user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
         error: Option<Error>,
     },
@@ -556,7 +554,6 @@ where
 
         let AwaitSessionComplete {
             srv,
-            //user_agent,
             webpush,
             ..
         } = session_complete.take();
@@ -568,7 +565,6 @@ where
         transition!(AwaitRegistryDisconnect {
             response,
             srv,
-            //user_agent,
             webpush,
             error,
         })
