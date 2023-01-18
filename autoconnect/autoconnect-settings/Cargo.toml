@@ -1,5 +1,5 @@
 [package]
-name = "autoconnect-settings"
+name = "autoconnect_settings"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

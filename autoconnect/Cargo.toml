@@ -18,6 +18,8 @@ cadence.workspace = true
 config.workspace = true
 env_logger.workspace = true
 fernet.workspace = true
+futures.workspace = true
+futures-locks.workspace = true
 hex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
@@ -38,8 +40,8 @@ slog-term.workspace = true
 uuid.workspace = true
 
 autopush_common = {path = "../autopush-common"}
-autoconnect-settings = {path = "./autoconnect-settings"}
-autoconnect-web = {path = "./autoconnect-web"}
+autoconnect_settings = {path = "./autoconnect-settings"}
+autoconnect_web = {path = "./autoconnect-web"}
 docopt = "1.1"
 # for sentry middleware
 

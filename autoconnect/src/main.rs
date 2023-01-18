@@ -4,12 +4,13 @@ extern crate slog_scope;
 #[macro_use]
 extern crate serde_derive;
 
-use std::{env, sync::Arc, vec::Vec, collections::BTreeMap};
+use std::{env, vec::Vec};
 
 use actix::{Actor, ActorContext, StreamHandler};
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use docopt::Docopt;
+use serde::Deserialize;
 
 use autopush_common::errors::{ApiErrorKind, ApiResult};
 use autoconnect_settings::{Settings, options::ServerOptions};
