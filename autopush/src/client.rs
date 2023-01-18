@@ -312,7 +312,7 @@ where
     AwaitSessionComplete {
         auth_state_machine: AuthClientStateFuture<T>,
         srv: Rc<Server>,
-        user_agent: String,
+        //user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
     },
 
@@ -320,7 +320,7 @@ where
     AwaitRegistryDisconnect {
         response: MyFuture<()>,
         srv: Rc<Server>,
-        user_agent: String,
+        //user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
         error: Option<Error>,
     },
@@ -512,7 +512,6 @@ where
         let AwaitRegistryConnect {
             srv,
             ws,
-            user_agent,
             webpush,
             broadcast_subs,
             ..
@@ -531,7 +530,6 @@ where
         transition!(AwaitSessionComplete {
             auth_state_machine,
             srv,
-            user_agent,
             webpush,
         })
     }
@@ -558,7 +556,7 @@ where
 
         let AwaitSessionComplete {
             srv,
-            user_agent,
+            //user_agent,
             webpush,
             ..
         } = session_complete.take();
@@ -570,7 +568,7 @@ where
         transition!(AwaitRegistryDisconnect {
             response,
             srv,
-            user_agent,
+            //user_agent,
             webpush,
             error,
         })
@@ -584,7 +582,6 @@ where
 
         let AwaitRegistryDisconnect {
             srv,
-            user_agent,
             webpush,
             error,
             ..
@@ -603,7 +600,7 @@ where
         }
         let now = ms_since_epoch();
         let elapsed = (now - webpush.connected_at) / 1_000;
-        let ua_info = UserAgentInfo::from(user_agent.as_ref());
+        let ua_info = webpush.ua_info.clone();
         // dogstatsd doesn't support timers: use histogram instead
         srv.metrics
             .time_with_tags("ua.connection.lifespan", elapsed)

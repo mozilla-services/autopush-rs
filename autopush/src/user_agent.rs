@@ -55,15 +55,6 @@ impl From<&str> for UserAgentInfo {
     }
 }
 
-/*
-impl UserAgentInfo {
-    pub fn parsed(&self) -> WootheeResult {
-        let parser = Parser::new();
-        parser.parse(&self._user_agent_string).unwrap_or_default()
-    }
-}
-*/
-
 #[cfg(test)]
 mod tests {
     use super::UserAgentInfo;
