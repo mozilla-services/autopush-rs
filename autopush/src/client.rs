@@ -552,11 +552,7 @@ where
             }
         };
 
-        let AwaitSessionComplete {
-            srv,
-            webpush,
-            ..
-        } = session_complete.take();
+        let AwaitSessionComplete { srv, webpush, .. } = session_complete.take();
 
         let response = srv
             .clients
