@@ -6,10 +6,8 @@ use std::fmt::{self, Display};
 use std::num;
 
 use actix_web::{
-    dev::ServiceResponse,
-    http::StatusCode,
-    middleware::ErrorHandlerResponse,
-    HttpResponseBuilder, Result,
+    dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponseBuilder,
+    Result,
 };
 
 use backtrace::Backtrace;

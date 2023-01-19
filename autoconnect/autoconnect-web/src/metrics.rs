@@ -10,8 +10,8 @@ use cadence::{
     StatsdClient, Timed,
 };
 
-use autoconnect_settings::{options::ServerOptions, Settings};
 use actix_web::HttpMessage;
+use autoconnect_settings::{options::ServerOptions, Settings};
 use autopush_common::tags::Tags;
 
 #[derive(Debug, Clone)]

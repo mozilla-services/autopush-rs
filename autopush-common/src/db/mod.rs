@@ -46,7 +46,7 @@ pub enum StorageType {
 impl StorageType {
     /// currently, there is only one.
     pub fn from_dsn(_dsn: &str) -> Self {
-        return Self::DYNAMODB
+        return Self::DYNAMODB;
     }
 }
 

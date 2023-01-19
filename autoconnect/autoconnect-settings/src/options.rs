@@ -70,7 +70,10 @@ impl ServerOptions {
             .map(|key| Fernet::new(&key).expect("Invalid AUTOPUSH_CRYPTO_KEY"))
             .collect();
         let fernet = MultiFernet::new(fernets);
-        let metrics = Arc::new(new_metrics(settings.statsd_host.clone(), settings.statsd_port)?);
+        let metrics = Arc::new(new_metrics(
+            settings.statsd_host.clone(),
+            settings.statsd_port,
+        )?);
 
         let router_url = settings.router_url();
         let endpoint_url = settings.endpoint_url();

@@ -12,9 +12,9 @@ use actix_web_actors::ws;
 use docopt::Docopt;
 use serde::Deserialize;
 
-use autopush_common::errors::{ApiErrorKind, ApiResult};
-use autoconnect_settings::{Settings, options::ServerOptions};
+use autoconnect_settings::{options::ServerOptions, Settings};
 use autoconnect_web::dockerflow;
+use autopush_common::errors::{ApiErrorKind, ApiResult};
 
 mod server;
 
@@ -65,7 +65,6 @@ async fn ws_handler(req: HttpRequest, stream: web::Payload) -> Result<HttpRespon
     info!("Shutting down: {:?}", &resp);
     resp
 }
-
 
 #[actix_web::main]
 async fn main() -> ApiResult<()> {
@@ -126,16 +125,12 @@ async fn main() -> ApiResult<()> {
             // standardized
             .service(web::resource("/__error__").route(web::get().to(dockerflow::log_check)))
             // Dockerflow
-            .service(
-                web::resource("/__heartbeat__").route(web::get().to(dockerflow::health_route)),
-            )
+            .service(web::resource("/__heartbeat__").route(web::get().to(dockerflow::health_route)))
             .service(
                 web::resource("/__lbheartbeat__")
                     .route(web::get().to(dockerflow::lb_heartbeat_route)),
             )
-            .service(
-                web::resource("/__version__").route(web::get().to(dockerflow::version_route)),
-            )
+            .service(web::resource("/__version__").route(web::get().to(dockerflow::version_route)))
     })
     .bind(("0.0.0.0", settings.port))?
     .run()

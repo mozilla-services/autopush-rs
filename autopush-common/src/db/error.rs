@@ -48,11 +48,10 @@ pub enum DbError {
     /*
     #[error("BigTable error {0}")]
     BTError(#[from] BigTableError),
-    
+
     #[error("Postgres error")]
     PgError(#[from] PgError),
     */
-
     #[error("Connection failure {0}")]
     ConnectionError(String),
 
