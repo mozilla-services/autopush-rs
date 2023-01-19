@@ -1,5 +1,6 @@
 use autopush_common::errors::{ApiErrorKind, ApiResult};
 use autopush_common::notification::Notification;
+use autopush_common::util::ms_since_epoch;
 use futures_locks::RwLock;
 use std::collections::HashMap;
 /// Client & Registry functions.
@@ -13,6 +14,7 @@ use actix_web::web::{Data, Json};
 use actix_web::HttpResponse;
 
 use autoconnect_settings::options::ServerOptions;
+use atuoconnect::server::Server;
 
 use crate::broadcast::Broadcast;
 
@@ -291,6 +293,27 @@ impl ClientRegistry {
             }
             Err(ApiErrorKind::GeneralError("Could not remove client".to_owned()).into())
         })?
+    }
+}
+
+/// Container for client actions
+///
+/// These functions will be called by the state
+struct ClientActions {
+    srv: Rc<Server>
+};
+
+impl ClientActions {
+    pub async fn on_hello(&self) -> ApiResult<()> {
+        let connected_at = ms_since_epoch();
+        trace!("### AwaitHello UAID: {:?}", uaid);
+        // Defer registration (don't write the user to the router table yet)
+        // when no uaid was specified. We'll get back a pending DynamoDbUser
+        // from the HelloResponse. It'll be potentially written to the db later
+        // whenever the user first subscribes to a channel_id
+        // (ClientMessage::Register).
+        let defer_registration = uaid.is_none();
+        let response = data.srv
     }
 }
 

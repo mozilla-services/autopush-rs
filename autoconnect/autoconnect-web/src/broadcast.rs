@@ -8,6 +8,8 @@
 /// The Client has a list of `BroadcastKey` values that it monitors. The external system uses a set of Strings.
 /// We map the String to a `BroadcastKey` value.
 ///
+/// see api discussion: https://docs.google.com/document/d/1Wxqf1a4HDkKgHDIswPmhmdvk8KPoMEh2q6SPhaz4LNE/edit#
+/// 
 use std::collections::HashMap;
 use std::time::Duration;
 
