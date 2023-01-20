@@ -8,10 +8,15 @@ version.workspace = true
 actix.workspace = true
 actix-web.workspace = true
 cadence.workspace = true
+futures-locks.workspace = true
+futures-util.workspace = true
 reqwest.workspace = true
+serde.workspace = true
+serde_derive.workspace = true
 serde_json.workspace = true
 slog.workspace = true
 slog-scope.workspace = true
+uuid.workspace = true
 
 autopush_common = {path="../../autopush-common"}
 autoconnect_settings = {path="../autoconnect-settings"}

@@ -1,22 +1,28 @@
-use autopush_common::errors::{ApiErrorKind, ApiResult};
-use autopush_common::notification::Notification;
-use autopush_common::util::ms_since_epoch;
-use futures_locks::RwLock;
+use std::cell::RefCell;
 use std::collections::HashMap;
-/// Client & Registry functions.
-/// These are common functions run by connected WebSocket clients.
-/// These are called from the Autoconnect server.
+use std::rc::Rc;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use actix_web::dev::{Payload, ServiceRequest};
 use actix_web::web::{Data, Json};
 use actix_web::HttpResponse;
+use autopush_common::db::UserRecord;
+use autopush_common::errors::{ApiErrorKind, ApiResult};
+use autopush_common::notification::Notification;
+use autopush_common::util::ms_since_epoch;
+use futures_util::FutureExt;
+use futures_locks::RwLock;
+use uuid::Uuid;
+
 
 use autoconnect_settings::options::ServerOptions;
-use atuoconnect::server::Server;
 
-use crate::broadcast::Broadcast;
+use crate::broadcast::{Broadcast, BroadcastSubs};
+
+/// Client & Registry functions.
+/// These are common functions run by connected WebSocket clients.
+/// These are called from the Autoconnect server.
+
 
 /// A connected Websocket client.
 pub struct RegisteredClient {
@@ -24,31 +30,33 @@ pub struct RegisteredClient {
     pub uaid: Uuid,
     /// The local ID, used to potentially distinquish multiple UAID connections.
     pub uid: Uuid,
-    /// The channel for delivery of incoming notifications.
-    pub tx: mpsc::UnboundedSender<ServerNotification>,
+    // / The channel for delivery of incoming notifications.
+    //pub tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
 /// The Autoconnect Client connection
-pub struct Client<T>
+#[derive(Default)]
+pub struct Client /*<T>
 where
     T: Stream<Item = ClientMessage, Error = Error>
         + Sink<SinkItem = ServerMessage, SinkError = Error>
         + 'static,
+    */
 {
     // state_machine: UnAuthClientStateFuture<T>, // Client
-    /// Pointer to the server structure for this client
-    srv: Rc<Server>,
-    /// List of subscribed broadcasts
-    broadcast_subs: Rc<RefCell<BroadcastSubs>>,
-    /// Channel for incoming notifications
-    tx: mpsc::UnboundedSender<ServerNotification>,
+    // / Pointer to the server structure for this client
+    // srv: Rc<Server>,
+    // / List of subscribed broadcasts
+    // broadcast_subs: Rc<RefCell<BroadcastSubs>>,
+    // / Channel for incoming notifications
+    //tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
 impl Client {
     /// Create a new client, ensuring that we have a channel to send notifications and that the
     /// broadcast_subs are captured. Set up the local state machine if need be.
     pub async fn new() -> Client {
-        // ...
+        Self::default()
     }
 
     /// Get the list of broadcasts that have changed recently.
@@ -96,7 +104,7 @@ struct SessionStatistics {
 pub struct WebPushClient {
     uaid: Uuid,
     uid: Uuid,
-    rx: mpsc::UnboundedReceiver<ServerNotification>,
+    // rx: mpsc::UnboundedReceiver<ServerNotification>,
     flags: ClientFlags,
     message_month: String,
     unacked_direct_notifs: Vec<Notification>,
@@ -108,16 +116,16 @@ pub struct WebPushClient {
     sent_from_storage: u32,
     last_ping: u64,
     stats: SessionStatistics,
-    deferred_user_registration: Option<DynamoDbUser>,
+    deferred_user_registration: Option<UserRecord>,
 }
 
 impl Default for WebPushClient {
     fn default() -> Self {
-        let (_, rx) = mpsc::unbounded();
+        // let (_, rx) = mpsc::unbounded();
         Self {
             uaid: Default::default(),
             uid: Default::default(),
-            rx,
+            // rx,
             flags: Default::default(),
             message_month: Default::default(),
             unacked_direct_notifs: Default::default(),
@@ -138,7 +146,6 @@ impl WebPushClient {
     }
 }
 
-#[derive(Default)]
 pub struct ClientFlags {
     /// Whether check_storage queries for topic (not "timestamped") messages
     include_topic: bool,
@@ -168,13 +175,14 @@ impl Default for ClientFlags {
 /// The client must properly identify within the initial timeout period, or else the
 /// connection is rest.
 pub struct UnAuthClientData<T> {
-    srv: Rc<Server>,
+    // srv: Rc<Server>,
     ws: T,
     user_agent: String,
     broadcast_subs: Rc<RefCell<BroadcastSubs>>,
 }
 
-impl<T> UnAuthClientData<T>
+/*
+impl<T> UnAuthClientData <T>
 where
     T: Stream<Item = ClientMessage, Error = Error>
         + Sink<SinkItem = ServerMessage, SinkError = Error>
@@ -192,7 +200,9 @@ where
         Ok(item)
     }
 }
+*/
 
+/*
 pub struct AuthClientData<T> {
     srv: Rc<Server>,
     ws: T,
@@ -221,6 +231,7 @@ where
         Ok(Async::Ready(item))
     }
 }
+*/
 
 /* the rest of the original client.rs contains the Client state machine functions.
 these should probably go into an impl inside of autoconnect-ws-clientsm  */
@@ -235,22 +246,23 @@ pub struct ClientRegistry {
 impl ClientRegistry {
     pub async fn connect(&self, client: RegisteredClient) -> ApiResult<()> {
         debug!("Connecting a client!");
-        self.clients.write().and_then(|mut clients| {
+        self.clients.write().map(|mut clients| {
             if let Some(client) = clients.insert(client.uaid, client) {
                 // Drop existing connection
                 // if client.tx.unbounded_send(ServerNotification::Disconnect).is_ok(){
                 debug!("Told client to disconnect as a new one wants to connect");
             };
-            Ok(())
-        })
+        }).await;
+        Ok(())
     }
 
     /// A notification has come for the UAID
     pub async fn notify(&self, uaid: Uuid, notif: Notification) -> ApiResult<()> {
-        self.clients.read().and_then(move |clients| {
+        self.clients.read().map(|clients| {
             debug!("Sending notification");
             if let Some(client) = clients.get(&uaid) {
                 debug!("Found a client to deliver a notification to");
+                /*
                 let result = client
                     .tx
                     .unbounded_send(ServerNotification::Notification(notif));
@@ -258,23 +270,26 @@ impl ClientRegistry {
                     debug!("Dropped notification in queue");
                     return Ok(());
                 }
+                */
             }
             Err(ApiErrorKind::GeneralError("Could not send notification".to_owned()).into())
-        })
+        }).await
     }
 
     /// A check for notification command has come for the uaid
     pub async fn check_storage(&self, uaid: Uuid) -> ApiResult<()> {
-        self.clients.read().and_then(move |clients| {
+        self.clients.read().map(|clients| {
             if let Some(client) = clients.get(&uaid) {
+                /*
                 let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
                 if result.is_ok() {
                     debug!("Told client to check storage");
                     return Ok(());
                 }
+                */
             }
-            err(ApiErrorKind::GeneralError("Could not store notification".to_owned()).into())
-        })?
+            Err(ApiErrorKind::GeneralError("Could not store notification".to_owned()).into())
+        }).await
     }
 
     /// The client specified by `uaid` has disconnected.
@@ -283,7 +298,7 @@ impl ClientRegistry {
         debug!("Disconnecting client!");
         let uaidc = uaid.clone();
         let uidc = uid.clone();
-        self.clients.write().and_then(move |mut clients| {
+        self.clients.write().map(|mut clients| {
             let client_exists = clients
                 .get(&uaidc)
                 .map_or(false, |client| client.uid == uidc);
@@ -292,7 +307,7 @@ impl ClientRegistry {
                 return Ok(());
             }
             Err(ApiErrorKind::GeneralError("Could not remove client".to_owned()).into())
-        })?
+        }).await
     }
 }
 
@@ -300,20 +315,37 @@ impl ClientRegistry {
 ///
 /// These functions will be called by the state
 struct ClientActions {
-    srv: Rc<Server>
-};
+    //srv: Rc<Server>,
+    uaid: Option<Uuid>,
+}
 
 impl ClientActions {
-    pub async fn on_hello(&self) -> ApiResult<()> {
+    pub async fn on_hello(&mut self, req: &ServiceRequest) -> ApiResult<()> {
+        let data = req.app_data::<Data<ServerOptions>>().unwrap();
         let connected_at = ms_since_epoch();
-        trace!("### AwaitHello UAID: {:?}", uaid);
+        trace!("### AwaitHello UAID: {:?}", self.uaid);
         // Defer registration (don't write the user to the router table yet)
         // when no uaid was specified. We'll get back a pending DynamoDbUser
         // from the HelloResponse. It'll be potentially written to the db later
         // whenever the user first subscribes to a channel_id
         // (ClientMessage::Register).
-        let defer_registration = uaid.is_none();
-        let response = data.srv
+        let defer_registration = self.uaid.is_none();
+        /*
+            // roll those functions into here using normalized db_client calls?
+            let response = data.db_client.hello(
+                connected_at,
+                self.uaid,
+                data.router_url,
+                defer_registration
+            );
+        */
+        // lookup_user
+        if let Some(uaid) = self.uaid {
+            if let Some(user) = data.db_client.get_user(&uaid).await? {
+                // handle_user_result
+            }
+        }
+        Ok(())
     }
 }
 
@@ -325,4 +357,6 @@ impl ClientActions {
 /// PUT /notif/{method_name}/{uaid} - check if uaid is in storage
 ///    return OK{}, NOT_FOUND{"Client not available."}, OK(result of `check_storage`)
 ///
+struct NotifManager {}
+
 impl NotifManager {}

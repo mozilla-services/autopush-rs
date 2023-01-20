@@ -9,7 +9,7 @@
 /// We map the String to a `BroadcastKey` value.
 ///
 /// see api discussion: https://docs.google.com/document/d/1Wxqf1a4HDkKgHDIswPmhmdvk8KPoMEh2q6SPhaz4LNE/edit#
-/// 
+///
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -172,16 +172,16 @@ impl BroadcastChangeTracker {
     /// as provided as the fetch URL.
     ///
     /// This method uses a synchronous HTTP call.
-    pub fn with_api_broadcasts(url: &str, token: &str) -> reqwest::Result<BroadcastChangeTracker> {
+    pub async fn with_api_broadcasts(url: &str, token: &str) -> reqwest::Result<BroadcastChangeTracker> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()?;
         let MegaphoneAPIResponse { broadcasts } = client
             .get(url)
             .header("Authorization", token.to_string())
-            .send()?
+            .send().await?
             .error_for_status()?
-            .json()?;
+            .json().await?;
         let broadcasts = Broadcast::from_hashmap(broadcasts);
         Ok(BroadcastChangeTracker::new(broadcasts))
     }

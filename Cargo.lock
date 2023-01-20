@@ -794,10 +794,15 @@ dependencies = [
  "autoconnect_settings",
  "autopush_common",
  "cadence",
+ "futures-locks",
+ "futures-util",
  "reqwest 0.11.13",
+ "serde",
+ "serde_derive",
  "serde_json",
  "slog",
  "slog-scope",
+ "uuid",
 ]
 
 [[package]]
