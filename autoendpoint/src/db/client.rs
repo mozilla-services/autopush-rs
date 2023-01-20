@@ -8,7 +8,7 @@ use autopush_common::db::{DynamoDbNotification, DynamoDbUser};
 use autopush_common::notification::Notification;
 use autopush_common::util::sec_since_epoch;
 use autopush_common::{ddb_item, hashmap, val};
-use cadence::StatsdClient;
+use cadence::{CountedExt, StatsdClient};
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
@@ -270,6 +270,7 @@ impl DbClient for DbClientImpl {
         Ok(())
     }
 
+    // Return the list of active channelIDs for a given user.
     async fn get_channels(&self, uaid: Uuid) -> DbResult<HashSet<Uuid>> {
         // Channel IDs are stored in a special row in the message table, where
         // chidmessageid = " "
@@ -366,6 +367,7 @@ impl DbClient for DbClientImpl {
     }
 
     async fn save_message(&self, uaid: Uuid, message: Notification) -> DbResult<()> {
+        let topic = message.topic.is_some().to_string();
         let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(&uaid, message))?,
             table_name: self.message_table.clone(),
@@ -378,7 +380,13 @@ impl DbClient for DbClientImpl {
                 retryable_putitem_error(self.metrics.clone()),
             )
             .await?;
-
+        {
+            // Build the metric report
+            let mut metric = self.metrics.incr_with_tags("notification.message.stored");
+            metric = metric.with_tag("topic", &topic);
+            // TODO: include `internal` if meta is set.
+            metric.send();
+        }
         Ok(())
     }
 

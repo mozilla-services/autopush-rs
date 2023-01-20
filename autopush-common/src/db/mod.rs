@@ -3,7 +3,7 @@ use std::env;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use cadence::StatsdClient;
+use cadence::{Counted, CountedExt, StatsdClient};
 use futures::{future, Future};
 use futures_backoff::retry_if;
 use rusoto_core::{HttpClient, Region};
@@ -322,6 +322,7 @@ impl DynamoStorage {
         message_month: String,
         message: Notification,
     ) -> impl Future<Item = (), Error = Error> {
+        let topic = message.topic.is_some().to_string();
         let ddb = self.ddb.clone();
         let put_item = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, message))
@@ -329,12 +330,18 @@ impl DynamoStorage {
             table_name: message_month,
             ..Default::default()
         };
-
+        let metrics = self.metrics.clone();
         retry_if(
             move || ddb.put_item(put_item.clone()),
             retryable_putitem_error,
         )
-        .and_then(|_| future::ok(()))
+        .and_then(move |_| {
+            let mut metric = metrics.incr_with_tags("notification.message.stored");
+            // TODO: include `internal` if meta is set.
+            metric = metric.with_tag("topic", &topic);
+            metric.send();
+            future::ok(())
+        })
         .chain_err(|| "Error saving notification")
     }
 
@@ -346,9 +353,15 @@ impl DynamoStorage {
         messages: Vec<Notification>,
     ) -> impl Future<Item = (), Error = Error> {
         let ddb = self.ddb.clone();
+        let metrics = self.metrics.clone();
         let put_items: Vec<WriteRequest> = messages
             .into_iter()
             .filter_map(|n| {
+                // eventually include `internal` if `meta` defined.
+                metrics
+                    .incr_with_tags("notification.message.stored")
+                    .with_tag("topic", &n.topic.is_some().to_string())
+                    .send();
                 serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, n))
                     .ok()
                     .map(|hm| WriteRequest {
@@ -386,7 +399,9 @@ impl DynamoStorage {
         uaid: &Uuid,
         notif: &Notification,
     ) -> impl Future<Item = (), Error = Error> {
+        let topic = notif.topic.is_some().to_string();
         let ddb = self.ddb.clone();
+        let metrics = self.metrics.clone();
         let delete_input = DeleteItemInput {
             table_name: table_name.to_string(),
             key: ddb_item! {
@@ -400,10 +415,17 @@ impl DynamoStorage {
             move || ddb.delete_item(delete_input.clone()),
             retryable_delete_error,
         )
-        .and_then(|_| future::ok(()))
+        .and_then(move |_| {
+            let mut metric = metrics.incr_with_tags("notification.message.deleted");
+            // TODO: include `internal` if meta is set.
+            metric = metric.with_tag("topic", &topic);
+            metric.send();
+            future::ok(())
+        })
         .chain_err(|| "Error deleting notification")
     }
 
+    /// Check to see if we have pending messages and return them if we do.
     pub fn check_storage(
         &self,
         table_name: &str,
@@ -426,11 +448,16 @@ impl DynamoStorage {
         let table_name = table_name.to_string();
         let ddb = self.ddb.clone();
         let metrics = self.metrics.clone();
+        let rmetrics = metrics.clone();
 
         response.and_then(move |resp| -> MyFuture<_> {
             // Return now from this future if we have messages
             if !resp.messages.is_empty() {
                 debug!("Topic message returns: {:?}", resp.messages);
+                rmetrics
+                    .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
+                    .with_tag("topic", "true")
+                    .send();
                 return Box::new(future::ok(CheckStorageResponse {
                     include_topic: true,
                     messages: resp.messages,
@@ -461,6 +488,10 @@ impl DynamoStorage {
                 // If we didn't get a timestamp off the last query, use the original
                 // value if passed one
                 let timestamp = resp.timestamp.or(timestamp);
+                rmetrics
+                    .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
+                    .with_tag("topic", "false")
+                    .send();
                 Ok(CheckStorageResponse {
                     include_topic: false,
                     messages: resp.messages,
@@ -532,6 +563,8 @@ impl DynamoStorage {
     }
 }
 
+/// Get the list of current, valid message tables (Note: This is legacy for DynamoDB, but may still
+/// be used for Stand Alone systems )
 pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<String>> {
     let mut names: Vec<String> = Vec::new();
     let mut start_key = None;
