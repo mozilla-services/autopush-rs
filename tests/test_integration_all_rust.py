@@ -58,7 +58,7 @@ ROUTER_TABLE = os.environ.get("ROUTER_TABLE", "router_int_test")
 MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
 MSG_LIMIT = 20
 
-CRYPTO_KEY = Fernet.generate_key()
+CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key()
 CONNECTION_PORT = 9150
 ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
@@ -630,9 +630,15 @@ def setup_module():
 
     os.environ["RUST_LOG"] = RUST_LOG
     connection_binary = get_rust_binary_path("autopush_rs")
-    setup_connection_server(connection_binary)
+    if not os.environ.get("SKIP_CONNECTION"):
+        setup_connection_server(connection_binary)
+    else:
+        print("@@@ Skipping start of connection server")
     setup_megaphone_server(connection_binary)
-    setup_endpoint_server()
+    if not os.environ.get("SKIP_ENDPOINT"):
+        setup_endpoint_server()
+    else:
+        print ("@@@ Skipping start of endpoint")
     time.sleep(2)
 
 

@@ -1,4 +1,6 @@
 //! Management of connected clients to a WebPush server
+#![allow(dead_code)]
+
 use cadence::{prelude::*, StatsdClient};
 use futures::future::Either;
 use futures::sync::mpsc;
@@ -25,7 +27,7 @@ use autopush_common::util::{ms_since_epoch, sec_since_epoch};
 use crate::megaphone::{Broadcast, BroadcastSubs};
 use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::server::Server;
-use crate::user_agent::parse_user_agent;
+use crate::user_agent::UserAgentInfo;
 
 // Created and handed to the AutopushServer
 pub struct RegisteredClient {
@@ -161,6 +163,7 @@ pub struct WebPushClient {
     last_ping: u64,
     stats: SessionStatistics,
     deferred_user_registration: Option<DynamoDbUser>,
+    ua_info: UserAgentInfo,
 }
 
 impl Default for WebPushClient {
@@ -180,6 +183,7 @@ impl Default for WebPushClient {
             last_ping: Default::default(),
             stats: Default::default(),
             deferred_user_registration: Default::default(),
+            ua_info: Default::default(),
         }
     }
 }
@@ -310,7 +314,6 @@ where
     AwaitSessionComplete {
         auth_state_machine: AuthClientStateFuture<T>,
         srv: Rc<Server>,
-        user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
     },
 
@@ -318,7 +321,6 @@ where
     AwaitRegistryDisconnect {
         response: MyFuture<()>,
         srv: Rc<Server>,
-        user_agent: String,
         webpush: Rc<RefCell<WebPushClient>>,
         error: Option<Error>,
     },
@@ -477,6 +479,7 @@ where
                 ..Default::default()
             },
             deferred_user_registration,
+            ua_info: UserAgentInfo::from(user_agent.as_ref()),
             ..Default::default()
         }));
 
@@ -513,7 +516,6 @@ where
         let AwaitRegistryConnect {
             srv,
             ws,
-            user_agent,
             webpush,
             broadcast_subs,
             ..
@@ -532,7 +534,6 @@ where
         transition!(AwaitSessionComplete {
             auth_state_machine,
             srv,
-            user_agent,
             webpush,
         })
     }
@@ -557,12 +558,7 @@ where
             }
         };
 
-        let AwaitSessionComplete {
-            srv,
-            user_agent,
-            webpush,
-            ..
-        } = session_complete.take();
+        let AwaitSessionComplete { srv, webpush, .. } = session_complete.take();
 
         let response = srv
             .clients
@@ -571,7 +567,6 @@ where
         transition!(AwaitRegistryDisconnect {
             response,
             srv,
-            user_agent,
             webpush,
             error,
         })
@@ -585,7 +580,6 @@ where
 
         let AwaitRegistryDisconnect {
             srv,
-            user_agent,
             webpush,
             error,
             ..
@@ -604,16 +598,17 @@ where
         }
         let now = ms_since_epoch();
         let elapsed = (now - webpush.connected_at) / 1_000;
-        let (ua_result, metrics_os, metrics_browser) = parse_user_agent(&user_agent);
+        let ua_info = webpush.ua_info.clone();
         // dogstatsd doesn't support timers: use histogram instead
         srv.metrics
             .time_with_tags("ua.connection.lifespan", elapsed)
-            .with_tag("ua_os_family", metrics_os)
-            .with_tag("ua_browser_family", metrics_browser)
+            .with_tag("ua_os_family", &ua_info.metrics_os)
+            .with_tag("ua_browser_family", &ua_info.metrics_browser)
             .send();
 
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {
+            let ua_info = ua_info.clone();
             let mut event = sentry::event_from_error(err);
             event.user = Some(sentry::User {
                 id: Some(webpush.uaid.as_simple().to_string()),
@@ -621,19 +616,19 @@ where
             });
             event
                 .tags
-                .insert("ua_name".to_string(), ua_result.name.to_string());
+                .insert("ua_name".to_string(), ua_info.browser_name);
             event
                 .tags
-                .insert("ua_os_family".to_string(), metrics_os.to_string());
+                .insert("ua_os_family".to_string(), ua_info.metrics_os);
             event
                 .tags
-                .insert("ua_os_ver".to_string(), ua_result.os_version.to_string());
+                .insert("ua_os_ver".to_string(), ua_info.os_version);
             event
                 .tags
-                .insert("ua_browser_family".to_string(), metrics_browser.to_string());
+                .insert("ua_browser_family".to_string(), ua_info.metrics_browser);
             event
                 .tags
-                .insert("ua_browser_ver".to_string(), ua_result.version.to_string());
+                .insert("ua_browser_ver".to_string(), ua_info.browser_version);
             sentry::capture_event(event);
             err.to_string()
         } else {
@@ -662,12 +657,12 @@ where
         "uaid_reset" => stats.uaid_reset,
         "existing_uaid" => stats.existing_uaid,
         "connection_type" => &stats.connection_type,
-        "ua_name" => ua_result.name,
-        "ua_os_family" => metrics_os,
-        "ua_os_ver" => ua_result.os_version.into_owned(),
-        "ua_browser_family" => metrics_browser,
-        "ua_browser_ver" => ua_result.version,
-        "ua_category" => ua_result.category,
+        "ua_name" => ua_info.browser_name,
+        "ua_os_family" => ua_info.metrics_os,
+        "ua_os_ver" => ua_info.os_version,
+        "ua_browser_family" => ua_info.metrics_browser,
+        "ua_browser_ver" => ua_info.browser_version,
+        "ua_category" => ua_info.category,
         "connection_time" => elapsed,
         "direct_acked" => stats.direct_acked,
         "direct_storage" => stats.direct_storage,
@@ -989,10 +984,13 @@ where
                         &endpoint,
                         webpush.deferred_user_registration.as_ref(),
                     ),
-                    Err(_) => Box::new(future::ok(RegisterResponse::Error {
-                        error_msg: "Failed to generate endpoint".to_string(),
-                        status: 400,
-                    })),
+                    Err(e) => {
+                        error!("make_endpoint: {:?}", e);
+                        Box::new(future::ok(RegisterResponse::Error {
+                            error_msg: "Failed to generate endpoint".to_string(),
+                            status: 400,
+                        }))
+                    }
                 };
                 transition!(AwaitRegister {
                     channel_id,
@@ -1099,7 +1097,7 @@ where
                     webpush.unacked_direct_notifs.push(notif.clone());
                 }
                 debug!("Got a notification to send, sending!");
-                emit_metrics_for_send(&data.srv.metrics, &notif, "Direct");
+                emit_metrics_for_send(&data.srv.metrics, &notif, "Direct", &webpush.ua_info);
                 transition!(Send {
                     smessages: vec![ServerMessage::Notification(notif)],
                     data,
@@ -1192,25 +1190,22 @@ where
         // Filter out TTL expired messages
         let now = sec_since_epoch();
         let srv = data.srv.clone();
-        messages = messages
-            .into_iter()
-            .filter(|n| {
-                if !n.expired(now) {
-                    return true;
-                }
-                if n.sortkey_timestamp.is_none() {
-                    srv.handle.spawn(
-                        srv.ddb
-                            .delete_message(&webpush.message_month, &webpush.uaid, n)
-                            .then(|_| {
-                                debug!("Deleting expired message without sortkey_timestamp");
-                                Ok(())
-                            }),
-                    );
-                }
-                false
-            })
-            .collect();
+        messages.retain(|n| {
+            if !n.expired(now) {
+                return true;
+            }
+            if n.sortkey_timestamp.is_none() {
+                srv.handle.spawn(
+                    srv.ddb
+                        .delete_message(&webpush.message_month, &webpush.uaid, n)
+                        .then(|_| {
+                            debug!("Deleting expired message without sortkey_timestamp");
+                            Ok(())
+                        }),
+                );
+            }
+            false
+        });
         webpush.flags.increment_storage = !include_topic && timestamp.is_some();
         // If there's still messages send them out
         if !messages.is_empty() {
@@ -1219,7 +1214,9 @@ where
                 .extend(messages.iter().cloned());
             let smessages: Vec<_> = messages
                 .into_iter()
-                .inspect(|msg| emit_metrics_for_send(&data.srv.metrics, msg, "Stored"))
+                .inspect(|msg| {
+                    emit_metrics_for_send(&data.srv.metrics, msg, "Stored", &webpush.ua_info)
+                })
                 .map(ServerMessage::Notification)
                 .collect();
             webpush.sent_from_storage += smessages.len() as u32;
@@ -1339,15 +1336,25 @@ where
     }
 }
 
-fn emit_metrics_for_send(metrics: &StatsdClient, notif: &Notification, source: &'static str) {
-    if notif.topic.is_some() {
-        metrics.incr("ua.notification.topic").ok();
-    }
+fn emit_metrics_for_send(
+    metrics: &StatsdClient,
+    notif: &Notification,
+    source: &'static str,
+    user_agent_info: &UserAgentInfo,
+) {
+    metrics
+        .incr_with_tags("ua.notification.sent")
+        .with_tag("source", source)
+        .with_tag("topic", &notif.topic.is_some().to_string())
+        .with_tag("os", &user_agent_info.metrics_os)
+        // TODO: include `internal` if meta is set
+        .send();
     metrics
         .count_with_tags(
             "ua.message_data",
             notif.data.as_ref().map_or(0, |data| data.len() as i64),
         )
         .with_tag("source", source)
+        .with_tag("os", &user_agent_info.metrics_os)
         .send();
 }

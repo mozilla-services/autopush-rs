@@ -94,7 +94,6 @@ impl AutopushServer {
                     ..Default::default()
                 },
             ));
-            // register_panic_handler();
             Some(guard)
         } else {
             None

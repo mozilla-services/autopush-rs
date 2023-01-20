@@ -105,7 +105,7 @@ impl Default for DynamoDbUser {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DynamoDbNotification {
     // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
@@ -145,11 +145,29 @@ pub struct DynamoDbNotification {
     updateid: Option<String>,
 }
 
+/// Ensure that the default for 'stored' is true.
+impl Default for DynamoDbNotification {
+    fn default() -> Self {
+        Self {
+            uaid: Uuid::default(),
+            chidmessageid: String::default(),
+            current_timestamp: None,
+            chids: None,
+            timestamp: None,
+            expiry: 0,
+            ttl: None,
+            data: None,
+            headers: None,
+            updateid: None,
+        }
+    }
+}
+
 impl DynamoDbNotification {
     fn parse_sort_key(key: &str) -> Result<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet =
-                RegexSet::new(&[r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
+                RegexSet::new([r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
         }
         if !RE.is_match(key) {
             return Err(Error::GeneralError("Invalid chidmessageid".into()));

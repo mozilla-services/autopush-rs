@@ -75,6 +75,7 @@ pub fn list_tables_sync(
         .map_err(|_| Error::DatabaseError("Unable to list tables".into()))
 }
 
+/// Pull all pending messages for the user from storage
 pub fn fetch_messages(
     ddb: DynamoDbClient,
     metrics: Arc<StatsdClient>,
@@ -136,6 +137,8 @@ pub fn fetch_messages(
         })
 }
 
+/// Pull messages older than a given timestamp for a given user.
+/// This also returns the latest message timestamp.
 pub fn fetch_timestamp_messages(
     ddb: DynamoDbClient,
     metrics: Arc<StatsdClient>,
@@ -191,6 +194,7 @@ pub fn fetch_timestamp_messages(
         })
 }
 
+/// Drop all user information from the Router table.
 pub fn drop_user(
     ddb: DynamoDbClient,
     uaid: &Uuid,
@@ -208,6 +212,7 @@ pub fn drop_user(
     .map_err(|_| Error::DatabaseError("Error dropping user".into()))
 }
 
+/// Get the user information from the Router table.
 pub fn get_uaid(
     ddb: DynamoDbClient,
     uaid: &Uuid,
@@ -223,6 +228,7 @@ pub fn get_uaid(
         .map_err(|_| Error::DatabaseError("Error fetching user".into()))
 }
 
+/// Register a user into the Router table.
 pub fn register_user(
     ddb: DynamoDbClient,
     user: &DynamoDbUser,
@@ -266,6 +272,8 @@ pub fn register_user(
     )
 }
 
+/// Update the user's message month (Note: This is legacy for DynamoDB, but may still
+/// be used by Stand Alone systems.)
 pub fn update_user_message_month(
     ddb: DynamoDbClient,
     uaid: &Uuid,
@@ -297,6 +305,7 @@ pub fn update_user_message_month(
     //.chain_err(|| "Error updating user message month")
 }
 
+/// Return all known Channels for a given User.
 pub fn all_channels(
     ddb: DynamoDbClient,
     uaid: &Uuid,
@@ -327,6 +336,7 @@ pub fn all_channels(
         .or_else(|_err| future::ok(HashSet::new()))
 }
 
+/// Save the current list of Channels for a given user.
 pub fn save_channels(
     ddb: DynamoDbClient,
     uaid: &Uuid,
@@ -361,6 +371,7 @@ pub fn save_channels(
     // .chain_err(|| "Error saving channels")
 }
 
+/// Remove a specific channel from the list of known channels for a given User
 pub fn unregister_channel_id(
     ddb: DynamoDbClient,
     uaid: &Uuid,
@@ -390,6 +401,7 @@ pub fn unregister_channel_id(
     //.chain_err(|| "Error unregistering channel")
 }
 
+/// Respond with user information for a given user.
 #[allow(clippy::too_many_arguments)]
 pub fn lookup_user(
     ddb: DynamoDbClient,

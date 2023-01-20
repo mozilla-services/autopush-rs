@@ -54,7 +54,6 @@ pub fn sentry_middleware(
                     }
                 }
                 debug!("Reporting error to Sentry (service error): {}", error);
-                // TODO: extract and add extra data.
                 let mut event = event_from_actix_error(&error);
                 event.extra = tags.extra_tree();
                 let event_id = hub.capture_event(event);

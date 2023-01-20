@@ -9,7 +9,7 @@ use slog_mozlog_json::MozLogJson;
 pub fn init_logging(json: bool) -> Result<()> {
     let logger = if json {
         let hostname = get_ec2_instance_id()
-            .map(&str::to_owned)
+            .map(str::to_owned)
             .or_else(get_hostname)
             .ok_or("Couldn't get_hostname")
             .map_err(|e| Error::GeneralError(e.to_owned()))?;

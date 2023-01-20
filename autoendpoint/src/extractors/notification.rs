@@ -6,6 +6,7 @@ use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{web, FromRequest, HttpRequest};
+use autopush_common::endpoint::URL_SAFE_NO_PAD;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch};
 use cadence::CountedExt;
 use fernet::MultiFernet;
@@ -16,13 +17,17 @@ use uuid::Uuid;
 /// Extracts notification data from `Subscription` and request data
 #[derive(Clone, Debug)]
 pub struct Notification {
+    /// Unique message_id for this notification
     pub message_id: String,
+    /// The subscription information block
     pub subscription: Subscription,
+    /// Set of associated crypto headers
     pub headers: NotificationHeaders,
     /// UNIX timestamp in seconds
     pub timestamp: u64,
     /// UNIX timestamp in milliseconds
     pub sort_key_timestamp: u64,
+    /// The encrypted notification body
     pub data: Option<String>,
 }
 
@@ -53,7 +58,7 @@ impl FromRequest for Notification {
             let data = if data.is_empty() {
                 None
             } else {
-                Some(base64::encode_config(data, base64::URL_SAFE_NO_PAD))
+                Some(base64::encode_engine(data, &URL_SAFE_NO_PAD))
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
@@ -158,7 +163,7 @@ impl Notification {
 
         map.insert(
             "channelID",
-            serde_json::to_value(&self.subscription.channel_id).unwrap(),
+            serde_json::to_value(self.subscription.channel_id).unwrap(),
         );
         map.insert("version", serde_json::to_value(&self.message_id).unwrap());
         map.insert("ttl", serde_json::to_value(self.headers.ttl).unwrap());
@@ -166,10 +171,10 @@ impl Notification {
         map.insert("timestamp", serde_json::to_value(self.timestamp).unwrap());
 
         if let Some(data) = &self.data {
-            map.insert("data", serde_json::to_value(&data).unwrap());
+            map.insert("data", serde_json::to_value(data).unwrap());
 
             let headers: HashMap<_, _> = self.headers.clone().into();
-            map.insert("headers", serde_json::to_value(&headers).unwrap());
+            map.insert("headers", serde_json::to_value(headers).unwrap());
         }
 
         map
