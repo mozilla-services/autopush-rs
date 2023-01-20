@@ -120,7 +120,7 @@ pub async fn update_token_route(
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
 
     // Update the user in the database
-    let user = DynamoDbUser {
+    let mut user = DynamoDbUser {
         uaid: path_args.uaid,
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),
@@ -128,7 +128,7 @@ pub async fn update_token_route(
     };
     trace!("Updating user with UAID {}", user.uaid);
     trace!("user = {:?}", user);
-    state.ddb.update_user(&user).await?;
+    state.ddb.update_user(&mut user).await?;
 
     trace!("Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
@@ -181,8 +181,8 @@ pub async fn get_channels_route(
     path_args: RegistrationPathArgsWithUaid,
     state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
-    if let Some(user) = state.ddb.get_user(path_args.uaid).await? {
-        state.ddb.update_user(&user).await?;
+    if let Some(mut user) = state.ddb.get_user(path_args.uaid).await? {
+        state.ddb.update_user(&mut user).await?;
     } else {
         warn!("An orphan is still checking in {}", path_args.uaid);
         return Err(ApiErrorKind::NoUser.into());

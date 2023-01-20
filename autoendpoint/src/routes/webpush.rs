@@ -10,7 +10,7 @@ use actix_web::HttpResponse;
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 pub async fn webpush_route(
-    notification: Notification,
+    mut notification: Notification,
     routers: Routers,
     state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
@@ -21,13 +21,13 @@ pub async fn webpush_route(
 
     let resp = router.route_notification(&notification).await?;
     if router.is_mobile() {
-        // set the `connected_at` and `expiry` timestamps for the user.
+        // update the `expiry` timestamp for the user.
         // Here, we'll use a successful bridged notification route as a proxy
         // for the UA having connected to us. `expiry` allows us to automatically
         // age  out "orphaned" push endpoints.
         state
             .ddb
-            .update_user(&notification.subscription.user)
+            .update_user(&mut notification.subscription.user)
             .await?;
     };
     Ok(resp.into())

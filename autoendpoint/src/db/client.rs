@@ -33,7 +33,7 @@ pub trait DbClient: Send + Sync {
     /// Update a user in the database. An error will occur if the user does not
     /// already exist, has a different router type, or has a newer
     /// `connected_at` timestamp.
-    async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()>;
+    async fn update_user(&self, user: &mut DynamoDbUser) -> DbResult<()>;
 
     /// Read a user from the database
     async fn get_user(&self, uaid: Uuid) -> DbResult<Option<DynamoDbUser>>;
@@ -163,9 +163,8 @@ impl DbClient for DbClientImpl {
         Ok(())
     }
 
-    async fn update_user(&self, user: &DynamoDbUser) -> DbResult<()> {
-        let mut muser = user.clone();
-        muser.expiry = generate_expiry();
+    async fn update_user(&self, user: &mut DynamoDbUser) -> DbResult<()> {
+        user.expiry = Some(generate_expiry());
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {

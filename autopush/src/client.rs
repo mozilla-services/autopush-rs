@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Management of connected clients to a WebPush server
 use cadence::{prelude::*, StatsdClient};
 use error_chain::ChainedError;
@@ -272,7 +273,6 @@ where
     }
 }
 
-#[allow(dead_code)]
 #[derive(StateMachineFuture)]
 pub enum UnAuthClientState<T>
 where
@@ -732,7 +732,6 @@ fn save_and_notify_undelivered_messages(
     );
 }
 
-#[allow(dead_code)]
 #[derive(StateMachineFuture)]
 pub enum AuthClientState<T>
 where

@@ -72,7 +72,7 @@ pub struct DynamoDbUser {
     // Time in milliseconds that the user last connected at
     pub connected_at: u64,
     // When a user is considered abandoned (updated frequently)
-    pub expiry: u64,
+    pub expiry: Option<u64>,
     // Router type of the user
     pub router_type: String,
     // Router-specific data
@@ -101,7 +101,7 @@ impl Default for DynamoDbUser {
             router_type: "webpush".to_string(),
             router_data: None,
             last_connect: Some(generate_last_connect()),
-            expiry: generate_expiry(),
+            expiry: Some(generate_expiry()),
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
             current_month: None,

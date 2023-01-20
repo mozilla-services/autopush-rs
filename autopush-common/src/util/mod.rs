@@ -55,6 +55,5 @@ impl<K: Eq + Hash, V> InsertOpt<K, V> for HashMap<K, V> {
 
 /// Generate the expiration data for the user
 pub fn generate_expiry() -> u64 {
-    let today = Utc::now();
-    today.timestamp() as u64 + MAX_EXPIRY
+    Utc::now().timestamp() as u64 + MAX_EXPIRY
 }

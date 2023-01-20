@@ -147,7 +147,7 @@ impl Router for AdmRouter {
             );
             user.router_data = Some(router_data);
 
-            self.ddb.update_user(&user).await?;
+            self.ddb.update_user(&mut user).await?;
         }
 
         Ok(RouterResponse::success(
