@@ -17,13 +17,17 @@ use uuid::Uuid;
 /// Extracts notification data from `Subscription` and request data
 #[derive(Clone, Debug)]
 pub struct Notification {
+    /// Unique message_id for this notification
     pub message_id: String,
+    /// The subscription information block
     pub subscription: Subscription,
+    /// Set of associated crypto headers
     pub headers: NotificationHeaders,
     /// UNIX timestamp in seconds
     pub timestamp: u64,
     /// UNIX timestamp in milliseconds
     pub sort_key_timestamp: u64,
+    /// The encrypted notification body
     pub data: Option<String>,
 }
 

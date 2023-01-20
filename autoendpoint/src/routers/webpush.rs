@@ -5,7 +5,7 @@ use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::DynamoDbUser;
-use cadence::{Counted, CountedExt, StatsdClient};
+use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::hash_map::RandomState;
@@ -73,10 +73,16 @@ impl Router for WebPushRouter {
         }
 
         if notification.headers.ttl == 0 {
+            let topic = notification.headers.topic.is_some().to_string();
             trace!(
                 "Notification has a TTL of zero and was not successfully \
                  delivered, dropping it"
             );
+            self.metrics
+                .incr_with_tags("notification.message.expired")
+                // TODO: include `internal` if meta is set.
+                .with_tag("topic", &topic)
+                .send();
             return Ok(self.make_delivered_response(notification));
         }
 
@@ -117,6 +123,16 @@ impl Router for WebPushRouter {
                 trace!("Response = {:?}", response);
                 if response.status() == 200 {
                     trace!("Node has delivered the message");
+                    self.metrics
+                        .time_with_tags(
+                            "notification.total_request_time",
+                            (notification.timestamp - autopush_common::util::sec_since_epoch())
+                                * 1000,
+                        )
+                        .with_tag("platform", "websocket")
+                        .with_tag("app_id", "direct")
+                        .send();
+
                     Ok(self.make_delivered_response(notification))
                 } else {
                     trace!("Node has not delivered the message, returning stored response");
