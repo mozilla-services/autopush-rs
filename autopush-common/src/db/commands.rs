@@ -21,6 +21,7 @@ use super::util::generate_last_connect;
 use super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
 use crate::errors::*;
 use crate::notification::Notification;
+use crate::util::generate_expiry;
 use crate::util::timing::sec_since_epoch;
 
 macro_rules! retryable_error {
@@ -231,9 +232,10 @@ pub fn get_uaid(
 /// Register a user into the Router table.
 pub fn register_user(
     ddb: DynamoDbClient,
-    user: &DynamoDbUser,
+    user: &mut DynamoDbUser,
     router_table: &str,
 ) -> impl Future<Item = PutItemOutput, Error = Error> {
+    user.expiry = Some(generate_expiry());
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
         Err(e) => return future::err(e).chain_err(|| "Failed to serialize item"),

@@ -982,7 +982,7 @@ where
                         &channel_id,
                         &message_month,
                         &endpoint,
-                        webpush.deferred_user_registration.as_ref(),
+                        webpush.deferred_user_registration.as_mut(),
                     ),
                     Err(e) => {
                         error!("make_endpoint: {:?}", e);

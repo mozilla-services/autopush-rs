@@ -188,7 +188,7 @@ impl DynamoStorage {
                 user_opt
             );
             let hello_message_month = hello_response.message_month.clone();
-            let user = user_opt.unwrap_or_else(|| DynamoDbUser {
+            let mut user = user_opt.unwrap_or_else(|| DynamoDbUser {
                 current_month: Some(hello_message_month),
                 node_id: Some(router_url),
                 connected_at,
@@ -200,7 +200,7 @@ impl DynamoStorage {
             err_response.connected_at = connected_at;
             if !defer_registration {
                 future::Either::A(
-                    commands::register_user(ddb, &user, &router_table_name)
+                    commands::register_user(ddb, &mut user, &router_table_name)
                         .and_then(move |result| {
                             debug!("Success adding user, item output: {:?}", result);
                             hello_response.uaid = Some(uaid);
@@ -226,7 +226,7 @@ impl DynamoStorage {
         channel_id: &Uuid,
         message_month: &str,
         endpoint: &str,
-        register_user: Option<&DynamoDbUser>,
+        register_user: Option<&mut DynamoDbUser>,
     ) -> MyFuture<RegisterResponse> {
         let ddb = self.ddb.clone();
         let mut chids = HashSet::new();
