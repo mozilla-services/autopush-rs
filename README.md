@@ -17,7 +17,7 @@ messages](http://autopush.readthedocs.io/en/latest/http.html#error-codes)
 you may see when sending push messages to our server.
 
 MDN has information about [how to use
-WebPush](https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
+WebPush](https://developer.mozilla.org/en-US/docs/Web/API/Push_API).
 
 ***Note*** while `rust-doc` style comments are used prolifically
 through the source, only public structures are rendered automatically.
