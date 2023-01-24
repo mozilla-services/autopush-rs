@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.65.1"
+version = "1.66.0"
 authors = [
   "Ben Bangert <ben@groovie.org>",
   "JR Conlin <jrconlin@mozilla.com>",

@@ -6,8 +6,7 @@ use crate::server::ServerState;
 use actix_web::dev::{Payload, PayloadStream};
 use actix_web::web::Data;
 use actix_web::{web, FromRequest, HttpRequest};
-use autopush_common::endpoint::URL_SAFE_NO_PAD;
-use autopush_common::util::{ms_since_epoch, sec_since_epoch};
+use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
 use cadence::CountedExt;
 use fernet::MultiFernet;
 use futures::{future, FutureExt};
@@ -17,13 +16,17 @@ use uuid::Uuid;
 /// Extracts notification data from `Subscription` and request data
 #[derive(Clone, Debug)]
 pub struct Notification {
+    /// Unique message_id for this notification
     pub message_id: String,
+    /// The subscription information block
     pub subscription: Subscription,
+    /// Set of associated crypto headers
     pub headers: NotificationHeaders,
     /// UNIX timestamp in seconds
     pub timestamp: u64,
     /// UNIX timestamp in milliseconds
     pub sort_key_timestamp: u64,
+    /// The encrypted notification body
     pub data: Option<String>,
 }
 
@@ -54,7 +57,7 @@ impl FromRequest for Notification {
             let data = if data.is_empty() {
                 None
             } else {
-                Some(base64::encode_engine(data, &URL_SAFE_NO_PAD))
+                Some(b64_encode_url(&data.to_vec()))
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
