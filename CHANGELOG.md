@@ -1,3 +1,26 @@
+<a name="1.66.0"></a>
+## 1.66.0 (2023-01-23)
+
+#### Chore
+
+*    release 1.65.0 (#324) ([060a520](https://github.com/mozilla-services/autopush-rs/commit/060a520f4acc05a82b29354ebfe17a1dad3b8044))
+
+#### Bug Fixes
+
+*    silence data overflow error in sentry (#327) ([202fba6](https://github.com/mozilla-services/autopush-rs/commit/202fba6e031751958f2c8b5dee3d81f32e49699c))
+
+#### Features
+
+*   add metrics for vapid errors (#340) ([922fcf8d](https://github.com/mozilla-services/autopush-rs/commit/922fcf8d50d5dd670f7d35a0056da9ffd165edcb))
+*   add timeouts for Client::reqwest calls [CONSVC-3289] (#329) ([e0c370ae](https://github.com/mozilla-services/autopush-rs/commit/e0c370ae7d00405adf4f96ada9e94afe3208b76b))
+*   modernize to rust 1.65 (#337) ([07b67bd](https://github.com/mozilla-services/autopush-rs/commit/07b67bda22e6b48195afd9ab16211d28fe46ec61))
+*   add additional metrics for message tracking (#330) ([65ac1a3](https://github.com/mozilla-services/autopush-rs/commit/65ac1a3862b900133d9f7a80bd8dfd54b247292a))
+
+#### Doc
+
+*   Add mobile debugging steps to README (#339) ([9238056](https://github.com/mozilla-services/autopush-rs/commit/92380560bc15e097b18dc9142c73307f46430fbd))
+*   Fix typo in README.md file (thanks @dev-aniketj) (#341)
+
 <a name="1.65.0"></a>
 ## 1.65.0 (2022-07-20)
 
