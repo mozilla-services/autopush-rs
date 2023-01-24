@@ -44,6 +44,7 @@ impl Service for Push {
             }
         };
         let clients = Arc::clone(&self.0);
+        // Handle incoming routed push notifications from endpoints.
         match (req.method(), method_name, uaid) {
             (&Method::PUT, "push", uaid) => {
                 trace!("## PUT /push/ {}", uaid);

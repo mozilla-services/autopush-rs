@@ -119,6 +119,7 @@ async fn main() -> ApiResult<()> {
             .wrap(sentry_actix::Sentry::new()) // Use the default wrapper
             .route("/ws/", web::get().to(ws_handler))
             // Add router info
+            //.service(web::resource("/push/{uaid}").route(web::push().to(autoconnect_web::route::InterNode::put))
             .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
             .service(web::resource("/health").route(web::get().to(dockerflow::health_route)))
             .service(web::resource("/v1/err").route(web::get().to(dockerflow::log_check)))
