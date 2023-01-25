@@ -10,14 +10,14 @@ use uuid::Uuid;
 use super::protocol::ServerNotification;
 use super::Notification;
 use crate::client::RegisteredClient;
-use autopush_common::errors::Error;
+use autopush_common::errors::{ApcError, ApcErrorKind};
 
 /// `notify` + `check_storage` are used under hyper (http.rs) which `Send`
 /// futures.
 ///
 /// `MySendFuture` is `Send` for this, similar to modern futures `BoxFuture`.
 /// `MyFuture` isn't, similar to modern futures `BoxLocalFuture`
-pub type MySendFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send>;
+pub type MySendFuture<T> = Box<dyn Future<Item = T, Error = ApcError> + Send>;
 
 #[derive(Default)]
 pub struct ClientRegistry {
@@ -44,7 +44,7 @@ impl ClientRegistry {
                     }
                     ok(())
                 })
-                .map_err(|_| Error::GeneralError("clients lock poisoned".into())),
+                .map_err(|_| ApcErrorKind::GeneralError("clients lock poisoned".into()).into()),
         )
 
         //.map_err(|_| "clients lock poisioned")
@@ -69,7 +69,7 @@ impl ClientRegistry {
                 }
                 err(())
             })
-            .map_err(|_| Error::GeneralError("User not connected".into()));
+            .map_err(|_| ApcErrorKind::GeneralError("User not connected".into()).into());
         Box::new(fut)
     }
 
@@ -88,7 +88,7 @@ impl ClientRegistry {
                 }
                 err(())
             })
-            .map_err(|_| Error::GeneralError("User not connected".into()));
+            .map_err(|_| ApcErrorKind::GeneralError("User not connected".into()).into());
         Box::new(fut)
     }
 
@@ -111,7 +111,7 @@ impl ClientRegistry {
                 }
                 err(())
             })
-            .map_err(|_| Error::GeneralError("User not connected".into()));
+            .map_err(|_| ApcErrorKind::GeneralError("User not connected".into()).into());
         Box::new(fut)
     }
 }

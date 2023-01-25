@@ -1,43 +1,60 @@
 //! Error handling for Rust
 //!
-//! This module defines various utilities for handling errors in the Rust
-//! thread. This uses the `error-chain` crate to ergonomically define errors,
-//! enable them for usage with `?`, and otherwise give us some nice utilities.
-//! It's expected that this module is always glob imported:
-//!
-//! ```ignore
-//!     use errors::*;
-//! ```
-//!
-//! And functions in general should then return `Result<()>`. You can add extra
-//! error context via `chain_err`:
-//!
-//! ```ignore
-//!     let e = some_function_returning_a_result().chain_err(|| {
-//!         "some extra context here to make a nicer error"
-//!     })?;
-//! ```
-//!
-//! And you can also use the `MyFuture` type alias for "nice" uses of futures
-//!
-//! ```ignore
-//!     fn add(a: i32) -> MyFuture<u32> {
-//!         // ..
-//!     }
-//! ```
-//!
-//! You can find some more documentation about this in the `error-chain` crate
-//! online.
+
 use std::any::Any;
-//use std::error;
+use std::backtrace::Backtrace;
+use std::fmt::{self, Display};
 use std::io;
 use std::num;
 
 use futures::Future;
 use thiserror::Error;
 
+/// AutoPush Common error (To distinguish from endpoint's ApiError)
+#[derive(Debug)]
+pub struct ApcError {
+    pub kind: ApcErrorKind,
+    pub backtrace: Backtrace,
+}
+
+// Print out the error and backtrace, including source errors
+impl Display for ApcError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Error: {}\nBacktrace: \n{:?}", self.kind, self.backtrace)?;
+
+        // Go down the chain of errors
+        let mut error: &dyn std::error::Error = &self.kind;
+        while let Some(source) = error.source() {
+            write!(f, "\n\nCaused by: {}", source)?;
+            error = source;
+        }
+
+        Ok(())
+    }
+}
+
+impl std::error::Error for ApcError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.kind.source()
+    }
+}
+
+// Forward From impls to ApiError from ApiErrorKind. Because From is reflexive,
+// this impl also takes care of From<ApiErrorKind>.
+impl<T> From<T> for ApcError
+where
+    ApcErrorKind: From<T>,
+{
+    fn from(item: T) -> Self {
+        ApcError {
+            kind: ApcErrorKind::from(item),
+            backtrace: Backtrace::capture(),
+        }
+    }
+}
+
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum ApcErrorKind {
     #[error(transparent)]
     Ws(#[from] tungstenite::Error),
     #[error(transparent)]
@@ -84,6 +101,7 @@ pub enum Error {
     DatabaseError(String),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+#[allow(clippy::result_large_err)]
+pub type Result<T> = std::result::Result<T, ApcError>;
 
-pub type MyFuture<T> = Box<dyn Future<Item = T, Error = Error>>;
+pub type MyFuture<T> = Box<dyn Future<Item = T, Error = ApcError>>;

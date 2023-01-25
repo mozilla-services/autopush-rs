@@ -19,7 +19,7 @@ use rusoto_dynamodb::{
 use super::models::{DynamoDbNotification, DynamoDbUser};
 use super::util::generate_last_connect;
 use super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
-use crate::errors::*;
+use crate::errors::{ApcError, ApcErrorKind, MyFuture, Result};
 use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
@@ -72,7 +72,7 @@ pub fn list_tables_sync(
     };
     ddb.list_tables(input)
         .sync()
-        .map_err(|_| Error::DatabaseError("Unable to list tables".into()))
+        .map_err(|_| ApcErrorKind::DatabaseError("Unable to list tables".into()).into())
 }
 
 /// Pull all pending messages for the user from storage
@@ -82,7 +82,7 @@ pub fn fetch_messages(
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
-) -> impl Future<Item = FetchMessageResponse, Error = Error> {
+) -> impl Future<Item = FetchMessageResponse, Error = ApcError> {
     let attr_values = hashmap! {
         ":uaid".to_string() => val!(S => uaid.as_simple().to_string()),
         ":cmi".to_string() => val!(S => "02"),
@@ -97,7 +97,7 @@ pub fn fetch_messages(
     };
 
     retry_if(move || ddb.query(input.clone()), retryable_query_error)
-        .map_err(|_| Error::MessageFetch)
+        .map_err(|_| ApcErrorKind::MessageFetch.into())
         .and_then(move |output| {
             let mut notifs: Vec<DynamoDbNotification> =
                 output.items.map_or_else(Vec::new, |items| {
@@ -146,7 +146,7 @@ pub fn fetch_timestamp_messages(
     uaid: &Uuid,
     timestamp: Option<u64>,
     limit: u32,
-) -> impl Future<Item = FetchMessageResponse, Error = Error> {
+) -> impl Future<Item = FetchMessageResponse, Error = ApcError> {
     let range_key = if let Some(ts) = timestamp {
         format!("02:{}:z", ts)
     } else {
@@ -166,7 +166,7 @@ pub fn fetch_timestamp_messages(
     };
 
     retry_if(move || ddb.query(input.clone()), retryable_query_error)
-        .map_err(|_| Error::MessageFetch)
+        .map_err(|_| ApcErrorKind::MessageFetch.into())
         .and_then(move |output| {
             let messages = output.items.map_or_else(Vec::new, |items| {
                 debug!("Got response of: {:?}", items);
@@ -199,7 +199,7 @@ pub fn drop_user(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
-) -> impl Future<Item = DeleteItemOutput, Error = Error> {
+) -> impl Future<Item = DeleteItemOutput, Error = ApcError> {
     let input = DeleteItemInput {
         table_name: router_table_name.to_string(),
         key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
@@ -209,7 +209,7 @@ pub fn drop_user(
         move || ddb.delete_item(input.clone()),
         retryable_delete_error,
     )
-    .map_err(|_| Error::DatabaseError("Error dropping user".into()))
+    .map_err(|_| ApcErrorKind::DatabaseError("Error dropping user".into()).into())
 }
 
 /// Get the user information from the Router table.
@@ -217,7 +217,7 @@ pub fn get_uaid(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
-) -> impl Future<Item = GetItemOutput, Error = Error> {
+) -> impl Future<Item = GetItemOutput, Error = ApcError> {
     let input = GetItemInput {
         table_name: router_table_name.to_string(),
         consistent_read: Some(true),
@@ -225,7 +225,7 @@ pub fn get_uaid(
         ..Default::default()
     };
     retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
-        .map_err(|_| Error::DatabaseError("Error fetching user".into()))
+        .map_err(|_| ApcErrorKind::DatabaseError("Error fetching user".into()).into())
 }
 
 /// Register a user into the Router table.
@@ -233,10 +233,14 @@ pub fn register_user(
     ddb: DynamoDbClient,
     user: &DynamoDbUser,
     router_table: &str,
-) -> impl Future<Item = PutItemOutput, Error = Error> {
+) -> impl Future<Item = PutItemOutput, Error = ApcError> {
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
-        Err(e) => return future::Either::A(future::err(Error::DatabaseError(e.to_string()))),
+        Err(e) => {
+            return future::Either::A(future::err(
+                ApcErrorKind::DatabaseError(e.to_string()).into(),
+            ))
+        }
     };
     let router_table = router_table.to_string();
     let attr_values = hashmap! {
@@ -268,7 +272,7 @@ pub fn register_user(
             },
             retryable_putitem_error,
         )
-        .map_err(|_| Error::DatabaseError("fail".to_string())),
+        .map_err(|_| ApcErrorKind::DatabaseError("fail".to_string()).into()),
     )
 }
 
@@ -279,7 +283,7 @@ pub fn update_user_message_month(
     uaid: &Uuid,
     router_table_name: &str,
     message_month: &str,
-) -> impl Future<Item = (), Error = Error> {
+) -> impl Future<Item = (), Error = ApcError> {
     let attr_values = hashmap! {
         ":curmonth".to_string() => val!(S => message_month.to_string()),
         ":lastconnect".to_string() => val!(N => generate_last_connect().to_string()),
@@ -301,8 +305,7 @@ pub fn update_user_message_month(
         },
         retryable_updateitem_error,
     )
-    .map_err(|_e| Error::DatabaseError("Error updating user message month".into()))
-    //.chain_err(|| "Error updating user message month")
+    .map_err(|_e| ApcErrorKind::DatabaseError("Error updating user message month".into()).into())
 }
 
 /// Return all known Channels for a given User.
@@ -310,7 +313,7 @@ pub fn all_channels(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     message_table_name: &str,
-) -> impl Future<Item = HashSet<String>, Error = Error> {
+) -> impl Future<Item = HashSet<String>, Error = ApcError> {
     let input = GetItemInput {
         table_name: message_table_name.to_string(),
         consistent_read: Some(true),
@@ -342,7 +345,7 @@ pub fn save_channels(
     uaid: &Uuid,
     channels: HashSet<String>,
     message_table_name: &str,
-) -> impl Future<Item = (), Error = Error> {
+) -> impl Future<Item = (), Error = ApcError> {
     let chids: Vec<String> = channels.into_iter().collect();
     let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
     let attr_values = hashmap! {
@@ -367,7 +370,7 @@ pub fn save_channels(
         },
         retryable_updateitem_error,
     )
-    .map_err(|_e| Error::DatabaseError("Error saving channels".into()))
+    .map_err(|_e| ApcErrorKind::DatabaseError("Error saving channels".into()).into())
     // .chain_err(|| "Error saving channels")
 }
 
@@ -377,7 +380,7 @@ pub fn unregister_channel_id(
     uaid: &Uuid,
     channel_id: &Uuid,
     message_table_name: &str,
-) -> impl Future<Item = UpdateItemOutput, Error = Error> {
+) -> impl Future<Item = UpdateItemOutput, Error = ApcError> {
     let chid = channel_id.as_hyphenated().to_string();
     let attr_values = hashmap! {
         ":channel_id".to_string() => val!(SS => vec![chid]),
@@ -397,7 +400,7 @@ pub fn unregister_channel_id(
         move || ddb.update_item(update_item.clone()),
         retryable_updateitem_error,
     )
-    .map_err(|_e| Error::DatabaseError("Error unregistering channel".into()))
+    .map_err(|_e| ApcErrorKind::DatabaseError("Error unregistering channel".into()).into())
     //.chain_err(|| "Error unregistering channel")
 }
 
@@ -452,7 +455,7 @@ pub fn lookup_user(
                     .send();
                 let response = drop_user(ddb, &uaid2, &router_table)
                     .and_then(|_| future::ok((hello_response, None)))
-                    .map_err(|_e| Error::DatabaseError("Unable to drop user".into()));
+                    .map_err(|_e| ApcErrorKind::DatabaseError("Unable to drop user".into()).into());
                 //.chain_err(|| "Unable to drop user");
                 Box::new(response)
             }

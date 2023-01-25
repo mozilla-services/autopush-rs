@@ -469,10 +469,10 @@ def broadcast_handler():
     return dict(broadcasts=MOCK_MP_SERVICES)
 
 
-@app.post("/api/1/store/")
+@app.post("/api/1/envelope/")
 def sentry_handler():
-    content = bottle.request.json
-    MOCK_SENTRY_QUEUE.put(content)
+    headers, item_headers, payload = bottle.request.body.read().splitlines()
+    MOCK_SENTRY_QUEUE.put(json.loads(payload))
     return {
         "id": "fc6d8c0c43fc4630ad850ee518f1b9d0"
     }
@@ -690,11 +690,6 @@ class TestRustWebPush(unittest.TestCase):
     @max_logs(conn=4)
     def test_sentry_output(self):
         # Ensure bad data doesn't throw errors
-        ## The latest sentry library no longer uses the same
-        ## capturable message method we used previously. This
-        ## means that on circleci, this test may not pass.
-        if os.environ.get("CIRCLECI"):
-            self.skipTest("TODO: Update sentry capture method")
         client = CustomClient(self._ws_url)
         yield client.connect()
         yield client.hello()

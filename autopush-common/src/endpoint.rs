@@ -1,4 +1,4 @@
-use crate::errors::{Error, Result};
+use crate::errors::{ApcErrorKind, Result};
 use base64::{
     alphabet::{STANDARD, URL_SAFE},
     engine::fast_portable::{FastPortable, NO_PAD},
@@ -29,21 +29,21 @@ pub fn make_endpoint(
 
     if let Some(k) = key {
         let raw_key = base64::decode_engine(k.trim_end_matches('='), &URL_SAFE_NO_PAD)
-            .map_err(|_e| Error::PayloadError("Error encrypting payload".to_owned()))?;
+            .map_err(|_e| ApcErrorKind::PayloadError("Error encrypting payload".to_owned()))?;
         let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key).map_err(|_e| {
-            Error::PayloadError("Error creating message digest for key".to_owned())
+            ApcErrorKind::PayloadError("Error creating message digest for key".to_owned())
         })?;
         base.extend(key_digest.iter());
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
-        let final_url = root
-            .join(&format!("v2/{}", encrypted))
-            .map_err(|_e| Error::PayloadError("Encrypted data is not URL-safe".to_owned()))?;
+        let final_url = root.join(&format!("v2/{}", encrypted)).map_err(|_e| {
+            ApcErrorKind::PayloadError("Encrypted data is not URL-safe".to_owned())
+        })?;
         Ok(final_url.to_string())
     } else {
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
-        let final_url = root
-            .join(&format!("v1/{}", encrypted))
-            .map_err(|_e| Error::PayloadError("Encrypted data is not URL-safe".to_owned()))?;
+        let final_url = root.join(&format!("v1/{}", encrypted)).map_err(|_e| {
+            ApcErrorKind::PayloadError("Encrypted data is not URL-safe".to_owned())
+        })?;
         Ok(final_url.to_string())
     }
 }

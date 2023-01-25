@@ -1,4 +1,5 @@
 #![recursion_limit = "1024"]
+#![allow(clippy::result_large_err)] // add this until refactor of `crate::error::ApcError result too large`
 
 #[macro_use]
 extern crate slog;

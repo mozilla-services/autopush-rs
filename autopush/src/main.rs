@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 extern crate slog;
 #[macro_use]
 extern crate slog_scope;
@@ -8,7 +10,7 @@ use std::{env, os::raw::c_int, thread};
 
 use docopt::Docopt;
 
-use autopush_common::errors::{Error, Result};
+use autopush_common::errors::{ApcErrorKind, Result};
 
 mod client;
 mod http;
@@ -59,7 +61,7 @@ fn main() -> Result<()> {
     signal.recv().unwrap();
     server
         .stop()
-        .map_err(|_e| Error::GeneralError("Failed to shutdown properly".into()))
+        .map_err(|_e| ApcErrorKind::GeneralError("Failed to shutdown properly".into()).into())
 }
 
 /// Create a new channel subscribed to the given signals

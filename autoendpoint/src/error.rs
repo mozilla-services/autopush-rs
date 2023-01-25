@@ -74,7 +74,7 @@ pub enum ApiErrorKind {
     RegistrationSecretHash(#[source] openssl::error::ErrorStack),
 
     #[error("Error while creating endpoint URL: {0}")]
-    EndpointUrl(#[source] autopush_common::errors::Error),
+    EndpointUrl(#[source] autopush_common::errors::ApcError),
 
     #[error("Database error: {0}")]
     Database(#[from] DbError),
