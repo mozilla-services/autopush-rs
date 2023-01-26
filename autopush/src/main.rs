@@ -1,5 +1,3 @@
-#![allow(clippy::result_large_err)]
-
 extern crate slog;
 #[macro_use]
 extern crate slog_scope;

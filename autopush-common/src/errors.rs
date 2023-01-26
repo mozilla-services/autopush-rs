@@ -101,7 +101,6 @@ pub enum ApcErrorKind {
     DatabaseError(String),
 }
 
-#[allow(clippy::result_large_err)]
 pub type Result<T> = std::result::Result<T, ApcError>;
 
 pub type MyFuture<T> = Box<dyn Future<Item = T, Error = ApcError>>;
