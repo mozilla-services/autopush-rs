@@ -371,7 +371,6 @@ pub fn save_channels(
         retryable_updateitem_error,
     )
     .map_err(|_e| ApcErrorKind::DatabaseError("Error saving channels".into()).into())
-    // .chain_err(|| "Error saving channels")
 }
 
 /// Remove a specific channel from the list of known channels for a given User
@@ -401,7 +400,6 @@ pub fn unregister_channel_id(
         retryable_updateitem_error,
     )
     .map_err(|_e| ApcErrorKind::DatabaseError("Error unregistering channel".into()).into())
-    //.chain_err(|| "Error unregistering channel")
 }
 
 /// Respond with user information for a given user.
@@ -456,7 +454,6 @@ pub fn lookup_user(
                 let response = drop_user(ddb, &uaid2, &router_table)
                     .and_then(|_| future::ok((hello_response, None)))
                     .map_err(|_e| ApcErrorKind::DatabaseError("Unable to drop user".into()).into());
-                //.chain_err(|| "Unable to drop user");
                 Box::new(response)
             }
         }

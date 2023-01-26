@@ -556,16 +556,6 @@ where
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
                 Ok(Async::Ready(_)) => None,
 
-                /*
-                Err(ApcErrorKind::Ws(_))
-                | Err(ApcErrorKind::Io(_))
-                | Err(ApcErrorKind::PongTimeout)
-                | Err(ApcErrorKind::RepeatUaidDisconnect)
-                | Err(ApcErrorKind::ExcessivePing)
-                | Err(ApcErrorKind::InvalidStateTransition(_, _))
-                | Err(ApcErrorKind::InvalidClientMessage(_))
-                | Err(ApcErrorKind::SendError) => None,
-                */
                 Err(e) => match e.kind {
                     ApcErrorKind::Ws(_)
                     | ApcErrorKind::Io(_)
