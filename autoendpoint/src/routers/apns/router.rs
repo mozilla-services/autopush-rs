@@ -102,7 +102,7 @@ impl ApnsRouter {
             ),
             topic: settings
                 .topic
-                .unwrap_or_else(|| format!("com.mozilla.org.{}", name)),
+                .unwrap_or_else(|| format!("com.mozilla.org.{name}")),
         };
 
         Ok((name, client))
@@ -429,7 +429,7 @@ mod tests {
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
         let result = router.route_notification(&notification).await;
-        assert!(result.is_ok(), "result = {:?}", result);
+        assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(
             result.unwrap(),
             RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
@@ -467,7 +467,7 @@ mod tests {
         let notification = make_notification(default_router_data(), Some(data), RouterType::APNS);
 
         let result = router.route_notification(&notification).await;
-        assert!(result.is_ok(), "result = {:?}", result);
+        assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(
             result.unwrap(),
             RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
@@ -495,8 +495,7 @@ mod tests {
                 result.as_ref().unwrap_err().kind,
                 ApiErrorKind::Router(RouterError::Apns(ApnsError::InvalidReleaseChannel))
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -529,8 +528,7 @@ mod tests {
                 result.as_ref().unwrap_err().kind,
                 ApiErrorKind::Router(RouterError::Apns(ApnsError::Unregistered))
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -567,8 +565,7 @@ mod tests {
                     })
                 )))
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -592,8 +589,7 @@ mod tests {
                 result.as_ref().unwrap_err().kind,
                 ApiErrorKind::Router(RouterError::Apns(ApnsError::InvalidApsData))
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 }

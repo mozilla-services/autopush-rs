@@ -83,7 +83,7 @@ impl DynamoStorage {
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().map_err(|e| {
-                    ApcErrorKind::GeneralError(format!("TLS initialization error {:?}", e))
+                    ApcErrorKind::GeneralError(format!("TLS initialization error {e:?}"))
                 })?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
                 Region::Custom {

@@ -989,14 +989,12 @@ where
                 );
                 let channel_id = Uuid::parse_str(&channel_id_str).map_err(|_e| {
                     ApcErrorKind::InvalidClientMessage(format!(
-                        "Invalid channelID: {}",
-                        channel_id_str
+                        "Invalid channelID: {channel_id_str}"
                     ))
                 })?;
                 if channel_id.as_hyphenated().to_string() != channel_id_str {
                     return Err(ApcErrorKind::InvalidClientMessage(format!(
-                        "Invalid UUID format, not lower-case/dashed: {}",
-                        channel_id
+                        "Invalid UUID format, not lower-case/dashed: {channel_id}",
                     ))
                     .into());
                 }

@@ -14,7 +14,7 @@ use thiserror::Error;
 #[derive(Debug)]
 pub struct ApcError {
     pub kind: ApcErrorKind,
-    pub backtrace: Backtrace,
+    pub backtrace: Box<Backtrace>,
 }
 
 // Print out the error and backtrace, including source errors
@@ -25,7 +25,7 @@ impl Display for ApcError {
         // Go down the chain of errors
         let mut error: &dyn std::error::Error = &self.kind;
         while let Some(source) = error.source() {
-            write!(f, "\n\nCaused by: {}", source)?;
+            write!(f, "\n\nCaused by: {source}")?;
             error = source;
         }
 
@@ -48,7 +48,7 @@ where
     fn from(item: T) -> Self {
         ApcError {
             kind: ApcErrorKind::from(item),
-            backtrace: Backtrace::capture(),
+            backtrace: Box::new(Backtrace::capture()),
         }
     }
 }

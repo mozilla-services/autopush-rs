@@ -260,7 +260,7 @@ impl Display for ApiError {
         // Go down the chain of errors
         let mut error: &dyn Error = &self.kind;
         while let Some(source) = error.source() {
-            write!(f, "\n\nCaused by: {}", source)?;
+            write!(f, "\n\nCaused by: {source}")?;
             error = source;
         }
 

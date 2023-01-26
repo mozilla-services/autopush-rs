@@ -558,9 +558,9 @@ impl Future for MegaphoneUpdater {
                         }
                         Ok(Async::NotReady) => return Ok(Async::NotReady),
                         Err(error) => {
-                            error!("📢Failed to get response, queue again {:?}", error);
+                            error!("📢Failed to get response, queue again {error:?}");
                             capture_message(
-                                &format!("Failed to get response, queue again {:?}", error),
+                                &format!("Failed to get response, queue again {error:?}"),
                                 sentry::Level::Error,
                             );
                         }

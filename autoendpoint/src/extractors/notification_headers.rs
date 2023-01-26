@@ -172,22 +172,20 @@ impl NotificationHeaders {
         key: &str,
     ) -> ApiResult<()> {
         let header = header.ok_or_else(|| {
-            ApiErrorKind::InvalidEncryption(format!("Missing {} header", header_name))
+            ApiErrorKind::InvalidEncryption(format!("Missing {header_name} header"))
         })?;
         let header_data = CryptoKeyHeader::parse(header).ok_or_else(|| {
-            ApiErrorKind::InvalidEncryption(format!("Invalid {} header", header_name))
+            ApiErrorKind::InvalidEncryption(format!("Invalid {header_name} header"))
         })?;
         let value = header_data.get_by_key(key).ok_or_else(|| {
             ApiErrorKind::InvalidEncryption(format!(
-                "Missing {} value in {} header",
-                key, header_name
+                "Missing {key} value in {header_name} header"
             ))
         })?;
 
         if !VALID_BASE64_URL.is_match(value) {
             return Err(ApiErrorKind::InvalidEncryption(format!(
-                "Invalid {} value in {} header",
-                key, header_name
+                "Invalid {key} value in {header_name} header",
             ))
             .into());
         }
@@ -203,13 +201,12 @@ impl NotificationHeaders {
         };
 
         let header_data = CryptoKeyHeader::parse(header).ok_or_else(|| {
-            ApiErrorKind::InvalidEncryption(format!("Invalid {} header", header_name))
+            ApiErrorKind::InvalidEncryption(format!("Invalid {header_name} header"))
         })?;
 
         if header_data.get_by_key(key).is_some() {
             return Err(ApiErrorKind::InvalidEncryption(format!(
-                "Do not include '{}' header in {} header",
-                key, header_name
+                "Do not include '{key}' header in {header_name} header"
             ))
             .into());
         }
