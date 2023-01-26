@@ -953,15 +953,11 @@ where
                        "channel_id" => &channel_id_str,
                 );
                 let channel_id = Uuid::parse_str(&channel_id_str).chain_err(|| {
-                    ErrorKind::InvalidClientMessage(format!(
-                        "Invalid channelID: {}",
-                        channel_id_str
-                    ))
+                    ErrorKind::InvalidClientMessage(format!("Invalid channelID: {channel_id_str}"))
                 })?;
                 if channel_id.as_hyphenated().to_string() != channel_id_str {
                     return Err(ErrorKind::InvalidClientMessage(format!(
-                        "Invalid UUID format, not lower-case/dashed: {}",
-                        channel_id
+                        "Invalid UUID format, not lower-case/dashed: {channel_id}"
                     ))
                     .into());
                 }

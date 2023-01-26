@@ -173,14 +173,14 @@ impl DbClient for DbClientImpl {
                 "SET {}",
                 user_map
                     .keys()
-                    .map(|key| format!("{0}=:{0}", key))
+                    .map(|key| format!("{key}=:{key}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             )),
             expression_attribute_values: Some(
                 user_map
                     .into_iter()
-                    .map(|(key, value)| (format!(":{}", key), value))
+                    .map(|(key, value)| (format!(":{key}"), value))
                     .collect(),
             ),
             condition_expression: Some(

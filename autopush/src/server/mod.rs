@@ -554,7 +554,7 @@ impl Future for MegaphoneUpdater {
                         Err(error) => {
                             error!("📢Failed to get response, queue again {:?}", error);
                             capture_message(
-                                &format!("Failed to get response, queue again {:?}", error),
+                                &format!("Failed to get response, queue again {error:?}"),
                                 sentry::Level::Error,
                             );
                         }

@@ -38,13 +38,13 @@ pub fn make_endpoint(
         base.extend(key_digest.iter());
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
         let final_url = root
-            .join(&format!("v2/{}", encrypted))
+            .join(&format!("v2/{encrypted}"))
             .chain_err(|| "Encrypted data is not URL-safe")?;
         Ok(final_url.to_string())
     } else {
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
         let final_url = root
-            .join(&format!("v1/{}", encrypted))
+            .join(&format!("v1/{encrypted}"))
             .chain_err(|| "Encrypted data is not URL-safe")?;
         Ok(final_url.to_string())
     }

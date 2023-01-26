@@ -148,7 +148,7 @@ pub fn fetch_timestamp_messages(
     limit: u32,
 ) -> impl Future<Item = FetchMessageResponse, Error = Error> {
     let range_key = if let Some(ts) = timestamp {
-        format!("02:{}:z", ts)
+        format!("02:{ts}:z")
     } else {
         "01;".to_string()
     };

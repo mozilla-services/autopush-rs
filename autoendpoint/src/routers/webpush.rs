@@ -37,7 +37,9 @@ impl Router for WebPushRouter {
         Ok(HashMap::new())
     }
 
+    #[allow(clippy::single_match)] // We use a single match in the .map_err. `if let` is not allowed there.
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+        // The notification contains the original subscription information
         let user = &notification.subscription.user;
         debug!(
             "Routing WebPush notification to UAID {}",
@@ -66,8 +68,38 @@ impl Router for WebPushRouter {
                 }
                 Err(error) => {
                     // We should stop sending notifications to this node for this user
+                    if error.is_timeout() {
+                        self.metrics
+                            .incr_with_tags("error.node.timeout")
+                            .with_tag("node_id", node_id)
+                            .try_send()
+                            .ok();
+                    }
+                    if error.is_connect() {
+                        self.metrics
+                            .incr_with_tags("error.node.connection")
+                            .with_tag("node_id", node_id)
+                            .try_send()
+                            .ok();
+                    }
                     debug!("Error while sending webpush notification: {}", error);
-                    self.remove_node_id(user, node_id.clone()).await?;
+                    self.remove_node_id(user, node_id.clone())
+                        .await
+                        .map_err(|e| {
+                            match &e.kind {
+                                ApiErrorKind::Database(crate::db::error::DbError::UpdateItem(
+                                    _,
+                                )) => {
+                                    self.metrics
+                                        .incr_with_tags("error.node.update")
+                                        .with_tag("node_id", node_id)
+                                        .try_send()
+                                        .ok();
+                                }
+                                _ => {}
+                            };
+                            e
+                        })?;
                 }
             }
         }
@@ -168,7 +200,7 @@ impl WebPushRouter {
         uaid: &Uuid,
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
-        let url = format!("{}/notif/{}", node_id, uaid);
+        let url = format!("{node_id}/notif/{uaid}");
 
         self.http.put(&url).send().await
     }
