@@ -178,9 +178,7 @@ impl NotificationHeaders {
             ApiErrorKind::InvalidEncryption(format!("Invalid {header_name} header"))
         })?;
         let value = header_data.get_by_key(key).ok_or_else(|| {
-            ApiErrorKind::InvalidEncryption(format!(
-                "Missing {key} value in {header_name} header"
-            ))
+            ApiErrorKind::InvalidEncryption(format!("Missing {key} value in {header_name} header"))
         })?;
 
         if !VALID_BASE64_URL.is_match(value) {

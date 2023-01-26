@@ -354,10 +354,7 @@ pub mod tests {
 
     /// Start building a mock for the FCM endpoint
     pub fn mock_fcm_endpoint_builder(id: &str) -> mockito::Mock {
-        mockito::mock(
-            "POST",
-            format!("/v1/projects/{id}/messages:send").as_str(),
-        )
+        mockito::mock("POST", format!("/v1/projects/{id}/messages:send").as_str())
     }
 
     pub fn mock_gcm_endpoint_builder() -> mockito::Mock {
