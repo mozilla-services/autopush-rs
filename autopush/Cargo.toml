@@ -11,9 +11,12 @@ path = "src/main.rs"
 [dependencies]
 base64.workspace = true
 cadence.workspace = true
+chrono.workspace = true
 config.workspace = true
+docopt.workspace = true
 fernet.workspace = true
 hex.workspace = true
+httparse.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 openssl.workspace = true
@@ -29,24 +32,21 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
+smallvec.workspace = true
 uuid.workspace = true
 
 autopush_common = { path = "../autopush-common" }
 bytes = "0.4" # XXX: pin to < 0.5 for hyper 0.12
 crossbeam-channel = "0.5"
-chrono = "0.4"
-docopt = "1.1.0"
 env_logger = "0.9"
-error-chain = "0.12"
+thiserror = "1.0"
 futures = "0.1.29" # XXX: pin to 0.1 until likely hyper 0.13
 futures-locks = "0.5" # pin to 0.5 until futures update
-httparse = "1.3"
 hyper = "^0.12.36" # pin to hyper 0.12 for now: 0.13 has many changes..
 mozsvc-common = "0.2"
 reqwest = "0.9.24" # XXX: pin to < 0.10 until futures 0.3
 rusoto_dynamodb = "0.42.0" # XXX: pin to 0.42 until futures 0.3
 signal-hook = "0.3"
-smallvec = "1.6"  # for RUSTSEC-2021-0003
 # state_machine_future = { version = "0.1.6", features = ["debug_code_generation"] }
 state_machine_future = "0.2.0"
 tokio-core = "0.1"

@@ -31,7 +31,7 @@ pub struct ServerState {
     /// Server Data
     pub metrics: Arc<StatsdClient>,
     pub settings: Settings,
-    pub fernet: Arc<MultiFernet>,
+    pub fernet: MultiFernet,
     pub ddb: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
@@ -45,7 +45,7 @@ impl Server {
     pub async fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
         let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
         let bind_address = format!("{}:{}", settings.host, settings.port);
-        let fernet = Arc::new(settings.make_fernet());
+        let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();
         let ddb = Box::new(DbClientImpl::new(
             metrics.clone(),

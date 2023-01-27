@@ -183,7 +183,7 @@ impl NotificationHeaders {
 
         if !VALID_BASE64_URL.is_match(value) {
             return Err(ApiErrorKind::InvalidEncryption(format!(
-                "Invalid {key} value in {header_name} header"
+                "Invalid {key} value in {header_name} header",
             ))
             .into());
         }

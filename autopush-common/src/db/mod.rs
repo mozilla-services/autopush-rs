@@ -19,7 +19,7 @@ mod commands;
 mod models;
 mod util;
 
-use crate::errors::*;
+use crate::errors::{ApcError, ApcErrorKind, MyFuture, Result};
 use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
@@ -82,7 +82,9 @@ impl DynamoStorage {
         );
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
-                HttpClient::new().chain_err(|| "TLS initialization error")?,
+                HttpClient::new().map_err(|e| {
+                    ApcErrorKind::GeneralError(format!("TLS initialization error {e:?}"))
+                })?,
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
                 Region::Custom {
                     name: "us-east-1".to_string(),
@@ -94,14 +96,15 @@ impl DynamoStorage {
         };
 
         let mut message_table_names = list_message_tables(&ddb, message_table_name)
-            .map_err(|_| "Failed to locate message tables")?;
+            .map_err(|_| ApcErrorKind::DatabaseError("Failed to locate message tables".into()))?;
         // Valid message months are the current and last 2 months
         message_table_names.sort_unstable_by(|a, b| b.cmp(a));
         message_table_names.truncate(3);
         message_table_names.reverse();
         let current_message_month = message_table_names
             .last()
-            .ok_or("No last message month found")?
+            .ok_or("No last message month found")
+            .map_err(|_e| ApcErrorKind::GeneralError("No last message month found".into()))?
             .to_string();
 
         Ok(Self {
@@ -118,7 +121,7 @@ impl DynamoStorage {
         table_name: &str,
         uaid: &Uuid,
         timestamp: &str,
-    ) -> impl Future<Item = UpdateItemOutput, Error = Error> {
+    ) -> impl Future<Item = UpdateItemOutput, Error = ApcError> {
         let ddb = self.ddb.clone();
         let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
         let attr_values = hashmap! {
@@ -140,7 +143,7 @@ impl DynamoStorage {
             move || ddb.update_item(update_input.clone()),
             retryable_updateitem_error,
         )
-        .chain_err(|| "Error incrementing storage")
+        .map_err(|e| ApcErrorKind::DatabaseError(e.to_string()).into())
     }
 
     pub fn hello(
@@ -149,7 +152,7 @@ impl DynamoStorage {
         uaid: Option<&Uuid>,
         router_url: &str,
         defer_registration: bool,
-    ) -> impl Future<Item = HelloResponse, Error = Error> {
+    ) -> impl Future<Item = HelloResponse, Error = ApcError> {
         trace!(
             "### uaid {:?}, defer_registration: {:?}",
             &uaid,
@@ -270,10 +273,10 @@ impl DynamoStorage {
         Box::new(response)
     }
 
-    pub fn drop_uaid(&self, uaid: &Uuid) -> impl Future<Item = (), Error = Error> {
+    pub fn drop_uaid(&self, uaid: &Uuid) -> impl Future<Item = (), Error = ApcError> {
         commands::drop_user(self.ddb.clone(), uaid, &self.router_table_name)
             .and_then(|_| future::ok(()))
-            .chain_err(|| "Unable to drop user record")
+            .map_err(|_| ApcErrorKind::DatabaseError("Unable to drop user record".into()).into())
     }
 
     pub fn unregister(
@@ -281,7 +284,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         channel_id: &Uuid,
         message_month: &str,
-    ) -> impl Future<Item = bool, Error = Error> {
+    ) -> impl Future<Item = bool, Error = ApcError> {
         commands::unregister_channel_id(self.ddb.clone(), uaid, channel_id, message_month)
             .and_then(|_| future::ok(true))
             .or_else(|_| future::ok(false))
@@ -292,7 +295,7 @@ impl DynamoStorage {
         &self,
         uaid: &Uuid,
         message_month: &str,
-    ) -> impl Future<Item = (), Error = Error> {
+    ) -> impl Future<Item = (), Error = ApcError> {
         let uaid = *uaid;
         let ddb = self.ddb.clone();
         let ddb2 = self.ddb.clone();
@@ -312,7 +315,7 @@ impl DynamoStorage {
                 commands::update_user_message_month(ddb2, &uaid, &router_table_name, &cur_month2)
             })
             .and_then(|_| future::ok(()))
-            .chain_err(|| "Unable to migrate user")
+            .map_err(|_e| ApcErrorKind::DatabaseError("Unable to migrate user".into()).into())
     }
 
     /// Store a single message
@@ -321,7 +324,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         message_month: String,
         message: Notification,
-    ) -> impl Future<Item = (), Error = Error> {
+    ) -> impl Future<Item = (), Error = ApcError> {
         let topic = message.topic.is_some().to_string();
         let ddb = self.ddb.clone();
         let put_item = PutItemInput {
@@ -342,7 +345,7 @@ impl DynamoStorage {
             metric.send();
             future::ok(())
         })
-        .chain_err(|| "Error saving notification")
+        .map_err(|_| ApcErrorKind::DatabaseError("Error saving notification".into()).into())
     }
 
     /// Store a batch of messages when shutting down
@@ -351,7 +354,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         message_month: &str,
         messages: Vec<Notification>,
-    ) -> impl Future<Item = (), Error = Error> {
+    ) -> impl Future<Item = (), Error = ApcError> {
         let ddb = self.ddb.clone();
         let metrics = self.metrics.clone();
         let put_items: Vec<WriteRequest> = messages
@@ -385,7 +388,7 @@ impl DynamoStorage {
             err
         })
         // TODO: Use Sentry to capture/report this error
-        .chain_err(|| "Error saving notifications")
+        .map_err(|_e| ApcErrorKind::DatabaseError("Error saving notifications".into()).into())
     }
 
     /// Delete a given notification from the database
@@ -398,7 +401,7 @@ impl DynamoStorage {
         table_name: &str,
         uaid: &Uuid,
         notif: &Notification,
-    ) -> impl Future<Item = (), Error = Error> {
+    ) -> impl Future<Item = (), Error = ApcError> {
         let topic = notif.topic.is_some().to_string();
         let ddb = self.ddb.clone();
         let metrics = self.metrics.clone();
@@ -422,7 +425,7 @@ impl DynamoStorage {
             metric.send();
             future::ok(())
         })
-        .chain_err(|| "Error deleting notification")
+        .map_err(|_| ApcErrorKind::DatabaseError("Error deleting notification".into()).into())
     }
 
     /// Check to see if we have pending messages and return them if we do.
@@ -432,7 +435,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         include_topic: bool,
         timestamp: Option<u64>,
-    ) -> impl Future<Item = CheckStorageResponse, Error = Error> {
+    ) -> impl Future<Item = CheckStorageResponse, Error = ApcError> {
         let response: MyFuture<FetchMessageResponse> = if include_topic {
             Box::new(commands::fetch_messages(
                 self.ddb.clone(),
@@ -502,7 +505,10 @@ impl DynamoStorage {
         })
     }
 
-    pub fn get_user(&self, uaid: &Uuid) -> impl Future<Item = Option<DynamoDbUser>, Error = Error> {
+    pub fn get_user(
+        &self,
+        uaid: &Uuid,
+    ) -> impl Future<Item = Option<DynamoDbUser>, Error = ApcError> {
         let ddb = self.ddb.clone();
         let result = commands::get_uaid(ddb, uaid, &self.router_table_name).and_then(|result| {
             future::result(
@@ -510,7 +516,9 @@ impl DynamoStorage {
                     .item
                     .map(|item| {
                         let user = serde_dynamodb::from_hashmap(item);
-                        user.chain_err(|| "Error deserializing")
+                        user.map_err(|_| {
+                            ApcErrorKind::DatabaseError("Error deserializing".into()).into()
+                        })
                     })
                     .transpose(),
             )
@@ -523,11 +531,11 @@ impl DynamoStorage {
         &self,
         uaid: &Uuid,
         message_table: &str,
-    ) -> impl Future<Item = HashSet<Uuid>, Error = Error> {
+    ) -> impl Future<Item = HashSet<Uuid>, Error = ApcError> {
         commands::all_channels(self.ddb.clone(), uaid, message_table).and_then(|channels| {
             channels
                 .into_iter()
-                .map(|channel| channel.parse().map_err(Error::from))
+                .map(|channel| channel.parse().map_err(|e| ApcErrorKind::from(e).into()))
                 .collect::<Result<_>>()
         })
     }
@@ -540,7 +548,7 @@ impl DynamoStorage {
         uaid: &Uuid,
         node_id: String,
         connected_at: u64,
-    ) -> impl Future<Item = (), Error = Error> {
+    ) -> impl Future<Item = (), Error = ApcError> {
         let ddb = self.ddb.clone();
         let update_item = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
@@ -559,7 +567,7 @@ impl DynamoStorage {
             retryable_updateitem_error,
         )
         .and_then(|_| future::ok(()))
-        .chain_err(|| "Error removing node ID")
+        .map_err(|_| ApcErrorKind::DatabaseError("Error removing node ID".into()).into())
     }
 }
 

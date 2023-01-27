@@ -170,14 +170,14 @@ impl DynamoDbNotification {
                 RegexSet::new([r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
         }
         if !RE.is_match(key) {
-            return Err("Invalid chidmessageid".into());
+            return Err(ApcErrorKind::GeneralError("Invalid chidmessageid".into()).into());
         }
 
         let v: Vec<&str> = key.split(':').collect();
         match v[0] {
             "01" => {
                 if v.len() != 3 {
-                    return Err("Invalid topic key".into());
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
                 }
                 let (channel_id, topic) = (v[1], v[2]);
                 let channel_id = Uuid::parse_str(channel_id)?;
@@ -190,7 +190,7 @@ impl DynamoDbNotification {
             }
             "02" => {
                 if v.len() != 3 {
-                    return Err("Invalid topic key".into());
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
                 }
                 let (sortkey, channel_id) = (v[1], v[2]);
                 let channel_id = Uuid::parse_str(channel_id)?;
@@ -203,7 +203,7 @@ impl DynamoDbNotification {
             }
             _ => {
                 if v.len() != 2 {
-                    return Err("Invalid topic key".into());
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
                 }
                 let (channel_id, legacy_version) = (v[0], v[1]);
                 let channel_id = Uuid::parse_str(channel_id)?;
@@ -223,13 +223,17 @@ impl DynamoDbNotification {
         let version = key
             .legacy_version
             .or(self.updateid)
-            .ok_or("No valid updateid/version found")?;
+            .ok_or("No valid updateid/version found")
+            .map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?;
 
         Ok(Notification {
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),
-            timestamp: self.timestamp.ok_or("No timestamp found")?,
+            timestamp: self
+                .timestamp
+                .ok_or("No timestamp found")
+                .map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?,
             topic: key.topic,
             data: self.data,
             headers: self.headers.map(|m| m.into()),
