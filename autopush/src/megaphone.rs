@@ -7,10 +7,8 @@ use autopush_common::errors::{ApcErrorKind, Result};
 
 use crate::server::protocol::BroadcastValue;
 
-type BroadcastKey = u32;
 // A Broadcast entry Key in a BroadcastRegistry
-//#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
-//struct BroadcastKey(u32);
+type BroadcastKey = u32;
 
 // Broadcasts a client is subscribed to and the last change seen
 #[derive(Debug, Default)]
