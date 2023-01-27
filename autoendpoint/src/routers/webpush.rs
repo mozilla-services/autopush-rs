@@ -168,7 +168,7 @@ impl WebPushRouter {
         uaid: &Uuid,
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
-        let url = format!("{}/notif/{}", node_id, uaid);
+        let url = format!("{node_id}/notif/{uaid}");
 
         self.http.put(&url).send().await
     }

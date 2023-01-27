@@ -77,7 +77,7 @@ impl FromRequest for Notification {
                 if data.is_some() {
                     state
                         .metrics
-                        .incr(&format!("updates.notification.encoding.{}", encoding))
+                        .incr(&format!("updates.notification.encoding.{encoding}"))
                         .ok();
                 }
             }

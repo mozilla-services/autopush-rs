@@ -28,7 +28,7 @@ use tungstenite::{self, Message};
 
 use autopush_common::db::DynamoStorage;
 use autopush_common::errors::*;
-use autopush_common::errors::{Error, Result};
+use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::logging;
 use autopush_common::notification::Notification;
 use autopush_common::util::timeout;
@@ -81,7 +81,7 @@ struct ShutdownHandle(oneshot::Sender<()>, thread::JoinHandle<()>);
 pub struct AutopushServer {
     opts: Arc<ServerOptions>,
     shutdown_handles: Cell<Option<Vec<ShutdownHandle>>>,
-    _guard: Option<sentry::internals::ClientInitGuard>,
+    _guard: Option<sentry::ClientInitGuard>,
 }
 
 impl AutopushServer {
@@ -119,7 +119,7 @@ impl AutopushServer {
             for ShutdownHandle(tx, thread) in shutdown_handles {
                 let _ = tx.send(());
                 if let Err(err) = thread.join() {
-                    result = Err(From::from(ErrorKind::Thread(err)));
+                    result = Err(ApcErrorKind::Thread(err).into());
                 }
             }
         }
@@ -157,7 +157,7 @@ impl ServerOptions {
     pub fn from_settings(settings: Settings) -> Result<Self> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
-            return Err("Invalid AUTOPUSH_CRYPTO_KEY".into());
+            return Err(ApcErrorKind::GeneralError("Invalid AUTOPUSH_CRYPTO_KEY".into()).into());
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
         debug!("Fernet keys: {:?}", &crypto_key);
@@ -308,100 +308,101 @@ impl Server {
 
         let handle = core.handle();
         let srv2 = srv.clone();
-        let ws_srv = ws_listener
-            .incoming()
-            .map_err(Error::from)
-            .for_each(move |(socket, addr)| {
-                // Make sure we're not handling too many clients before we start the
-                // websocket handshake.
-                let max = srv.opts.max_connections.unwrap_or(u32::max_value());
-                if srv.open_connections.get() >= max {
-                    info!(
-                        "dropping {} as we already have too many open \
+        let ws_srv =
+            ws_listener
+                .incoming()
+                .map_err(ApcErrorKind::from)
+                .for_each(move |(socket, addr)| {
+                    // Make sure we're not handling too many clients before we start the
+                    // websocket handshake.
+                    let max = srv.opts.max_connections.unwrap_or(u32::max_value());
+                    if srv.open_connections.get() >= max {
+                        info!(
+                            "dropping {} as we already have too many open \
                          connections",
-                        addr
-                    );
-                    return Ok(());
-                }
-                srv.open_connections.set(srv.open_connections.get() + 1);
-
-                // TODO: TCP socket options here?
-
-                // Process TLS (if configured)
-                let socket = tls::accept(&srv, socket);
-
-                // Figure out if this is a websocket or a `/status` request,
-                let request = socket.and_then(Dispatch::new);
-
-                // Time out both the TLS accept (if any) along with the dispatch
-                // to figure out where we're going.
-                let request = timeout(request, srv.opts.open_handshake_timeout, &handle);
-                let srv2 = srv.clone();
-                let handle2 = handle.clone();
-
-                // Setup oneshot to extract the user-agent from the header callback
-                let (uatx, uarx) = oneshot::channel();
-                let callback = |req: &Request| {
-                    if let Some(value) = req.headers.find_first(UAHEADER) {
-                        let mut valstr = String::new();
-                        for c in value.iter() {
-                            let c = *c as char;
-                            valstr.push(c);
-                        }
-                        debug!("Found user-agent string"; "user-agent" => valstr.as_str());
-                        uatx.send(valstr).unwrap();
+                            addr
+                        );
+                        return Ok(());
                     }
-                    debug!("No agent string found");
-                    Ok(None)
-                };
+                    srv.open_connections.set(srv.open_connections.get() + 1);
 
-                let client = request.and_then(move |(socket, request)| -> MyFuture<_> {
-                    match request {
-                        RequestType::Status => write_status(socket),
-                        RequestType::LBHeartBeat => {
-                            write_json(socket, StatusCode::OK, serde_json::Value::from(""))
-                        }
-                        RequestType::Version => write_version_file(socket),
-                        RequestType::LogCheck => write_log_check(socket),
-                        RequestType::Websocket => {
-                            // Perform the websocket handshake on each
-                            // connection, but don't let it take too long.
-                            let ws = accept_hdr_async(socket, callback)
-                                .chain_err(|| "failed to accept client");
-                            let ws = timeout(ws, srv2.opts.open_handshake_timeout, &handle2);
+                    // TODO: TCP socket options here?
 
-                            // Once the handshake is done we'll start the main
-                            // communication with the client, managing pings
-                            // here and deferring to `Client` to start driving
-                            // the internal state machine.
-                            Box::new(
-                                ws.and_then(move |ws| {
-                                    trace!("🏓 starting ping manager");
-                                    PingManager::new(&srv2, ws, uarx)
-                                        .chain_err(|| "failed to make ping handler")
-                                })
-                                .flatten(),
-                            )
-                        }
-                    }
-                });
+                    // Process TLS (if configured)
+                    let socket = tls::accept(&srv, socket);
 
-                let srv = srv.clone();
-                handle.spawn(client.then(move |res| {
-                    srv.open_connections.set(srv.open_connections.get() - 1);
-                    if let Err(e) = res {
-                        let mut error = e.to_string();
-                        for err in e.iter().skip(1) {
-                            error.push_str("\n");
-                            error.push_str(&err.to_string());
+                    // Figure out if this is a websocket or a `/status` request,
+                    let request = socket.and_then(Dispatch::new);
+
+                    // Time out both the TLS accept (if any) along with the dispatch
+                    // to figure out where we're going.
+                    let request = timeout(request, srv.opts.open_handshake_timeout, &handle);
+                    let srv2 = srv.clone();
+                    let handle2 = handle.clone();
+
+                    // Setup oneshot to extract the user-agent from the header callback
+                    let (uatx, uarx) = oneshot::channel();
+                    let callback = |req: &Request| {
+                        if let Some(value) = req.headers.find_first(UAHEADER) {
+                            let mut valstr = String::new();
+                            for c in value.iter() {
+                                let c = *c as char;
+                                valstr.push(c);
+                            }
+                            debug!("Found user-agent string"; "user-agent" => valstr.as_str());
+                            uatx.send(valstr).unwrap();
                         }
-                        debug!("{}: {}", addr, error);
-                    }
+                        debug!("No agent string found");
+                        Ok(None)
+                    };
+
+                    let client = request.and_then(move |(socket, request)| -> MyFuture<_> {
+                        match request {
+                            RequestType::Status => write_status(socket),
+                            RequestType::LBHeartBeat => {
+                                write_json(socket, StatusCode::OK, serde_json::Value::from(""))
+                            }
+                            RequestType::Version => write_version_file(socket),
+                            RequestType::LogCheck => write_log_check(socket),
+                            RequestType::Websocket => {
+                                // Perform the websocket handshake on each
+                                // connection, but don't let it take too long.
+                                let ws = accept_hdr_async(socket, callback).map_err(|_e| {
+                                    ApcErrorKind::GeneralError("failed to accept client".into())
+                                });
+                                let ws = timeout(ws, srv2.opts.open_handshake_timeout, &handle2);
+
+                                // Once the handshake is done we'll start the main
+                                // communication with the client, managing pings
+                                // here and deferring to `Client` to start driving
+                                // the internal state machine.
+                                Box::new(
+                                    ws.and_then(move |ws| {
+                                        trace!("🏓 starting ping manager");
+                                        PingManager::new(&srv2, ws, uarx).map_err(|_e| {
+                                            ApcErrorKind::GeneralError(
+                                                "failed to make ping handler".into(),
+                                            )
+                                            .into()
+                                        })
+                                    })
+                                    .flatten(),
+                                )
+                            }
+                        }
+                    });
+
+                    let srv = srv.clone();
+                    handle.spawn(client.then(move |res| {
+                        srv.open_connections.set(srv.open_connections.get() - 1);
+                        if let Err(e) = res {
+                            debug!("{}: {}", addr, e.to_string());
+                        }
+                        Ok(())
+                    }));
+
                     Ok(())
-                }));
-
-                Ok(())
-            });
+                });
 
         if let Some(ref megaphone_url) = opts.megaphone_api_url {
             let megaphone_token = opts
@@ -520,9 +521,9 @@ impl MegaphoneUpdater {
 
 impl Future for MegaphoneUpdater {
     type Item = ();
-    type Error = Error;
+    type Error = ApcError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<(), ApcError> {
         loop {
             let new_state = match self.state {
                 MegaphoneState::Waiting => {
@@ -535,7 +536,12 @@ impl Future for MegaphoneUpdater {
                         .send()
                         .and_then(|response| response.error_for_status())
                         .and_then(|mut response| response.json())
-                        .map_err(|_| "Unable to query/decode the API query".into());
+                        .map_err(|_| {
+                            ApcErrorKind::GeneralError(
+                                "Unable to query/decode the API query".into(),
+                            )
+                            .into()
+                        });
                     MegaphoneState::Requesting(Box::new(fut))
                 }
                 MegaphoneState::Requesting(ref mut response) => {
@@ -552,9 +558,9 @@ impl Future for MegaphoneUpdater {
                         }
                         Ok(Async::NotReady) => return Ok(Async::NotReady),
                         Err(error) => {
-                            error!("📢Failed to get response, queue again {:?}", error);
+                            error!("📢Failed to get response, queue again {error:?}");
                             capture_message(
-                                &format!("Failed to get response, queue again {:?}", error),
+                                &format!("Failed to get response, queue again {error:?}"),
                                 sentry::Level::Error,
                             );
                         }
@@ -621,9 +627,9 @@ impl PingManager {
 
 impl Future for PingManager {
     type Item = ();
-    type Error = Error;
+    type Error = ApcError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<(), ApcError> {
         let mut socket = self.socket.borrow_mut();
         loop {
             trace!("🏓 PingManager Poll loop");
@@ -713,16 +719,19 @@ impl Future for PingManager {
                             client.shutdown();
                         }
                         // So did the shutdown not work? We must call shutdown but no client here?
-                        return Err("close handshake took too long".into());
+                        return Err(ApcErrorKind::GeneralError(
+                            "close handshake took too long".into(),
+                        )
+                        .into());
                     }
                 }
             }
         }
 
         // Be sure to always flush out any buffered messages/pings
-        socket
-            .poll_complete()
-            .chain_err(|| "failed routine `poll_complete` call")?;
+        socket.poll_complete().map_err(|_e| {
+            ApcErrorKind::GeneralError("failed routine `poll_complete` call".into())
+        })?;
         drop(socket);
 
         // At this point looks our state of ping management A-OK, so try to
@@ -765,10 +774,10 @@ impl<T> WebpushSocket<T> {
         }
     }
 
-    fn send_ws_ping(&mut self) -> Poll<(), Error>
+    fn send_ws_ping(&mut self) -> Poll<(), ApcError>
     where
         T: Sink<SinkItem = Message>,
-        Error: From<T::SinkError>,
+        ApcError: From<T::SinkError>,
     {
         trace!("🏓 checking ping");
         if self.ws_ping {
@@ -778,7 +787,7 @@ impl<T> WebpushSocket<T> {
                 let server_msg = ServerMessage::Broadcast {
                     broadcasts: Broadcast::vec_into_hashmap(broadcasts),
                 };
-                let s = server_msg.to_json().chain_err(|| "failed to serialize")?;
+                let s = server_msg.to_json()?;
                 Message::Text(s)
             } else {
                 trace!("🏓sending a ws ping");
@@ -804,12 +813,12 @@ impl<T> WebpushSocket<T> {
 impl<T> Stream for WebpushSocket<T>
 where
     T: Stream<Item = Message>,
-    Error: From<T::Error>,
+    ApcError: From<T::Error>,
 {
     type Item = ClientMessage;
-    type Error = Error;
+    type Error = ApcError;
 
-    fn poll(&mut self) -> Poll<Option<ClientMessage>, Error> {
+    fn poll(&mut self) -> Poll<Option<ClientMessage>, ApcError> {
         loop {
             let msg = match self.inner.poll()? {
                 Async::Ready(Some(msg)) => msg,
@@ -819,7 +828,7 @@ where
                     // elapsed (set above) then this is where we start
                     // triggering errors.
                     if self.ws_pong_timeout {
-                        return Err(ErrorKind::PongTimeout.into());
+                        return Err(ApcErrorKind::PongTimeout.into());
                     }
                     return Ok(Async::NotReady);
                 }
@@ -829,13 +838,13 @@ where
                     trace!("🚟 text message {}", s);
                     let msg = s
                         .parse()
-                        .chain_err(|| ErrorKind::InvalidClientMessage(s.to_owned()))?;
+                        .map_err(|_e| ApcErrorKind::InvalidClientMessage(s.to_owned()))?;
                     return Ok(Some(msg).into());
                 }
 
                 Message::Binary(_) => {
                     return Err(
-                        ErrorKind::InvalidClientMessage("binary content".to_string()).into(),
+                        ApcErrorKind::InvalidClientMessage("binary content".to_string()).into(),
                     );
                 }
 
@@ -860,28 +869,30 @@ where
 impl<T> Sink for WebpushSocket<T>
 where
     T: Sink<SinkItem = Message>,
-    Error: From<T::SinkError>,
+    ApcError: From<T::SinkError>,
 {
     type SinkItem = ServerMessage;
-    type SinkError = Error;
+    type SinkError = ApcError;
 
-    fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, Error> {
+    fn start_send(&mut self, msg: ServerMessage) -> StartSend<ServerMessage, ApcError> {
         if self.send_ws_ping()?.is_not_ready() {
             return Ok(AsyncSink::NotReady(msg));
         }
-        let s = msg.to_json().chain_err(|| "failed to serialize")?;
+        let s = msg
+            .to_json()
+            .map_err(|_e| ApcErrorKind::GeneralError("failed to serialize".into()))?;
         match self.inner.start_send(Message::Text(s))? {
             AsyncSink::Ready => Ok(AsyncSink::Ready),
             AsyncSink::NotReady(_) => Ok(AsyncSink::NotReady(msg)),
         }
     }
 
-    fn poll_complete(&mut self) -> Poll<(), Error> {
+    fn poll_complete(&mut self) -> Poll<(), ApcError> {
         try_ready!(self.send_ws_ping());
         Ok(self.inner.poll_complete()?)
     }
 
-    fn close(&mut self) -> Poll<(), Error> {
+    fn close(&mut self) -> Poll<(), ApcError> {
         try_ready!(self.poll_complete());
         Ok(self.inner.close()?)
     }
@@ -951,6 +962,8 @@ fn write_json(socket: WebpushIo, status: StatusCode, body: serde_json::Value) ->
     Box::new(
         tokio_io::io::write_all(socket, data.into_bytes())
             .map(|_| ())
-            .chain_err(|| "failed to write status response"),
+            .map_err(|_e| {
+                ApcErrorKind::GeneralError("failed to write status response".into()).into()
+            }),
     )
 }

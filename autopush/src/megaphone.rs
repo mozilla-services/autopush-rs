@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde_derive::{Deserialize, Serialize};
 
-use autopush_common::errors::Result;
+use autopush_common::errors::{ApcErrorKind, Result};
 
 use crate::server::protocol::BroadcastValue;
 
@@ -186,7 +186,7 @@ impl BroadcastChangeTracker {
         let key = self
             .broadcast_registry
             .lookup_key(&broadcast.broadcast_id)
-            .ok_or("Broadcast not found")?;
+            .ok_or_else(|| ApcErrorKind::BroadcastError("Broadcast not found".into()))?;
 
         if let Some(ver) = self.broadcast_versions.get_mut(&key) {
             if *ver == broadcast.version {
@@ -195,7 +195,7 @@ impl BroadcastChangeTracker {
             *ver = broadcast.version;
         } else {
             trace!("📢 Not found: {}", &b_id);
-            return Err("Broadcast not found".into());
+            return Err(ApcErrorKind::BroadcastError("Broadcast not found".into()).into());
         }
 
         trace!("📢 New version of {}", &b_id);

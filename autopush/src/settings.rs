@@ -145,7 +145,7 @@ impl Settings {
         if let Some(ref hostname) = self.hostname {
             if self.resolve_hostname {
                 resolve_ip(hostname)
-                    .unwrap_or_else(|_| panic!("Failed to resolve provided hostname: {}", hostname))
+                    .unwrap_or_else(|_| panic!("Failed to resolve provided hostname: {hostname}"))
             } else {
                 hostname.clone()
             }
@@ -214,9 +214,9 @@ mod tests {
     fn test_default_settings() {
         // Test that the Config works the way we expect it to.
         use std::env;
-        let port = format!("{}__PORT", ENV_PREFIX).to_uppercase();
-        let msg_limit = format!("{}__MSG_LIMIT", ENV_PREFIX).to_uppercase();
-        let fernet = format!("{}__CRYPTO_KEY", ENV_PREFIX).to_uppercase();
+        let port = format!("{ENV_PREFIX}__PORT").to_uppercase();
+        let msg_limit = format!("{ENV_PREFIX}__MSG_LIMIT").to_uppercase();
+        let fernet = format!("{ENV_PREFIX}__CRYPTO_KEY").to_uppercase();
 
         let v1 = env::var(&port);
         let v2 = env::var(&msg_limit);
