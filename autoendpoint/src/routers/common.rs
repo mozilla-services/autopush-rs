@@ -186,6 +186,7 @@ pub fn incr_success_metrics(
     metrics
         .time_with_tags("notif.to_router.lifespan", notification.timestamp.elapsed())
         .with_tag("platform", platform)
+        .with_tag("app_id", app_id)
         .with_tag(
             "internal",
             &notification.subscription.meta().is_some().to_string(),
@@ -203,7 +204,7 @@ pub fn incr_success_metrics(
             "internal",
             &notification.subscription.meta().is_some().to_string(),
         )
-        .send();
+       .send();
 }
 
 /// Common router test code

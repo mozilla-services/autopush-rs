@@ -35,10 +35,7 @@ impl Drop for Metrics {
             if let Some(timer) = self.timer.as_ref() {
                 let lapse = (Instant::now() - timer.start).as_millis() as u64;
                 trace!(
-                    "⌚ Ending timer at nanos: {:?} : {:?} [{:?}]",
-                    &timer.label,
-                    lapse,
-                    tags
+                    "⌚ Ending timer at nanos: {:?} : {lapse:?} [{tags:?}]", &timer.label
                 );
                 let mut tagged = client.time_with_tags(&timer.label, lapse);
                 // Include any "hard coded" tags.
@@ -156,7 +153,7 @@ impl Metrics {
             match tagged.try_send() {
                 Err(e) => {
                     // eat the metric, but log the error
-                    warn!("⚠️ Metric {} error: {:?} [{:?}]", label, e, mtags);
+                    warn!("⚠️ Metric {label} error: {e:?} [{mtags:?}]");
                 }
                 Ok(v) => trace!("☑️ {:?}", v.as_metric_str()),
             }

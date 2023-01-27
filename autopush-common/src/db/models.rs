@@ -109,7 +109,7 @@ impl Default for DynamoDbUser {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DynamoDbNotification {
     // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
@@ -149,6 +149,25 @@ pub struct DynamoDbNotification {
     updateid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     meta: Option<String>,
+}
+
+/// Ensure that the default for 'stored' is true.
+impl Default for DynamoDbNotification {
+    fn default() -> Self {
+        Self {
+            uaid: Uuid::default(),
+            chidmessageid: String::default(),
+            current_timestamp: None,
+            chids: None,
+            timestamp: None,
+            expiry: 0,
+            ttl: None,
+            data: None,
+            headers: None,
+            updateid: None,
+            meta: None,
+        }
+    }
 }
 
 impl DynamoDbNotification {

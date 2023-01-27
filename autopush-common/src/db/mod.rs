@@ -322,6 +322,7 @@ impl DynamoStorage {
         message_month: String,
         message: Notification,
     ) -> impl Future<Item = (), Error = Error> {
+        let topic = message.topic.is_some().to_string();
         let ddb = self.ddb.clone();
         let put_item = PutItemInput {
             item: serde_dynamodb::to_hashmap(&DynamoDbNotification::from_notif(uaid, message))
@@ -335,7 +336,10 @@ impl DynamoStorage {
             retryable_putitem_error,
         )
         .and_then(move |_| {
-            metrics.incr("notification.db.stored").ok();
+            let mut metric = metrics.incr_with_tags("notification.message.stored");
+            // TODO: include `internal` if meta is set.
+            metric = metric.with_tag("topic", &topic);
+            metric.send();
             future::ok(())
         })
         .chain_err(|| "Error saving notification")
@@ -395,7 +399,9 @@ impl DynamoStorage {
         uaid: &Uuid,
         notif: &Notification,
     ) -> impl Future<Item = (), Error = Error> {
+        let topic = notif.topic.is_some().to_string();
         let ddb = self.ddb.clone();
+        let metrics = self.metrics.clone();
         let delete_input = DeleteItemInput {
             table_name: table_name.to_string(),
             key: ddb_item! {
@@ -409,10 +415,17 @@ impl DynamoStorage {
             move || ddb.delete_item(delete_input.clone()),
             retryable_delete_error,
         )
-        .and_then(|_| future::ok(()))
+        .and_then(move |_| {
+            let mut metric = metrics.incr_with_tags("notification.message.deleted");
+            // TODO: include `internal` if meta is set.
+            metric = metric.with_tag("topic", &topic);
+            metric.send();
+            future::ok(())
+        })
         .chain_err(|| "Error deleting notification")
     }
 
+    /// Check to see if we have pending messages and return them if we do.
     pub fn check_storage(
         &self,
         table_name: &str,
@@ -550,6 +563,8 @@ impl DynamoStorage {
     }
 }
 
+/// Get the list of current, valid message tables (Note: This is legacy for DynamoDB, but may still
+/// be used for Stand Alone systems )
 pub fn list_message_tables(ddb: &DynamoDbClient, prefix: &str) -> Result<Vec<String>> {
     let mut names: Vec<String> = Vec::new();
     let mut start_key = None;

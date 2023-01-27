@@ -5,8 +5,7 @@ use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 use async_trait::async_trait;
 use autopush_common::db::DynamoDbUser;
-use cadence::Timed;
-use cadence::{Counted, CountedExt, StatsdClient};
+use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::hash_map::RandomState;
@@ -209,9 +208,9 @@ impl Router for WebPushRouter {
                     self.metrics
                         .time_with_tags(
                             "notif.route.lifespan",
-                            notification.timestamp.elapsed().as_millis() as u64,
+                            notification.timestamp.elapsed(),
                         )
-                        .with_tag("route", "webpush")
+                        .with_tag("platform", "websocket")
                         .with_tag(
                             "internal",
                             &notification.subscription.meta().is_some().to_string(),
@@ -219,13 +218,11 @@ impl Router for WebPushRouter {
                         .send();
                     self.metrics
                         .incr_with_tags("notif.route.success")
-                        .with_tag("route", "webpush")
+                        .with_tag("platform", "webpush")
                         .with_tag(
                             "internal",
                             &notification.subscription.meta().is_some().to_string(),
-                        )
-                        .send();
-
+                        ).send();
                     Ok(self.make_delivered_response(notification))
                 } else {
                     trace!("Node has not delivered the message, returning stored response");
