@@ -83,23 +83,18 @@ impl Router for WebPushRouter {
                             .ok();
                     }
                     debug!("Error while sending webpush notification: {}", error);
-                    self.remove_node_id(user, node_id.clone())
-                        .await
-                        .map_err(|e| {
-                            match &e.kind {
-                                ApiErrorKind::Database(crate::db::error::DbError::UpdateItem(
-                                    _,
-                                )) => {
-                                    self.metrics
-                                        .incr_with_tags("error.node.update")
-                                        .with_tag("node_id", node_id)
-                                        .try_send()
-                                        .ok();
-                                }
-                                _ => {}
-                            };
-                            e
-                        })?;
+                    if let Some(err) = self.remove_node_id(user, node_id.clone()).await.err() {
+                        match &err.kind {
+                            ApiErrorKind::Database(crate::db::error::DbError::UpdateItem(_)) => {
+                                self.metrics
+                                    .incr_with_tags("error.node.update")
+                                    .with_tag("node_id", node_id)
+                                    .try_send()
+                                    .ok();
+                            }
+                            _ => {}
+                        };
+                    };
                 }
             }
         }
