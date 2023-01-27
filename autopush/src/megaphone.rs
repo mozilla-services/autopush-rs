@@ -53,7 +53,7 @@ impl BroadcastRegistry {
     }
 
     fn lookup_key(&self, broadcast_id: &str) -> Option<BroadcastKey> {
-        self.lookup.get(broadcast_id).cloned()
+        self.lookup.get(broadcast_id).copied()
     }
 }
 

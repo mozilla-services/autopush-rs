@@ -37,7 +37,6 @@ impl Router for WebPushRouter {
         Ok(HashMap::new())
     }
 
-    #[allow(clippy::single_match)] // We use a single match in the .map_err. `if let` is not allowed there.
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
         // The notification contains the original subscription information
         let user = &notification.subscription.user;
@@ -67,32 +66,27 @@ impl Router for WebPushRouter {
                     );
                 }
                 Err(error) => {
-                    // We should stop sending notifications to this node for this user
-                    if error.is_timeout() {
-                        self.metrics
-                            .incr_with_tags("error.node.timeout")
-                            .with_tag("node_id", node_id)
-                            .try_send()
-                            .ok();
-                    }
-                    if error.is_connect() {
-                        self.metrics
-                            .incr_with_tags("error.node.connection")
-                            .with_tag("node_id", node_id)
-                            .try_send()
-                            .ok();
-                    }
+                    /*
+                    UpdateItem errors frequently occur during a redeploy due to a variety of reasons
+                    (e.g. since a redeploy forces UAs to disconnect and changes the router host name,
+                    the associated node_id will be different for legitimate reasons.) We should eat
+                    these errors because they're not actionable and part of the normal run process.
+                    */
                     debug!("Error while sending webpush notification: {}", error);
-                    if let Some(err) = self.remove_node_id(user, node_id.clone()).await.err() {
-                        match &err.kind {
-                            ApiErrorKind::Database(crate::db::error::DbError::UpdateItem(_)) => {
-                                self.metrics
-                                    .incr_with_tags("error.node.update")
-                                    .with_tag("node_id", node_id)
-                                    .try_send()
-                                    .ok();
-                            }
-                            _ => {}
+                    if let Err(err) = self.remove_node_id(user, node_id.clone()).await {
+                        if let ApiErrorKind::Database(crate::db::error::DbError::UpdateItem(
+                            rusoto_core::RusotoError::Service(
+                                rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
+                            ),
+                        )) = &err.kind
+                        {
+                            // Most likely, the node_id recorded in the db does not match the
+                            // node_id contained in the notification
+                            self.metrics
+                                .incr_with_tags("error.node.update")
+                                .with_tag("node_id", node_id)
+                                .try_send()
+                                .ok();
                         };
                     };
                 }
