@@ -138,7 +138,7 @@ impl FcmClient {
         let response = self
             .http_client
             .post(self.gcm_endpoint.clone())
-            .header("Authorization", format!("key={}", server_access_token))
+            .header("Authorization", format!("key={server_access_token}"))
             .header("Content-Type", "application/json")
             .json(&message)
             .timeout(self.timeout)
@@ -172,7 +172,7 @@ impl FcmClient {
                         },
                         _ => RouterError::Upstream {
                             status: StatusCode::BAD_GATEWAY.to_string(),
-                            message: format!("Unexpected error: {}", error),
+                            message: format!("Unexpected error: {error}"),
                         },
                     },
                     (status, None) => RouterError::Upstream {
@@ -203,7 +203,7 @@ impl FcmClient {
             "message": {
                 "token": routing_token,
                 "android": {
-                    "ttl": format!("{}s", ttl),
+                    "ttl": format!("{ttl}s"),
                     "data": data
                 }
             }
@@ -354,10 +354,7 @@ pub mod tests {
 
     /// Start building a mock for the FCM endpoint
     pub fn mock_fcm_endpoint_builder(id: &str) -> mockito::Mock {
-        mockito::mock(
-            "POST",
-            format!("/v1/projects/{}/messages:send", id).as_str(),
-        )
+        mockito::mock("POST", format!("/v1/projects/{id}/messages:send").as_str())
     }
 
     pub fn mock_gcm_endpoint_builder() -> mockito::Mock {
@@ -390,7 +387,7 @@ pub mod tests {
         .await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
-            .match_header("Authorization", format!("Bearer {}", ACCESS_TOKEN).as_str())
+            .match_header("Authorization", format!("Bearer {ACCESS_TOKEN}").as_str())
             .match_header("Content-Type", "application/json")
             .match_body(r#"{"message":{"android":{"data":{"is_test":"true"},"ttl":"42s"},"token":"test-token"}}"#)
             .create();
@@ -399,7 +396,7 @@ pub mod tests {
         data.insert("is_test", "true".to_string());
 
         let result = client.send(data, "test-token".to_string(), 42).await;
-        assert!(result.is_ok(), "result = {:?}", result);
+        assert!(result.is_ok(), "result = {result:?}");
         fcm_mock.assert();
     }
 
@@ -420,7 +417,7 @@ pub mod tests {
             &registration_id
         );
         let gcm_mock = mock_gcm_endpoint_builder()
-            .match_header("Authorization", format!("key={}", registration_id).as_str())
+            .match_header("Authorization", format!("key={registration_id}").as_str())
             .match_header("Content-Type", "application/json")
             .with_body(r#"{"multicast_id":216,"success":1,"failure":0,"canonical_ids":0,"results":[{"message_id":"1:02"}]}"#,)
             .match_body(body.as_str())
@@ -428,7 +425,7 @@ pub mod tests {
         let mut data = HashMap::new();
         data.insert("is_test", "true".to_string());
         let result = client.send_gcm(data, registration_id.to_owned(), 42).await;
-        assert!(result.is_ok(), "result={:?}", result);
+        assert!(result.is_ok(), "result={result:?}");
         gcm_mock.assert();
     }
 
@@ -452,8 +449,7 @@ pub mod tests {
         assert!(result.is_err());
         assert!(
             matches!(result.as_ref().unwrap_err(), RouterError::Authentication),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -472,7 +468,7 @@ pub mod tests {
         // "InvalidRegistration" => registration corrupted, remove.
         let _gcm_mock = mock_gcm_endpoint_builder()
             .match_body(r#"{"data":{"is_test":"true"},"delay_while_idle":false,"registration_ids":["test-token"],"time_to_live":42}"#)
-            .match_header("Authorization", format!("key={}", token).as_str())
+            .match_header("Authorization", format!("key={token}").as_str())
             .match_header("Content-Type", "application/json")
             .with_status(200)
             .with_body(r#"{"multicast_id":216,"success":0,"failure":1,"canonical_ids":0,"results":[{"error":"NotRegistered"}]}"#,
@@ -489,8 +485,7 @@ pub mod tests {
         assert!(result.is_err());
         assert!(
             matches!(result.as_ref().unwrap_err(), RouterError::NotFound),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -514,8 +509,7 @@ pub mod tests {
         assert!(result.is_err());
         assert!(
             matches!(result.as_ref().unwrap_err(), RouterError::NotFound),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -543,8 +537,7 @@ pub mod tests {
                 RouterError::Upstream { status, message }
                     if status == "TEST_ERROR" && message == "test-message"
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -572,8 +565,7 @@ pub mod tests {
                 RouterError::Upstream { status, message }
                     if status == "400 Bad Request" && message == "Unknown reason"
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 }

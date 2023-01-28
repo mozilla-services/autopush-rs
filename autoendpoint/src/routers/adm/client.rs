@@ -133,8 +133,7 @@ impl AdmClient {
         let url = self
             .base_url
             .join(&format!(
-                "messaging/registrations/{}/messages",
-                registration_id
+                "messaging/registrations/{registration_id}/messages"
             ))
             .map_err(AdmError::ParseUrl)?;
 
@@ -223,7 +222,7 @@ pub mod tests {
     pub fn mock_adm_endpoint_builder() -> mockito::Mock {
         mockito::mock(
             "POST",
-            format!("/messaging/registrations/{}/messages", REGISTRATION_ID).as_str(),
+            format!("/messaging/registrations/{REGISTRATION_ID}/messages").as_str(),
         )
     }
 
@@ -249,7 +248,7 @@ pub mod tests {
         let client = make_client();
         let _token_mock = mock_token_endpoint();
         let adm_mock = mock_adm_endpoint_builder()
-            .match_header("Authorization", format!("Bearer {}", ACCESS_TOKEN).as_str())
+            .match_header("Authorization", format!("Bearer {ACCESS_TOKEN}").as_str())
             .match_header("Content-Type", "application/json")
             .match_header("Accept", "application/json")
             .match_header(
@@ -268,7 +267,7 @@ pub mod tests {
         data.insert("is_test", "true".to_string());
 
         let result = client.send(data, REGISTRATION_ID.to_string(), 42).await;
-        assert!(result.is_ok(), "result = {:?}", result);
+        assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(result.unwrap(), "test-registration-id2");
         adm_mock.assert();
     }
@@ -289,8 +288,7 @@ pub mod tests {
         assert!(result.is_err());
         assert!(
             matches!(result.as_ref().unwrap_err(), RouterError::Authentication),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -310,8 +308,7 @@ pub mod tests {
         assert!(result.is_err());
         assert!(
             matches!(result.as_ref().unwrap_err(), RouterError::NotFound),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -335,8 +332,7 @@ pub mod tests {
                 RouterError::Upstream { status, message }
                     if status == "400 Bad Request" && message == "test-message"
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 
@@ -360,8 +356,7 @@ pub mod tests {
                 RouterError::Upstream { status, message }
                     if status == "400 Bad Request" && message == "Unknown reason"
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 }

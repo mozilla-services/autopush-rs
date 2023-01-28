@@ -206,10 +206,7 @@ impl Router for WebPushRouter {
                 if response.status() == 200 {
                     trace!("Node has delivered the message");
                     self.metrics
-                        .time_with_tags(
-                            "notif.route.lifespan",
-                            notification.timestamp.elapsed(),
-                        )
+                        .time_with_tags("notif.route.lifespan", notification.timestamp.elapsed())
                         .with_tag("platform", "websocket")
                         .with_tag(
                             "internal",
@@ -222,7 +219,8 @@ impl Router for WebPushRouter {
                         .with_tag(
                             "internal",
                             &notification.subscription.meta().is_some().to_string(),
-                        ).send();
+                        )
+                        .send();
                     Ok(self.make_delivered_response(notification))
                 } else {
                     trace!("Node has not delivered the message, returning stored response");
@@ -282,7 +280,7 @@ impl WebPushRouter {
         uaid: &Uuid,
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
-        let url = format!("{}/notif/{}", node_id, uaid);
+        let url = format!("{node_id}/notif/{uaid}");
 
         self.http.put(&url).send().await
     }

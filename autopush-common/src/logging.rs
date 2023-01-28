@@ -12,6 +12,8 @@ pub fn init_logging(json: bool) -> Result<()> {
             .map(str::to_owned)
             .or_else(|| {
                 Some(
+                    // If we can't get the hostname, we can't log.
+                    // Fail fast so that SRE can see the error.
                     get_hostname()
                         .expect("Could not get logging hostname")
                         .to_str()

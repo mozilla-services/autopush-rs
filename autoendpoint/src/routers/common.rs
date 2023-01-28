@@ -204,7 +204,7 @@ pub fn incr_success_metrics(
             "internal",
             &notification.subscription.meta().is_some().to_string(),
         )
-       .send();
+        .send();
 }
 
 /// Common router test code

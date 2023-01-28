@@ -74,7 +74,7 @@ pub enum ApiErrorKind {
     RegistrationSecretHash(#[source] openssl::error::ErrorStack),
 
     #[error("Error while creating endpoint URL: {0}")]
-    EndpointUrl(#[source] autopush_common::errors::Error),
+    EndpointUrl(#[source] autopush_common::errors::ApcError),
 
     #[error("Database error: {0}")]
     Database(#[from] DbError),
@@ -260,7 +260,7 @@ impl Display for ApiError {
         // Go down the chain of errors
         let mut error: &dyn Error = &self.kind;
         while let Some(source) = error.source() {
-            write!(f, "\n\nCaused by: {}", source)?;
+            write!(f, "\n\nCaused by: {source}")?;
             error = source;
         }
 

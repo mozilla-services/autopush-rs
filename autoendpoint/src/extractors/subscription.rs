@@ -289,7 +289,7 @@ fn validate_vapid_jwt(
     };
     let claims = token_data.claims;
 
-    if &claims.exp > &(sec_since_epoch() + ONE_DAY_IN_SECONDS) {
+    if claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
     }

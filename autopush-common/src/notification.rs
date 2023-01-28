@@ -41,7 +41,7 @@ impl Notification {
     pub fn sort_key(&self) -> String {
         let chid = self.channel_id.as_hyphenated();
         if let Some(ref topic) = self.topic {
-            format!("01:{}:{}", chid, topic)
+            format!("01:{chid}:{topic}")
         } else if let Some(sortkey_timestamp) = self.sortkey_timestamp {
             format!(
                 "02:{}:{}",

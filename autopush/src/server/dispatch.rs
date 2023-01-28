@@ -26,7 +26,7 @@ use futures::{try_ready, Future, Poll};
 use tokio_core::net::TcpStream;
 use tokio_io::AsyncRead;
 
-use autopush_common::errors::*;
+use autopush_common::errors::{ApcError, ApcErrorKind};
 
 use crate::server::tls::MaybeTlsStream;
 use crate::server::webpush_io::WebpushIo;
@@ -55,15 +55,15 @@ impl Dispatch {
 
 impl Future for Dispatch {
     type Item = (WebpushIo, RequestType);
-    type Error = Error;
+    type Error = ApcError;
 
-    fn poll(&mut self) -> Poll<(WebpushIo, RequestType), Error> {
+    fn poll(&mut self) -> Poll<(WebpushIo, RequestType), ApcError> {
         loop {
             if self.data.len() == self.data.capacity() {
                 self.data.reserve(16); // get some extra space
             }
             if try_ready!(self.socket.as_mut().unwrap().read_buf(&mut self.data)) == 0 {
-                return Err("early eof".into());
+                return Err(ApcErrorKind::GeneralError("early eof".into()).into());
             }
             let ty = {
                 let mut headers = [httparse::EMPTY_HEADER; 32];
@@ -88,7 +88,9 @@ impl Future for Dispatch {
                         Some(path) if path == ("/__error__") => RequestType::LogCheck,
                         _ => {
                             debug!("unknown http request {:?}", req);
-                            return Err("unknown http request".into());
+                            return Err(
+                                ApcErrorKind::GeneralError("unknown http request".into()).into()
+                            );
                         }
                     }
                 }
