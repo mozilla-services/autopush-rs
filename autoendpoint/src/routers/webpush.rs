@@ -1,5 +1,5 @@
 use crate::db::client::DbClient;
-use crate::error::{ApiError, ApiErrorKind, ApiResult};
+use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
@@ -66,29 +66,8 @@ impl Router for WebPushRouter {
                     );
                 }
                 Err(error) => {
-                    /*
-                    UpdateItem errors frequently occur during a redeploy due to a variety of reasons
-                    (e.g. since a redeploy forces UAs to disconnect and changes the router host name,
-                    the associated node_id will be different for legitimate reasons.) We should eat
-                    these errors because they're not actionable and part of the normal run process.
-                    */
                     debug!("Error while sending webpush notification: {}", error);
-                    if let Err(err) = self.remove_node_id(user, node_id.clone()).await {
-                        if let ApiErrorKind::Database(crate::db::error::DbError::UpdateItem(
-                            rusoto_core::RusotoError::Service(
-                                rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
-                            ),
-                        )) = &err.kind
-                        {
-                            // Most likely, the node_id recorded in the db does not match the
-                            // node_id contained in the notification
-                            self.metrics
-                                .incr_with_tags("error.node.update")
-                                .with_tag("node_id", node_id)
-                                .try_send()
-                                .ok();
-                        };
-                    };
+                    self.remove_node_id(user, node_id).await?
                 }
             }
         }
@@ -163,22 +142,7 @@ impl Router for WebPushRouter {
             Err(error) => {
                 // Can't communicate with the node, so we should stop using it
                 debug!("Error while triggering notification check: {}", error);
-                if let Err(err) = self.remove_node_id(&user, node_id.clone()).await {
-                    if let ApiErrorKind::Database(crate::db::error::DbError::UpdateItem(
-                        rusoto_core::RusotoError::Service(
-                            rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
-                        ),
-                    )) = &err.kind
-                    {
-                        // Most likely, the node_id recorded in the db does not match the
-                        // node_id contained in the notification
-                        self.metrics
-                            .incr_with_tags("error.node.update")
-                            .with_tag("node_id", node_id)
-                            .try_send()
-                            .ok();
-                    };
-                };
+                self.remove_node_id(&user, node_id).await?;
                 Ok(self.make_stored_response(notification))
             }
         }
@@ -222,13 +186,42 @@ impl WebPushRouter {
 
     /// Remove the node ID from a user. This is done if the user is no longer
     /// connected to the node.
-    async fn remove_node_id(&self, user: &DynamoDbUser, node_id: String) -> ApiResult<()> {
+    /// Note: We don't report `UpdateErrors` due to Conditional checks because
+    /// they're non-actionable and they also are normal.
+    async fn remove_node_id(&self, user: &DynamoDbUser, node_id: &str) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
-
-        self.ddb
-            .remove_node_id(user.uaid, node_id, user.connected_at)
+        if let Err(err) = self
+            .ddb
+            .remove_node_id(user.uaid, node_id.to_owned(), user.connected_at)
             .await
-            .map_err(ApiError::from)
+        {
+            /*
+            UpdateItem errors frequently occur during a redeploy due to a variety of reasons
+            (e.g. since a redeploy forces UAs to disconnect and changes the router host name,
+            the associated node_id will be different for legitimate reasons.) We should eat
+            these errors because they're not actionable and part of the normal run process.
+            */
+            if let crate::db::error::DbError::UpdateItem(rusoto_core::RusotoError::Service(
+                rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
+            )) = &err
+            {
+                /*
+                Most likely, the node_id recorded in the db does not match the
+                node_id contained in the notification. Track these as a metric
+                for now.
+                */
+                self.metrics
+                    .incr_with_tags("error.node.update")
+                    .with_tag("node_id", node_id)
+                    .try_send()
+                    .ok();
+            } else {
+                // Some other error happened. Report it.
+                return Err(ApiErrorKind::Database(err).into());
+            };
+        };
+
+        Ok(())
     }
 
     /// Update metrics and create a response for when a notification has been directly forwarded to
