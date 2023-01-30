@@ -163,7 +163,22 @@ impl Router for WebPushRouter {
             Err(error) => {
                 // Can't communicate with the node, so we should stop using it
                 debug!("Error while triggering notification check: {}", error);
-                self.remove_node_id(&user, node_id.clone()).await?;
+                if let Err(err) = self.remove_node_id(&user, node_id.clone()).await {
+                    if let ApiErrorKind::Database(crate::db::error::DbError::UpdateItem(
+                        rusoto_core::RusotoError::Service(
+                            rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
+                        ),
+                    )) = &err.kind
+                    {
+                        // Most likely, the node_id recorded in the db does not match the
+                        // node_id contained in the notification
+                        self.metrics
+                            .incr_with_tags("error.node.update")
+                            .with_tag("node_id", node_id)
+                            .try_send()
+                            .ok();
+                    };
+                };
                 Ok(self.make_stored_response(notification))
             }
         }
