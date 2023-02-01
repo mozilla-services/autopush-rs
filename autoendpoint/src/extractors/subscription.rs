@@ -6,12 +6,12 @@ use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVe
 use crate::metrics::Metrics;
 use crate::server::ServerState;
 use crate::tags::Tags;
-use actix_web::dev::{Payload};
 use actix_http::BoxedPayloadStream;
+use actix_web::dev::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::UserRecord;
-use autopush_common::util::{b64_decode_url, b64_decode_std, sec_since_epoch};
+use autopush_common::util::{b64_decode_std, b64_decode_url, sec_since_epoch};
 use cadence::{CountedExt, StatsdClient};
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
@@ -203,7 +203,8 @@ fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
         b64_decode_std(public_key.trim_end_matches('='))
     } else {
         b64_decode_url(public_key.trim_end_matches('='))
-    }.map_err(|e| {
+    }
+    .map_err(|e| {
         error!("decode_public_key: {:?}", e);
         VapidError::InvalidKey(e.to_string()).into()
     })
@@ -338,7 +339,8 @@ mod tests {
         let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb")
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+        )
         .unwrap();
         // Specify a potentially invalid padding.
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds==".to_owned();
@@ -369,7 +371,8 @@ mod tests {
         let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb")
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+        )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
         let domain = "https://push.services.mozilla.org";
@@ -413,7 +416,8 @@ mod tests {
         let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb")
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+        )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
         let domain = "https://push.services.mozilla.org";
@@ -458,7 +462,8 @@ mod tests {
         let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb")
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+        )
         .unwrap();
         // pretty much matches the kind of key we get from some partners.
         let public_key_standard = "BM3bVjW/wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf+1odb8hds=".to_owned();
@@ -534,7 +539,8 @@ mod tests {
         let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb")
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+        )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
         let domain = "https://push.services.mozilla.org";

@@ -1,7 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::ServerState;
-use actix_web::dev::{Payload};
 use actix_http::BoxedPayloadStream;
+use actix_web::dev::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use fernet::MultiFernet;

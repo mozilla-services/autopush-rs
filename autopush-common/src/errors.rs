@@ -1,8 +1,8 @@
 //! Error handling for Rust
 //!
 
-use std::any::Any;
 use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::backtrace
+use std::any::Any;
 use std::fmt::{self, Display};
 use std::io;
 use std::num;
@@ -10,7 +10,6 @@ use std::num;
 use actix_web::{
     dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponseBuilder,
 };
-
 
 use thiserror::Error;
 
@@ -61,7 +60,7 @@ where
     fn from(item: T) -> Self {
         ApcError {
             kind: ApcErrorKind::from(item),
-            backtrace: Box::new(Backtrace::new()),  // or std::backtrace::Backtrace::capture()
+            backtrace: Box::new(Backtrace::new()), // or std::backtrace::Backtrace::capture()
         }
     }
 }

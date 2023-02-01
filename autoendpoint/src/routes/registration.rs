@@ -45,8 +45,16 @@ pub async fn register_uaid_route(
     trace!("Creating user with UAID {}", user.uaid);
     trace!("user = {:?}", user);
     trace!("channel_id = {}", channel_id);
-    state.dbclient.add_user(&user).await.map_err(|e| {ApcErrorKind::DbError(e.into())})?;
-    state.dbclient.add_channel(user.uaid, channel_id).await.map_err(|e| {ApcErrorKind::DbError(e.into())})?;
+    state
+        .dbclient
+        .add_user(&user)
+        .await
+        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
+    state
+        .dbclient
+        .add_channel(user.uaid, channel_id)
+        .await
+        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for user");
@@ -84,7 +92,11 @@ pub async fn unregister_user_route(
     state: Data<ServerState>,
 ) -> Result<HttpResponse> {
     debug!("Unregistering UAID {}", path_args.uaid);
-    state.dbclient.remove_user(path_args.uaid).await.map_err(|e| {ApcErrorKind::DbError(e.into())})?;
+    state
+        .dbclient
+        .remove_user(path_args.uaid)
+        .await
+        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -126,13 +138,17 @@ pub async fn new_channel_route(
     path_args: RegistrationPathArgsWithUaid,
     channel_data: Option<Json<NewChannelData>>,
     state: Data<ServerState>,
-) ->Result<HttpResponse> {
+) -> Result<HttpResponse> {
     // Add the channel
     debug!("Adding a channel to UAID {}", path_args.uaid);
     let channel_data = channel_data.map(Json::into_inner).unwrap_or_default();
     let channel_id = channel_data.channel_id.unwrap_or_else(Uuid::new_v4);
     trace!("channel_id = {}", channel_id);
-    state.dbclient.add_channel(path_args.uaid, channel_id).await.map_err(|e| ApcErrorKind::DbError(e.into()))?;
+    state
+        .dbclient
+        .add_channel(path_args.uaid, channel_id)
+        .await
+        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for the new channel");
@@ -186,7 +202,11 @@ pub async fn unregister_channel_route(
     );
 
     incr_metric("ua.command.unregister", &state.metrics, &request);
-    let channel_did_exist = state.dbclient.remove_channel(path_args.uaid, channel_id).await.map_err(|e| {ApcErrorKind::DbError(e.into())})?;
+    let channel_did_exist = state
+        .dbclient
+        .remove_channel(path_args.uaid, channel_id)
+        .await
+        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
 
     if channel_did_exist {
         Ok(HttpResponse::Ok().finish())

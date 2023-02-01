@@ -19,10 +19,7 @@ use crate::routes::registration::{
 use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
 use actix_cors::Cors;
-use actix_web::{
-    dev, http::StatusCode, middleware::ErrorHandlers, web, App,
-    HttpServer,
-};
+use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 

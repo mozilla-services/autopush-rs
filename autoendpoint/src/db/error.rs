@@ -31,7 +31,6 @@ pub enum DbError {
     TableStatusUnknown,
 }
 
-
 impl From<DbError> for autopush_common::db::error::DbError {
     fn from(err: DbError) -> Self {
         match err {

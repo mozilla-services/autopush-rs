@@ -1,7 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::routers::RouterType;
-use actix_web::dev::{Payload};
 use actix_http::BoxedPayloadStream;
+use actix_web::dev::Payload;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 

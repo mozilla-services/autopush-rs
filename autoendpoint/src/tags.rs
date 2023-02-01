@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use actix_web::{
     dev::{Payload, RequestHead},
-    Error, FromRequest, HttpRequest, HttpMessage,
+    Error, FromRequest, HttpMessage, HttpRequest,
 };
 use futures::future;
 use futures::future::Ready;

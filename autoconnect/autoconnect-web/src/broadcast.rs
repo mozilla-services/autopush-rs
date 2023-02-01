@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use serde_derive::{Deserialize, Serialize};
 
-use autopush_common::errors::{Result, ApcErrorKind};
+use autopush_common::errors::{ApcErrorKind, Result};
 
 /// A Broadcast entry Key in a BroadcastRegistry
 /// This is the way that both the client and server identify a given Broadcast.
@@ -172,16 +172,21 @@ impl BroadcastChangeTracker {
     /// as provided as the fetch URL.
     ///
     /// This method uses a synchronous HTTP call.
-    pub async fn with_api_broadcasts(url: &str, token: &str) -> reqwest::Result<BroadcastChangeTracker> {
+    pub async fn with_api_broadcasts(
+        url: &str,
+        token: &str,
+    ) -> reqwest::Result<BroadcastChangeTracker> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()?;
         let MegaphoneAPIResponse { broadcasts } = client
             .get(url)
             .header("Authorization", token.to_string())
-            .send().await?
+            .send()
+            .await?
             .error_for_status()?
-            .json().await?;
+            .json()
+            .await?;
         let broadcasts = Broadcast::from_hashmap(broadcasts);
         Ok(BroadcastChangeTracker::new(broadcasts))
     }

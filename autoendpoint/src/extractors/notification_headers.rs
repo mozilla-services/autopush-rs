@@ -218,8 +218,8 @@ mod tests {
     use super::NotificationHeaders;
     use super::MAX_TTL;
     use crate::error::{ApiErrorKind, ApiResult};
-    use actix_web::test::{TestRequest};
     use actix_http::header::Header;
+    use actix_web::test::TestRequest;
 
     /// Assert that a result is a validation error and check its serialization
     /// against the JSON value.
@@ -250,7 +250,9 @@ mod tests {
     /// A valid TTL results in no errors or adjustment
     #[test]
     fn valid_ttl() {
-        let req = TestRequest::post().insert_header(("TTL", "10")).to_http_request();
+        let req = TestRequest::post()
+            .insert_header(("TTL", "10"))
+            .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
@@ -260,7 +262,9 @@ mod tests {
     /// Negative TTL values are not allowed
     #[test]
     fn negative_ttl() {
-        let req = TestRequest::post().insert_header(("TTL", "-1")).to_http_request();
+        let req = TestRequest::post()
+            .insert_header(("TTL", "-1"))
+            .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
         assert_validation_error(
@@ -333,7 +337,9 @@ mod tests {
     /// If there is a payload, there must be a content encoding header
     #[test]
     fn payload_without_content_encoding() {
-        let req = TestRequest::post().insert_header(("TTL", "10")).to_http_request();
+        let req = TestRequest::post()
+            .insert_header(("TTL", "10"))
+            .to_http_request();
         let result = NotificationHeaders::from_request(&req, true);
 
         assert_encryption_error(result, "Missing Content-Encoding header");

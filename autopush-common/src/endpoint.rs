@@ -6,7 +6,6 @@ use openssl::hash;
 use url::Url;
 use uuid::Uuid;
 
-
 /// Create an v1 or v2 WebPush endpoint from the identifiers
 ///
 /// Both endpoints use bytes instead of hex to reduce ID length.

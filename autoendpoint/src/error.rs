@@ -4,11 +4,11 @@ use crate::db::error::DbError;
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
-    dev::{ServiceResponse},
+    dev::ServiceResponse,
     error::{JsonPayloadError, PayloadError, ResponseError},
     http::StatusCode,
     middleware::ErrorHandlerResponse,
-    HttpResponse, Result
+    HttpResponse, Result,
 };
 use backtrace::Backtrace; // Sentry uses the backtrace crate, not std::backtrace.
 use serde::ser::SerializeMap;
@@ -44,8 +44,11 @@ impl ApiError {
 }
 
 impl From<ApiError> for ApcError {
-    fn from(err:ApiError) -> ApcError {
-        ApcError { kind: err.kind.into(), backtrace: Box::new(err.backtrace) }
+    fn from(err: ApiError) -> ApcError {
+        ApcError {
+            kind: err.kind.into(),
+            backtrace: Box::new(err.backtrace),
+        }
     }
 }
 
@@ -225,7 +228,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::PayloadError(error)
                 if matches!(error.as_error(), Some(PayloadError::Overflow))
-                    || matches!(error.as_error(), Some(JsonPayloadError::Overflow{..})) =>
+                    || matches!(error.as_error(), Some(JsonPayloadError::Overflow { .. })) =>
             {
                 Some(104)
             }
@@ -274,18 +277,36 @@ impl From<ApiErrorKind> for ApcErrorKind {
             ApiErrorKind::RegistrationSecretHash(e) => ApcErrorKind::RegistrationSecretHash(e),
             ApiErrorKind::EndpointUrl(e) => e.kind,
             ApiErrorKind::Database(e) => ApcErrorKind::DatabaseError(e.to_string()),
-            ApiErrorKind::InvalidToken => ApcErrorKind::EndpointError("InvalidToken", "".to_string()),
+            ApiErrorKind::InvalidToken => {
+                ApcErrorKind::EndpointError("InvalidToken", "".to_string())
+            }
             ApiErrorKind::NoUser => ApcErrorKind::EndpointError("NoUser", "".to_string()),
-            ApiErrorKind::NoSubscription => ApcErrorKind::EndpointError("NoSubscription", "".to_string()),
-            ApiErrorKind::InvalidEncryption(e)=> ApcErrorKind::EndpointError("InvalidEncryption", e),
-            ApiErrorKind::InvalidApiVersion => ApcErrorKind::EndpointError("InvalidApiVersion", "".to_string()),
+            ApiErrorKind::NoSubscription => {
+                ApcErrorKind::EndpointError("NoSubscription", "".to_string())
+            }
+            ApiErrorKind::InvalidEncryption(e) => {
+                ApcErrorKind::EndpointError("InvalidEncryption", e)
+            }
+            ApiErrorKind::InvalidApiVersion => {
+                ApcErrorKind::EndpointError("InvalidApiVersion", "".to_string())
+            }
             ApiErrorKind::NoTTL => ApcErrorKind::EndpointError("NoTTL", "".to_string()),
-            ApiErrorKind::InvalidRouterType => ApcErrorKind::EndpointError("InvalidRouterType", "".to_string()),
-            ApiErrorKind::InvalidRouterToken => ApcErrorKind::EndpointError("InvalidRouterToken", "".to_string()),
-            ApiErrorKind::InvalidMessageId => ApcErrorKind::EndpointError("InvalidMessageId", "".to_string()),
-            ApiErrorKind::InvalidAuthentication => ApcErrorKind::EndpointError("InvalidAuthentication", "".to_string()),
+            ApiErrorKind::InvalidRouterType => {
+                ApcErrorKind::EndpointError("InvalidRouterType", "".to_string())
+            }
+            ApiErrorKind::InvalidRouterToken => {
+                ApcErrorKind::EndpointError("InvalidRouterToken", "".to_string())
+            }
+            ApiErrorKind::InvalidMessageId => {
+                ApcErrorKind::EndpointError("InvalidMessageId", "".to_string())
+            }
+            ApiErrorKind::InvalidAuthentication => {
+                ApcErrorKind::EndpointError("InvalidAuthentication", "".to_string())
+            }
             ApiErrorKind::InvalidLocalAuth(e) => ApcErrorKind::EndpointError("InvalidLocalAuth", e),
-            ApiErrorKind::LogCheck => ApcErrorKind::EndpointError("LogCheck", "testing 1,2,3".to_string()),
+            ApiErrorKind::LogCheck => {
+                ApcErrorKind::EndpointError("LogCheck", "testing 1,2,3".to_string())
+            }
         }
     }
 }

@@ -38,7 +38,6 @@ use crate::notification::Notification;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
 
-
 const MAX_EXPIRY: u64 = 2_592_000;
 const USER_RECORD_VERSION: u8 = 1;
 /// The maximum TTL for channels, 30 days
@@ -124,12 +123,8 @@ pub trait DbCommandClient: Send + Sync {
     async fn drop_uaid(&self, uaid: &Uuid) -> Result<()>;
 
     /// Delete this Channel ID for the user
-    async fn unregister(
-        &self,
-        uaid: &Uuid,
-        channel_id: &Uuid,
-        message_month: &str,
-    ) -> Result<bool>;
+    async fn unregister(&self, uaid: &Uuid, channel_id: &Uuid, message_month: &str)
+        -> Result<bool>;
 
     /// LEGACY: move this user to the most recent message table
     async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> Result<()>;
@@ -169,18 +164,12 @@ pub trait DbCommandClient: Send + Sync {
 
     /// Get a list of known channels for this user.
     /// (Used by daily mobile client check-in)
-    async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
-        -> Result<HashSet<Uuid>>;
+    async fn get_user_channels(&self, uaid: &Uuid, message_table: &str) -> Result<HashSet<Uuid>>;
 
     /// Remove the node information for this user (the
     /// user has disconnected from a node and is considered
     /// inactive or logged out.)
-    async fn remove_node_id(
-        &self,
-        uaid: &Uuid,
-        node_id: String,
-        connected_at: u64,
-    ) -> Result<()>;
+    async fn remove_node_id(&self, uaid: &Uuid, node_id: String, connected_at: u64) -> Result<()>;
     // */
 }
 
@@ -386,15 +375,20 @@ impl NotificationRecord {
     pub fn into_notif(self) -> Result<Notification> {
         let key = Self::parse_sort_key(&self.chidmessageid)?;
         let version = key
-                    .legacy_version
-                    .or(self.updateid)
-                    .ok_or(ApcErrorKind::GeneralError("No valid updateid/version found".into()))?;
+            .legacy_version
+            .or(self.updateid)
+            .ok_or(ApcErrorKind::GeneralError(
+                "No valid updateid/version found".into(),
+            ))?;
 
         Ok(Notification {
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),
-            timestamp: self.timestamp.ok_or("No timestamp found").map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?,
+            timestamp: self
+                .timestamp
+                .ok_or("No timestamp found")
+                .map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?,
             topic: key.topic,
             data: self.data,
             headers: self.headers.map(|m| m.into()),

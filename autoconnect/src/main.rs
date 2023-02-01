@@ -40,7 +40,11 @@ impl Actor for AutoConnect {
 }
 
 impl StreamHandler<std::result::Result<ws::Message, ws::ProtocolError>> for AutoConnect {
-    fn handle(&mut self, msg: std::result::Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+    fn handle(
+        &mut self,
+        msg: std::result::Result<ws::Message, ws::ProtocolError>,
+        ctx: &mut Self::Context,
+    ) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
                 // TODO: Add megaphone handling
@@ -59,7 +63,10 @@ impl StreamHandler<std::result::Result<ws::Message, ws::ProtocolError>> for Auto
     }
 }
 
-async fn ws_handler(req: HttpRequest, stream: web::Payload) -> std::result::Result<HttpResponse, Error> {
+async fn ws_handler(
+    req: HttpRequest,
+    stream: web::Payload,
+) -> std::result::Result<HttpResponse, Error> {
     info!("Starting connection...");
     let resp = ws::start(AutoConnect {}, &req, stream);
     info!("Shutting down: {:?}", &resp);

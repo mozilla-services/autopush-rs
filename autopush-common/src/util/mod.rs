@@ -27,7 +27,7 @@ impl<K: Eq + Hash, V> InsertOpt<K, V> for HashMap<K, V> {
 /// Convenience wrapper for base64 decoding
 /// *note* The `base64` devs are HIGHLY opinionated and the method to encode/decode
 /// changes frequently. This function encapsulates that as much as possible.
-pub fn b64_decode_url(input:&str) -> Result<Vec<u8>, base64::DecodeError> {
+pub fn b64_decode_url(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(input.trim_end_matches('='))
 }
 
@@ -35,7 +35,7 @@ pub fn b64_encode_url(input: &Vec<u8>) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(input)
 }
 
-pub fn b64_decode_std(input:&str) -> Result<Vec<u8>, base64::DecodeError> {
+pub fn b64_decode_std(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
     base64::engine::general_purpose::STANDARD_NO_PAD.decode(input.trim_end_matches('='))
 }
 

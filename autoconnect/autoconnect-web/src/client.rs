@@ -2,16 +2,15 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use actix_web::dev::{ ServiceRequest};
-use actix_web::web::{Data};
+use actix_web::dev::ServiceRequest;
+use actix_web::web::Data;
 use autopush_common::db::UserRecord;
 use autopush_common::errors::{ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 use autopush_common::util::ms_since_epoch;
-use futures_util::FutureExt;
 use futures_locks::RwLock;
+use futures_util::FutureExt;
 use uuid::Uuid;
-
 
 use autoconnect_settings::options::ServerOptions;
 
@@ -20,7 +19,6 @@ use crate::broadcast::{Broadcast, BroadcastSubs};
 /// Client & Registry functions.
 /// These are common functions run by connected WebSocket clients.
 /// These are called from the Autoconnect server.
-
 
 /// A connected Websocket client.
 pub struct RegisteredClient {
@@ -39,8 +37,7 @@ where
     T: Stream<Item = ClientMessage, Error = Error>
         + Sink<SinkItem = ServerMessage, SinkError = Error>
         + 'static,
-    */
-{
+    */ {
     // state_machine: UnAuthClientStateFuture<T>, // Client
     // / Pointer to the server structure for this client
     // srv: Rc<Server>,
@@ -244,50 +241,59 @@ pub struct ClientRegistry {
 impl ClientRegistry {
     pub async fn connect(&self, client: RegisteredClient) -> Result<()> {
         debug!("Connecting a client!");
-        self.clients.write().map(|mut clients| {
-            if let Some(_client) = clients.insert(client.uaid, client) {
-                // Drop existing connection
-                // if client.tx.unbounded_send(ServerNotification::Disconnect).is_ok(){
-                debug!("Told client to disconnect as a new one wants to connect");
-            };
-        }).await;
+        self.clients
+            .write()
+            .map(|mut clients| {
+                if let Some(_client) = clients.insert(client.uaid, client) {
+                    // Drop existing connection
+                    // if client.tx.unbounded_send(ServerNotification::Disconnect).is_ok(){
+                    debug!("Told client to disconnect as a new one wants to connect");
+                };
+            })
+            .await;
         Ok(())
     }
 
     /// A notification has come for the UAID
     pub async fn notify(&self, uaid: Uuid, _notif: Notification) -> Result<()> {
-        self.clients.read().map(|clients| {
-            debug!("Sending notification");
-            if let Some(_client) = clients.get(&uaid) {
-                debug!("Found a client to deliver a notification to");
-                /*
-                let result = client
-                    .tx
-                    .unbounded_send(ServerNotification::Notification(notif));
-                if result.is_ok() {
-                    debug!("Dropped notification in queue");
-                    return Ok(());
+        self.clients
+            .read()
+            .map(|clients| {
+                debug!("Sending notification");
+                if let Some(_client) = clients.get(&uaid) {
+                    debug!("Found a client to deliver a notification to");
+                    /*
+                    let result = client
+                        .tx
+                        .unbounded_send(ServerNotification::Notification(notif));
+                    if result.is_ok() {
+                        debug!("Dropped notification in queue");
+                        return Ok(());
+                    }
+                    */
                 }
-                */
-            }
-            Err(ApcErrorKind::GeneralError("Could not send notification".to_owned()).into())
-        }).await
+                Err(ApcErrorKind::GeneralError("Could not send notification".to_owned()).into())
+            })
+            .await
     }
 
     /// A check for notification command has come for the uaid
     pub async fn check_storage(&self, uaid: Uuid) -> Result<()> {
-        self.clients.read().map(|clients| {
-            if let Some(_client) = clients.get(&uaid) {
-                /*
-                let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
-                if result.is_ok() {
-                    debug!("Told client to check storage");
-                    return Ok(());
+        self.clients
+            .read()
+            .map(|clients| {
+                if let Some(_client) = clients.get(&uaid) {
+                    /*
+                    let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
+                    if result.is_ok() {
+                        debug!("Told client to check storage");
+                        return Ok(());
+                    }
+                    */
                 }
-                */
-            }
-            Err(ApcErrorKind::GeneralError("Could not store notification".to_owned()).into())
-        }).await
+                Err(ApcErrorKind::GeneralError("Could not store notification".to_owned()).into())
+            })
+            .await
     }
 
     /// The client specified by `uaid` has disconnected.
@@ -296,16 +302,19 @@ impl ClientRegistry {
         debug!("Disconnecting client!");
         let uaidc = uaid.clone();
         let uidc = uid.clone();
-        self.clients.write().map(|mut clients| {
-            let client_exists = clients
-                .get(&uaidc)
-                .map_or(false, |client| client.uid == uidc);
-            if client_exists {
-                clients.remove(&uaidc).expect("Couldn't remove client?");
-                return Ok(());
-            }
-            Err(ApcErrorKind::GeneralError("Could not remove client".to_owned()).into())
-        }).await
+        self.clients
+            .write()
+            .map(|mut clients| {
+                let client_exists = clients
+                    .get(&uaidc)
+                    .map_or(false, |client| client.uid == uidc);
+                if client_exists {
+                    clients.remove(&uaidc).expect("Couldn't remove client?");
+                    return Ok(());
+                }
+                Err(ApcErrorKind::GeneralError("Could not remove client".to_owned()).into())
+            })
+            .await
     }
 }
 

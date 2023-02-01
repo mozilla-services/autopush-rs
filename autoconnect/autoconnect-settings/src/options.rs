@@ -7,7 +7,10 @@ use fernet::{Fernet, MultiFernet};
 
 use crate::Settings;
 use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings};
-use autopush_common::{errors::{ApcErrorKind, Result}, metrics::new_metrics};
+use autopush_common::{
+    errors::{ApcErrorKind, Result},
+    metrics::new_metrics,
+};
 
 fn ito_dur(seconds: u32) -> Option<Duration> {
     if seconds == 0 {
@@ -60,7 +63,10 @@ impl ServerOptions {
     pub fn from_settings(settings: &Settings) -> Result<Self> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
-            return Err(ApcErrorKind::ConfigError(config::ConfigError::Message("Invalid AUTOPUSH_CRYPTO_KEY".into())).into());
+            return Err(ApcErrorKind::ConfigError(config::ConfigError::Message(
+                "Invalid AUTOPUSH_CRYPTO_KEY".into(),
+            ))
+            .into());
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
         debug!("Fernet keys: {:?}", &crypto_key);

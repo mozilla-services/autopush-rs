@@ -2,18 +2,18 @@ use std::net::UdpSocket;
 use std::sync::Arc;
 use std::time::Instant;
 
-use actix_web::{web::Data, FromRequest, HttpRequest, HttpMessage};
+use actix_web::{web::Data, FromRequest, HttpMessage, HttpRequest};
 use cadence::{
     BufferedUdpMetricSink, CountedExt, Metric, MetricError, NopMetricSink, QueuingMetricSink,
     StatsdClient, Timed,
 };
 
+use crate::error::ApiError;
 use crate::server::ServerState;
 use crate::settings::Settings;
 use crate::tags::Tags;
-use crate::error::ApiError;
-use actix_web::dev::{Payload};
 use actix_http::BoxedPayloadStream;
+use actix_web::dev::Payload;
 use futures::future;
 
 #[derive(Debug, Clone)]
