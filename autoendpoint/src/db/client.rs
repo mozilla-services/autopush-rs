@@ -363,6 +363,13 @@ impl DbClient for DbClientImpl {
             )
             .await
         {
+            /*
+            UpdateItem errors frequently occur during a redeploy due to a variety of reasons
+            (e.g. since a redeploy forces UAs to disconnect and changes the router host name,
+            the associated node_id will be different for legitimate reasons.) We should eat
+            these errors because they're not actionable and part of the normal run process.
+            */
+
             if let rusoto_core::RusotoError::Service(
                 rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
             ) = err

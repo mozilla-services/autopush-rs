@@ -186,41 +186,11 @@ impl WebPushRouter {
 
     /// Remove the node ID from a user. This is done if the user is no longer
     /// connected to the node.
-    /// Note: We don't report `UpdateErrors` due to Conditional checks because
-    /// they're non-actionable and they also are normal.
     async fn remove_node_id(&self, user: &DynamoDbUser, node_id: &str) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
-        if let Err(err) = self
-            .ddb
+        self.ddb
             .remove_node_id(user.uaid, node_id.to_owned(), user.connected_at)
-            .await
-        {
-            /*
-            UpdateItem errors frequently occur during a redeploy due to a variety of reasons
-            (e.g. since a redeploy forces UAs to disconnect and changes the router host name,
-            the associated node_id will be different for legitimate reasons.) We should eat
-            these errors because they're not actionable and part of the normal run process.
-            */
-            if let crate::db::error::DbError::UpdateItem(rusoto_core::RusotoError::Service(
-                rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
-            )) = &err
-            {
-                /*
-                Most likely, the node_id recorded in the db does not match the
-                node_id contained in the notification. Track these as a metric
-                for now.
-                */
-                self.metrics
-                    .incr_with_tags("error.node.update")
-                    .with_tag("node_id", node_id)
-                    .try_send()
-                    .ok();
-            } else {
-                // Some other error happened. Report it.
-                return Err(ApiErrorKind::Database(err).into());
-            };
-        };
-
+            .await?;
         Ok(())
     }
 
