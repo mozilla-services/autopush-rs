@@ -1,10 +1,12 @@
+use crate::error::{ApiError, ApiResult};
 use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routers::webpush::WebPushRouter;
 use crate::routers::Router;
 use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_web::dev::{Payload};
+use actix_http::BoxedPayloadStream;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
@@ -60,18 +62,17 @@ pub struct Routers {
 }
 
 impl FromRequest for Routers {
-    type Error = ();
-    type Future = future::Ready<Result<Self, ()>>;
-    type Config = ();
+    type Error = ApiError;
+    type Future = future::Ready<ApiResult<Self>>;
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
         let state = Data::<ServerState>::extract(req)
             .into_inner()
             .expect("No server state found");
 
         future::ok(Routers {
             webpush: WebPushRouter {
-                ddb: state.ddb.clone(),
+                ddb: state.dbclient.clone(),
                 metrics: state.metrics.clone(),
                 http: state.http.clone(),
                 endpoint_url: state.settings.endpoint_url(),

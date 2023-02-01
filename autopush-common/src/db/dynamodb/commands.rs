@@ -17,7 +17,7 @@ use rusoto_dynamodb::{
 use super::super::util::generate_last_connect;
 use super::super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
 use crate::db::{NotificationRecord, UserRecord};
-use crate::errors::{ApiErrorKind, ApiResult};
+use crate::errors::{ApcErrorKind, Result};
 use crate::notification::Notification;
 use crate::util::timing::sec_since_epoch;
 
@@ -63,7 +63,7 @@ fn has_connected_this_month(user: &UserRecord) -> bool {
 pub async fn list_tables(
     ddb: &DynamoDbClient,
     start_key: Option<String>,
-) -> ApiResult<ListTablesOutput> {
+) -> Result<ListTablesOutput> {
     let input = ListTablesInput {
         exclusive_start_table_name: start_key,
         limit: Some(100),
@@ -71,7 +71,7 @@ pub async fn list_tables(
     Ok(ddb
         .list_tables(input)
         .await
-        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?)
+        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()))?)
 }
 
 pub async fn fetch_messages(
@@ -80,7 +80,7 @@ pub async fn fetch_messages(
     table_name: &str,
     uaid: &Uuid,
     limit: u32,
-) -> ApiResult<FetchMessageResponse> {
+) -> Result<FetchMessageResponse> {
     let attr_values = hashmap! {
         ":uaid".to_string() => val!(S => uaid.simple().to_string()),
         ":cmi".to_string() => val!(S => "02"),
@@ -97,7 +97,7 @@ pub async fn fetch_messages(
     let output = ddb
         .query(input.clone())
         .await
-        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
+        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()))?;
     let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
         debug!("Got response of: {:?}", items);
         items
@@ -141,7 +141,7 @@ pub async fn fetch_timestamp_messages(
     uaid: &Uuid,
     timestamp: Option<u64>,
     limit: u32,
-) -> ApiResult<FetchMessageResponse> {
+) -> Result<FetchMessageResponse> {
     let range_key = if let Some(ts) = timestamp {
         format!("02:{}:z", ts)
     } else {
@@ -163,7 +163,7 @@ pub async fn fetch_timestamp_messages(
     let output = ddb
         .query(input.clone())
         .await
-        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
+        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()))?;
     let messages = output.items.map_or_else(Vec::new, |items| {
         debug!("Got response of: {:?}", items);
         items
@@ -193,7 +193,7 @@ pub async fn drop_user(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
-) -> ApiResult<DeleteItemOutput> {
+) -> Result<DeleteItemOutput> {
     let input = DeleteItemInput {
         table_name: router_table_name.to_string(),
         key: ddb_item! { uaid: s => uaid.simple().to_string() },
@@ -201,14 +201,14 @@ pub async fn drop_user(
     };
     ddb.delete_item(input.clone())
         .await
-        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()).into())
+        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()).into())
 }
 
 pub async fn get_uaid(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     router_table_name: &str,
-) -> ApiResult<GetItemOutput> {
+) -> Result<GetItemOutput> {
     let input = GetItemInput {
         table_name: router_table_name.to_string(),
         consistent_read: Some(true),
@@ -217,18 +217,18 @@ pub async fn get_uaid(
     };
     ddb.get_item(input.clone())
         .await
-        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()).into())
+        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()).into())
 }
 
 pub async fn register_user(
     ddb: DynamoDbClient,
     user: &UserRecord,
     router_table: &str,
-) -> ApiResult<PutItemOutput> {
+) -> Result<PutItemOutput> {
     trace!("### Registering User...");
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
-        Err(e) => return Err(ApiErrorKind::RusotoError(e.to_string()).into()),
+        Err(e) => return Err(ApcErrorKind::RusotoError(e.to_string()).into()),
     };
     let router_table = router_table.to_string();
     let attr_values = hashmap! {
@@ -255,7 +255,7 @@ pub async fn register_user(
         ..Default::default()
     })
     .await
-    .map_err(|e| ApiErrorKind::RusotoError(e.to_string()).into())
+    .map_err(|e| ApcErrorKind::RusotoError(e.to_string()).into())
 }
 
 pub async fn update_user_message_month(
@@ -263,7 +263,7 @@ pub async fn update_user_message_month(
     uaid: &Uuid,
     router_table_name: &str,
     message_month: &str,
-) -> ApiResult<()> {
+) -> Result<()> {
     let attr_values = hashmap! {
         ":curmonth".to_string() => val!(S => message_month.to_string()),
         ":lastconnect".to_string() => val!(N => generate_last_connect().to_string()),
@@ -281,7 +281,7 @@ pub async fn update_user_message_month(
 
     match ddb.update_item(update_item.clone()).await {
         Ok(_) => Ok(()),
-        Err(e) => Err(ApiErrorKind::RusotoError(e.to_string()).into()),
+        Err(e) => Err(ApcErrorKind::RusotoError(e.to_string()).into()),
     }
 }
 
@@ -289,7 +289,7 @@ pub async fn all_channels(
     ddb: DynamoDbClient,
     uaid: &Uuid,
     message_table_name: &str,
-) -> ApiResult<HashSet<String>> {
+) -> Result<HashSet<String>> {
     let input = GetItemInput {
         table_name: message_table_name.to_string(),
         consistent_read: Some(true),
@@ -311,7 +311,7 @@ pub async fn all_channels(
                 })?
                 .unwrap_or_default()
         })
-        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
+        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()))?;
 
     Ok(res.unwrap_or_default())
 }
@@ -321,7 +321,7 @@ pub async fn save_channels(
     uaid: &Uuid,
     channels: HashSet<String>,
     message_table_name: &str,
-) -> ApiResult<()> {
+) -> Result<()> {
     let chids: Vec<String> = channels.into_iter().collect();
     let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
     let attr_values = hashmap! {
@@ -341,7 +341,7 @@ pub async fn save_channels(
 
     ddb.update_item(update_item.clone())
         .await
-        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
+        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()))?;
     Ok(())
 }
 
@@ -350,7 +350,7 @@ pub async fn unregister_channel_id(
     uaid: &Uuid,
     channel_id: &Uuid,
     message_table_name: &str,
-) -> ApiResult<UpdateItemOutput> {
+) -> Result<UpdateItemOutput> {
     let chid = channel_id.hyphenated().to_string();
     let attr_values = hashmap! {
         ":channel_id".to_string() => val!(SS => vec![chid]),
@@ -369,7 +369,7 @@ pub async fn unregister_channel_id(
     Ok(ddb
         .update_item(update_item.clone())
         .await
-        .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?)
+        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()))?)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -382,7 +382,7 @@ pub async fn lookup_user(
     router_table_name: &str,
     message_table_names: &[String],
     current_message_month: &str,
-) -> ApiResult<(HelloResponse, Option<UserRecord>)> {
+) -> Result<(HelloResponse, Option<UserRecord>)> {
     // Prep all these for the move into the static closure capture
     let cur_month = current_message_month.to_string();
     let uaid2 = *uaid;
@@ -422,7 +422,7 @@ pub async fn lookup_user(
                 .send();
             drop_user(ddb, &uaid2, &router_table)
                 .await
-                .map_err(|e| ApiErrorKind::RusotoError(e.to_string()))?;
+                .map_err(|e| ApcErrorKind::RusotoError(e.to_string()))?;
             (hello_response, None)
         }
     })

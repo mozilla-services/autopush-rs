@@ -20,10 +20,10 @@ use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::db::util::generate_last_connect;
-use crate::errors::ApiResult;
-use crate::notification::Notification;
-use crate::util::timing::{ms_since_epoch, sec_since_epoch};
-use models::{NotificationHeaders, RangeKey};
+
+#[macro_use]
+mod macros;
+mod commands;
 
 pub mod client;
 pub mod dynamodb;
@@ -32,6 +32,12 @@ pub mod models;
 //pub mod bigtable;
 //pub mod postgres;
 mod util;
+
+use crate::errors::{ApcErrorKind, Result};
+use crate::notification::Notification;
+use crate::util::timing::{ms_since_epoch, sec_since_epoch};
+use models::{NotificationHeaders, RangeKey};
+
 
 const MAX_EXPIRY: u64 = 2_592_000;
 const USER_RECORD_VERSION: u8 = 1;
@@ -95,7 +101,7 @@ pub trait DbCommandClient: Send + Sync {
         // Hold of actually registering this.
         // (Some UAIDs only connect to rec'v broadcast messages)
         defer_registration: bool,
-    ) -> ApiResult<HelloResponse>;
+    ) -> Result<HelloResponse>;
 
     /// register a new channel for this UAID
     async fn register(
@@ -112,10 +118,10 @@ pub trait DbCommandClient: Send + Sync {
         endpoint: &str,
         // The user record associated with this UAID
         register_user: Option<&UserRecord>,
-    ) -> ApiResult<RegisterResponse>;
+    ) -> Result<RegisterResponse>;
 
     /// Delete this user and all information associated with them
-    async fn drop_uaid(&self, uaid: &Uuid) -> ApiResult<()>;
+    async fn drop_uaid(&self, uaid: &Uuid) -> Result<()>;
 
     /// Delete this Channel ID for the user
     async fn unregister(
@@ -123,10 +129,10 @@ pub trait DbCommandClient: Send + Sync {
         uaid: &Uuid,
         channel_id: &Uuid,
         message_month: &str,
-    ) -> ApiResult<bool>;
+    ) -> Result<bool>;
 
     /// LEGACY: move this user to the most recent message table
-    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> ApiResult<()>;
+    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> Result<()>;
 
     /// store the message for this user
     async fn store_message(
@@ -134,7 +140,7 @@ pub trait DbCommandClient: Send + Sync {
         uaid: &Uuid,
         message_month: String,
         message: Notification,
-    ) -> ApiResult<()>;
+    ) -> Result<()>;
 
     /// store multiple messages for this user.
     async fn store_messages(
@@ -142,7 +148,7 @@ pub trait DbCommandClient: Send + Sync {
         uaid: &Uuid,
         message_month: &str,
         messages: Vec<Notification>,
-    ) -> ApiResult<()>;
+    ) -> Result<()>;
 
     /// Delete a message for this user.
     async fn delete_message(
@@ -150,7 +156,7 @@ pub trait DbCommandClient: Send + Sync {
         table_name: &str,
         uaid: &Uuid,
         notif: &Notification,
-    ) -> ApiResult<()>;
+    ) -> Result<()>;
 
     /// Fetch any pending messages for this user
     async fn check_storage(
@@ -159,12 +165,12 @@ pub trait DbCommandClient: Send + Sync {
         uaid: &Uuid,
         include_topic: bool,
         timestamp: Option<u64>,
-    ) -> ApiResult<CheckStorageResponse>;
+    ) -> Result<CheckStorageResponse>;
 
     /// Get a list of known channels for this user.
     /// (Used by daily mobile client check-in)
     async fn get_user_channels(&self, uaid: &Uuid, message_table: &str)
-        -> ApiResult<HashSet<Uuid>>;
+        -> Result<HashSet<Uuid>>;
 
     /// Remove the node information for this user (the
     /// user has disconnected from a node and is considered
@@ -174,7 +180,7 @@ pub trait DbCommandClient: Send + Sync {
         uaid: &Uuid,
         node_id: String,
         connected_at: u64,
-    ) -> ApiResult<()>;
+    ) -> Result<()>;
     // */
 }
 
@@ -317,13 +323,13 @@ pub struct NotificationRecord {
 
 impl NotificationRecord {
     /// read the custom sort_key and convert it into something the database can use.
-    fn parse_sort_key(key: &str) -> ApiResult<RangeKey> {
+    fn parse_sort_key(key: &str) -> Result<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet =
                 RegexSet::new(&[r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
         }
         if !RE.is_match(key) {
-            return Err("Invalid chidmessageid".into());
+            return Err(ApcErrorKind::GeneralError("Invalid chidmessageid".into()).into());
         }
 
         let v: Vec<&str> = key.split(':').collect();
@@ -331,7 +337,7 @@ impl NotificationRecord {
             // This is a topic message (There Can Only Be One. <guitar riff>)
             "01" => {
                 if v.len() != 3 {
-                    return Err("Invalid topic key".into());
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
                 }
                 let (channel_id, topic) = (v[1], v[2]);
                 let channel_id = Uuid::parse_str(channel_id)?;
@@ -345,7 +351,7 @@ impl NotificationRecord {
             // A "normal" pending message.
             "02" => {
                 if v.len() != 3 {
-                    return Err("Invalid topic key".into());
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
                 }
                 let (sortkey, channel_id) = (v[1], v[2]);
                 let channel_id = Uuid::parse_str(channel_id)?;
@@ -361,7 +367,7 @@ impl NotificationRecord {
             // able to drop.)
             _ => {
                 if v.len() != 2 {
-                    return Err("Invalid topic key".into());
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
                 }
                 let (channel_id, legacy_version) = (v[0], v[1]);
                 let channel_id = Uuid::parse_str(channel_id)?;
@@ -377,18 +383,18 @@ impl NotificationRecord {
 
     // TODO: Implement as TryFrom whenever that lands
     /// Convert the
-    pub fn into_notif(self) -> ApiResult<Notification> {
+    pub fn into_notif(self) -> Result<Notification> {
         let key = Self::parse_sort_key(&self.chidmessageid)?;
         let version = key
-            .legacy_version
-            .or(self.updateid)
-            .ok_or("No valid updateid/version found")?;
+                    .legacy_version
+                    .or(self.updateid)
+                    .ok_or(ApcErrorKind::GeneralError("No valid updateid/version found".into()))?;
 
         Ok(Notification {
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),
-            timestamp: self.timestamp.ok_or("No timestamp found")?,
+            timestamp: self.timestamp.ok_or("No timestamp found").map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?,
             topic: key.topic,
             data: self.data,
             headers: self.headers.map(|m| m.into()),

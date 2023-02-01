@@ -1,4 +1,4 @@
-use crate::errors::ApiResult;
+use crate::errors::{ApcErrorKind, Result};
 use crate::util::b64_decode_url;
 
 use fernet::MultiFernet;
@@ -18,21 +18,28 @@ pub fn make_endpoint(
     key: Option<&str>,
     endpoint_url: &str,
     fernet: &MultiFernet,
-) -> ApiResult<String> {
+) -> Result<String> {
     let root = Url::parse(endpoint_url)?.join("wpush/")?;
     let mut base = uaid.as_bytes().to_vec();
     base.extend(chid.as_bytes());
 
     if let Some(k) = key {
-        let raw_key = b64_decode_url(k)?;
-        let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key)?;
+        let raw_key = b64_decode_url(k)
+            .map_err(|_e| ApcErrorKind::PayloadError("Error encrypting payload".to_owned()))?;
+        let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key).map_err(|_e| {
+            ApcErrorKind::PayloadError("Error creating message digest for key".to_owned())
+        })?;
         base.extend(key_digest.iter());
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
-        let final_url = root.join(&format!("v2/{}", encrypted))?;
+        let final_url = root.join(&format!("v2/{encrypted}")).map_err(|_e| {
+            ApcErrorKind::PayloadError("Encrypted data is not URL-safe".to_owned())
+        })?;
         Ok(final_url.to_string())
     } else {
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
-        let final_url = root.join(&format!("v1/{}", encrypted))?;
+        let final_url = root.join(&format!("v1/{encrypted}")).map_err(|_e| {
+            ApcErrorKind::PayloadError("Encrypted data is not URL-safe".to_owned())
+        })?;
         Ok(final_url.to_string())
     }
 }

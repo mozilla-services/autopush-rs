@@ -1,8 +1,10 @@
+// this version of tags requires actix-web >= 3.3 and futures >= 0.3
+// which means that it's currently not suitable for autoconnect.
 use std::collections::{BTreeMap, HashMap};
 
 use actix_web::{
     dev::{Payload, RequestHead},
-    Error, FromRequest, HttpRequest,
+    Error, FromRequest, HttpRequest, HttpMessage,
 };
 use futures::future;
 use futures::future::Ready;
@@ -106,7 +108,6 @@ impl slog::KV for Tags {
 }
 
 impl FromRequest for Tags {
-    type Config = ();
     type Error = Error;
     type Future = Ready<Result<Self, Self::Error>>;
 

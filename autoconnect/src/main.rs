@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use autoconnect_settings::{options::ServerOptions, Settings};
 use autoconnect_web::dockerflow;
-use autopush_common::errors::{ApiErrorKind, ApiResult};
+use autopush_common::errors::{ApcErrorKind, Result};
 
 mod server;
 
@@ -39,8 +39,8 @@ impl Actor for AutoConnect {
     type Context = ws::WebsocketContext<Self>;
 }
 
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for AutoConnect {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+impl StreamHandler<std::result::Result<ws::Message, ws::ProtocolError>> for AutoConnect {
+    fn handle(&mut self, msg: std::result::Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
                 // TODO: Add megaphone handling
@@ -59,7 +59,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for AutoConnect {
     }
 }
 
-async fn ws_handler(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
+async fn ws_handler(req: HttpRequest, stream: web::Payload) -> std::result::Result<HttpResponse, Error> {
     info!("Starting connection...");
     let resp = ws::start(AutoConnect {}, &req, stream);
     info!("Shutting down: {:?}", &resp);
@@ -67,7 +67,7 @@ async fn ws_handler(req: HttpRequest, stream: web::Payload) -> Result<HttpRespon
 }
 
 #[actix_web::main]
-async fn main() -> ApiResult<()> {
+async fn main() -> Result<()> {
     env_logger::init();
 
     let args: Args = Docopt::new(USAGE)
@@ -81,13 +81,13 @@ async fn main() -> ApiResult<()> {
         filenames.push(config_filename);
     }
     let settings = Settings::with_env_and_config_files(&filenames)
-        .map_err(|e| ApiErrorKind::ConfigError(e))?;
+        .map_err(|e| ApcErrorKind::ConfigError(e))?;
     // TODO: move this into the DbClient setup
-    if let Some(ref ddb_local) = settings.db_dsn {
+    if let Some(ddb_local) = settings.db_dsn.clone() {
         if autopush_common::db::StorageType::from_dsn(&ddb_local)
             == autopush_common::db::StorageType::DYNAMODB
         {
-            env::set_var("AWS_LOCAL_DYNAMODB", ddb_local);
+            env::set_var("AWS_LOCAL_DYNAMODB", ddb_local.to_owned());
         }
     }
 

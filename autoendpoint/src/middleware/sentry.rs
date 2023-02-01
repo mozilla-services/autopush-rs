@@ -1,4 +1,5 @@
 use crate::error::ApiError;
+use crate::tags::Tags;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse};
 use cadence::CountedExt;
 use sentry::protocol::Event;
@@ -9,11 +10,7 @@ use std::future::Future;
 /// information in events.
 pub fn sentry_middleware(
     request: ServiceRequest,
-    service: &mut impl Service<
-        Request = ServiceRequest,
-        Response = ServiceResponse,
-        Error = actix_web::Error,
-    >,
+    service: &mut impl Service<ServiceRequest>,
 ) -> impl Future<Output = Result<ServiceResponse, actix_web::Error>> {
     // Set up the hub to add request data to events
     let hub = Hub::new_from_top(Hub::main());
@@ -22,7 +19,7 @@ pub fn sentry_middleware(
     hub.configure_scope(|scope| {
         scope.add_event_processor(Box::new(move |event| process_event(event, &sentry_request)))
     });
-
+    let tags = Tags::from_request_head(request.head());
     let state = request
         .app_data::<actix_web::web::Data<crate::server::ServerState>>()
         .cloned();
@@ -53,7 +50,9 @@ pub fn sentry_middleware(
                     }
                 }
                 debug!("Reporting error to Sentry (service error): {}", error);
-                let event_id = hub.capture_event(event_from_actix_error(&error));
+                let mut event = event_from_actix_error(&error);
+                event.extra = tags.extra_tree();
+                let event_id = hub.capture_event(event);
                 trace!("event_id = {}", event_id);
                 return Err(error);
             }

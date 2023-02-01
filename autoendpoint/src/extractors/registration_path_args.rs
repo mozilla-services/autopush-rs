@@ -1,6 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::routers::RouterType;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_web::dev::{Payload};
+use actix_http::BoxedPayloadStream;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future;
 
@@ -13,9 +14,8 @@ pub struct RegistrationPathArgs {
 impl FromRequest for RegistrationPathArgs {
     type Error = ApiError;
     type Future = future::Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
         let match_info = req.match_info();
         let router_type = match match_info
             .get("router_type")

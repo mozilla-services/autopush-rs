@@ -1,6 +1,11 @@
-/// A bunch of macro helpers from rusoto_helpers code, which they pulled from crates.io because
-/// they were waiting for rusuto to hit 1.0.0 or something. For sanity, they are instead accumulated
-/// here for our use.
+// A bunch of macro helpers from rusoto_helpers code, which they pulled from crates.io because
+// they were waiting for rusuto to hit 1.0.0 or something. For sanity, they are instead accumulated
+// here for our use.
+
+/*
+
+ /// Movded to autopush_common::db::dynamodb::macros
+
 #[allow(unused_macros)]
 macro_rules! attributes {
     ($($val:expr => $attr_type:expr),*) => {
@@ -111,3 +116,5 @@ macro_rules! ddb_item {
         }
     }
 }
+
+*/

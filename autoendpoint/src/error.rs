@@ -4,19 +4,21 @@ use crate::db::error::DbError;
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
-    dev::{HttpResponseBuilder, ServiceResponse},
+    dev::{ServiceResponse},
     error::{JsonPayloadError, PayloadError, ResponseError},
     http::StatusCode,
-    middleware::errhandlers::ErrorHandlerResponse,
-    HttpResponse, Result,
+    middleware::ErrorHandlerResponse,
+    HttpResponse, Result
 };
-use backtrace::Backtrace;
+use backtrace::Backtrace; // Sentry uses the backtrace crate, not std::backtrace.
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
 use std::fmt::{self, Display};
 use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
+
+use autopush_common::errors::{ApcError, ApcErrorKind};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -34,13 +36,16 @@ pub struct ApiError {
 
 impl ApiError {
     /// Render a 404 response
+    // wrapper during the move. this should switch to autopush-common's impl.
     pub fn render_404<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
-        // Replace the outbound error message with our own.
-        let resp = HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
-        Ok(ErrorHandlerResponse::Response(ServiceResponse::new(
-            res.request().clone(),
-            resp.into_body(),
-        )))
+        //TODO: remove unwrap here.
+        Ok(autopush_common::errors::render_404(res).unwrap())
+    }
+}
+
+impl From<ApiError> for ApcError {
+    fn from(err:ApiError) -> ApcError {
+        ApcError { kind: err.kind.into(), backtrace: Box::new(err.backtrace) }
     }
 }
 
@@ -75,7 +80,7 @@ pub enum ApiErrorKind {
     RegistrationSecretHash(#[source] openssl::error::ErrorStack),
 
     #[error("Error while creating endpoint URL: {0}")]
-    EndpointUrl(String),
+    EndpointUrl(#[source] autopush_common::errors::ApcError),
 
     #[error("Database error: {0}")]
     Database(#[from] DbError),
@@ -220,7 +225,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::PayloadError(error)
                 if matches!(error.as_error(), Some(PayloadError::Overflow))
-                    || matches!(error.as_error(), Some(JsonPayloadError::Overflow)) =>
+                    || matches!(error.as_error(), Some(JsonPayloadError::Overflow{..})) =>
             {
                 Some(104)
             }
@@ -253,6 +258,38 @@ impl ApiErrorKind {
     }
 }
 
+/// temporary bridge between errors.
+// TODO: move to ApcError
+impl From<ApiErrorKind> for ApcErrorKind {
+    fn from(kind: ApiErrorKind) -> ApcErrorKind {
+        match kind {
+            ApiErrorKind::Io(e) => ApcErrorKind::Io(e),
+            ApiErrorKind::Metrics(e) => ApcErrorKind::MetricError(e),
+            ApiErrorKind::Validation(e) => ApcErrorKind::EndpointError("Validation", e.to_string()),
+            ApiErrorKind::PayloadError(e) => ApcErrorKind::PayloadError(e.to_string()),
+            ApiErrorKind::VapidError(e) => ApcErrorKind::EndpointError("Vapid", e.to_string()),
+            ApiErrorKind::Router(e) => ApcErrorKind::EndpointError("Router", e.to_string()),
+            ApiErrorKind::Jwt(e) => ApcErrorKind::EndpointError("JWT", e.to_string()),
+            ApiErrorKind::TokenHashValidation(e) => ApcErrorKind::TokenHashValidation(e),
+            ApiErrorKind::RegistrationSecretHash(e) => ApcErrorKind::RegistrationSecretHash(e),
+            ApiErrorKind::EndpointUrl(e) => e.kind,
+            ApiErrorKind::Database(e) => ApcErrorKind::DatabaseError(e.to_string()),
+            ApiErrorKind::InvalidToken => ApcErrorKind::EndpointError("InvalidToken", "".to_string()),
+            ApiErrorKind::NoUser => ApcErrorKind::EndpointError("NoUser", "".to_string()),
+            ApiErrorKind::NoSubscription => ApcErrorKind::EndpointError("NoSubscription", "".to_string()),
+            ApiErrorKind::InvalidEncryption(e)=> ApcErrorKind::EndpointError("InvalidEncryption", e),
+            ApiErrorKind::InvalidApiVersion => ApcErrorKind::EndpointError("InvalidApiVersion", "".to_string()),
+            ApiErrorKind::NoTTL => ApcErrorKind::EndpointError("NoTTL", "".to_string()),
+            ApiErrorKind::InvalidRouterType => ApcErrorKind::EndpointError("InvalidRouterType", "".to_string()),
+            ApiErrorKind::InvalidRouterToken => ApcErrorKind::EndpointError("InvalidRouterToken", "".to_string()),
+            ApiErrorKind::InvalidMessageId => ApcErrorKind::EndpointError("InvalidMessageId", "".to_string()),
+            ApiErrorKind::InvalidAuthentication => ApcErrorKind::EndpointError("InvalidAuthentication", "".to_string()),
+            ApiErrorKind::InvalidLocalAuth(e) => ApcErrorKind::EndpointError("InvalidLocalAuth", e),
+            ApiErrorKind::LogCheck => ApcErrorKind::EndpointError("LogCheck", "testing 1,2,3".to_string()),
+        }
+    }
+}
+
 // Print out the error and backtrace, including source errors
 impl Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -261,7 +298,7 @@ impl Display for ApiError {
         // Go down the chain of errors
         let mut error: &dyn Error = &self.kind;
         while let Some(source) = error.source() {
-            write!(f, "\n\nCaused by: {}", source)?;
+            write!(f, "\n\nCaused by: {source}")?;
             error = source;
         }
 

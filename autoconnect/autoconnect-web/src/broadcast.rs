@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use serde_derive::{Deserialize, Serialize};
 
-use autopush_common::errors::ApiResult;
+use autopush_common::errors::{Result, ApcErrorKind};
 
 /// A Broadcast entry Key in a BroadcastRegistry
 /// This is the way that both the client and server identify a given Broadcast.
@@ -208,13 +208,13 @@ impl BroadcastChangeTracker {
     /// Update a `broadcast` to a new revision, triggering a change_count increase.
     ///
     /// Returns an error if the `broadcast` was never initialized/added.
-    pub fn update_broadcast(&mut self, broadcast: Broadcast) -> ApiResult<u32> {
+    pub fn update_broadcast(&mut self, broadcast: Broadcast) -> Result<u32> {
         let b_id = broadcast.broadcast_id.clone();
         let old_count = self.change_count;
         let key = self
             .broadcast_registry
             .lookup_key(&broadcast.broadcast_id)
-            .ok_or("Broadcast not found")?;
+            .ok_or(ApcErrorKind::BroadcastError("Broadcast not found".into()))?;
 
         if let Some(ver) = self.broadcast_versions.get_mut(&key) {
             if *ver == broadcast.version {
@@ -223,7 +223,7 @@ impl BroadcastChangeTracker {
             *ver = broadcast.version;
         } else {
             trace!("📢 Not found: {}", &b_id);
-            return Err("Broadcast not found".into());
+            return Err(ApcErrorKind::BroadcastError("Broadcast not found".into()).into());
         }
 
         trace!("📢 New version of {}", &b_id);

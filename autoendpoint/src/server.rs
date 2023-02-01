@@ -1,4 +1,6 @@
 //! Main application server
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
@@ -18,21 +20,20 @@ use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
 use actix_cors::Cors;
 use actix_web::{
-    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, FromRequest,
+    dev, http::StatusCode, middleware::ErrorHandlers, web, App,
     HttpServer,
 };
 use cadence::StatsdClient;
 use fernet::MultiFernet;
-use std::sync::Arc;
-use std::time::Duration;
 
 #[derive(Clone)]
 pub struct ServerState {
     /// Server Data
     pub metrics: Arc<StatsdClient>,
     pub settings: Settings,
-    pub fernet: Arc<MultiFernet>,
-    pub ddb: Box<dyn DbClient>,
+    pub fernet: MultiFernet,
+    // TODO: Convert this to the autopush_common dbCommandClient impl.
+    pub dbclient: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
@@ -45,7 +46,7 @@ impl Server {
     pub async fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
         let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
         let bind_address = format!("{}:{}", settings.host, settings.port);
-        let fernet = Arc::new(settings.make_fernet());
+        let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();
         let ddb = Box::new(DbClientImpl::new(
             metrics.clone(),
@@ -87,7 +88,7 @@ impl Server {
             metrics,
             settings,
             fernet,
-            ddb,
+            dbclient: ddb,
             http,
             fcm_router,
             apns_router,

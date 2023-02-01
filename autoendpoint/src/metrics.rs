@@ -2,7 +2,7 @@ use std::net::UdpSocket;
 use std::sync::Arc;
 use std::time::Instant;
 
-use actix_web::{web::Data, FromRequest, HttpRequest};
+use actix_web::{web::Data, FromRequest, HttpRequest, HttpMessage};
 use cadence::{
     BufferedUdpMetricSink, CountedExt, Metric, MetricError, NopMetricSink, QueuingMetricSink,
     StatsdClient, Timed,
@@ -11,7 +11,9 @@ use cadence::{
 use crate::server::ServerState;
 use crate::settings::Settings;
 use crate::tags::Tags;
-use actix_web::dev::{Payload, PayloadStream};
+use crate::error::ApiError;
+use actix_web::dev::{Payload};
+use actix_http::BoxedPayloadStream;
 use futures::future;
 
 #[derive(Debug, Clone)]
@@ -63,11 +65,10 @@ impl Drop for Metrics {
 }
 
 impl FromRequest for Metrics {
-    type Error = ();
+    type Error = ApiError;
     type Future = future::Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
         future::ok(Metrics::from(req))
     }
 }

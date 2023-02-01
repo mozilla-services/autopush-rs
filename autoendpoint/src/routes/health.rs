@@ -11,8 +11,8 @@ use std::thread;
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<ServerState>) -> Json<serde_json::Value> {
-    let router_health = interpret_table_health(state.ddb.router_table_exists().await);
-    let message_health = interpret_table_health(state.ddb.message_table_exists().await);
+    let router_health = interpret_table_health(state.dbclient.router_table_exists().await);
+    let message_health = interpret_table_health(state.dbclient.message_table_exists().await);
 
     Json(json!({
         "status": "OK",

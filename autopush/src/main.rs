@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use docopt::Docopt;
 
-use autopush_common::errors::{ApiResult, ApiError};
+use autopush_common::errors::{ApcErrorKind, Result};
 use futures::{Future, future::Either};
 use tokio_core::reactor::{Handle, Timeout};
 
@@ -61,7 +61,9 @@ fn main() -> ApiResult<()> {
     let server = AutopushServer::new(server_opts);
     server.start();
     signal.recv().unwrap();
-    server.stop().chain_err(|| "Failed to shutdown properly")
+    server
+        .stop()
+        .map_err(|_e| ApcErrorKind::GeneralError("Failed to shutdown properly".into()).into())
 }
 
 /// Create a new channel subscribed to the given signals

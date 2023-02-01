@@ -189,8 +189,7 @@ mod tests {
             AdmSettings {
                 base_url: Url::parse(&mockito::server_url()).unwrap(),
                 profiles: format!(
-                    r#"{{ "dev": {{ "client_id": "{}", "client_secret": "{}" }} }}"#,
-                    CLIENT_ID, CLIENT_SECRET
+                    r#"{{ "dev": {{ "client_id": "{CLIENT_ID}", "client_secret": "{CLIENT_SECRET}" }} }}"#
                 ),
                 ..Default::default()
             },
@@ -233,7 +232,7 @@ mod tests {
         let notification = make_notification(default_router_data(), None, RouterType::ADM);
 
         let result = router.route_notification(&notification).await;
-        assert!(result.is_ok(), "result = {:?}", result);
+        assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(
             result.unwrap(),
             RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
@@ -269,7 +268,7 @@ mod tests {
         let notification = make_notification(default_router_data(), Some(data), RouterType::ADM);
 
         let result = router.route_notification(&notification).await;
-        assert!(result.is_ok(), "result = {:?}", result);
+        assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(
             result.unwrap(),
             RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
@@ -299,8 +298,7 @@ mod tests {
                 result.as_ref().unwrap_err().kind,
                 ApiErrorKind::Router(RouterError::Adm(AdmError::InvalidProfile))
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
         adm_mock.assert();
     }
@@ -329,8 +327,7 @@ mod tests {
                 result.as_ref().unwrap_err().kind,
                 ApiErrorKind::Router(RouterError::NotFound)
             ),
-            "result = {:?}",
-            result
+            "result = {result:?}"
         );
     }
 

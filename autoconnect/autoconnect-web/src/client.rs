@@ -1,13 +1,11 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
 
-use actix_web::dev::{Payload, ServiceRequest};
-use actix_web::web::{Data, Json};
-use actix_web::HttpResponse;
+use actix_web::dev::{ ServiceRequest};
+use actix_web::web::{Data};
 use autopush_common::db::UserRecord;
-use autopush_common::errors::{ApiErrorKind, ApiResult};
+use autopush_common::errors::{ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 use autopush_common::util::ms_since_epoch;
 use futures_util::FutureExt;
@@ -244,10 +242,10 @@ pub struct ClientRegistry {
 }
 
 impl ClientRegistry {
-    pub async fn connect(&self, client: RegisteredClient) -> ApiResult<()> {
+    pub async fn connect(&self, client: RegisteredClient) -> Result<()> {
         debug!("Connecting a client!");
         self.clients.write().map(|mut clients| {
-            if let Some(client) = clients.insert(client.uaid, client) {
+            if let Some(_client) = clients.insert(client.uaid, client) {
                 // Drop existing connection
                 // if client.tx.unbounded_send(ServerNotification::Disconnect).is_ok(){
                 debug!("Told client to disconnect as a new one wants to connect");
@@ -257,10 +255,10 @@ impl ClientRegistry {
     }
 
     /// A notification has come for the UAID
-    pub async fn notify(&self, uaid: Uuid, notif: Notification) -> ApiResult<()> {
+    pub async fn notify(&self, uaid: Uuid, _notif: Notification) -> Result<()> {
         self.clients.read().map(|clients| {
             debug!("Sending notification");
-            if let Some(client) = clients.get(&uaid) {
+            if let Some(_client) = clients.get(&uaid) {
                 debug!("Found a client to deliver a notification to");
                 /*
                 let result = client
@@ -272,14 +270,14 @@ impl ClientRegistry {
                 }
                 */
             }
-            Err(ApiErrorKind::GeneralError("Could not send notification".to_owned()).into())
+            Err(ApcErrorKind::GeneralError("Could not send notification".to_owned()).into())
         }).await
     }
 
     /// A check for notification command has come for the uaid
-    pub async fn check_storage(&self, uaid: Uuid) -> ApiResult<()> {
+    pub async fn check_storage(&self, uaid: Uuid) -> Result<()> {
         self.clients.read().map(|clients| {
-            if let Some(client) = clients.get(&uaid) {
+            if let Some(_client) = clients.get(&uaid) {
                 /*
                 let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
                 if result.is_ok() {
@@ -288,13 +286,13 @@ impl ClientRegistry {
                 }
                 */
             }
-            Err(ApiErrorKind::GeneralError("Could not store notification".to_owned()).into())
+            Err(ApcErrorKind::GeneralError("Could not store notification".to_owned()).into())
         }).await
     }
 
     /// The client specified by `uaid` has disconnected.
     #[allow(clippy::clone_on_copy)]
-    pub async fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> ApiResult<()> {
+    pub async fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> Result<()> {
         debug!("Disconnecting client!");
         let uaidc = uaid.clone();
         let uidc = uid.clone();
@@ -306,7 +304,7 @@ impl ClientRegistry {
                 clients.remove(&uaidc).expect("Couldn't remove client?");
                 return Ok(());
             }
-            Err(ApiErrorKind::GeneralError("Could not remove client".to_owned()).into())
+            Err(ApcErrorKind::GeneralError("Could not remove client".to_owned()).into())
         }).await
     }
 }
@@ -320,16 +318,16 @@ struct ClientActions {
 }
 
 impl ClientActions {
-    pub async fn on_hello(&mut self, req: &ServiceRequest) -> ApiResult<()> {
+    pub async fn on_hello(&mut self, req: &ServiceRequest) -> Result<()> {
         let data = req.app_data::<Data<ServerOptions>>().unwrap();
-        let connected_at = ms_since_epoch();
+        let _connected_at = ms_since_epoch();
         trace!("### AwaitHello UAID: {:?}", self.uaid);
         // Defer registration (don't write the user to the router table yet)
         // when no uaid was specified. We'll get back a pending DynamoDbUser
         // from the HelloResponse. It'll be potentially written to the db later
         // whenever the user first subscribes to a channel_id
         // (ClientMessage::Register).
-        let defer_registration = self.uaid.is_none();
+        let _defer_registration = self.uaid.is_none();
         /*
             // roll those functions into here using normalized db_client calls?
             let response = data.db_client.hello(
@@ -341,7 +339,7 @@ impl ClientActions {
         */
         // lookup_user
         if let Some(uaid) = self.uaid {
-            if let Some(user) = data.db_client.get_user(&uaid).await? {
+            if let Some(_user) = data.db_client.get_user(&uaid).await? {
                 // handle_user_result
             }
         }

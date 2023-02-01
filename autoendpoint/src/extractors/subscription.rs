@@ -6,7 +6,8 @@ use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVe
 use crate::metrics::Metrics;
 use crate::server::ServerState;
 use crate::tags::Tags;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_web::dev::{Payload};
+use actix_http::BoxedPayloadStream;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use autopush_common::db::UserRecord;
@@ -52,9 +53,8 @@ impl Default for VapidClaims {
 impl FromRequest for Subscription {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
         let req = req.clone();
 
         async move {
@@ -95,7 +95,7 @@ impl FromRequest for Subscription {
             trace!("UAID: {:?}, CHID: {:?}", uaid, channel_id);
 
             let user = state
-                .ddb
+                .dbclient
                 .get_user(uaid)
                 .await?
                 .ok_or(ApiErrorKind::NoSubscription)?;

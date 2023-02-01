@@ -1,6 +1,7 @@
 //! Management of connected clients to a WebPush server
+#![allow(dead_code)]
+
 use cadence::{prelude::*, StatsdClient};
-//use error_chain::ChainedError;
 use futures::future::Either;
 use futures::sync::mpsc;
 use futures::sync::oneshot::Receiver;
@@ -19,7 +20,7 @@ use uuid::Uuid;
 
 use autopush_common::db::{CheckStorageResponse, UserRecord, HelloResponse, RegisterResponse};
 use autopush_common::endpoint::make_endpoint;
-use autopush_common::errors::{ApiError, ApiErrorKind, ApiResult};
+use autopush_common::errors::{ApcError, ApcErrorKind, MyFuture};
 use autopush_common::notification::Notification;
 use autopush_common::util::{ms_since_epoch, sec_since_epoch, user_agent::parse_user_agent};
 
@@ -37,8 +38,8 @@ pub struct RegisteredClient {
 
 pub struct Client<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
     state_machine: UnAuthClientStateFuture<T>,
@@ -49,8 +50,8 @@ where
 
 impl<T> Client<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
     /// Spins up a new client communicating over the websocket `ws` specified.
@@ -114,14 +115,14 @@ where
 
 impl<T> Future for Client<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
     type Item = ();
-    type Error = ApiError;
+    type Error = ApcError;
 
-    fn poll(&mut self) -> Poll<(), ApiError> {
+    fn poll(&mut self) -> Poll<(), ApcError> {
         self.state_machine.poll()
     }
 }
@@ -161,12 +162,8 @@ pub struct WebPushClient {
     sent_from_storage: u32,
     last_ping: u64,
     stats: SessionStatistics,
-<<<<<<< HEAD
-    deferred_user_registration: Option<UserRecord>,
-=======
     deferred_user_registration: Option<DynamoDbUser>,
     ua_info: UserAgentInfo,
->>>>>>> 2f3c9e289b4c19ee46e49fc4122deb2fd62869f2
 }
 
 impl Default for WebPushClient {
@@ -231,15 +228,19 @@ pub struct UnAuthClientData<T> {
 
 impl<T> UnAuthClientData<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
-    fn input_with_timeout(&mut self, timeout: &mut Timeout) -> Poll<ClientMessage, ApiError> {
+    fn input_with_timeout(&mut self, timeout: &mut Timeout) -> Poll<ClientMessage, ApcError> {
         let item = match timeout.poll()? {
-            Async::Ready(_) => return Err("Client timed out".into()),
+            Async::Ready(_) => {
+                return Err(ApcErrorKind::GeneralError("Client timed out".into()).into())
+            }
             Async::NotReady => match self.ws.poll()? {
-                Async::Ready(None) => return Err("Client dropped".into()),
+                Async::Ready(None) => {
+                    return Err(ApcErrorKind::GeneralError("Client dropped".into()).into())
+                }
                 Async::Ready(Some(msg)) => Async::Ready(msg),
                 Async::NotReady => Async::NotReady,
             },
@@ -257,21 +258,25 @@ pub struct AuthClientData<T> {
 
 impl<T> AuthClientData<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
-    fn input_or_notif(&mut self) -> Poll<Either<ClientMessage, ServerNotification>, ApiError> {
+    fn input_or_notif(&mut self) -> Poll<Either<ClientMessage, ServerNotification>, ApcError> {
         let mut webpush = self.webpush.borrow_mut();
         let item = match webpush.rx.poll() {
             Ok(Async::Ready(Some(notif))) => Either::B(notif),
-            Ok(Async::Ready(None)) => return Err("Sending side dropped".into()),
+            Ok(Async::Ready(None)) => {
+                return Err(ApcErrorKind::GeneralError("Sending side dropped".into()).into())
+            }
             Ok(Async::NotReady) => match self.ws.poll()? {
-                Async::Ready(None) => return Err("Client dropped".into()),
+                Async::Ready(None) => {
+                    return Err(ApcErrorKind::GeneralError("Client dropped".into()).into())
+                }
                 Async::Ready(Some(msg)) => Either::A(msg),
                 Async::NotReady => return Ok(Async::NotReady),
             },
-            Err(_) => return Err("Unexpected error".into()),
+            Err(_) => return Err(ApcErrorKind::GeneralError("Unexpected error".into()).into()),
         };
         Ok(Async::Ready(item))
     }
@@ -280,8 +285,8 @@ where
 #[derive(StateMachineFuture)]
 pub enum UnAuthClientState<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
     #[state_machine_future(start, transitions(AwaitProcessHello))]
@@ -323,25 +328,25 @@ where
         response: MyFuture<()>,
         srv: Rc<Server>,
         webpush: Rc<RefCell<WebPushClient>>,
-        error: Option<ApiError>,
+        error: Option<ApcError>,
     },
 
     #[state_machine_future(ready)]
     UnAuthDone(()),
 
     #[state_machine_future(error)]
-    GeneralUnauthClientError(ApiError),
+    GeneralUnauthClientError(ApcError),
 }
 
 impl<T> PollUnAuthClientState<T> for UnAuthClientState<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
     fn poll_await_hello<'a>(
         hello: &'a mut RentToOwn<'a, AwaitHello<T>>,
-    ) -> Poll<AfterAwaitHello<T>, ApiError> {
+    ) -> Poll<AfterAwaitHello<T>, ApcError> {
         trace!("State: AwaitHello");
         let (uaid, desired_broadcasts) = {
             let AwaitHello {
@@ -359,7 +364,12 @@ where
                     uaid.and_then(|uaid| Uuid::parse_str(uaid.as_str()).ok()),
                     Broadcast::from_hashmap(broadcasts.unwrap_or_default()),
                 ),
-                _ => return Err("Invalid message, must be hello".into()),
+                _ => {
+                    return Err(ApcErrorKind::BroadcastError(
+                        "Invalid message, must be hello".into(),
+                    )
+                    .into())
+                }
             }
         };
 
@@ -389,7 +399,7 @@ where
 
     fn poll_await_process_hello<'a>(
         process_hello: &'a mut RentToOwn<'a, AwaitProcessHello<T>>,
-    ) -> Poll<AfterAwaitProcessHello<T>, ApiError> {
+    ) -> Poll<AfterAwaitProcessHello<T>, ApcError> {
         trace!("State: AwaitProcessHello");
         let (
             uaid,
@@ -424,7 +434,9 @@ where
                 }
                 HelloResponse { uaid: None, .. } => {
                     trace!("UAID undefined");
-                    return Err("Already connected elsewhere".into());
+                    return Err(
+                        ApcErrorKind::GeneralError("Already connected elsewhere".into()).into(),
+                    );
                 }
             }
         };
@@ -506,7 +518,7 @@ where
 
     fn poll_await_registry_connect<'a>(
         registry_connect: &'a mut RentToOwn<'a, AwaitRegistryConnect<T>>,
-    ) -> Poll<AfterAwaitRegistryConnect<T>, ApiError> {
+    ) -> Poll<AfterAwaitRegistryConnect<T>, ApcError> {
         trace!("State: AwaitRegistryConnect");
         let hello_response = try_ready!(registry_connect.response.poll());
 
@@ -537,21 +549,24 @@ where
 
     fn poll_await_session_complete<'a>(
         session_complete: &'a mut RentToOwn<'a, AwaitSessionComplete<T>>,
-    ) -> Poll<AfterAwaitSessionComplete, ApiError> {
+    ) -> Poll<AfterAwaitSessionComplete, ApcError> {
         trace!("State: AwaitSessionComplete");
         let error = {
             match session_complete.auth_state_machine.poll() {
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Ok(Async::Ready(_))
-                | Err(ApiErrorKind::Ws(_), _)
-                | Err(ApiErrorKind::Io(_), _)
-                | Err(ApiErrorKind::PongTimeout(_), _)
-                | Err(ApiErrorKind::RepeatUaidDisconnect(_), _)
-                | Err(ApiErrorKind::ExcessivePing(_), _)
-                | Err(ApiErrorKind::InvalidStateTransition(_, _), _)
-                | Err(ApiErrorKind::InvalidClientMessage(_), _)
-                | Err(ApiErrorKind::SendError(_), _) => None,
-                Err(e) => Some(e),
+                Ok(Async::Ready(_)) => None,
+
+                Err(e) => match e.kind {
+                    ApcErrorKind::Ws(_)
+                    | ApcErrorKind::Io(_)
+                    | ApcErrorKind::PongTimeout
+                    | ApcErrorKind::RepeatUaidDisconnect
+                    | ApcErrorKind::ExcessivePing
+                    | ApcErrorKind::InvalidStateTransition(_, _)
+                    | ApcErrorKind::InvalidClientMessage(_)
+                    | ApcErrorKind::SendError => None,
+                    _ => Some(e),
+                },
             }
         };
 
@@ -571,7 +586,7 @@ where
 
     fn poll_await_registry_disconnect<'a>(
         registry_disconnect: &'a mut RentToOwn<'a, AwaitRegistryDisconnect>,
-    ) -> Poll<AfterAwaitRegistryDisconnect, ApiError> {
+    ) -> Poll<AfterAwaitRegistryDisconnect, ApcError> {
         trace!("State: AwaitRegistryDisconnect");
         try_ready!(registry_disconnect.response.poll());
 
@@ -606,7 +621,7 @@ where
         // Log out the sentry message if applicable and convert to error msg
         let error = if let Some(ref err) = error {
             let ua_info = ua_info.clone();
-            let mut event = event_from_error_chain(err);
+            let mut event = sentry::event_from_error(err);
             event.user = Some(sentry::User {
                 id: Some(webpush.uaid.as_simple().to_string()),
                 ..Default::default()
@@ -627,7 +642,7 @@ where
                 .tags
                 .insert("ua_browser_ver".to_string(), ua_info.browser_version);
             sentry::capture_event(event);
-            err.display_chain().to_string()
+            err.to_string()
         } else {
             "".to_string()
         };
@@ -690,7 +705,9 @@ fn save_and_notify_undelivered_messages(
                 srv2.ddb.get_user(&uaid)
             })
             .and_then(move |user| {
-                let user = match user.ok_or_else(|| "No user record found".into()) {
+                let user = match user.ok_or_else(|| {
+                    ApcErrorKind::DatabaseError("No user record found".into()).into()
+                }) {
                     Ok(user) => user,
                     Err(e) => return future::err(e),
                 };
@@ -698,7 +715,7 @@ fn save_and_notify_undelivered_messages(
                 // Return an err to stop processing if the user hasn't reconnected yet, otherwise
                 // attempt to construct a client to make the request
                 if user.connected_at == connected_at {
-                    future::err("No notify needed".into())
+                    future::err(ApcErrorKind::GeneralError("No notify needed".into()).into())
                 } else if let Some(node_id) = user.node_id {
                     let result = AsyncClient::builder()
                         .timeout(Duration::from_secs(1))
@@ -706,10 +723,15 @@ fn save_and_notify_undelivered_messages(
                     if let Ok(client) = result {
                         future::ok((client, user.uaid, node_id))
                     } else {
-                        future::err("Unable to build http client".into())
+                        future::err(
+                            ApcErrorKind::GeneralError("Unable to build http client".into()).into(),
+                        )
                     }
                 } else {
-                    future::err("No new node_id, notify not needed".into())
+                    future::err(
+                        ApcErrorKind::GeneralError("No new node_id, notify not needed".into())
+                            .into(),
+                    )
                 }
             })
             .and_then(|(client, uaid, node_id)| {
@@ -718,7 +740,7 @@ fn save_and_notify_undelivered_messages(
                 client
                     .put(&notify_url)
                     .send()
-                    .map_err(|_| "Failed to send".into())
+                    .map_err(|_| ApcErrorKind::GeneralError("Failed to send".into()).into())
             })
             .then(|_| {
                 debug!("Finished cleanup");
@@ -730,8 +752,8 @@ fn save_and_notify_undelivered_messages(
 #[derive(StateMachineFuture)]
 pub enum AuthClientState<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
     #[state_machine_future(start, transitions(AwaitSend, DetermineAck))]
@@ -820,16 +842,16 @@ where
     AuthDone(()),
 
     #[state_machine_future(error)]
-    GeneralAuthClientStateError(ApiError),
+    GeneralAuthClientStateError(ApcError),
 }
 
 impl<T> PollAuthClientState<T> for AuthClientState<T>
 where
-    T: Stream<Item = ClientMessage, Error = ApiError>
-        + Sink<SinkItem = ServerMessage, SinkError = ApiError>
+    T: Stream<Item = ClientMessage, Error = ApcError>
+        + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
-    fn poll_send<'a>(send: &'a mut RentToOwn<'a, Send<T>>) -> Poll<AfterSend<T>, ApiError> {
+    fn poll_send<'a>(send: &'a mut RentToOwn<'a, Send<T>>) -> Poll<AfterSend<T>, ApcError> {
         trace!("State: Send");
         let sent = {
             let Send {
@@ -843,7 +865,7 @@ where
                 let ret = data
                     .ws
                     .start_send(item)
-                    .chain_err(|| ApiErrorKind::SendError)?;
+                    .map_err(|_e| ApcErrorKind::SendError)?;
                 match ret {
                     AsyncSink::Ready => true,
                     AsyncSink::NotReady(returned) => {
@@ -865,7 +887,7 @@ where
 
     fn poll_await_send<'a>(
         await_send: &'a mut RentToOwn<'a, AwaitSend<T>>,
-    ) -> Poll<AfterAwaitSend<T>, ApiError> {
+    ) -> Poll<AfterAwaitSend<T>, ApcError> {
         trace!("State: AwaitSend");
         try_ready!(await_send.data.ws.poll_complete());
 
@@ -886,7 +908,7 @@ where
 
     fn poll_determine_ack<'a>(
         detack: &'a mut RentToOwn<'a, DetermineAck<T>>,
-    ) -> Poll<AfterDetermineAck<T>, ApiError> {
+    ) -> Poll<AfterDetermineAck<T>, ApcError> {
         let DetermineAck { data } = detack.take();
         let webpush_rc = data.webpush.clone();
         let webpush = webpush_rc.borrow();
@@ -913,7 +935,7 @@ where
 
     fn poll_await_input<'a>(
         r#await: &'a mut RentToOwn<'a, AwaitInput<T>>,
-    ) -> Poll<AfterAwaitInput<T>, ApiError> {
+    ) -> Poll<AfterAwaitInput<T>, ApcError> {
         trace!("State: AwaitInput");
         // The following is a blocking call. No action is taken until we either get a
         // websocket data packet or there's an incoming notification.
@@ -922,7 +944,7 @@ where
         let webpush_rc = data.webpush.clone();
         let mut webpush = webpush_rc.borrow_mut();
         match input {
-            Either::A(ClientMessage::Hello { .. }) => Err(ApiErrorKind::InvalidStateTransition(
+            Either::A(ClientMessage::Hello { .. }) => Err(ApcErrorKind::InvalidStateTransition(
                 "AwaitInput".to_string(),
                 "Hello".to_string(),
             )
@@ -955,16 +977,14 @@ where
                        "uaid" => &webpush.uaid.to_string(),
                        "channel_id" => &channel_id_str,
                 );
-                let channel_id = Uuid::parse_str(&channel_id_str).chain_err(|| {
-                    ApiErrorKind::InvalidClientMessage(format!(
-                        "Invalid channelID: {}",
-                        channel_id_str
+                let channel_id = Uuid::parse_str(&channel_id_str).map_err(|_e| {
+                    ApcErrorKind::InvalidClientMessage(format!(
+                        "Invalid channelID: {channel_id_str}"
                     ))
                 })?;
                 if channel_id.as_hyphenated().to_string() != channel_id_str {
-                    return Err(ApiErrorKind::InvalidClientMessage(format!(
-                        "Invalid UUID format, not lower-case/dashed: {}",
-                        channel_id
+                    return Err(ApcErrorKind::InvalidClientMessage(format!(
+                        "Invalid UUID format, not lower-case/dashed: {channel_id}",
                     ))
                     .into());
                 }
@@ -1091,7 +1111,7 @@ where
                     })
                 } else {
                     trace!("🏓 Got a ping too quickly, disconnecting");
-                    Err(ApiErrorKind::ExcessivePing.into())
+                    Err(ApcErrorKind::ExcessivePing.into())
                 }
             }
             Either::B(ServerNotification::Notification(notif)) => {
@@ -1112,20 +1132,20 @@ where
             }
             Either::B(ServerNotification::Disconnect) => {
                 debug!("Got told to disconnect, connecting client has our uaid");
-                Err(ApiErrorKind::RepeatUaidDisconnect.into())
+                Err(ApcErrorKind::RepeatUaidDisconnect.into())
             }
         }
     }
 
     fn poll_increment_storage<'a>(
         increment_storage: &'a mut RentToOwn<'a, IncrementStorage<T>>,
-    ) -> Poll<AfterIncrementStorage<T>, ApiError> {
+    ) -> Poll<AfterIncrementStorage<T>, ApcError> {
         trace!("State: IncrementStorage");
         let webpush_rc = increment_storage.data.webpush.clone();
         let webpush = webpush_rc.borrow();
         let timestamp = webpush
             .unacked_stored_highest
-            .ok_or("unacked_stored_highest unset")?
+            .ok_or_else(|| ApcErrorKind::GeneralError("unacked_stored_highest unset".into()))?
             .to_string();
         let response = Box::new(increment_storage.data.srv.ddb.increment_storage(
             &webpush.message_month,
@@ -1140,7 +1160,7 @@ where
 
     fn poll_await_increment_storage<'a>(
         await_increment_storage: &'a mut RentToOwn<'a, AwaitIncrementStorage<T>>,
-    ) -> Poll<AfterAwaitIncrementStorage<T>, ApiError> {
+    ) -> Poll<AfterAwaitIncrementStorage<T>, ApcError> {
         trace!("State: AwaitIncrementStorage");
         try_ready!(await_increment_storage.response.poll());
         let AwaitIncrementStorage { data, .. } = await_increment_storage.take();
@@ -1151,7 +1171,7 @@ where
 
     fn poll_check_storage<'a>(
         check_storage: &'a mut RentToOwn<'a, CheckStorage<T>>,
-    ) -> Poll<AfterCheckStorage<T>, ApiError> {
+    ) -> Poll<AfterCheckStorage<T>, ApcError> {
         trace!("State: CheckStorage");
         let CheckStorage { data } = check_storage.take();
         let response = Box::new({
@@ -1168,7 +1188,7 @@ where
 
     fn poll_await_check_storage<'a>(
         await_check_storage: &'a mut RentToOwn<'a, AwaitCheckStorage<T>>,
-    ) -> Poll<AfterAwaitCheckStorage<T>, ApiError> {
+    ) -> Poll<AfterAwaitCheckStorage<T>, ApcError> {
         trace!("State: AwaitCheckStorage");
         let CheckStorageResponse {
             include_topic,
@@ -1231,7 +1251,7 @@ where
 
     fn poll_await_migrate_user<'a>(
         await_migrate_user: &'a mut RentToOwn<'a, AwaitMigrateUser<T>>,
-    ) -> Poll<AfterAwaitMigrateUser<T>, ApiError> {
+    ) -> Poll<AfterAwaitMigrateUser<T>, ApcError> {
         trace!("State: AwaitMigrateUser");
         try_ready!(await_migrate_user.response.poll());
         let AwaitMigrateUser { data, .. } = await_migrate_user.take();
@@ -1245,7 +1265,7 @@ where
 
     fn poll_await_drop_user<'a>(
         await_drop_user: &'a mut RentToOwn<'a, AwaitDropUser<T>>,
-    ) -> Poll<AfterAwaitDropUser, ApiError> {
+    ) -> Poll<AfterAwaitDropUser, ApcError> {
         trace!("State: AwaitDropUser");
         try_ready!(await_drop_user.response.poll());
         transition!(AuthDone(()))
@@ -1253,7 +1273,7 @@ where
 
     fn poll_await_register<'a>(
         await_register: &'a mut RentToOwn<'a, AwaitRegister<T>>,
-    ) -> Poll<AfterAwaitRegister<T>, ApiError> {
+    ) -> Poll<AfterAwaitRegister<T>, ApcError> {
         trace!("State: AwaitRegister");
         let msg = match try_ready!(await_register.response.poll()) {
             RegisterResponse::Success { endpoint } => {
@@ -1297,7 +1317,7 @@ where
 
     fn poll_await_unregister<'a>(
         await_unregister: &'a mut RentToOwn<'a, AwaitUnregister<T>>,
-    ) -> Poll<AfterAwaitUnregister<T>, ApiError> {
+    ) -> Poll<AfterAwaitUnregister<T>, ApcError> {
         trace!("State: AwaitUnRegister");
         let msg = if try_ready!(await_unregister.response.poll()) {
             debug!("Got the unregister response");
@@ -1329,7 +1349,7 @@ where
 
     fn poll_await_delete<'a>(
         await_delete: &'a mut RentToOwn<'a, AwaitDelete<T>>,
-    ) -> Poll<AfterAwaitDelete<T>, ApiError> {
+    ) -> Poll<AfterAwaitDelete<T>, ApcError> {
         trace!("State: AwaitDelete");
         try_ready!(await_delete.response.poll());
         transition!(DetermineAck {

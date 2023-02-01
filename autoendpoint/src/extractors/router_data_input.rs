@@ -1,7 +1,8 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::registration_path_args::RegistrationPathArgs;
 use crate::extractors::routers::RouterType;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_web::dev::{Payload};
+use actix_http::BoxedPayloadStream;
 use actix_web::{web, FromRequest, HttpRequest};
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
@@ -29,9 +30,8 @@ pub struct RouterDataInput {
 impl FromRequest for RouterDataInput {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, payload: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, payload: &mut Payload<BoxedPayloadStream>) -> Self::Future {
         let req = req.clone();
         let mut payload = payload.take();
 

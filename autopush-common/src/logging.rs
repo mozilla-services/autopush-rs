@@ -1,12 +1,12 @@
 use std::io;
 
-use crate::errors::ApiResult;
+use crate::errors::Result;
 
 use mozsvc_common::{aws::get_ec2_instance_id, get_hostname};
 use slog::{self, Drain};
 use slog_mozlog_json::MozLogJson;
 
-pub fn init_logging(json: bool) -> ApiResult<()> {
+pub fn init_logging(json: bool) -> Result<()> {
     let logger = if json {
         let hostname = match get_ec2_instance_id() {
             Some(v) => v.to_owned(),

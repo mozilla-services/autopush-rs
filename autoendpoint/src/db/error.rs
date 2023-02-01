@@ -30,3 +30,18 @@ pub enum DbError {
     #[error("Unable to determine table status")]
     TableStatusUnknown,
 }
+
+
+impl From<DbError> for autopush_common::db::error::DbError {
+    fn from(err: DbError) -> Self {
+        match err {
+            DbError::GetItem(e) => Self::DdbGetItem(e),
+            DbError::UpdateItem(e) => Self::DdbUpdateItem(e),
+            DbError::PutItem(e) => Self::DdbPutItem(e),
+            DbError::DeleteItem(e) => Self::DdbDeleteItem(e),
+            DbError::DescribeTable(e) => Self::DdbDescribeTable(e),
+            DbError::Serialization(e) => Self::Serialization(e.to_string()),
+            DbError::TableStatusUnknown => Self::TableStatusUnknown,
+        }
+    }
+}

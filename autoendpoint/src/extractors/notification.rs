@@ -3,7 +3,8 @@ use crate::extractors::message_id::MessageId;
 use crate::extractors::notification_headers::NotificationHeaders;
 use crate::extractors::subscription::Subscription;
 use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_web::dev::{Payload};
+use actix_http::BoxedPayloadStream;
 use actix_web::web::Data;
 use actix_web::{web, FromRequest, HttpRequest};
 use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
@@ -33,9 +34,8 @@ pub struct Notification {
 impl FromRequest for Notification {
     type Error = ApiError;
     type Future = future::LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, payload: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, payload: &mut Payload<BoxedPayloadStream>) -> Self::Future {
         let req = req.clone();
         let mut payload = payload.take();
 
@@ -76,7 +76,7 @@ impl FromRequest for Notification {
                 if data.is_some() {
                     state
                         .metrics
-                        .incr(&format!("updates.notification.encoding.{}", encoding))
+                        .incr(&format!("updates.notification.encoding.{encoding}"))
                         .ok();
                 }
             }
