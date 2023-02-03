@@ -94,6 +94,10 @@ impl AutopushServer {
                     ..Default::default()
                 },
             ));
+            /*
+            Sentry 0.29+ automatically enables `PanicIntegration`.
+            see https://docs.rs/sentry-panic/latest/sentry_panic/
+             */
             Some(guard)
         } else {
             None
