@@ -356,12 +356,35 @@ impl DbClient for DbClientImpl {
             ..Default::default()
         };
 
-        retry_policy()
+        if let Err(err) = retry_policy()
             .retry_if(
                 || self.ddb.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
+            .await
+        {
+            /*
+            UpdateItem errors frequently occur during a redeploy due to a variety of reasons
+            (e.g. since a redeploy forces UAs to disconnect and changes the router host name,
+            the associated node_id will be different for legitimate reasons.) We should eat
+            these errors because they're not actionable and part of the normal run process.
+            */
+
+            if let rusoto_core::RusotoError::Service(
+                rusoto_dynamodb::UpdateItemError::ConditionalCheckFailed(_),
+            ) = err
+            {
+                // Most likely, the node_id recorded in the db does not match the
+                // node_id contained in the notification
+                self.metrics
+                    .incr_with_tags("error.node.update")
+                    .with_tag("node_id", &node_id)
+                    .try_send()
+                    .ok();
+                return Ok(());
+            }
+            return Err(DbError::from(err));
+        };
 
         Ok(())
     }
