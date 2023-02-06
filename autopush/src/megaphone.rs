@@ -8,8 +8,7 @@ use autopush_common::errors::{ApcErrorKind, Result};
 use crate::server::protocol::BroadcastValue;
 
 // A Broadcast entry Key in a BroadcastRegistry
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
-struct BroadcastKey(u32);
+type BroadcastKey = u32;
 
 // Broadcasts a client is subscribed to and the last change seen
 #[derive(Debug, Default)]
@@ -20,7 +19,7 @@ pub struct BroadcastSubs {
 
 #[derive(Debug)]
 struct BroadcastRegistry {
-    lookup: HashMap<String, u32>,
+    lookup: HashMap<String, BroadcastKey>,
     table: Vec<String>,
 }
 
@@ -41,20 +40,20 @@ impl BroadcastRegistry {
     // exists
     fn add_broadcast(&mut self, broadcast_id: String) -> BroadcastKey {
         if let Some(v) = self.lookup.get(&broadcast_id) {
-            return BroadcastKey(*v);
+            return *v;
         }
-        let i = self.table.len();
+        let i = self.table.len() as BroadcastKey;
         self.table.push(broadcast_id.clone());
-        self.lookup.insert(broadcast_id, i as u32);
-        BroadcastKey(i as u32)
+        self.lookup.insert(broadcast_id, i);
+        i
     }
 
     fn lookup_id(&self, key: BroadcastKey) -> Option<String> {
-        self.table.get(key.0 as usize).cloned()
+        self.table.get(key as usize).cloned()
     }
 
     fn lookup_key(&self, broadcast_id: &str) -> Option<BroadcastKey> {
-        self.lookup.get(broadcast_id).cloned().map(BroadcastKey)
+        self.lookup.get(broadcast_id).copied()
     }
 }
 

@@ -5,7 +5,8 @@ use std::time::Duration;
 use crate::db::client::{DbClient, DbClientImpl};
 use crate::error::{ApiError, ApiResult};
 use crate::metrics;
-use crate::middleware::sentry::sentry_middleware;
+// TODO: sentry is currently broken. Need to investgate solution
+// use crate::middleware::sentry::sentry_middleware;
 use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
@@ -18,6 +19,7 @@ use crate::routes::registration::{
 };
 use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
+
 use actix_cors::Cors;
 use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
 use cadence::StatsdClient;
@@ -94,15 +96,16 @@ impl Server {
 
         let server = HttpServer::new(move || {
             App::new()
-                .data(state.clone())
+                .app_data(state.clone())
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
-                .wrap_fn(sentry_middleware)
+                // .wrap_fn(sentry_middleware)
                 .wrap(Cors::default())
                 // Extractor configuration
-                .app_data(web::Bytes::configure(|cfg| {
-                    cfg.limit(state.settings.max_data_bytes)
-                }))
+                //  TODO: web::Bytes::configure was removed. What did this do? Can we just pull from state?
+                // .app_data(web::Bytes::configure(|cfg| {
+                //    cfg.limit(state.settings.max_data_bytes)
+                // }))
                 .app_data(web::JsonConfig::default().limit(state.settings.max_data_bytes))
                 // Endpoints
                 .service(

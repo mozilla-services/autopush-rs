@@ -1,5 +1,5 @@
 use crate::db::client::DbClient;
-use crate::error::{ApiError, ApiErrorKind, ApiResult};
+use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
@@ -39,6 +39,7 @@ impl Router for WebPushRouter {
     }
 
     async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+        // The notification contains the original subscription information
         let user = &notification.subscription.user;
         debug!(
             "Routing WebPush notification to UAID {}",
@@ -66,9 +67,8 @@ impl Router for WebPushRouter {
                     );
                 }
                 Err(error) => {
-                    // We should stop sending notifications to this node for this user
                     debug!("Error while sending webpush notification: {}", error);
-                    self.remove_node_id(user, node_id.clone()).await?;
+                    self.remove_node_id(user, node_id).await?
                 }
             }
         }
@@ -143,7 +143,7 @@ impl Router for WebPushRouter {
             Err(error) => {
                 // Can't communicate with the node, so we should stop using it
                 debug!("Error while triggering notification check: {}", error);
-                self.remove_node_id(&user, node_id.clone()).await?;
+                self.remove_node_id(&user, node_id).await?;
                 Ok(self.make_stored_response(notification))
             }
         }
@@ -187,13 +187,12 @@ impl WebPushRouter {
 
     /// Remove the node ID from a user. This is done if the user is no longer
     /// connected to the node.
-    async fn remove_node_id(&self, user: &UserRecord, node_id: String) -> ApiResult<()> {
+    async fn remove_node_id(&self, user: &UserRecord, node_id: &str) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
-
         self.ddb
-            .remove_node_id(user.uaid, node_id, user.connected_at)
-            .await
-            .map_err(ApiError::from)
+            .remove_node_id(user.uaid, node_id.to_owned(), user.connected_at)
+            .await?;
+        Ok(())
     }
 
     /// Update metrics and create a response for when a notification has been directly forwarded to

@@ -12,7 +12,6 @@ use actix_web::{HttpRequest, HttpResponse};
 
 use autopush_common::db::UserRecord;
 use autopush_common::endpoint::make_endpoint;
-use autopush_common::errors::{ApcErrorKind, Result};
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 
@@ -23,7 +22,7 @@ pub async fn register_uaid_route(
     routers: Routers,
     state: Data<ServerState>,
     request: HttpRequest,
-) -> Result<HttpResponse> {
+) -> ApiResult<HttpResponse> {
     // Register with router
     debug!(
         "Registering a user with the {} router",
@@ -49,12 +48,12 @@ pub async fn register_uaid_route(
         .dbclient
         .add_user(&user)
         .await
-        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
     state
         .dbclient
         .add_channel(user.uaid, channel_id)
         .await
-        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for user");
@@ -64,7 +63,8 @@ pub async fn register_uaid_route(
         router_data_input.key.as_deref(),
         state.settings.endpoint_url().as_str(),
         &state.fernet,
-    )?;
+    )
+    .map_err(|e| ApiErrorKind::EndpointUrl(e))?;
     trace!("endpoint = {}", endpoint_url);
 
     // Create the secret
@@ -74,7 +74,7 @@ pub async fn register_uaid_route(
         .get(0)
         .expect("At least one auth key must be provided in the settings");
     let secret = AuthorizationCheck::generate_token(auth_key, &user.uaid)
-        .map_err(ApcErrorKind::RegistrationSecretHash)?;
+        .map_err(|e| ApiErrorKind::RegistrationSecretHash(e))?;
 
     trace!("Finished registering UAID {}", user.uaid);
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -90,13 +90,13 @@ pub async fn unregister_user_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
     state: Data<ServerState>,
-) -> Result<HttpResponse> {
+) -> ApiResult<HttpResponse> {
     debug!("Unregistering UAID {}", path_args.uaid);
     state
         .dbclient
         .remove_user(path_args.uaid)
         .await
-        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -138,7 +138,7 @@ pub async fn new_channel_route(
     path_args: RegistrationPathArgsWithUaid,
     channel_data: Option<Json<NewChannelData>>,
     state: Data<ServerState>,
-) -> Result<HttpResponse> {
+) -> ApiResult<HttpResponse> {
     // Add the channel
     debug!("Adding a channel to UAID {}", path_args.uaid);
     let channel_data = channel_data.map(Json::into_inner).unwrap_or_default();
@@ -148,7 +148,7 @@ pub async fn new_channel_route(
         .dbclient
         .add_channel(path_args.uaid, channel_id)
         .await
-        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for the new channel");
@@ -158,7 +158,8 @@ pub async fn new_channel_route(
         channel_data.key.as_deref(),
         state.settings.endpoint_url().as_str(),
         &state.fernet,
-    )?;
+    )
+    .map_err(|e| ApiErrorKind::EndpointUrl(e))?;
     trace!("endpoint = {}", endpoint_url);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -188,7 +189,7 @@ pub async fn unregister_channel_route(
     path_args: RegistrationPathArgsWithUaid,
     state: Data<ServerState>,
     request: HttpRequest,
-) -> Result<HttpResponse> {
+) -> ApiResult<HttpResponse> {
     let channel_id = request
         .match_info()
         .get("chid")
@@ -206,7 +207,7 @@ pub async fn unregister_channel_route(
         .dbclient
         .remove_channel(path_args.uaid, channel_id)
         .await
-        .map_err(|e| ApcErrorKind::DbError(e.into()))?;
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
     if channel_did_exist {
         Ok(HttpResponse::Ok().finish())

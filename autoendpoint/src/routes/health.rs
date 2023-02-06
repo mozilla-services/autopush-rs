@@ -3,6 +3,7 @@
 use crate::db::error::DbResult;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::ServerState;
+
 use actix_web::web::{Data, Json};
 use actix_web::HttpResponse;
 use reqwest::StatusCode;
@@ -45,21 +46,21 @@ fn interpret_table_health(health: DbResult<bool>) -> serde_json::Value {
 }
 
 /// Handle the `/status` route
-pub async fn status_route() -> Json<serde_json::Value> {
-    Json(json!({
+pub async fn status_route() -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!({
         "status": "OK",
         "version": env!("CARGO_PKG_VERSION"),
-    }))
+    })))
 }
 
 /// Handle the `/__lbheartbeat__` route
-pub fn lb_heartbeat_route() -> HttpResponse {
+pub async fn lb_heartbeat_route() -> HttpResponse {
     // Used by the load balancers, just return OK.
     HttpResponse::Ok().finish()
 }
 
 /// Handle the `/__version__` route
-pub fn version_route() -> HttpResponse {
+pub async fn version_route() -> HttpResponse {
     // Return the contents of the version.json file created by circleci
     // and stored in the docker root
     HttpResponse::Ok()

@@ -1,4 +1,4 @@
-use crate::error::ApiError;
+use crate::error::{ApiError, ApiResult};
 use crate::tags::Tags;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse};
 use cadence::CountedExt;

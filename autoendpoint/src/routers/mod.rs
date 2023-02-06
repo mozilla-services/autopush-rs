@@ -65,7 +65,7 @@ impl From<RouterResponse> for HttpResponse {
         let mut builder = HttpResponse::build(router_response.status);
 
         for (key, value) in router_response.headers {
-            builder.set_header(key, value);
+            builder.insert_header((key, value));
         }
 
         builder.body(router_response.body.unwrap_or_default())
