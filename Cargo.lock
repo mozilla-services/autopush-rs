@@ -462,6 +462,7 @@ dependencies = [
  "actix-web-actors",
  "autoconnect_settings",
  "autoconnect_web",
+ "autoconnect_ws",
  "autopush_common",
  "cadence",
  "config",
@@ -493,13 +494,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "autoconnect-ws"
+name = "autoconnect_registry"
 version = "1.66.0"
+dependencies = [
+ "autoconnect_ws",
+ "autopush_common",
+ "futures 0.3.26",
+ "futures-locks",
+ "slog",
+ "slog-scope",
+ "uuid",
+]
 
 [[package]]
 name = "autoconnect_settings"
 version = "1.66.0"
 dependencies = [
+ "autoconnect_registry",
  "autopush_common",
  "cadence",
  "config",
@@ -530,6 +541,13 @@ dependencies = [
  "slog",
  "slog-scope",
  "uuid",
+]
+
+[[package]]
+name = "autoconnect_ws"
+version = "1.66.0"
+dependencies = [
+ "autopush_common",
 ]
 
 [[package]]

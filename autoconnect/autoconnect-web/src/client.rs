@@ -1,9 +1,11 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::mpsc;
 
 use actix_web::dev::ServiceRequest;
 use actix_web::web::Data;
+use actix_web::HttpResponse;
 use autopush_common::db::UserRecord;
 use autopush_common::errors::{ApcErrorKind, Result};
 use autopush_common::notification::Notification;
@@ -13,22 +15,13 @@ use futures_util::FutureExt;
 use uuid::Uuid;
 
 use autoconnect_settings::options::ServerOptions;
+use autoconnect_ws::ServerNotification;
 
 use crate::broadcast::{Broadcast, BroadcastSubs};
 
 /// Client & Registry functions.
 /// These are common functions run by connected WebSocket clients.
 /// These are called from the Autoconnect server.
-
-/// A connected Websocket client.
-pub struct RegisteredClient {
-    /// The user agent's unique ID.
-    pub uaid: Uuid,
-    /// The local ID, used to potentially distinquish multiple UAID connections.
-    pub uid: Uuid,
-    // / The channel for delivery of incoming notifications.
-    //pub tx: mpsc::UnboundedSender<ServerNotification>,
-}
 
 /// The Autoconnect Client connection
 #[derive(Default)]
@@ -61,7 +54,7 @@ impl Client {
     }
 
     pub fn shutdown(&mut self) {
-        //self.tx.unbounded_send(ServerNotification::Disconnect);
+        self.tx.send(ServerNotification::Disconnect);
     }
 }
 
@@ -99,7 +92,7 @@ struct SessionStatistics {
 pub struct WebPushClient {
     uaid: Uuid,
     uid: Uuid,
-    // rx: mpsc::UnboundedReceiver<ServerNotification>,
+    rx: mpsc::Receiver<Notification>,
     flags: ClientFlags,
     message_month: String,
     unacked_direct_notifs: Vec<Notification>,
@@ -114,13 +107,13 @@ pub struct WebPushClient {
     deferred_user_registration: Option<UserRecord>,
 }
 
-impl Default for WebPushClient {
-    fn default() -> Self {
+impl WebPushClient {
+    fn new(rx: mpsc::Receiver<Notification>) -> Self {
         // let (_, rx) = mpsc::unbounded();
         Self {
             uaid: Default::default(),
             uid: Default::default(),
-            // rx,
+            rx,
             flags: Default::default(),
             message_month: Default::default(),
             unacked_direct_notifs: Default::default(),
@@ -244,10 +237,10 @@ impl ClientRegistry {
         self.clients
             .write()
             .map(|mut clients| {
-                if let Some(_client) = clients.insert(client.uaid, client) {
-                    // Drop existing connection
-                    // if client.tx.unbounded_send(ServerNotification::Disconnect).is_ok(){
-                    debug!("Told client to disconnect as a new one wants to connect");
+                if let Some(client) = clients.insert(client.uaid, client) {
+                    if client.tx.send(ServerNotification::Disconnect).is_ok() {
+                        debug!("Told client to disconnect as a new one wants to connect");
+                    }
                 };
             })
             .await;
@@ -255,22 +248,21 @@ impl ClientRegistry {
     }
 
     /// A notification has come for the UAID
-    pub async fn notify(&self, uaid: Uuid, _notif: Notification) -> Result<()> {
+    pub async fn notify(&self, uaid: Uuid, notif: Notification) -> Result<()> {
         self.clients
             .read()
             .map(|clients| {
                 debug!("Sending notification");
-                if let Some(_client) = clients.get(&uaid) {
+                if let Some(client) = clients.get(&uaid) {
                     debug!("Found a client to deliver a notification to");
-                    /*
-                    let result = client
+                    if client
                         .tx
-                        .unbounded_send(ServerNotification::Notification(notif));
-                    if result.is_ok() {
+                        .send(ServerNotification::Notification(notif))
+                        .is_ok()
+                    {
                         debug!("Dropped notification in queue");
                         return Ok(());
                     }
-                    */
                 }
                 Err(ApcErrorKind::GeneralError("Could not send notification".to_owned()).into())
             })
@@ -282,14 +274,11 @@ impl ClientRegistry {
         self.clients
             .read()
             .map(|clients| {
-                if let Some(_client) = clients.get(&uaid) {
-                    /*
-                    let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
-                    if result.is_ok() {
+                if let Some(client) = clients.get(&uaid) {
+                    if client.tx.send(ServerNotification::CheckStorage).is_ok() {
                         debug!("Told client to check storage");
                         return Ok(());
                     }
-                    */
                 }
                 Err(ApcErrorKind::GeneralError("Could not store notification".to_owned()).into())
             })
@@ -366,4 +355,13 @@ impl ClientActions {
 ///
 struct NotifManager {}
 
-impl NotifManager {}
+impl NotifManager {
+    pub async fn on_notification(
+        state: &ServerOptions,
+        notification: Notification,
+    ) -> HttpResponse {
+        let conn = state.registry.get(notification.uaid).unwrap();
+
+        HttpResponse::Ok().finish()
+    }
+}

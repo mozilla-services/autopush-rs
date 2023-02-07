@@ -83,5 +83,13 @@ tungstenite = {version = "0.18", default-features = false}
 uuid = { version = "1.1", features = ["serde", "v4"] }
 url = "2.2"
 
+autoconnect = {path = "./autoconnect"}
+autopush_common = {path = "./autopush-common"}
+autoconnect_registry = {path = "./autoconnect/autoconnect-registry"}
+autoconnect_settings = {path = "./autoconnect/autoconnect-settings"}
+autoconnect_web = {path = "./autoconnect/autoconnect-web"}
+autoconnect_ws = {path = "./autoconnect/autoconnect-ws"}
+autoconnect_ws_clientsm = {path ="./autoconnect/autoconnect-ws/autoconnect-ws-clientsm"}
+
 [profile.release]
 debug = 1

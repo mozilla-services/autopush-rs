@@ -15,4 +15,5 @@ serde_derive.workspace = true
 slog.workspace = true
 slog-scope.workspace = true
 
-autopush_common = {path = "../../autopush-common"}
+autopush_common.workspace = true
+autoconnect_registry.workspace = true

@@ -6,7 +6,8 @@ use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};
 
 use crate::Settings;
-use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings};
+use autoconnect_web::ClientRegistry;
+use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
 use autopush_common::{
     errors::{ApcErrorKind, Result},
     metrics::new_metrics,
@@ -57,6 +58,7 @@ pub struct ServerOptions {
     pub megaphone_poll_interval: Duration,
     pub human_logs: bool,
     pub msg_limit: u32,
+    pub registry: Arc<ClientRegistry>,
 }
 
 impl ServerOptions {
@@ -84,12 +86,13 @@ impl ServerOptions {
         let router_url = settings.router_url();
         let endpoint_url = settings.endpoint_url();
 
-        // TODO: add bigtable impl here.
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
             db_settings: settings.db_settings.clone(),
         };
-        let db_client = Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?);
+        let db_client = match StorageType::from_dsn(&db_settings.dsn) {
+            StorageType::DYNAMODB => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
+        };
         Ok(Self {
             port: settings.port,
             fernet,
@@ -122,6 +125,7 @@ impl ServerOptions {
                 .expect("megaphone poll interval cannot be 0"),
             human_logs: settings.human_logs,
             msg_limit: settings.msg_limit,
+            registry: Arc::new(ClientRegistry::default()),
         })
     }
 }

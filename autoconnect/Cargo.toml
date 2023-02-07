@@ -39,9 +39,11 @@ slog-stdlog.workspace = true
 slog-term.workspace = true
 uuid.workspace = true
 
-autopush_common = {path = "../autopush-common"}
-autoconnect_settings = {path = "./autoconnect-settings"}
-autoconnect_web = {path = "./autoconnect-web"}
+autoconnect_settings.workspace = true
+autoconnect_web.workspace = true
+autoconnect_ws.workspace = true
+autopush_common.workspace = true
+
 docopt = "1.1"
 # for sentry middleware
 

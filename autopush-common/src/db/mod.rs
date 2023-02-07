@@ -50,8 +50,15 @@ pub enum StorageType {
 
 impl StorageType {
     /// currently, there is only one.
-    pub fn from_dsn(_dsn: &str) -> Self {
-        return Self::DYNAMODB;
+    pub fn from_dsn(_dsn: &Option<String>) -> Self {
+        /*
+        if let Some(dsn) = _dsn {
+            if dsn.starts_with("http") {
+                Self::DYNAMODB
+            }
+        }
+        */
+        Self::DYNAMODB
     }
 }
 
@@ -382,6 +389,7 @@ impl NotificationRecord {
             ))?;
 
         Ok(Notification {
+            uaid: self.uaid,
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),

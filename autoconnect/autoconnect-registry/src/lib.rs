@@ -1,4 +1,9 @@
+// move to own crate to avoid cyclic crate errors.
+#[macro_use]
+extern crate slog_scope;
+
 use std::collections::HashMap;
+use std::sync::mpsc;
 
 use futures::{
     future::{err, ok},
@@ -7,17 +12,26 @@ use futures::{
 use futures_locks::RwLock;
 use uuid::Uuid;
 
-use super::protocol::ServerNotification;
-use super::Notification;
-use crate::client::RegisteredClient;
-use autopush_common::errors::{ApcError, ApcErrorKind};
+use autoconnect_ws::ServerNotification;
+use autopush_common::errors::{ApcError, ApcErrorKind, Result};
+use autopush_common::notification::Notification;
+
+/// A connected Websocket client.
+pub struct RegisteredClient {
+    /// The user agent's unique ID.
+    pub uaid: Uuid,
+    /// The local ID, used to potentially distinquish multiple UAID connections.
+    pub uid: Uuid,
+    // / The channel for delivery of incoming notifications.
+    pub tx: mpsc::Sender<Notification>,
+}
 
 /// `notify` + `check_storage` are used under hyper (http.rs) which `Send`
 /// futures.
 ///
 /// `MySendFuture` is `Send` for this, similar to modern futures `BoxFuture`.
 /// `MyFuture` isn't, similar to modern futures `BoxLocalFuture`
-pub type MySendFuture<T> = Box<dyn Future<Item = T, Error = ApcError> + Send>;
+// pub type MySendFuture<T> = Box<dyn Future<Item = T, Error = ApcError, Output = ()> + Send>;
 
 #[derive(Default)]
 pub struct ClientRegistry {
@@ -29,23 +43,23 @@ impl ClientRegistry {
     ///
     /// For now just registers internal state by keeping track of the `client`,
     /// namely its channel to send notifications back.
-    pub fn connect(&self, client: RegisteredClient) -> MySendFuture<()> {
+    pub async fn connect(&self, client: RegisteredClient) -> Result<()> {
         debug!("Connecting a client!");
-        Box::new(
-            self.clients
-                .write()
-                .and_then(|mut clients| {
-                    if let Some(client) = clients.insert(client.uaid, client) {
-                        // Drop existing connection
-                        let result = client.tx.unbounded_send(ServerNotification::Disconnect);
-                        if result.is_ok() {
-                            debug!("Told client to disconnect as a new one wants to connect");
-                        }
+        self.clients
+            .write()
+            .await
+            .and_then(|mut clients| {
+                if let Some(client) = clients.insert(client.uaid, client) {
+                    // Drop existing connection
+                    let result = client.tx.unbounded_send(ServerNotification::Disconnect);
+                    if result.is_ok() {
+                        debug!("Told client to disconnect as a new one wants to connect");
                     }
-                    ok(())
-                })
-                .map_err(|_| ApcErrorKind::GeneralError("clients lock poisoned".into()).into()),
-        )
+                }
+                ok(())
+            })
+            .map_err(|_| ApcErrorKind::GeneralError("clients lock poisoned".into()).into());
+        Ok(())
 
         //.map_err(|_| "clients lock poisioned")
     }

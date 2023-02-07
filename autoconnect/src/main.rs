@@ -7,6 +7,7 @@ extern crate serde_derive;
 use std::{env, vec::Vec};
 
 use actix::{Actor, ActorContext, StreamHandler};
+use actix_web::middleware::ErrorHandlers;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use docopt::Docopt;
@@ -89,16 +90,20 @@ async fn main() -> Result<()> {
     }
     let settings = Settings::with_env_and_config_files(&filenames)
         .map_err(|e| ApcErrorKind::ConfigError(e))?;
-    // TODO: move this into the DbClient setup
-    if let Some(ddb_local) = settings.db_dsn.clone() {
-        if autopush_common::db::StorageType::from_dsn(&ddb_local)
-            == autopush_common::db::StorageType::DYNAMODB
-        {
-            env::set_var("AWS_LOCAL_DYNAMODB", ddb_local.to_owned());
-        }
+
+    //TODO: Eventually this will match between the various storage engines that
+    // we support. For now, it's just the one, DynamoDB.
+    // Perform any app global storage initialization.
+    if autopush_common::db::StorageType::from_dsn(&settings.db_dsn)
+        == autopush_common::db::StorageType::DYNAMODB
+    {
+        env::set_var(
+            "AWS_LOCAL_DYNAMODB",
+            settings.db_dsn.clone().unwrap().to_owned(),
+        );
     }
 
-    // Sentry uses the environment variable "SENTRY_DSN".
+    // Sentry requires the environment variable "SENTRY_DSN".
     if env::var("SENTRY_DSN")
         .unwrap_or_else(|_| "".to_owned())
         .is_empty()
@@ -120,12 +125,13 @@ async fn main() -> Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(server_opts.clone())
-            //.wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+            .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
             // use the default sentry wrapper for now.
             // TODO: Look into the sentry_actx hub scope? How do we pass actix service request data in?
             .wrap(sentry_actix::Sentry::new()) // Use the default wrapper
+            // Websocket Handler
             .route("/ws/", web::get().to(ws_handler))
-            // Add router info
+            // TODO: Internode Message handler
             //.service(web::resource("/push/{uaid}").route(web::push().to(autoconnect_web::route::InterNode::put))
             .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
             .service(web::resource("/health").route(web::get().to(dockerflow::health_route)))

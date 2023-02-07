@@ -26,6 +26,7 @@ use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
 
+use autopush_common::db::DbClientImpl;
 use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::logging;
@@ -50,7 +51,6 @@ mod dispatch;
 mod metrics;
 pub mod protocol;
 mod rc;
-pub mod registry;
 mod tls;
 mod webpush_io;
 
@@ -204,14 +204,23 @@ impl ServerOptions {
     }
 }
 
+/// The main AutoConnect server
 pub struct Server {
+    /// List of known Clients, mapped by UAID, for this node.
     pub clients: Arc<ClientRegistry>,
+    /// Handle to the Broadcast change monitor
     broadcaster: RefCell<BroadcastChangeTracker>,
-    pub ddb: DdbClientImpl,
+    /// Handle to the current Database Client
+    pub db: DbClientImpl,
+    /// Count of open cells
     open_connections: Cell<u32>,
+    /// OBSOLETE
     tls_acceptor: Option<SslAcceptor>,
+    /// Configuration options
     pub opts: Arc<ServerOptions>,
+    /// tokio reactor core handle
     pub handle: Handle,
+    /// analytics reporting
     pub metrics: Arc<StatsdClient>,
 }
 
@@ -314,15 +323,12 @@ impl Server {
                     let max = srv.opts.max_connections.unwrap_or(u32::max_value());
                     if srv.open_connections.get() >= max {
                         info!(
-                            "dropping {} as we already have too many open \
-                         connections",
+                            "dropping {} as we already have too many open connections",
                             addr
                         );
                         return Ok(());
                     }
                     srv.open_connections.set(srv.open_connections.get() + 1);
-
-                    // TODO: TCP socket options here?
 
                     // Process TLS (if configured)
                     let socket = tls::accept(&srv, socket);
@@ -477,6 +483,9 @@ impl Server {
     }
 }
 
+/*
+STATE MACHINE
+*/
 enum MegaphoneState {
     Waiting,
     Requesting(MyFuture<MegaphoneAPIResponse>),
@@ -576,6 +585,9 @@ enum WaitingFor {
     Close,
 }
 
+/*
+STATE MACHINE
+*/
 enum CloseState<T> {
     Exchange(T),
     Closing,
