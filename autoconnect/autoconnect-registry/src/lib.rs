@@ -5,15 +5,11 @@ extern crate slog_scope;
 use std::collections::HashMap;
 use std::sync::mpsc;
 
-use futures::{
-    future::{err, ok},
-    Future,
-};
 use futures_locks::RwLock;
 use uuid::Uuid;
 
 use autoconnect_ws::ServerNotification;
-use autopush_common::errors::{ApcError, ApcErrorKind, Result};
+use autopush_common::errors::{ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 
 /// A connected Websocket client.
@@ -22,16 +18,9 @@ pub struct RegisteredClient {
     pub uaid: Uuid,
     /// The local ID, used to potentially distinquish multiple UAID connections.
     pub uid: Uuid,
-    // / The channel for delivery of incoming notifications.
-    pub tx: mpsc::Sender<Notification>,
+    /// The channel for delivery of incoming notifications.
+    pub tx: mpsc::Sender<ServerNotification>,
 }
-
-/// `notify` + `check_storage` are used under hyper (http.rs) which `Send`
-/// futures.
-///
-/// `MySendFuture` is `Send` for this, similar to modern futures `BoxFuture`.
-/// `MyFuture` isn't, similar to modern futures `BoxLocalFuture`
-// pub type MySendFuture<T> = Box<dyn Future<Item = T, Error = ApcError, Output = ()> + Send>;
 
 #[derive(Default)]
 pub struct ClientRegistry {
@@ -45,87 +34,59 @@ impl ClientRegistry {
     /// namely its channel to send notifications back.
     pub async fn connect(&self, client: RegisteredClient) -> Result<()> {
         debug!("Connecting a client!");
-        self.clients
-            .write()
-            .await
-            .and_then(|mut clients| {
-                if let Some(client) = clients.insert(client.uaid, client) {
-                    // Drop existing connection
-                    let result = client.tx.unbounded_send(ServerNotification::Disconnect);
-                    if result.is_ok() {
-                        debug!("Told client to disconnect as a new one wants to connect");
-                    }
-                }
-                ok(())
-            })
-            .map_err(|_| ApcErrorKind::GeneralError("clients lock poisoned".into()).into());
+        let mut clients = self.clients.write().await;
+        if let Some(client) = clients.insert(client.uaid, client) {
+            // Drop existing connection
+            let result = client.tx.send(ServerNotification::Disconnect);
+            if result.is_ok() {
+                debug!("Told client to disconnect as a new one wants to connect");
+            }
+        }
         Ok(())
-
-        //.map_err(|_| "clients lock poisioned")
     }
 
     /// A notification has come for the uaid
-    pub fn notify(&self, uaid: Uuid, notif: Notification) -> MySendFuture<()> {
-        let fut = self
-            .clients
-            .read()
-            .and_then(move |clients| {
-                debug!("Sending notification");
-                if let Some(client) = clients.get(&uaid) {
-                    debug!("Found a client to deliver a notification to");
-                    let result = client
-                        .tx
-                        .unbounded_send(ServerNotification::Notification(notif));
-                    if result.is_ok() {
-                        debug!("Dropped notification in queue");
-                        return ok(());
-                    }
-                }
-                err(())
-            })
-            .map_err(|_| ApcErrorKind::GeneralError("User not connected".into()).into());
-        Box::new(fut)
+    pub async fn notify(&self, uaid: Uuid, notif: Notification) -> Result<()> {
+        let clients = self.clients.read().await;
+        debug!("Sending notification");
+        if let Some(client) = clients.get(&uaid) {
+            debug!("Found a client to deliver a notification to");
+            let result = client.tx.send(ServerNotification::Notification(notif));
+            if result.is_ok() {
+                debug!("Dropped notification in queue");
+                return Ok(());
+            }
+        }
+        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
 
     /// A check for notification command has come for the uaid
-    pub fn check_storage(&self, uaid: Uuid) -> MySendFuture<()> {
-        let fut = self
-            .clients
-            .read()
-            .and_then(move |clients| {
-                if let Some(client) = clients.get(&uaid) {
-                    let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
-                    if result.is_ok() {
-                        debug!("Told client to check storage");
-                        return ok(());
-                    }
-                }
-                err(())
-            })
-            .map_err(|_| ApcErrorKind::GeneralError("User not connected".into()).into());
-        Box::new(fut)
+    pub async fn check_storage(&self, uaid: Uuid) -> Result<()> {
+        let clients = self.clients.read().await;
+        if let Some(client) = clients.get(&uaid) {
+            let result = client.tx.send(ServerNotification::CheckStorage);
+            if result.is_ok() {
+                debug!("Told client to check storage");
+                return Ok(());
+            }
+        }
+        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
 
     /// The client specified by `uaid` has disconnected.
     #[allow(clippy::clone_on_copy)]
-    pub fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> MySendFuture<()> {
+    pub async fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> Result<()> {
         debug!("Disconnecting client!");
         let uaidc = uaid.clone();
         let uidc = uid.clone();
-        let fut = self
-            .clients
-            .write()
-            .and_then(move |mut clients| {
-                let client_exists = clients
-                    .get(&uaidc)
-                    .map_or(false, |client| client.uid == uidc);
-                if client_exists {
-                    clients.remove(&uaidc).expect("Couldn't remove client?");
-                    return ok(());
-                }
-                err(())
-            })
-            .map_err(|_| ApcErrorKind::GeneralError("User not connected".into()).into());
-        Box::new(fut)
+        let mut clients = self.clients.write().await;
+        let client_exists = clients
+            .get(&uaidc)
+            .map_or(false, |client| client.uid == uidc);
+        if client_exists {
+            clients.remove(&uaidc).expect("Couldn't remove client?");
+            return Ok(());
+        }
+        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
 }

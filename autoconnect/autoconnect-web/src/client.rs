@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
 
+use actix_web::body::BoxBody;
 use actix_web::dev::ServiceRequest;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
@@ -10,6 +11,7 @@ use autopush_common::db::UserRecord;
 use autopush_common::errors::{ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 use autopush_common::util::ms_since_epoch;
+use bytes::Bytes;
 use futures_locks::RwLock;
 use futures_util::FutureExt;
 use uuid::Uuid;
@@ -348,7 +350,7 @@ impl ClientActions {
 /// Handle incoming routed notifications from autoendpoint servers.
 ///
 /// These requests include the notification in the body of the request.
-/// PUT /push/{method_name}/{uaid} - send notification to the connected client
+/// PUT /push/{uaid} - send notification to the connected client
 ///    return OK{}, NOT_FOUND{"Client not available."}, BAD_REQUEST{"Unable to decode payload"}
 /// PUT /notif/{method_name}/{uaid} - check if uaid is in storage
 ///    return OK{}, NOT_FOUND{"Client not available."}, OK(result of `check_storage`)
@@ -356,12 +358,21 @@ impl ClientActions {
 struct NotifManager {}
 
 impl NotifManager {
-    pub async fn on_notification(
-        state: &ServerOptions,
-        notification: Notification,
-    ) -> HttpResponse {
-        let conn = state.registry.get(notification.uaid).unwrap();
+    pub async fn on_push(state: &ServerOptions, notification: Notification) -> HttpResponse {
+        state
+            .registry
+            .notify(notification.uaid, notification)
+            .await?;
 
         HttpResponse::Ok().finish()
+    }
+
+    pub async fn on_notif(state: &ServerOptions, uaid: Uuid) -> HttpResponse {
+        if state.registry.check_storage(uaid).await.is_ok() {
+            return HttpResponse::Ok().finish();
+        };
+        HttpResponse::NotFound().message_body(BoxBody::try_from(Bytes::from_static(
+            "Client not available",
+        )))?
     }
 }

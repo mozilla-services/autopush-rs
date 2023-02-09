@@ -531,6 +531,7 @@ dependencies = [
  "actix-web",
  "autoconnect_settings",
  "autopush_common",
+ "bytes 1.4.0",
  "cadence",
  "futures-locks",
  "futures-util",
