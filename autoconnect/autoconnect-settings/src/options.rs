@@ -32,12 +32,16 @@ fn fto_dur(seconds: f64) -> Option<Duration> {
     }
 }
 
+
+/// A thread safe set of options specific to the Server. These are compiled from [crate::Settings]
 #[derive(Clone)]
 pub struct ServerOptions {
     pub router_port: u16,
     pub port: u16,
+    /// Encryption object for the endpoint URL
     pub fernet: MultiFernet,
     pub metrics: Arc<StatsdClient>,
+    /// Handle to the data storage object
     pub db_client: Box<dyn DbClient>,
     pub ssl_key: Option<PathBuf>,
     pub ssl_cert: Option<PathBuf>,
@@ -47,8 +51,6 @@ pub struct ServerOptions {
     pub auto_ping_timeout: Duration,
     pub max_connections: Option<u32>,
     pub close_handshake_timeout: Option<Duration>,
-    pub _message_table_name: String,
-    pub _router_table_name: String,
     pub router_url: String,
     pub endpoint_url: String,
     pub statsd_host: Option<String>,
@@ -101,8 +103,6 @@ impl ServerOptions {
             router_port: settings.router_port,
             statsd_host: settings.statsd_host.clone(),
             statsd_port: settings.statsd_port,
-            _message_table_name: settings.message_tablename.clone(),
-            _router_table_name: settings.router_tablename.clone(),
             router_url,
             endpoint_url,
             ssl_key: settings.router_ssl_key.clone().map(PathBuf::from),

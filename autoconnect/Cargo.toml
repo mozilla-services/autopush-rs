@@ -39,6 +39,7 @@ slog-stdlog.workspace = true
 slog-term.workspace = true
 uuid.workspace = true
 
+autoconnect_registry.workspace = true
 autoconnect_settings.workspace = true
 autoconnect_web.workspace = true
 autoconnect_ws.workspace = true

@@ -9,3 +9,9 @@ pub enum ServerNotification {
     Notification(Notification),
     Disconnect,
 }
+
+impl Default for ServerNotification {
+    fn default() -> Self {
+        ServerNotification::Disconnect
+    }
+}

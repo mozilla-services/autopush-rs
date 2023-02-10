@@ -7,6 +7,7 @@ extern crate serde_derive;
 use std::{env, vec::Vec};
 
 use actix::{Actor, ActorContext, StreamHandler};
+use actix_http::StatusCode;
 use actix_web::middleware::ErrorHandlers;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
@@ -15,7 +16,7 @@ use serde::Deserialize;
 
 use autoconnect_settings::{options::ServerOptions, Settings};
 use autoconnect_web::dockerflow;
-use autopush_common::errors::{ApcErrorKind, Result};
+use autopush_common::errors::{render_404, ApcErrorKind, Result};
 
 mod server;
 
@@ -125,7 +126,7 @@ async fn main() -> Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(server_opts.clone())
-            .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+            .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
             // use the default sentry wrapper for now.
             // TODO: Look into the sentry_actx hub scope? How do we pass actix service request data in?
             .wrap(sentry_actix::Sentry::new()) // Use the default wrapper

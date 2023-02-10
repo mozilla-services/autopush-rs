@@ -389,7 +389,6 @@ impl NotificationRecord {
             ))?;
 
         Ok(Notification {
-            uaid: self.uaid,
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),

@@ -460,6 +460,7 @@ dependencies = [
  "actix-test",
  "actix-web",
  "actix-web-actors",
+ "autoconnect_registry",
  "autoconnect_settings",
  "autoconnect_web",
  "autoconnect_ws",
@@ -529,7 +530,9 @@ version = "1.66.0"
 dependencies = [
  "actix",
  "actix-web",
+ "autoconnect_registry",
  "autoconnect_settings",
+ "autoconnect_ws",
  "autopush_common",
  "bytes 1.4.0",
  "cadence",

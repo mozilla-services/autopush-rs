@@ -8,7 +8,6 @@ use crate::util::ms_since_epoch;
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
 pub struct Notification {
-    pub uaid: Uuid,
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
     pub version: String,

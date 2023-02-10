@@ -29,7 +29,7 @@ use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::server::Server;
 use crate::MyFuture;
 
-// Created and handed to the AutopushServer
+/// Created and handed to the AutopushServer
 pub struct RegisteredClient {
     /// The User Agent ID (assigned to the remote UserAgent by the server)
     pub uaid: Uuid,
@@ -40,6 +40,7 @@ pub struct RegisteredClient {
 }
 
 
+/// Websocket connector client handler
 pub struct Client<T>
 where
     T: Stream<Item = ClientMessage, Error = ApcError>
@@ -52,7 +53,7 @@ where
     srv: Rc<Server>,
     /// List of interested Broadcast/Megaphone subscriptions for this User Agent
     broadcast_subs: Rc<RefCell<BroadcastSubs>>,
-    /// Channel to the WebSocket connection object for local outbound notifications.
+    /// local webpush router state command request channel.
     tx: mpsc::UnboundedSender<ServerNotification>,
 }
 

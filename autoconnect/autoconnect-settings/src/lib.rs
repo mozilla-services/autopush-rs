@@ -37,37 +37,64 @@ fn include_port(scheme: &str, port: u16) -> bool {
     !((scheme == "http" && port == 80) || (scheme == "https" && port == 443))
 }
 
+/// The Applications settings, read from CLI, Environment or settings file, for the
+/// autoconnect application. These are later converted to [crate::options::ServerOptions].
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    /// The application port to listen on
     pub port: u16,
+    /// The DNS specified name of the application host to used for internal routing
     pub hostname: Option<String>,
+    /// The override hostname to use for internal routing (NOTE: requires `hostname` to be set)
     pub resolve_hostname: bool,
+    /// The internal webpush routing port
     pub router_port: u16,
+    /// The DNS name to use for internal routing
     pub router_hostname: Option<String>,
-    pub router_tablename: String,
-    pub message_tablename: String,
+    /// TLS key for internal router connections (may be empty if ELB is used)
     pub router_ssl_key: Option<String>,
+    /// TLS certificate for internal router connections (may be empty if ELB is used)
     pub router_ssl_cert: Option<String>,
+    /// TLS DiffieHellman parameter for internal router connections
     pub router_ssl_dh_param: Option<String>,
+    /// The server based ping interval (also used for Broadcast sends)
     pub auto_ping_interval: f64,
+    /// How long to wait for a response Pong before being timed out and connection drop
     pub auto_ping_timeout: f64,
+    /// Max number of websocket connections to allow
     pub max_connections: u32,
+    /// How long to wait while closing a connection for the response handshake.
     pub close_handshake_timeout: u32,
+    /// The URL scheme (http/https) for the endpoint URL
     pub endpoint_scheme: String,
+    /// The host url for the endpoint URL (differs from `hostname` and `resolve_hostname`)
     pub endpoint_hostname: String,
+    /// The optional port override for the endpoint URL
     pub endpoint_port: u16,
+    /// The seed key to use for endpoint encryption
     pub crypto_key: String,
+    /// The host name to send recorded metrics
     pub statsd_host: Option<String>,
+    /// The port number to send recorded metrics
     pub statsd_port: u16,
+    /// The root label to apply to metrics.
     pub statsd_label: String,
+    /// The DSN to connect to the storage engine (Used to )
     pub db_dsn: Option<String>,
+    /// JSON set of specific database settings (See data storage engines)
     pub db_settings: String,
     // pub aws_ddb_endpoint: Option<String>,
+    /// Server endpoint to pull Broadcast ID change values (Sent in Pings)
     pub megaphone_api_url: Option<String>,
+    /// Broadcast token for authentication
     pub megaphone_api_token: Option<String>,
+    /// How often to poll the server for new data
     pub megaphone_poll_interval: u32,
+    /// Use human readable (simplified, non-JSON)
     pub human_logs: bool,
+    /// Maximum allowed number of backlogged messages. Exceeding this number will
+    /// trigger a user reset because the user may have been offline way too long.
     pub msg_limit: u32,
 }
 
@@ -79,8 +106,6 @@ impl Default for Settings {
             resolve_hostname: false,
             router_port: 8081,
             router_hostname: None,
-            router_tablename: "router".to_owned(),
-            message_tablename: "message".to_owned(),
             router_ssl_key: None,
             router_ssl_cert: None,
             router_ssl_dh_param: None,

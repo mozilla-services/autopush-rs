@@ -3,19 +3,20 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-use actix_web::body::BoxBody;
+use actix_web::body::{BoxBody, MessageBody};
 use actix_web::dev::ServiceRequest;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
-use autopush_common::db::UserRecord;
-use autopush_common::errors::{ApcErrorKind, Result};
-use autopush_common::notification::Notification;
-use autopush_common::util::ms_since_epoch;
 use bytes::Bytes;
 use futures_locks::RwLock;
 use futures_util::FutureExt;
 use uuid::Uuid;
 
+use autopush_common::db::UserRecord;
+use autopush_common::errors::{ApcErrorKind, Result};
+use autopush_common::notification::Notification;
+use autopush_common::util::ms_since_epoch;
+use autoconnect_registry::RegisteredClient;
 use autoconnect_settings::options::ServerOptions;
 use autoconnect_ws::ServerNotification;
 
@@ -26,7 +27,6 @@ use crate::broadcast::{Broadcast, BroadcastSubs};
 /// These are called from the Autoconnect server.
 
 /// The Autoconnect Client connection
-#[derive(Default)]
 pub struct Client /*<T>
 where
     T: Stream<Item = ClientMessage, Error = Error>
@@ -38,15 +38,17 @@ where
     // srv: Rc<Server>,
     // / List of subscribed broadcasts
     // broadcast_subs: Rc<RefCell<BroadcastSubs>>,
-    // / Channel for incoming notifications
-    //tx: mpsc::UnboundedSender<ServerNotification>,
+    /// Channel for incoming notifications
+    tx: mpsc::Sender<ServerNotification>,
 }
 
 impl Client {
     /// Create a new client, ensuring that we have a channel to send notifications and that the
     /// broadcast_subs are captured. Set up the local state machine if need be.
-    pub async fn new() -> Client {
-        Self::default()
+    pub async fn new(tx: mpsc::Sender<ServerNotification>) -> Client {
+        Self {
+            tx
+        }
     }
 
     /// Get the list of broadcasts that have changed recently.
@@ -355,24 +357,26 @@ impl ClientActions {
 /// PUT /notif/{method_name}/{uaid} - check if uaid is in storage
 ///    return OK{}, NOT_FOUND{"Client not available."}, OK(result of `check_storage`)
 ///
+#[derive(Clone, Debug, Default)]
 struct NotifManager {}
 
 impl NotifManager {
-    pub async fn on_push(state: &ServerOptions, notification: Notification) -> HttpResponse {
-        state
+    pub async fn on_push(state: &ServerOptions, uaid: Uuid, notification: Notification) -> Result<HttpResponse> {
+        let _r = state
             .registry
-            .notify(notification.uaid, notification)
+            .notify(uaid, notification)
             .await?;
 
-        HttpResponse::Ok().finish()
+        Ok(HttpResponse::Ok().finish())
     }
 
-    pub async fn on_notif(state: &ServerOptions, uaid: Uuid) -> HttpResponse {
+    pub async fn on_notif(state: &ServerOptions, uaid: Uuid) -> Result<HttpResponse> {
         if state.registry.check_storage(uaid).await.is_ok() {
-            return HttpResponse::Ok().finish();
+            return Ok(HttpResponse::Ok().finish());
         };
-        HttpResponse::NotFound().message_body(BoxBody::try_from(Bytes::from_static(
-            "Client not available",
-        )))?
+        let body = Bytes::from_static(
+            b"Client not available",
+        );
+        Ok(HttpResponse::NotFound().body::<Bytes>(body.into()))
     }
 }

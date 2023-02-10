@@ -14,7 +14,7 @@ use actix_web::{
 use thiserror::Error;
 
 /// Render a 404 response
-pub fn render_404<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
+pub fn render_404<B>(res: ServiceResponse<B>) -> std::result::Result<ErrorHandlerResponse<B>, actix_web::Error> {
     // Replace the outbound error message with our own.
     let resp = HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
     Ok(ErrorHandlerResponse::Response(
