@@ -123,6 +123,9 @@ async fn main() -> Result<()> {
 
     let server_opts = ServerOptions::from_settings(&settings)?;
 
+    /* if [autoconnect-ws::ServerNotification] has the `Notification(autopush_common::notification::Notification)` uncommented,
+    the following will fail to compile.
+    */
     HttpServer::new(move || {
         App::new()
             .app_data(server_opts.clone())

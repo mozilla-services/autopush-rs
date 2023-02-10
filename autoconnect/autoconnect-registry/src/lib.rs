@@ -52,7 +52,7 @@ impl ClientRegistry {
         debug!("Sending notification");
         if let Some(client) = clients.get(&uaid) {
             debug!("Found a client to deliver a notification to");
-            let result = client.tx.send(ServerNotification::Notification(notif.clone()));
+            let result = client.tx.send(ServerNotification::Notification(notif));
             if result.is_ok() {
                 debug!("Dropped notification in queue");
                 return Ok(());

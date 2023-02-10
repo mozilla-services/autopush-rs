@@ -12,13 +12,13 @@ use futures_locks::RwLock;
 use futures_util::FutureExt;
 use uuid::Uuid;
 
+use autoconnect_registry::RegisteredClient;
+use autoconnect_settings::options::ServerOptions;
+use autoconnect_ws::ServerNotification;
 use autopush_common::db::UserRecord;
 use autopush_common::errors::{ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 use autopush_common::util::ms_since_epoch;
-use autoconnect_registry::RegisteredClient;
-use autoconnect_settings::options::ServerOptions;
-use autoconnect_ws::ServerNotification;
 
 use crate::broadcast::{Broadcast, BroadcastSubs};
 
@@ -46,9 +46,7 @@ impl Client {
     /// Create a new client, ensuring that we have a channel to send notifications and that the
     /// broadcast_subs are captured. Set up the local state machine if need be.
     pub async fn new(tx: mpsc::Sender<ServerNotification>) -> Client {
-        Self {
-            tx
-        }
+        Self { tx }
     }
 
     /// Get the list of broadcasts that have changed recently.
@@ -361,11 +359,12 @@ impl ClientActions {
 struct NotifManager {}
 
 impl NotifManager {
-    pub async fn on_push(state: &ServerOptions, uaid: Uuid, notification: Notification) -> Result<HttpResponse> {
-        let _r = state
-            .registry
-            .notify(uaid, notification)
-            .await?;
+    pub async fn on_push(
+        state: &ServerOptions,
+        uaid: Uuid,
+        notification: Notification,
+    ) -> Result<HttpResponse> {
+        let _r = state.registry.notify(uaid, notification).await?;
 
         Ok(HttpResponse::Ok().finish())
     }
@@ -374,9 +373,7 @@ impl NotifManager {
         if state.registry.check_storage(uaid).await.is_ok() {
             return Ok(HttpResponse::Ok().finish());
         };
-        let body = Bytes::from_static(
-            b"Client not available",
-        );
+        let body = Bytes::from_static(b"Client not available");
         Ok(HttpResponse::NotFound().body::<Bytes>(body.into()))
     }
 }

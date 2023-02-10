@@ -32,7 +32,6 @@ fn fto_dur(seconds: f64) -> Option<Duration> {
     }
 }
 
-
 /// A thread safe set of options specific to the Server. These are compiled from [crate::Settings]
 #[derive(Clone)]
 pub struct ServerOptions {
