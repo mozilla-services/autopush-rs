@@ -59,7 +59,8 @@ pub struct ServerOptions {
     pub megaphone_poll_interval: Duration,
     pub human_logs: bool,
     pub msg_limit: u32,
-    pub registry: Arc<ClientRegistry>,
+    // XXX Thread Safety
+    //pub registry: Arc<ClientRegistry>
 }
 
 impl ServerOptions {
@@ -124,7 +125,8 @@ impl ServerOptions {
                 .expect("megaphone poll interval cannot be 0"),
             human_logs: settings.human_logs,
             msg_limit: settings.msg_limit,
-            registry: Arc::new(ClientRegistry::default()),
+            // XXX: this causes main to fail to compile with
+            // registry: Arc::new(ClientRegistry::default()),
         })
     }
 }

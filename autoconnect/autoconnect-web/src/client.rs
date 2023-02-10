@@ -364,15 +364,19 @@ impl NotifManager {
         uaid: Uuid,
         notification: Notification,
     ) -> Result<HttpResponse> {
-        let _r = state.registry.notify(uaid, notification).await?;
+        /* XXX Thread Safety
 
+        let _r = state.registry.notify(uaid, notification).await?;
+        */
         Ok(HttpResponse::Ok().finish())
     }
 
     pub async fn on_notif(state: &ServerOptions, uaid: Uuid) -> Result<HttpResponse> {
+        /* XXX Thread Safety
         if state.registry.check_storage(uaid).await.is_ok() {
             return Ok(HttpResponse::Ok().finish());
         };
+        */
         let body = Bytes::from_static(b"Client not available");
         Ok(HttpResponse::NotFound().body::<Bytes>(body.into()))
     }
