@@ -39,13 +39,19 @@ where
     // / List of subscribed broadcasts
     // broadcast_subs: Rc<RefCell<BroadcastSubs>>,
     /// Channel for incoming notifications
-    tx: mpsc::Sender<ServerNotification>,
+    tx: mpsc::SyncSender<ServerNotification>,
 }
 
 impl Client {
     /// Create a new client, ensuring that we have a channel to send notifications and that the
-    /// broadcast_subs are captured. Set up the local state machine if need be.
-    pub async fn new(tx: mpsc::Sender<ServerNotification>) -> Client {
+    /// broadcast_subs are captured. Set up the local state machine if need be. This client is
+    /// held by the server and links to the [autoconnect-web::client::WebPushClient]
+    /// TODO:
+    /// Make sure that when this is called, the `tx` is created with
+    /// ```
+    ///   let (tx,rx) = std::sync::mpsc::sync_channel(autoconnect_settings::options::max_pending_notification_queue);
+    /// ```
+    pub async fn new(tx: mpsc::SyncSender<ServerNotification>) -> Client {
         Self { tx }
     }
 
@@ -55,8 +61,11 @@ impl Client {
         return None;
     }
 
-    pub fn shutdown(&mut self) {
-        self.tx.send(ServerNotification::Disconnect);
+    pub fn shutdown(&mut self) -> Result<()> {
+        if let Err(e) = self.tx.send(ServerNotification::Disconnect) {
+            debug!("Failure to shut down client: {e:?}")
+        };
+        Ok(())
     }
 }
 
@@ -92,36 +101,47 @@ struct SessionStatistics {
 
 /// Represent the state for a valid WebPush client that is authenticated
 pub struct WebPushClient {
+    /// User Agent ID
     uaid: Uuid,
+    /// Unique local Identifier
     uid: Uuid,
+    /// Incoming Notification channel
     rx: mpsc::Receiver<Notification>,
+    /// Various state flags
     flags: ClientFlags,
+    /// Semi-obsolete message month (used for rotation)
     message_month: String,
+    /// List of unacknowledged Notifications that are delivered directly
     unacked_direct_notifs: Vec<Notification>,
+    /// List of unacknowledged Notifications that are from db storage
     unacked_stored_notifs: Vec<Notification>,
     // Highest version from stored, retained for use with increment
     // when all the unacked storeds are ack'd
     unacked_stored_highest: Option<u64>,
+    /// When the WebpushClient connected
     connected_at: u64,
+    /// Total number of notification sent from db storage so far
     sent_from_storage: u32,
+    /// Time of the last Ping (UTC)
     last_ping: u64,
+    /// Various statistics around this session
     stats: SessionStatistics,
+    /// The User Data (if the registration has been deferred)
     deferred_user_registration: Option<UserRecord>,
 }
 
 impl WebPushClient {
-    fn new(rx: mpsc::Receiver<Notification>) -> Self {
-        // let (_, rx) = mpsc::unbounded();
+    pub fn new(uaid: Uuid, rx: mpsc::Receiver<Notification>) -> Self {
         Self {
-            uaid: Default::default(),
-            uid: Default::default(),
+            uaid,
+            uid: Uuid::new_v4(),
             rx,
             flags: Default::default(),
             message_month: Default::default(),
             unacked_direct_notifs: Default::default(),
             unacked_stored_notifs: Default::default(),
             unacked_stored_highest: Default::default(),
-            connected_at: Default::default(),
+            connected_at: ms_since_epoch(),
             sent_from_storage: Default::default(),
             last_ping: Default::default(),
             stats: Default::default(),
@@ -131,11 +151,13 @@ impl WebPushClient {
 }
 
 impl WebPushClient {
+    /// Are there any pending notifications that have not yet been acknowledged by the client?
     fn unacked_messages(&self) -> bool {
         !self.unacked_stored_notifs.is_empty() || !self.unacked_direct_notifs.is_empty()
     }
 }
 
+/// Set of Session specific flags for this WebPushClient
 pub struct ClientFlags {
     /// Whether check_storage queries for topic (not "timestamped") messages
     include_topic: bool,
@@ -364,19 +386,14 @@ impl NotifManager {
         uaid: Uuid,
         notification: Notification,
     ) -> Result<HttpResponse> {
-        /* XXX Thread Safety
-
         let _r = state.registry.notify(uaid, notification).await?;
-        */
         Ok(HttpResponse::Ok().finish())
     }
 
     pub async fn on_notif(state: &ServerOptions, uaid: Uuid) -> Result<HttpResponse> {
-        /* XXX Thread Safety
         if state.registry.check_storage(uaid).await.is_ok() {
             return Ok(HttpResponse::Ok().finish());
         };
-        */
         let body = Bytes::from_static(b"Client not available");
         Ok(HttpResponse::NotFound().body::<Bytes>(body.into()))
     }

@@ -14,4 +14,3 @@ uuid.workspace = true
 
 autoconnect_ws.workspace = true
 autopush_common.workspace = true
-# autoconnect_web.workspace = true  # cycle!

@@ -465,6 +465,7 @@ dependencies = [
  "autoconnect_web",
  "autoconnect_ws",
  "autopush_common",
+ "bytestring",
  "cadence",
  "config",
  "docopt",
@@ -551,12 +552,22 @@ dependencies = [
 name = "autoconnect_ws"
 version = "1.66.0"
 dependencies = [
+ "actix-web",
  "autopush_common",
 ]
 
 [[package]]
 name = "autoconnect_ws_clientsm"
 version = "1.66.0"
+dependencies = [
+ "actix-web",
+ "autoconnect_registry",
+ "autoconnect_settings",
+ "autoconnect_web",
+ "autoconnect_ws",
+ "autopush_common",
+ "uuid",
+]
 
 [[package]]
 name = "autoendpoint"

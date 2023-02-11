@@ -96,6 +96,10 @@ pub struct Settings {
     /// Maximum allowed number of backlogged messages. Exceeding this number will
     /// trigger a user reset because the user may have been offline way too long.
     pub msg_limit: u32,
+    /// Maximum number of pending notifications for individual UserAgent handlers.
+    /// (if a given [RegisteredClient] receives more than this number, the calling
+    /// thread will lock.)
+    pub max_pending_notification_queue: u32,
 }
 
 impl Default for Settings {
@@ -127,6 +131,7 @@ impl Default for Settings {
             megaphone_poll_interval: 30,
             human_logs: false,
             msg_limit: 100,
+            max_pending_notification_queue: 10,
         }
     }
 }

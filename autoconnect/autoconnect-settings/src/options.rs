@@ -59,8 +59,8 @@ pub struct ServerOptions {
     pub megaphone_poll_interval: Duration,
     pub human_logs: bool,
     pub msg_limit: u32,
-    // XXX Thread Safety
-    //pub registry: Arc<ClientRegistry>
+    pub registry: Arc<ClientRegistry>,
+    pub max_pending_notification_queue: u32,
 }
 
 impl ServerOptions {
@@ -126,7 +126,8 @@ impl ServerOptions {
             human_logs: settings.human_logs,
             msg_limit: settings.msg_limit,
             // XXX: this causes main to fail to compile with
-            // registry: Arc::new(ClientRegistry::default()),
+            registry: Arc::new(ClientRegistry::default()),
+            max_pending_notification_queue: settings.max_pending_notification_queue,
         })
     }
 }

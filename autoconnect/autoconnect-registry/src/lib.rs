@@ -19,7 +19,9 @@ pub struct RegisteredClient {
     /// The local ID, used to potentially distinquish multiple UAID connections.
     pub uid: Uuid,
     /// The channel for delivery of incoming notifications.
-    pub tx: mpsc::Sender<ServerNotification>,
+    /// Note: SyncSender is a bounded queue, meaning that excessive messages
+    /// will block the sending thread.
+    pub tx: mpsc::SyncSender<ServerNotification>,
 }
 
 /// Contains a mapping of UAID to the associated RegisteredClient.
