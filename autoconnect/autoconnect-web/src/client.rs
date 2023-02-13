@@ -1,22 +1,25 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 
+use actix::{Actor, ActorContext, StreamHandler};
 use actix_web::body::{BoxBody, MessageBody};
 use actix_web::dev::ServiceRequest;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
+use actix_web_actors::ws;
 use bytes::Bytes;
 use futures_locks::RwLock;
 use futures_util::FutureExt;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use autoconnect_registry::RegisteredClient;
 use autoconnect_settings::options::ServerOptions;
 use autoconnect_ws::ServerNotification;
 use autopush_common::db::UserRecord;
-use autopush_common::errors::{ApcErrorKind, Result};
+use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 use autopush_common::util::ms_since_epoch;
 
@@ -27,20 +30,50 @@ use crate::broadcast::{Broadcast, BroadcastSubs};
 /// These are called from the Autoconnect server.
 
 /// The Autoconnect Client connection
-pub struct Client /*<T>
-where
-    T: Stream<Item = ClientMessage, Error = Error>
-        + Sink<SinkItem = ServerMessage, SinkError = Error>
-        + 'static,
-    */ {
+#[derive(Debug, Clone)]
+pub struct Client {
+
     // state_machine: UnAuthClientStateFuture<T>, // Client
     // / Pointer to the server structure for this client
     // srv: Rc<Server>,
     // / List of subscribed broadcasts
     // broadcast_subs: Rc<RefCell<BroadcastSubs>>,
     /// Channel for incoming notifications
+    // / TODO: Actix complains that there's a missing future on this
     tx: mpsc::SyncSender<ServerNotification>,
 }
+
+impl Actor for Client {
+    type Context = ws::WebsocketContext<Self>;
+}
+
+impl StreamHandler<std::result::Result<ws::Message, ws::ProtocolError>> for Client {
+    fn handle(
+        &mut self,
+        msg: std::result::Result<ws::Message, ws::ProtocolError>,
+        ctx: &mut Self::Context,
+    ) {
+        // TODO: Add timeout to drop if no "hello"
+        match msg {
+            Ok(ws::Message::Ping(msg)) => {
+                // TODO: Add megaphone handling
+                ctx.pong(&msg);
+            }
+            Ok(ws::Message::Text(msg)) => {
+                info!("{:?}", msg);
+                if let Err(e) = self.process_message(msg) {
+                    self.process_error(ctx, e)
+                };
+            }
+            _ => {
+                error!("Unsupported socket message: {:?}", msg);
+                ctx.stop();
+                return;
+            }
+        }
+    }
+}
+
 
 impl Client {
     /// Create a new client, ensuring that we have a channel to send notifications and that the
@@ -49,11 +82,41 @@ impl Client {
     /// TODO:
     /// Make sure that when this is called, the `tx` is created with
     /// ```
-    ///   let (tx,rx) = std::sync::mpsc::sync_channel(autoconnect_settings::options::max_pending_notification_queue);
+    ///   let (tx,rx) = std::sync::mpsc::channel(autoconnect_settings::options::max_pending_notification_queue);
     /// ```
     pub async fn new(tx: mpsc::SyncSender<ServerNotification>) -> Client {
-        Self { tx }
+        Self {
+            tx
+        }
     }
+
+    /// Parse and process the message calling the appropriate sub function
+    fn process_message(&mut self, msg: bytestring::ByteString) -> Result<()> {
+        // convert msg to JSON / parse
+        let bytes = msg.as_bytes();
+        let msg: serde_json::Value = serde_json::from_slice(bytes)?;
+        if let Some(message_type) = msg.get("messageType") {
+            match &message_type.as_str().unwrap().to_lowercase() {
+                // TODO: Finish writing these.
+                /*
+                "hello" => self.process_hello(msg)?,
+                ...
+                */
+                _ => return Err(ApcErrorKind::GeneralError("PLACEHOLDER".to_owned()).into()),
+            }
+        }
+        // match on `messageType`:
+        // hello:
+        Ok(())
+    }
+
+    /// Process the error, logging it and terminating the connection.
+    fn process_error(&mut self, ctx: &mut ws::WebsocketContext<Client>, e: ApcError) {
+        // send error to sentry if appropriate
+        error!("Error:: {e:?}");
+        ctx.stop();
+    }
+
 
     /// Get the list of broadcasts that have changed recently.
     pub async fn broadcast_delta(&mut self) -> Option<Vec<Broadcast>> {

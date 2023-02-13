@@ -60,7 +60,7 @@ pub struct ServerOptions {
     pub human_logs: bool,
     pub msg_limit: u32,
     pub registry: Arc<ClientRegistry>,
-    pub max_pending_notification_queue: u32,
+    pub max_pending_notification_queue: usize,
 }
 
 impl ServerOptions {
@@ -127,7 +127,7 @@ impl ServerOptions {
             msg_limit: settings.msg_limit,
             // XXX: this causes main to fail to compile with
             registry: Arc::new(ClientRegistry::default()),
-            max_pending_notification_queue: settings.max_pending_notification_queue,
+            max_pending_notification_queue: settings.max_pending_notification_queue as usize,
         })
     }
 }

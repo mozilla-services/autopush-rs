@@ -531,11 +531,13 @@ version = "1.66.0"
 dependencies = [
  "actix",
  "actix-web",
+ "actix-web-actors",
  "autoconnect_registry",
  "autoconnect_settings",
  "autoconnect_ws",
  "autopush_common",
  "bytes 1.4.0",
+ "bytestring",
  "cadence",
  "futures-locks",
  "futures-util",

@@ -7,7 +7,9 @@ version.workspace = true
 [dependencies]
 actix.workspace = true
 actix-web.workspace = true
+actix-web-actors.workspace = true
 bytes.workspace = true
+bytestring.workspace = true
 cadence.workspace = true
 futures-locks.workspace = true
 futures-util.workspace = true

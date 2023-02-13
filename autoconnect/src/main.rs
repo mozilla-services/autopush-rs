@@ -4,6 +4,8 @@ extern crate slog_scope;
 // #[macro_use]
 extern crate serde_derive;
 
+use std::collections::HashMap;
+use std::sync::{Arc, mpsc};
 use std::time::Instant;
 use std::{env, vec::Vec};
 
@@ -14,15 +16,14 @@ use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use docopt::Docopt;
 use serde::Deserialize;
+use uuid::Uuid;
 
 use autoconnect_settings::{options::ServerOptions, Settings};
-use autoconnect_web::dockerflow;
+use autoconnect_web::{client::Client, dockerflow};
+use autoconnect_ws::ServerNotification;
 use autopush_common::errors::{render_404, ApcError, ApcErrorKind, Result};
 
 mod server;
-
-#[derive(Debug, Default, Clone)]
-struct AutoConnect {}
 
 const USAGE: &str = "
 Usage: autopush_rs [options]
@@ -33,11 +34,15 @@ Options:
     --config-shared=CONFIGFILE          Common configuration file path.
 ";
 
+
 #[derive(Debug, Deserialize)]
 struct Args {
     flag_config_connection: Option<String>,
     flag_config_shared: Option<String>,
 }
+
+#[derive(Debug, Default, Clone)]
+struct AutoConnect {}
 
 impl Actor for AutoConnect {
     type Context = ws::WebsocketContext<Self>;
@@ -104,14 +109,16 @@ async fn ws_handler(
     stream: web::Payload,
 ) -> std::result::Result<HttpResponse, Error> {
     info!("Starting Websocket Service...");
-    let starting = Instant::now();
-    let connection = AutoConnect::default();
+    let state = req.app_data::<ServerOptions>().unwrap();
+
+    // Create the socket to handle routed notifications
+    // actix websocket handlers require this to be an async channel.
+    let (tx, rx) = mpsc::sync_channel(state.max_pending_notification_queue);
+    let connection = Client::new(tx);
+    // TODO: Add broadcasts to new connection.
+    // connection.broadcasts(...)
+
     let resp = ws::start(connection, &req, stream);
-    info!(
-        "Shutting down: {:?}\n up {:?} secs",
-        &resp,
-        (Instant::now() - starting).as_secs()
-    );
     resp
 }
 
@@ -163,9 +170,12 @@ async fn main() -> Result<()> {
 
     let server_opts = ServerOptions::from_settings(&settings)?;
 
+    info!("Starting autoconnect on port {:?}", &settings.port);
     HttpServer::new(move || {
+        let client_channels:HashMap<Uuid, mpsc::Receiver<ServerNotification>> = HashMap::new();
         App::new()
             .app_data(server_opts.clone())
+            .app_data(Arc::new(client_channels))
             .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
             // use the default sentry wrapper for now.
             // TODO: Look into the sentry_actx hub scope? How do we pass actix service request data in?
@@ -191,4 +201,8 @@ async fn main() -> Result<()> {
     .run()
     .await
     .map_err(|e| e.into())
+    .and_then(|v| {
+        info!("Shutting down autoconnect");
+        Ok(v)
+    })
 }
