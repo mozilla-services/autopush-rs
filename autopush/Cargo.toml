@@ -35,7 +35,6 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
-smallvec.workspace = true
 uuid.workspace = true
 
 autopush_common = { path = "../autopush-common" }
