@@ -295,24 +295,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "actix-web-actors"
-version = "4.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf6e9ccc371cfddbed7aa842256a4abc7a6dcac9f3fce392fe1d0f68cfd136b2"
-dependencies = [
- "actix",
- "actix-codec",
- "actix-http",
- "actix-web",
- "bytes 1.4.0",
- "bytestring",
- "futures-core",
- "pin-project-lite 0.2.9",
- "tokio 1.25.0",
- "tokio-util 0.7.4",
-]
-
-[[package]]
 name = "actix-web-codegen"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -322,6 +304,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "actix-ws"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "535aec173810be3ca6f25dd5b4d431ae7125d62000aa3cbae1ec739921b02cf3"
+dependencies = [
+ "actix-codec",
+ "actix-http",
+ "actix-web",
+ "futures-core",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -459,7 +454,7 @@ dependencies = [
  "actix-rt",
  "actix-test",
  "actix-web",
- "actix-web-actors",
+ "actix-ws",
  "autoconnect_registry",
  "autoconnect_settings",
  "autoconnect_web",
@@ -530,8 +525,9 @@ name = "autoconnect_web"
 version = "1.66.0"
 dependencies = [
  "actix",
+ "actix-rt",
  "actix-web",
- "actix-web-actors",
+ "actix-ws",
  "autoconnect_registry",
  "autoconnect_settings",
  "autoconnect_ws",
@@ -539,6 +535,7 @@ dependencies = [
  "bytes 1.4.0",
  "bytestring",
  "cadence",
+ "futures 0.3.26",
  "futures-locks",
  "futures-util",
  "reqwest 0.11.14",

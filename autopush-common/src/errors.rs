@@ -1,14 +1,17 @@
 //! Error handling for Rust
 //!
 
-use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::backtrace
 use std::any::Any;
 use std::fmt::{self, Display};
 use std::io;
 use std::num;
 
+use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::backtrace
+use serde::ser::{Serialize, SerializeMap, Serializer};
+
 use actix_web::{
-    dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponseBuilder,
+    dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponse,
+    HttpResponseBuilder, ResponseError,
 };
 
 use thiserror::Error;
@@ -64,6 +67,39 @@ where
             kind: ApcErrorKind::from(item),
             backtrace: Box::new(Backtrace::new()), // or std::backtrace::Backtrace::capture()
         }
+    }
+}
+
+/// Return a structured response error for the ApcError
+impl ResponseError for ApcError {
+    fn status_code(&self) -> StatusCode {
+        self.kind.status()
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        let mut builder = HttpResponse::build(self.kind.status());
+
+        if self.status_code() == 410 {
+            builder.insert_header(("Cache-Control", "max-age=86400"));
+        }
+
+        builder.json(self)
+    }
+}
+
+impl Serialize for ApcError {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let status = self.kind.status();
+        let mut map = serializer.serialize_map(Some(5))?;
+
+        map.serialize_entry("code", &status.as_u16())?;
+        map.serialize_entry("error", &status.canonical_reason())?;
+        map.serialize_entry("message", &self.kind.to_string())?;
+        // TODO: errno and url?
+        map.end()
     }
 }
 
@@ -126,6 +162,18 @@ pub enum ApcErrorKind {
     // TODO: option this.
     #[error("Rusoto Error: {0}")]
     RusotoError(String),
+}
+
+impl ApcErrorKind {
+    /// Get the associated HTTP status code
+    pub fn status(&self) -> StatusCode {
+        match self {
+            Self::Json(_) | Self::ParseIntError(_) | Self::ParseUrlError(_) | Self::Httparse(_) => {
+                StatusCode::BAD_REQUEST
+            }
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, ApcError>;

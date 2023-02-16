@@ -1,12 +1,11 @@
-use std::{cell::RefCell, rc::Rc, sync::mpsc};
+use std::{cell::RefCell, rc::Rc};
 
 use actix_web::{dev::ServiceRequest, web::Data};
 use uuid::Uuid;
 
-use autoconnect_settings::{options::ServerOptions, Settings};
+use autoconnect_settings::{options::ServerOptions};
 use autoconnect_web::{
     broadcast::BroadcastSubs,
-    client::{Client, WebPushClient},
 };
 use autopush_common::errors::{ApcErrorKind, Result};
 

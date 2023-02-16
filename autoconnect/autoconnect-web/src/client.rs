@@ -1,18 +1,14 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 
-use actix::{Actor, ActorContext, StreamHandler};
-use actix_web::body::{BoxBody, MessageBody};
 use actix_web::dev::ServiceRequest;
-use actix_web::web::Data;
-use actix_web::HttpResponse;
-use actix_web_actors::ws;
+use actix_web::web::{Data, Payload};
+use actix_web::{HttpRequest, HttpResponse};
 use bytes::Bytes;
 use futures_locks::RwLock;
-use futures_util::FutureExt;
-use serde::Deserialize;
+use futures_util::{FutureExt, StreamExt};
 use uuid::Uuid;
 
 use autoconnect_registry::RegisteredClient;
@@ -30,50 +26,62 @@ use crate::broadcast::{Broadcast, BroadcastSubs};
 /// These are called from the Autoconnect server.
 
 /// The Autoconnect Client connection
-#[derive(Debug, Clone)]
-pub struct Client {
+#[derive(Debug, Default)]
+pub struct Client {}
 
-    // state_machine: UnAuthClientStateFuture<T>, // Client
-    // / Pointer to the server structure for this client
-    // srv: Rc<Server>,
-    // / List of subscribed broadcasts
-    // broadcast_subs: Rc<RefCell<BroadcastSubs>>,
-    /// Channel for incoming notifications
-    // / TODO: Actix complains that there's a missing future on this
-    tx: mpsc::SyncSender<ServerNotification>,
-}
+impl Client {
+    pub async fn ws_handler(req: HttpRequest, body: Payload) -> Result<HttpResponse> {
+        let state = req.app_data::<ServerOptions>().unwrap();
+        let (tx, rx) = mpsc::sync_channel(state.max_pending_notification_queue);
 
-impl Actor for Client {
-    type Context = ws::WebsocketContext<Self>;
-}
+        // TODO: add `tx` to state list of clients
 
-impl StreamHandler<std::result::Result<ws::Message, ws::ProtocolError>> for Client {
-    fn handle(
-        &mut self,
-        msg: std::result::Result<ws::Message, ws::ProtocolError>,
-        ctx: &mut Self::Context,
-    ) {
+        let heartbeat = state.auto_ping_interval.clone();
+        let (response, mut session, mut msg_stream) =
+            actix_ws::handle(&req, body).map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?;
+
+        let thread = actix_rt::spawn(async move {
+            while let Some(msg) = msg_stream.next().await {
+                match msg {
+                    Ok(actix_ws::Message::Ping(msg)) => {
+                        // TODO: Add megaphone handling
+                        session.pong(&msg).await.unwrap();
+                    }
+                    Ok(actix_ws::Message::Text(msg)) => {
+                        info!("{:?}", msg);
+                        if let Err(e) = Client::process_message(msg) {
+                            Client::process_error(session, e).await;
+                            return;
+                        };
+                    }
+                    _ => {
+                        error!("Unsupported socket message: {:?}", msg);
+                        let _ = session.close(None).await;
+                        return;
+                    }
+                }
+            }
+        });
+
+        actix_rt::spawn(async move {
+            loop {
+                if let Ok(msg) = rx.recv_timeout(heartbeat) {
+                    match msg {
+                        ServerNotification::Disconnect => {
+                            // session2.close(Some(actix_ws::CloseCode::Normal.into()));
+                            thread.abort();
+                        }
+                        // Do the happy stuff.
+                        _ => info!("Channel Message {:?}", msg),
+                    }
+                }
+            }
+        });
+
+        Ok(response)
         // TODO: Add timeout to drop if no "hello"
-        match msg {
-            Ok(ws::Message::Ping(msg)) => {
-                // TODO: Add megaphone handling
-                ctx.pong(&msg);
-            }
-            Ok(ws::Message::Text(msg)) => {
-                info!("{:?}", msg);
-                if let Err(e) = self.process_message(msg) {
-                    self.process_error(ctx, e)
-                };
-            }
-            _ => {
-                error!("Unsupported socket message: {:?}", msg);
-                ctx.stop();
-                return;
-            }
-        }
     }
 }
-
 
 impl Client {
     /// Create a new client, ensuring that we have a channel to send notifications and that the
@@ -84,14 +92,9 @@ impl Client {
     /// ```
     ///   let (tx,rx) = std::sync::mpsc::channel(autoconnect_settings::options::max_pending_notification_queue);
     /// ```
-    pub async fn new(tx: mpsc::SyncSender<ServerNotification>) -> Client {
-        Self {
-            tx
-        }
-    }
 
     /// Parse and process the message calling the appropriate sub function
-    fn process_message(&mut self, msg: bytestring::ByteString) -> Result<()> {
+    fn process_message(msg: bytestring::ByteString) -> Result<()> {
         // convert msg to JSON / parse
         let bytes = msg.as_bytes();
         let msg: serde_json::Value = serde_json::from_slice(bytes)?;
@@ -111,12 +114,15 @@ impl Client {
     }
 
     /// Process the error, logging it and terminating the connection.
-    fn process_error(&mut self, ctx: &mut ws::WebsocketContext<Client>, e: ApcError) {
+    async fn process_error(session: actix_ws::Session, e: ApcError) {
         // send error to sentry if appropriate
         error!("Error:: {e:?}");
-        ctx.stop();
+        // For now, close down normally and eat the close error.
+        session
+            .close(Some(actix_ws::CloseCode::Normal.into()))
+            .await
+            .unwrap_or_default();
     }
-
 
     /// Get the list of broadcasts that have changed recently.
     pub async fn broadcast_delta(&mut self) -> Option<Vec<Broadcast>> {
@@ -125,13 +131,15 @@ impl Client {
     }
 
     pub fn shutdown(&mut self) -> Result<()> {
+        // Shutdown should be done on the server side.
+        /*
         if let Err(e) = self.tx.send(ServerNotification::Disconnect) {
             debug!("Failure to shut down client: {e:?}")
         };
+        */
         Ok(())
     }
 }
-
 /// Websocket session statistics
 #[derive(Clone, Default)]
 struct SessionStatistics {

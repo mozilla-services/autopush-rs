@@ -5,15 +5,12 @@ extern crate slog_scope;
 extern crate serde_derive;
 
 use std::collections::HashMap;
-use std::sync::{Arc, mpsc};
-use std::time::Instant;
+use std::sync::{mpsc, Arc};
 use std::{env, vec::Vec};
 
-use actix::{Actor, ActorContext, StreamHandler};
 use actix_http::StatusCode;
 use actix_web::middleware::ErrorHandlers;
-use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
-use actix_web_actors::ws;
+use actix_web::{web, App, HttpServer};
 use docopt::Docopt;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -21,7 +18,7 @@ use uuid::Uuid;
 use autoconnect_settings::{options::ServerOptions, Settings};
 use autoconnect_web::{client::Client, dockerflow};
 use autoconnect_ws::ServerNotification;
-use autopush_common::errors::{render_404, ApcError, ApcErrorKind, Result};
+use autopush_common::errors::{render_404, ApcErrorKind, Result};
 
 mod server;
 
@@ -34,92 +31,10 @@ Options:
     --config-shared=CONFIGFILE          Common configuration file path.
 ";
 
-
 #[derive(Debug, Deserialize)]
 struct Args {
     flag_config_connection: Option<String>,
     flag_config_shared: Option<String>,
-}
-
-#[derive(Debug, Default, Clone)]
-struct AutoConnect {}
-
-impl Actor for AutoConnect {
-    type Context = ws::WebsocketContext<Self>;
-}
-
-impl StreamHandler<std::result::Result<ws::Message, ws::ProtocolError>> for AutoConnect {
-    fn handle(
-        &mut self,
-        msg: std::result::Result<ws::Message, ws::ProtocolError>,
-        ctx: &mut Self::Context,
-    ) {
-        // TODO: Add timeout to drop if no "hello"
-        match msg {
-            Ok(ws::Message::Ping(msg)) => {
-                // TODO: Add megaphone handling
-                ctx.pong(&msg);
-            }
-            Ok(ws::Message::Text(msg)) => {
-                info!("{:?}", msg);
-                if let Err(e) = self.process_message(msg) {
-                    self.process_error(ctx, e)
-                };
-            }
-            _ => {
-                error!("Unsupported socket message: {:?}", msg);
-                ctx.stop();
-                return;
-            }
-        }
-    }
-}
-
-impl AutoConnect {
-    /// Parse and process the message calling the appropriate sub function
-    fn process_message(&mut self, msg: bytestring::ByteString) -> Result<()> {
-        // convert msg to JSON / parse
-        let bytes = msg.as_bytes();
-        let msg: serde_json::Value = serde_json::from_slice(bytes)?;
-        if let Some(message_type) = msg.get("messageType") {
-            match &message_type.as_str().unwrap().to_lowercase() {
-                // TODO: Finish writing these.
-                /*
-                "hello" => self.process_hello(msg)?,
-                ...
-                */
-                _ => return Err(ApcErrorKind::GeneralError("PLACEHOLDER".to_owned()).into()),
-            }
-        }
-        // match on `messageType`:
-        // hello:
-        Ok(())
-    }
-
-    /// Process the error, logging it and terminating the connection.
-    fn process_error(&mut self, ctx: &mut ws::WebsocketContext<AutoConnect>, e: ApcError) {
-        // send error to sentry if appropriate
-        error!("Error:: {e:?}");
-        ctx.stop();
-    }
-}
-
-async fn ws_handler(
-    req: HttpRequest,
-    stream: web::Payload,
-) -> std::result::Result<HttpResponse, Error> {
-    info!("Starting Websocket Service...");
-    let state = req.app_data::<ServerOptions>().unwrap();
-
-    // Create the socket to handle routed notifications
-    // actix websocket handlers require this to be an async channel.
-    let (tx, rx) = mpsc::sync_channel(state.max_pending_notification_queue);
-    let connection = Client::new(tx);
-    // TODO: Add broadcasts to new connection.
-    // connection.broadcasts(...)
-
-    let resp = ws::start(connection, &req, stream);
-    resp
 }
 
 #[actix_web::main]
@@ -172,7 +87,7 @@ async fn main() -> Result<()> {
 
     info!("Starting autoconnect on port {:?}", &settings.port);
     HttpServer::new(move || {
-        let client_channels:HashMap<Uuid, mpsc::Receiver<ServerNotification>> = HashMap::new();
+        let client_channels: HashMap<Uuid, mpsc::Receiver<ServerNotification>> = HashMap::new();
         App::new()
             .app_data(server_opts.clone())
             .app_data(Arc::new(client_channels))
@@ -181,7 +96,7 @@ async fn main() -> Result<()> {
             // TODO: Look into the sentry_actx hub scope? How do we pass actix service request data in?
             .wrap(sentry_actix::Sentry::new()) // Use the default wrapper
             // Websocket Handler
-            .route("/ws/", web::get().to(ws_handler))
+            .route("/ws/", web::get().to(Client::ws_handler))
             // TODO: Internode Message handler
             //.service(web::resource("/push/{uaid}").route(web::push().to(autoconnect_web::route::InterNode::put))
             .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
