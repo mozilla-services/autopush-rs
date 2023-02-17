@@ -95,12 +95,23 @@ impl Server {
         };
 
         let server = HttpServer::new(move || {
+            // These have a bad habit of being reset. Specify them explicitly.
+            let cors = Cors::default()
+                .allow_any_origin()
+                .allow_any_header()
+                .allowed_methods(vec![
+                    actix_web::http::Method::DELETE,
+                    actix_web::http::Method::GET,
+                    actix_web::http::Method::POST,
+                    actix_web::http::Method::PUT,
+                ])
+                .max_age(3600);
             App::new()
                 .data(state.clone())
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 .wrap_fn(sentry_middleware)
-                .wrap(Cors::default())
+                .wrap(cors)
                 // Extractor configuration
                 .app_data(web::Bytes::configure(|cfg| {
                     cfg.limit(state.settings.max_data_bytes)
