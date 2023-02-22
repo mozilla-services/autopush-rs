@@ -10,3 +10,5 @@ pub mod broadcast;
 pub mod client;
 pub mod dockerflow;
 pub mod metrics;
+pub mod protocol;
+

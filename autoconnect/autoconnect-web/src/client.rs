@@ -1,14 +1,18 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::str::FromStr;
 use std::sync::mpsc;
 
 use actix_web::dev::ServiceRequest;
 use actix_web::web::{Data, Payload};
 use actix_web::{HttpRequest, HttpResponse};
 use bytes::Bytes;
+use cadence::{StatsdClient, CountedExt};
 use futures_locks::RwLock;
 use futures_util::{FutureExt, StreamExt};
+use serde_json::json;
 use uuid::Uuid;
 
 use autoconnect_registry::RegisteredClient;
@@ -20,18 +24,32 @@ use autopush_common::notification::Notification;
 use autopush_common::util::ms_since_epoch;
 
 use crate::broadcast::{Broadcast, BroadcastSubs};
+use crate::protocol::{ClientMessage, ServerMessage, ClientAck};
 
 /// Client & Registry functions.
 /// These are common functions run by connected WebSocket clients.
 /// These are called from the Autoconnect server.
 
 /// The Autoconnect Client connection
-#[derive(Debug, Default)]
-pub struct Client {}
+#[derive(Debug)]
+pub struct Client {
+    uaid: Option<Uuid>,
+    metrics: Arc<StatsdClient>,
+}
+
+impl Default for Client {
+    fn default() -> Client {
+        Client {
+        uaid: None,
+        metrics: Arc::new(StatsdClient::builder("autoconnect", cadence::NopMetricSink).build()),
+        }
+    }
+}
 
 impl Client {
     pub async fn ws_handler(req: HttpRequest, body: Payload) -> Result<HttpResponse> {
         let state = req.app_data::<ServerOptions>().unwrap();
+        let client_metrics = state.metrics.clone();
         let (tx, rx) = mpsc::sync_channel(state.max_pending_notification_queue);
 
         // TODO: add `tx` to state list of clients
@@ -41,6 +59,11 @@ impl Client {
             actix_ws::handle(&req, body).map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?;
 
         let thread = actix_rt::spawn(async move {
+            //TODO: Create a new client (set values, use ..Default::default() if needed)
+            let mut client = Client{
+                metrics: client_metrics.clone(),
+                ..Default::default()
+            };
             while let Some(msg) = msg_stream.next().await {
                 match msg {
                     Ok(actix_ws::Message::Ping(msg)) => {
@@ -48,10 +71,16 @@ impl Client {
                         session.pong(&msg).await.unwrap();
                     }
                     Ok(actix_ws::Message::Text(msg)) => {
-                        info!("{:?}", msg);
-                        if let Err(e) = Client::process_message(msg) {
-                            Client::process_error(session, e).await;
-                            return;
+                        info!(">> {:?}", msg);
+                        match client.process_message(msg).await {
+                            Err(e) => {
+                                return client.process_error(session, e).await
+                            }
+                            Ok(Some(resp)) => {
+                                info!("<< {:?}", resp);
+                                session.text(json!(resp).to_string());
+                            }
+                            Ok(None) => {}
                         };
                     }
                     _ => {
@@ -94,27 +123,87 @@ impl Client {
     /// ```
 
     /// Parse and process the message calling the appropriate sub function
-    fn process_message(msg: bytestring::ByteString) -> Result<()> {
+    async fn process_message(&mut self, msg: bytestring::ByteString) -> Result<Option<ServerMessage>> {
         // convert msg to JSON / parse
         let bytes = msg.as_bytes();
-        let msg: serde_json::Value = serde_json::from_slice(bytes)?;
-        if let Some(message_type) = msg.get("messageType") {
-            match &message_type.as_str().unwrap().to_lowercase() {
-                // TODO: Finish writing these.
-                /*
-                "hello" => self.process_hello(msg)?,
-                ...
-                */
-                _ => return Err(ApcErrorKind::GeneralError("PLACEHOLDER".to_owned()).into()),
+        let msg = ClientMessage::from_str(&String::from_utf8(bytes.to_vec()).map_err(|e| {
+            warn!("Invalid message: {}", String::from_utf8_lossy(bytes));
+            ApcErrorKind::InvalidClientMessage(e.to_string())
+        })?)?;
+        return match msg {
+                ClientMessage::Hello{uaid,channel_ids, use_webpush, broadcasts} => self.hello(uaid, channel_ids, use_webpush, broadcasts).await,
+                ClientMessage::Register{channel_id, key} => self.register(channel_id, key).await,
+                ClientMessage::Unregister{channel_id, code} => self.unregister(channel_id, code).await,
+                ClientMessage::Ping => self.ping().await,
+                ClientMessage::Ack{updates} => self.ack(updates).await,
+                ClientMessage::BroadcastSubscribe{broadcasts} => self.broadcast(broadcasts).await,
+                _ => Err(ApcErrorKind::GeneralError("PLACEHOLDER".to_owned()).into()),
             }
         }
-        // match on `messageType`:
-        // hello:
-        Ok(())
+
+    /// Handle a websocket "hello". This will return a JSON structure that contains the UAID to use.
+    /// This UAID is definitative, even if it's different than the one that the client already may have
+    /// provided (in rare cases, the client understands that it may need to change UAID)
+    pub async fn hello(&mut self, uaid: Option<String>, channel_ids: Option<Vec<Uuid>>, use_webpush: Option<bool>, broadcasts: Option<HashMap<String, String>>) -> Result<Option<ServerMessage>> {
+
+        self.metrics.incr_with_tags("hello").send();
+
+        let new_uaid = Uuid::from_str(&uaid.unwrap_or_default()).unwrap_or_else(|_| Uuid::new_v4());
+        self.uaid = Some(new_uaid.clone());
+        let status = 200;
+        // Check that the UAID is valid
+        // validate that we're using webpush
+        // record the broadcasts and that those are valid
+        // return response.
+
+        // Convert this to `HashMap<std::string::String, protocol::BroadcastValue>`
+        // let broadcasts = ...;
+        Ok(Some(ServerMessage::Hello {
+            uaid: new_uaid.as_simple().to_string(),
+            status,
+            use_webpush: use_webpush,
+            broadcasts: HashMap::new(),
+        }))
+    }
+
+    /// Add the provided `channel_id` to the list of associated channels for this UAID, generate a new endpoint using the key
+    pub async fn register(&mut self, channel_id:String, key:Option<String>) -> Result<Option<ServerMessage>> {
+        let status = 200;
+
+        let channel_id = Uuid::from_str(&channel_id)?;
+
+        let push_endpoint = "REPLACE ME".to_owned();
+
+        Ok(Some(ServerMessage::Register { channel_id, status: 200, push_endpoint}))
+
+    }
+
+    /// Drop the provided `channel_id` from the list of associated channels for this UAID
+    pub async fn unregister(&mut self, channel_id:Uuid, key:Option<u32>) -> Result<Option<ServerMessage>> {
+        let status = 200;
+
+        let push_endpoint = "REPLACE ME".to_owned();
+
+        Ok(Some(ServerMessage::Unregister { channel_id, status: 200}))
+    }
+
+    /// Return a Ping / Set of broadcast updates
+    pub async fn ping(&mut self) -> Result<Option<ServerMessage>> {
+        Ok(None)
+    }
+
+    /// Handle the list of Acknowledged messages, removing them from retransmission.
+    pub async fn ack(&mut self, updates: Vec<ClientAck>) -> Result<Option<ServerMessage>> {
+        Ok(None)
+    }
+
+    /// Add new set of IDs to monitor for broadcast changes
+    pub async fn broadcast(&mut self, broadcasts: HashMap<String, String>) -> Result<Option<ServerMessage>> {
+        Ok(None)
     }
 
     /// Process the error, logging it and terminating the connection.
-    async fn process_error(session: actix_ws::Session, e: ApcError) {
+    pub async fn process_error(&mut self, session: actix_ws::Session, e: ApcError) {
         // send error to sentry if appropriate
         error!("Error:: {e:?}");
         // For now, close down normally and eat the close error.
