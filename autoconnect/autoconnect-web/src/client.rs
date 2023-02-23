@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::str::FromStr;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, SyncSender};
 
 use actix_web::dev::ServiceRequest;
 use actix_web::web::{Data, Payload};
@@ -34,6 +34,7 @@ use crate::protocol::{ClientMessage, ServerMessage, ClientAck};
 #[derive(Debug)]
 pub struct Client {
     uaid: Option<Uuid>,
+    channel: Option<SyncSender<ServerNotification>>,
     metrics: Arc<StatsdClient>,
 }
 
@@ -41,6 +42,7 @@ impl Default for Client {
     fn default() -> Client {
         Client {
         uaid: None,
+        channel: None,
         metrics: Arc::new(StatsdClient::builder("autoconnect", cadence::NopMetricSink).build()),
         }
     }
@@ -54,14 +56,15 @@ impl Client {
 
         // TODO: add `tx` to state list of clients
 
-        let heartbeat = state.auto_ping_interval.clone();
+        // let heartbeat = state.auto_ping_interval.clone();
         let (response, mut session, mut msg_stream) =
             actix_ws::handle(&req, body).map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?;
 
-        let thread = actix_rt::spawn(async move {
+        let _thread = actix_rt::spawn(async move {
             //TODO: Create a new client (set values, use ..Default::default() if needed)
             let mut client = Client{
                 metrics: client_metrics.clone(),
+                channel: Some(tx),
                 ..Default::default()
             };
             while let Some(msg) = msg_stream.next().await {
@@ -78,7 +81,10 @@ impl Client {
                             }
                             Ok(Some(resp)) => {
                                 info!("<< {:?}", resp);
-                                session.text(json!(resp).to_string());
+                                if session.text(json!(resp).to_string()).await.is_err() {
+                                    session.close(None).await.unwrap();
+                                    return
+                                };
                             }
                             Ok(None) => {}
                         };
@@ -92,20 +98,29 @@ impl Client {
             }
         });
 
-        actix_rt::spawn(async move {
+
+        /*
+        let thread2 = actix_rt::spawn(async move {
             loop {
-                if let Ok(msg) = rx.recv_timeout(heartbeat) {
-                    match msg {
+                match rx.recv_timeout(std::time::Duration::from_secs(1)) {
+                    Ok(msg) => match msg {
                         ServerNotification::Disconnect => {
                             // session2.close(Some(actix_ws::CloseCode::Normal.into()));
                             thread.abort();
+                            return;
                         }
                         // Do the happy stuff.
                         _ => info!("Channel Message {:?}", msg),
+                        }
+                    Err(e) => {
+                        dbg!("Channel Closed, exiting", e);
+                        thread.abort();
+                        return;
                     }
                 }
             }
         });
+        */
 
         Ok(response)
         // TODO: Add timeout to drop if no "hello"
@@ -205,6 +220,7 @@ impl Client {
     /// Process the error, logging it and terminating the connection.
     pub async fn process_error(&mut self, session: actix_ws::Session, e: ApcError) {
         // send error to sentry if appropriate
+        dbg!("Error:: {e:?}");
         error!("Error:: {e:?}");
         // For now, close down normally and eat the close error.
         session

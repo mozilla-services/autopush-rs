@@ -93,7 +93,8 @@ impl ServerOptions {
             db_settings: settings.db_settings.clone(),
         };
         let db_client = match StorageType::from_dsn(&db_settings.dsn) {
-            StorageType::DYNAMODB => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
+            StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
+            StorageType::INVALID => panic!("Invalid Storage type. Check DB_DSN."),
         };
         Ok(Self {
             port: settings.port,

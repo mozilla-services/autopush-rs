@@ -45,20 +45,19 @@ pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
 #[derive(Eq, PartialEq)]
 pub enum StorageType {
-    DYNAMODB,
+    INVALID,
+    DynamoDb
 }
 
 impl StorageType {
     /// currently, there is only one.
     pub fn from_dsn(_dsn: &Option<String>) -> Self {
-        /*
         if let Some(dsn) = _dsn {
             if dsn.starts_with("http") {
-                Self::DYNAMODB
+                return Self::DynamoDb
             }
         }
-        */
-        Self::DYNAMODB
+        Self::INVALID
     }
 }
 

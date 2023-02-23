@@ -147,7 +147,7 @@ impl Settings {
         }
 
         // Merge the environment overrides
-        s = s.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
+        s = s.add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
         // s = s.add_source(Environment::with_prefix(ENV_PREFIX));
 
         let built = s.build()?;

@@ -39,6 +39,7 @@ struct Args {
 
 #[actix_web::main]
 async fn main() -> Result<()> {
+
     env_logger::init();
 
     let args: Args = Docopt::new(USAGE)
@@ -57,13 +58,16 @@ async fn main() -> Result<()> {
     //TODO: Eventually this will match between the various storage engines that
     // we support. For now, it's just the one, DynamoDB.
     // Perform any app global storage initialization.
-    if autopush_common::db::StorageType::from_dsn(&settings.db_dsn)
-        == autopush_common::db::StorageType::DYNAMODB
-    {
-        env::set_var(
-            "AWS_LOCAL_DYNAMODB",
-            settings.db_dsn.clone().unwrap().to_owned(),
-        );
+    match autopush_common::db::StorageType::from_dsn(&settings.db_dsn) {
+        autopush_common::db::StorageType::DynamoDb => {
+            env::set_var(
+                "AWS_LOCAL_DYNAMODB",
+                settings.db_dsn.clone().unwrap().to_owned(),
+            )
+        },
+        autopush_common::db::StorageType::INVALID => {
+            panic!("Invalid Storage type. Check DB_DSN.");
+        }
     }
 
     // Sentry requires the environment variable "SENTRY_DSN".
@@ -85,7 +89,7 @@ async fn main() -> Result<()> {
 
     let server_opts = ServerOptions::from_settings(&settings)?;
 
-    info!("Starting autoconnect on port {:?}", &settings.port);
+    dbg!("Starting autoconnect on port {:?}", &settings.port);
     HttpServer::new(move || {
         let client_channels: HashMap<Uuid, mpsc::Receiver<ServerNotification>> = HashMap::new();
         App::new()
