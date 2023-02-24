@@ -1,16 +1,16 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::str::FromStr;
 use std::sync::mpsc::{self, SyncSender};
 
 use actix_web::dev::ServiceRequest;
 use actix_web::web::{Data, Payload};
 use actix_web::{HttpRequest, HttpResponse};
+use autopush_common::util::user_agent::UserAgentInfo;
 use bytes::Bytes;
 use cadence::{StatsdClient, CountedExt};
-use futures_locks::RwLock;
 use futures_util::{FutureExt, StreamExt};
 use serde_json::json;
 use uuid::Uuid;
@@ -18,10 +18,10 @@ use uuid::Uuid;
 use autoconnect_registry::RegisteredClient;
 use autoconnect_settings::options::ServerOptions;
 use autoconnect_ws::ServerNotification;
-use autopush_common::db::UserRecord;
+use autopush_common::db::{self, UserRecord};
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::notification::Notification;
-use autopush_common::util::ms_since_epoch;
+use autopush_common::util::{ms_since_epoch, user_agent};
 
 use crate::broadcast::{Broadcast, BroadcastSubs};
 use crate::protocol::{ClientMessage, ServerMessage, ClientAck};
@@ -30,29 +30,31 @@ use crate::protocol::{ClientMessage, ServerMessage, ClientAck};
 /// These are common functions run by connected WebSocket clients.
 /// These are called from the Autoconnect server.
 
+pub type ClientChannels = Arc<RwLock<HashMap<Uuid, RegisteredClient>>>;
+
 /// The Autoconnect Client connection
-#[derive(Debug)]
 pub struct Client {
     uaid: Option<Uuid>,
-    channel: Option<SyncSender<ServerNotification>>,
+    ua_info: UserAgentInfo,
+    //channel: Option<SyncSender<ServerNotification>>,
+    db: Box<dyn db::client::DbClient>,
+    clients: ClientChannels,
+    // channel: mpsc::Sender<ServerNotification>,
     metrics: Arc<StatsdClient>,
-}
-
-impl Default for Client {
-    fn default() -> Client {
-        Client {
-        uaid: None,
-        channel: None,
-        metrics: Arc::new(StatsdClient::builder("autoconnect", cadence::NopMetricSink).build()),
-        }
-    }
 }
 
 impl Client {
     pub async fn ws_handler(req: HttpRequest, body: Payload) -> Result<HttpResponse> {
         let state = req.app_data::<ServerOptions>().unwrap();
         let client_metrics = state.metrics.clone();
-        let (tx, rx) = mpsc::sync_channel(state.max_pending_notification_queue);
+        let db_client = state.db_client.clone();
+        let clients = req.app_data::<ClientChannels>().unwrap().clone();
+        let ua_string = if let Some(header) = req.headers().get(actix_web::http::header::USER_AGENT) {
+            header.to_str().map(|x| x.to_owned()).map_err(|e| ApcErrorKind::GeneralError("Invalid user agent".to_owned()))?
+        } else {
+            "".to_owned()
+        };
+        // let (tx, rx) = mpsc::channel::<ServerNotification>(); // sync_channel(state.max_pending_notification_queue);
 
         // TODO: add `tx` to state list of clients
 
@@ -60,12 +62,16 @@ impl Client {
         let (response, mut session, mut msg_stream) =
             actix_ws::handle(&req, body).map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?;
 
-        let _thread = actix_rt::spawn(async move {
+        let thread = actix_rt::spawn(async move {
             //TODO: Create a new client (set values, use ..Default::default() if needed)
             let mut client = Client{
-                metrics: client_metrics.clone(),
-                channel: Some(tx),
-                ..Default::default()
+                uaid: None,
+                ua_info: UserAgentInfo::from(ua_string.as_str()),
+                db: db_client.clone(),
+                metrics: client_metrics,
+                // channel: tx,
+                clients: clients.clone(),
+
             };
             while let Some(msg) = msg_stream.next().await {
                 match msg {
@@ -100,7 +106,7 @@ impl Client {
 
 
         /*
-        let thread2 = actix_rt::spawn(async move {
+        actix_rt::spawn(async move {
             loop {
                 match rx.recv_timeout(std::time::Duration::from_secs(1)) {
                     Ok(msg) => match msg {
@@ -120,7 +126,7 @@ impl Client {
                 }
             }
         });
-        */
+        // */
 
         Ok(response)
         // TODO: Add timeout to drop if no "hello"
@@ -161,22 +167,46 @@ impl Client {
     /// provided (in rare cases, the client understands that it may need to change UAID)
     pub async fn hello(&mut self, uaid: Option<String>, channel_ids: Option<Vec<Uuid>>, use_webpush: Option<bool>, broadcasts: Option<HashMap<String, String>>) -> Result<Option<ServerMessage>> {
 
-        self.metrics.incr_with_tags("hello").send();
+        self.metrics.incr_with_tags("ua.command.hello").send();
 
-        let new_uaid = Uuid::from_str(&uaid.unwrap_or_default()).unwrap_or_else(|_| Uuid::new_v4());
-        self.uaid = Some(new_uaid.clone());
-        let status = 200;
         // Check that the UAID is valid
+        let uaid = Uuid::from_str(&uaid.unwrap_or_default()).unwrap_or_else(|_| Uuid::new_v4());
+        self.uaid = Some(uaid.clone());
+
+        // store the channel to use to talk to us.
+        self.clients.write().unwrap().insert(uaid, RegisteredClient{
+            uaid: uaid.clone(),
+            uid: uuid::Uuid::new_v4(),
+            // tx: self.channel.clone()
+        }
+        );
+
+        let status = 200;
+
         // validate that we're using webpush
-        // record the broadcasts and that those are valid
+        if let Some(use_webpush) = use_webpush {
+            if !use_webpush {
+                return Err(ApcErrorKind::GeneralError("Client requested obsolete protocol".to_owned()).into())
+            }
+        }
+
+        // TODO: record the broadcasts and check that those are valid
+
+        // update the user record with latest connection data (or fill in a new record with the data we get)
+        let mut user_record = self.db.get_user(&uaid).await?.unwrap_or_default();
+        user_record.uaid = uaid;
+        user_record.connected_at = ms_since_epoch();
+        user_record.last_connect = Some(ms_since_epoch());
+        self.db.update_user(&user_record).await?;
+
         // return response.
 
         // Convert this to `HashMap<std::string::String, protocol::BroadcastValue>`
         // let broadcasts = ...;
         Ok(Some(ServerMessage::Hello {
-            uaid: new_uaid.as_simple().to_string(),
+            uaid: uaid.as_simple().to_string(),
             status,
-            use_webpush: use_webpush,
+            use_webpush,
             broadcasts: HashMap::new(),
         }))
     }
@@ -438,12 +468,13 @@ impl ClientRegistry {
             .write()
             .map(|mut clients| {
                 if let Some(client) = clients.insert(client.uaid, client) {
+                    /*
                     if client.tx.send(ServerNotification::Disconnect).is_ok() {
                         debug!("Told client to disconnect as a new one wants to connect");
                     }
+                    // */
                 };
-            })
-            .await;
+            }).map_err(|e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?;
         Ok(())
     }
 
@@ -455,18 +486,23 @@ impl ClientRegistry {
                 debug!("Sending notification");
                 if let Some(client) = clients.get(&uaid) {
                     debug!("Found a client to deliver a notification to");
-                    if client
+                    /*
+                    return if client
                         .tx
                         .send(ServerNotification::Notification(notif))
                         .is_ok()
                     {
                         debug!("Dropped notification in queue");
-                        return Ok(());
+                        Ok(())
+                    } else {
+                        Err(ApcErrorKind::GeneralError("Could not send notification".to_owned()).into())
                     }
+                    // */
+                    Ok(())
+                } else {
+                    Ok(())
                 }
-                Err(ApcErrorKind::GeneralError("Could not send notification".to_owned()).into())
-            })
-            .await
+            }).map_err(|e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
     }
 
     /// A check for notification command has come for the uaid
@@ -474,15 +510,16 @@ impl ClientRegistry {
         self.clients
             .read()
             .map(|clients| {
+                /*
                 if let Some(client) = clients.get(&uaid) {
                     if client.tx.send(ServerNotification::CheckStorage).is_ok() {
                         debug!("Told client to check storage");
                         return Ok(());
                     }
                 }
+                // */
                 Err(ApcErrorKind::GeneralError("Could not store notification".to_owned()).into())
-            })
-            .await
+            }).map_err(|e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
     }
 
     /// The client specified by `uaid` has disconnected.
@@ -502,48 +539,10 @@ impl ClientRegistry {
                     return Ok(());
                 }
                 Err(ApcErrorKind::GeneralError("Could not remove client".to_owned()).into())
-            })
-            .await
+            }).map_err(|e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
     }
 }
 
-/// Container for client actions
-///
-/// These functions will be called by the state
-struct ClientActions {
-    //srv: Rc<Server>,
-    uaid: Option<Uuid>,
-}
-
-impl ClientActions {
-    pub async fn on_hello(&mut self, req: &ServiceRequest) -> Result<()> {
-        let data = req.app_data::<Data<ServerOptions>>().unwrap();
-        let _connected_at = ms_since_epoch();
-        trace!("### AwaitHello UAID: {:?}", self.uaid);
-        // Defer registration (don't write the user to the router table yet)
-        // when no uaid was specified. We'll get back a pending DynamoDbUser
-        // from the HelloResponse. It'll be potentially written to the db later
-        // whenever the user first subscribes to a channel_id
-        // (ClientMessage::Register).
-        let _defer_registration = self.uaid.is_none();
-        /*
-            // roll those functions into here using normalized db_client calls?
-            let response = data.db_client.hello(
-                connected_at,
-                self.uaid,
-                data.router_url,
-                defer_registration
-            );
-        */
-        // lookup_user
-        if let Some(uaid) = self.uaid {
-            if let Some(_user) = data.db_client.get_user(&uaid).await? {
-                // handle_user_result
-            }
-        }
-        Ok(())
-    }
-}
 
 /// Handle incoming routed notifications from autoendpoint servers.
 ///

@@ -18,10 +18,11 @@ pub struct RegisteredClient {
     pub uaid: Uuid,
     /// The local ID, used to potentially distinquish multiple UAID connections.
     pub uid: Uuid,
-    /// The channel for delivery of incoming notifications.
-    /// Note: SyncSender is a bounded queue, meaning that excessive messages
-    /// will block the sending thread.
-    pub tx: mpsc::SyncSender<ServerNotification>,
+    // / The channel for delivery of incoming notifications.
+    // / Note: SyncSender is a bounded queue, meaning that excessive messages
+    // / will block the sending thread.
+    // / mpsc::Sender<> causes main to fail to compile due to missing Sink trait.
+    //pub tx: mpsc::Sender<ServerNotification>,
 }
 
 /// Contains a mapping of UAID to the associated RegisteredClient.
@@ -40,10 +41,12 @@ impl ClientRegistry {
         let mut clients = self.clients.write().await;
         if let Some(client) = clients.insert(client.uaid, client) {
             // Drop existing connection
+            /*
             let result = client.tx.send(ServerNotification::Disconnect);
             if result.is_ok() {
                 debug!("Told client to disconnect as a new one wants to connect");
             }
+            // */
         }
         Ok(())
     }
@@ -54,11 +57,13 @@ impl ClientRegistry {
         debug!("Sending notification");
         if let Some(client) = clients.get(&uaid) {
             debug!("Found a client to deliver a notification to");
+            /*
             let result = client.tx.send(ServerNotification::Notification(notif));
             if result.is_ok() {
                 debug!("Dropped notification in queue");
                 return Ok(());
             }
+            // */
         }
         Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
@@ -67,11 +72,13 @@ impl ClientRegistry {
     pub async fn check_storage(&self, uaid: Uuid) -> Result<()> {
         let clients = self.clients.read().await;
         if let Some(client) = clients.get(&uaid) {
+            /*
             let result = client.tx.send(ServerNotification::CheckStorage);
             if result.is_ok() {
                 debug!("Told client to check storage");
                 return Ok(());
             }
+            // */
         }
         Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }

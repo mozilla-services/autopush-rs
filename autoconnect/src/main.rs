@@ -12,11 +12,12 @@ use actix_http::StatusCode;
 use actix_web::middleware::ErrorHandlers;
 use actix_web::{web, App, HttpServer};
 use docopt::Docopt;
+use std::sync::RwLock;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use autoconnect_settings::{options::ServerOptions, Settings};
-use autoconnect_web::{client::Client, dockerflow};
+use autoconnect_web::{client::{Client, ClientChannels}, dockerflow};
 use autoconnect_ws::ServerNotification;
 use autopush_common::errors::{render_404, ApcErrorKind, Result};
 
@@ -91,7 +92,7 @@ async fn main() -> Result<()> {
 
     dbg!("Starting autoconnect on port {:?}", &settings.port);
     HttpServer::new(move || {
-        let client_channels: HashMap<Uuid, mpsc::Receiver<ServerNotification>> = HashMap::new();
+        let client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
         App::new()
             .app_data(server_opts.clone())
             .app_data(Arc::new(client_channels))
