@@ -19,6 +19,11 @@ pub struct Settings {
     pub port: u16,
     pub endpoint_url: String,
 
+    /// The DSN to connect to the storage engine (Used to select between storage systems)
+    pub db_dsn: Option<String>,
+    /// JSON set of specific database settings (See data storage engines)
+    pub db_settings: String,
+
     pub router_table_name: String,
     pub message_table_name: String,
 
@@ -46,6 +51,8 @@ impl Default for Settings {
             host: "127.0.0.1".to_string(),
             endpoint_url: "".to_string(),
             port: 8000,
+            db_dsn: None,
+            db_settings: "".to_owned(),
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
             /// max data is a bit hard to figure out, due to encryption. Using something

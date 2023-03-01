@@ -1,11 +1,11 @@
-use crate::db::client::DbClient;
+// use crate::db::client::DbClient;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::{Router, RouterError, RouterResponse};
 
 use async_trait::async_trait;
-use autopush_common::db::UserRecord;
+use autopush_common::db::{client::DbClient, UserRecord};
 use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
@@ -94,7 +94,7 @@ impl Router for WebPushRouter {
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
         trace!("Re-fetching user to trigger notification check");
-        let user = match self.ddb.get_user(user.uaid).await {
+        let user = match self.ddb.get_user(&user.uaid).await {
             Ok(Some(user)) => user,
             Ok(None) => {
                 trace!("No user found, must have been deleted");
@@ -178,11 +178,11 @@ impl WebPushRouter {
     async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
         self.ddb
             .save_message(
-                notification.subscription.user.uaid,
+                &notification.subscription.user.uaid,
                 notification.clone().into(),
             )
             .await
-            .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
+            .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e.into())).into())
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer
@@ -190,8 +190,9 @@ impl WebPushRouter {
     async fn remove_node_id(&self, user: &UserRecord, node_id: &str) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
         self.ddb
-            .remove_node_id(user.uaid, node_id.to_owned(), user.connected_at)
-            .await?;
+            .remove_node_id(&user.uaid, &node_id.to_owned(), user.connected_at)
+            .await
+            .map_err(|e| ApiErrorKind::Database(e.into()))?;
         Ok(())
     }
 

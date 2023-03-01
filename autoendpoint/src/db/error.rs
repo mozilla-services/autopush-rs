@@ -29,6 +29,9 @@ pub enum DbError {
 
     #[error("Unable to determine table status")]
     TableStatusUnknown,
+
+    #[error("General Database error: {0}")]
+    General(String),
 }
 
 impl From<DbError> for autopush_common::db::error::DbError {
@@ -41,6 +44,23 @@ impl From<DbError> for autopush_common::db::error::DbError {
             DbError::DescribeTable(e) => Self::DdbDescribeTable(e),
             DbError::Serialization(e) => Self::Serialization(e.to_string()),
             DbError::TableStatusUnknown => Self::TableStatusUnknown,
+            DbError::General(e) => Self::General(e),
+        }
+    }
+}
+
+impl From<autopush_common::db::error::DbError> for DbError {
+    fn from(err: autopush_common::db::error::DbError) -> Self {
+        match err {
+            autopush_common::db::error::DbError::DdbGetItem(e) => DbError::GetItem(e),
+            autopush_common::db::error::DbError::DdbUpdateItem(e) => DbError::UpdateItem(e),
+            autopush_common::db::error::DbError::DdbPutItem(e) => DbError::PutItem(e),
+            autopush_common::db::error::DbError::DdbDeleteItem(e) => DbError::DeleteItem(e),
+            autopush_common::db::error::DbError::DdbDescribeTable(e) => DbError::DescribeTable(e),
+            autopush_common::db::error::DbError::Serialization(e) => DbError::General(e),
+            autopush_common::db::error::DbError::TableStatusUnknown => DbError::TableStatusUnknown,
+            autopush_common::db::error::DbError::General(e) => DbError::General(e),
+            _ => DbError::General(err.to_string()),
         }
     }
 }

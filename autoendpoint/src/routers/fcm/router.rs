@@ -1,4 +1,6 @@
-use crate::db::client::DbClient;
+use autopush_common::db::client::DbClient;
+
+// use crate::db::client::DbClient;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
@@ -224,7 +226,7 @@ impl Router for FcmRouter {
 
 #[cfg(test)]
 mod tests {
-    use crate::db::client::DbClient;
+    //use crate::db::client::DbClient;
     use crate::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
@@ -238,6 +240,7 @@ mod tests {
     use crate::routers::fcm::settings::FcmSettings;
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
+    use autopush_common::db::client::DbClient;
     use std::sync::Arc;
 
     use cadence::StatsdClient;

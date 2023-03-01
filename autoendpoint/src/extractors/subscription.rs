@@ -96,8 +96,9 @@ impl FromRequest for Subscription {
 
             let user = state
                 .dbclient
-                .get_user(uaid)
-                .await?
+                .get_user(&uaid)
+                .await
+                .map_err(|e| ApiErrorKind::Database(e.into()))?
                 .ok_or(ApiErrorKind::NoSubscription)?;
 
             trace!("user: {:?}", &user);

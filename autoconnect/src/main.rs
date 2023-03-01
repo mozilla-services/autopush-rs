@@ -12,12 +12,15 @@ use actix_http::StatusCode;
 use actix_web::middleware::ErrorHandlers;
 use actix_web::{web, App, HttpServer};
 use docopt::Docopt;
-use std::sync::RwLock;
 use serde::Deserialize;
+use std::sync::RwLock;
 use uuid::Uuid;
 
 use autoconnect_settings::{options::ServerOptions, Settings};
-use autoconnect_web::{client::{Client, ClientChannels}, dockerflow};
+use autoconnect_web::{
+    client::{Client, ClientChannels},
+    dockerflow,
+};
 use autoconnect_ws::ServerNotification;
 use autopush_common::errors::{render_404, ApcErrorKind, Result};
 
@@ -40,7 +43,6 @@ struct Args {
 
 #[actix_web::main]
 async fn main() -> Result<()> {
-
     env_logger::init();
 
     let args: Args = Docopt::new(USAGE)
@@ -60,12 +62,10 @@ async fn main() -> Result<()> {
     // we support. For now, it's just the one, DynamoDB.
     // Perform any app global storage initialization.
     match autopush_common::db::StorageType::from_dsn(&settings.db_dsn) {
-        autopush_common::db::StorageType::DynamoDb => {
-            env::set_var(
-                "AWS_LOCAL_DYNAMODB",
-                settings.db_dsn.clone().unwrap().to_owned(),
-            )
-        },
+        autopush_common::db::StorageType::DynamoDb => env::set_var(
+            "AWS_LOCAL_DYNAMODB",
+            settings.db_dsn.clone().unwrap().to_owned(),
+        ),
         autopush_common::db::StorageType::INVALID => {
             panic!("Invalid Storage type. Check DB_DSN.");
         }

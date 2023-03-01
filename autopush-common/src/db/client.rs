@@ -5,6 +5,8 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use uuid::Uuid;
 
+use super::HelloResponse;
+
 #[derive(Default, Debug)]
 pub struct FetchMessageResponse {
     pub timestamp: Option<u64>,
@@ -71,6 +73,10 @@ pub trait DbClient: Send + Sync {
 
     /// Delete a notification
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;
+
+    /// record a Hello record
+    /// Each data store can handle this differently, thus it's best to hand things off to the engine.
+    async fn hello(&self, connected_at: u64, uaid: Option<&Uuid>, router_url: &str, defer_registration: bool) -> DbResult<HelloResponse>;
 
     /// Check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool>;

@@ -2,8 +2,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::db::client::{DbClient, DbClientImpl};
-use crate::error::{ApiError, ApiResult};
+use autopush_common::db::dynamodb::DdbClientImpl;
+use autopush_common::db::DbSettings;
+use autopush_common::db::{client::DbClient, StorageType};
+
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
 // TODO: sentry is currently broken. Need to investgate solution
 // use crate::middleware::sentry::sentry_middleware;
@@ -47,11 +50,19 @@ impl Server {
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();
-        let ddb = Box::new(DbClientImpl::new(
-            metrics.clone(),
-            settings.router_table_name.clone(),
-            settings.message_table_name.clone(),
-        )?);
+        let db_settings = DbSettings {
+            dsn: settings.db_dsn.clone(),
+            db_settings: settings.db_settings.clone(),
+        };
+        let ddb: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
+            StorageType::DynamoDb => Box::new(
+                DdbClientImpl::new(metrics.clone(), &db_settings)
+                    .map_err(|e| ApiErrorKind::Database(e.into()))?,
+            ),
+            StorageType::INVALID => {
+                return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())
+            }
+        };
         let http = reqwest::ClientBuilder::new()
             .connect_timeout(Duration::from_millis(settings.connection_timeout_millis))
             .timeout(Duration::from_millis(settings.request_timeout_millis))

@@ -1,6 +1,7 @@
 //! Health and Dockerflow routes
+use autopush_common::db::error::DbResult;
 
-use crate::db::error::DbResult;
+//use crate::db::error::DbResult;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::ServerState;
 

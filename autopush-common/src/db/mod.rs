@@ -46,7 +46,7 @@ pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 #[derive(Eq, PartialEq)]
 pub enum StorageType {
     INVALID,
-    DynamoDb
+    DynamoDb,
 }
 
 impl StorageType {
@@ -54,7 +54,7 @@ impl StorageType {
     pub fn from_dsn(_dsn: &Option<String>) -> Self {
         if let Some(dsn) = _dsn {
             if dsn.starts_with("http") {
-                return Self::DynamoDb
+                return Self::DynamoDb;
             }
         }
         Self::INVALID
@@ -177,6 +177,13 @@ pub trait DbCommandClient: Send + Sync {
     /// inactive or logged out.)
     async fn remove_node_id(&self, uaid: &Uuid, node_id: String, connected_at: u64) -> Result<()>;
     // */
+    fn box_clone(&self) -> Box<dyn DbCommandClient>;
+}
+
+impl Clone for Box<dyn DbCommandClient> {
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
 }
 
 /// Basic requirements for notification content to deliver to websocket client

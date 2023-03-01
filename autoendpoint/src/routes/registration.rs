@@ -12,6 +12,7 @@ use actix_web::{HttpRequest, HttpResponse};
 
 use autopush_common::db::UserRecord;
 use autopush_common::endpoint::make_endpoint;
+use autopush_common::errors::ApcErrorKind;
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 
@@ -48,12 +49,14 @@ pub async fn register_uaid_route(
         .dbclient
         .add_user(&user)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        //.map_err(|e| ApiErrorKind::DatabaseError(e.into()))?;
+        .map_err(|e| ApiErrorKind::General(e.to_string()))?;
     state
         .dbclient
-        .add_channel(user.uaid, channel_id)
+        .add_channel(&user.uaid, &channel_id)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        //.map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(|e| ApiErrorKind::General(e.to_string()))?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for user");
@@ -94,7 +97,7 @@ pub async fn unregister_user_route(
     debug!("Unregistering UAID {}", path_args.uaid);
     state
         .dbclient
-        .remove_user(path_args.uaid)
+        .remove_user(&path_args.uaid)
         .await
         .map_err(|e| ApiErrorKind::Database(e.into()))?;
     Ok(HttpResponse::Ok().finish())
@@ -126,7 +129,11 @@ pub async fn update_token_route(
     };
     trace!("Updating user with UAID {}", user.uaid);
     trace!("user = {:?}", user);
-    state.dbclient.update_user(&user).await?;
+    state
+        .dbclient
+        .update_user(&user)
+        .await
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
     trace!("Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
@@ -146,7 +153,7 @@ pub async fn new_channel_route(
     trace!("channel_id = {}", channel_id);
     state
         .dbclient
-        .add_channel(path_args.uaid, channel_id)
+        .add_channel(&path_args.uaid, &channel_id)
         .await
         .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
@@ -175,7 +182,11 @@ pub async fn get_channels_route(
     state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
     debug!("Getting channel IDs for UAID {}", path_args.uaid);
-    let channel_ids = state.dbclient.get_channels(path_args.uaid).await?;
+    let channel_ids = state
+        .dbclient
+        .get_channels(&path_args.uaid)
+        .await
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uaid": path_args.uaid,
@@ -205,7 +216,7 @@ pub async fn unregister_channel_route(
     incr_metric("ua.command.unregister", &state.metrics, &request);
     let channel_did_exist = state
         .dbclient
-        .remove_channel(path_args.uaid, channel_id)
+        .remove_channel(&path_args.uaid, &channel_id)
         .await
         .map_err(|e| ApiErrorKind::Database(e.into()))?;
 

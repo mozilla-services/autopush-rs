@@ -1,6 +1,7 @@
 //! User validations
 
-use crate::db::client::DbClient;
+use autopush_common::db::client::DbClient;
+//use crate::db::client::DbClient;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
@@ -62,7 +63,10 @@ async fn validate_webpush_user(
     }
 
     // Make sure the subscription channel exists
-    let channel_ids = ddb.get_channels(user.uaid).await?;
+    let channel_ids = ddb
+        .get_channels(&user.uaid)
+        .await
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
     if !channel_ids.contains(channel_id) {
         return Err(ApiErrorKind::NoSubscription.into());
@@ -78,7 +82,9 @@ pub async fn drop_user(uaid: Uuid, ddb: &dyn DbClient, metrics: &StatsdClient) -
         .with_tag("errno", "102")
         .send();
 
-    ddb.remove_user(uaid).await?;
+    ddb.remove_user(&uaid)
+        .await
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
     Ok(())
 }

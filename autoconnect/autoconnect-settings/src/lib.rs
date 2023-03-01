@@ -80,7 +80,7 @@ pub struct Settings {
     pub statsd_port: u16,
     /// The root label to apply to metrics.
     pub statsd_label: String,
-    /// The DSN to connect to the storage engine (Used to )
+    /// The DSN to connect to the storage engine (Used to select between storage systems)
     pub db_dsn: Option<String>,
     /// JSON set of specific database settings (See data storage engines)
     pub db_settings: String,

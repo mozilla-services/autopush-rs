@@ -123,6 +123,9 @@ pub enum ApiErrorKind {
     #[error("Invalid Local Auth {0}")]
     InvalidLocalAuth(String),
 
+    #[error("General error {0}")]
+    General(String),
+
     #[error("ERROR:Success")]
     LogCheck,
 }
@@ -153,7 +156,8 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => StatusCode::IM_A_TEAPOT,
 
-            ApiErrorKind::Io(_)
+            ApiErrorKind::General(_)
+            | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::EndpointUrl(_)
@@ -188,6 +192,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => "log_check",
 
+            ApiErrorKind::General(_) => "general",
             ApiErrorKind::Io(_) => "io",
             ApiErrorKind::Metrics(_) => "metrics",
             ApiErrorKind::Database(_) => "database",
@@ -249,7 +254,8 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => Some(999),
 
-            ApiErrorKind::Io(_)
+            ApiErrorKind::General(_)
+            | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::PayloadError(_)
@@ -266,6 +272,7 @@ impl ApiErrorKind {
 impl From<ApiErrorKind> for ApcErrorKind {
     fn from(kind: ApiErrorKind) -> ApcErrorKind {
         match kind {
+            ApiErrorKind::General(e) => ApcErrorKind::GeneralError(e),
             ApiErrorKind::Io(e) => ApcErrorKind::Io(e),
             ApiErrorKind::Metrics(e) => ApcErrorKind::MetricError(e),
             ApiErrorKind::Validation(e) => ApcErrorKind::EndpointError("Validation", e.to_string()),

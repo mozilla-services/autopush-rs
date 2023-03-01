@@ -1,4 +1,5 @@
-use crate::db::client::DbClient;
+use autopush_common::db::client::DbClient;
+
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
@@ -139,7 +140,7 @@ impl ApnsRouter {
                 incr_error_metric(&self.metrics, "apns", channel, &reason, code, None);
                 if response.code == 410 {
                     debug!("APNS recipient has been unregistered, removing user");
-                    if let Err(e) = self.ddb.remove_user(uaid).await {
+                    if let Err(e) = self.ddb.remove_user(&uaid).await {
                         warn!("Error while removing user due to APNS 410: {}", e);
                     }
 
@@ -314,7 +315,6 @@ impl Router for ApnsRouter {
 
 #[cfg(test)]
 mod tests {
-    use crate::db::client::DbClient;
     use crate::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
@@ -326,6 +326,7 @@ mod tests {
     use a2::request::payload::Payload;
     use a2::{Error, Response};
     use async_trait::async_trait;
+    use autopush_common::db::client::DbClient;
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;

@@ -1,8 +1,9 @@
-use crate::db::client::DbClient;
+//use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
+use autopush_common::db::client::DbClient;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use std::collections::HashMap;
@@ -101,7 +102,7 @@ pub async fn handle_error(
                 error.errno(),
             );
 
-            if let Err(e) = ddb.remove_user(uaid).await {
+            if let Err(e) = ddb.remove_user(&uaid).await {
                 warn!("Error while removing user due to bridge not_found: {}", e);
             }
         }

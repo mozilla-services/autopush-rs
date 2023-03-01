@@ -3,7 +3,6 @@ use std::env;
 use std::fmt::{Debug, Display};
 use std::result::Result as StdResult;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::db::client::DbClient;
 use crate::db::dynamodb::retry::{
@@ -21,6 +20,7 @@ use crate::util::sec_since_epoch;
 use async_trait::async_trait;
 // use crate::db::dynamodb::{ddb_item, hashmap, val};
 use cadence::{CountedExt, StatsdClient};
+use chrono::Utc;
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
@@ -28,6 +28,10 @@ use rusoto_dynamodb::{
     DynamoDbClient, GetItemInput, PutItemInput, QueryInput, UpdateItemInput,
 };
 use serde::Deserialize;
+use uuid::Uuid;
+
+use super::util::generate_last_connect;
+use super::{HelloResponse, USER_RECORD_VERSION};
 
 #[macro_use]
 pub mod macros;
@@ -38,6 +42,8 @@ pub mod retry;
 pub struct DynamoDbSettings {
     pub router_table: String,
     pub message_table: String,
+    pub message_table_names: Vec<String>,
+    pub current_message_month: String,
 }
 
 impl Default for DynamoDbSettings {
@@ -45,6 +51,8 @@ impl Default for DynamoDbSettings {
         Self {
             router_table: "router".to_string(),
             message_table: "message".to_string(),
+            message_table_names: Vec::new(),
+            current_message_month: String::default(),
         }
     }
 }
@@ -529,7 +537,103 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn router_table_exists(&self) -> DbResult<bool> {
+    /// Perform the "hello" registration process.
+    /// Each storage engine can be different, so the 'hello' function needs to be
+    /// specific to the engine, unfortunately.
+    ///
+    async fn hello(&self,
+        connected_at: u64,
+        uaid: Option<&Uuid>,
+        router_url: &str,
+        mut defer_registration: bool) -> DbResult<HelloResponse> {
+            let cur_month = self.settings.current_message_month.clone();
+            // lookup_user
+            let mut response = HelloResponse{
+                message_month: cur_month.clone(),
+                connected_at,
+                ..Default::default()
+            };
+            if let Some(uaid) = uaid {
+                    // Get the user record
+                let user = self.get_user(&uaid).await;
+                // command: handle_user_result
+                //  if no user (false, 104)
+                //  if unparsable user (true, 104)
+                //  no user.current_month (true, 104)
+                //  user.current_month not in message_tables (true, 105)
+                //
+                // true = `ua.expiration` && drop_user(uaid)
+                match user {
+                    Ok(None) => {
+                        // No user found, so return the base response we have.
+                        // (false, 104)
+                        // bail out and return the stub response we've generated.
+                    },
+                    Ok(Some(mut user)) => {
+                        // We have a user record. Update it to include the latest info.
+                        if self.settings.message_table_names.contains(&self.settings.current_message_month){
+                            if let Some(user_month)  =  user.current_month.clone() {
+                                response.uaid = Some(user.uaid);
+                                // the user's month is current, hopefully you don't have to migrate.
+                                if self.settings.message_table_names.contains(&user_month) {
+                                    response.check_storage = true;
+                                    response.rotate_message_table = user_month != cur_month;
+                                    response.message_month = user_month;
+                                    response.reset_uaid = user.record_version.map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION);
+                                    // update the current user record.
+                                    user.last_connect = if has_connected_this_month(&user) {
+                                        None
+                                    } else {
+                                        Some(generate_last_connect())
+                                    };
+                                    user.node_id = Some(router_url.to_owned());
+                                    user.connected_at = connected_at;
+                                    self.update_user(&user).await?;
+                                    // The user is already registered. Make sure not to re-add by
+                                    // force clearing the defer_registration flag
+                                    defer_registration = false;
+                                }
+                                else {
+                                    // The user's current month has aged out of our list of supported months.
+                                    // (true, 105)
+                                    trace!("### handle_user_result {}: {:?}", &uaid, "105");
+                                    self
+                                        .metrics.incr_with_tags("ua.expiration")
+                                        .with_tag("code", "105")
+                                        .send();
+                                    self.remove_user(&uaid).await?;
+                                }
+                            } else {
+                                // user.current_month is None
+                                // (true, 105)
+                                trace!("### handle_user_result {}: {:?}", &uaid, "105");
+                                self
+                                    .metrics.incr_with_tags("ua.expiration")
+                                    .with_tag("code", "105")
+                                    .send();
+                                self.remove_user(&uaid).await?;
+                            }
+                        }
+                        if !defer_registration {
+                            self.add_user(&user).await?;
+                        } else {
+                            response.deferred_user_registration = Some(user);
+                        }
+                    },
+                    Err(e) => {
+                        self
+                        .metrics.incr_with_tags("ua.expiration")
+                        .with_tag("code", "104")
+                        .send();
+                        self.remove_user(&uaid).await?;
+                        return Err(e)
+                    }
+                }
+            }
+            Ok(response)
+        }
+
+        async fn router_table_exists(&self) -> DbResult<bool> {
         self.table_exists(self.settings.router_table.clone()).await
     }
 
@@ -545,4 +649,12 @@ impl DbClient for DdbClientImpl {
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
     }
+}
+
+/// Indicate whether this last_connect falls in the current month
+fn has_connected_this_month(user: &UserRecord) -> bool {
+    user.last_connect.map_or(false, |v| {
+        let pat = Utc::now().format("%Y%m").to_string();
+        v.to_string().starts_with(&pat)
+    })
 }
