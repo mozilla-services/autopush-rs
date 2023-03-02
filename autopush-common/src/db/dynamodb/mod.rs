@@ -649,6 +649,7 @@ impl DbClient for DdbClientImpl {
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
     }
+
 }
 
 /// Indicate whether this last_connect falls in the current month

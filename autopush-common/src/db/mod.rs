@@ -33,6 +33,10 @@ pub mod models;
 //pub mod postgres;
 mod util;
 
+// This will 
+// #[cfg(test)]
+pub mod mock;
+
 use crate::errors::{ApcErrorKind, Result};
 use crate::notification::Notification;
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};

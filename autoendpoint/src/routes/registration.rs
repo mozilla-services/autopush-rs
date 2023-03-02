@@ -12,7 +12,6 @@ use actix_web::{HttpRequest, HttpResponse};
 
 use autopush_common::db::UserRecord;
 use autopush_common::endpoint::make_endpoint;
-use autopush_common::errors::ApcErrorKind;
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 

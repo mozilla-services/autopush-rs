@@ -5,7 +5,7 @@ use rusoto_dynamodb::{
     DeleteItemError, DescribeTableError, GetItemError, PutItemError, UpdateItemError,
 };
 
-pub type DbResult<T> = Result<T, DbError>;
+// pub type DbResult<T> = Result<T, DbError>;
 
 #[derive(Debug, Error)]
 pub enum DbError {

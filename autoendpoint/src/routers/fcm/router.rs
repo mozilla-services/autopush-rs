@@ -227,7 +227,7 @@ impl Router for FcmRouter {
 #[cfg(test)]
 mod tests {
     //use crate::db::client::DbClient;
-    use crate::db::mock::MockDbClient;
+    use autopush_common::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
     use crate::routers::common::tests::{make_notification, CHANNEL_ID};

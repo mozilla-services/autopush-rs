@@ -167,8 +167,8 @@ impl Router for AdmRouter {
 
 #[cfg(test)]
 mod tests {
-    use crate::db::client::DbClient;
-    use crate::db::mock::MockDbClient;
+    //use crate::db::client::DbClient;
+    // use crate::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
     use crate::routers::adm::client::tests::{
@@ -180,7 +180,7 @@ mod tests {
     use crate::routers::common::tests::{make_notification, CHANNEL_ID};
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
-    use autopush_common::db::UserRecord;
+    use autopush_common::db::{client::DbClient, UserRecord, mock::MockDbClient};
     use cadence::StatsdClient;
     use mockall::predicate;
     use serde_json::Value;

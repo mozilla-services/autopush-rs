@@ -16,7 +16,6 @@ pub struct FetchMessageResponse {
 /// Provides high-level operations for data management.
 ///
 /// This is usually manifested by _database_::DbClientImpl
-/// TODO: still need to build the BigTable integration layer.
 ///
 #[async_trait]
 pub trait DbClient: Send + Sync {

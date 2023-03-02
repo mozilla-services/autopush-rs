@@ -5,7 +5,7 @@ extern crate slog_scope;
 extern crate serde_derive;
 
 use std::collections::HashMap;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc};
 use std::{env, vec::Vec};
 
 use actix_http::StatusCode;
@@ -14,14 +14,12 @@ use actix_web::{web, App, HttpServer};
 use docopt::Docopt;
 use serde::Deserialize;
 use std::sync::RwLock;
-use uuid::Uuid;
 
 use autoconnect_settings::{options::ServerOptions, Settings};
 use autoconnect_web::{
     client::{Client, ClientChannels},
     dockerflow,
 };
-use autoconnect_ws::ServerNotification;
 use autopush_common::errors::{render_404, ApcErrorKind, Result};
 
 mod server;
