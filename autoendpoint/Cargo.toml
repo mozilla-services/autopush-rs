@@ -22,6 +22,7 @@ log.workspace = true
 openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
+reqwest.workspace = true
 rusoto_core.workspace = true
 rusoto_dynamodb.workspace = true
 sentry.workspace = true
@@ -37,6 +38,7 @@ slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 url.workspace = true
 uuid.workspace = true
 
@@ -52,11 +54,9 @@ again = { version = "0.1.2", default-features = false, features = ["log", "rand"
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
 jsonwebtoken = "8.0"
-reqwest = { version="0.10.6", features = ["json"]}  # 0.11+ requires futures 0.3+
-tokio = { version = "0.2", features = ["fs"] }  # 1.1+ requires futures 0.3+
 validator = "0.16"
 validator_derive = "0.16"
-yup-oauth2 = "4.1.2"  # 5.0+ requires tokio 1.1+
+yup-oauth2 = "8.1"
 
 # For mockito test debugging
 #ureq={ version="2.4", features=["json"] }
@@ -65,4 +65,4 @@ yup-oauth2 = "4.1.2"  # 5.0+ requires tokio 1.1+
 mockall = {version = "0.8.3"}  # 0.9+ requires reworking tests
 mockito = "0.31"
 tempfile = "3.2.0"
-tokio = { version = "0.2", features = ["macros"] }
+tokio = { workspace = true, features = ["fs", "macros"] }

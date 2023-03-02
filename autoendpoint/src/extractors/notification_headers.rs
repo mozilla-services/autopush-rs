@@ -218,7 +218,7 @@ mod tests {
     use super::NotificationHeaders;
     use super::MAX_TTL;
     use crate::error::{ApiErrorKind, ApiResult};
-    use actix_http::header::Header;
+    //use actix_http::header::Header;
     use actix_web::test::TestRequest;
 
     /// Assert that a result is a validation error and check its serialization

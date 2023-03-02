@@ -5,7 +5,7 @@ extern crate slog_scope;
 extern crate serde_derive;
 
 use std::collections::HashMap;
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::{env, vec::Vec};
 
 use actix_http::StatusCode;
@@ -53,17 +53,16 @@ async fn main() -> Result<()> {
     if let Some(config_filename) = args.flag_config_connection {
         filenames.push(config_filename);
     }
-    let settings = Settings::with_env_and_config_files(&filenames)
-        .map_err(|e| ApcErrorKind::ConfigError(e))?;
+    let settings =
+        Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
 
     //TODO: Eventually this will match between the various storage engines that
     // we support. For now, it's just the one, DynamoDB.
     // Perform any app global storage initialization.
     match autopush_common::db::StorageType::from_dsn(&settings.db_dsn) {
-        autopush_common::db::StorageType::DynamoDb => env::set_var(
-            "AWS_LOCAL_DYNAMODB",
-            settings.db_dsn.clone().unwrap().to_owned(),
-        ),
+        autopush_common::db::StorageType::DynamoDb => {
+            env::set_var("AWS_LOCAL_DYNAMODB", settings.db_dsn.clone().unwrap())
+        }
         autopush_common::db::StorageType::INVALID => {
             panic!("Invalid Storage type. Check DB_DSN.");
         }
@@ -119,8 +118,8 @@ async fn main() -> Result<()> {
     .run()
     .await
     .map_err(|e| e.into())
-    .and_then(|v| {
+    .map(|v| {
         info!("Shutting down autoconnect");
-        Ok(v)
+        v
     })
 }

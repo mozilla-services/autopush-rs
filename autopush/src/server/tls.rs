@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use crate::MyFuture;
 
-// use autopush_common::errors::*;
+use autopush_common::errors::*;
 use futures::future;
 use futures::{Future, Poll};
 use openssl::dh::Dh;

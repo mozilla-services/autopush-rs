@@ -1,29 +1,27 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::str::FromStr;
-use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, RwLock};
 
-use actix_web::dev::ServiceRequest;
-use actix_web::web::{Data, Payload};
+use actix_web::web::Payload;
 use actix_web::{HttpRequest, HttpResponse};
 use autopush_common::util::user_agent::UserAgentInfo;
 use bytes::Bytes;
 use cadence::{CountedExt, StatsdClient};
-use futures_util::{FutureExt, StreamExt};
+use futures_util::StreamExt;
 use serde_json::json;
 use uuid::Uuid;
 
 use autoconnect_registry::RegisteredClient;
 use autoconnect_settings::options::ServerOptions;
-use autoconnect_ws::ServerNotification;
-use autopush_common::db::{self, UserRecord};
+use autopush_common::db::{
+    self,
+    //UserRecord
+};
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::notification::Notification;
-use autopush_common::util::{ms_since_epoch, user_agent};
+use autopush_common::util::ms_since_epoch;
 
-use crate::broadcast::{Broadcast, BroadcastSubs};
+use crate::broadcast::Broadcast;
 use crate::protocol::{ClientAck, ClientMessage, ServerMessage};
 
 /// Client & Registry functions.
@@ -39,7 +37,7 @@ pub struct Client {
     uaid: Option<Uuid>,
     flags: ClientFlags,
     /// The User Agent information block derived from the UserAgent header
-    ua_info: UserAgentInfo,
+    _ua_info: UserAgentInfo,
     //channel: Option<SyncSender<ServerNotification>>,
     /// Handle to the database
     db: Box<dyn db::client::DbClient>,
@@ -60,7 +58,7 @@ impl Client {
             header
                 .to_str()
                 .map(|x| x.to_owned())
-                .map_err(|e| ApcErrorKind::GeneralError("Invalid user agent".to_owned()))?
+                .map_err(|_e| ApcErrorKind::GeneralError("Invalid user agent".to_owned()))?
         } else {
             "".to_owned()
         };
@@ -72,12 +70,12 @@ impl Client {
         let (response, mut session, mut msg_stream) =
             actix_ws::handle(&req, body).map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?;
 
-        let thread = actix_rt::spawn(async move {
+        let _thread = actix_rt::spawn(async move {
             //TODO: Create a new client (set values, use ..Default::default() if needed)
             let mut client = Client {
                 uaid: None,
                 flags: ClientFlags::default(),
-                ua_info: UserAgentInfo::from(ua_string.as_str()),
+                _ua_info: UserAgentInfo::from(ua_string.as_str()),
                 db: db_client.clone(),
                 metrics: client_metrics,
                 // channel: tx,
@@ -147,9 +145,7 @@ impl Client {
     /// held by the server and links to the [autoconnect-web::client::WebPushClient]
     /// TODO:
     /// Make sure that when this is called, the `tx` is created with
-    /// ```
     ///   let (tx,rx) = std::sync::mpsc::channel(autoconnect_settings::options::max_pending_notification_queue);
-    /// ```
 
     /// Parse and process the message calling the appropriate sub function
     async fn process_message(
@@ -186,9 +182,9 @@ impl Client {
     pub async fn hello(
         &mut self,
         uaid: Option<String>,
-        channel_ids: Option<Vec<Uuid>>,
+        _channel_ids: Option<Vec<Uuid>>,
         use_webpush: Option<bool>,
-        broadcasts: Option<HashMap<String, String>>,
+        _broadcasts: Option<HashMap<String, String>>,
     ) -> Result<Option<ServerMessage>> {
         self.metrics.incr_with_tags("ua.command.hello").send();
         let status = 200;
@@ -207,7 +203,7 @@ impl Client {
 
         // Check that the UAID is valid
         self.uaid = if let Some(uaid) = &uaid {
-            Some(match Uuid::from_str(&uaid) {
+            Some(match Uuid::from_str(uaid) {
                 Ok(v) => {
                     self.flags.defer_registration = false;
                     v
@@ -225,19 +221,19 @@ impl Client {
             Some(Uuid::new_v4())
         };
 
-        let response = self.db.hello(
+        let _response = self.db.hello(
             connected_at,
             self.uaid.as_ref(),
             &self.router_url,
             self.flags.defer_registration,
         );
 
-        if let Some(uaid) = self.uaid.clone() {
+        if let Some(uaid) = self.uaid {
             // store the channel to use to talk to us.
             self.clients.write().unwrap().insert(
-                uaid.clone(),
+                uaid,
                 RegisteredClient {
-                    uaid: uaid.clone(),
+                    uaid,
                     uid: uuid::Uuid::new_v4(),
                     // tx: self.channel.clone()
                 },
@@ -261,7 +257,7 @@ impl Client {
         // Convert this to `HashMap<std::string::String, protocol::BroadcastValue>`
         // let broadcasts = ...;
         Ok(Some(ServerMessage::Hello {
-            uaid: self.uaid.clone().unwrap().as_simple().to_string(),
+            uaid: self.uaid.unwrap().as_simple().to_string(),
             status,
             use_webpush,
             broadcasts: HashMap::new(),
@@ -272,7 +268,7 @@ impl Client {
     pub async fn register(
         &mut self,
         channel_id: String,
-        key: Option<String>,
+        _key: Option<String>,
     ) -> Result<Option<ServerMessage>> {
         let status = 200;
 
@@ -282,7 +278,7 @@ impl Client {
 
         Ok(Some(ServerMessage::Register {
             channel_id,
-            status: 200,
+            status,
             push_endpoint,
         }))
     }
@@ -291,16 +287,13 @@ impl Client {
     pub async fn unregister(
         &mut self,
         channel_id: Uuid,
-        key: Option<u32>,
+        _key: Option<u32>,
     ) -> Result<Option<ServerMessage>> {
         let status = 200;
 
-        let push_endpoint = "REPLACE ME".to_owned();
+        let _push_endpoint = "REPLACE ME".to_owned();
 
-        Ok(Some(ServerMessage::Unregister {
-            channel_id,
-            status: 200,
-        }))
+        Ok(Some(ServerMessage::Unregister { channel_id, status }))
     }
 
     /// Return a Ping / Set of broadcast updates
@@ -309,14 +302,14 @@ impl Client {
     }
 
     /// Handle the list of Acknowledged messages, removing them from retransmission.
-    pub async fn ack(&mut self, updates: Vec<ClientAck>) -> Result<Option<ServerMessage>> {
+    pub async fn ack(&mut self, _updates: Vec<ClientAck>) -> Result<Option<ServerMessage>> {
         Ok(None)
     }
 
     /// Add new set of IDs to monitor for broadcast changes
     pub async fn broadcast(
         &mut self,
-        broadcasts: HashMap<String, String>,
+        _broadcasts: HashMap<String, String>,
     ) -> Result<Option<ServerMessage>> {
         Ok(None)
     }
@@ -336,7 +329,7 @@ impl Client {
     /// Get the list of broadcasts that have changed recently.
     pub async fn broadcast_delta(&mut self) -> Option<Vec<Broadcast>> {
         // self.srv.broadcast_delta(&mut self.broadcast_subs.borrow_mut())
-        return None;
+        None
     }
 
     pub fn shutdown(&mut self) -> Result<()> {
@@ -349,6 +342,7 @@ impl Client {
         Ok(())
     }
 }
+/*
 /// Websocket session statistics
 #[derive(Clone, Default)]
 struct SessionStatistics {
@@ -436,20 +430,21 @@ impl WebPushClient {
         !self.unacked_stored_notifs.is_empty() || !self.unacked_direct_notifs.is_empty()
     }
 }
+*/
 
 /// Set of Session specific flags for this WebPushClient
 pub struct ClientFlags {
     /// Defer registration
     defer_registration: bool,
     /// Whether check_storage queries for topic (not "timestamped") messages
-    include_topic: bool,
+    _include_topic: bool,
     /// Flags the need to increment the last read for timestamp for timestamped messages
-    increment_storage: bool,
+    _increment_storage: bool,
     /// Whether this client needs to check storage for messages
-    check: bool,
+    _check: bool,
     /// Flags the need to drop the user record
     reset_uaid: bool,
-    rotate_message_table: bool,
+    _rotate_message_table: bool,
 }
 
 // use ClientFlags::default() not ::new()
@@ -457,15 +452,16 @@ impl Default for ClientFlags {
     fn default() -> Self {
         Self {
             defer_registration: false,
-            include_topic: true,
-            increment_storage: false,
-            check: false,
+            _include_topic: true,
+            _increment_storage: false,
+            _check: false,
             reset_uaid: false,
-            rotate_message_table: false,
+            _rotate_message_table: false,
         }
     }
 }
 
+/*
 /// An Unauthorized client, which is the initial state of any websocket connection.
 /// The client must properly identify within the initial timeout period, or else the
 /// connection is rest.
@@ -476,7 +472,6 @@ pub struct UnAuthClientData<T> {
     broadcast_subs: Rc<RefCell<BroadcastSubs>>,
 }
 
-/*
 impl<T> UnAuthClientData <T>
 where
     T: Stream<Item = ClientMessage, Error = Error>
@@ -544,7 +539,7 @@ impl ClientRegistry {
         self.clients
             .write()
             .map(|mut clients| {
-                if let Some(client) = clients.insert(client.uaid, client) {
+                if let Some(_client) = clients.insert(client.uaid, client) {
                     /*
                     if client.tx.send(ServerNotification::Disconnect).is_ok() {
                         debug!("Told client to disconnect as a new one wants to connect");
@@ -552,17 +547,17 @@ impl ClientRegistry {
                     // */
                 };
             })
-            .map_err(|e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?;
+            .map_err(|_e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?;
         Ok(())
     }
 
     /// A notification has come for the UAID
-    pub async fn notify(&self, uaid: Uuid, notif: Notification) -> Result<()> {
+    pub async fn notify(&self, uaid: Uuid, _notif: Notification) -> Result<()> {
         self.clients
             .read()
             .map(|clients| {
                 debug!("Sending notification");
-                if let Some(client) = clients.get(&uaid) {
+                if let Some(_client) = clients.get(&uaid) {
                     debug!("Found a client to deliver a notification to");
                     /*
                     return if client
@@ -581,14 +576,14 @@ impl ClientRegistry {
                     Ok(())
                 }
             })
-            .map_err(|e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
+            .map_err(|_e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
     }
 
     /// A check for notification command has come for the uaid
-    pub async fn check_storage(&self, uaid: Uuid) -> Result<()> {
+    pub async fn check_storage(&self, _uaid: Uuid) -> Result<()> {
         self.clients
             .read()
-            .map(|clients| {
+            .map(|_clients| {
                 /*
                 if let Some(client) = clients.get(&uaid) {
                     if client.tx.send(ServerNotification::CheckStorage).is_ok() {
@@ -599,7 +594,7 @@ impl ClientRegistry {
                 // */
                 Err(ApcErrorKind::GeneralError("Could not store notification".to_owned()).into())
             })
-            .map_err(|e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
+            .map_err(|_e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
     }
 
     /// The client specified by `uaid` has disconnected.
@@ -620,10 +615,9 @@ impl ClientRegistry {
                 }
                 Err(ApcErrorKind::GeneralError("Could not remove client".to_owned()).into())
             })
-            .map_err(|e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
+            .map_err(|_e| ApcErrorKind::GeneralError("Lock Poisoned".to_owned()))?
     }
 }
-
 
 /// Handle incoming routed notifications from autoendpoint servers.
 ///
@@ -636,13 +630,15 @@ impl ClientRegistry {
 #[derive(Clone, Debug, Default)]
 struct NotifManager {}
 
+// TODO: remove dead code
+#[allow(dead_code)]
 impl NotifManager {
     pub async fn on_push(
         state: &ServerOptions,
         uaid: Uuid,
         notification: Notification,
     ) -> Result<HttpResponse> {
-        let _r = state.registry.notify(uaid, notification).await?;
+        state.registry.notify(uaid, notification).await?;
         Ok(HttpResponse::Ok().finish())
     }
 
@@ -651,6 +647,6 @@ impl NotifManager {
             return Ok(HttpResponse::Ok().finish());
         };
         let body = Bytes::from_static(b"Client not available");
-        Ok(HttpResponse::NotFound().body::<Bytes>(body.into()))
+        Ok(HttpResponse::NotFound().body::<Bytes>(body))
     }
 }

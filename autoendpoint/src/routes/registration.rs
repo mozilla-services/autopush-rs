@@ -66,7 +66,7 @@ pub async fn register_uaid_route(
         state.settings.endpoint_url().as_str(),
         &state.fernet,
     )
-    .map_err(|e| ApiErrorKind::EndpointUrl(e))?;
+    .map_err(ApiErrorKind::EndpointUrl)?;
     trace!("endpoint = {}", endpoint_url);
 
     // Create the secret
@@ -76,7 +76,7 @@ pub async fn register_uaid_route(
         .get(0)
         .expect("At least one auth key must be provided in the settings");
     let secret = AuthorizationCheck::generate_token(auth_key, &user.uaid)
-        .map_err(|e| ApiErrorKind::RegistrationSecretHash(e))?;
+        .map_err(ApiErrorKind::RegistrationSecretHash)?;
 
     trace!("Finished registering UAID {}", user.uaid);
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -165,7 +165,7 @@ pub async fn new_channel_route(
         state.settings.endpoint_url().as_str(),
         &state.fernet,
     )
-    .map_err(|e| ApiErrorKind::EndpointUrl(e))?;
+    .map_err(ApiErrorKind::EndpointUrl)?;
     trace!("endpoint = {}", endpoint_url);
 
     Ok(HttpResponse::Ok().json(serde_json::json!({

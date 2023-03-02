@@ -3,12 +3,10 @@
 extern crate slog_scope;
 
 use std::collections::HashMap;
-use std::sync::mpsc;
 
 use futures_locks::RwLock;
 use uuid::Uuid;
 
-use autoconnect_ws::ServerNotification;
 use autopush_common::errors::{ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 
@@ -39,7 +37,7 @@ impl ClientRegistry {
     pub async fn connect(&self, client: RegisteredClient) -> Result<()> {
         debug!("Connecting a client!");
         let mut clients = self.clients.write().await;
-        if let Some(client) = clients.insert(client.uaid, client) {
+        if let Some(_client) = clients.insert(client.uaid, client) {
             // Drop existing connection
             /*
             let result = client.tx.send(ServerNotification::Disconnect);
@@ -52,10 +50,10 @@ impl ClientRegistry {
     }
 
     /// A notification has come for the uaid
-    pub async fn notify(&self, uaid: Uuid, notif: Notification) -> Result<()> {
+    pub async fn notify(&self, uaid: Uuid, _notif: Notification) -> Result<()> {
         let clients = self.clients.read().await;
         debug!("Sending notification");
-        if let Some(client) = clients.get(&uaid) {
+        if let Some(_client) = clients.get(&uaid) {
             debug!("Found a client to deliver a notification to");
             /*
             let result = client.tx.send(ServerNotification::Notification(notif));
@@ -71,7 +69,7 @@ impl ClientRegistry {
     /// A check for notification command has come for the uaid
     pub async fn check_storage(&self, uaid: Uuid) -> Result<()> {
         let clients = self.clients.read().await;
-        if let Some(client) = clients.get(&uaid) {
+        if let Some(_client) = clients.get(&uaid) {
             /*
             let result = client.tx.send(ServerNotification::CheckStorage);
             if result.is_ok() {

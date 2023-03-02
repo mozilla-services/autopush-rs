@@ -315,7 +315,6 @@ impl Router for ApnsRouter {
 
 #[cfg(test)]
 mod tests {
-    use autopush_common::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
     use crate::routers::apns::error::ApnsError;
@@ -327,6 +326,7 @@ mod tests {
     use a2::{Error, Response};
     use async_trait::async_trait;
     use autopush_common::db::client::DbClient;
+    use autopush_common::db::mock::MockDbClient;
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;

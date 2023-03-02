@@ -190,7 +190,7 @@ impl WebPushRouter {
     async fn remove_node_id(&self, user: &UserRecord, node_id: &str) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
         self.ddb
-            .remove_node_id(&user.uaid, &node_id.to_owned(), user.connected_at)
+            .remove_node_id(&user.uaid, node_id, user.connected_at)
             .await
             .map_err(|e| ApiErrorKind::Database(e.into()))?;
         Ok(())

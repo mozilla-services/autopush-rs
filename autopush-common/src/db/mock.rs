@@ -4,15 +4,15 @@
 
 use crate::db::client::DbClient;
 use crate::db::error::DbResult;
-use async_trait::async_trait;
 use crate::db::UserRecord;
 use crate::notification::Notification;
+use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::HelloResponse;
 use super::client::FetchMessageResponse;
+use super::HelloResponse;
 
 // mockall currently has issues mocking async traits with #[automock], so we use
 // this workaround. See https://github.com/asomers/mockall/issues/75
@@ -90,9 +90,9 @@ impl DbClient for Arc<MockDbClient> {
         message_month: &str,
     ) -> DbResult<()> {
         // because `HashSet<&Uuid>` is not an iterator, so `.map()` doesn't work.`
-        let mut clist:HashSet<Uuid> = HashSet::new();
+        let mut clist: HashSet<Uuid> = HashSet::new();
         for v in channel_list {
-            clist.insert(v.clone());
+            clist.insert(*v);
         }
         Arc::as_ref(self).save_channels(uaid, clist, message_month)
     }
@@ -126,13 +126,18 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).fetch_timestamp_messages(uaid, timestamp, limit)
     }
 
-
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
         Arc::as_ref(self).remove_message(uaid, sort_key)
     }
 
-    async fn hello(&self, connected_at: u64, uaid: Option<&Uuid>, router_url: &str, defer_registration: bool) -> DbResult<HelloResponse> {
-        Arc::as_ref(self).hello(connected_at, uaid.map(|u| u.clone()), router_url, defer_registration)
+    async fn hello(
+        &self,
+        connected_at: u64,
+        uaid: Option<&Uuid>,
+        router_url: &str,
+        defer_registration: bool,
+    ) -> DbResult<HelloResponse> {
+        Arc::as_ref(self).hello(connected_at, uaid.copied(), router_url, defer_registration)
     }
 
     async fn router_table_exists(&self) -> DbResult<bool> {

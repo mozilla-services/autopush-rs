@@ -107,7 +107,7 @@ impl Server {
 
         let server = HttpServer::new(move || {
             App::new()
-                .app_data(state.clone())
+                .app_data(web::Data::new(state.clone()))
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 // .wrap_fn(sentry_middleware)

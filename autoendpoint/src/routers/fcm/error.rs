@@ -17,6 +17,9 @@ pub enum FcmError {
     #[error("Unable to deserialize FCM response")]
     DeserializeResponse(#[source] reqwest::Error),
 
+    #[error("No OAuth token was present")]
+    NoOAuthToken,
+
     #[error("No registration token found for user")]
     NoRegistrationToken,
 
@@ -37,7 +40,8 @@ impl FcmError {
 
             FcmError::CredentialDecode(_)
             | FcmError::OAuthClientBuild(_)
-            | FcmError::OAuthToken(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            | FcmError::OAuthToken(_)
+            | FcmError::NoOAuthToken => StatusCode::INTERNAL_SERVER_ERROR,
 
             FcmError::DeserializeResponse(_) => StatusCode::BAD_GATEWAY,
         }
@@ -53,7 +57,8 @@ impl FcmError {
             FcmError::CredentialDecode(_)
             | FcmError::OAuthClientBuild(_)
             | FcmError::OAuthToken(_)
-            | FcmError::DeserializeResponse(_) => None,
+            | FcmError::DeserializeResponse(_)
+            | FcmError::NoOAuthToken => None,
         }
     }
 }
