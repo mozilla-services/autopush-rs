@@ -317,7 +317,6 @@ impl Client {
     /// Process the error, logging it and terminating the connection.
     pub async fn process_error(&mut self, session: actix_ws::Session, e: ApcError) {
         // send error to sentry if appropriate
-        dbg!("Error:: {e:?}");
         error!("Error:: {e:?}");
         // For now, close down normally and eat the close error.
         session

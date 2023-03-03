@@ -87,7 +87,7 @@ async fn main() -> Result<()> {
 
     let server_opts = ServerOptions::from_settings(&settings)?;
 
-    dbg!("Starting autoconnect on port {:?}", &settings.port);
+    info!("Starting autoconnect on port {:?}", &settings.port);
     HttpServer::new(move || {
         let client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
         App::new()
