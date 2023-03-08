@@ -13,10 +13,7 @@ use uuid::Uuid;
 
 use autoconnect_registry::RegisteredClient;
 use autoconnect_settings::options::ServerOptions;
-use autopush_common::db::{
-    self,
-    //UserRecord
-};
+use autopush_common::db::{self, UserRecord};
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 use autopush_common::util::ms_since_epoch;
@@ -31,19 +28,47 @@ use crate::protocol::{ClientAck, ClientMessage, ServerMessage};
 /// Mapping of UserAgent IDs to the Registered Client information struct
 pub type ClientChannels = Arc<RwLock<HashMap<Uuid, RegisteredClient>>>;
 
+#[allow(dead_code)]
+#[derive(Clone, Default)]
+struct SessionStatistics {
+    //user data
+    uaid_reset: bool,
+    existing_uaid: bool,
+    connection_type: String,
+
+    // Usage data
+    direct_acked: i32,
+    direct_storage: i32,
+    stored_retrieved: i32,
+    stored_acked: i32,
+    nacks: i32,
+    unregisters: i32,
+    registers: i32,
+}
+
+#[allow(dead_code)]
 /// The Autoconnect Client connection
 pub struct Client {
     /// the UserAgent ID
     uaid: Option<Uuid>,
+    uid: Uuid,
     flags: ClientFlags,
     /// The User Agent information block derived from the UserAgent header
-    _ua_info: UserAgentInfo,
+    ua_info: UserAgentInfo,
     //channel: Option<SyncSender<ServerNotification>>,
     /// Handle to the database
     db: Box<dyn db::client::DbClient>,
     clients: ClientChannels,
     // channel: mpsc::Sender<ServerNotification>,
     metrics: Arc<StatsdClient>,
+    unacked_direct_notifs: Vec<Notification>,
+    unacked_stored_notifs: Vec<Notification>,
+    unacked_stored_highest: Option<u64>,
+    connected_at: u64,
+    sent_from_storage: u32,
+    last_ping: u64,
+    stats: SessionStatistics,
+    deferred_user_registration: Option<UserRecord>,
     router_url: String,
 }
 
@@ -74,13 +99,22 @@ impl Client {
             //TODO: Create a new client (set values, use ..Default::default() if needed)
             let mut client = Client {
                 uaid: None,
+                uid: Uuid::new_v4(),
                 flags: ClientFlags::default(),
-                _ua_info: UserAgentInfo::from(ua_string.as_str()),
+                ua_info: UserAgentInfo::from(ua_string.as_str()),
                 db: db_client.clone(),
                 metrics: client_metrics,
                 // channel: tx,
                 clients: clients.clone(),
                 router_url: state.router_url.clone(),
+                unacked_direct_notifs: Default::default(),
+                unacked_stored_notifs: Default::default(),
+                unacked_stored_highest: Default::default(),
+                connected_at: Default::default(),
+                sent_from_storage: Default::default(),
+                last_ping: Default::default(),
+                stats: Default::default(),
+                deferred_user_registration: Default::default(),
             };
             while let Some(msg) = msg_stream.next().await {
                 match msg {
@@ -143,8 +177,7 @@ impl Client {
     /// Create a new client, ensuring that we have a channel to send notifications and that the
     /// broadcast_subs are captured. Set up the local state machine if need be. This client is
     /// held by the server and links to the [autoconnect-web::client::WebPushClient]
-    /// TODO:
-    /// Make sure that when this is called, the `tx` is created with
+    /// TODO:  Make sure that when this is called, the `tx` is created with
     ///   let (tx,rx) = std::sync::mpsc::channel(autoconnect_settings::options::max_pending_notification_queue);
 
     /// Parse and process the message calling the appropriate sub function
@@ -267,12 +300,24 @@ impl Client {
     /// Add the provided `channel_id` to the list of associated channels for this UAID, generate a new endpoint using the key
     pub async fn register(
         &mut self,
-        channel_id: String,
+        channel_id_string: String,
         _key: Option<String>,
     ) -> Result<Option<ServerMessage>> {
-        let status = 200;
+        debug!("Got a register command"; "uaid"=>self.uaid.map(|v| v.to_string()), "channel_id" => &channel_id_string );
 
-        let channel_id = Uuid::from_str(&channel_id)?;
+        let channel_id = Uuid::parse_str(&channel_id_string).map_err(|_e| {
+            ApcErrorKind::InvalidClientMessage(format!("Invalid ChannelID: {channel_id_string}"))
+        })?;
+        if channel_id.as_hyphenated().to_string() != channel_id_string {
+            return Err(ApcErrorKind::InvalidClientMessage(format!(
+                "Invalid UUID format, not lower-case/dashed: {channel_id_string}"
+            ))
+            .into());
+        }
+
+        let _uaid = self.uaid;
+
+        let status = 200;
 
         let push_endpoint = "REPLACE ME".to_owned();
 

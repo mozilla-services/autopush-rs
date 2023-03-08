@@ -87,7 +87,8 @@ impl DdbClientImpl {
             DynamoDbClient::new(Region::default())
         };
 
-        let settings = DynamoDbSettings::try_from(settings.db_settings.as_ref())?;
+        let settings =
+            DynamoDbSettings::try_from(settings.db_settings.as_ref()).unwrap_or_default();
 
         Ok(Self {
             db_client: ddb,

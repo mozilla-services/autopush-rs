@@ -126,7 +126,6 @@ impl ServerOptions {
                 .expect("megaphone poll interval cannot be 0"),
             human_logs: settings.human_logs,
             msg_limit: settings.msg_limit,
-            // XXX: this causes main to fail to compile with
             registry: Arc::new(ClientRegistry::default()),
             max_pending_notification_queue: settings.max_pending_notification_queue as usize,
         })

@@ -55,11 +55,13 @@ pub enum StorageType {
 
 impl StorageType {
     /// currently, there is only one.
-    pub fn from_dsn(_dsn: &Option<String>) -> Self {
-        if let Some(dsn) = _dsn {
-            if dsn.starts_with("http") {
-                return Self::DynamoDb;
-            }
+    /// Check the `db_dsn` setting or `AWS_LOCAL_DYNAMODB` environment variable.
+    pub fn from_dsn(dsn: &Option<String>) -> Self {
+        let dsn = dsn
+            .clone()
+            .unwrap_or(std::env::var("AWS_LOCAL_DYNAMODB").unwrap_or_default());
+        if dsn.starts_with("http") {
+            return Self::DynamoDb;
         }
         Self::INVALID
     }
