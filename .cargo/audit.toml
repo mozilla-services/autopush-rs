@@ -1,11 +1,7 @@
 [advisories]
 ignore = [
-    "RUSTSEC-2020-0041", # Bound by Sentry 0.19 requiring Hyper 0.13
-    "RUSTSEC-2021-0078", # Bound by Sentry 0.19 requiring Hyper 0.13
-    "RUSTSEC-2021-0079", # Bound by Sentry 0.19 requiring Hyper 0.13
-    "RUSTSEC-2021-0115", # Bound by rusoto 0.45 & fernet 0.1.4 (not a risk)
-    "RUSTSEC-2021-0124", # Bound by tokio restrictions
-    "RUSTSEC-2020-0159", # Bound by time
-    "RUSTSEC-2020-0071", # Bound by sentry, cadence, etc.
-    "RUSTSEC-2021-0131", # Bound by actix-http 2.2.1
+    "RUSTSEC-2021-0078", # Bound by Rusoto 0.42, Reqwest 0.9 requiring Hyper 0.12
+    "RUSTSEC-2021-0079", # Bound by Rusoto 0.42, Reqwest 0.9, a2 0.5 requiring Hyper 0.12
+    "RUSTSEC-2021-0124", # Bound by tokio restrictions, rusoto, reqwest, hyper...
+    "RUSTSEC-2020-0071", # Bound by Rusoto 0.42, reqwest 0.9, hyper 0.12, chrono 0.4.
 ]
