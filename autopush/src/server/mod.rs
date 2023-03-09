@@ -906,7 +906,7 @@ where
     /// is "Error: Connection closed normally" which can raise a false error condition.
     fn poll_complete(&mut self) -> Poll<(), ApcError> {
         try_ready!(self.send_ws_ping());
-        if !self.inner.poll_complete().is_ok(){
+        if self.inner.poll_complete().is_err() {
             warn!("Error encountered with poll_complete");
         }
         Ok(Async::Ready(()))
