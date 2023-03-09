@@ -226,11 +226,10 @@ pub fn get_uaid(
         key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
         ..Default::default()
     };
-    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
-        .map_err(|e| {
-            error!("get_uaid: {:?}", e.to_string());
-            ApcErrorKind::DatabaseError("Error fetching user".into()).into()
-        })
+    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error).map_err(|e| {
+        error!("get_uaid: {:?}", e.to_string());
+        ApcErrorKind::DatabaseError("Error fetching user".into()).into()
+    })
 }
 
 /// Register a user into the Router table.

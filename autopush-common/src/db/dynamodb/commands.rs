@@ -215,14 +215,10 @@ pub async fn get_uaid(
         key: ddb_item! { uaid: s => uaid.simple().to_string() },
         ..Default::default()
     };
-    ddb.get_item(input.clone())
-        .await
-        .map_err(|e|
-            {
-                error!("command: get_uaid: {:?}", &e.to_string());
-                ApcErrorKind::RusotoError(e.to_string()).into()
-            }
-        )
+    ddb.get_item(input.clone()).await.map_err(|e| {
+        error!("command: get_uaid: {:?}", &e.to_string());
+        ApcErrorKind::RusotoError(e.to_string()).into()
+    })
 }
 
 pub async fn register_user(
