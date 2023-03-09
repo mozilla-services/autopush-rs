@@ -901,9 +901,15 @@ where
         }
     }
 
+    /// Handle the poll completion.
+    /// Note, that this eats the errors of poll_complete(), because one of the known states
+    /// is "Error: Connection closed normally" which can raise a false error condition.
     fn poll_complete(&mut self) -> Poll<(), ApcError> {
         try_ready!(self.send_ws_ping());
-        Ok(self.inner.poll_complete()?)
+        if !self.inner.poll_complete().is_ok(){
+            warn!("Error encountered with poll_complete");
+        }
+        Ok(Async::Ready(()))
     }
 
     fn close(&mut self) -> Poll<(), ApcError> {
@@ -949,7 +955,7 @@ fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
         StatusCode::IM_A_TEAPOT,
         json!({
                 "code": code,
-                "errno": 999,
+                "errno": 99,
                 "error": "Test Failure",
                 "mesage": "FAILURE:Success",
         }),
