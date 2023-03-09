@@ -191,7 +191,7 @@ impl Client {
             warn!("Invalid message: {}", String::from_utf8_lossy(bytes));
             ApcErrorKind::InvalidClientMessage(e.to_string())
         })?)?;
-        return match msg {
+        match msg {
             ClientMessage::Hello {
                 uaid,
                 channel_ids,
@@ -206,7 +206,7 @@ impl Client {
             ClientMessage::Ack { updates } => self.ack(updates).await,
             ClientMessage::BroadcastSubscribe { broadcasts } => self.broadcast(broadcasts).await,
             _ => Err(ApcErrorKind::GeneralError("PLACEHOLDER".to_owned()).into()),
-        };
+        }
     }
 
     /// Handle a websocket "hello". This will return a JSON structure that contains the UAID to use.

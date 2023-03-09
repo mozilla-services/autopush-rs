@@ -21,17 +21,13 @@ pub enum BroadcastValue {
     Nested(HashMap<String, BroadcastValue>),
 }
 
+#[derive(Default)]
 // Used for the server to flag a webpush client to deliver a Notification or Check storage
 pub enum ServerNotification {
     CheckStorage,
     Notification(Notification),
+    #[default]
     Disconnect,
-}
-
-impl Default for ServerNotification {
-    fn default() -> Self {
-        ServerNotification::Disconnect
-    }
 }
 
 #[derive(Debug, Deserialize)]
