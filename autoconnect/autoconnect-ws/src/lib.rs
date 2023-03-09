@@ -10,4 +10,3 @@ pub enum ServerNotification {
     #[default]
     Disconnect,
 }
-
