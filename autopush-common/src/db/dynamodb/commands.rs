@@ -217,7 +217,12 @@ pub async fn get_uaid(
     };
     ddb.get_item(input.clone())
         .await
-        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()).into())
+        .map_err(|e|
+            {
+                error!("command: get_uaid: {:?}", &e.to_string());
+                ApcErrorKind::RusotoError(e.to_string()).into()
+            }
+        )
 }
 
 pub async fn register_user(
@@ -311,7 +316,10 @@ pub async fn all_channels(
                 })?
                 .unwrap_or_default()
         })
-        .map_err(|e| ApcErrorKind::RusotoError(e.to_string()))?;
+        .map_err(|e| {
+            error!("all_channels: {:?}", &e.to_string());
+            ApcErrorKind::RusotoError(e.to_string())
+        })?;
 
     Ok(res.unwrap_or_default())
 }

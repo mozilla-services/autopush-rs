@@ -232,7 +232,10 @@ impl DbClient for DdbClientImpl {
             .item
             .map(serde_dynamodb::from_hashmap)
             .transpose()
-            .map_err(DbError::from)
+            .map_err(|e|{
+                error!("DbClient::get_user: {:?}", e.to_string());
+                DbError::from(e)
+            })
     }
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
