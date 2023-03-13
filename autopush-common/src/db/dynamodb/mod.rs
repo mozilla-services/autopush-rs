@@ -607,7 +607,7 @@ impl DbClient for DdbClientImpl {
                             } else {
                                 // The user's current month has aged out of our list of supported months.
                                 // (true, 105)
-                                trace!("### handle_user_result {}: {:?}", &uaid, "105");
+                                trace!("🧑 handle_user_result {}: {:?}", &uaid, "105");
                                 self.metrics
                                     .incr_with_tags("ua.expiration")
                                     .with_tag("code", "105")
@@ -617,7 +617,7 @@ impl DbClient for DdbClientImpl {
                         } else {
                             // user.current_month is None
                             // (true, 105)
-                            trace!("### handle_user_result {}: {:?}", &uaid, "105");
+                            trace!("🧑 handle_user_result {}: {:?}", &uaid, "105");
                             self.metrics
                                 .incr_with_tags("ua.expiration")
                                 .with_tag("code", "105")

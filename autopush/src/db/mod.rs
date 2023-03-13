@@ -155,7 +155,7 @@ impl DynamoStorage {
         defer_registration: bool,
     ) -> impl Future<Item = HelloResponse, Error = ApcError> {
         trace!(
-            "### uaid {:?}, defer_registration: {:?}",
+            "🧑🏼 uaid {:?}, defer_registration: {:?}",
             &uaid,
             &defer_registration
         );
@@ -187,7 +187,7 @@ impl DynamoStorage {
 
         response.and_then(move |(mut hello_response, user_opt)| {
             trace!(
-                "### Hello Response: {:?}, {:?}",
+                "💬 Hello Response: {:?}, {:?}",
                 hello_response.uaid,
                 user_opt
             );
@@ -199,7 +199,7 @@ impl DynamoStorage {
                 ..Default::default()
             });
             let uaid = user.uaid;
-            trace!("### UAID = {:?}", &uaid);
+            trace!("🧑 UAID = {:?}", &uaid);
             let mut err_response = hello_response.clone();
             err_response.connected_at = connected_at;
             if !defer_registration {
@@ -239,7 +239,7 @@ impl DynamoStorage {
 
         if let Some(user) = register_user {
             trace!(
-                "### Endpoint Request: User not yet registered... {:?}",
+                "💬 Endpoint Request: User not yet registered... {:?}",
                 &user.uaid
             );
             let uaid2 = *uaid;

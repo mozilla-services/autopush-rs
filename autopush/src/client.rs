@@ -390,7 +390,7 @@ where
 
         let AwaitHello { data, tx, rx, .. } = hello.take();
         let connected_at = ms_since_epoch();
-        trace!("### AwaitHello UAID: {:?}", uaid);
+        trace!("❓ AwaitHello UAID: {:?}", uaid);
         // Defer registration (don't write the user to the router table yet)
         // when no uaid was specified. We'll get back a pending DynamoDbUser
         // from the HelloResponse. It'll be potentially written to the db later
@@ -436,7 +436,7 @@ where
                     connected_at,
                     deferred_user_registration,
                 } => {
-                    trace!("### AfterAwaitProcessHello: uaid = {:?}", uaid);
+                    trace!("❓ AfterAwaitProcessHello: uaid = {:?}", uaid);
                     (
                         uaid,
                         message_month,
@@ -456,7 +456,7 @@ where
             }
         };
 
-        trace!("### post hello: {:?}", &uaid);
+        trace!("❓ post hello: {:?}", &uaid);
 
         let AwaitProcessHello {
             data,
@@ -467,7 +467,7 @@ where
         } = process_hello.take();
         let user_is_registered = deferred_user_registration.is_none();
         trace!(
-            "### Taken hello. user_is_registered: {}, {:?}",
+            "💬 Taken hello. user_is_registered: {}, {:?}",
             user_is_registered,
             uaid
         );

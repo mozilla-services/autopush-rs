@@ -226,7 +226,7 @@ pub async fn register_user(
     user: &UserRecord,
     router_table: &str,
 ) -> Result<PutItemOutput> {
-    trace!("### Registering User...");
+    trace!("✉️ Registering User...");
     let item = match serde_dynamodb::to_hashmap(user) {
         Ok(item) => item,
         Err(e) => return Err(ApcErrorKind::RusotoError(e.to_string()).into()),
@@ -411,15 +411,15 @@ pub async fn lookup_user(
     );
     Ok(match user {
         Ok(user) => {
-            trace!("### returning user: {:?}", user.uaid);
+            trace!("🧑 returning user: {:?}", user.uaid);
             (hello_response, Some(user))
         }
         Err((false, _)) => {
-            trace!("### handle_user_result false, _: {:?}", uaid2);
+            trace!("🧑 handle_user_result false, _: {:?}", uaid2);
             (hello_response, None)
         }
         Err((true, code)) => {
-            trace!("### handle_user_result true, {}: {:?}", uaid2, code);
+            trace!("🧑 handle_user_result true, {}: {:?}", uaid2, code);
             metrics
                 .incr_with_tags("ua.expiration")
                 .with_tag("code", &code.to_string())

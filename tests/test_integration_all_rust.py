@@ -525,7 +525,7 @@ def get_rust_binary_path(binary):
 def write_config_to_env(config, prefix):
     for key, val in config.items():
         new_key = prefix + key
-        log.debug("#### {} => {}".format(new_key, val))
+        log.debug("✍ config {} => {}".format(new_key, val))
         os.environ[new_key.upper()] = str(val)
 
 
@@ -706,7 +706,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def quick_register(self, sslcontext=None):
-        print("#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
+        print("🔌 Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT),
                         sslcontext=sslcontext)
         yield client.connect()

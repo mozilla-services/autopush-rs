@@ -255,7 +255,7 @@ pub fn register_user(
     future::Either::B(
         retry_if(
             move || {
-                debug!("### Registering user into {}: {:?}", router_table, item);
+                debug!("🧑🏼 Registering user into {}: {:?}", router_table, item);
                 ddb.put_item(PutItemInput {
                     item: item.clone(),
                     table_name: router_table.clone(),
@@ -442,15 +442,15 @@ pub fn lookup_user(
         );
         match user {
             Ok(user) => {
-                trace!("### returning user: {:?}", user.uaid);
+                trace!("🧑 returning user: {:?}", user.uaid);
                 Box::new(future::ok((hello_response, Some(user))))
             }
             Err((false, _)) => {
-                trace!("### handle_user_result false, _: {:?}", uaid2);
+                trace!("🧑 handle_user_result false, _: {:?}", uaid2);
                 Box::new(future::ok((hello_response, None)))
             }
             Err((true, code)) => {
-                trace!("### handle_user_result true, {}: {:?}", uaid2, code);
+                trace!("🧑 handle_user_result true, {}: {:?}", uaid2, code);
                 metrics
                     .incr_with_tags("ua.expiration")
                     .with_tag("code", &code.to_string())

@@ -405,7 +405,7 @@ impl Server {
                     handle.spawn(client.then(move |res| {
                         srv.open_connections.set(srv.open_connections.get() - 1);
                         if let Err(e) = res {
-                            debug!("eating error... {}: {}", addr, e.to_string());
+                            debug!("🤫 {}: {}", addr, e.to_string());
                         }
                         Ok(())
                     }));
