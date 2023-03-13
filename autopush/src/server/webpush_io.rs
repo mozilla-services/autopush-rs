@@ -41,7 +41,13 @@ impl Read for WebpushIo {
             }
         }
         self.header_to_read = None;
-        self.tcp.read(buf)
+        let res = self.tcp.read(buf);
+        if res.is_err() {
+            warn!("🢤 ERR: {:?}", &res)
+        } else {
+            trace!("🢤 {:?}", &res);
+        }
+        res
     }
 }
 
@@ -49,10 +55,12 @@ impl Read for WebpushIo {
 // don't buffer this at all.
 impl Write for WebpushIo {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        trace!("🢧 {:?}", String::from_utf8_lossy(buf));
         self.tcp.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        trace!("🚽");
         self.tcp.flush()
     }
 }

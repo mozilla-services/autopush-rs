@@ -256,6 +256,7 @@ impl Server {
             {
                 let handle = core.handle();
                 let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.router_port));
+                debug!("Starting router: {:?}", addr);
                 let push_listener = TcpListener::bind(&addr, &handle).unwrap();
                 let http = Http::new();
                 let push_srv = push_listener.incoming().for_each(move |(socket, _)| {
@@ -314,7 +315,7 @@ impl Server {
             metrics,
         });
         let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.port));
-        debug!("{:?}", &addr);
+        debug!("Starting server: {:?}", &addr);
         let ws_listener = TcpListener::bind(&addr, &srv.handle)?;
 
         let handle = core.handle();
@@ -404,7 +405,7 @@ impl Server {
                     handle.spawn(client.then(move |res| {
                         srv.open_connections.set(srv.open_connections.get() - 1);
                         if let Err(e) = res {
-                            debug!("{}: {}", addr, e.to_string());
+                            debug!("eating error... {}: {}", addr, e.to_string());
                         }
                         Ok(())
                     }));
@@ -849,7 +850,7 @@ where
             };
             match msg {
                 Message::Text(ref s) => {
-                    trace!("🚟 text message {}", s);
+                    trace!("🢤 text message {}", s);
                     let msg = s
                         .parse()
                         .map_err(|_e| ApcErrorKind::InvalidClientMessage(s.to_owned()))?;
@@ -913,8 +914,29 @@ where
     }
 
     fn close(&mut self) -> Poll<(), ApcError> {
+        /*
+        match self.poll_complete() {
+            Ok(futures::Async::Ready(t)) => t,
+            Ok(futures::Async::NotReady) => return Ok(futures::Async::NotReady),
+            Err(e) => {
+                error!(&e);
+                return Err(e);
+            }
+        }
+        */
         try_ready!(self.poll_complete());
-        Ok(self.inner.close()?)
+        // Actix4 will return an error on a clean close. This can throw off
+        // integration tests, because the thread will prematurely terminate
+        // There doesn't seem to be a good way to trap for the Success error,
+        // so for now, we just eat any error that is associated with the
+        // connection closure.
+        match self.inner.close() {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                warn!("Close generated an error, possibly ok?");
+                Err(From::from(e))
+            }
+        }
     }
 }
 

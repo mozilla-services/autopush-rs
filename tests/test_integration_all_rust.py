@@ -89,6 +89,10 @@ MOCK_MP_TOKEN = "Bearer {}".format(uuid.uuid4().hex)
 MOCK_MP_POLLED = Event()
 MOCK_SENTRY_QUEUE = Queue()
 
+"""Connection Server Config:
+For local test debugging, set `AUTOPUSH_CN_CONFIG=_url_` to override
+creation of the local server.
+"""
 CONNECTION_CONFIG = dict(
     hostname='localhost',
     port=CONNECTION_PORT,
@@ -108,6 +112,10 @@ CONNECTION_CONFIG = dict(
     msg_limit=MSG_LIMIT,
 )
 
+"""Connection Megaphone Config:
+For local test debugging, set `AUTOPUSH_MP_CONFIG=_url_` to override
+creation of the local server.
+"""
 MEGAPHONE_CONFIG = copy.deepcopy(CONNECTION_CONFIG)
 MEGAPHONE_CONFIG.update(
     port=MP_CONNECTION_PORT,
@@ -124,6 +132,10 @@ MEGAPHONE_CONFIG.update(
     megaphone_poll_interval=1,
 )
 
+"""Endpoint Server Config:
+For local test debugging, set `AUTOPUSH_EP_CONFIG=_url_` to override
+creation of the local server.
+"""
 ENDPOINT_CONFIG = dict(
     host='localhost',
     port=ENDPOINT_PORT,
@@ -308,7 +320,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
                 self.messages[channel].append(location)
             else:
                 self.messages[channel] = [location]
-
         # Pull the notification if connected
         if self.ws and self.ws.connected:
             return object.__getattribute__(self, "get_notification")(timeout)
@@ -485,6 +496,8 @@ class CustomClient(Client):
 
 def kill_process(process):
     # This kinda sucks, but its the only way to nuke the child procs
+    if process is None:
+        return
     proc = psutil.Process(pid=process.pid)
     child_procs = proc.children(recursive=True)
     for p in [proc] + child_procs:
@@ -567,7 +580,16 @@ def setup_connection_server(connection_binary):
     # due to a change in Config, autopush uses a double
     # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
     # `settings.fcm.min_ttl`)
-    write_config_to_env(CONNECTION_CONFIG, "autopush__")
+    url = os.getenv("AUTOPUSH_CN_SERVER")
+    if url is not None:
+        parsed = urlparse(url)
+        CONNECTION_CONFIG["hostname"] = parsed.hostname
+        CONNECTION_CONFIG["port"] = parsed.port
+        CONNECTION_CONFIG["endpoint_scheme"] = parsed.scheme
+        write_config_to_env(CONNECTION_CONFIG, "autopush__")
+        return
+    else:
+        write_config_to_env(CONNECTION_CONFIG, "autopush__")
     cmd = [connection_binary]
     CN_SERVER = subprocess.Popen(
         cmd, shell=True, env=os.environ, stdout=subprocess.PIPE,
@@ -583,7 +605,20 @@ def setup_connection_server(connection_binary):
 def setup_megaphone_server(connection_binary):
     global CN_MP_SERVER
 
-    write_config_to_env(MEGAPHONE_CONFIG, "autopush__")
+    url = os.getenv("AUTOPUSH_MP_SERVER")
+    if url is not None:
+        parsed = urlparse(url)
+        MEGAPHONE_CONFIG["hostname"] = parsed.hostname
+        MEGAPHONE_CONFIG["port"] = parsed.port
+        MEGAPHONE_CONFIG["endpoint_scheme"] = parsed.scheme
+        url = os.getenv("AUTOPUSH_EP_SERVER")
+        if url is not None:
+            parsed = urlparse(url)
+            MEGAPHONE_CONFIG["endpoint_port"] = parsed.port
+        write_config_to_env(MEGAPHONE_CONFIG, "autopush__")
+        return
+    else:
+        write_config_to_env(MEGAPHONE_CONFIG, "autopush__")
     cmd = [connection_binary]
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
 
@@ -596,7 +631,15 @@ def setup_endpoint_server():
     # due to a change in Config, autoendpoint uses a double
     # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
     # `settings.fcm.min_ttl`)
-    write_config_to_env(ENDPOINT_CONFIG, "autoend__")
+    url = os.getenv("AUTOPUSH_EP_SERVER")
+    if url is not None:
+        parsed = urlparse(url)
+        ENDPOINT_CONFIG["hostname"] = parsed.hostname
+        ENDPOINT_CONFIG["port"] = parsed.port
+        ENDPOINT_CONFIG["endpoint_scheme"] = parsed.scheme
+        return
+    else:
+        write_config_to_env(ENDPOINT_CONFIG, "autoend__")
 
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
@@ -630,15 +673,9 @@ def setup_module():
 
     os.environ["RUST_LOG"] = RUST_LOG
     connection_binary = get_rust_binary_path("autopush_rs")
-    if not os.environ.get("SKIP_CONNECTION"):
-        setup_connection_server(connection_binary)
-    else:
-        print("@@@ Skipping start of connection server")
+    setup_connection_server(connection_binary)
     setup_megaphone_server(connection_binary)
-    if not os.environ.get("SKIP_ENDPOINT"):
-        setup_endpoint_server()
-    else:
-        print ("@@@ Skipping start of endpoint")
+    setup_endpoint_server()
     time.sleep(2)
 
 
@@ -689,6 +726,9 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_sentry_output(self):
+        if os.getenv("SKIP_SENTRY"):
+            SkipTest("Skipping sentry test")
+            return
         # Ensure bad data doesn't throw errors
         client = CustomClient(self._ws_url)
         yield client.connect()

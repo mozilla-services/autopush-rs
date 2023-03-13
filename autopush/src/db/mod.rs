@@ -78,7 +78,7 @@ impl DynamoStorage {
         metrics: Arc<StatsdClient>,
     ) -> Result<Self> {
         debug!(
-            "Checking tables: {} & {}",
+            "Checking tables: message = {:?} & router = {:?}",
             &message_table_name, &router_table_name
         );
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
@@ -246,10 +246,10 @@ impl DynamoStorage {
             let message_month2 = message_month.to_owned();
             let response = commands::register_user(ddb.clone(), user, &self.router_table_name)
                 .and_then(move |_| {
-                    trace!("### Saving channels: {:#?}", chids);
+                    trace!("✍️ Saving channels: {:#?}", chids);
                     commands::save_channels(ddb, &uaid2, chids, &message_month2)
                         .and_then(move |_| {
-                            trace!("### sending endpoint: {}", endpoint);
+                            trace!("✉️ sending endpoint: {}", endpoint);
                             future::ok(RegisterResponse::Success { endpoint })
                         })
                         .or_else(move |r| {
@@ -262,7 +262,7 @@ impl DynamoStorage {
                 });
             return Box::new(response);
         };
-        trace!("### Continuing...");
+        trace!("❓ Continuing register...");
         let response = commands::save_channels(ddb, uaid, chids, message_month)
             .and_then(move |_| future::ok(RegisterResponse::Success { endpoint }))
             .or_else(move |_| {

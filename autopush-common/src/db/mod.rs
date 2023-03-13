@@ -61,6 +61,7 @@ impl StorageType {
             .clone()
             .unwrap_or(std::env::var("AWS_LOCAL_DYNAMODB").unwrap_or_default());
         if dsn.starts_with("http") {
+            trace!("Using DynamoDb");
             return Self::DynamoDb;
         }
         Self::INVALID
