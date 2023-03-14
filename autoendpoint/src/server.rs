@@ -27,6 +27,7 @@ use actix_cors::Cors;
 use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
 use cadence::StatsdClient;
 use fernet::MultiFernet;
+use serde_json::json;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -52,7 +53,13 @@ impl Server {
         let endpoint_url = settings.endpoint_url();
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
-            db_settings: settings.db_settings.clone(),
+            db_settings: if settings.db_settings.is_empty() {
+                warn!("❗ Using obsolete message_table and router_table args");
+                // backfill from the older arguments.
+                json!({"message_table": settings.message_table_name, "router_table":settings.router_table_name}).to_string()
+            } else {
+                settings.db_settings.clone()
+            },
         };
         let ddb: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(

@@ -27,7 +27,7 @@ use rusoto_dynamodb::{
     AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
     DynamoDbClient, GetItemInput, PutItemInput, QueryInput, UpdateItemInput,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::util::generate_last_connect;
@@ -38,11 +38,15 @@ pub mod macros;
 pub mod commands;
 pub mod retry;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DynamoDbSettings {
+    #[serde(default)]
     pub router_table: String,
+    #[serde(default)]
     pub message_table: String,
+    #[serde(default)]
     pub message_table_names: Vec<String>,
+    #[serde(default)]
     pub current_message_month: String,
 }
 
@@ -73,7 +77,7 @@ pub struct DdbClientImpl {
 }
 
 impl DdbClientImpl {
-    pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
+    pub fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
         let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
@@ -88,7 +92,10 @@ impl DdbClientImpl {
         };
 
         let settings =
-            DynamoDbSettings::try_from(settings.db_settings.as_ref()).unwrap_or_default();
+            DynamoDbSettings::try_from(db_settings.db_settings.as_ref()).unwrap_or_else(|e| {
+                warn!("err: {:?}", e);
+                DynamoDbSettings::default()
+            });
 
         Ok(Self {
             db_client: ddb,
