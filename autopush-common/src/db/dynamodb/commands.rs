@@ -24,10 +24,17 @@ use crate::util::timing::sec_since_epoch;
 macro_rules! retryable_error {
     ($name:ident, $type:ty, $property:ident) => {
         pub fn $name(err: &RusotoError<$type>) -> bool {
+            trace!("✖ DB ERR: {:?}", &err);
             match err {
                 RusotoError::Service($property::InternalServerError(_))
-                | RusotoError::Service($property::ProvisionedThroughputExceeded(_)) => true,
-                _ => false,
+                | RusotoError::Service($property::ProvisionedThroughputExceeded(_)) => {
+                    trace!("♻ DB ERR: {:?}", &err);
+                    true
+                },
+                _ => {
+                    trace!("✖ DB ERR: {:?}", &err);
+                    false
+                },
             }
         }
     };
