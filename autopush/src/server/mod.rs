@@ -405,7 +405,12 @@ impl Server {
                     handle.spawn(client.then(move |res| {
                         srv.open_connections.set(srv.open_connections.get() - 1);
                         if let Err(e) = res {
-                            debug!("🤫 {}: {}", addr, e.to_string());
+                            let mut errstr: &str = &e.to_string();
+                            if errstr.contains("Connection closed normally") {
+                                // we don't need the stack for a Success Error.
+                                errstr = errstr.split('\n').collect::<Vec<&str>>()[0];
+                            }
+                            debug!("🤫 {}: {}", addr, errstr);
                         }
                         Ok(())
                     }));
