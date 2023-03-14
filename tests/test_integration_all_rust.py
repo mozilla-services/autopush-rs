@@ -525,7 +525,7 @@ def get_rust_binary_path(binary):
 def write_config_to_env(config, prefix):
     for key, val in config.items():
         new_key = prefix + key
-        log.debug("✍ config {} => {}".format(new_key, val))
+        log.debug(u"write config {} => {}".format(new_key, val))
         os.environ[new_key.upper()] = str(val)
 
 
