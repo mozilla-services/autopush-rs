@@ -706,7 +706,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def quick_register(self, sslcontext=None):
-        print("🔌 Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
+        print("Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT),
                         sslcontext=sslcontext)
         yield client.connect()
