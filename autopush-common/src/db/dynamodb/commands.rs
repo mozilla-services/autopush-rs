@@ -30,11 +30,11 @@ macro_rules! retryable_error {
                 | RusotoError::Service($property::ProvisionedThroughputExceeded(_)) => {
                     trace!("♻ DB ERR: {:?}", &err);
                     true
-                },
+                }
                 _ => {
                     trace!("✖ DB ERR: {:?}", &err);
                     false
-                },
+                }
             }
         }
     };
