@@ -1,4 +1,5 @@
 //! Metrics tie-ins
+// TODO: consolidate this with autoendpoint::metrics
 
 use std::net::UdpSocket;
 

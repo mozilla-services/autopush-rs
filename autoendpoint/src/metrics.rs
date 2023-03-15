@@ -1,3 +1,5 @@
+// TODO: Consolidate with autopush_common::metrics
+
 use std::net::UdpSocket;
 use std::sync::Arc;
 use std::time::Instant;
@@ -11,9 +13,9 @@ use cadence::{
 use crate::error::ApiError;
 use crate::server::ServerState;
 use crate::settings::Settings;
-use crate::tags::Tags;
 use actix_http::BoxedPayloadStream;
 use actix_web::dev::Payload;
+use autopush_common::tags::Tags;
 use futures::future;
 
 #[derive(Debug, Clone)]

@@ -64,7 +64,7 @@ impl Server {
         let ddb: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(
                 DdbClientImpl::new(metrics.clone(), &db_settings)
-                    .map_err(|e| ApiErrorKind::Database(e.into()))?,
+                    .map_err(ApiErrorKind::Database)?,
             ),
             StorageType::INVALID => {
                 return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())

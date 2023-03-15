@@ -98,7 +98,7 @@ pub async fn unregister_user_route(
         .dbclient
         .remove_user(&path_args.uaid)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -132,7 +132,7 @@ pub async fn update_token_route(
         .dbclient
         .update_user(&user)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     trace!("Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
@@ -154,7 +154,7 @@ pub async fn new_channel_route(
         .dbclient
         .add_channel(&path_args.uaid, &channel_id)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for the new channel");
@@ -185,7 +185,7 @@ pub async fn get_channels_route(
         .dbclient
         .get_channels(&path_args.uaid)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uaid": path_args.uaid,
@@ -217,7 +217,7 @@ pub async fn unregister_channel_route(
         .dbclient
         .remove_channel(&path_args.uaid, &channel_id)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     if channel_did_exist {
         Ok(HttpResponse::Ok().finish())

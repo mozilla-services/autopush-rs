@@ -182,7 +182,7 @@ impl WebPushRouter {
                 notification.clone().into(),
             )
             .await
-            .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e.into())).into())
+            .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer
@@ -192,7 +192,7 @@ impl WebPushRouter {
         self.ddb
             .remove_node_id(&user.uaid, node_id, user.connected_at)
             .await
-            .map_err(|e| ApiErrorKind::Database(e.into()))?;
+            .map_err(ApiErrorKind::Database)?;
         Ok(())
     }
 

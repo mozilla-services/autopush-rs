@@ -152,7 +152,7 @@ impl Router for AdmRouter {
             self.ddb
                 .update_user(&user)
                 .await
-                .map_err(|e| ApiErrorKind::Database(e.into()))?;
+                .map_err(ApiErrorKind::Database)?;
         }
 
         Ok(RouterResponse::success(
@@ -167,8 +167,6 @@ impl Router for AdmRouter {
 
 #[cfg(test)]
 mod tests {
-    //use crate::db::client::DbClient;
-    // use crate::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
     use crate::routers::adm::client::tests::{

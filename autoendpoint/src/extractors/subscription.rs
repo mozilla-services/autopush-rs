@@ -1,27 +1,32 @@
-use crate::error::{ApiError, ApiErrorKind, ApiResult};
-use crate::extractors::token_info::{ApiVersion, TokenInfo};
-use crate::extractors::user::validate_user;
-use crate::headers::crypto_key::CryptoKeyHeader;
-use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
-use crate::metrics::Metrics;
-use crate::server::ServerState;
-use crate::tags::Tags;
+use std::borrow::Cow;
+use std::str::FromStr;
+
 use actix_http::BoxedPayloadStream;
-use actix_web::dev::Payload;
-use actix_web::web::Data;
-use actix_web::{FromRequest, HttpRequest};
-use autopush_common::db::UserRecord;
-use autopush_common::util::{b64_decode_std, b64_decode_url, sec_since_epoch};
+use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
+use autopush_common::{
+    db::UserRecord,
+    tags::Tags,
+    util::{b64_decode_std, b64_decode_url, sec_since_epoch},
+};
 use cadence::{CountedExt, StatsdClient};
-use futures::future::LocalBoxFuture;
-use futures::FutureExt;
+use futures::{future::LocalBoxFuture, FutureExt};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-use std::str::FromStr;
 use url::Url;
 use uuid::Uuid;
+
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
+use crate::extractors::{
+    token_info::{ApiVersion, TokenInfo},
+    user::validate_user,
+};
+use crate::headers::{
+    crypto_key::CryptoKeyHeader,
+    vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
+};
+use crate::metrics::Metrics;
+use crate::server::ServerState;
 
 const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
@@ -98,7 +103,7 @@ impl FromRequest for Subscription {
                 .dbclient
                 .get_user(&uaid)
                 .await
-                .map_err(|e| ApiErrorKind::Database(e.into()))?
+                .map_err(ApiErrorKind::Database)?
                 .ok_or(ApiErrorKind::NoSubscription)?;
 
             trace!("user: {:?}", &user);

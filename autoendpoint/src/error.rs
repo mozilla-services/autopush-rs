@@ -1,6 +1,5 @@
 //! Error types and transformations
 
-use crate::db::error::DbError;
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
@@ -18,6 +17,7 @@ use std::fmt::{self, Display};
 use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
 
+use autopush_common::db::error::DbError;
 use autopush_common::errors::{ApcError, ApcErrorKind};
 
 /// Common `Result` type.

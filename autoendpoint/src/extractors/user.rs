@@ -66,7 +66,7 @@ async fn validate_webpush_user(
     let channel_ids = ddb
         .get_channels(&user.uaid)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     if !channel_ids.contains(channel_id) {
         return Err(ApiErrorKind::NoSubscription.into());
@@ -84,7 +84,7 @@ pub async fn drop_user(uaid: Uuid, ddb: &dyn DbClient, metrics: &StatsdClient) -
 
     ddb.remove_user(&uaid)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     Ok(())
 }

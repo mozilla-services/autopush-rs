@@ -4,23 +4,21 @@
 extern crate slog_scope;
 
 mod auth;
-mod db;
 mod error;
 mod extractors;
 mod headers;
-mod logging;
 mod metrics;
-mod middleware;
 mod routers;
 mod routes;
 mod server;
 mod settings;
-mod tags;
 
 use docopt::Docopt;
 use sentry::ClientInitGuard;
 use serde::Deserialize;
 use std::error::Error;
+
+use autopush_common::logging;
 
 const USAGE: &str = "
 Usage: autoendpoint [options]
