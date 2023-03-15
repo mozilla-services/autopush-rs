@@ -1,4 +1,5 @@
 //! Error types and transformations
+// TODO: Collpase these into `autopush_common::error`
 
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;

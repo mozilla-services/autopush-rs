@@ -1,5 +1,4 @@
-//! Error handling for Rust
-//!
+//! Error handling for common autopush functions
 
 use std::any::Any;
 use std::fmt::{self, Display};
