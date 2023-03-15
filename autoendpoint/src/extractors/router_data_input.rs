@@ -1,11 +1,8 @@
 use crate::error::{ApiError, ApiErrorKind};
-use crate::extractors::registration_path_args::RegistrationPathArgs;
-use crate::extractors::routers::RouterType;
+use crate::extractors::{registration_path_args::RegistrationPathArgs, routers::RouterType};
 use actix_http::BoxedPayloadStream;
-use actix_web::dev::Payload;
-use actix_web::{web, FromRequest, HttpRequest};
-use futures::future::LocalBoxFuture;
-use futures::FutureExt;
+use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
+use futures::{future::LocalBoxFuture, FutureExt};
 use lazy_static::lazy_static;
 use regex::Regex;
 use uuid::Uuid;

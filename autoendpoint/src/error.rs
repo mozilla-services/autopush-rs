@@ -23,7 +23,6 @@ use autopush_common::errors::{ApcError, ApcErrorKind};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
-// pub type MyFuture<T> = Box<dyn Future<Item = T, Error = ApiError>>;
 
 /// A link for more info on the returned error
 const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#error-codes";

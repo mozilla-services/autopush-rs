@@ -1,19 +1,20 @@
-use crate::error::{ApiErrorKind, ApiResult};
-use crate::extractors::authorization_check::AuthorizationCheck;
-use crate::extractors::new_channel_data::NewChannelData;
-use crate::extractors::registration_path_args::RegistrationPathArgs;
-use crate::extractors::registration_path_args_with_uaid::RegistrationPathArgsWithUaid;
-use crate::extractors::router_data_input::RouterDataInput;
-use crate::extractors::routers::Routers;
-use crate::headers::util::get_header;
-use crate::server::ServerState;
 use actix_web::web::{Data, Json};
 use actix_web::{HttpRequest, HttpResponse};
+use cadence::{CountedExt, StatsdClient};
+use uuid::Uuid;
+
+use crate::error::{ApiErrorKind, ApiResult};
+use crate::extractors::{
+    authorization_check::AuthorizationCheck, new_channel_data::NewChannelData,
+    registration_path_args::RegistrationPathArgs,
+    registration_path_args_with_uaid::RegistrationPathArgsWithUaid,
+    router_data_input::RouterDataInput, routers::Routers,
+};
+use crate::headers::util::get_header;
+use crate::server::ServerState;
 
 use autopush_common::db::UserRecord;
 use autopush_common::endpoint::make_endpoint;
-use cadence::{CountedExt, StatsdClient};
-use uuid::Uuid;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
 pub async fn register_uaid_route(

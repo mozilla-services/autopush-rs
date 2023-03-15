@@ -2,6 +2,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use actix_cors::Cors;
+use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
+use cadence::StatsdClient;
+use fernet::MultiFernet;
+use serde_json::json;
+
 use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::db::DbSettings;
 use autopush_common::db::{client::DbClient, StorageType};
@@ -22,12 +28,6 @@ use crate::routes::registration::{
 };
 use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
-
-use actix_cors::Cors;
-use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
-use cadence::StatsdClient;
-use fernet::MultiFernet;
-use serde_json::json;
 
 #[derive(Clone)]
 pub struct ServerState {

@@ -1,15 +1,17 @@
 //! Health and Dockerflow routes
-use autopush_common::db::error::DbResult;
+use std::thread;
 
-//use crate::db::error::DbResult;
-use crate::error::{ApiErrorKind, ApiResult};
-use crate::server::ServerState;
-
-use actix_web::web::{Data, Json};
-use actix_web::HttpResponse;
+use actix_web::{
+    web::{Data, Json},
+    HttpResponse,
+};
 use reqwest::StatusCode;
 use serde_json::json;
-use std::thread;
+
+use autopush_common::db::error::DbResult;
+
+use crate::error::{ApiErrorKind, ApiResult};
+use crate::server::ServerState;
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<ServerState>) -> Json<serde_json::Value> {

@@ -1,12 +1,8 @@
-use thiserror::Error;
-
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     DeleteItemError, DescribeTableError, GetItemError, PutItemError, QueryError, UpdateItemError,
 };
-
-//use tokio_postgres::Error as PgError;
-//use crate::db::bigtable::BigTableError;
+use thiserror::Error;
 
 pub type DbResult<T> = Result<T, DbError>;
 

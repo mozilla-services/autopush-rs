@@ -1,11 +1,9 @@
 //! User validations
 
-use autopush_common::db::client::DbClient;
-//use crate::db::client::DbClient;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
-use autopush_common::db::UserRecord;
+use autopush_common::db::{client::DbClient, UserRecord};
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 
