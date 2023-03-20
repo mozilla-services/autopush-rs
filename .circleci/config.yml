@@ -194,33 +194,6 @@ jobs:
 
 workflows:
   version: 2
-  build-test:
-    jobs:
-      - audit:
-          filters:
-            tags:
-              only: /.*/
-      - test:
-          filters:
-            tags:
-              only: /.*/
-      - build:
-          name: build-autopush
-          image: autopush:build
-          crate: autopush
-          binary: autopush_rs
-          filters:
-            tags:
-              only: /.*/
-
-      - build:
-          name: build-autoendpoint
-          image: autoendpoint:build
-          crate: autoendpoint
-          binary: autoendpoint
-          filters:
-            tags:
-              only: /.*/
 
   build-test-deploy:
     jobs:
@@ -250,6 +223,7 @@ workflows:
             tags:
               only: /.*/
 
+      # Comment out the following two sections for local CircleCI testing.
       - deploy:
           name: deploy-autopush
           image: autopush:build

@@ -16,6 +16,7 @@ pub struct RegisteredClient {
     pub uaid: Uuid,
     /// The local ID, used to potentially distinquish multiple UAID connections.
     pub uid: Uuid,
+    // TODO: Add notification channels.
     // / The channel for delivery of incoming notifications.
     // / Note: SyncSender is a bounded queue, meaning that excessive messages
     // / will block the sending thread.

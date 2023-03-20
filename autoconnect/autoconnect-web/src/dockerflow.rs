@@ -52,7 +52,5 @@ pub async fn log_check() -> HttpResponse {
         panic!("LogCheck");
     });
 
-    HttpResponse::BadRequest()
-        .status(StatusCode::IM_A_TEAPOT)
-        .finish()
+    HttpResponse::new(StatusCode::IM_A_TEAPOT)
 }

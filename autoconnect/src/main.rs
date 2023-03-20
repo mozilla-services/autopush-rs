@@ -1,7 +1,6 @@
 extern crate slog;
 #[macro_use]
 extern crate slog_scope;
-// #[macro_use]
 extern crate serde_derive;
 
 use std::collections::HashMap;

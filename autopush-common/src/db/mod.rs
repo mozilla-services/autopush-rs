@@ -23,7 +23,6 @@ use crate::db::util::generate_last_connect;
 
 #[macro_use]
 mod macros;
-mod commands;
 
 pub mod client;
 pub mod dynamodb;
@@ -57,6 +56,10 @@ impl StorageType {
     /// currently, there is only one.
     /// Check the `db_dsn` setting or `AWS_LOCAL_DYNAMODB` environment variable.
     pub fn from_dsn(dsn: &Option<String>) -> Self {
+        if dsn.is_none() {
+            info!("No DSN specified, failing over to old default dsn");
+            return Self::DynamoDb;
+        }
         let dsn = dsn
             .clone()
             .unwrap_or(std::env::var("AWS_LOCAL_DYNAMODB").unwrap_or_default());

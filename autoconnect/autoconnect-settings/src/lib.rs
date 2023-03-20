@@ -13,7 +13,7 @@ use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 
-const ENV_PREFIX: &str = "autoconnect";
+pub const ENV_PREFIX: &str = "autoconnect";
 
 lazy_static! {
     static ref HOSTNAME: String = mozsvc_common::get_hostname()

@@ -8,8 +8,7 @@ use autopush_common::db::{client::DbClient, StorageType};
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
-// TODO: sentry is currently broken. Need to investgate solution
-// use crate::middleware::sentry::sentry_middleware;
+use crate::middleware::sentry2::Sentry;
 use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
@@ -34,7 +33,6 @@ pub struct ServerState {
     pub metrics: Arc<StatsdClient>,
     pub settings: Settings,
     pub fernet: MultiFernet,
-    // TODO: Convert this to the autopush_common dbCommandClient impl.
     pub dbclient: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
@@ -54,6 +52,11 @@ impl Server {
             dsn: settings.db_dsn.clone(),
             db_settings: settings.db_settings.clone(),
         };
+        // NOTE: Eventually, this should use a `*_DB_DSN` setting to indicate the database storage
+        // location and method. Existing versions of Autopush do not specify this, but instead
+        // rely on either the environment variable `AWS_LOCAL_DYNAMODB` or fall back to the
+        // rusoto_core::Region::default(), which complicates things.
+        // `StorageType::from_dsn` is very preferential toward DynamoDB.
         let ddb: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(
                 DdbClientImpl::new(metrics.clone(), &db_settings)
@@ -110,7 +113,8 @@ impl Server {
                 .app_data(web::Data::new(state.clone()))
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
-                // .wrap_fn(sentry_middleware)
+                // This calls our slightly modified version of Sentry, which tries to pass along
+                .wrap(Sentry::new()) // Use the default wrapper
                 .wrap(Cors::default())
                 // Extractor configuration
                 //  TODO: web::Bytes::configure was removed. What did this do? Can we just pull from state?

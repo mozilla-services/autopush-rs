@@ -61,7 +61,8 @@ rusoto_core = { version="0.47", default-features=false, features=["rustls"] } # 
 rusoto_credential = { version="0.47"} # locked by serde_dynamodb 0.9
 rusoto_dynamodb = { version="0.47", default-features=false, features=["rustls"]} # locked by serde_dynamodb 0.9
 # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
-sentry = { version = "0.29", features = ["debug-logs"] }
+sentry = { version = "0.30", features = ["debug-logs"] }
+sentry-core = {version = "0.30"}
 sentry-actix = "0.29"
 sentry-backtrace = "0.29"
 serde = "1.0"

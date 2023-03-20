@@ -5,7 +5,7 @@ use std::time::Duration;
 use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};
 
-use crate::Settings;
+use crate::{Settings, ENV_PREFIX};
 use autoconnect_registry::ClientRegistry;
 use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
 use autopush_common::{
@@ -67,17 +67,22 @@ impl ServerOptions {
     pub fn from_settings(settings: &Settings) -> Result<Self> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
-            return Err(ApcErrorKind::ConfigError(config::ConfigError::Message(
-                "Invalid AUTOPUSH_CRYPTO_KEY".into(),
-            ))
-            .into());
+            return Err(
+                ApcErrorKind::ConfigError(config::ConfigError::Message(format!(
+                    "Invalid {}_CRYPTO_KEY",
+                    ENV_PREFIX
+                )))
+                .into(),
+            );
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
         debug!("Fernet keys: {:?}", &crypto_key);
         let fernets: Vec<Fernet> = crypto_key
             .split(',')
             .map(|s| s.trim().to_string())
-            .map(|key| Fernet::new(&key).expect("Invalid AUTOPUSH_CRYPTO_KEY"))
+            .map(|key| {
+                Fernet::new(&key).unwrap_or_else(|| panic!("Invalid {}_CRYPTO_KEY", ENV_PREFIX))
+            })
             .collect();
         let fernet = MultiFernet::new(fernets);
         let metrics = Arc::new(new_metrics(
@@ -94,7 +99,7 @@ impl ServerOptions {
         };
         let db_client = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
-            StorageType::INVALID => panic!("Invalid Storage type. Check DB_DSN."),
+            StorageType::INVALID => panic!("Invalid Storage type. Check {}_DB_DSN.", ENV_PREFIX),
         };
         Ok(Self {
             port: settings.port,

@@ -919,22 +919,7 @@ where
     }
 
     fn close(&mut self) -> Poll<(), ApcError> {
-        /*
-        match self.poll_complete() {
-            Ok(futures::Async::Ready(t)) => t,
-            Ok(futures::Async::NotReady) => return Ok(futures::Async::NotReady),
-            Err(e) => {
-                error!(&e);
-                return Err(e);
-            }
-        }
-        */
         try_ready!(self.poll_complete());
-        // Actix4 will return an error on a clean close. This can throw off
-        // integration tests, because the thread will prematurely terminate
-        // There doesn't seem to be a good way to trap for the Success error,
-        // so for now, we just eat any error that is associated with the
-        // connection closure.
         match self.inner.close() {
             Ok(v) => Ok(v),
             Err(e) => {
@@ -982,7 +967,7 @@ fn write_log_check(socket: WebpushIo) -> MyFuture<()> {
         StatusCode::IM_A_TEAPOT,
         json!({
                 "code": code,
-                "errno": 99,
+                "errno": 999,
                 "error": "Test Failure",
                 "mesage": "FAILURE:Success",
         }),

@@ -1,3 +1,3 @@
 //! Actix middleware
 
-//pub mod sentry;
+pub mod sentry2;

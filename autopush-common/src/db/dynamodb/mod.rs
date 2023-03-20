@@ -35,7 +35,6 @@ use super::{HelloResponse, USER_RECORD_VERSION};
 
 #[macro_use]
 pub mod macros;
-pub mod commands;
 pub mod retry;
 
 #[derive(Clone, Debug, Deserialize)]
