@@ -198,7 +198,9 @@ impl Client {
                 use_webpush,
                 broadcasts,
             } => self.hello(uaid, channel_ids, use_webpush, broadcasts).await,
-            ClientMessage::Register { channel_id, key } => self.register(channel_id, key).await,
+            ClientMessage::Register { channel_id, key } => {
+                self.register_channel(channel_id, key).await
+            }
             ClientMessage::Unregister { channel_id, code } => {
                 self.unregister(channel_id, code).await
             }
@@ -298,7 +300,7 @@ impl Client {
     }
 
     /// Add the provided `channel_id` to the list of associated channels for this UAID, generate a new endpoint using the key
-    pub async fn register(
+    pub async fn register_channel(
         &mut self,
         channel_id_string: String,
         _key: Option<String>,

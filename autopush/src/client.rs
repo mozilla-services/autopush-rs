@@ -1018,7 +1018,7 @@ where
                     &srv.opts.endpoint_url,
                     &srv.opts.fernet,
                 ) {
-                    Ok(endpoint) => srv.ddb.register(
+                    Ok(endpoint) => srv.ddb.register_channel(
                         &uaid,
                         &channel_id,
                         &message_month,
@@ -1045,8 +1045,11 @@ where
                 // register does
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
-                let response =
-                    Box::new(data.srv.ddb.unregister(&uaid, &channel_id, &message_month));
+                let response = Box::new(data.srv.ddb.unregister_channel(
+                    &uaid,
+                    &channel_id,
+                    &message_month,
+                ));
                 transition!(AwaitUnregister {
                     channel_id,
                     code: code.unwrap_or(200),

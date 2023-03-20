@@ -224,7 +224,7 @@ impl DynamoStorage {
         })
     }
 
-    pub fn register(
+    pub fn register_channel(
         &self,
         uaid: &Uuid,
         channel_id: &Uuid,
@@ -280,7 +280,7 @@ impl DynamoStorage {
             .map_err(|_| ApcErrorKind::DatabaseError("Unable to drop user record".into()).into())
     }
 
-    pub fn unregister(
+    pub fn unregister_channel(
         &self,
         uaid: &Uuid,
         channel_id: &Uuid,

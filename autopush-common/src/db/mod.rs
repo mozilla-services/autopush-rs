@@ -115,7 +115,7 @@ pub trait DbCommandClient: Send + Sync {
     ) -> Result<HelloResponse>;
 
     /// register a new channel for this UAID
-    async fn register(
+    async fn register_channel(
         &self,
         // The requesting UAID
         uaid: &Uuid,
@@ -135,8 +135,12 @@ pub trait DbCommandClient: Send + Sync {
     async fn drop_uaid(&self, uaid: &Uuid) -> Result<()>;
 
     /// Delete this Channel ID for the user
-    async fn unregister(&self, uaid: &Uuid, channel_id: &Uuid, message_month: &str)
-        -> Result<bool>;
+    async fn unregister_channel(
+        &self,
+        uaid: &Uuid,
+        channel_id: &Uuid,
+        message_month: &str,
+    ) -> Result<bool>;
 
     /// LEGACY: move this user to the most recent message table
     async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> Result<()>;
