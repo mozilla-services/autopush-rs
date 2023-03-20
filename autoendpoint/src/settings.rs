@@ -1,12 +1,13 @@
 //! Application settings
 
-use crate::routers::adm::settings::AdmSettings;
-use crate::routers::apns::settings::ApnsSettings;
-use crate::routers::fcm::settings::FcmSettings;
 use config::{Config, ConfigError, Environment, File};
 use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
+
+use crate::routers::adm::settings::AdmSettings;
+use crate::routers::apns::settings::ApnsSettings;
+use crate::routers::fcm::settings::FcmSettings;
 
 const ENV_PREFIX: &str = "autoend";
 

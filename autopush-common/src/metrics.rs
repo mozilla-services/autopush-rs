@@ -1,9 +1,11 @@
 //! Metrics tie-ins
+// TODO: consolidate this with autoendpoint::metrics
 
 use std::net::UdpSocket;
 
-use crate::errors::Result;
 use cadence::{BufferedUdpMetricSink, NopMetricSink, QueuingMetricSink, StatsdClient};
+
+use crate::errors::Result;
 
 /// Create a cadence StatsdClient from the given options
 pub fn new_metrics(host: Option<String>, port: u16) -> Result<StatsdClient> {

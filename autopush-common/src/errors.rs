@@ -1,19 +1,16 @@
-//! Error handling for Rust
-//!
+//! Error handling for common autopush functions
 
 use std::any::Any;
 use std::fmt::{self, Display};
 use std::io;
 use std::num;
 
-use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::backtrace
-use serde::ser::{Serialize, SerializeMap, Serializer};
-
 use actix_web::{
     dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponse,
     HttpResponseBuilder, ResponseError,
 };
-
+use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::backtrace
+use serde::ser::{Serialize, SerializeMap, Serializer};
 use thiserror::Error;
 
 /// Render a 404 response

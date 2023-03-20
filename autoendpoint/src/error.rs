@@ -1,6 +1,6 @@
 //! Error types and transformations
+// TODO: Collpase these into `autopush_common::error`
 
-use crate::db::error::DbError;
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
@@ -18,11 +18,11 @@ use std::fmt::{self, Display};
 use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
 
+use autopush_common::db::error::DbError;
 use autopush_common::errors::{ApcError, ApcErrorKind};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
-// pub type MyFuture<T> = Box<dyn Future<Item = T, Error = ApiError>>;
 
 /// A link for more info on the returned error
 const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#error-codes";

@@ -1,6 +1,5 @@
 use autopush_common::db::client::DbClient;
 
-// use crate::db::client::DbClient;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;

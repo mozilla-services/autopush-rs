@@ -1,9 +1,11 @@
+use std::collections::HashSet;
+
+use async_trait::async_trait;
+use uuid::Uuid;
+
 use crate::db::error::DbResult;
 use crate::db::UserRecord;
 use crate::notification::Notification;
-use async_trait::async_trait;
-use std::collections::HashSet;
-use uuid::Uuid;
 
 use super::HelloResponse;
 

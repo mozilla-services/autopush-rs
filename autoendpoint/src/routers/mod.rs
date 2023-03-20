@@ -1,6 +1,6 @@
 //! Routers route notifications to user agents
 
-use crate::db::error::DbError;
+// use crate::db::error::DbError;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
@@ -8,6 +8,7 @@ use crate::routers::adm::error::AdmError;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
 
+use autopush_common::db::error::DbError;
 use autopush_common::errors::ApcErrorKind;
 
 use actix_web::http::StatusCode;

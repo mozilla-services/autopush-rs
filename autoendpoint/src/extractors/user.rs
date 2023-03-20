@@ -1,11 +1,9 @@
 //! User validations
 
-use autopush_common::db::client::DbClient;
-//use crate::db::client::DbClient;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
-use autopush_common::db::UserRecord;
+use autopush_common::db::{client::DbClient, UserRecord};
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 
@@ -66,7 +64,7 @@ async fn validate_webpush_user(
     let channel_ids = ddb
         .get_channels(&user.uaid)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     if !channel_ids.contains(channel_id) {
         return Err(ApiErrorKind::NoSubscription.into());
@@ -84,7 +82,7 @@ pub async fn drop_user(uaid: Uuid, ddb: &dyn DbClient, metrics: &StatsdClient) -
 
     ddb.remove_user(&uaid)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     Ok(())
 }

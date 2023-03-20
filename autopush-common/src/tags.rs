@@ -6,8 +6,7 @@ use actix_web::{
     dev::{Payload, RequestHead},
     Error, FromRequest, HttpMessage, HttpRequest,
 };
-use futures::future;
-use futures::future::Ready;
+use futures::{future, future::Ready};
 use serde::{
     ser::{SerializeMap, Serializer},
     Serialize,

@@ -1,10 +1,10 @@
 use std::io;
 
-use crate::errors::Result;
-
 use mozsvc_common::{aws::get_ec2_instance_id, get_hostname};
 use slog::{self, Drain};
 use slog_mozlog_json::MozLogJson;
+
+use crate::errors::Result;
 
 pub fn init_logging(json: bool) -> Result<()> {
     let logger = if json {

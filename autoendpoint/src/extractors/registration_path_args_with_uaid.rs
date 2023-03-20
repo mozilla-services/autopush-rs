@@ -42,7 +42,7 @@ impl FromRequest for RegistrationPathArgsWithUaid {
                 .dbclient
                 .get_user(&uaid)
                 .await
-                .map_err(|e| ApiErrorKind::Database(e.into()))?
+                .map_err(ApiErrorKind::Database)?
                 .is_none()
             {
                 return Err(ApiErrorKind::NoUser.into());

@@ -21,9 +21,6 @@ use uuid::Uuid;
 
 use crate::db::util::generate_last_connect;
 
-#[macro_use]
-mod macros;
-
 pub mod client;
 pub mod dynamodb;
 pub mod error;
@@ -32,8 +29,7 @@ pub mod models;
 //pub mod postgres;
 mod util;
 
-// This will
-// #[cfg(test)]
+// used by integration testing
 pub mod mock;
 
 use crate::errors::{ApcErrorKind, Result};

@@ -1,19 +1,20 @@
-use crate::error::{ApiErrorKind, ApiResult};
-use crate::extractors::authorization_check::AuthorizationCheck;
-use crate::extractors::new_channel_data::NewChannelData;
-use crate::extractors::registration_path_args::RegistrationPathArgs;
-use crate::extractors::registration_path_args_with_uaid::RegistrationPathArgsWithUaid;
-use crate::extractors::router_data_input::RouterDataInput;
-use crate::extractors::routers::Routers;
-use crate::headers::util::get_header;
-use crate::server::ServerState;
 use actix_web::web::{Data, Json};
 use actix_web::{HttpRequest, HttpResponse};
+use cadence::{CountedExt, StatsdClient};
+use uuid::Uuid;
+
+use crate::error::{ApiErrorKind, ApiResult};
+use crate::extractors::{
+    authorization_check::AuthorizationCheck, new_channel_data::NewChannelData,
+    registration_path_args::RegistrationPathArgs,
+    registration_path_args_with_uaid::RegistrationPathArgsWithUaid,
+    router_data_input::RouterDataInput, routers::Routers,
+};
+use crate::headers::util::get_header;
+use crate::server::ServerState;
 
 use autopush_common::db::UserRecord;
 use autopush_common::endpoint::make_endpoint;
-use cadence::{CountedExt, StatsdClient};
-use uuid::Uuid;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
 pub async fn register_uaid_route(
@@ -98,7 +99,7 @@ pub async fn unregister_user_route(
         .dbclient
         .remove_user(&path_args.uaid)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -132,7 +133,7 @@ pub async fn update_token_route(
         .dbclient
         .update_user(&user)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     trace!("Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
@@ -154,7 +155,7 @@ pub async fn new_channel_route(
         .dbclient
         .add_channel(&path_args.uaid, &channel_id)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for the new channel");
@@ -185,7 +186,7 @@ pub async fn get_channels_route(
         .dbclient
         .get_channels(&path_args.uaid)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uaid": path_args.uaid,
@@ -217,7 +218,7 @@ pub async fn unregister_channel_route(
         .dbclient
         .remove_channel(&path_args.uaid, &channel_id)
         .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+        .map_err(ApiErrorKind::Database)?;
 
     if channel_did_exist {
         Ok(HttpResponse::Ok().finish())

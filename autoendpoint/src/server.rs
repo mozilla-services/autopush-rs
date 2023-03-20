@@ -2,6 +2,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use actix_cors::Cors;
+use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
+use cadence::StatsdClient;
+use fernet::MultiFernet;
+use serde_json::json;
+
 use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::db::DbSettings;
 use autopush_common::db::{client::DbClient, StorageType};
@@ -21,11 +27,6 @@ use crate::routes::registration::{
 };
 use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
-
-use actix_cors::Cors;
-use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
-use cadence::StatsdClient;
-use fernet::MultiFernet;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -50,7 +51,13 @@ impl Server {
         let endpoint_url = settings.endpoint_url();
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
-            db_settings: settings.db_settings.clone(),
+            db_settings: if settings.db_settings.is_empty() {
+                warn!("❗ Using obsolete message_table and router_table args");
+                // backfill from the older arguments.
+                json!({"message_table": settings.message_table_name, "router_table":settings.router_table_name}).to_string()
+            } else {
+                settings.db_settings.clone()
+            },
         };
         // NOTE: Eventually, this should use a `*_DB_DSN` setting to indicate the database storage
         // location and method. Existing versions of Autopush do not specify this, but instead
@@ -60,7 +67,7 @@ impl Server {
         let ddb: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(
                 DdbClientImpl::new(metrics.clone(), &db_settings)
-                    .map_err(|e| ApiErrorKind::Database(e.into()))?,
+                    .map_err(ApiErrorKind::Database)?,
             ),
             StorageType::INVALID => {
                 return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())
