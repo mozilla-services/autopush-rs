@@ -171,6 +171,27 @@ impl ApcErrorKind {
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
+
+    pub fn is_sentry_event(&self) -> bool {
+        match self {
+            // TODO: Add additional messages to ignore here.
+            Self::PongTimeout | Self::ExcessivePing => false,
+            _ => true,
+        }
+    }
+
+    pub fn metric_label(&self) -> Option<String> {
+        // TODO: add labels for skipped stuff
+        let resp = match self {
+            Self::PongTimeout => "pong_timeout",
+            Self::ExcessivePing => "excessive_ping",
+            _ => "",
+        };
+        if !resp.is_empty() {
+            return Some(resp.to_owned());
+        }
+        None
+    }
 }
 
 pub type Result<T> = std::result::Result<T, ApcError>;

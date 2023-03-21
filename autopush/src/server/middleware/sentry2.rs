@@ -10,7 +10,6 @@ use std::sync::Arc;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::StatusCode;
 use actix_web::Error;
-use cadence::CountedExt;
 use futures_util::future::{ok, Future, Ready};
 use futures_util::FutureExt;
 
@@ -166,7 +165,7 @@ where
                 Ok(res) => res,
                 Err(e) => {
                     // XXX Sentry Modification
-                    if let Some(api_err) = e.as_error::<crate::error::ApiError>() {
+                    if let Some(api_err) = e.as_error::<crate::errors::ApcError>() {
                         // if it's not reportable, , and we have access to the metrics, record it as a metric.
                         if !api_err.kind.is_sentry_event() {
                             // XXX - Modified sentry
@@ -177,7 +176,7 @@ where
                             info!("Sending error to metrics: {:?}", api_err.kind);
                             if let Some(state) = state {
                                 if let Some(label) = api_err.kind.metric_label() {
-                                    let _ = &state.metrics.incr(&format!("api_error.{}", label)).is_ok();
+                                    state.metrics.incr(&format!("api_error.{}", label)).is_ok();
                                 };
                             }
                             debug!("Not reporting error (service error): {:?}", e);

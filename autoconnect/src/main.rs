@@ -21,7 +21,7 @@ use autoconnect_web::{
 };
 use autopush_common::errors::{render_404, ApcErrorKind, Result};
 
-mod server;
+mod middleware;
 
 const USAGE: &str = "
 Usage: autopush_rs [options]
@@ -93,9 +93,7 @@ async fn main() -> Result<()> {
             .app_data(server_opts.clone())
             .app_data(Arc::new(client_channels))
             .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
-            // use the default sentry wrapper for now.
-            // TODO: Look into the sentry_actx hub scope? How do we pass actix service request data in?
-            .wrap(sentry_actix::Sentry::new()) // Use the default wrapper
+            .wrap(crate::middleware::sentry2::Sentry::default())
             // Websocket Handler
             .route("/ws/", web::get().to(Client::ws_handler))
             // TODO: Internode Message handler

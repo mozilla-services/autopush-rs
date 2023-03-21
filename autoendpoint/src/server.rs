@@ -8,9 +8,7 @@ use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
 
-use autopush_common::db::dynamodb::DdbClientImpl;
-use autopush_common::db::DbSettings;
-use autopush_common::db::{client::DbClient, StorageType};
+use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
@@ -121,7 +119,7 @@ impl Server {
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 // This calls our slightly modified version of Sentry, which tries to pass along
-                .wrap(Sentry::new()) // Use the default wrapper
+                .wrap(Sentry::default()) // Use the default wrapper
                 .wrap(Cors::default())
                 // Extractor configuration
                 //  TODO: web::Bytes::configure was removed. What did this do? Can we just pull from state?

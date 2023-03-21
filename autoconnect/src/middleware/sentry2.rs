@@ -1,3 +1,6 @@
+/// This is a lightly modified version of the Sentry.io sentry crate. It is duplicated in
+/// autoendpoint. This is (hopefully) temporary, while I work out details around the new
+/// sentry scope platform.
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -5,6 +8,7 @@ use std::sync::Arc;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::StatusCode;
 use actix_web::Error;
+use cadence::CountedExt;
 use futures_util::future::{ok, Future, Ready};
 use futures_util::FutureExt;
 
@@ -22,9 +26,8 @@ pub struct Sentry {
     start_transaction: bool,
 }
 
-impl Sentry {
-    /// Creates a new sentry middleware.
-    pub fn new() -> Self {
+impl Default for Sentry {
+    fn default() -> Self {
         Sentry {
             hub: None,
             emit_header: false,
@@ -32,7 +35,9 @@ impl Sentry {
             start_transaction: false,
         }
     }
+}
 
+impl Sentry {
     #[allow(dead_code)]
     /// Creates a new sentry middleware which starts a new performance monitoring transaction for each request.
     pub fn with_transaction() -> Sentry {
@@ -40,24 +45,6 @@ impl Sentry {
             start_transaction: true,
             ..Sentry::default()
         }
-    }
-
-    /*
-    /// Creates a new middleware builder.
-    pub fn builder() -> SentryBuilder {
-        Sentry::new().into_builder()
-    }
-
-    /// Converts the middleware into a builder.
-    pub fn into_builder(self) -> SentryBuilder {
-        SentryBuilder { middleware: self }
-    }
-    // */
-}
-
-impl Default for Sentry {
-    fn default() -> Self {
-        Sentry::new()
     }
 }
 
@@ -104,6 +91,12 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let inner = self.inner.clone();
+        // XXX Sentry Modification
+        // crate::server is going to be specific to the given app, so we can't put this in common.
+        let state = req
+            .app_data::<actix_web::web::Data<autoconnect_settings::options::ServerOptions>>()
+            .cloned();
+        // XXX
         let hub = Arc::new(Hub::new_from_top(
             inner.hub.clone().unwrap_or_else(Hub::main),
         ));
@@ -131,6 +124,17 @@ where
             });
 
             // TODO: Break apart user agent?
+            // XXX Sentry modification
+            /*
+            if let Some(ua_val) = req.headers().get("UserAgent") {
+                if let Ok(ua_str) = ua_val.to_str() {
+                    let ua_info = crate::util::user_agent::UserAgentInfo::from(ua_val.to_str().unwrap_or_default());
+                    sentry::configure_scope(|scope| {
+                        scope::add_tag("browser_version", ua_info.browser_version);
+                    })
+                }
+            }
+            */
             let ctx = sentry_core::TransactionContext::continue_from_headers(
                 &name,
                 "http.server",
@@ -159,6 +163,26 @@ where
             let mut res: Self::Response = match fut.await {
                 Ok(res) => res,
                 Err(e) => {
+                    // XXX Sentry Modification
+                    if let Some(api_err) = e.as_error::<autopush_common::errors::ApcError>() {
+                        // if it's not reportable, , and we have access to the metrics, record it as a metric.
+                        if !api_err.kind.is_sentry_event() {
+                            // XXX - Modified sentry
+                            // The error (e.g. VapidErrorKind::InvalidKey(String)) might be too cardinal,
+                            // but we may need that information to debug a production issue. We can
+                            // add an info here, temporarily turn on info level debugging on a given server,
+                            // capture it, and then turn it off before we run out of money.
+                            info!("Sending error to metrics: {:?}", api_err.kind);
+                            if let Some(state) = state {
+                                if let Some(label) = api_err.kind.metric_label() {
+                                    let _ = state.metrics.incr(&format!("api_error.{}", label)).is_ok();
+                                };
+                            }
+                            debug!("Not reporting error (service error): {:?}", e);
+                            return Err(e);
+                        }
+                    }
+
                     if inner.capture_server_errors {
                         hub.capture_error(&e);
                     }

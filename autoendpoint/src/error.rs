@@ -166,8 +166,8 @@ impl ApiErrorKind {
     }
 
     /// Specify the label to use for metrics reporting.
-    pub fn metric_label(&self) -> &'static str {
-        match self {
+    pub fn metric_label(&self) -> Option<&'static str> {
+        Some(match self {
             ApiErrorKind::PayloadError(_) => "payload_error",
             ApiErrorKind::Router(_) => "router",
 
@@ -198,7 +198,7 @@ impl ApiErrorKind {
             ApiErrorKind::Database(_) => "database",
             ApiErrorKind::EndpointUrl(_) => "endpoint_url",
             ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
-        }
+        })
     }
 
     /// Don't report all errors to sentry

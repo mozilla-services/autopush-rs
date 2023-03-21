@@ -14,6 +14,10 @@ pub async fn webpush_route(
     routers: Routers,
     _state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
+    // TODO:
+    sentry::configure_scope(|scope| {
+        scope.set_extra("uaid", notification.subscription.user.uaid.to_string().into());
+    });
     let router = routers.get(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
