@@ -177,7 +177,10 @@ where
                             info!("Sending error to metrics: {:?}", api_err.kind);
                             if let Some(state) = state {
                                 if let Some(label) = api_err.kind.metric_label() {
-                                    let _ = &state.metrics.incr(&format!("api_error.{}", label)).is_ok();
+                                    let _ = &state
+                                        .metrics
+                                        .incr(&format!("api_error.{}", label))
+                                        .is_ok();
                                 };
                             }
                             debug!("Not reporting error (service error): {:?}", e);

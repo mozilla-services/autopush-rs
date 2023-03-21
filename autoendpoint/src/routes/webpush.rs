@@ -16,7 +16,10 @@ pub async fn webpush_route(
 ) -> ApiResult<HttpResponse> {
     // TODO:
     sentry::configure_scope(|scope| {
-        scope.set_extra("uaid", notification.subscription.user.uaid.to_string().into());
+        scope.set_extra(
+            "uaid",
+            notification.subscription.user.uaid.to_string().into(),
+        );
     });
     let router = routers.get(
         RouterType::from_str(&notification.subscription.user.router_type)
