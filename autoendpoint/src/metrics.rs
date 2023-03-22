@@ -13,7 +13,6 @@ use cadence::{
 use crate::error::ApiError;
 use crate::server::ServerState;
 use crate::settings::Settings;
-use actix_http::BoxedPayloadStream;
 use actix_web::dev::Payload;
 use autopush_common::tags::Tags;
 use futures::future;
@@ -70,7 +69,7 @@ impl FromRequest for Metrics {
     type Error = ApiError;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         future::ok(Metrics::from(req))
     }
 }

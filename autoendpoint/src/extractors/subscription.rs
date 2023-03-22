@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::str::FromStr;
 
-use actix_http::BoxedPayloadStream;
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
 use autopush_common::{
     db::UserRecord,
@@ -59,7 +58,7 @@ impl FromRequest for Subscription {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let req = req.clone();
 
         async move {
