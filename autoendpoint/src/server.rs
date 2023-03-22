@@ -122,10 +122,7 @@ impl Server {
                 .wrap(Sentry::default()) // Use the default wrapper
                 .wrap(Cors::default())
                 // Extractor configuration
-                //  TODO: web::Bytes::configure was removed. What did this do? Can we just pull from state?
-                // .app_data(web::Bytes::configure(|cfg| {
-                //    cfg.limit(state.settings.max_data_bytes)
-                // }))
+                .app_data(web::PayloadConfig::new(state.settings.max_data_bytes))
                 .app_data(web::JsonConfig::default().limit(state.settings.max_data_bytes))
                 // Endpoints
                 .service(
