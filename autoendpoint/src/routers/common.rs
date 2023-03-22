@@ -1,4 +1,3 @@
-//use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::routers::RouterError;

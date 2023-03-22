@@ -49,14 +49,12 @@ pub async fn register_uaid_route(
         .dbclient
         .add_user(&user)
         .await
-        //.map_err(|e| ApiErrorKind::DatabaseError(e.into()))?;
-        .map_err(|e| ApiErrorKind::General(e.to_string()))?;
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
     state
         .dbclient
         .add_channel(&user.uaid, &channel_id)
         .await
-        //.map_err(|e| ApiErrorKind::Database(e.into()))?;
-        .map_err(|e| ApiErrorKind::General(e.to_string()))?;
+        .map_err(|e| ApiErrorKind::Database(e.into()))?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for user");
