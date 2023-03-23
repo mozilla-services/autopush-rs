@@ -27,6 +27,7 @@ reqwest.workspace = true
 rusoto_core.workspace = true
 rusoto_dynamodb.workspace = true
 sentry.workspace = true
+sentry-actix.workspace = true
 sentry-core.workspace = true
 serde.workspace = true
 serde_derive.workspace = true

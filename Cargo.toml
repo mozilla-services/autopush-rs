@@ -63,8 +63,8 @@ rusoto_dynamodb = { version="0.47", default-features=false, features=["rustls"]}
 # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
 sentry = { version = "0.30", features = ["debug-logs"] }
 sentry-core = {version = "0.30"}
-sentry-actix = "0.29"
-sentry-backtrace = "0.29"
+sentry-actix = "0.30"
+sentry-backtrace = "0.30"
 serde = "1.0"
 serde_derive = "1.0"
 serde_dynamodb = "0.9"

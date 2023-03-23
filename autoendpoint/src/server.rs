@@ -1,4 +1,5 @@
 //! Main application server
+#![forbid(unsafe_code)]
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,18 +13,15 @@ use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings,
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
-use crate::middleware::sentry2::Sentry;
-use crate::routers::adm::router::AdmRouter;
-use crate::routers::apns::router::ApnsRouter;
-use crate::routers::fcm::router::FcmRouter;
-use crate::routes::health::{
-    health_route, lb_heartbeat_route, log_check, status_route, version_route,
+use crate::routers::{adm::router::AdmRouter, apns::router::ApnsRouter, fcm::router::FcmRouter};
+use crate::routes::{
+    health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
+    registration::{
+        get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
+        unregister_user_route, update_token_route,
+    },
+    webpush::{delete_notification_route, webpush_route},
 };
-use crate::routes::registration::{
-    get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
-    unregister_user_route, update_token_route,
-};
-use crate::routes::webpush::{delete_notification_route, webpush_route};
 use crate::settings::Settings;
 
 #[derive(Clone)]
@@ -119,7 +117,7 @@ impl Server {
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 // This calls our slightly modified version of Sentry, which tries to pass along
-                .wrap(Sentry::default()) // Use the default wrapper
+                .wrap(crate::middleware::sentry::SentryWrapper::default())
                 .wrap(Cors::default())
                 // Extractor configuration
                 //  TODO: web::Bytes::configure was removed. What did this do? Can we just pull from state?

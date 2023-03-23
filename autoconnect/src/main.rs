@@ -1,7 +1,8 @@
-extern crate slog;
+#![warn(rust_2018_idioms)]
+#![forbid(unsafe_code)]
+
 #[macro_use]
 extern crate slog_scope;
-extern crate serde_derive;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -89,11 +90,17 @@ async fn main() -> Result<()> {
     info!("Starting autoconnect on port {:?}", &settings.port);
     HttpServer::new(move || {
         let client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
+        let _sentry = sentry::init(sentry::ClientOptions {
+            attach_stacktrace: true,
+            release: sentry::release_name!(),
+            ..Default::default()
+        });
+
         App::new()
             .app_data(server_opts.clone())
             .app_data(Arc::new(client_channels))
             .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
-            .wrap(crate::middleware::sentry2::Sentry::default())
+            .wrap(crate::middleware::sentry::SentryWrapper::default())
             // Websocket Handler
             .route("/ws/", web::get().to(Client::ws_handler))
             // TODO: Internode Message handler

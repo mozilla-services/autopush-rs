@@ -640,6 +640,7 @@ dependencies = [
  "rusoto_core 0.47.0",
  "rusoto_dynamodb 0.47.0",
  "sentry",
+ "sentry-actix",
  "sentry-core 0.30.0",
  "serde",
  "serde_derive",
@@ -749,7 +750,7 @@ dependencies = [
  "rusoto_credential 0.47.0",
  "rusoto_dynamodb 0.47.0",
  "sentry",
- "sentry-backtrace 0.29.3",
+ "sentry-backtrace",
  "sentry-core 0.30.0",
  "serde",
  "serde_derive",
@@ -4065,7 +4066,7 @@ dependencies = [
  "log",
  "native-tls",
  "reqwest 0.11.14",
- "sentry-backtrace 0.30.0",
+ "sentry-backtrace",
  "sentry-contexts",
  "sentry-core 0.30.0",
  "sentry-debug-images",
@@ -4076,25 +4077,13 @@ dependencies = [
 
 [[package]]
 name = "sentry-actix"
-version = "0.29.3"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66fcfb453c844bbb288f3c09dee877f3dc81947b5feac5e193f51e79ece737f6"
+checksum = "c210068218470670c03fbe59f53944061f9b1fcdb7748f9326248ab1ddf56238"
 dependencies = [
  "actix-web",
  "futures-util",
- "sentry-core 0.29.3",
-]
-
-[[package]]
-name = "sentry-backtrace"
-version = "0.29.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ed6c0254d4cce319800609aa0d41b486ee57326494802045ff27434fc9a2030"
-dependencies = [
- "backtrace",
- "once_cell",
- "regex",
- "sentry-core 0.29.3",
+ "sentry-core 0.30.0",
 ]
 
 [[package]]
@@ -4167,7 +4156,7 @@ version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f4ced2a7a8c14899d58eec402d946f69d5ed26a3fc363a7e8b1e5cb88473a01"
 dependencies = [
- "sentry-backtrace 0.30.0",
+ "sentry-backtrace",
  "sentry-core 0.30.0",
 ]
 

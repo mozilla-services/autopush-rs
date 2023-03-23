@@ -1,4 +1,5 @@
 #![warn(rust_2018_idioms)]
+#![forbid(unsafe_code)]
 
 #[macro_use]
 extern crate slog_scope;
@@ -15,7 +16,6 @@ mod server;
 mod settings;
 
 use docopt::Docopt;
-use sentry::ClientInitGuard;
 use serde::Deserialize;
 use std::error::Error;
 
@@ -44,8 +44,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
     debug!("Starting up...");
 
-    // Configure sentry error capture
-    let _sentry_guard = configure_sentry();
+    let _sentry = sentry::init(sentry::ClientOptions {
+        release: sentry::release_name!(),
+        attach_stacktrace: true,
+        ..Default::default()
+    });
 
     // Run server...
     let server = server::Server::with_settings(settings)
@@ -58,13 +61,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("Server closing");
     logging::reset_logging();
     Ok(())
-}
-
-fn configure_sentry() -> ClientInitGuard {
-    let options = sentry::ClientOptions {
-        release: sentry::release_name!(),
-        ..sentry::ClientOptions::default()
-    };
-
-    sentry::init(options)
 }
