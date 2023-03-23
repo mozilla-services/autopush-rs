@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::db::error::DbResult;
-use crate::db::UserRecord;
+use crate::db::User;
 use crate::notification::Notification;
 
 use super::HelloResponse;
@@ -23,15 +23,15 @@ pub struct FetchMessageResponse {
 pub trait DbClient: Send + Sync {
     /// Add a new user to the database. An error will occur if the user already
     /// exists.
-    async fn add_user(&self, user: &UserRecord) -> DbResult<()>;
+    async fn add_user(&self, user: &User) -> DbResult<()>;
 
     /// Update a user in the database. An error will occur if the user does not
     /// already exist, has a different router type, or has a newer
     /// `connected_at` timestamp.
-    async fn update_user(&self, user: &UserRecord) -> DbResult<()>;
+    async fn update_user(&self, user: &User) -> DbResult<()>;
 
     /// Read a user from the database
-    async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<UserRecord>>;
+    async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>>;
 
     /// Delete a user from the router table
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()>;

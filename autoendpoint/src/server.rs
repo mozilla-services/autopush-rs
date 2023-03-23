@@ -30,7 +30,7 @@ pub struct ServerOptions {
     pub metrics: Arc<StatsdClient>,
     pub settings: Settings,
     pub fernet: MultiFernet,
-    pub dbclient: Box<dyn DbClient>,
+    pub db: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
@@ -60,11 +60,8 @@ impl Server {
         // rely on either the environment variable `AWS_LOCAL_DYNAMODB` or fall back to the
         // rusoto_core::Region::default(), which complicates things.
         // `StorageType::from_dsn` is very preferential toward DynamoDB.
-        let ddb: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
-            StorageType::DynamoDb => Box::new(
-                DdbClientImpl::new(metrics.clone(), &db_settings)
-                    .map_err(ApiErrorKind::Database)?,
-            ),
+        let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
+            StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
             StorageType::INVALID => {
                 return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())
             }
@@ -80,7 +77,7 @@ impl Server {
                 endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
-                ddb.clone(),
+                db.clone(),
             )
             .await?,
         );
@@ -89,7 +86,7 @@ impl Server {
                 settings.apns.clone(),
                 endpoint_url.clone(),
                 metrics.clone(),
-                ddb.clone(),
+                db.clone(),
             )
             .await?,
         );
@@ -98,13 +95,13 @@ impl Server {
             endpoint_url,
             http.clone(),
             metrics.clone(),
-            ddb.clone(),
+            db.clone(),
         )?);
         let server_opts = ServerOptions {
             metrics: metrics.clone(),
             settings,
             fernet,
-            dbclient: ddb,
+            db,
             http,
             fcm_router,
             apns_router,
@@ -123,10 +120,7 @@ impl Server {
                 ))
                 .wrap(Cors::default())
                 // Extractor configuration
-                //  TODO: web::Bytes::configure was removed. What did this do? Can we just pull from state?
-                // .app_data(web::Bytes::configure(|cfg| {
-                //    cfg.limit(state.settings.max_data_bytes)
-                // }))
+                .app_data(web::PayloadConfig::new(server_opts.settings.max_data_bytes))
                 .app_data(web::JsonConfig::default().limit(server_opts.settings.max_data_bytes))
                 // Endpoints
                 .service(

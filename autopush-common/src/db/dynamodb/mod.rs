@@ -11,8 +11,7 @@ use crate::db::dynamodb::retry::{
 };
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
-    client::FetchMessageResponse, DbSettings, NotificationRecord, UserRecord, MAX_CHANNEL_TTL,
-    MAX_EXPIRY,
+    client::FetchMessageResponse, DbSettings, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_EXPIRY,
 };
 use crate::notification::Notification;
 use crate::util::sec_since_epoch;
@@ -162,7 +161,7 @@ where
 #[allow(clippy::field_reassign_with_default)]
 #[async_trait]
 impl DbClient for DdbClientImpl {
-    async fn add_user(&self, user: &UserRecord) -> DbResult<()> {
+    async fn add_user(&self, user: &User) -> DbResult<()> {
         let input = PutItemInput {
             table_name: self.settings.router_table.clone(),
             item: serde_dynamodb::to_hashmap(user)?,
@@ -179,7 +178,7 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn update_user(&self, user: &UserRecord) -> DbResult<()> {
+    async fn update_user(&self, user: &User) -> DbResult<()> {
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {
@@ -221,7 +220,7 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<UserRecord>> {
+    async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
         let input = GetItemInput {
             table_name: self.settings.router_table.clone(),
             consistent_read: Some(true),
@@ -669,7 +668,7 @@ impl DbClient for DdbClientImpl {
 }
 
 /// Indicate whether this last_connect falls in the current month
-fn has_connected_this_month(user: &UserRecord) -> bool {
+fn has_connected_this_month(user: &User) -> bool {
     user.last_connect.map_or(false, |v| {
         let pat = Utc::now().format("%Y%m").to_string();
         v.to_string().starts_with(&pat)

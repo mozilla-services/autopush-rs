@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use autoconnect_registry::RegisteredClient;
 use autoconnect_settings::options::ServerOptions;
-use autopush_common::db::{self, UserRecord};
+use autopush_common::db::{self, User};
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::notification::Notification;
 use autopush_common::util::ms_since_epoch;
@@ -68,7 +68,7 @@ pub struct Client {
     sent_from_storage: u32,
     last_ping: u64,
     stats: SessionStatistics,
-    deferred_user_registration: Option<UserRecord>,
+    deferred_user_registration: Option<User>,
     router_url: String,
 }
 

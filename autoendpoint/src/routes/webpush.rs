@@ -38,10 +38,9 @@ pub async fn delete_notification_route(
     debug!("Deleting notification with sort-key {}", sort_key);
     trace!("message_id = {:?}", message_id);
     state
-        .dbclient
+        .db
         .remove_message(&message_id.uaid(), &sort_key)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+        .await?;
 
     Ok(HttpResponse::NoContent().finish())
 }

@@ -1,6 +1,5 @@
 //! Routers route notifications to user agents
 
-// use crate::db::error::DbError;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;

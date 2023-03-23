@@ -2,7 +2,6 @@ use crate::auth::sign_with_key;
 use crate::error::{ApiError, ApiErrorKind};
 use crate::headers::util::get_header;
 use crate::server::ServerOptions;
-use actix_http::BoxedPayloadStream;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
@@ -51,7 +50,7 @@ impl FromRequest for AuthorizationCheck {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let req = req.clone();
 
         async move {

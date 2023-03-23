@@ -11,7 +11,7 @@ use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::{notification::Notification, router_data_input::RouterDataInput};
 use crate::routers::{Router, RouterError, RouterResponse};
 
-use autopush_common::db::{client::DbClient, UserRecord};
+use autopush_common::db::{client::DbClient, User};
 
 /// The router for desktop user agents.
 ///
@@ -19,7 +19,7 @@ use autopush_common::db::{client::DbClient, UserRecord};
 /// server is located via the database routing table. If the server is busy or
 /// not available, the notification is stored in the database.
 pub struct WebPushRouter {
-    pub ddb: Box<dyn DbClient>,
+    pub db: Box<dyn DbClient>,
     pub metrics: Arc<StatsdClient>,
     pub http: reqwest::Client,
     pub endpoint_url: Url,
@@ -92,7 +92,7 @@ impl Router for WebPushRouter {
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
         trace!("Re-fetching user to trigger notification check");
-        let user = match self.ddb.get_user(&user.uaid).await {
+        let user = match self.db.get_user(&user.uaid).await {
             Ok(Some(user)) => user,
             Ok(None) => {
                 trace!("No user found, must have been deleted");
@@ -174,7 +174,7 @@ impl WebPushRouter {
 
     /// Store a notification in the database
     async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
-        self.ddb
+        self.db
             .save_message(
                 &notification.subscription.user.uaid,
                 notification.clone().into(),
@@ -185,12 +185,11 @@ impl WebPushRouter {
 
     /// Remove the node ID from a user. This is done if the user is no longer
     /// connected to the node.
-    async fn remove_node_id(&self, user: &UserRecord, node_id: &str) -> ApiResult<()> {
+    async fn remove_node_id(&self, user: &User, node_id: &str) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
-        self.ddb
+        self.db
             .remove_node_id(&user.uaid, node_id, user.connected_at)
-            .await
-            .map_err(ApiErrorKind::Database)?;
+            .await?;
         Ok(())
     }
 

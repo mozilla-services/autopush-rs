@@ -1,6 +1,5 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::{registration_path_args::RegistrationPathArgs, routers::RouterType};
-use actix_http::BoxedPayloadStream;
 use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use futures::{future::LocalBoxFuture, FutureExt};
 use lazy_static::lazy_static;
@@ -28,7 +27,7 @@ impl FromRequest for RouterDataInput {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
 
-    fn from_request(req: &HttpRequest, payload: &mut Payload<BoxedPayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
         let req = req.clone();
         let mut payload = payload.take();
 

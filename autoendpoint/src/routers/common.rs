@@ -1,4 +1,3 @@
-//use crate::db::client::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::routers::RouterError;
@@ -41,7 +40,7 @@ pub fn message_size_check(data: &[u8], max_data: usize) -> Result<(), RouterErro
 pub async fn handle_error(
     error: RouterError,
     metrics: &StatsdClient,
-    ddb: &dyn DbClient,
+    db: &dyn DbClient,
     platform: &str,
     app_id: &str,
     uaid: Uuid,
@@ -102,7 +101,7 @@ pub async fn handle_error(
                 error.errno(),
             );
 
-            if let Err(e) = ddb.remove_user(&uaid).await {
+            if let Err(e) = db.remove_user(&uaid).await {
                 warn!("Error while removing user due to bridge not_found: {}", e);
             }
         }
@@ -191,7 +190,7 @@ pub mod tests {
     use crate::extractors::notification_headers::NotificationHeaders;
     use crate::extractors::routers::RouterType;
     use crate::extractors::subscription::Subscription;
-    use autopush_common::db::UserRecord;
+    use autopush_common::db::User;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -211,7 +210,7 @@ pub mod tests {
         Notification {
             message_id: "test-message-id".to_string(),
             subscription: Subscription {
-                user: UserRecord {
+                user: User {
                     router_data: Some(router_data),
                     router_type: router_type.to_string(),
                     ..Default::default()

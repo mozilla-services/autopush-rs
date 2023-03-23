@@ -1,6 +1,5 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::headers::util::get_owned_header;
-use actix_http::BoxedPayloadStream;
 use actix_web::{dev::Payload, FromRequest, HttpRequest};
 use futures::future;
 use std::str::FromStr;
@@ -18,7 +17,7 @@ impl FromRequest for TokenInfo {
     type Error = ApiError;
     type Future = future::Ready<Result<Self, Self::Error>>;
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         // Path variables
         let api_version = match req.match_info().get("api_version").unwrap_or("v1").parse() {
             Ok(version) => version,

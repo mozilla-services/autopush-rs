@@ -4,7 +4,7 @@
 
 use crate::db::client::DbClient;
 use crate::db::error::DbResult;
-use crate::db::UserRecord;
+use crate::db::User;
 use crate::notification::Notification;
 use async_trait::async_trait;
 use std::collections::HashSet;
@@ -18,11 +18,11 @@ use super::HelloResponse;
 // this workaround. See https://github.com/asomers/mockall/issues/75
 mockall::mock! {
     pub DbClient {
-        fn add_user(&self, user: &UserRecord) -> DbResult<()>;
+        fn add_user(&self, user: &User) -> DbResult<()>;
 
-        fn update_user(&self, user: &UserRecord) -> DbResult<()>;
+        fn update_user(&self, user: &User) -> DbResult<()>;
 
-        fn get_user(&self, uaid: &Uuid) -> DbResult<Option<UserRecord>>;
+        fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>>;
 
         fn remove_user(&self, uaid: &Uuid) -> DbResult<()>;
 
@@ -63,15 +63,15 @@ mockall::mock! {
 
 #[async_trait]
 impl DbClient for Arc<MockDbClient> {
-    async fn add_user(&self, user: &UserRecord) -> DbResult<()> {
+    async fn add_user(&self, user: &User) -> DbResult<()> {
         Arc::as_ref(self).add_user(user)
     }
 
-    async fn update_user(&self, user: &UserRecord) -> DbResult<()> {
+    async fn update_user(&self, user: &User) -> DbResult<()> {
         Arc::as_ref(self).update_user(user)
     }
 
-    async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<UserRecord>> {
+    async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
         Arc::as_ref(self).get_user(uaid)
     }
 
