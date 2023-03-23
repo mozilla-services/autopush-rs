@@ -98,8 +98,10 @@ async fn main() -> Result<()> {
         });
 
         App::new()
-            .app_data(server_opts.clone())
-            .app_data(Arc::new(client_channels))
+            // Actix4 recommends using the `web::Data` wrapper when storing app_data.
+            // internally, it uses Arc
+            .app_data(web::Data::new(server_opts.clone()))
+            .app_data(web::Data::new(client_channels))
             .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
             .wrap(crate::middleware::sentry::SentryWrapper::new(
                 server_opts.metrics.clone(),

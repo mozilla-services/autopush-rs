@@ -1,8 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::ServerOptions;
 use actix_web::dev::Payload;
-use actix_web::web::Data;
-use actix_web::{FromRequest, HttpRequest};
+use actix_web::{web::Data, FromRequest, HttpRequest};
 use fernet::MultiFernet;
 use futures::future;
 use uuid::Uuid;

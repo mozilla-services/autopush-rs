@@ -4,7 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix_cors::Cors;
-use actix_web::{dev, http::StatusCode, middleware::ErrorHandlers, web, App, HttpServer};
+use actix_web::{
+    dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data, App, HttpServer,
+};
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
@@ -110,18 +112,19 @@ impl Server {
 
         let server = HttpServer::new(move || {
             App::new()
-                .app_data(server_opts.clone())
+                // Actix 4 recommends wrapping structures wtih web::Data (internally an Arc)
+                .app_data(Data::new(server_opts.clone()))
+                // Extractor configuration
+                .app_data(web::PayloadConfig::new(server_opts.settings.max_data_bytes))
+                .app_data(web::JsonConfig::default().limit(server_opts.settings.max_data_bytes))
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
-                // This calls our slightly modified version of Sentry, which tries to pass along
+                // Our modified Sentry wrapper which does some blocking of non-reportable errors.
                 .wrap(crate::middleware::sentry::SentryWrapper::new(
                     metrics.clone(),
                     crate::settings::ENV_PREFIX.to_owned(),
                 ))
                 .wrap(Cors::default())
-                // Extractor configuration
-                .app_data(web::PayloadConfig::new(server_opts.settings.max_data_bytes))
-                .app_data(web::JsonConfig::default().limit(server_opts.settings.max_data_bytes))
                 // Endpoints
                 .service(
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])

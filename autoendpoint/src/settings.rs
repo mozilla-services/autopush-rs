@@ -59,8 +59,8 @@ impl Default for Settings {
             /// max data is a bit hard to figure out, due to encryption. Using something
             /// like pywebpush, if you encode a block of 4096 bytes, you'll get a
             /// 4216 byte data block. Since we're going to be receiving this, we have to
-            /// presume base64 encoding, so we can bump things up to 5624 bytes max.
-            max_data_bytes: 5624,
+            /// presume base64 encoding, so we can bump things up to 5630 bytes max.
+            max_data_bytes: 5630,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             human_logs: false,

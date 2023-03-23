@@ -3,7 +3,7 @@ use crate::extractors::{
     message_id::MessageId, notification_headers::NotificationHeaders, subscription::Subscription,
 };
 use crate::server::ServerOptions;
-use actix_web::{dev::Payload, web, web::Data, FromRequest, HttpRequest};
+use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
 use cadence::CountedExt;
 use fernet::MultiFernet;
@@ -38,7 +38,7 @@ impl FromRequest for Notification {
 
         async move {
             let subscription = Subscription::extract(&req).await?;
-            let state = Data::<ServerOptions>::extract(&req)
+            let state = web::Data::<ServerOptions>::extract(&req)
                 .await
                 .expect("No server state found");
 
