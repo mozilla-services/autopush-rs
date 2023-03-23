@@ -61,10 +61,7 @@ async fn validate_webpush_user(
     }
 
     // Make sure the subscription channel exists
-    let channel_ids = ddb
-        .get_channels(&user.uaid)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+    let channel_ids = ddb.get_channels(&user.uaid).await?;
 
     if !channel_ids.contains(channel_id) {
         return Err(ApiErrorKind::NoSubscription.into());
@@ -80,9 +77,7 @@ pub async fn drop_user(uaid: Uuid, ddb: &dyn DbClient, metrics: &StatsdClient) -
         .with_tag("errno", "102")
         .send();
 
-    ddb.remove_user(&uaid)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+    ddb.remove_user(&uaid).await?;
 
     Ok(())
 }

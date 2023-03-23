@@ -1,6 +1,6 @@
 use autopush_common::db::client::DbClient;
 
-use crate::error::{ApiErrorKind, ApiResult};
+use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::adm::client::AdmClient;
@@ -148,10 +148,7 @@ impl Router for AdmRouter {
             );
             user.router_data = Some(router_data);
 
-            self.ddb
-                .update_user(&user)
-                .await
-                .map_err(ApiErrorKind::Database)?;
+            self.ddb.update_user(&user).await?;
         }
 
         Ok(RouterResponse::success(

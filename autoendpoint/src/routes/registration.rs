@@ -45,16 +45,8 @@ pub async fn register_uaid_route(
     trace!("Creating user with UAID {}", user.uaid);
     trace!("user = {:?}", user);
     trace!("channel_id = {}", channel_id);
-    state
-        .dbclient
-        .add_user(&user)
-        .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
-    state
-        .dbclient
-        .add_channel(&user.uaid, &channel_id)
-        .await
-        .map_err(|e| ApiErrorKind::Database(e.into()))?;
+    state.dbclient.add_user(&user).await?;
+    state.dbclient.add_channel(&user.uaid, &channel_id).await?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for user");
@@ -93,11 +85,7 @@ pub async fn unregister_user_route(
     state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
     debug!("Unregistering UAID {}", path_args.uaid);
-    state
-        .dbclient
-        .remove_user(&path_args.uaid)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+    state.dbclient.remove_user(&path_args.uaid).await?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -127,11 +115,7 @@ pub async fn update_token_route(
     };
     trace!("Updating user with UAID {}", user.uaid);
     trace!("user = {:?}", user);
-    state
-        .dbclient
-        .update_user(&user)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+    state.dbclient.update_user(&user).await?;
 
     trace!("Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
@@ -152,8 +136,7 @@ pub async fn new_channel_route(
     state
         .dbclient
         .add_channel(&path_args.uaid, &channel_id)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+        .await?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for the new channel");
@@ -180,11 +163,7 @@ pub async fn get_channels_route(
     state: Data<ServerState>,
 ) -> ApiResult<HttpResponse> {
     debug!("Getting channel IDs for UAID {}", path_args.uaid);
-    let channel_ids = state
-        .dbclient
-        .get_channels(&path_args.uaid)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+    let channel_ids = state.dbclient.get_channels(&path_args.uaid).await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uaid": path_args.uaid,
@@ -215,8 +194,7 @@ pub async fn unregister_channel_route(
     let channel_did_exist = state
         .dbclient
         .remove_channel(&path_args.uaid, &channel_id)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+        .await?;
 
     if channel_did_exist {
         Ok(HttpResponse::Ok().finish())

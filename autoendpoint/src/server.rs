@@ -63,10 +63,7 @@ impl Server {
         // rusoto_core::Region::default(), which complicates things.
         // `StorageType::from_dsn` is very preferential toward DynamoDB.
         let ddb: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
-            StorageType::DynamoDb => Box::new(
-                DdbClientImpl::new(metrics.clone(), &db_settings)
-                    .map_err(ApiErrorKind::Database)?,
-            ),
+            StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
             StorageType::INVALID => {
                 return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())
             }

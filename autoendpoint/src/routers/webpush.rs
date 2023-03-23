@@ -189,8 +189,7 @@ impl WebPushRouter {
         self.metrics.incr("updates.client.host_gone").ok();
         self.ddb
             .remove_node_id(&user.uaid, node_id, user.connected_at)
-            .await
-            .map_err(ApiErrorKind::Database)?;
+            .await?;
         Ok(())
     }
 

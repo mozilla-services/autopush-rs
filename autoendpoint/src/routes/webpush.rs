@@ -40,8 +40,7 @@ pub async fn delete_notification_route(
     state
         .dbclient
         .remove_message(&message_id.uaid(), &sort_key)
-        .await
-        .map_err(ApiErrorKind::Database)?;
+        .await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
