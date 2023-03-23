@@ -13,6 +13,8 @@ use std::task::Poll;
 use crate::error::ApiError;
 use autopush_common::tags::Tags;
 
+type LocalError = ApiError;
+
 #[derive(Clone, Default)]
 pub struct SentryWrapper {
     metrics: Option<Arc<StatsdClient>>,
@@ -94,6 +96,7 @@ where
         async move {
             let resp: Self::Response = match fut.await {
                 Ok(resp) => {
+                    // Check the request for any queued events to report
                     if let Some(events) = resp
                         .request()
                         .extensions_mut()
@@ -104,10 +107,29 @@ where
                             report(&tags, event);
                         }
                     };
+                    // Check the response for errors.
+                    if let Some(err) = resp.response().error() {
+                        if let Some(api_err) = err.as_error::<LocalError>() {
+                            // skip reporting error if need be
+                            if !api_err.kind.is_sentry_event() {
+                                trace!("Sentry: Sending error to metrics: {:?}", api_err);
+                                if let Some(metrics) = metrics {
+                                    if let Some(label) = api_err.kind.metric_label() {
+                                        let _ =
+                                            metrics.incr(&format!("{}.{}", metric_label, label));
+                                    }
+                                }
+                            } else {
+                                // Sentry should capture backtrace and other functions automatically if
+                                // the default "backtrace" feature is specified in Cargo.toml
+                                report(&tags, sentry::event_from_error(&err));
+                            }
+                        }
+                    };
                     resp
                 }
                 Err(err) => {
-                    if let Some(api_err) = err.as_error::<ApiError>() {
+                    if let Some(api_err) = err.as_error::<LocalError>() {
                         // skip reporting error if need be
                         if !api_err.kind.is_sentry_event() {
                             trace!("Sentry: Sending error to metrics: {:?}", api_err);
@@ -125,7 +147,6 @@ where
                     return Err(err);
                 }
             };
-
             Ok(resp)
         }
         .boxed_local()
