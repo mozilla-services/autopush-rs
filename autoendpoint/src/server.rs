@@ -122,7 +122,7 @@ impl Server {
                 // Our modified Sentry wrapper which does some blocking of non-reportable errors.
                 .wrap(crate::middleware::sentry::SentryWrapper::new(
                     metrics.clone(),
-                    crate::settings::ENV_PREFIX.to_owned(),
+                    "api_error".to_owned(),
                 ))
                 .wrap(Cors::default())
                 // Endpoints

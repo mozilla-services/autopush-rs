@@ -11,7 +11,6 @@ use std::{env, vec::Vec};
 use actix_http::StatusCode;
 use actix_web::middleware::ErrorHandlers;
 use actix_web::{web, App, HttpServer};
-use autoconnect_settings::ENV_PREFIX;
 use docopt::Docopt;
 use serde::Deserialize;
 use std::sync::RwLock;
@@ -105,7 +104,7 @@ async fn main() -> Result<()> {
             .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
             .wrap(crate::middleware::sentry::SentryWrapper::new(
                 server_opts.metrics.clone(),
-                ENV_PREFIX.to_owned(),
+                "error".to_owned(),
             ))
             // Websocket Handler
             .route("/ws/", web::get().to(Client::ws_handler))
