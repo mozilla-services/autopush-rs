@@ -128,7 +128,7 @@ pub trait DbCommandClient: Send + Sync {
         // TODO??
         endpoint: &str,
         // The user record associated with this UAID
-        register_user: Option<&UserRecord>,
+        register_user: Option<&User>,
     ) -> Result<RegisterResponse>;
 
     /// Delete this user and all information associated with them
@@ -217,7 +217,7 @@ pub struct HelloResponse {
     /// the time that the user connected.
     pub connected_at: u64,
     // Exists when we didn't register this user during HELLO
-    pub deferred_user_registration: Option<UserRecord>,
+    pub deferred_user_registration: Option<User>,
 }
 
 #[derive(Clone, Default, Debug)]
@@ -242,7 +242,7 @@ pub enum RegisterResponse {
 
 /// A user data record.
 #[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
-pub struct UserRecord {
+pub struct User {
     /// The UAID. This is generally a UUID4. It needs to be globally
     /// unique.
     // DynamoDB <Hash key>
@@ -270,7 +270,7 @@ pub struct UserRecord {
     pub current_month: Option<String>,
 }
 
-impl Default for UserRecord {
+impl Default for User {
     fn default() -> Self {
         let uaid = Uuid::new_v4();
         //trace!(">>> Setting default uaid: {:?}", &uaid);

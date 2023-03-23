@@ -13,7 +13,7 @@ use crate::extractors::{
 use crate::headers::util::get_header;
 use crate::server::ServerState;
 
-use autopush_common::db::UserRecord;
+use autopush_common::db::User;
 use autopush_common::endpoint::make_endpoint;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
@@ -35,7 +35,7 @@ pub async fn register_uaid_route(
     incr_metric("ua.command.register", &state.metrics, &request);
 
     // Register user and channel in database
-    let user = UserRecord {
+    let user = User {
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),
         current_month: Some(state.db.message_table().to_string()),
@@ -107,7 +107,7 @@ pub async fn update_token_route(
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
 
     // Update the user in the database
-    let user = UserRecord {
+    let user = User {
         uaid: path_args.uaid,
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),

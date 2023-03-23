@@ -174,7 +174,7 @@ mod tests {
     use crate::routers::common::tests::{make_notification, CHANNEL_ID};
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
-    use autopush_common::db::{client::DbClient, mock::MockDbClient, UserRecord};
+    use autopush_common::db::{client::DbClient, mock::MockDbClient, User};
     use cadence::StatsdClient;
     use mockall::predicate;
     use serde_json::Value;
@@ -336,7 +336,7 @@ mod tests {
         let notification = make_notification(default_router_data(), None, RouterType::ADM);
         let mut db = MockDbClient::new();
         db.expect_update_user()
-            .withf(|user: &UserRecord| {
+            .withf(|user: &User| {
                 user.router_data
                     .as_ref()
                     .unwrap()

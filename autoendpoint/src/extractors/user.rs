@@ -3,7 +3,7 @@
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::ServerState;
-use autopush_common::db::{client::DbClient, UserRecord};
+use autopush_common::db::{client::DbClient, User};
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
 
@@ -14,7 +14,7 @@ use uuid::Uuid;
 ///
 /// Returns an enum representing the user's router type.
 pub async fn validate_user(
-    user: &UserRecord,
+    user: &User,
     channel_id: &Uuid,
     state: &ServerState,
 ) -> ApiResult<RouterType> {
@@ -36,7 +36,7 @@ pub async fn validate_user(
 
 /// Make sure the user is not inactive and the subscription channel exists
 async fn validate_webpush_user(
-    user: &UserRecord,
+    user: &User,
     channel_id: &Uuid,
     db: &dyn DbClient,
     metrics: &StatsdClient,

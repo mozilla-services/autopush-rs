@@ -190,7 +190,7 @@ pub mod tests {
     use crate::extractors::notification_headers::NotificationHeaders;
     use crate::extractors::routers::RouterType;
     use crate::extractors::subscription::Subscription;
-    use autopush_common::db::UserRecord;
+    use autopush_common::db::User;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -210,7 +210,7 @@ pub mod tests {
         Notification {
             message_id: "test-message-id".to_string(),
             subscription: Subscription {
-                user: UserRecord {
+                user: User {
                     router_data: Some(router_data),
                     router_type: router_type.to_string(),
                     ..Default::default()

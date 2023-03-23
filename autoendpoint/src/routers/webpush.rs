@@ -11,7 +11,7 @@ use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::{notification::Notification, router_data_input::RouterDataInput};
 use crate::routers::{Router, RouterError, RouterResponse};
 
-use autopush_common::db::{client::DbClient, UserRecord};
+use autopush_common::db::{client::DbClient, User};
 
 /// The router for desktop user agents.
 ///
@@ -185,7 +185,7 @@ impl WebPushRouter {
 
     /// Remove the node ID from a user. This is done if the user is no longer
     /// connected to the node.
-    async fn remove_node_id(&self, user: &UserRecord, node_id: &str) -> ApiResult<()> {
+    async fn remove_node_id(&self, user: &User, node_id: &str) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
         self.db
             .remove_node_id(&user.uaid, node_id, user.connected_at)

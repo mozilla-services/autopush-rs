@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
 use autopush_common::{
-    db::UserRecord,
+    db::User,
     tags::Tags,
     util::{b64_decode_std, b64_decode_url, sec_since_epoch},
 };
@@ -32,7 +32,7 @@ const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 #[derive(Clone, Debug)]
 pub struct Subscription {
-    pub user: UserRecord,
+    pub user: User,
     pub channel_id: Uuid,
     pub vapid: Option<VapidHeaderWithKey>,
 }
