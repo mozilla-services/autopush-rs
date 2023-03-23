@@ -38,7 +38,7 @@ pub async fn validate_user(
 async fn validate_webpush_user(
     user: &UserRecord,
     channel_id: &Uuid,
-    ddb: &dyn DbClient,
+    db: &dyn DbClient,
     metrics: &StatsdClient,
 ) -> ApiResult<()> {
     // Make sure the user is active (has a valid message table)
@@ -46,22 +46,22 @@ async fn validate_webpush_user(
         Some(table) => table,
         None => {
             debug!("Missing `current_month` value, dropping user"; "user" => ?user);
-            drop_user(user.uaid, ddb, metrics).await?;
+            drop_user(user.uaid, db, metrics).await?;
             return Err(ApiErrorKind::NoSubscription.into());
         }
     };
 
-    if ddb.message_table() != message_table {
+    if db.message_table() != message_table {
         debug!("User is inactive, dropping user";
-            "ddb.message_table" => ddb.message_table(),
+            "db.message_table" => db.message_table(),
             "message_table" => message_table,
             "user" => ?user);
-        drop_user(user.uaid, ddb, metrics).await?;
+        drop_user(user.uaid, db, metrics).await?;
         return Err(ApiErrorKind::NoSubscription.into());
     }
 
     // Make sure the subscription channel exists
-    let channel_ids = ddb.get_channels(&user.uaid).await?;
+    let channel_ids = db.get_channels(&user.uaid).await?;
 
     if !channel_ids.contains(channel_id) {
         return Err(ApiErrorKind::NoSubscription.into());
@@ -71,13 +71,13 @@ async fn validate_webpush_user(
 }
 
 /// Drop a user and increment associated metric
-pub async fn drop_user(uaid: Uuid, ddb: &dyn DbClient, metrics: &StatsdClient) -> ApiResult<()> {
+pub async fn drop_user(uaid: Uuid, db: &dyn DbClient, metrics: &StatsdClient) -> ApiResult<()> {
     metrics
         .incr_with_tags("updates.drop_user")
         .with_tag("errno", "102")
         .send();
 
-    ddb.remove_user(&uaid).await?;
+    db.remove_user(&uaid).await?;
 
     Ok(())
 }

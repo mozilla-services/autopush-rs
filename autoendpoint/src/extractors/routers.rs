@@ -71,7 +71,7 @@ impl FromRequest for Routers {
 
         future::ok(Routers {
             webpush: WebPushRouter {
-                ddb: state.db.clone(),
+                db: state.db.clone(),
                 metrics: state.metrics.clone(),
                 http: state.http.clone(),
                 endpoint_url: state.settings.endpoint_url(),

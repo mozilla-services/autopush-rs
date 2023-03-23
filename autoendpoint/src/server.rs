@@ -62,7 +62,7 @@ impl Server {
         // rely on either the environment variable `AWS_LOCAL_DYNAMODB` or fall back to the
         // rusoto_core::Region::default(), which complicates things.
         // `StorageType::from_dsn` is very preferential toward DynamoDB.
-        let ddb: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
+        let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
             StorageType::INVALID => {
                 return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())
@@ -79,7 +79,7 @@ impl Server {
                 endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
-                ddb.clone(),
+                db.clone(),
             )
             .await?,
         );
@@ -88,7 +88,7 @@ impl Server {
                 settings.apns.clone(),
                 endpoint_url.clone(),
                 metrics.clone(),
-                ddb.clone(),
+                db.clone(),
             )
             .await?,
         );
@@ -97,13 +97,13 @@ impl Server {
             endpoint_url,
             http.clone(),
             metrics.clone(),
-            ddb.clone(),
+            db.clone(),
         )?);
         let state = ServerState {
             metrics,
             settings,
             fernet,
-            db: ddb,
+            db,
             http,
             fcm_router,
             apns_router,
