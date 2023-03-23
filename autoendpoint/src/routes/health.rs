@@ -15,8 +15,8 @@ use crate::server::ServerState;
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<ServerState>) -> Json<serde_json::Value> {
-    let router_health = interpret_table_health(state.dbclient.router_table_exists().await);
-    let message_health = interpret_table_health(state.dbclient.message_table_exists().await);
+    let router_health = interpret_table_health(state.db.router_table_exists().await);
+    let message_health = interpret_table_health(state.db.message_table_exists().await);
 
     Json(json!({
         "status": "OK",

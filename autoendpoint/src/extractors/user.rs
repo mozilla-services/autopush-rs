@@ -22,13 +22,13 @@ pub async fn validate_user(
         Ok(router_type) => router_type,
         Err(_) => {
             debug!("Unknown router type, dropping user"; "user" => ?user);
-            drop_user(user.uaid, state.dbclient.as_ref(), &state.metrics).await?;
+            drop_user(user.uaid, state.db.as_ref(), &state.metrics).await?;
             return Err(ApiErrorKind::NoSubscription.into());
         }
     };
 
     if router_type == RouterType::WebPush {
-        validate_webpush_user(user, channel_id, state.dbclient.as_ref(), &state.metrics).await?;
+        validate_webpush_user(user, channel_id, state.db.as_ref(), &state.metrics).await?;
     }
 
     Ok(router_type)

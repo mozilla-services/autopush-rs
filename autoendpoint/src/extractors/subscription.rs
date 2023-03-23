@@ -99,7 +99,7 @@ impl FromRequest for Subscription {
             trace!("UAID: {:?}, CHID: {:?}", uaid, channel_id);
 
             let user = state
-                .dbclient
+                .db
                 .get_user(&uaid)
                 .await?
                 .ok_or(ApiErrorKind::NoSubscription)?;
