@@ -11,7 +11,7 @@ use crate::extractors::{
     router_data_input::RouterDataInput, routers::Routers,
 };
 use crate::headers::util::get_header;
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 
 use autopush_common::db::UserRecord;
 use autopush_common::endpoint::make_endpoint;
@@ -21,7 +21,7 @@ pub async fn register_uaid_route(
     path_args: RegistrationPathArgs,
     router_data_input: RouterDataInput,
     routers: Routers,
-    state: Data<ServerState>,
+    state: Data<ServerOptions>,
     request: HttpRequest,
 ) -> ApiResult<HttpResponse> {
     // Register with router
@@ -92,7 +92,7 @@ pub async fn register_uaid_route(
 pub async fn unregister_user_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
-    state: Data<ServerState>,
+    state: Data<ServerOptions>,
 ) -> ApiResult<HttpResponse> {
     debug!("Unregistering UAID {}", path_args.uaid);
     state
@@ -109,7 +109,7 @@ pub async fn update_token_route(
     path_args: RegistrationPathArgsWithUaid,
     router_data_input: RouterDataInput,
     routers: Routers,
-    state: Data<ServerState>,
+    state: Data<ServerOptions>,
 ) -> ApiResult<HttpResponse> {
     // Re-register with router
     debug!(
@@ -144,7 +144,7 @@ pub async fn new_channel_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
     channel_data: Option<Json<NewChannelData>>,
-    state: Data<ServerState>,
+    state: Data<ServerOptions>,
 ) -> ApiResult<HttpResponse> {
     // Add the channel
     debug!("Adding a channel to UAID {}", path_args.uaid);
@@ -179,7 +179,7 @@ pub async fn new_channel_route(
 pub async fn get_channels_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
-    state: Data<ServerState>,
+    state: Data<ServerOptions>,
 ) -> ApiResult<HttpResponse> {
     debug!("Getting channel IDs for UAID {}", path_args.uaid);
     let channel_ids = state
@@ -198,7 +198,7 @@ pub async fn get_channels_route(
 pub async fn unregister_channel_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
-    state: Data<ServerState>,
+    state: Data<ServerOptions>,
     request: HttpRequest,
 ) -> ApiResult<HttpResponse> {
     let channel_id = request

@@ -9,7 +9,7 @@ use crate::routers::adm::settings::AdmSettings;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
 
-const ENV_PREFIX: &str = "autoend";
+pub const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]

@@ -1,5 +1,5 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 use actix_http::BoxedPayloadStream;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
@@ -35,7 +35,7 @@ impl FromRequest for MessageId {
             .match_info()
             .get("message_id")
             .expect("{message_id} must be part of the path");
-        let state: Data<ServerState> = Data::extract(req)
+        let state: Data<ServerOptions> = Data::extract(req)
             .into_inner()
             .expect("No server state found");
 

@@ -1,21 +1,32 @@
-use std::{cell::RefCell, rc::Rc, task::Context};
+use std::{cell::RefCell, rc::Rc, sync::Arc, task::Context};
 
 use actix_web::{
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     Error, HttpMessage,
 };
-use cadence::CountedExt;
+use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
 use futures_util::future::{ok, Ready};
 use sentry::protocol::Event;
 use std::task::Poll;
 
+use crate::error::ApiError;
 use autopush_common::tags::Tags;
 
-use crate::error::ApiError;
+#[derive(Clone, Default)]
+pub struct SentryWrapper {
+    metrics: Option<Arc<StatsdClient>>,
+    metric_label: String,
+}
 
-#[derive(Default, Clone)]
-pub struct SentryWrapper;
+impl SentryWrapper {
+    pub fn new(metrics: Arc<StatsdClient>, metric_label: String) -> Self {
+        Self {
+            metrics: Some(metrics),
+            metric_label,
+        }
+    }
+}
 
 impl<S, B> Transform<S, ServiceRequest> for SentryWrapper
 where
@@ -31,6 +42,8 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ok(SentryWrapperMiddleware {
             service: Rc::new(RefCell::new(service)),
+            metrics: self.metrics.clone(),
+            metric_label: self.metric_label.clone(),
         })
     }
 }
@@ -38,6 +51,8 @@ where
 #[derive(Debug)]
 pub struct SentryWrapperMiddleware<S> {
     service: Rc<RefCell<S>>,
+    metrics: Option<Arc<StatsdClient>>,
+    metric_label: String,
 }
 
 /// Report an error to Sentry after applying the `tags`
@@ -64,17 +79,14 @@ where
 
     fn call(&self, sreq: ServiceRequest) -> Self::Future {
         let mut tags = Tags::from_request_head(sreq.head());
+        let metrics = self.metrics.clone();
+        let metric_label = self.metric_label.clone();
         if let Some(rtags) = sreq.request().extensions().get::<Tags>() {
             trace!("Sentry: found tags in request: {:?}", &rtags.tags);
             for (k, v) in rtags.tags.clone() {
                 tags.tags.insert(k, v);
             }
         };
-        // XXX for autoendpoint
-        let state = sreq
-            .app_data::<actix_web::web::Data<crate::server::ServerState>>()
-            .cloned();
-
         sreq.extensions_mut().insert(tags.clone());
 
         let fut = self.service.call(sreq);
@@ -99,9 +111,9 @@ where
                         // skip reporting error if need be
                         if !api_err.kind.is_sentry_event() {
                             trace!("Sentry: Sending error to metrics: {:?}", api_err);
-                            if let Some(state) = state {
+                            if let Some(metrics) = metrics {
                                 if let Some(label) = api_err.kind.metric_label() {
-                                    let _ = state.metrics.incr(&format!("api_error.{}", label));
+                                    let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                                 }
                             }
                             return Err(err);

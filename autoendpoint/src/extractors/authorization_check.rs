@@ -1,7 +1,7 @@
 use crate::auth::sign_with_key;
 use crate::error::{ApiError, ApiErrorKind};
 use crate::headers::util::get_header;
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 use actix_http::BoxedPayloadStream;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
@@ -61,7 +61,7 @@ impl FromRequest for AuthorizationCheck {
                 .expect("{uaid} must be part of the path")
                 .parse::<Uuid>()
                 .map_err(|_| ApiErrorKind::NoUser)?;
-            let state: Data<ServerState> = Data::extract(&req)
+            let state: Data<ServerOptions> = Data::extract(&req)
                 .into_inner()
                 .expect("No server state found");
             let auth_header = get_header(&req, "Authorization")

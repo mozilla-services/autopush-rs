@@ -2,7 +2,7 @@ use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::{
     message_id::MessageId, notification_headers::NotificationHeaders, subscription::Subscription,
 };
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 use actix_http::BoxedPayloadStream;
 use actix_web::{dev::Payload, web, web::Data, FromRequest, HttpRequest};
 use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
@@ -39,7 +39,7 @@ impl FromRequest for Notification {
 
         async move {
             let subscription = Subscription::extract(&req).await?;
-            let state = Data::<ServerState>::extract(&req)
+            let state = Data::<ServerOptions>::extract(&req)
                 .await
                 .expect("No server state found");
 

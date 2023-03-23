@@ -4,7 +4,7 @@ use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routers::webpush::WebPushRouter;
 use crate::routers::Router;
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 use actix_http::BoxedPayloadStream;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
@@ -66,7 +66,7 @@ impl FromRequest for Routers {
     type Future = future::Ready<ApiResult<Self>>;
 
     fn from_request(req: &HttpRequest, _: &mut Payload<BoxedPayloadStream>) -> Self::Future {
-        let state = Data::<ServerState>::extract(req)
+        let state = Data::<ServerOptions>::extract(req)
             .into_inner()
             .expect("No server state found");
 

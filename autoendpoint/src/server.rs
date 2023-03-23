@@ -25,7 +25,7 @@ use crate::routes::{
 use crate::settings::Settings;
 
 #[derive(Clone)]
-pub struct ServerState {
+pub struct ServerOptions {
     /// Server Data
     pub metrics: Arc<StatsdClient>,
     pub settings: Settings,
@@ -100,8 +100,8 @@ impl Server {
             metrics.clone(),
             ddb.clone(),
         )?);
-        let state = ServerState {
-            metrics,
+        let server_opts = ServerOptions {
+            metrics: metrics.clone(),
             settings,
             fernet,
             dbclient: ddb,
@@ -113,18 +113,21 @@ impl Server {
 
         let server = HttpServer::new(move || {
             App::new()
-                .app_data(web::Data::new(state.clone()))
+                .app_data(server_opts.clone())
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 // This calls our slightly modified version of Sentry, which tries to pass along
-                .wrap(crate::middleware::sentry::SentryWrapper::default())
+                .wrap(crate::middleware::sentry::SentryWrapper::new(
+                    metrics.clone(),
+                    crate::settings::ENV_PREFIX.to_owned(),
+                ))
                 .wrap(Cors::default())
                 // Extractor configuration
                 //  TODO: web::Bytes::configure was removed. What did this do? Can we just pull from state?
                 // .app_data(web::Bytes::configure(|cfg| {
                 //    cfg.limit(state.settings.max_data_bytes)
                 // }))
-                .app_data(web::JsonConfig::default().limit(state.settings.max_data_bytes))
+                .app_data(web::JsonConfig::default().limit(server_opts.settings.max_data_bytes))
                 // Endpoints
                 .service(
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])

@@ -1,7 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::registration_path_args::RegistrationPathArgs;
 use crate::extractors::routers::RouterType;
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 use actix_http::BoxedPayloadStream;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
@@ -26,7 +26,7 @@ impl FromRequest for RegistrationPathArgsWithUaid {
         let req = req.clone();
 
         async move {
-            let state: Data<ServerState> = Data::extract(&req)
+            let state: Data<ServerOptions> = Data::extract(&req)
                 .into_inner()
                 .expect("No server state found");
             let path_args = RegistrationPathArgs::extract(&req).into_inner()?;

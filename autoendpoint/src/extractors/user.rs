@@ -2,7 +2,7 @@
 
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 use autopush_common::db::{client::DbClient, UserRecord};
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
@@ -16,7 +16,7 @@ use uuid::Uuid;
 pub async fn validate_user(
     user: &UserRecord,
     channel_id: &Uuid,
-    state: &ServerState,
+    state: &ServerOptions,
 ) -> ApiResult<RouterType> {
     let router_type = match user.router_type.parse::<RouterType>() {
         Ok(router_type) => router_type,

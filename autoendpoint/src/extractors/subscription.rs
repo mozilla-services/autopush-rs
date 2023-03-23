@@ -26,7 +26,7 @@ use crate::headers::{
     vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
 };
 use crate::metrics::Metrics;
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 
 const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
@@ -66,7 +66,7 @@ impl FromRequest for Subscription {
             // Collect token info and server state
             let token_info = TokenInfo::extract(&req).await?;
             trace!("Token info: {:?}", &token_info);
-            let state: Data<ServerState> =
+            let state: Data<ServerOptions> =
                 Data::extract(&req).await.expect("No server state found");
             let metrics = Metrics::from(&state);
 

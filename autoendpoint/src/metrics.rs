@@ -11,7 +11,7 @@ use cadence::{
 };
 
 use crate::error::ApiError;
-use crate::server::ServerState;
+use crate::server::ServerOptions;
 use crate::settings::Settings;
 use actix_http::BoxedPayloadStream;
 use actix_web::dev::Payload;
@@ -98,8 +98,8 @@ impl From<StatsdClient> for Metrics {
     }
 }
 
-impl From<&actix_web::web::Data<ServerState>> for Metrics {
-    fn from(state: &actix_web::web::Data<ServerState>) -> Self {
+impl From<&actix_web::web::Data<ServerOptions>> for Metrics {
+    fn from(state: &actix_web::web::Data<ServerOptions>) -> Self {
         Metrics {
             client: Some(state.metrics.clone()),
             tags: None,
@@ -168,7 +168,7 @@ impl Metrics {
 }
 
 pub fn metrics_from_req(req: &HttpRequest) -> Arc<StatsdClient> {
-    req.app_data::<Data<ServerState>>()
+    req.app_data::<Data<ServerOptions>>()
         .expect("Could not get state in metrics_from_req")
         .metrics
         .clone()
