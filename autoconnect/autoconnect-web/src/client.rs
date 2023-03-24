@@ -31,18 +31,27 @@ pub type ClientChannels = Arc<RwLock<HashMap<Uuid, RegisteredClient>>>;
 #[allow(dead_code)]
 #[derive(Clone, Default)]
 struct SessionStatistics {
-    //user data
+    /// Does this UAID require a reset
     uaid_reset: bool,
+    /// Is this UAID already registered?
     existing_uaid: bool,
+    /// Description of the connection type for this? (TODO: Enum?)
     connection_type: String,
 
     // Usage data
+    /// Number of acknowledged messages that were sent directly (not vai storage)
     direct_acked: i32,
+    /// number of messages sent to storage
     direct_storage: i32,
+    /// number of messages taken from storage
     stored_retrieved: i32,
+    /// number of message pulled from storage and acknowledged
     stored_acked: i32,
+    /// number of messages total that are not acknowledged.
     nacks: i32,
+    /// number of unregister requests made
     unregisters: i32,
+    /// number of register requests made
     registers: i32,
 }
 
@@ -51,24 +60,37 @@ struct SessionStatistics {
 pub struct Client {
     /// the UserAgent ID
     uaid: Option<Uuid>,
+    /// Unique local identifier
     uid: Uuid,
+    /// processing flags for this client
     flags: ClientFlags,
     /// The User Agent information block derived from the UserAgent header
     ua_info: UserAgentInfo,
     //channel: Option<SyncSender<ServerNotification>>,
     /// Handle to the database
     db: Box<dyn db::client::DbClient>,
+    /// List of Channels availalbe for this UAID
     clients: ClientChannels,
-    // channel: mpsc::Sender<ServerNotification>,
+    /// Metric serivce
     metrics: Arc<StatsdClient>,
+    /// List of unacknowledged directly sent notifications
     unacked_direct_notifs: Vec<Notification>,
+    /// List of unacknowledged notifications previously stored for transmission
     unacked_stored_notifs: Vec<Notification>,
+    /// Id for the last previously unacknowledged, stored transmission
     unacked_stored_highest: Option<u64>,
+    /// Timestamp for when the UA connected (used by database lookup, thus u64)
     connected_at: u64,
+    /// Count of messages sent from storage (for internal metric)
     sent_from_storage: u32,
+    /// Timestamp for the last Ping message
     last_ping: u64,
+    /// Collected general flags and statistics for this connection.
     stats: SessionStatistics,
+    /// The user information record if this registration is deferred (e.g. a
+    /// previously Broadcast Only connection registers to get their first endpoint)
     deferred_user_registration: Option<User>,
+    /// The router URL for this client.
     router_url: String,
 }
 

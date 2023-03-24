@@ -84,7 +84,6 @@ pub struct Settings {
     pub db_dsn: Option<String>,
     /// JSON set of specific database settings (See data storage engines)
     pub db_settings: String,
-    // pub aws_ddb_endpoint: Option<String>,
     /// Server endpoint to pull Broadcast ID change values (Sent in Pings)
     pub megaphone_api_url: Option<String>,
     /// Broadcast token for authentication
@@ -148,7 +147,6 @@ impl Settings {
 
         // Merge the environment overrides
         s = s.add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
-        // s = s.add_source(Environment::with_prefix(ENV_PREFIX));
 
         let built = s.build()?;
         built.try_deserialize::<Settings>()

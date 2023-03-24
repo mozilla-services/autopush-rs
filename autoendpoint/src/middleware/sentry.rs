@@ -1,4 +1,9 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc, task::Context};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use actix_web::{
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
@@ -7,8 +12,7 @@ use actix_web::{
 use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
 use futures_util::future::{ok, Ready};
-use sentry::protocol::Event;
-use std::task::Poll;
+use sentry::{protocol::Event, Hub};
 
 use crate::LocalError;
 use autopush_common::tags::Tags;
@@ -55,15 +59,6 @@ pub struct SentryWrapperMiddleware<S> {
     metric_label: String,
 }
 
-/// Report an error to Sentry after applying the `tags`
-pub fn report(tags: &Tags, mut event: Event<'static>) {
-    let tags = tags.clone();
-    event.tags = tags.clone().tag_tree();
-    event.extra = tags.extra_tree();
-    trace!("Sentry: Sending error: {:?}", &event);
-    sentry::capture_event(event);
-}
-
 impl<S, B> Service<ServiceRequest> for SentryWrapperMiddleware<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
@@ -78,6 +73,15 @@ where
     }
 
     fn call(&self, sreq: ServiceRequest) -> Self::Future {
+        // Set up the hub to add request data to events
+        let hub = Hub::new_from_top(Hub::main());
+        let _ = hub.push_scope();
+        let sentry_request = sentry_request_from_http(&sreq);
+        hub.configure_scope(|scope| {
+            scope.add_event_processor(Box::new(move |event| process_event(event, &sentry_request)))
+        });
+
+        // get the tag information
         let mut tags = Tags::from_request_head(sreq.head());
         let metrics = self.metrics.clone();
         let metric_label = self.metric_label.clone();
@@ -92,61 +96,106 @@ where
         let fut = self.service.call(sreq);
 
         async move {
-            let resp: Self::Response = match fut.await {
-                Ok(resp) => {
-                    // Check the request for any queued events to report
-                    if let Some(events) = resp
-                        .request()
-                        .extensions_mut()
-                        .remove::<Vec<Event<'static>>>()
-                    {
-                        for event in events {
-                            trace!("Sentry: found error stored in request: {:?}", &event);
-                            report(&tags, event);
-                        }
-                    };
-                    // Check the response for errors.
-                    if let Some(err) = resp.response().error() {
-                        if let Some(api_err) = err.as_error::<LocalError>() {
-                            // skip reporting error if need be
-                            if !api_err.kind.is_sentry_event() {
-                                trace!("Sentry: Sending error to metrics: {:?}", api_err);
-                                if let Some(metrics) = metrics {
-                                    if let Some(label) = api_err.kind.metric_label() {
-                                        let _ =
-                                            metrics.incr(&format!("{}.{}", metric_label, label));
-                                    }
-                                }
-                            } else {
-                                // Sentry should capture backtrace and other functions automatically if
-                                // the default "backtrace" feature is specified in Cargo.toml
-                                report(&tags, sentry::event_from_error(&err));
-                            }
-                        }
-                    };
-                    resp
-                }
-                Err(err) => {
-                    if let Some(api_err) = err.as_error::<LocalError>() {
-                        // skip reporting error if need be
+            let response: Self::Response = match fut.await {
+                Ok(response) => response,
+                Err(error) => {
+                    if let Some(api_err) = error.as_error::<LocalError>() {
+                        // if it's not reportable, and we have access to the metrics, record it as a metric.
                         if !api_err.kind.is_sentry_event() {
-                            trace!("Sentry: Sending error to metrics: {:?}", api_err);
+                            // The error (e.g. VapidErrorKind::InvalidKey(String)) might be too cardinal,
+                            // but we may need that information to debug a production issue. We can
+                            // add an info here, temporarily turn on info level debugging on a given server,
+                            // capture it, and then turn it off before we run out of money.
+                            info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
                             if let Some(metrics) = metrics {
                                 if let Some(label) = api_err.kind.metric_label() {
                                     let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                                 }
                             }
-                            return Err(err);
                         }
-                        // Sentry should capture backtrace and other functions automatically if
-                        // the default "backtrace" feature is specified in Cargo.toml
-                        report(&tags, sentry::event_from_error(&err));
+                        debug!("Sentry: Not reporting error (service error): {:?}", error);
+                        return Err(error);
                     };
-                    return Err(err);
+                    debug!("Reporting error to Sentry (service error): {}", error);
+                    let mut event = event_from_actix_error(&error);
+                    event.extra.append(&mut tags.clone().extra_tree());
+                    event.tags.append(&mut tags.clone().tag_tree());
+                    let event_id = hub.capture_event(event);
+                    trace!("event_id = {}", event_id);
+                    return Err(error);
                 }
             };
-            Ok(resp)
+            // Check for errors inside the response
+            if let Some(error) = response.response().error() {
+                if let Some(api_err) = error.as_error::<LocalError>() {
+                    if !api_err.kind.is_sentry_event() {
+                        debug!("Not reporting error (service error): {:?}", error);
+                        return Ok(response);
+                    }
+                }
+                debug!("Reporting error to Sentry (response error): {}", error);
+                let mut event = event_from_actix_error(error);
+                event.extra.append(&mut tags.clone().extra_tree());
+                event.tags.append(&mut tags.clone().tag_tree());
+                let event_id = hub.capture_event(event);
+                trace!("event_id = {}", event_id);
+            }
+            Ok(response)
         }
         .boxed_local()
+    }
+}
+
+/// Build a Sentry request struct from the HTTP request
+fn sentry_request_from_http(request: &ServiceRequest) -> sentry::protocol::Request {
+    sentry::protocol::Request {
+        url: format!(
+            "{}://{}{}",
+            request.connection_info().scheme(),
+            request.connection_info().host(),
+            request.uri()
+        )
+        .parse()
+        .ok(),
+        method: Some(request.method().to_string()),
+        headers: request
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
+            .collect(),
+        ..Default::default()
+    }
+}
+
+/// Add request data to a Sentry event
+#[allow(clippy::unnecessary_wraps)]
+fn process_event(
+    mut event: Event<'static>,
+    request: &sentry::protocol::Request,
+) -> Option<Event<'static>> {
+    if event.request.is_none() {
+        event.request = Some(request.clone());
+    }
+
+    // TODO: Use ServiceRequest::match_pattern for the event transaction.
+    //       Coming in Actix v3.
+
+    Some(event)
+}
+
+/// Convert Actix errors into a Sentry event. ApiError is handled explicitly so
+/// the event can include a backtrace and source error information.
+fn event_from_actix_error(error: &actix_web::Error) -> sentry::protocol::Event<'static> {
+    // Actix errors don't have support source/cause, so to get more information
+    // about the error we need to downcast.
+    if let Some(error) = error.as_error::<LocalError>() {
+        // Use our error and associated backtrace for the event
+        let mut event = sentry::event_from_error(&error.kind);
+        event.exception.last_mut().unwrap().stacktrace =
+            sentry::integrations::backtrace::backtrace_to_stacktrace(&error.backtrace);
+        event
+    } else {
+        // Fallback to the Actix error
+        sentry::event_from_error(error)
     }
 }
