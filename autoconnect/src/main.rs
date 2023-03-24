@@ -24,6 +24,8 @@ use autopush_common::errors::{render_404, ApcErrorKind, Result};
 
 mod middleware;
 
+pub type LocalError = autopush_common::errors::ApcError;
+
 const USAGE: &str = "
 Usage: autopush_rs [options]
 

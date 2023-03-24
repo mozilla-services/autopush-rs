@@ -21,6 +21,8 @@ use std::error::Error;
 
 use autopush_common::logging;
 
+pub type LocalError = crate::error::ApiError;
+
 const USAGE: &str = "
 Usage: autoendpoint [options]
 

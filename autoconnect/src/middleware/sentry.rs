@@ -10,10 +10,8 @@ use futures_util::future::{ok, Ready};
 use sentry::protocol::Event;
 use std::task::Poll;
 
-use autopush_common::errors::ApcError;
+use crate::LocalError;
 use autopush_common::tags::Tags;
-
-type LocalError = ApcError;
 
 #[derive(Clone, Default)]
 pub struct SentryWrapper {
