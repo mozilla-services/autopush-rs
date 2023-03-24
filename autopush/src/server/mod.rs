@@ -233,7 +233,7 @@ pub struct Server {
 impl Server {
     /// Creates a new server handle used by Megaphone and other services.
     ///
-    /// This will spawn a new server with the `opts` specified, spinning up a
+    /// This will spawn a new server with the [`state`](autopush_rs::server::AppState) specified, spinning up a
     /// separate thread for the tokio reactor. The returned ShutdownHandles can
     /// be used to interact with it (e.g. shut it down).
     fn start(app_state: &Arc<AppState>) -> Result<Vec<ShutdownHandle>> {
@@ -242,9 +242,9 @@ impl Server {
         let (inittx, initrx) = oneshot::channel();
         let (donetx, donerx) = oneshot::channel();
 
-        let opts = app_state.clone();
+        let state = app_state.clone();
         let thread = thread::spawn(move || {
-            let (srv, mut core) = match Server::new(&opts) {
+            let (srv, mut core) = match Server::new(&state) {
                 Ok(core) => {
                     inittx.send(None).unwrap();
                     core
@@ -303,7 +303,7 @@ impl Server {
         let srv = Rc::new(Server {
             app_state: app_state.clone(),
             broadcaster: RefCell::new(broadcaster),
-            ddb: DynamoStorage::from_opts(
+            ddb: DynamoStorage::from_settings(
                 &app_state.message_table_name,
                 &app_state.router_table_name,
                 metrics.clone(),

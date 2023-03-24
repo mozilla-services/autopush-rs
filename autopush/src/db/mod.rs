@@ -72,7 +72,7 @@ pub struct DynamoStorage {
 }
 
 impl DynamoStorage {
-    pub fn from_opts(
+    pub fn from_settings(
         message_table_name: &str,
         router_table_name: &str,
         metrics: Arc<StatsdClient>,

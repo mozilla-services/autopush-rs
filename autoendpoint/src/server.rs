@@ -43,7 +43,7 @@ pub struct Server;
 
 impl Server {
     pub async fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
-        let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
+        let metrics = Arc::new(metrics::metrics_from_settings(&settings)?);
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();

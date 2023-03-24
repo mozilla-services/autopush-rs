@@ -162,17 +162,17 @@ pub fn metrics_from_req(req: &HttpRequest) -> Arc<StatsdClient> {
 }
 
 /// Create a cadence StatsdClient from the given options
-pub fn metrics_from_opts(opts: &Settings) -> Result<StatsdClient, MetricError> {
-    let builder = if let Some(statsd_host) = opts.statsd_host.as_ref() {
+pub fn metrics_from_settings(settings: &Settings) -> Result<StatsdClient, MetricError> {
+    let builder = if let Some(statsd_host) = settings.statsd_host.as_ref() {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.set_nonblocking(true)?;
 
-        let host = (statsd_host.as_str(), opts.statsd_port);
+        let host = (statsd_host.as_str(), settings.statsd_port);
         let udp_sink = BufferedUdpMetricSink::from(host, socket)?;
         let sink = QueuingMetricSink::from(udp_sink);
-        StatsdClient::builder(opts.statsd_label.as_ref(), sink)
+        StatsdClient::builder(settings.statsd_label.as_ref(), sink)
     } else {
-        StatsdClient::builder(opts.statsd_label.as_ref(), NopMetricSink)
+        StatsdClient::builder(settings.statsd_label.as_ref(), NopMetricSink)
     };
     Ok(builder
         .with_error_handler(|err| {
