@@ -6,10 +6,10 @@ use actix_web::HttpResponse;
 use reqwest::StatusCode;
 use serde_json::json;
 
-use autoconnect_settings::options::ServerOptions;
+use autoconnect_settings::options::AppState;
 
 /// Handle the `/health` and `/__heartbeat__` routes
-pub async fn health_route(_state: Data<ServerOptions>) -> Json<serde_json::Value> {
+pub async fn health_route(_state: Data<AppState>) -> Json<serde_json::Value> {
     //TODO: query local state and report results
     Json(json!({
         "status": "OK",

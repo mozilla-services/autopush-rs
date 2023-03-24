@@ -27,7 +27,7 @@ use crate::routes::{
 use crate::settings::Settings;
 
 #[derive(Clone)]
-pub struct ServerOptions {
+pub struct AppState {
     /// Server Data
     pub metrics: Arc<StatsdClient>,
     pub settings: Settings,
@@ -99,7 +99,7 @@ impl Server {
             metrics.clone(),
             db.clone(),
         )?);
-        let server_opts = ServerOptions {
+        let app_state = AppState {
             metrics: metrics.clone(),
             settings,
             fernet,
@@ -113,10 +113,10 @@ impl Server {
         let server = HttpServer::new(move || {
             App::new()
                 // Actix 4 recommends wrapping structures wtih web::Data (internally an Arc)
-                .app_data(Data::new(server_opts.clone()))
+                .app_data(Data::new(app_state.clone()))
                 // Extractor configuration
-                .app_data(web::PayloadConfig::new(server_opts.settings.max_data_bytes))
-                .app_data(web::JsonConfig::default().limit(server_opts.settings.max_data_bytes))
+                .app_data(web::PayloadConfig::new(app_state.settings.max_data_bytes))
+                .app_data(web::JsonConfig::default().limit(app_state.settings.max_data_bytes))
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 // Our modified Sentry wrapper which does some blocking of non-reportable errors.

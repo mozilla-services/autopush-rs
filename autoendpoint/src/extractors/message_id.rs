@@ -1,5 +1,5 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
-use crate::server::ServerOptions;
+use crate::server::AppState;
 use actix_web::dev::Payload;
 use actix_web::{web::Data, FromRequest, HttpRequest};
 use fernet::MultiFernet;
@@ -33,11 +33,11 @@ impl FromRequest for MessageId {
             .match_info()
             .get("message_id")
             .expect("{message_id} must be part of the path");
-        let state: Data<ServerOptions> = Data::extract(req)
+        let app_state: Data<AppState> = Data::extract(req)
             .into_inner()
             .expect("No server state found");
 
-        future::ready(MessageId::decrypt(&state.fernet, message_id_param))
+        future::ready(MessageId::decrypt(&app_state.fernet, message_id_param))
     }
 }
 

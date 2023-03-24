@@ -2,7 +2,7 @@
 
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
-use crate::server::ServerOptions;
+use crate::server::AppState;
 use autopush_common::db::{client::DbClient, User};
 use cadence::{CountedExt, StatsdClient};
 use uuid::Uuid;
@@ -16,19 +16,19 @@ use uuid::Uuid;
 pub async fn validate_user(
     user: &User,
     channel_id: &Uuid,
-    state: &ServerOptions,
+    app_state: &AppState,
 ) -> ApiResult<RouterType> {
     let router_type = match user.router_type.parse::<RouterType>() {
         Ok(router_type) => router_type,
         Err(_) => {
             debug!("Unknown router type, dropping user"; "user" => ?user);
-            drop_user(user.uaid, state.db.as_ref(), &state.metrics).await?;
+            drop_user(user.uaid, app_state.db.as_ref(), &app_state.metrics).await?;
             return Err(ApiErrorKind::NoSubscription.into());
         }
     };
 
     if router_type == RouterType::WebPush {
-        validate_webpush_user(user, channel_id, state.db.as_ref(), &state.metrics).await?;
+        validate_webpush_user(user, channel_id, app_state.db.as_ref(), &app_state.metrics).await?;
     }
 
     Ok(router_type)

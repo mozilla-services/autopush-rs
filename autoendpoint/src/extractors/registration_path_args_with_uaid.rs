@@ -1,7 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::registration_path_args::RegistrationPathArgs;
 use crate::extractors::routers::RouterType;
-use crate::server::ServerOptions;
+use crate::server::AppState;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
@@ -25,7 +25,7 @@ impl FromRequest for RegistrationPathArgsWithUaid {
         let req = req.clone();
 
         async move {
-            let state: Data<ServerOptions> = Data::extract(&req)
+            let app_state: Data<AppState> = Data::extract(&req)
                 .into_inner()
                 .expect("No server state found");
             let path_args = RegistrationPathArgs::extract(&req).into_inner()?;
@@ -37,7 +37,7 @@ impl FromRequest for RegistrationPathArgsWithUaid {
                 .map_err(|_| ApiErrorKind::NoUser)?;
 
             // Verify that the user exists
-            if state.db.get_user(&uaid).await?.is_none() {
+            if app_state.db.get_user(&uaid).await?.is_none() {
                 return Err(ApiErrorKind::NoUser.into());
             }
 

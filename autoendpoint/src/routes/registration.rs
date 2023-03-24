@@ -11,7 +11,7 @@ use crate::extractors::{
     router_data_input::RouterDataInput, routers::Routers,
 };
 use crate::headers::util::get_header;
-use crate::server::ServerOptions;
+use crate::server::AppState;
 
 use autopush_common::db::User;
 use autopush_common::endpoint::make_endpoint;
@@ -21,7 +21,7 @@ pub async fn register_uaid_route(
     path_args: RegistrationPathArgs,
     router_data_input: RouterDataInput,
     routers: Routers,
-    state: Data<ServerOptions>,
+    app_state: Data<AppState>,
     request: HttpRequest,
 ) -> ApiResult<HttpResponse> {
     // Register with router
@@ -32,21 +32,21 @@ pub async fn register_uaid_route(
     trace!("token = {}", router_data_input.token);
     let router = routers.get(path_args.router_type);
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
-    incr_metric("ua.command.register", &state.metrics, &request);
+    incr_metric("ua.command.register", &app_state.metrics, &request);
 
     // Register user and channel in database
     let user = User {
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),
-        current_month: Some(state.db.message_table().to_string()),
+        current_month: Some(app_state.db.message_table().to_string()),
         ..Default::default()
     };
     let channel_id = router_data_input.channel_id.unwrap_or_else(Uuid::new_v4);
     trace!("Creating user with UAID {}", user.uaid);
     trace!("user = {:?}", user);
     trace!("channel_id = {}", channel_id);
-    state.db.add_user(&user).await?;
-    state.db.add_channel(&user.uaid, &channel_id).await?;
+    app_state.db.add_user(&user).await?;
+    app_state.db.add_channel(&user.uaid, &channel_id).await?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for user");
@@ -54,15 +54,15 @@ pub async fn register_uaid_route(
         &user.uaid,
         &channel_id,
         router_data_input.key.as_deref(),
-        state.settings.endpoint_url().as_str(),
-        &state.fernet,
+        app_state.settings.endpoint_url().as_str(),
+        &app_state.fernet,
     )
     .map_err(ApiErrorKind::EndpointUrl)?;
     trace!("endpoint = {}", endpoint_url);
 
     // Create the secret
     trace!("Creating secret for UAID {}", user.uaid);
-    let auth_keys = state.settings.auth_keys();
+    let auth_keys = app_state.settings.auth_keys();
     let auth_key = auth_keys
         .get(0)
         .expect("At least one auth key must be provided in the settings");
@@ -82,10 +82,10 @@ pub async fn register_uaid_route(
 pub async fn unregister_user_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
-    state: Data<ServerOptions>,
+    app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     debug!("Unregistering UAID {}", path_args.uaid);
-    state.db.remove_user(&path_args.uaid).await?;
+    app_state.db.remove_user(&path_args.uaid).await?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -95,7 +95,7 @@ pub async fn update_token_route(
     path_args: RegistrationPathArgsWithUaid,
     router_data_input: RouterDataInput,
     routers: Routers,
-    state: Data<ServerOptions>,
+    app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     // Re-register with router
     debug!(
@@ -115,7 +115,7 @@ pub async fn update_token_route(
     };
     trace!("Updating user with UAID {}", user.uaid);
     trace!("user = {:?}", user);
-    state.db.update_user(&user).await?;
+    app_state.db.update_user(&user).await?;
 
     trace!("Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
@@ -126,14 +126,17 @@ pub async fn new_channel_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
     channel_data: Option<Json<NewChannelData>>,
-    state: Data<ServerOptions>,
+    app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     // Add the channel
     debug!("Adding a channel to UAID {}", path_args.uaid);
     let channel_data = channel_data.map(Json::into_inner).unwrap_or_default();
     let channel_id = channel_data.channel_id.unwrap_or_else(Uuid::new_v4);
     trace!("channel_id = {}", channel_id);
-    state.db.add_channel(&path_args.uaid, &channel_id).await?;
+    app_state
+        .db
+        .add_channel(&path_args.uaid, &channel_id)
+        .await?;
 
     // Make the endpoint URL
     trace!("Creating endpoint for the new channel");
@@ -141,8 +144,8 @@ pub async fn new_channel_route(
         &path_args.uaid,
         &channel_id,
         channel_data.key.as_deref(),
-        state.settings.endpoint_url().as_str(),
-        &state.fernet,
+        app_state.settings.endpoint_url().as_str(),
+        &app_state.fernet,
     )
     .map_err(ApiErrorKind::EndpointUrl)?;
     trace!("endpoint = {}", endpoint_url);
@@ -157,10 +160,10 @@ pub async fn new_channel_route(
 pub async fn get_channels_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
-    state: Data<ServerOptions>,
+    app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     debug!("Getting channel IDs for UAID {}", path_args.uaid);
-    let channel_ids = state.db.get_channels(&path_args.uaid).await?;
+    let channel_ids = app_state.db.get_channels(&path_args.uaid).await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uaid": path_args.uaid,
@@ -172,7 +175,7 @@ pub async fn get_channels_route(
 pub async fn unregister_channel_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
-    state: Data<ServerOptions>,
+    app_state: Data<AppState>,
     request: HttpRequest,
 ) -> ApiResult<HttpResponse> {
     let channel_id = request
@@ -187,8 +190,8 @@ pub async fn unregister_channel_route(
         channel_id, path_args.uaid
     );
 
-    incr_metric("ua.command.unregister", &state.metrics, &request);
-    let channel_did_exist = state
+    incr_metric("ua.command.unregister", &app_state.metrics, &request);
+    let channel_did_exist = app_state
         .db
         .remove_channel(&path_args.uaid, &channel_id)
         .await?;

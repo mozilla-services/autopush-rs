@@ -11,7 +11,7 @@ use cadence::{
 };
 
 use actix_web::HttpMessage;
-use autoconnect_settings::{options::ServerOptions, Settings};
+use autoconnect_settings::{options::AppState, Settings};
 use autopush_common::tags::Tags;
 
 #[derive(Debug, Clone)]
@@ -85,8 +85,8 @@ impl From<StatsdClient> for Metrics {
     }
 }
 
-impl From<&actix_web::web::Data<ServerOptions>> for Metrics {
-    fn from(state: &actix_web::web::Data<ServerOptions>) -> Self {
+impl From<&actix_web::web::Data<AppState>> for Metrics {
+    fn from(state: &actix_web::web::Data<AppState>) -> Self {
         Metrics {
             client: Some(state.metrics.clone()),
             tags: None,
@@ -155,7 +155,7 @@ impl Metrics {
 }
 
 pub fn metrics_from_req(req: &HttpRequest) -> Arc<StatsdClient> {
-    req.app_data::<Data<ServerOptions>>()
+    req.app_data::<Data<AppState>>()
         .expect("Could not get state in metrics_from_req")
         .metrics
         .clone()

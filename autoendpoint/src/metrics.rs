@@ -11,7 +11,7 @@ use cadence::{
 };
 
 use crate::error::ApiError;
-use crate::server::ServerOptions;
+use crate::server::AppState;
 use crate::settings::Settings;
 use actix_web::dev::Payload;
 use autopush_common::tags::Tags;
@@ -97,8 +97,8 @@ impl From<StatsdClient> for Metrics {
     }
 }
 
-impl From<&actix_web::web::Data<ServerOptions>> for Metrics {
-    fn from(state: &actix_web::web::Data<ServerOptions>) -> Self {
+impl From<&actix_web::web::Data<AppState>> for Metrics {
+    fn from(state: &actix_web::web::Data<AppState>) -> Self {
         Metrics {
             client: Some(state.metrics.clone()),
             tags: None,
@@ -167,7 +167,7 @@ impl Metrics {
 }
 
 pub fn metrics_from_req(req: &HttpRequest) -> Arc<StatsdClient> {
-    req.app_data::<Data<ServerOptions>>()
+    req.app_data::<Data<AppState>>()
         .expect("Could not get state in metrics_from_req")
         .metrics
         .clone()

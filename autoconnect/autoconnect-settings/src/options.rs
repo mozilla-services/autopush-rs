@@ -34,7 +34,7 @@ fn fto_dur(seconds: f64) -> Option<Duration> {
 
 /// A thread safe set of options specific to the Server. These are compiled from [crate::Settings]
 #[derive(Clone)]
-pub struct ServerOptions {
+pub struct AppState {
     pub router_port: u16,
     pub port: u16,
     /// Encryption object for the endpoint URL
@@ -63,7 +63,7 @@ pub struct ServerOptions {
     pub max_pending_notification_queue: usize,
 }
 
-impl ServerOptions {
+impl AppState {
     pub fn from_settings(settings: &Settings) -> Result<Self> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {

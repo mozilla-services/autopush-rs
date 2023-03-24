@@ -20,7 +20,7 @@ mod megaphone;
 mod server;
 mod settings;
 
-use crate::server::{AutopushServer, ServerOptions};
+use crate::server::{AppState, AutopushServer};
 use crate::settings::Settings;
 
 pub type MyFuture<T> = Box<dyn Future<Item = T, Error = autopush_common::errors::ApcError>>;
@@ -58,8 +58,8 @@ fn main() -> Result<()> {
     if let Some(ref ddb_local) = settings.aws_ddb_endpoint {
         env::set_var("AWS_LOCAL_DYNAMODB", ddb_local);
     }
-    let server_opts = ServerOptions::from_settings(settings)?;
-    let server = AutopushServer::new(server_opts);
+    let app_state = AppState::from_settings(settings)?;
+    let server = AutopushServer::new(app_state);
     server.start();
     signal.recv().unwrap();
     server

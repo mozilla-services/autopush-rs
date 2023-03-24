@@ -25,7 +25,7 @@ use crate::headers::{
     vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
 };
 use crate::metrics::Metrics;
-use crate::server::ServerOptions;
+use crate::server::AppState;
 
 const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
@@ -65,12 +65,12 @@ impl FromRequest for Subscription {
             // Collect token info and server state
             let token_info = TokenInfo::extract(&req).await?;
             trace!("Token info: {:?}", &token_info);
-            let state: Data<ServerOptions> =
+            let app_state: Data<AppState> =
                 Data::extract(&req).await.expect("No server state found");
-            let metrics = Metrics::from(&state);
+            let metrics = Metrics::from(&app_state);
 
             // Decrypt the token
-            let token = state
+            let token = app_state
                 .fernet
                 .decrypt(&repad_base64(&token_info.token))
                 .map_err(|e| {
@@ -79,7 +79,7 @@ impl FromRequest for Subscription {
                 })?;
 
             // Parse VAPID and extract public key.
-            let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &state.metrics)?
+            let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &app_state.metrics)?
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
 
@@ -98,20 +98,20 @@ impl FromRequest for Subscription {
 
             trace!("UAID: {:?}, CHID: {:?}", uaid, channel_id);
 
-            let user = state
+            let user = app_state
                 .db
                 .get_user(&uaid)
                 .await?
                 .ok_or(ApiErrorKind::NoSubscription)?;
 
             trace!("user: {:?}", &user);
-            validate_user(&user, &channel_id, &state).await?;
+            validate_user(&user, &channel_id, &app_state).await?;
 
             // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid, &state.settings.endpoint_url(), &metrics)?;
+                validate_vapid_jwt(vapid, &app_state.settings.endpoint_url(), &metrics)?;
 
-                state
+                app_state
                     .metrics
                     .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
             }

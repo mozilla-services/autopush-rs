@@ -2,7 +2,7 @@ use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::{
     message_id::MessageId, notification_headers::NotificationHeaders, subscription::Subscription,
 };
-use crate::server::ServerOptions;
+use crate::server::AppState;
 use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
 use cadence::CountedExt;
@@ -38,7 +38,7 @@ impl FromRequest for Notification {
 
         async move {
             let subscription = Subscription::extract(&req).await?;
-            let state = web::Data::<ServerOptions>::extract(&req)
+            let app_state = web::Data::<AppState>::extract(&req)
                 .await
                 .expect("No server state found");
 
@@ -61,7 +61,7 @@ impl FromRequest for Notification {
             let timestamp = sec_since_epoch();
             let sort_key_timestamp = ms_since_epoch();
             let message_id = Self::generate_message_id(
-                &state.fernet,
+                &app_state.fernet,
                 subscription.user.uaid,
                 subscription.channel_id,
                 headers.topic.as_deref(),
@@ -71,7 +71,7 @@ impl FromRequest for Notification {
             // Record the encoding if we have an encrypted payload
             if let Some(encoding) = &headers.encoding {
                 if data.is_some() {
-                    state
+                    app_state
                         .metrics
                         .incr(&format!("updates.notification.encoding.{encoding}"))
                         .ok();

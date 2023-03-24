@@ -11,10 +11,10 @@ use serde_json::json;
 use autopush_common::db::error::DbResult;
 
 use crate::error::{ApiErrorKind, ApiResult};
-use crate::server::ServerOptions;
+use crate::server::AppState;
 
 /// Handle the `/health` and `/__heartbeat__` routes
-pub async fn health_route(state: Data<ServerOptions>) -> Json<serde_json::Value> {
+pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     let router_health = interpret_table_health(state.db.router_table_exists().await);
     let message_health = interpret_table_health(state.db.message_table_exists().await);
 

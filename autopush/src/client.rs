@@ -74,7 +74,8 @@ where
     /// call back into Python.
     pub fn new(ws: T, srv: &Rc<Server>, mut uarx: Receiver<String>) -> Client<T> {
         let srv = srv.clone();
-        let timeout = Timeout::new(srv.opts.open_handshake_timeout.unwrap(), &srv.handle).unwrap();
+        let timeout =
+            Timeout::new(srv.app_state.open_handshake_timeout.unwrap(), &srv.handle).unwrap();
         let (tx, rx) = mpsc::unbounded();
 
         // Pull out the user-agent, which we should have by now
@@ -400,7 +401,7 @@ where
         let response = Box::new(data.srv.ddb.hello(
             connected_at,
             uaid.as_ref(),
-            &data.srv.opts.router_url,
+            &data.srv.app_state.router_url,
             defer_registration,
         ));
         transition!(AwaitProcessHello {
@@ -913,7 +914,7 @@ where
         let AwaitSend { smessages, data } = await_send.take();
         let webpush_rc = data.webpush.clone();
         let webpush = webpush_rc.borrow();
-        if webpush.sent_from_storage > data.srv.opts.msg_limit {
+        if webpush.sent_from_storage > data.srv.app_state.msg_limit {
             // Exceeded the max limit of stored messages: drop the user to trigger a
             // re-register
             debug!("Dropping user: exceeded msg_limit");
@@ -1015,8 +1016,8 @@ where
                     &uaid,
                     &channel_id,
                     key.as_deref(),
-                    &srv.opts.endpoint_url,
-                    &srv.opts.fernet,
+                    &srv.app_state.endpoint_url,
+                    &srv.app_state.fernet,
                 ) {
                     Ok(endpoint) => srv.ddb.register_channel(
                         &uaid,

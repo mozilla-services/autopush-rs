@@ -15,7 +15,7 @@ use docopt::Docopt;
 use serde::Deserialize;
 use std::sync::RwLock;
 
-use autoconnect_settings::{options::ServerOptions, Settings};
+use autoconnect_settings::{options::AppState, Settings};
 use autoconnect_web::{
     client::{Client, ClientChannels},
     dockerflow,
@@ -81,31 +81,30 @@ async fn main() -> Result<()> {
     let _guard = sentry::init(sentry::ClientOptions {
         release: sentry::release_name!(),
         session_mode: sentry::SessionMode::Request, // new session per request
-        auto_session_tracking: true,                // new session per request
-        // attach_stacktrace: true, // attach a stack trace to ALL messages (not just exceptions)
-        // send_default_pii: false, // do not include PII in message
+        auto_session_tracking: true,
         ..Default::default()
     });
 
-    let server_opts = ServerOptions::from_settings(&settings)?;
+    let app_state = AppState::from_settings(&settings)?;
 
     info!("Starting autoconnect on port {:?}", &settings.port);
     HttpServer::new(move || {
         let client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
         let _sentry = sentry::init(sentry::ClientOptions {
-            attach_stacktrace: true,
             release: sentry::release_name!(),
+            session_mode: sentry::SessionMode::Request, // new session per request
+            auto_session_tracking: true,
             ..Default::default()
         });
 
         App::new()
             // Actix4 recommends using the `web::Data` wrapper when storing app_data.
             // internally, it uses Arc
-            .app_data(web::Data::new(server_opts.clone()))
+            .app_data(web::Data::new(app_state.clone()))
             .app_data(web::Data::new(client_channels))
             .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
             .wrap(crate::middleware::sentry::SentryWrapper::new(
-                server_opts.metrics.clone(),
+                app_state.metrics.clone(),
                 "error".to_owned(),
             ))
             // Websocket Handler

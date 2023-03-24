@@ -4,7 +4,7 @@ use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routers::webpush::WebPushRouter;
 use crate::routers::Router;
-use crate::server::ServerOptions;
+use crate::server::AppState;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
@@ -65,20 +65,20 @@ impl FromRequest for Routers {
     type Future = future::Ready<ApiResult<Self>>;
 
     fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
-        let state = Data::<ServerOptions>::extract(req)
+        let app_state = Data::<AppState>::extract(req)
             .into_inner()
             .expect("No server state found");
 
         future::ok(Routers {
             webpush: WebPushRouter {
-                db: state.db.clone(),
-                metrics: state.metrics.clone(),
-                http: state.http.clone(),
-                endpoint_url: state.settings.endpoint_url(),
+                db: app_state.db.clone(),
+                metrics: app_state.metrics.clone(),
+                http: app_state.http.clone(),
+                endpoint_url: app_state.settings.endpoint_url(),
             },
-            fcm: state.fcm_router.clone(),
-            apns: state.apns_router.clone(),
-            adm: state.adm_router.clone(),
+            fcm: app_state.fcm_router.clone(),
+            apns: app_state.apns_router.clone(),
+            adm: app_state.adm_router.clone(),
         })
     }
 }

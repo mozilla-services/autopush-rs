@@ -13,7 +13,7 @@ use uuid::Uuid;
 use autopush_common::error::{ApiError, ApiErrorKind};
 
 
-use autoconnect_settings::options::ServerOptions;
+use autoconnect_settings::options::AppState;
 
 pub struct InterNodeArgs {
     pub uaid: Uuid
@@ -29,7 +29,7 @@ pub struct InterNode {
 }
 
 impl InterNode {
-    pub fn put(state: Data<ServerOptions>) -> HttpResponse {
+    pub fn put(state: Data<AppState>) -> HttpResponse {
 
     }
 }

@@ -38,7 +38,7 @@ fn include_port(scheme: &str, port: u16) -> bool {
 }
 
 /// The Applications settings, read from CLI, Environment or settings file, for the
-/// autoconnect application. These are later converted to [crate::options::ServerOptions].
+/// autoconnect application. These are later converted to [crate::options::AppState].
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Settings {

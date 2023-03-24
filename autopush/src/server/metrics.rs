@@ -6,10 +6,10 @@ use cadence::{BufferedUdpMetricSink, NopMetricSink, QueuingMetricSink, StatsdCli
 
 use autopush_common::errors::Result;
 
-use crate::server::ServerOptions;
+use crate::server::AppState;
 
 /// Create a cadence StatsdClient from the given options
-pub fn metrics_from_opts(opts: &ServerOptions) -> Result<StatsdClient> {
+pub fn metrics_from_state(opts: &AppState) -> Result<StatsdClient> {
     let builder = if let Some(statsd_host) = opts.statsd_host.as_ref() {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.set_nonblocking(true)?;

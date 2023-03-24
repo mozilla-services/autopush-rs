@@ -4,7 +4,7 @@ use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::message_id::MessageId;
 use crate::extractors::notification::Notification;
 use crate::extractors::routers::{RouterType, Routers};
-use crate::server::ServerOptions;
+use crate::server::AppState;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
 
@@ -12,7 +12,7 @@ use actix_web::HttpResponse;
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
-    _state: Data<ServerOptions>,
+    _app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     // TODO:
     sentry::configure_scope(|scope| {
@@ -32,12 +32,12 @@ pub async fn webpush_route(
 /// Handle the `DELETE /m/{message_id}` route
 pub async fn delete_notification_route(
     message_id: MessageId,
-    state: Data<ServerOptions>,
+    app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     let sort_key = message_id.sort_key();
     debug!("Deleting notification with sort-key {}", sort_key);
     trace!("message_id = {:?}", message_id);
-    state
+    app_state
         .db
         .remove_message(&message_id.uaid(), &sort_key)
         .await?;

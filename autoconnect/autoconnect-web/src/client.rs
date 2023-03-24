@@ -12,7 +12,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use autoconnect_registry::RegisteredClient;
-use autoconnect_settings::options::ServerOptions;
+use autoconnect_settings::options::AppState;
 use autopush_common::db::{self, User};
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::notification::Notification;
@@ -96,7 +96,7 @@ pub struct Client {
 
 impl Client {
     pub async fn ws_handler(req: HttpRequest, body: Payload) -> Result<HttpResponse> {
-        let state = req.app_data::<ServerOptions>().unwrap().clone();
+        let state = req.app_data::<AppState>().unwrap().clone();
         let client_metrics = state.metrics.clone();
         let db_client = state.db_client.clone();
         let clients = req.app_data::<ClientChannels>().unwrap().clone();
@@ -702,7 +702,7 @@ struct NotifManager {}
 #[allow(dead_code)]
 impl NotifManager {
     pub async fn on_push(
-        state: &ServerOptions,
+        state: &AppState,
         uaid: Uuid,
         notification: Notification,
     ) -> Result<HttpResponse> {
@@ -710,7 +710,7 @@ impl NotifManager {
         Ok(HttpResponse::Ok().finish())
     }
 
-    pub async fn on_notif(state: &ServerOptions, uaid: Uuid) -> Result<HttpResponse> {
+    pub async fn on_notif(state: &AppState, uaid: Uuid) -> Result<HttpResponse> {
         if state.registry.check_storage(uaid).await.is_ok() {
             return Ok(HttpResponse::Ok().finish());
         };
