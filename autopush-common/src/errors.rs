@@ -1,14 +1,28 @@
-//! Error handling for Rust
-//!
+//! Error handling for common autopush functions
 
 use std::any::Any;
-use std::backtrace::Backtrace;
 use std::fmt::{self, Display};
 use std::io;
 use std::num;
 
-use futures::Future;
+use actix_web::{
+    dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponse,
+    HttpResponseBuilder, ResponseError,
+};
+use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::backtrace
+use serde::ser::{Serialize, SerializeMap, Serializer};
 use thiserror::Error;
+
+/// Render a 404 response
+pub fn render_404<B>(
+    res: ServiceResponse<B>,
+) -> std::result::Result<ErrorHandlerResponse<B>, actix_web::Error> {
+    // Replace the outbound error message with our own.
+    let resp = HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
+    Ok(ErrorHandlerResponse::Response(
+        res.into_response(resp).map_into_right_body(),
+    ))
+}
 
 /// AutoPush Common error (To distinguish from endpoint's ApiError)
 #[derive(Debug)]
@@ -48,8 +62,41 @@ where
     fn from(item: T) -> Self {
         ApcError {
             kind: ApcErrorKind::from(item),
-            backtrace: Box::new(Backtrace::capture()),
+            backtrace: Box::new(Backtrace::new()), // or std::backtrace::Backtrace::capture()
         }
+    }
+}
+
+/// Return a structured response error for the ApcError
+impl ResponseError for ApcError {
+    fn status_code(&self) -> StatusCode {
+        self.kind.status()
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        let mut builder = HttpResponse::build(self.kind.status());
+
+        if self.status_code() == 410 {
+            builder.insert_header(("Cache-Control", "max-age=86400"));
+        }
+
+        builder.json(self)
+    }
+}
+
+impl Serialize for ApcError {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let status = self.kind.status();
+        let mut map = serializer.serialize_map(Some(5))?;
+
+        map.serialize_entry("code", &status.as_u16())?;
+        map.serialize_entry("error", &status.canonical_reason())?;
+        map.serialize_entry("message", &self.kind.to_string())?;
+        // TODO: errno and url?
+        map.end()
     }
 }
 
@@ -73,6 +120,12 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
+    #[error(transparent)]
+    DbError(#[from] crate::db::error::DbError),
+    #[error("Error while validating token")]
+    TokenHashValidation(#[source] openssl::error::ErrorStack),
+    #[error("Error while creating secret")]
+    RegistrationSecretHash(#[source] openssl::error::ErrorStack),
 
     #[error("thread panicked")]
     Thread(Box<dyn Any + Send>),
@@ -99,8 +152,46 @@ pub enum ApcErrorKind {
     GeneralError(String),
     #[error("Database Error: {0}")]
     DatabaseError(String),
+
+    #[error("Endpoint Error: [{0}] {1}")]
+    EndpointError(&'static str, String),
+
+    // TODO: option this.
+    #[error("Rusoto Error: {0}")]
+    RusotoError(String),
+}
+
+impl ApcErrorKind {
+    /// Get the associated HTTP status code
+    pub fn status(&self) -> StatusCode {
+        match self {
+            Self::Json(_) | Self::ParseIntError(_) | Self::ParseUrlError(_) | Self::Httparse(_) => {
+                StatusCode::BAD_REQUEST
+            }
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    pub fn is_sentry_event(&self) -> bool {
+        match self {
+            // TODO: Add additional messages to ignore here.
+            Self::PongTimeout | Self::ExcessivePing => false,
+            _ => true,
+        }
+    }
+
+    pub fn metric_label(&self) -> Option<String> {
+        // TODO: add labels for skipped stuff
+        let resp = match self {
+            Self::PongTimeout => "pong_timeout",
+            Self::ExcessivePing => "excessive_ping",
+            _ => "",
+        };
+        if !resp.is_empty() {
+            return Some(resp.to_owned());
+        }
+        None
+    }
 }
 
 pub type Result<T> = std::result::Result<T, ApcError>;
-
-pub type MyFuture<T> = Box<dyn Future<Item = T, Error = ApcError>>;

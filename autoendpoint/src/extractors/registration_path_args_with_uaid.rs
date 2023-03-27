@@ -1,8 +1,8 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::registration_path_args::RegistrationPathArgs;
 use crate::extractors::routers::RouterType;
-use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
+use crate::server::AppState;
+use actix_web::dev::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use futures::future::LocalBoxFuture;
@@ -20,13 +20,12 @@ pub struct RegistrationPathArgsWithUaid {
 impl FromRequest for RegistrationPathArgsWithUaid {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let req = req.clone();
 
         async move {
-            let state: Data<ServerState> = Data::extract(&req)
+            let app_state: Data<AppState> = Data::extract(&req)
                 .into_inner()
                 .expect("No server state found");
             let path_args = RegistrationPathArgs::extract(&req).into_inner()?;
@@ -38,7 +37,7 @@ impl FromRequest for RegistrationPathArgsWithUaid {
                 .map_err(|_| ApiErrorKind::NoUser)?;
 
             // Verify that the user exists
-            if state.ddb.get_user(uaid).await?.is_none() {
+            if app_state.db.get_user(&uaid).await?.is_none() {
                 return Err(ApiErrorKind::NoUser.into());
             }
 

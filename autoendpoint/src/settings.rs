@@ -1,14 +1,15 @@
 //! Application settings
 
-use crate::routers::adm::settings::AdmSettings;
-use crate::routers::apns::settings::ApnsSettings;
-use crate::routers::fcm::settings::FcmSettings;
 use config::{Config, ConfigError, Environment, File};
 use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
-const ENV_PREFIX: &str = "autoend";
+use crate::routers::adm::settings::AdmSettings;
+use crate::routers::apns::settings::ApnsSettings;
+use crate::routers::fcm::settings::FcmSettings;
+
+pub const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
@@ -18,6 +19,11 @@ pub struct Settings {
     pub host: String,
     pub port: u16,
     pub endpoint_url: String,
+
+    /// The DSN to connect to the storage engine (Used to select between storage systems)
+    pub db_dsn: Option<String>,
+    /// JSON set of specific database settings (See data storage engines)
+    pub db_settings: String,
 
     pub router_table_name: String,
     pub message_table_name: String,
@@ -46,13 +52,15 @@ impl Default for Settings {
             host: "127.0.0.1".to_string(),
             endpoint_url: "".to_string(),
             port: 8000,
+            db_dsn: None,
+            db_settings: "".to_owned(),
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
             /// max data is a bit hard to figure out, due to encryption. Using something
             /// like pywebpush, if you encode a block of 4096 bytes, you'll get a
             /// 4216 byte data block. Since we're going to be receiving this, we have to
-            /// presume base64 encoding, so we can bump things up to 5624 bytes max.
-            max_data_bytes: 5624,
+            /// presume base64 encoding, so we can bump things up to 5630 bytes max.
+            max_data_bytes: 5630,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             human_logs: false,

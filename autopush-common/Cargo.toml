@@ -8,19 +8,31 @@ edition.workspace = true
 name = "autopush_common"
 
 [dependencies]
+actix-web.workspace = true
+actix-http.workspace = true
+backtrace.workspace = true
 base64.workspace = true
 cadence.workspace = true
 chrono.workspace = true
 config.workspace = true
 fernet.workspace = true
+futures.workspace = true
+futures-util.workspace = true
 hex.workspace = true
 httparse.workspace = true
+hyper.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
+reqwest.workspace = true
+rusoto_core.workspace = true
+rusoto_credential.workspace = true
+rusoto_dynamodb.workspace = true
+sentry-backtrace.workspace = true
 sentry.workspace = true
+sentry-core.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
 serde_dynamodb.workspace = true
@@ -32,18 +44,22 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
-smallvec.workspace = true
+tokio.workspace = true
+tokio-core.workspace = true
+# tokio-postgres.workspace = true
 thiserror.workspace = true
+tungstenite.workspace = true
 uuid.workspace = true
 url.workspace = true
 
-futures = "0.1.29" # 0.1.30 requires hyper 0.13+
+again = "0.1"
+async-trait = "0.1"
 futures-backoff = "0.1.0"
-hyper = "0.12.36" # 0.13+ requires too many changes
-mozsvc-common = "0.1.1"
-reqwest = "0.9.24"  # 0.10+ requires futures 0.3+
-rusoto_core = "0.42.0"  # 0.46+ requires futures 0.3+
-rusoto_credential = "0.42.0"  # 0.46+ requires futures 0.3+
-rusoto_dynamodb = "0.42.0"  # 0.46+ requires futures 0.3+
-tokio-core = "0.1.17"
-tungstenite = { version = "0.9.2", default-features = false } # 0.10+  requires hyper 0.13+
+mozsvc-common = "0.2"
+woothee = "0.13"
+mockall = "0.8.3"  # 0.9+ requires reworking tests
+
+[dev-dependencies]
+mockito = "0.31"
+tempfile = "3.2.0"
+tokio = { version = "0.2", features = ["macros"] }

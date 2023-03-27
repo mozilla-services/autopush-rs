@@ -1,0 +1,54 @@
+[package]
+name = "autoconnect"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix.workspace = true
+actix-cors.workspace = true
+actix-http.workspace = true
+actix-rt.workspace = true
+actix-test.workspace =  true
+actix-web.workspace = true
+#actix-web-actors.workspace = true
+actix-ws.workspace = true
+bytestring.workspace = true
+cadence.workspace = true
+config.workspace = true
+env_logger.workspace = true
+fernet.workspace = true
+futures.workspace = true
+futures-locks.workspace = true
+hex.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+mozsvc-common.workspace = true
+reqwest.workspace = true
+sentry.workspace = true
+sentry-actix.workspace = true
+serde.workspace = true
+serde_derive.workspace = true
+serde_json.workspace = true
+slog.workspace = true
+slog-async.workspace = true
+slog-envlogger.workspace = true
+slog-mozlog-json.workspace = true
+slog-scope.workspace = true
+slog-stdlog.workspace = true
+slog-term.workspace = true
+uuid.workspace = true
+
+autoconnect_registry.workspace = true
+autoconnect_settings.workspace = true
+autoconnect_web.workspace = true
+autoconnect_ws.workspace = true
+autopush_common.workspace = true
+
+docopt = "1.1"
+# for sentry middleware
+
+futures-util = { version = "0.3.5", default-features = false }
+sentry-core = { version = "0.29.1", default-features = false, features = ["client"] }

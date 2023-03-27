@@ -1,8 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
-use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
-use actix_web::web::Data;
-use actix_web::{FromRequest, HttpRequest};
+use crate::server::AppState;
+use actix_web::dev::Payload;
+use actix_web::{web::Data, FromRequest, HttpRequest};
 use fernet::MultiFernet;
 use futures::future;
 use uuid::Uuid;
@@ -28,18 +27,17 @@ pub enum MessageId {
 impl FromRequest for MessageId {
     type Error = ApiError;
     type Future = future::Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let message_id_param = req
             .match_info()
             .get("message_id")
             .expect("{message_id} must be part of the path");
-        let state: Data<ServerState> = Data::extract(req)
+        let app_state: Data<AppState> = Data::extract(req)
             .into_inner()
             .expect("No server state found");
 
-        future::ready(MessageId::decrypt(&state.fernet, message_id_param))
+        future::ready(MessageId::decrypt(&app_state.fernet, message_id_param))
     }
 }
 

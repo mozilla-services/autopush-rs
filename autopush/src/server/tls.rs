@@ -10,6 +10,8 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 use std::rc::Rc;
 
+use crate::MyFuture;
+
 use autopush_common::errors::*;
 use futures::future;
 use futures::{Future, Poll};
@@ -21,20 +23,25 @@ use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_openssl::{SslAcceptorExt, SslStream};
 
-use crate::server::{Server, ServerOptions};
+use crate::server::{AppState, Server};
 
 /// Creates an `SslAcceptor`, if needed, ready to accept TLS connections.
 ///
 /// This method is called early on when the server is created and the
 /// `SslAcceptor` type is stored globally in the `Server` structure, later used
 /// to process all accepted TCP sockets.
-pub fn configure(opts: &ServerOptions) -> Option<SslAcceptor> {
-    let key = match opts.ssl_key {
+pub fn configure(app_state: &AppState) -> Option<SslAcceptor> {
+    let key = match app_state.ssl_key {
         Some(ref key) => read(key),
         None => return None,
     };
     let key = PKey::private_key_from_pem(&key).expect("failed to create private key");
-    let cert = read(opts.ssl_cert.as_ref().expect("ssl_cert not configured"));
+    let cert = read(
+        app_state
+            .ssl_cert
+            .as_ref()
+            .expect("ssl_cert not configured"),
+    );
     let cert = X509::from_pem(&cert).expect("failed to create certificate");
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())
@@ -49,7 +56,7 @@ pub fn configure(opts: &ServerOptions) -> Option<SslAcceptor> {
         .check_private_key()
         .expect("private key check failed");
 
-    if let Some(dh_param) = opts.ssl_dh_param.as_ref() {
+    if let Some(dh_param) = app_state.ssl_dh_param.as_ref() {
         let dh_param = Dh::params_from_pem(&read(dh_param)).expect("failed to create dh");
         builder
             .set_tmp_dh(&dh_param)

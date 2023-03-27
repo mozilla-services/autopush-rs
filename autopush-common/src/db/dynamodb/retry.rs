@@ -13,6 +13,7 @@ macro_rules! retryable_error {
             move |err| match err {
                 RusotoError::Service($error::InternalServerError(_))
                 | RusotoError::Service($error::ProvisionedThroughputExceeded(_)) => {
+                    error!("retryable {} {:?}", $error_tag, &err);
                     metrics
                         .incr_with_tags("database.retry")
                         .with_tag("error", $error_tag)

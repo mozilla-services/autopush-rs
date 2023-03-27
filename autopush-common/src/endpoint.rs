@@ -1,15 +1,10 @@
 use crate::errors::{ApcErrorKind, Result};
-use base64::{
-    alphabet::{STANDARD, URL_SAFE},
-    engine::fast_portable::{FastPortable, NO_PAD},
-};
+use crate::util::b64_decode_url;
+
 use fernet::MultiFernet;
 use openssl::hash;
 use url::Url;
 use uuid::Uuid;
-
-pub const URL_SAFE_NO_PAD: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
-pub const STANDARD_NO_PAD: FastPortable = FastPortable::from(&STANDARD, NO_PAD);
 
 /// Create an v1 or v2 WebPush endpoint from the identifiers
 ///
@@ -28,7 +23,7 @@ pub fn make_endpoint(
     base.extend(chid.as_bytes());
 
     if let Some(k) = key {
-        let raw_key = base64::decode_engine(k.trim_end_matches('='), &URL_SAFE_NO_PAD)
+        let raw_key = b64_decode_url(k)
             .map_err(|_e| ApcErrorKind::PayloadError("Error encrypting payload".to_owned()))?;
         let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key).map_err(|_e| {
             ApcErrorKind::PayloadError("Error creating message digest for key".to_owned())

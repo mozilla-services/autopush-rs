@@ -1,18 +1,22 @@
 //! Health and Dockerflow routes
-
-use crate::db::error::DbResult;
-use crate::error::{ApiErrorKind, ApiResult};
-use crate::server::ServerState;
-use actix_web::web::{Data, Json};
-use actix_web::HttpResponse;
-use reqwest::StatusCode;
-use serde_json::json;
 use std::thread;
 
+use actix_web::{
+    web::{Data, Json},
+    HttpResponse,
+};
+use reqwest::StatusCode;
+use serde_json::json;
+
+use autopush_common::db::error::DbResult;
+
+use crate::error::{ApiErrorKind, ApiResult};
+use crate::server::AppState;
+
 /// Handle the `/health` and `/__heartbeat__` routes
-pub async fn health_route(state: Data<ServerState>) -> Json<serde_json::Value> {
-    let router_health = interpret_table_health(state.ddb.router_table_exists().await);
-    let message_health = interpret_table_health(state.ddb.message_table_exists().await);
+pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
+    let router_health = interpret_table_health(state.db.router_table_exists().await);
+    let message_health = interpret_table_health(state.db.message_table_exists().await);
 
     Json(json!({
         "status": "OK",
@@ -45,21 +49,21 @@ fn interpret_table_health(health: DbResult<bool>) -> serde_json::Value {
 }
 
 /// Handle the `/status` route
-pub async fn status_route() -> Json<serde_json::Value> {
-    Json(json!({
+pub async fn status_route() -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(json!({
         "status": "OK",
         "version": env!("CARGO_PKG_VERSION"),
-    }))
+    })))
 }
 
 /// Handle the `/__lbheartbeat__` route
-pub fn lb_heartbeat_route() -> HttpResponse {
+pub async fn lb_heartbeat_route() -> HttpResponse {
     // Used by the load balancers, just return OK.
     HttpResponse::Ok().finish()
 }
 
 /// Handle the `/__version__` route
-pub fn version_route() -> HttpResponse {
+pub async fn version_route() -> HttpResponse {
     // Return the contents of the version.json file created by circleci
     // and stored in the docker root
     HttpResponse::Ok()

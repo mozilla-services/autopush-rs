@@ -216,15 +216,13 @@ impl FcmClient {
             .token(OAUTH_SCOPES)
             .await
             .map_err(FcmError::OAuthToken)?;
+        let token = server_access_token.token().ok_or(FcmError::NoOAuthToken)?;
 
         // Make the request
         let response = self
             .http_client
             .post(self.endpoint.clone())
-            .header(
-                "Authorization",
-                format!("Bearer {}", server_access_token.as_str()),
-            )
+            .header("Authorization", format!("Bearer {}", token))
             .json(&message)
             .timeout(self.timeout)
             .send()

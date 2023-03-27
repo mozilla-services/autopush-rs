@@ -1,26 +1,27 @@
 #![warn(rust_2018_idioms)]
+#![forbid(unsafe_code)]
 
 #[macro_use]
 extern crate slog_scope;
 
 mod auth;
-mod db;
 mod error;
 mod extractors;
 mod headers;
-mod logging;
 mod metrics;
 mod middleware;
 mod routers;
 mod routes;
 mod server;
 mod settings;
-mod tags;
 
 use docopt::Docopt;
-use sentry::ClientInitGuard;
 use serde::Deserialize;
 use std::error::Error;
+
+use autopush_common::logging;
+
+pub type LocalError = crate::error::ApiError;
 
 const USAGE: &str = "
 Usage: autoendpoint [options]
@@ -45,8 +46,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
     debug!("Starting up...");
 
-    // Configure sentry error capture
-    let _sentry_guard = configure_sentry();
+    let _sentry = sentry::init(sentry::ClientOptions {
+        release: sentry::release_name!(),
+        attach_stacktrace: true,
+        ..Default::default()
+    });
 
     // Run server...
     let server = server::Server::with_settings(settings)
@@ -59,13 +63,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("Server closing");
     logging::reset_logging();
     Ok(())
-}
-
-fn configure_sentry() -> ClientInitGuard {
-    let options = sentry::ClientOptions {
-        release: sentry::release_name!(),
-        ..sentry::ClientOptions::default()
-    };
-
-    sentry::init(options)
 }

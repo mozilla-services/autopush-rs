@@ -1,22 +1,25 @@
 //! Error types and transformations
+// TODO: Collpase these into `autopush_common::error`
 
-use crate::db::error::DbError;
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
-    dev::{HttpResponseBuilder, ServiceResponse},
+    dev::ServiceResponse,
     error::{JsonPayloadError, PayloadError, ResponseError},
     http::StatusCode,
-    middleware::errhandlers::ErrorHandlerResponse,
+    middleware::ErrorHandlerResponse,
     HttpResponse, Result,
 };
-use backtrace::Backtrace;
+use backtrace::Backtrace; // Sentry uses the backtrace crate, not std::backtrace.
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
 use std::fmt::{self, Display};
 use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
+
+use autopush_common::db::error::DbError;
+use autopush_common::errors::{ApcError, ApcErrorKind};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -33,13 +36,19 @@ pub struct ApiError {
 
 impl ApiError {
     /// Render a 404 response
+    // wrapper during the move. this should switch to autopush-common's impl.
     pub fn render_404<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
-        // Replace the outbound error message with our own.
-        let resp = HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
-        Ok(ErrorHandlerResponse::Response(ServiceResponse::new(
-            res.request().clone(),
-            resp.into_body(),
-        )))
+        //TODO: remove unwrap here.
+        Ok(autopush_common::errors::render_404(res).unwrap())
+    }
+}
+
+impl From<ApiError> for ApcError {
+    fn from(err: ApiError) -> ApcError {
+        ApcError {
+            kind: err.kind.into(),
+            backtrace: Box::new(err.backtrace),
+        }
     }
 }
 
@@ -114,6 +123,9 @@ pub enum ApiErrorKind {
     #[error("Invalid Local Auth {0}")]
     InvalidLocalAuth(String),
 
+    #[error("General error {0}")]
+    General(String),
+
     #[error("ERROR:Success")]
     LogCheck,
 }
@@ -144,7 +156,8 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => StatusCode::IM_A_TEAPOT,
 
-            ApiErrorKind::Io(_)
+            ApiErrorKind::General(_)
+            | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::EndpointUrl(_)
@@ -153,8 +166,8 @@ impl ApiErrorKind {
     }
 
     /// Specify the label to use for metrics reporting.
-    pub fn metric_label(&self) -> &'static str {
-        match self {
+    pub fn metric_label(&self) -> Option<&'static str> {
+        Some(match self {
             ApiErrorKind::PayloadError(_) => "payload_error",
             ApiErrorKind::Router(_) => "router",
 
@@ -179,12 +192,13 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => "log_check",
 
+            ApiErrorKind::General(_) => "general",
             ApiErrorKind::Io(_) => "io",
             ApiErrorKind::Metrics(_) => "metrics",
             ApiErrorKind::Database(_) => "database",
             ApiErrorKind::EndpointUrl(_) => "endpoint_url",
             ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
-        }
+        })
     }
 
     /// Don't report all errors to sentry
@@ -219,7 +233,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::PayloadError(error)
                 if matches!(error.as_error(), Some(PayloadError::Overflow))
-                    || matches!(error.as_error(), Some(JsonPayloadError::Overflow)) =>
+                    || matches!(error.as_error(), Some(JsonPayloadError::Overflow { .. })) =>
             {
                 Some(104)
             }
@@ -240,7 +254,8 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => Some(999),
 
-            ApiErrorKind::Io(_)
+            ApiErrorKind::General(_)
+            | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
             | ApiErrorKind::PayloadError(_)
@@ -248,6 +263,57 @@ impl ApiErrorKind {
             | ApiErrorKind::RegistrationSecretHash(_)
             | ApiErrorKind::EndpointUrl(_)
             | ApiErrorKind::InvalidMessageId => None,
+        }
+    }
+}
+
+/// temporary bridge between errors.
+// TODO: move to ApcError
+impl From<ApiErrorKind> for ApcErrorKind {
+    fn from(kind: ApiErrorKind) -> ApcErrorKind {
+        match kind {
+            ApiErrorKind::General(e) => ApcErrorKind::GeneralError(e),
+            ApiErrorKind::Io(e) => ApcErrorKind::Io(e),
+            ApiErrorKind::Metrics(e) => ApcErrorKind::MetricError(e),
+            ApiErrorKind::Validation(e) => ApcErrorKind::EndpointError("Validation", e.to_string()),
+            ApiErrorKind::PayloadError(e) => ApcErrorKind::PayloadError(e.to_string()),
+            ApiErrorKind::VapidError(e) => ApcErrorKind::EndpointError("Vapid", e.to_string()),
+            ApiErrorKind::Router(e) => ApcErrorKind::EndpointError("Router", e.to_string()),
+            ApiErrorKind::Jwt(e) => ApcErrorKind::EndpointError("JWT", e.to_string()),
+            ApiErrorKind::TokenHashValidation(e) => ApcErrorKind::TokenHashValidation(e),
+            ApiErrorKind::RegistrationSecretHash(e) => ApcErrorKind::RegistrationSecretHash(e),
+            ApiErrorKind::EndpointUrl(e) => e.kind,
+            ApiErrorKind::Database(e) => ApcErrorKind::DatabaseError(e.to_string()),
+            ApiErrorKind::InvalidToken => {
+                ApcErrorKind::EndpointError("InvalidToken", "".to_string())
+            }
+            ApiErrorKind::NoUser => ApcErrorKind::EndpointError("NoUser", "".to_string()),
+            ApiErrorKind::NoSubscription => {
+                ApcErrorKind::EndpointError("NoSubscription", "".to_string())
+            }
+            ApiErrorKind::InvalidEncryption(e) => {
+                ApcErrorKind::EndpointError("InvalidEncryption", e)
+            }
+            ApiErrorKind::InvalidApiVersion => {
+                ApcErrorKind::EndpointError("InvalidApiVersion", "".to_string())
+            }
+            ApiErrorKind::NoTTL => ApcErrorKind::EndpointError("NoTTL", "".to_string()),
+            ApiErrorKind::InvalidRouterType => {
+                ApcErrorKind::EndpointError("InvalidRouterType", "".to_string())
+            }
+            ApiErrorKind::InvalidRouterToken => {
+                ApcErrorKind::EndpointError("InvalidRouterToken", "".to_string())
+            }
+            ApiErrorKind::InvalidMessageId => {
+                ApcErrorKind::EndpointError("InvalidMessageId", "".to_string())
+            }
+            ApiErrorKind::InvalidAuthentication => {
+                ApcErrorKind::EndpointError("InvalidAuthentication", "".to_string())
+            }
+            ApiErrorKind::InvalidLocalAuth(e) => ApcErrorKind::EndpointError("InvalidLocalAuth", e),
+            ApiErrorKind::LogCheck => {
+                ApcErrorKind::EndpointError("LogCheck", "testing 1,2,3".to_string())
+            }
         }
     }
 }
@@ -297,7 +363,7 @@ impl ResponseError for ApiError {
         let mut builder = HttpResponse::build(self.kind.status());
 
         if self.status_code() == 410 {
-            builder.set_header("Cache-Control", "max-age=86400");
+            builder.insert_header(("Cache-Control", "max-age=86400"));
         }
 
         builder.json(self)

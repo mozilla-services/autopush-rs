@@ -1,0 +1,16 @@
+[package]
+name = "autoconnect_registry"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+
+[dependencies]
+futures.workspace = true
+futures-locks.workspace = true
+slog.workspace = true
+slog-scope.workspace = true
+uuid.workspace = true
+
+autoconnect_ws.workspace = true
+autopush_common.workspace = true

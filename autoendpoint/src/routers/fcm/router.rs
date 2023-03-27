@@ -1,4 +1,5 @@
-use crate::db::client::DbClient;
+use autopush_common::db::client::DbClient;
+
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
@@ -24,7 +25,7 @@ pub struct FcmRouter {
     settings: FcmSettings,
     endpoint_url: Url,
     metrics: Arc<StatsdClient>,
-    ddb: Box<dyn DbClient>,
+    db: Box<dyn DbClient>,
     /// A map from application ID to an authenticated FCM client
     clients: HashMap<String, FcmClient>,
 }
@@ -36,7 +37,7 @@ impl FcmRouter {
         endpoint_url: Url,
         http: reqwest::Client,
         metrics: Arc<StatsdClient>,
-        ddb: Box<dyn DbClient>,
+        db: Box<dyn DbClient>,
     ) -> Result<Self, FcmError> {
         let server_credentials = settings.credentials()?;
         let clients = Self::create_clients(&settings, server_credentials, http.clone())
@@ -46,7 +47,7 @@ impl FcmRouter {
             settings,
             endpoint_url,
             metrics,
-            ddb,
+            db,
             clients,
         })
     }
@@ -184,7 +185,7 @@ impl Router for FcmRouter {
                     return Err(handle_error(
                         e,
                         &self.metrics,
-                        self.ddb.as_ref(),
+                        self.db.as_ref(),
                         "gcm",
                         &app_id,
                         notification.subscription.user.uaid,
@@ -199,7 +200,7 @@ impl Router for FcmRouter {
                     return Err(handle_error(
                         e,
                         &self.metrics,
-                        self.ddb.as_ref(),
+                        self.db.as_ref(),
                         "fcmv1",
                         &app_id,
                         notification.subscription.user.uaid,
@@ -224,8 +225,6 @@ impl Router for FcmRouter {
 
 #[cfg(test)]
 mod tests {
-    use crate::db::client::DbClient;
-    use crate::db::mock::MockDbClient;
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
     use crate::routers::common::tests::{make_notification, CHANNEL_ID};
@@ -238,6 +237,8 @@ mod tests {
     use crate::routers::fcm::settings::FcmSettings;
     use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
+    use autopush_common::db::client::DbClient;
+    use autopush_common::db::mock::MockDbClient;
     use std::sync::Arc;
 
     use cadence::StatsdClient;
@@ -251,7 +252,7 @@ mod tests {
     async fn make_router(
         fcm_credential: String,
         gcm_credential: String,
-        ddb: Box<dyn DbClient>,
+        db: Box<dyn DbClient>,
     ) -> FcmRouter {
         let url = &mockito::server_url();
         FcmRouter::new(
@@ -273,7 +274,7 @@ mod tests {
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
-            ddb,
+            db,
         )
         .await
         .unwrap()
@@ -307,8 +308,8 @@ mod tests {
     /// A notification with no data is sent to FCM
     #[tokio::test]
     async fn successful_routing_no_data() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(make_service_key(), "whatever".to_string(), ddb).await;
+        let db = MockDbClient::new().into_boxed_arc();
+        let router = make_router(make_service_key(), "whatever".to_string(), db).await;
         assert!(router.active());
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
@@ -345,8 +346,8 @@ mod tests {
         let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
         let registration_id = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         // let project_id = GCM_PROJECT_ID;
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(make_service_key(), auth_key.to_owned(), ddb).await;
+        let db = MockDbClient::new().into_boxed_arc();
+        let router = make_router(make_service_key(), auth_key.to_owned(), db).await;
         assert!(router.active());
         // body must match the composed body in `gcm_send` exactly (order, values, etc.)
         let body = serde_json::json!({
@@ -385,8 +386,8 @@ mod tests {
     /// A notification with data is sent to FCM
     #[tokio::test]
     async fn successful_routing_with_data() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(make_service_key(), "whatever".to_string(), ddb).await;
+        let db = MockDbClient::new().into_boxed_arc();
+        let router = make_router(make_service_key(), "whatever".to_string(), db).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
             .match_body(
@@ -426,8 +427,8 @@ mod tests {
     /// the FCM request is not sent.
     #[tokio::test]
     async fn missing_client() {
-        let ddb = MockDbClient::new().into_boxed_arc();
-        let router = make_router(make_service_key(), "whatever".to_string(), ddb).await;
+        let db = MockDbClient::new().into_boxed_arc();
+        let router = make_router(make_service_key(), "whatever".to_string(), db).await;
         let _token_mock = mock_token_endpoint();
         let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID).expect(0).create();
         let mut router_data = default_router_data();
@@ -454,8 +455,8 @@ mod tests {
     #[tokio::test]
     async fn no_fcm_user() {
         let notification = make_notification(default_router_data(), None, RouterType::FCM);
-        let mut ddb = MockDbClient::new();
-        ddb.expect_remove_user()
+        let mut db = MockDbClient::new();
+        db.expect_remove_user()
             .with(predicate::eq(notification.subscription.user.uaid))
             .times(1)
             .return_once(|_| Ok(()));
@@ -463,7 +464,7 @@ mod tests {
         let router = make_router(
             make_service_key(),
             "whatever".to_string(),
-            ddb.into_boxed_arc(),
+            db.into_boxed_arc(),
         )
         .await;
         let _token_mock = mock_token_endpoint();

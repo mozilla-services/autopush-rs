@@ -1,12 +1,15 @@
 //! Routers route notifications to user agents
 
-use crate::db::error::DbError;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::adm::error::AdmError;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
+
+use autopush_common::db::error::DbError;
+use autopush_common::errors::ApcErrorKind;
+
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use async_trait::async_trait;
@@ -62,7 +65,7 @@ impl From<RouterResponse> for HttpResponse {
         let mut builder = HttpResponse::build(router_response.status);
 
         for (key, value) in router_response.headers {
-            builder.set_header(key, value);
+            builder.insert_header((key, value));
         }
 
         builder.body(router_response.body.unwrap_or_default())
@@ -157,6 +160,35 @@ impl RouterError {
             RouterError::GCMAuthentication => Some(904),
 
             RouterError::Upstream { .. } => None,
+        }
+    }
+}
+
+impl From<RouterError> for ApcErrorKind {
+    fn from(err: RouterError) -> ApcErrorKind {
+        match err {
+            RouterError::Adm(e) => ApcErrorKind::EndpointError("Router:Adm", e.to_string()),
+            RouterError::Apns(e) => ApcErrorKind::EndpointError("Router:APNS", e.to_string()),
+            RouterError::Fcm(e) => ApcErrorKind::EndpointError("Router:FCM", e.to_string()),
+            RouterError::TooMuchData(e) => ApcErrorKind::EndpointError("TooMucData", e.to_string()),
+            RouterError::UserWasDeleted => {
+                ApcErrorKind::EndpointError("UserWasDeleted", err.to_string())
+            }
+            RouterError::NotFound => ApcErrorKind::EndpointError("NotFound", err.to_string()),
+            RouterError::SaveDb(e) => ApcErrorKind::EndpointError("SaveDb", e.to_string()),
+            RouterError::Authentication => {
+                ApcErrorKind::EndpointError("Authentication", err.to_string())
+            }
+            RouterError::Connect(e) => ApcErrorKind::EndpointError("Connect", e.to_string()),
+            RouterError::RequestTimeout => {
+                ApcErrorKind::EndpointError("RequestTimeout", err.to_string())
+            }
+            RouterError::GCMAuthentication => {
+                ApcErrorKind::EndpointError("GCMAuthentication", err.to_string())
+            }
+            RouterError::Upstream { .. } => {
+                ApcErrorKind::EndpointError("Upstream", err.to_string())
+            }
         }
     }
 }

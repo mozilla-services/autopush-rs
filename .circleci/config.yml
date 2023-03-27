@@ -194,6 +194,7 @@ jobs:
 
 workflows:
   version: 2
+
   build-test-deploy:
     jobs:
       - audit:
@@ -222,6 +223,7 @@ workflows:
             tags:
               only: /.*/
 
+      # Comment out the following two sections for local CircleCI testing.
       - deploy:
           name: deploy-autopush
           image: autopush:build

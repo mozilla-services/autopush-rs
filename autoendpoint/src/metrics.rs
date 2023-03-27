@@ -1,17 +1,20 @@
+// TODO: Consolidate with autopush_common::metrics
+
 use std::net::UdpSocket;
 use std::sync::Arc;
 use std::time::Instant;
 
-use actix_web::{web::Data, FromRequest, HttpRequest};
+use actix_web::{web::Data, FromRequest, HttpMessage, HttpRequest};
 use cadence::{
     BufferedUdpMetricSink, CountedExt, Metric, MetricError, NopMetricSink, QueuingMetricSink,
     StatsdClient, Timed,
 };
 
-use crate::server::ServerState;
+use crate::error::ApiError;
+use crate::server::AppState;
 use crate::settings::Settings;
-use crate::tags::Tags;
-use actix_web::dev::{Payload, PayloadStream};
+use actix_web::dev::Payload;
+use autopush_common::tags::Tags;
 use futures::future;
 
 #[derive(Debug, Clone)]
@@ -63,11 +66,10 @@ impl Drop for Metrics {
 }
 
 impl FromRequest for Metrics {
-    type Error = ();
+    type Error = ApiError;
     type Future = future::Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         future::ok(Metrics::from(req))
     }
 }
@@ -95,8 +97,8 @@ impl From<StatsdClient> for Metrics {
     }
 }
 
-impl From<&actix_web::web::Data<ServerState>> for Metrics {
-    fn from(state: &actix_web::web::Data<ServerState>) -> Self {
+impl From<&actix_web::web::Data<AppState>> for Metrics {
+    fn from(state: &actix_web::web::Data<AppState>) -> Self {
         Metrics {
             client: Some(state.metrics.clone()),
             tags: None,
@@ -165,24 +167,24 @@ impl Metrics {
 }
 
 pub fn metrics_from_req(req: &HttpRequest) -> Arc<StatsdClient> {
-    req.app_data::<Data<ServerState>>()
+    req.app_data::<Data<AppState>>()
         .expect("Could not get state in metrics_from_req")
         .metrics
         .clone()
 }
 
 /// Create a cadence StatsdClient from the given options
-pub fn metrics_from_opts(opts: &Settings) -> Result<StatsdClient, MetricError> {
-    let builder = if let Some(statsd_host) = opts.statsd_host.as_ref() {
+pub fn metrics_from_settings(settings: &Settings) -> Result<StatsdClient, MetricError> {
+    let builder = if let Some(statsd_host) = settings.statsd_host.as_ref() {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.set_nonblocking(true)?;
 
-        let host = (statsd_host.as_str(), opts.statsd_port);
+        let host = (statsd_host.as_str(), settings.statsd_port);
         let udp_sink = BufferedUdpMetricSink::from(host, socket)?;
         let sink = QueuingMetricSink::from(udp_sink);
-        StatsdClient::builder(opts.statsd_label.as_ref(), sink)
+        StatsdClient::builder(settings.statsd_label.as_ref(), sink)
     } else {
-        StatsdClient::builder(opts.statsd_label.as_ref(), NopMetricSink)
+        StatsdClient::builder(settings.statsd_label.as_ref(), NopMetricSink)
     };
     Ok(builder
         .with_error_handler(|err| {
