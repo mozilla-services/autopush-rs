@@ -1,7 +1,3 @@
-// move to own crate to avoid cyclic crate errors.
-#[macro_use]
-extern crate slog_scope;
-
 use std::collections::HashMap;
 
 use futures_locks::RwLock;

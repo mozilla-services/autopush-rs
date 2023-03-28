@@ -1,0 +1,20 @@
+[package]
+name = "autoconnect_common"
+authors.workspace = true
+edition.workspace = true
+version.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+futures-locks.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_derive.workspace = true
+serde_json.workspace = true
+slog.workspace = true
+slog-scope.workspace = true
+uuid.workspace = true
+
+
+autopush_common.workspace = true
