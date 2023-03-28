@@ -1,8 +1,10 @@
 //! Error types and transformations
 // TODO: Collpase these into `autopush_common::error`
 
-use crate::headers::vapid::VapidError;
+use crate::routers::adm::error::AdmError;
+use crate::routers::apns::error::ApnsError;
 use crate::routers::RouterError;
+use crate::{headers::vapid::VapidError, routers::fcm::error::FcmError};
 use actix_web::{
     dev::ServiceResponse,
     error::{JsonPayloadError, PayloadError, ResponseError},
@@ -26,6 +28,8 @@ pub type ApiResult<T> = Result<T, ApiError>;
 
 /// A link for more info on the returned error
 const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#error-codes";
+
+pub(crate) const TOPIC_LENGTH_ERR: &str = "Topic must be no greater than 32 characters";
 
 /// The main error type.
 #[derive(Debug)]
@@ -169,6 +173,11 @@ impl ApiErrorKind {
     pub fn metric_label(&self) -> Option<&'static str> {
         Some(match self {
             ApiErrorKind::PayloadError(_) => "payload_error",
+            ApiErrorKind::Router(RouterError::Fcm(FcmError::InvalidAppId(_)))
+            | ApiErrorKind::Router(RouterError::Fcm(FcmError::NoAppId)) => "fcm_badappid",
+            ApiErrorKind::Router(RouterError::Adm(AdmError::InvalidProfile)) => "adm_profile",
+            ApiErrorKind::Router(RouterError::Apns(ApnsError::Unregistered)) => "apns_unregistered",
+            ApiErrorKind::Router(RouterError::Apns(ApnsError::SizeLimit(_))) => "apns_oversized",
             ApiErrorKind::Router(_) => "router",
 
             ApiErrorKind::Validation(_) => "validation",
@@ -203,21 +212,32 @@ impl ApiErrorKind {
 
     /// Don't report all errors to sentry
     pub fn is_sentry_event(&self) -> bool {
-        !matches!(
-            self,
-            // Ignore common webpush errors
-            ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
-            // Ignore common VAPID erros
-            ApiErrorKind::VapidError(_)
-            | ApiErrorKind::Jwt(_)
-            | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::InvalidAuthentication
-            | ApiErrorKind::InvalidLocalAuth(_) |
-            // Ignore missing or invalid user errors
-            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
-            // Ignore overflow errors
-            ApiErrorKind::Router(RouterError::TooMuchData(_)),
-        )
+        match self {
+            // ignore selected validation errors.
+            ApiErrorKind::Validation(msg) => !msg.to_string().contains(TOPIC_LENGTH_ERR),
+            _ => !matches!(
+                self,
+                // Ignore common webpush errors
+                ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
+                // Ignore common VAPID erros
+                ApiErrorKind::VapidError(_)
+                | ApiErrorKind::Jwt(_)
+                | ApiErrorKind::TokenHashValidation(_)
+                | ApiErrorKind::InvalidAuthentication
+                | ApiErrorKind::InvalidLocalAuth(_) |
+                // Ignore missing or invalid user errors
+                ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
+                // Ignore overflow errors
+                ApiErrorKind::Router(RouterError::TooMuchData(_)) |
+                // Ignore oversized payload.
+                ApiErrorKind::PayloadError(_) |
+                ApiErrorKind::Router(RouterError::Apns(ApnsError::SizeLimit(_))) |
+                // Ignore unregistered clients.
+                ApiErrorKind::Router(RouterError::Fcm(FcmError::NoAppId)) |
+                ApiErrorKind::Router(RouterError::Fcm(FcmError::InvalidAppId(_))) |
+                ApiErrorKind::Router(RouterError::Adm(AdmError::InvalidProfile)),
+            ),
+        }
     }
 
     /// Get the associated error number
