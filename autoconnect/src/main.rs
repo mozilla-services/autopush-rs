@@ -44,7 +44,6 @@ struct Args {
 #[actix_web::main]
 async fn main() -> Result<()> {
     env_logger::init();
-
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
@@ -58,16 +57,9 @@ async fn main() -> Result<()> {
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
 
-    //TODO: Eventually this will match between the various storage engines that
-    // we support. For now, it's just the one, DynamoDB.
     // Perform any app global storage initialization.
-    match autopush_common::db::StorageType::from_dsn(&settings.db_dsn) {
-        autopush_common::db::StorageType::DynamoDb => {
-            env::set_var("AWS_LOCAL_DYNAMODB", settings.db_dsn.clone().unwrap())
-        }
-        autopush_common::db::StorageType::INVALID => {
-            panic!("Invalid Storage type. Check DB_DSN.");
-        }
+    if autopush_common::db::StorageType::DynamoDb == autopush_common::db::StorageType::from_dsn(&settings.db_dsn) {
+        env::set_var("AWS_LOCAL_DYNAMODB", settings.db_dsn.clone().unwrap())
     }
 
     // Sentry requires the environment variable "SENTRY_DSN".

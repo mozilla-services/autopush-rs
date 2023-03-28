@@ -78,6 +78,7 @@ jobs:
       - run:
           name: Set up Rust
           command: |
+            sudo apt install cmake -y
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV

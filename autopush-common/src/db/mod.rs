@@ -22,11 +22,14 @@ use uuid::Uuid;
 use crate::db::util::generate_last_connect;
 
 pub mod client;
+// #[feat(dynamodb)]
 pub mod dynamodb;
 pub mod error;
 pub mod models;
-//pub mod bigtable;
-//pub mod postgres;
+// #[feat(bigtable)]
+pub mod bigtable;
+// #[feat(postgres)]
+// pub mod postgres;
 mod util;
 
 // used by integration testing
@@ -45,7 +48,9 @@ pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 #[derive(Eq, PartialEq)]
 pub enum StorageType {
     INVALID,
+    BigTable,
     DynamoDb,
+    // Postgres,
 }
 
 impl StorageType {
@@ -62,6 +67,10 @@ impl StorageType {
         if dsn.starts_with("http") {
             trace!("Using DynamoDb");
             return Self::DynamoDb;
+        }
+        if dsn.starts_with("grpc") {
+            trace!("Using BigTable");
+            return Self::BigTable;
         }
         Self::INVALID
     }

@@ -7,7 +7,12 @@ use fernet::{Fernet, MultiFernet};
 
 use crate::{Settings, ENV_PREFIX};
 use autoconnect_registry::ClientRegistry;
-use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
+use autopush_common::db::{
+    bigtable::BigTableClientImpl,
+    client::DbClient,
+    dynamodb::DdbClientImpl,
+    DbSettings,
+    StorageType};
 use autopush_common::{
     errors::{ApcErrorKind, Result},
     metrics::new_metrics,
@@ -97,9 +102,10 @@ impl AppState {
             dsn: settings.db_dsn.clone(),
             db_settings: settings.db_settings.clone(),
         };
-        let db_client = match StorageType::from_dsn(&db_settings.dsn) {
+        let db_client:Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
-            StorageType::INVALID => panic!("Invalid Storage type. Check {}_DB_DSN.", ENV_PREFIX),
+            StorageType::BigTable => Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?),
+            _ => panic!("Invalid Storage type. Check {}_DB_DSN.", ENV_PREFIX),
         };
         Ok(Self {
             port: settings.port,

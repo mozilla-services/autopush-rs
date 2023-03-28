@@ -53,7 +53,7 @@ hyper = "0.14"
 lazy_static = "1.4"
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
 mozsvc-common = "0.2"
-openssl = "0.10"
+openssl = {version="0.10" } # adding `vendored` to solve post 1.68.2 compile issue
 rand = "0.8"
 regex = "1.4"
 reqwest = {version="0.11", features = ["json"] }
