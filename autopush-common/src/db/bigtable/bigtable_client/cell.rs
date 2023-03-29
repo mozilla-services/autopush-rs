@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::SystemTime;
 
 use super::{merge::PartialCell, FamilyId, Qualifier};
@@ -48,8 +47,10 @@ impl From<PartialCell> for Cell {
     }
 }
 
+/*
 /// Returns a list of filled cells for the given family.
 /// NOTE: Timestamp, here, means whatever the family GC rules dictate.
+/// XXX: this may be useful for testing, may remove later.
 pub fn fill_cells(
     family: &str,
     timestamp: SystemTime,
@@ -68,3 +69,4 @@ pub fn fill_cells(
     }
     cells
 }
+*/
