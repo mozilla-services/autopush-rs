@@ -15,7 +15,7 @@ use crate::{Settings, ENV_PREFIX};
 #[derive(Clone)]
 pub struct AppState {
     /// Handle to the data storage object
-    pub db_client: Box<dyn DbClient>,
+    pub db: Box<dyn DbClient>,
     pub metrics: Arc<StatsdClient>,
 
     /// Encryption object for the endpoint URL
@@ -59,7 +59,7 @@ impl AppState {
             dsn: settings.db_dsn.clone(),
             db_settings: settings.db_settings.clone(),
         };
-        let db_client = match StorageType::from_dsn(&db_settings.dsn) {
+        let db = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
             StorageType::INVALID => panic!("Invalid Storage type. Check {}_DB_DSN.", ENV_PREFIX),
         };
@@ -68,7 +68,7 @@ impl AppState {
         let endpoint_url = settings.endpoint_url();
 
         Ok(Self {
-            db_client,
+            db,
             metrics,
             fernet,
             registry: Arc::new(ClientRegistry::default()),

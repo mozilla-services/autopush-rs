@@ -99,7 +99,7 @@ impl Client {
     pub async fn ws_handler(req: HttpRequest, body: Payload) -> Result<HttpResponse> {
         let state = req.app_data::<AppState>().unwrap().clone();
         let client_metrics = state.metrics.clone();
-        let db_client = state.db_client.clone();
+        let db_client = state.db.clone();
         let clients = req.app_data::<ClientChannels>().unwrap().clone();
         let ua_string = if let Some(header) = req.headers().get(actix_web::http::header::USER_AGENT)
         {
