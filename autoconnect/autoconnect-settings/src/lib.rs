@@ -1,4 +1,4 @@
-pub mod options;
+mod app_state;
 
 extern crate slog;
 #[macro_use]
@@ -11,6 +11,8 @@ use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
+
+pub use app_state::AppState;
 
 pub const ENV_PREFIX: &str = "autoconnect";
 

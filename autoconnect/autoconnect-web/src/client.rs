@@ -16,7 +16,7 @@ use autoconnect_common::{
     protocol::{ClientAck, ClientMessage, ServerMessage},
     registry::RegisteredClient,
 };
-use autoconnect_settings::options::AppState;
+use autoconnect_settings::AppState;
 use autopush_common::db::{self, User};
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::notification::Notification;
