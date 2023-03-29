@@ -5,13 +5,12 @@ extern crate slog;
 extern crate slog_scope;
 extern crate serde_derive;
 
-use std::io;
-use std::net::ToSocketAddrs;
+use std::{io, net::ToSocketAddrs, time::Duration};
 
 use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
 use lazy_static::lazy_static;
-use serde_derive::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 pub const ENV_PREFIX: &str = "autoconnect";
 
@@ -52,20 +51,20 @@ pub struct Settings {
     pub router_port: u16,
     /// The DNS name to use for internal routing
     pub router_hostname: Option<String>,
-    /// TLS key for internal router connections (may be empty if ELB is used)
-    pub router_ssl_key: Option<String>,
-    /// TLS certificate for internal router connections (may be empty if ELB is used)
-    pub router_ssl_cert: Option<String>,
-    /// TLS DiffieHellman parameter for internal router connections
-    pub router_ssl_dh_param: Option<String>,
     /// The server based ping interval (also used for Broadcast sends)
-    pub auto_ping_interval: f64,
+    #[serde(deserialize_with = "deserialize_f64_to_duration")]
+    pub auto_ping_interval: Duration,
     /// How long to wait for a response Pong before being timed out and connection drop
-    pub auto_ping_timeout: f64,
+    #[serde(deserialize_with = "deserialize_f64_to_duration")]
+    pub auto_ping_timeout: Duration,
     /// Max number of websocket connections to allow
     pub max_connections: u32,
+    /// How long to wait for the initial connection handshake.
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub open_handshake_timeout: Duration,
     /// How long to wait while closing a connection for the response handshake.
-    pub close_handshake_timeout: u32,
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub close_handshake_timeout: Duration,
     /// The URL scheme (http/https) for the endpoint URL
     pub endpoint_scheme: String,
     /// The host url for the endpoint URL (differs from `hostname` and `resolve_hostname`)
@@ -89,7 +88,8 @@ pub struct Settings {
     /// Broadcast token for authentication
     pub megaphone_api_token: Option<String>,
     /// How often to poll the server for new data
-    pub megaphone_poll_interval: u32,
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub megaphone_poll_interval: Duration,
     /// Use human readable (simplified, non-JSON)
     pub human_logs: bool,
     /// Maximum allowed number of backlogged messages. Exceeding this number will
@@ -109,13 +109,11 @@ impl Default for Settings {
             resolve_hostname: false,
             router_port: 8081,
             router_hostname: None,
-            router_ssl_key: None,
-            router_ssl_cert: None,
-            router_ssl_dh_param: None,
-            auto_ping_interval: 300.0,
-            auto_ping_timeout: 4.0,
+            auto_ping_interval: Duration::from_secs(300),
+            auto_ping_timeout: Duration::from_secs(4),
             max_connections: 0,
-            close_handshake_timeout: 0,
+            open_handshake_timeout: Duration::from_secs(5),
+            close_handshake_timeout: Duration::from_secs(0),
             endpoint_scheme: "http".to_owned(),
             endpoint_hostname: "localhost".to_owned(),
             endpoint_port: 8082,
@@ -127,7 +125,7 @@ impl Default for Settings {
             db_settings: "".to_owned(),
             megaphone_api_url: None,
             megaphone_api_token: None,
-            megaphone_poll_interval: 30,
+            megaphone_poll_interval: Duration::from_secs(30),
             human_logs: false,
             msg_limit: 100,
             max_pending_notification_queue: 10,
@@ -149,15 +147,13 @@ impl Settings {
         s = s.add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
 
         let built = s.build()?;
-        built.try_deserialize::<Settings>()
+        let s = built.try_deserialize::<Settings>()?;
+        s.validate()?;
+        Ok(s)
     }
 
     pub fn router_url(&self) -> String {
-        let router_scheme = if self.router_ssl_key.is_none() {
-            "http"
-        } else {
-            "https"
-        };
+        let router_scheme = "http";
         let url = format!(
             "{}://{}",
             router_scheme,
@@ -195,6 +191,41 @@ impl Settings {
             HOSTNAME.clone()
         }
     }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let non_zero = |val: Duration, name| {
+            if val.is_zero() {
+                return Err(ConfigError::Message(format!(
+                    "Invalid {}_{}: cannot be 0",
+                    ENV_PREFIX, name
+                )));
+            }
+            Ok(())
+        };
+        non_zero(self.megaphone_poll_interval, "MEGAPHONE_POLL_INTERVAL")?;
+        non_zero(self.auto_ping_interval, "AUTO_PING_INTERVAL")?;
+        non_zero(self.auto_ping_timeout, "AUTO_PING_TIMEOUT")?;
+        Ok(())
+    }
+}
+
+fn deserialize_u32_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let seconds: u32 = Deserialize::deserialize(deserializer)?;
+    Ok(Duration::from_secs(seconds.into()))
+}
+
+fn deserialize_f64_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let seconds: f64 = Deserialize::deserialize(deserializer)?;
+    Ok(Duration::new(
+        seconds as u64,
+        (seconds.fract() * 1_000_000_000.0) as u32,
+    ))
 }
 
 #[cfg(test)]
@@ -215,15 +246,6 @@ mod tests {
         settings.router_port = 8080;
         let url = settings.router_url();
         assert_eq!("http://testname:8080", url);
-
-        settings.router_port = 443;
-        settings.router_ssl_key = Some("key".to_string());
-        let url = settings.router_url();
-        assert_eq!("https://testname", url);
-
-        settings.router_port = 8080;
-        let url = settings.router_url();
-        assert_eq!("https://testname:8080", url);
     }
 
     #[test]
@@ -272,6 +294,7 @@ mod tests {
             &settings.crypto_key,
             "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]"
         );
+        assert_eq!(settings.open_handshake_timeout, Duration::from_secs(5));
 
         // reset (just in case)
         if let Ok(p) = v1 {
