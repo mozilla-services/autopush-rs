@@ -6,7 +6,7 @@ use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};
 
 use crate::{Settings, ENV_PREFIX};
-use autoconnect_registry::ClientRegistry;
+use autoconnect_common::registry::ClientRegistry;
 use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
 use autopush_common::{
     errors::{ApcErrorKind, Result},
