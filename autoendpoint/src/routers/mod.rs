@@ -169,8 +169,27 @@ impl From<RouterError> for ApcErrorKind {
         match err {
             RouterError::Adm(e) => ApcErrorKind::EndpointError("Router:Adm", e.to_string()),
             RouterError::Apns(e) => ApcErrorKind::EndpointError("Router:APNS", e.to_string()),
-            RouterError::Fcm(e) => ApcErrorKind::EndpointError("Router:FCM", e.to_string()),
-            RouterError::TooMuchData(e) => ApcErrorKind::EndpointError("TooMucData", e.to_string()),
+            RouterError::Fcm(e) => {
+                match e {
+                    // The following are special, non-actionable user responses.
+                    // There was no Application ID for this user. We cannot deliver the message.
+                    FcmError::NoAppId => {
+                        ApcErrorKind::UpstreamError("Router:FCM".to_owned(), "no_appid".to_owned())
+                    }
+                    // There's no registration token for this user. We cannot deliver the message.
+                    FcmError::NoRegistrationToken => ApcErrorKind::UpstreamError(
+                        "Router:FCM".to_owned(),
+                        "no_registration".to_owned(),
+                    ),
+                    // The AppId originally provided to us by the client is invalid. FCM rejected this message.
+                    FcmError::InvalidAppId(_) => ApcErrorKind::UpstreamError(
+                        "Router:FCM".to_owned(),
+                        "invalid_appid".to_owned(),
+                    ),
+                    _ => ApcErrorKind::EndpointError("Router:FCM", e.to_string()),
+                }
+            }
+            RouterError::TooMuchData(e) => ApcErrorKind::PayloadError(e.to_string()),
             RouterError::UserWasDeleted => {
                 ApcErrorKind::EndpointError("UserWasDeleted", err.to_string())
             }
@@ -186,8 +205,9 @@ impl From<RouterError> for ApcErrorKind {
             RouterError::GCMAuthentication => {
                 ApcErrorKind::EndpointError("GCMAuthentication", err.to_string())
             }
-            RouterError::Upstream { .. } => {
-                ApcErrorKind::EndpointError("Upstream", err.to_string())
+            // Handle "upstream" type errors separately so we can properly filter them later.
+            RouterError::Upstream { status, message } => {
+                ApcErrorKind::UpstreamError(status, message)
             }
         }
     }
