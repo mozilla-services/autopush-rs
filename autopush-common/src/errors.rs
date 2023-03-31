@@ -153,11 +153,6 @@ pub enum ApcErrorKind {
     #[error("Database Error: {0}")]
     DatabaseError(String),
 
-    #[error("Endpoint Error: [{0}] {1}")]
-    EndpointError(&'static str, String),
-    #[error("Upstream Error: [{0}] {1}")]
-    UpstreamError(String, String),
-
     // TODO: option this.
     #[error("Rusoto Error: {0}")]
     RusotoError(String),
@@ -179,7 +174,7 @@ impl ApcErrorKind {
             // TODO: Add additional messages to ignore here.
             Self::PongTimeout | Self::ExcessivePing => false,
             // Non-actionable Endpoint errors
-            Self::PayloadError(_) | Self::UpstreamError(_, _) => false,
+            Self::PayloadError(_) => false,
             _ => true,
         }
     }
@@ -190,16 +185,6 @@ impl ApcErrorKind {
             Self::PongTimeout => "pong_timeout",
             Self::ExcessivePing => "excessive_ping",
             Self::PayloadError(_) => "payload",
-            Self::UpstreamError(_status, msg) => match msg.as_ref() {
-                "Android message is too big" => "too_big",
-                "The registration token is not a valid FCM registration token" => {
-                    "bad_registration"
-                }
-                "Unexpected error: InvalidParameters: InvalidParameters" => "invalid_parms",
-                "Unexpected error: MismatchSenderId" => "mismatch_senderid",
-                "no_appid" | "no_registration" | "invalid_appid" => msg,
-                _ => "upstream",
-            },
             _ => "",
         };
         if !resp.is_empty() {

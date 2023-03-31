@@ -106,7 +106,6 @@ pub async fn handle_error(
             }
         }
         RouterError::Upstream { .. } => {
-            // {status, message}
             warn!("{}", error.to_string());
             incr_error_metric(
                 metrics,

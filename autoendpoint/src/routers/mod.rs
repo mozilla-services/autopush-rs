@@ -8,7 +8,6 @@ use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
 
 use autopush_common::db::error::DbError;
-use autopush_common::errors::ApcErrorKind;
 
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
@@ -162,53 +161,37 @@ impl RouterError {
             RouterError::Upstream { .. } => None,
         }
     }
-}
 
-impl From<RouterError> for ApcErrorKind {
-    fn from(err: RouterError) -> ApcErrorKind {
-        match err {
-            RouterError::Adm(e) => ApcErrorKind::EndpointError("Router:Adm", e.to_string()),
-            RouterError::Apns(e) => ApcErrorKind::EndpointError("Router:APNS", e.to_string()),
-            RouterError::Fcm(e) => {
-                match e {
-                    // The following are special, non-actionable user responses.
-                    // There was no Application ID for this user. We cannot deliver the message.
-                    FcmError::NoAppId => {
-                        ApcErrorKind::UpstreamError("Router:FCM".to_owned(), "no_appid".to_owned())
-                    }
-                    // There's no registration token for this user. We cannot deliver the message.
-                    FcmError::NoRegistrationToken => ApcErrorKind::UpstreamError(
-                        "Router:FCM".to_owned(),
-                        "no_registration".to_owned(),
-                    ),
-                    // The AppId originally provided to us by the client is invalid. FCM rejected this message.
-                    FcmError::InvalidAppId(_) => ApcErrorKind::UpstreamError(
-                        "Router:FCM".to_owned(),
-                        "invalid_appid".to_owned(),
-                    ),
-                    _ => ApcErrorKind::EndpointError("Router:FCM", e.to_string()),
-                }
-            }
-            RouterError::TooMuchData(e) => ApcErrorKind::PayloadError(e.to_string()),
-            RouterError::UserWasDeleted => {
-                ApcErrorKind::EndpointError("UserWasDeleted", err.to_string())
-            }
-            RouterError::NotFound => ApcErrorKind::EndpointError("NotFound", err.to_string()),
-            RouterError::SaveDb(e) => ApcErrorKind::EndpointError("SaveDb", e.to_string()),
-            RouterError::Authentication => {
-                ApcErrorKind::EndpointError("Authentication", err.to_string())
-            }
-            RouterError::Connect(e) => ApcErrorKind::EndpointError("Connect", e.to_string()),
-            RouterError::RequestTimeout => {
-                ApcErrorKind::EndpointError("RequestTimeout", err.to_string())
-            }
-            RouterError::GCMAuthentication => {
-                ApcErrorKind::EndpointError("GCMAuthentication", err.to_string())
-            }
-            // Handle "upstream" type errors separately so we can properly filter them later.
-            RouterError::Upstream { status, message } => {
-                ApcErrorKind::UpstreamError(status, message)
-            }
+    pub fn metric_label(&self) -> Option<&'static str> {
+        let err = match self {
+            RouterError::Fcm(e) => match e {
+                FcmError::InvalidAppId(_) | FcmError::NoAppId => "fcm_badappid",
+                _ => "",
+            },
+            RouterError::Adm(e) => match e {
+                AdmError::NoProfile | AdmError::InvalidProfile => "adm_profile",
+                _ => "",
+            },
+            RouterError::Apns(e) => match e {
+                ApnsError::Unregistered => "apns_unregistered",
+                ApnsError::SizeLimit(_) => "apns_oversized",
+                _ => "",
+            },
+            _ => "",
+        };
+        if !err.is_empty() {
+            return Some(err);
+        }
+        None
+    }
+
+    pub fn is_sentry_event(&self) -> bool {
+        match self {
+            RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
+            RouterError::Apns(ApnsError::SizeLimit(_)) => false,
+            RouterError::Fcm(e) => !matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId),
+            RouterError::TooMuchData(_) => false,
+            _ => true,
         }
     }
 }
