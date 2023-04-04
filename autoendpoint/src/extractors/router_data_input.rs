@@ -20,7 +20,6 @@ pub struct RouterDataInput {
     #[serde(rename = "channelID")]
     pub channel_id: Option<Uuid>,
     pub key: Option<String>,
-    pub aps: Option<serde_json::Value>,
 }
 
 impl FromRequest for RouterDataInput {

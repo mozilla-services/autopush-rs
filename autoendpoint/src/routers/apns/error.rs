@@ -21,6 +21,9 @@ pub enum ApnsError {
     #[error("APNS error, {0}")]
     ApnsUpstream(#[source] a2::Error),
 
+    #[error("APNS config, {0}:{1}")]
+    Config(String, String),
+
     #[error("No device token found for user")]
     NoDeviceToken,
 
@@ -49,9 +52,10 @@ impl ApnsError {
                 StatusCode::GONE
             }
 
-            ApnsError::ChannelSettingsDecode(_) | ApnsError::Io(_) | ApnsError::ApnsClient(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            ApnsError::ChannelSettingsDecode(_)
+            | ApnsError::Io(_)
+            | ApnsError::ApnsClient(_)
+            | ApnsError::Config(..) => StatusCode::INTERNAL_SERVER_ERROR,
 
             ApnsError::ApnsUpstream(_) => StatusCode::BAD_GATEWAY,
         }
@@ -70,6 +74,7 @@ impl ApnsError {
             | ApnsError::ApnsUpstream(_)
             | ApnsError::InvalidReleaseChannel
             | ApnsError::InvalidApsData
+            | ApnsError::Config(..)
             | ApnsError::SizeLimit(_) => None,
         }
     }

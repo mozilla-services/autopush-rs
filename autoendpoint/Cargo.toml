@@ -51,7 +51,9 @@ uuid.workspace = true
 # - https://github.com/pimeys/a2/pull/47
 # The `autoendpoint` branch merges these three PRs together.
 # The version of a2 at the time of the fork is v0.5.3.
-a2 = { git = "https://github.com/mozilla-services/a2.git", branch = "autoendpoint" }
+#a2 = { git = "https://github.com/mozilla-services/a2.git", branch = "autoendpoint" }
+a2 = "0.7"
+bytebuffer = "2.1"
 # several of these libraries are pinned due to https://github.com/mozilla-services/autopush-rs/issues/249
 again = { version = "0.1.2", default-features = false, features = ["log", "rand"] }
 async-trait = "0.1"

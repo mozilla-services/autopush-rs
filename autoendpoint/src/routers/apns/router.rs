@@ -9,15 +9,17 @@ use crate::routers::common::{
     build_message_data, incr_error_metric, incr_success_metrics, message_size_check,
 };
 use crate::routers::{Router, RouterError, RouterResponse};
-use a2::request::notification::LocalizedAlert;
-use a2::request::payload::{APSAlert, Payload, APS};
-use a2::{self, Endpoint, NotificationOptions, Priority, Response};
+use a2::request::payload::Payload;
+use a2::{
+    self, DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
+    Response,
+};
 use actix_web::http::StatusCode;
 use async_trait::async_trait;
+use bytebuffer::ByteBuffer;
 use cadence::StatsdClient;
 use futures::{StreamExt, TryStreamExt};
-use serde::Deserialize;
-use serde_json::{Number, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
@@ -86,19 +88,20 @@ impl ApnsRouter {
         } else {
             Endpoint::Production
         };
-        let cert = if !settings.cert.starts_with('-') {
+        let mut cert = ByteBuffer::from_vec(if !settings.cert.starts_with('-') {
             tokio::fs::read(settings.cert).await?
         } else {
             settings.cert.as_bytes().to_vec()
-        };
-        let key = if !settings.key.starts_with('-') {
+        });
+        let key = String::from_utf8(if !settings.key.starts_with('-') {
             tokio::fs::read(settings.key).await?
         } else {
             settings.key.as_bytes().to_vec()
-        };
+        })
+        .map_err(|e| ApnsError::Config("Bad Key".to_owned(), e.to_string()))?;
         let client = ApnsClientData {
             client: Box::new(
-                a2::Client::certificate_parts(&cert, &key, endpoint)
+                a2::Client::certificate(&mut cert, &key, endpoint)
                     .map_err(ApnsError::ApnsClient)?,
             ),
             topic: settings
@@ -110,18 +113,11 @@ impl ApnsRouter {
     }
 
     /// The default APS data for a notification
-    fn default_aps<'a>() -> APS<'a> {
-        APS {
-            alert: Some(APSAlert::Localized({
-                LocalizedAlert {
-                    title_loc_key: Some("SentTab.NoTabArrivingNotification.title"),
-                    loc_key: Some("SentTab.NoTabArrivingNotification.body"),
-                    ..Default::default()
-                }
-            })),
-            mutable_content: Some(1),
-            ..Default::default()
-        }
+    fn default_aps<'a>() -> DefaultNotificationBuilder<'a> {
+        DefaultNotificationBuilder::new()
+            .set_title_loc_key("SentTab.NoTabArrivingNotification.title")
+            .set_loc_key("SentTab.NoTabArrivingNotification.body")
+            .set_mutable_content()
     }
 
     /// Handle an error by logging, updating metrics, etc
@@ -149,8 +145,8 @@ impl ApnsRouter {
                     warn!("APNS error: {:?}", response.error);
                 }
             }
-            a2::Error::ConnectionError => {
-                error!("APNS connection error");
+            a2::Error::ConnectionError(e) => {
+                error!("APNS connection error: {:?}", e);
                 incr_error_metric(
                     &self.metrics,
                     "apns",
@@ -174,21 +170,6 @@ impl ApnsRouter {
         }
 
         ApiError::from(ApnsError::ApnsUpstream(error))
-    }
-
-    /// Convert all of the floats in a JSON value into integers. DynamoDB
-    /// returns all numbers as floats, but deserializing to `APS` will fail if
-    /// it expects an integer and gets a float.
-    fn convert_value_float_to_int(value: &mut Value) {
-        if let Some(float) = value.as_f64() {
-            *value = Value::Number(Number::from(float as i64));
-        }
-
-        if let Some(object) = value.as_object_mut() {
-            object
-                .values_mut()
-                .for_each(Self::convert_value_float_to_int);
-        }
     }
 
     /// if we have any clients defined, this connection is "active"
@@ -218,14 +199,6 @@ impl Router for ApnsRouter {
             serde_json::to_value(app_id).unwrap(),
         );
 
-        if let Some(aps) = &router_input.aps {
-            if APS::deserialize(aps).is_err() {
-                return Err(ApnsError::InvalidApsData.into());
-            }
-
-            router_data.insert("aps".to_string(), aps.clone());
-        }
-
         Ok(router_data)
     }
 
@@ -251,15 +224,6 @@ impl Router for ApnsRouter {
             .get("rel_channel")
             .and_then(Value::as_str)
             .ok_or(ApnsError::NoReleaseChannel)?;
-        let aps_json = router_data.get("aps").cloned().map(|mut value| {
-            Self::convert_value_float_to_int(&mut value);
-            value
-        });
-        let aps: APS<'_> = aps_json
-            .as_ref()
-            .map(|value| APS::deserialize(value).map_err(|_| ApnsError::InvalidApsData))
-            .transpose()?
-            .unwrap_or_else(Self::default_aps);
         let mut message_data = build_message_data(notification)?;
         message_data.insert("ver", notification.message_id.clone());
 
@@ -268,21 +232,20 @@ impl Router for ApnsRouter {
             .clients
             .get(channel)
             .ok_or(ApnsError::InvalidReleaseChannel)?;
-        let payload = Payload {
-            aps,
-            data: message_data
-                .into_iter()
-                .map(|(k, v)| (k, Value::String(v)))
-                .collect(),
-            device_token: token,
-            options: NotificationOptions {
+        let mut payload = Self::default_aps().build(
+            token,
+            NotificationOptions {
                 apns_id: None,
                 apns_priority: Some(Priority::High),
                 apns_topic: Some(topic),
                 apns_collapse_id: None,
                 apns_expiration: Some(notification.timestamp + notification.headers.ttl as u64),
             },
-        };
+        );
+        payload.data = message_data
+            .into_iter()
+            .map(|(k, v)| (k, Value::String(v)))
+            .collect();
 
         // Check size limit
         let payload_json = payload
@@ -408,10 +371,13 @@ mod tests {
     /// A notification with no data is packaged correctly and sent to APNS
     #[tokio::test]
     async fn successful_routing_no_data() {
+        use a2::NotificationBuilder;
+
         let client = MockApnsClient::new(|payload| {
+            let built = ApnsRouter::default_aps().build(DEVICE_TOKEN, Default::default());
             assert_eq!(
                 serde_json::to_value(payload.aps).unwrap(),
-                serde_json::to_value(ApnsRouter::default_aps()).unwrap()
+                serde_json::to_value(built.aps).unwrap()
             );
             assert_eq!(payload.device_token, DEVICE_TOKEN);
             assert_eq!(payload.options.apns_topic, Some("test-topic"));
@@ -440,11 +406,11 @@ mod tests {
     /// A notification with data is packaged correctly and sent to APNS
     #[tokio::test]
     async fn successful_routing_with_data() {
+        use a2::NotificationBuilder;
+
         let client = MockApnsClient::new(|payload| {
-            assert_eq!(
-                serde_json::to_value(payload.aps).unwrap(),
-                serde_json::to_value(ApnsRouter::default_aps()).unwrap()
-            );
+            let built = ApnsRouter::default_aps().build(DEVICE_TOKEN, Default::default());
+            assert_eq!(serde_json::json!(payload.aps), serde_json::json!(built.aps));
             assert_eq!(payload.device_token, DEVICE_TOKEN);
             assert_eq!(payload.options.apns_topic, Some("test-topic"));
             assert_eq!(
@@ -565,30 +531,6 @@ mod tests {
                         code: 403,
                     })
                 )))
-            ),
-            "result = {result:?}"
-        );
-    }
-
-    /// An error is returned if the user's APS data is invalid
-    #[tokio::test]
-    async fn invalid_aps_data() {
-        let client = MockApnsClient::new(|_| panic!("The notification should not be sent"));
-        let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(client, db);
-        let mut router_data = default_router_data();
-        router_data.insert(
-            "aps".to_string(),
-            serde_json::json!({"mutable-content": "should be a number"}),
-        );
-        let notification = make_notification(router_data, None, RouterType::APNS);
-
-        let result = router.route_notification(&notification).await;
-        assert!(result.is_err());
-        assert!(
-            matches!(
-                result.as_ref().unwrap_err().kind,
-                ApiErrorKind::Router(RouterError::Apns(ApnsError::InvalidApsData))
             ),
             "result = {result:?}"
         );
