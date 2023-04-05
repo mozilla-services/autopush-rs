@@ -188,7 +188,8 @@ impl RouterError {
     pub fn is_sentry_event(&self) -> bool {
         match self {
             RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
-            RouterError::Apns(ApnsError::SizeLimit(_)) => false,
+            RouterError::Apns(ApnsError::SizeLimit(_))
+            | RouterError::Apns(ApnsError::Unregistered) => false,
             RouterError::Fcm(e) => !matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId),
             RouterError::TooMuchData(_) => false,
             _ => true,

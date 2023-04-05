@@ -29,8 +29,6 @@ pub struct NotificationHeaders {
     #[validate(
         length(
             max = 32,
-            // can't refer directly because macro
-            // message = crate::error::TOPIC_LENGTH_ERR
             message = "Topic must be no greater than 32 characters",
             code = "113"
         ),
