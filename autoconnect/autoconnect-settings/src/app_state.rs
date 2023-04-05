@@ -21,7 +21,7 @@ pub struct AppState {
     /// Encryption object for the endpoint URL
     pub fernet: MultiFernet,
     /// The connected WebSocket clients
-    pub registry: Arc<ClientRegistry>,
+    pub clients: Arc<ClientRegistry>,
 
     pub settings: Settings,
     pub router_url: String,
@@ -71,10 +71,17 @@ impl AppState {
             db,
             metrics,
             fernet,
-            registry: Arc::new(ClientRegistry::default()),
+            clients: Arc::new(ClientRegistry::default()),
             settings,
             router_url,
             endpoint_url,
         })
+    }
+}
+
+/// For tests
+impl Default for AppState {
+    fn default() -> Self {
+        Self::from_settings(Default::default()).unwrap()
     }
 }
