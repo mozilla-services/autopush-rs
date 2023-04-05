@@ -288,6 +288,7 @@ impl Client {
 
         if let Some(uaid) = self.uaid {
             // store the channel to use to talk to us.
+            /*
             self.clients.write().unwrap().insert(
                 uaid,
                 RegisteredClient {
@@ -296,6 +297,7 @@ impl Client {
                     // tx: self.channel.clone()
                 },
             );
+            */
             // update the user record with latest connection data (or fill in a new record with the data we get)
             let mut user_record = self.db.get_user(&uaid).await?.unwrap_or_default();
             user_record.uaid = uaid;
@@ -707,12 +709,12 @@ impl NotifManager {
         uaid: Uuid,
         notification: Notification,
     ) -> Result<HttpResponse> {
-        state.registry.notify(uaid, notification).await?;
+        state.clients.notify(uaid, notification).await?;
         Ok(HttpResponse::Ok().finish())
     }
 
     pub async fn on_notif(state: &AppState, uaid: Uuid) -> Result<HttpResponse> {
-        if state.registry.check_storage(uaid).await.is_ok() {
+        if state.clients.check_storage(uaid).await.is_ok() {
             return Ok(HttpResponse::Ok().finish());
         };
         let body = Bytes::from_static(b"Client not available");
