@@ -19,7 +19,6 @@ use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
 
 use autopush_common::db::error::DbError;
-use autopush_common::errors::{ApcError, ApcErrorKind};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -40,15 +39,6 @@ impl ApiError {
     pub fn render_404<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
         //TODO: remove unwrap here.
         Ok(autopush_common::errors::render_404(res).unwrap())
-    }
-}
-
-impl From<ApiError> for ApcError {
-    fn from(err: ApiError) -> ApcError {
-        ApcError {
-            kind: err.kind.into(),
-            backtrace: Box::new(err.backtrace),
-        }
     }
 }
 
@@ -169,7 +159,7 @@ impl ApiErrorKind {
     pub fn metric_label(&self) -> Option<&'static str> {
         Some(match self {
             ApiErrorKind::PayloadError(_) => "payload_error",
-            ApiErrorKind::Router(_) => "router",
+            ApiErrorKind::Router(e) => e.metric_label().unwrap_or("router"),
 
             ApiErrorKind::Validation(_) => "validation",
             ApiErrorKind::InvalidEncryption(_) => "invalid_encryption",
@@ -203,21 +193,26 @@ impl ApiErrorKind {
 
     /// Don't report all errors to sentry
     pub fn is_sentry_event(&self) -> bool {
-        !matches!(
-            self,
-            // Ignore common webpush errors
-            ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
-            // Ignore common VAPID erros
-            ApiErrorKind::VapidError(_)
-            | ApiErrorKind::Jwt(_)
-            | ApiErrorKind::TokenHashValidation(_)
-            | ApiErrorKind::InvalidAuthentication
-            | ApiErrorKind::InvalidLocalAuth(_) |
-            // Ignore missing or invalid user errors
-            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
-            // Ignore overflow errors
-            ApiErrorKind::Router(RouterError::TooMuchData(_)),
-        )
+        match self {
+            // ignore selected validation errors.
+            ApiErrorKind::Router(e) => e.is_sentry_event(),
+            _ => !matches!(
+                self,
+                // Ignore common webpush errors
+                ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
+                // Ignore common VAPID erros
+                ApiErrorKind::VapidError(_)
+                | ApiErrorKind::Jwt(_)
+                | ApiErrorKind::TokenHashValidation(_)
+                | ApiErrorKind::InvalidAuthentication
+                | ApiErrorKind::InvalidLocalAuth(_) |
+                // Ignore missing or invalid user errors
+                ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
+                // Ignore oversized payload.
+                ApiErrorKind::PayloadError(_) |
+                ApiErrorKind::Validation(_),
+            ),
+        }
     }
 
     /// Get the associated error number
@@ -263,57 +258,6 @@ impl ApiErrorKind {
             | ApiErrorKind::RegistrationSecretHash(_)
             | ApiErrorKind::EndpointUrl(_)
             | ApiErrorKind::InvalidMessageId => None,
-        }
-    }
-}
-
-/// temporary bridge between errors.
-// TODO: move to ApcError
-impl From<ApiErrorKind> for ApcErrorKind {
-    fn from(kind: ApiErrorKind) -> ApcErrorKind {
-        match kind {
-            ApiErrorKind::General(e) => ApcErrorKind::GeneralError(e),
-            ApiErrorKind::Io(e) => ApcErrorKind::Io(e),
-            ApiErrorKind::Metrics(e) => ApcErrorKind::MetricError(e),
-            ApiErrorKind::Validation(e) => ApcErrorKind::EndpointError("Validation", e.to_string()),
-            ApiErrorKind::PayloadError(e) => ApcErrorKind::PayloadError(e.to_string()),
-            ApiErrorKind::VapidError(e) => ApcErrorKind::EndpointError("Vapid", e.to_string()),
-            ApiErrorKind::Router(e) => ApcErrorKind::EndpointError("Router", e.to_string()),
-            ApiErrorKind::Jwt(e) => ApcErrorKind::EndpointError("JWT", e.to_string()),
-            ApiErrorKind::TokenHashValidation(e) => ApcErrorKind::TokenHashValidation(e),
-            ApiErrorKind::RegistrationSecretHash(e) => ApcErrorKind::RegistrationSecretHash(e),
-            ApiErrorKind::EndpointUrl(e) => e.kind,
-            ApiErrorKind::Database(e) => ApcErrorKind::DatabaseError(e.to_string()),
-            ApiErrorKind::InvalidToken => {
-                ApcErrorKind::EndpointError("InvalidToken", "".to_string())
-            }
-            ApiErrorKind::NoUser => ApcErrorKind::EndpointError("NoUser", "".to_string()),
-            ApiErrorKind::NoSubscription => {
-                ApcErrorKind::EndpointError("NoSubscription", "".to_string())
-            }
-            ApiErrorKind::InvalidEncryption(e) => {
-                ApcErrorKind::EndpointError("InvalidEncryption", e)
-            }
-            ApiErrorKind::InvalidApiVersion => {
-                ApcErrorKind::EndpointError("InvalidApiVersion", "".to_string())
-            }
-            ApiErrorKind::NoTTL => ApcErrorKind::EndpointError("NoTTL", "".to_string()),
-            ApiErrorKind::InvalidRouterType => {
-                ApcErrorKind::EndpointError("InvalidRouterType", "".to_string())
-            }
-            ApiErrorKind::InvalidRouterToken => {
-                ApcErrorKind::EndpointError("InvalidRouterToken", "".to_string())
-            }
-            ApiErrorKind::InvalidMessageId => {
-                ApcErrorKind::EndpointError("InvalidMessageId", "".to_string())
-            }
-            ApiErrorKind::InvalidAuthentication => {
-                ApcErrorKind::EndpointError("InvalidAuthentication", "".to_string())
-            }
-            ApiErrorKind::InvalidLocalAuth(e) => ApcErrorKind::EndpointError("InvalidLocalAuth", e),
-            ApiErrorKind::LogCheck => {
-                ApcErrorKind::EndpointError("LogCheck", "testing 1,2,3".to_string())
-            }
         }
     }
 }
