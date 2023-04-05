@@ -15,7 +15,7 @@ use docopt::Docopt;
 use serde::Deserialize;
 use std::sync::RwLock;
 
-use autoconnect_settings::{options::AppState, Settings};
+use autoconnect_settings::{AppState, Settings};
 use autoconnect_web::{
     client::{Client, ClientChannels},
     dockerflow,
@@ -85,9 +85,10 @@ async fn main() -> Result<()> {
         ..Default::default()
     });
 
-    let app_state = AppState::from_settings(&settings)?;
+    let port = settings.port;
+    let app_state = AppState::from_settings(settings)?;
 
-    info!("Starting autoconnect on port {:?}", &settings.port);
+    info!("Starting autoconnect on port {:?}", port);
     HttpServer::new(move || {
         let client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
         let _sentry = sentry::init(sentry::ClientOptions {
@@ -124,7 +125,7 @@ async fn main() -> Result<()> {
             )
             .service(web::resource("/__version__").route(web::get().to(dockerflow::version_route)))
     })
-    .bind(("0.0.0.0", settings.port))?
+    .bind(("0.0.0.0", port))?
     .run()
     .await
     .map_err(|e| e.into())
