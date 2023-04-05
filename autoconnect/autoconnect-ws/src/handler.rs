@@ -137,7 +137,6 @@ async fn identified_ws(
               + Unpin),
     snotifs_stream: &mut mpsc::UnboundedReceiver<ServerNotification>,
 ) -> Result<Option<CloseReason>, WSError> {
-    dbg!(client.app_state.settings.auto_ping_interval);
     let mut ping_interval = interval(client.app_state.settings.auto_ping_interval);
     ping_interval.tick().await;
     let close_reason = loop {

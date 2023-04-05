@@ -18,7 +18,8 @@ pub fn hello_db() -> MockDbClient {
     hello_again_db(uuid::Uuid::new_v4())
 }
 
-/// Return a simple MockDbClient that responds to hello with the specified uaid.
+/// Return a simple MockDbClient that responds to hello (once) with the
+/// specified uaid.
 pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     let mut db = MockDbClient::new();
     db.expect_hello().times(1).return_once(move |_, _, _, _| {

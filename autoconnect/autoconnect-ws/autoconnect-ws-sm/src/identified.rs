@@ -435,7 +435,6 @@ mod tests {
     async fn webpush_ping() {
         let (mut client, _) = wpclient(DUMMY_UAID, Default::default()).await;
         let pong = client.on_client_msg(ClientMessage::Ping).await.unwrap();
-        assert!(matches!(pong[0], ServerMessage::Ping));
-        assert_eq!(pong.len(), 1);
+        assert!(matches!(pong.as_slice(), [ServerMessage::Ping]));
     }
 }
