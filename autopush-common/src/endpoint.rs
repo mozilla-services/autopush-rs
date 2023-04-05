@@ -23,21 +23,24 @@ pub fn make_endpoint(
     base.extend(chid.as_bytes());
 
     if let Some(k) = key {
-        let raw_key = b64_decode_url(k)
-            .map_err(|_e| ApcErrorKind::PayloadError("Error encrypting payload".to_owned()))?;
-        let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key).map_err(|_e| {
+        let raw_key = b64_decode_url(k).map_err(|e| {
+            warn!("Payload: error decrypting user provided VAPID key:{:?}", e);
+            ApcErrorKind::PayloadError("Error encrypting VAPID key".to_owned())
+        })?;
+        let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key).map_err(|e| {
+            warn!("Payload: Error creating digest for VAPID key: {:?}", e);
             ApcErrorKind::PayloadError("Error creating message digest for key".to_owned())
         })?;
         base.extend(key_digest.iter());
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
-        let final_url = root.join(&format!("v2/{encrypted}")).map_err(|_e| {
-            ApcErrorKind::PayloadError("Encrypted data is not URL-safe".to_owned())
+        let final_url = root.join(&format!("v2/{encrypted}")).map_err(|e| {
+            ApcErrorKind::GeneralError(format!("Encrypted endpoint data is not URL-safe {:?}", e))
         })?;
         Ok(final_url.to_string())
     } else {
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
-        let final_url = root.join(&format!("v1/{encrypted}")).map_err(|_e| {
-            ApcErrorKind::PayloadError("Encrypted data is not URL-safe".to_owned())
+        let final_url = root.join(&format!("v1/{encrypted}")).map_err(|e| {
+            ApcErrorKind::GeneralError(format!("Encrypted endpoint data is not URL-safe {:?}", e))
         })?;
         Ok(final_url.to_string())
     }

@@ -8,7 +8,6 @@ use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
 
 use autopush_common::db::error::DbError;
-use autopush_common::errors::ApcErrorKind;
 
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
@@ -162,33 +161,38 @@ impl RouterError {
             RouterError::Upstream { .. } => None,
         }
     }
-}
 
-impl From<RouterError> for ApcErrorKind {
-    fn from(err: RouterError) -> ApcErrorKind {
-        match err {
-            RouterError::Adm(e) => ApcErrorKind::EndpointError("Router:Adm", e.to_string()),
-            RouterError::Apns(e) => ApcErrorKind::EndpointError("Router:APNS", e.to_string()),
-            RouterError::Fcm(e) => ApcErrorKind::EndpointError("Router:FCM", e.to_string()),
-            RouterError::TooMuchData(e) => ApcErrorKind::EndpointError("TooMucData", e.to_string()),
-            RouterError::UserWasDeleted => {
-                ApcErrorKind::EndpointError("UserWasDeleted", err.to_string())
-            }
-            RouterError::NotFound => ApcErrorKind::EndpointError("NotFound", err.to_string()),
-            RouterError::SaveDb(e) => ApcErrorKind::EndpointError("SaveDb", e.to_string()),
-            RouterError::Authentication => {
-                ApcErrorKind::EndpointError("Authentication", err.to_string())
-            }
-            RouterError::Connect(e) => ApcErrorKind::EndpointError("Connect", e.to_string()),
-            RouterError::RequestTimeout => {
-                ApcErrorKind::EndpointError("RequestTimeout", err.to_string())
-            }
-            RouterError::GCMAuthentication => {
-                ApcErrorKind::EndpointError("GCMAuthentication", err.to_string())
-            }
-            RouterError::Upstream { .. } => {
-                ApcErrorKind::EndpointError("Upstream", err.to_string())
-            }
+    pub fn metric_label(&self) -> Option<&'static str> {
+        let err = match self {
+            RouterError::Fcm(e) => match e {
+                FcmError::InvalidAppId(_) | FcmError::NoAppId => "fcm_badappid",
+                _ => "",
+            },
+            RouterError::Adm(e) => match e {
+                AdmError::NoProfile | AdmError::InvalidProfile => "adm_profile",
+                _ => "",
+            },
+            RouterError::Apns(e) => match e {
+                ApnsError::Unregistered => "apns_unregistered",
+                ApnsError::SizeLimit(_) => "apns_oversized",
+                _ => "",
+            },
+            _ => "",
+        };
+        if !err.is_empty() {
+            return Some(err);
+        }
+        None
+    }
+
+    pub fn is_sentry_event(&self) -> bool {
+        match self {
+            RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
+            RouterError::Apns(ApnsError::SizeLimit(_))
+            | RouterError::Apns(ApnsError::Unregistered) => false,
+            RouterError::Fcm(e) => !matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId),
+            RouterError::TooMuchData(_) => false,
+            _ => true,
         }
     }
 }
