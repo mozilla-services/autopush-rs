@@ -20,6 +20,7 @@ pub struct RouterDataInput {
     #[serde(rename = "channelID")]
     pub channel_id: Option<Uuid>,
     pub key: Option<String>,
+    pub aps: Option<String>,
 }
 
 impl FromRequest for RouterDataInput {

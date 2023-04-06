@@ -21,6 +21,7 @@ pub enum ApnsError {
     #[error("APNS error, {0}")]
     ApnsUpstream(#[source] a2::Error),
 
+    /// Configuration error {Type of error}, {Error string}
     #[error("APNS config, {0}:{1}")]
     Config(String, String),
 
