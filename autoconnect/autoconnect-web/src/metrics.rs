@@ -11,7 +11,7 @@ use cadence::{
 };
 
 use actix_web::HttpMessage;
-use autoconnect_settings::{options::AppState, Settings};
+use autoconnect_settings::{AppState, Settings};
 use autopush_common::tags::Tags;
 
 #[derive(Debug, Clone)]

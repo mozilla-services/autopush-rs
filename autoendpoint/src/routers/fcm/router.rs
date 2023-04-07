@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
+use uuid::Uuid;
 
 /// 28 days
 const MAX_TTL: usize = 28 * 24 * 60 * 60;
@@ -80,7 +81,11 @@ impl FcmRouter {
     /// FCM stores the values in the top hash as `token` & `app_id`, GCM stores them
     /// in a sub-hash as `creds.auth` and `creds.senderID`.
     /// If any of these error out, it's probably because of a corrupted key.
-    fn routing_info(&self, router_data: &HashMap<String, Value>) -> ApiResult<(String, String)> {
+    fn routing_info(
+        &self,
+        router_data: &HashMap<String, Value>,
+        uaid: &Uuid,
+    ) -> ApiResult<(String, String)> {
         let creds = router_data.get("creds").and_then(Value::as_object);
         // GCM and FCM both should store the client registration_token as token in the router_data.
         // There was some confusion about router table records that may store the client
@@ -90,6 +95,7 @@ impl FcmRouter {
         let routing_token = match router_data.get("token").and_then(Value::as_str) {
             Some(v) => v.to_owned(),
             None => {
+                warn!("No Registration token found for user {}", uaid.to_string());
                 return Err(FcmError::NoRegistrationToken.into());
             }
         };
@@ -97,6 +103,7 @@ impl FcmRouter {
             Some(v) => v.to_owned(),
             None => {
                 if creds.is_none() {
+                    warn!("No App_id found for user {}", uaid.to_string());
                     return Err(FcmError::NoAppId.into());
                 }
                 match creds
@@ -158,7 +165,8 @@ impl Router for FcmRouter {
         // that is sent by the client at registration.
         //
         // Try reading as FCM and fall back to GCM.
-        let (routing_token, app_id) = self.routing_info(router_data)?;
+        let (routing_token, app_id) =
+            self.routing_info(router_data, &notification.subscription.user.uaid)?;
         let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
         let message_data = build_message_data(notification)?;
 

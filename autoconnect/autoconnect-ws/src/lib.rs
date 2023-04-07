@@ -1,12 +1,31 @@
-/// Handles ClientRegistry / max connections
-/// ping handling
-/// dispatch to ws-client-state_machine
+#[macro_use]
+extern crate slog_scope;
 
-// Used for the server to flag a webpush client to deliver a Notification or Check storage
-#[derive(Clone, Debug, Default)]
-pub enum ServerNotification {
-    CheckStorage,
-    Notification(autopush_common::notification::Notification),
-    #[default]
-    Disconnect,
+use actix_web::{
+    http::header::{HeaderValue, USER_AGENT},
+    web, Error, HttpRequest, HttpResponse,
+};
+
+use autoconnect_settings::AppState;
+
+mod error;
+mod handler;
+mod session;
+
+/// Handles connected WebSocket clients to a WebPush server
+pub async fn ws_handler(
+    req: HttpRequest,
+    body: web::Payload,
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, Error> {
+    let (response, session, msg_stream) = actix_ws::handle(&req, body)?;
+    let ua = req
+        .headers()
+        .get(USER_AGENT)
+        .unwrap_or(&HeaderValue::from_static(""))
+        .to_str()
+        .unwrap_or_default()
+        .to_owned();
+    handler::spawn_webpush_ws(session, msg_stream, app_state.into_inner(), ua);
+    Ok(response)
 }

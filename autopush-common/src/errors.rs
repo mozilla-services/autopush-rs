@@ -153,9 +153,6 @@ pub enum ApcErrorKind {
     #[error("Database Error: {0}")]
     DatabaseError(String),
 
-    #[error("Endpoint Error: [{0}] {1}")]
-    EndpointError(&'static str, String),
-
     // TODO: option this.
     #[error("Rusoto Error: {0}")]
     RusotoError(String),
@@ -176,6 +173,8 @@ impl ApcErrorKind {
         match self {
             // TODO: Add additional messages to ignore here.
             Self::PongTimeout | Self::ExcessivePing => false,
+            // Non-actionable Endpoint errors
+            Self::PayloadError(_) => false,
             _ => true,
         }
     }
@@ -185,6 +184,7 @@ impl ApcErrorKind {
         let resp = match self {
             Self::PongTimeout => "pong_timeout",
             Self::ExcessivePing => "excessive_ping",
+            Self::PayloadError(_) => "payload",
             _ => "",
         };
         if !resp.is_empty() {

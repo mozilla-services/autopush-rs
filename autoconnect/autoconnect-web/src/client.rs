@@ -14,9 +14,8 @@ use uuid::Uuid;
 use autoconnect_common::{
     broadcast::Broadcast,
     protocol::{ClientAck, ClientMessage, ServerMessage},
-    registry::RegisteredClient,
 };
-use autoconnect_settings::options::AppState;
+use autoconnect_settings::AppState;
 use autopush_common::db::{self, User};
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::notification::Notification;
@@ -27,6 +26,10 @@ use autopush_common::util::ms_since_epoch;
 /// These are called from the Autoconnect server.
 
 /// Mapping of UserAgent IDs to the Registered Client information struct
+pub struct RegisteredClient {
+    pub uaid: Uuid,
+    pub uid: Uuid,
+}
 pub type ClientChannels = Arc<RwLock<HashMap<Uuid, RegisteredClient>>>;
 
 #[allow(dead_code)]
@@ -99,7 +102,7 @@ impl Client {
     pub async fn ws_handler(req: HttpRequest, body: Payload) -> Result<HttpResponse> {
         let state = req.app_data::<AppState>().unwrap().clone();
         let client_metrics = state.metrics.clone();
-        let db_client = state.db_client.clone();
+        let db_client = state.db.clone();
         let clients = req.app_data::<ClientChannels>().unwrap().clone();
         let ua_string = if let Some(header) = req.headers().get(actix_web::http::header::USER_AGENT)
         {
@@ -707,12 +710,12 @@ impl NotifManager {
         uaid: Uuid,
         notification: Notification,
     ) -> Result<HttpResponse> {
-        state.registry.notify(uaid, notification).await?;
+        state.clients.notify(uaid, notification).await?;
         Ok(HttpResponse::Ok().finish())
     }
 
     pub async fn on_notif(state: &AppState, uaid: Uuid) -> Result<HttpResponse> {
-        if state.registry.check_storage(uaid).await.is_ok() {
+        if state.clients.check_storage(uaid).await.is_ok() {
             return Ok(HttpResponse::Ok().finish());
         };
         let body = Bytes::from_static(b"Client not available");
