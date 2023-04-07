@@ -19,7 +19,7 @@ use serde::Serializer;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::db::util::generate_last_connect;
+use crate::db::{dynamodb::has_connected_this_month, util::generate_last_connect};
 
 pub mod client;
 pub mod dynamodb;
@@ -38,7 +38,7 @@ use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
 
 const MAX_EXPIRY: u64 = 2_592_000;
-const USER_RECORD_VERSION: u8 = 1;
+pub const USER_RECORD_VERSION: u8 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
@@ -287,6 +287,17 @@ impl Default for User {
     }
 }
 
+impl User {
+    pub fn set_last_connect(&mut self) {
+        self.last_connect = if has_connected_this_month(self) {
+            None
+        } else {
+            Some(generate_last_connect())
+        }
+    }
+}
+
+/// TODO: Accurate? This is the record in the Db.
 /// The outbound message record.
 /// This is different that the stored `Notification`
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]

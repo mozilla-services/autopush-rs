@@ -29,6 +29,7 @@ pub fn spawn_webpush_ws(
         let close_reason = webpush_ws(client, &mut session, msg_stream)
             .await
             .unwrap_or_else(|e| {
+                error!("spawn_webpush_ws: Error: {}", e);
                 Some(CloseReason {
                     code: e.close_code(),
                     description: Some(e.close_description().to_owned()),
@@ -57,47 +58,38 @@ async fn webpush_ws(
     mut msg_stream: impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
         + Unpin,
 ) -> Result<Option<CloseReason>, WSError> {
+    // NOTE: UnidentifiedClient doesn't require shutdown/cleanup, so its
+    // Error's propagated. We don't propagate Errors afterwards to handle
+    // shutdown/cleanup of WebPushClient
     let (mut client, smsgs) = unidentified_ws(client, &mut msg_stream).await?;
 
     // Client now identified: add them to the registry to recieve ServerNotifications
-    // TODO: should return a scopeguard to ensure disconnect() always called
     let mut snotif_stream = client
         .app_state
         .clients
         .connect(client.uaid, client.uid)
         .await;
 
-    // Then send their Hello response and any initial notifications from storage
-    for smsg in smsgs {
-        trace!(
-            "webpush_ws: New WebPushClient, ServerMessage -> session: {:#?}",
-            smsg
-        );
-        // TODO: Ensure these added to "unacked_stored_notifs"
-        session
-            .text(smsg)
-            .await
-            // TODO: try! (?) here dictates a scopeguard/other recovery to
-            // cleanup the clients entry
-            .map_err(|_| WSError::StreamClosed)?;
-    }
+    let result = identified_ws(&mut client, smsgs, session, msg_stream, &mut snotif_stream).await;
 
-    let result = identified_ws(&mut client, session, &mut msg_stream, &mut snotif_stream).await;
-
-    client
+    // Ignore disconnect Errors (Client wasn't connected)
+    let _ = client
         .app_state
         .clients
         .disconnect(&client.uaid, &client.uid)
-        .await
-        .map_err(|_| WSError::RegistryNotConnected)?;
+        .await;
+
     snotif_stream.close();
     while let Some(snotif) = snotif_stream.next().await {
         client.on_server_notif_shutdown(snotif);
     }
-    client.shutdown();
+    client.shutdown(result.as_ref().err().map(|e| e.to_string()));
 
-    // TODO: report errors to sentry
-
+    if let Err(ref e) = result {
+        if e.is_sentry_event() {
+            sentry::capture_event(e.to_sentry_event(&client));
+        }
+    }
     result
 }
 
@@ -119,7 +111,7 @@ async fn unidentified_ws(
         Ok(None) => return Err(WSError::StreamClosed),
         Err(_) => return Err(WSError::HandshakeTimeout),
     };
-    trace!("unidentified_ws: Handshake msg: {:#?}", msg);
+    trace!("unidentified_ws: Handshake msg: {:?}", msg);
 
     let client_msg = match msg {
         Message::Text(ref bytestring) => bytestring.parse()?,
@@ -135,11 +127,21 @@ async fn unidentified_ws(
 /// TODO: docs
 async fn identified_ws(
     client: &mut WebPushClient,
+    smsgs: impl IntoIterator<Item = ServerMessage>,
     session: &mut impl Session,
-    msg_stream: &mut (impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
-              + Unpin),
+    mut msg_stream: impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
+        + Unpin,
     snotif_stream: &mut mpsc::UnboundedReceiver<ServerNotification>,
 ) -> Result<Option<CloseReason>, WSError> {
+    // Send the Hello response and any initial notifications from storage
+    for smsg in smsgs {
+        trace!(
+            "identified_ws: New WebPushClient, ServerMessage -> session: {:#?}",
+            smsg
+        );
+        session.text(smsg).await?;
+    }
+
     let mut ping_interval = interval(client.app_state.settings.auto_ping_interval);
     ping_interval.tick().await;
     let close_reason = loop {
@@ -170,10 +172,7 @@ async fn identified_ws(
                 };
                 for smsg in client.on_client_msg(client_msg).await? {
                     trace!("identified_ws: msg_stream, ServerMessage -> session {:#?}", smsg);
-                    session
-                        .text(smsg)
-                        .await
-                        .map_err(|_| WSError::StreamClosed)?;
+                    session.text(smsg).await?;
                 }
             },
 
@@ -184,10 +183,7 @@ async fn identified_ws(
                 };
                 for smsg in client.on_server_notif(snotif).await? {
                     trace!("identified_ws: snotif_stream, ServerMessage -> session {:#?}", smsg);
-                    session
-                        .text(smsg)
-                        .await
-                        .map_err(|_| WSError::StreamClosed)?;
+                    session.text(smsg).await?;
                 }
             }
 

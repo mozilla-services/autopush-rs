@@ -7,8 +7,10 @@ authors.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+actix-web.workspace = true
 actix-ws.workspace = true
 cadence.workspace = true
+reqwest.workspace = true
 slog-scope.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
@@ -18,6 +20,8 @@ autoconnect_settings.workspace = true
 autopush_common.workspace = true
 
 [dev-dependencies]
+actix-rt.workspace = true
+mockall.workspace = true
 tokio.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
