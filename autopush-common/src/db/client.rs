@@ -61,6 +61,9 @@ pub trait DbClient: Send + Sync {
     /// Save a message to the message table
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()>;
 
+    /// Save multiple messages to the message table
+    async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()>;
+
     /// Fetch stored messages for a user
     async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>;
 
@@ -71,6 +74,9 @@ pub trait DbClient: Send + Sync {
         timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse>;
+
+    /// Update the last read timestamp for a user
+    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()>;
 
     /// Delete a notification
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;
