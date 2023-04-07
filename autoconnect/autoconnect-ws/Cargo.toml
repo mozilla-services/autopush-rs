@@ -7,6 +7,25 @@ authors.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+actix-http.workspace = true
+actix-rt.workspace = true
 actix-web.workspace = true
+actix-ws.workspace = true
+futures.workspace = true
+serde_json.workspace = true
+slog-scope.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 
-autopush_common.workspace = true
+async-trait = "0.1"
+mockall = "0.11"
+strum = { version = "0.24", features = ["derive"] }
+
+autoconnect_common.workspace = true
+autoconnect_settings.workspace = true
+autoconnect_ws_sm = { path = "./autoconnect-ws-sm" }
+
+[dev-dependencies]
+async-stream = "0.3"
+
+autoconnect_common = { workspace = true, features = ["test-support"] }

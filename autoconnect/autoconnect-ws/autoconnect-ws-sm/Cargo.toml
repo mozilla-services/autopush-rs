@@ -1,32 +1,23 @@
 [package]
-name = "autoconnect_web"
-authors.workspace = true
-edition.workspace = true
+name = "autoconnect_ws_sm"
 version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actix-web.workspace = true
-actix-rt.workspace = true
 actix-ws.workspace = true
-bytes.workspace = true
-bytestring.workspace = true
 cadence.workspace = true
-futures-util.workspace = true
-reqwest.workspace = true
-serde_json.workspace = true
 slog-scope.workspace = true
 uuid.workspace = true
-
+thiserror.workspace = true
 
 autoconnect_common.workspace = true
 autoconnect_settings.workspace = true
-autoconnect_ws.workspace = true
 autopush_common.workspace = true
 
 [dev-dependencies]
-actix-codec = "0.5"
-actix-http.workspace = true
-actix-test.workspace = true
 tokio.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }

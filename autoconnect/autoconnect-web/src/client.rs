@@ -14,7 +14,6 @@ use uuid::Uuid;
 use autoconnect_common::{
     broadcast::Broadcast,
     protocol::{ClientAck, ClientMessage, ServerMessage},
-    registry::RegisteredClient,
 };
 use autoconnect_settings::AppState;
 use autopush_common::db::{self, User};
@@ -27,6 +26,10 @@ use autopush_common::util::ms_since_epoch;
 /// These are called from the Autoconnect server.
 
 /// Mapping of UserAgent IDs to the Registered Client information struct
+pub struct RegisteredClient {
+    pub uaid: Uuid,
+    pub uid: Uuid,
+}
 pub type ClientChannels = Arc<RwLock<HashMap<Uuid, RegisteredClient>>>;
 
 #[allow(dead_code)]
@@ -707,12 +710,12 @@ impl NotifManager {
         uaid: Uuid,
         notification: Notification,
     ) -> Result<HttpResponse> {
-        state.registry.notify(uaid, notification).await?;
+        state.clients.notify(uaid, notification).await?;
         Ok(HttpResponse::Ok().finish())
     }
 
     pub async fn on_notif(state: &AppState, uaid: Uuid) -> Result<HttpResponse> {
-        if state.registry.check_storage(uaid).await.is_ok() {
+        if state.clients.check_storage(uaid).await.is_ok() {
             return Ok(HttpResponse::Ok().finish());
         };
         let body = Bytes::from_static(b"Client not available");

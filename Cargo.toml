@@ -8,7 +8,7 @@ members = [
     "autoconnect/autoconnect-settings",
     "autoconnect/autoconnect-web",
     "autoconnect/autoconnect-ws",
-    "autoconnect/autoconnect-ws/autoconnect-ws-clientsm",
+    "autoconnect/autoconnect-ws/autoconnect-ws-sm",
 ]
 
 [workspace.package]
