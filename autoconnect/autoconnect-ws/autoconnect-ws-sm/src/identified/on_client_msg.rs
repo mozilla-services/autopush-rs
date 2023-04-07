@@ -155,8 +155,45 @@ impl WebPushClient {
         unimplemented!();
     }
 
-    async fn ack(&mut self, _updates: &[ClientAck]) -> Result<Vec<ServerMessage>, SMError> {
-        // TODO:
+    async fn ack(&mut self, updates: &[ClientAck]) -> Result<Vec<ServerMessage>, SMError> {
+        trace!("WebPushClient:ack");
+        let _ = self.app_state.metrics.incr("ua.command.ack");
+
+        for notif in updates {
+            let pos = self
+                .ack_state
+                .unacked_direct_notifs
+                .iter()
+                .position(|v| v.channel_id == notif.channel_id && v.version == notif.version);
+            if let Some(pos) = pos {
+                // XXX: debug log
+                self.stats.direct_acked += 1;
+                self.ack_state.unacked_direct_notifs.remove(pos);
+                continue;
+            };
+
+            let pos = self
+                .ack_state
+                .unacked_stored_notifs
+                .iter()
+                .position(|v| v.channel_id == notif.channel_id && v.version == notif.version);
+            if let Some(pos) = pos {
+                // XXX: debug log
+                self.stats.stored_acked += 1;
+                // XXX: this should remove the notif from here after
+                // remove_message, websocket.py has a comment about this?
+                let n = self.ack_state.unacked_stored_notifs.remove(pos);
+                // Topic/legacy messages have no sortkey_timestamp
+                if n.sortkey_timestamp.is_none() {
+                    self.app_state
+                        .db
+                        .remove_message(&self.uaid, &n.sort_key())
+                        .await?;
+                }
+                continue;
+            };
+        }
+
         self.maybe_post_process_acks().await
     }
 
@@ -185,12 +222,63 @@ impl WebPushClient {
 
         // TODO:
         let flags = &self.flags;
-        if flags.check_storage && flags.increment_storage {
-            trace!("WebPushClient:maybe_post_process_acks check_storage && increment_storage");
-            unimplemented!()
-        } else if flags.check_storage {
+        if flags.check_storage {
+            if flags.increment_storage {
+                trace!("WebPushClient:maybe_post_process_acks check_storage && increment_storage");
+                self.increment_storage().await?;
+                // Successful increment_storage should set these accordingly
+                debug_assert!(&self.flags.check_storage);
+                debug_assert!(!&self.flags.increment_storage);
+            }
             trace!("WebPushClient:maybe_post_process_acks check_storage");
             self.check_storage().await
+            // let smsgs = self.check_storage().await?;
+            // smsgs.is_empty() could still mean recursive or at least??? increment_storage.
+            // but what else it need to do? rotate or reset uaid?
+            // means you might
+            // XXX: OR??
+            //let smsgs = self.check_storage().await?;
+            //if self.ack_state.unacked_notifs() {
+            // XXX: possibly this
+            /*
+                    let smsgs = self.check_storage().await?;
+                    // or maybe if !smsgs.is_empty() ? debug_assert!(unacked_notifs)
+                    if self.ack_state.unacked_notifs() {
+                        // New messages from check_storage
+                        debug_assert!(!smsgs.is_empty());
+                        return Ok(smsgs);
+                    }
+
+                // XXX: might you need need to incremement storage here?
+                // or does returning nothing (!unacked_notifs) i think so
+                // because increment storage means something came back
+                // from the db. the results could be filtered to 0 }
+                // Should have tests for TTL shit like this..
+
+            if flags.rotate_message_table {
+                trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
+                unimplemented!()
+            } else if flags.reset_uaid {
+                trace!("WebPushClient:maybe_post_process_acks reset_uaid");
+                self.app_state.db.remove_user(&self.uaid).await?;
+                Err(SMError::UaidReset)
+            } else {
+                Ok(vec![])
+            }
+                    */
+
+            /*
+            if flags.check_storage && flags.increment_storage {
+                trace!("WebPushClient:maybe_post_process_acks check_storage && increment_storage");
+                self.increment_storage().await?;
+                // Successful increment_storage should set these accordingly
+                debug_assert!(&self.flags.check_storage);
+                debug_assert!(!&self.flags.increment_storage);
+                self.check_storage().await
+            } else if flags.check_storage {
+                trace!("WebPushClient:maybe_post_process_acks check_storage");
+                self.check_storage().await
+            */
         } else if flags.rotate_message_table {
             trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
             unimplemented!()

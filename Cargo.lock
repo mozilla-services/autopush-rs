@@ -634,6 +634,7 @@ dependencies = [
 name = "autoconnect_ws_sm"
 version = "1.66.0"
 dependencies = [
+ "actix-web",
  "actix-ws",
  "autoconnect_common",
  "autoconnect_settings",

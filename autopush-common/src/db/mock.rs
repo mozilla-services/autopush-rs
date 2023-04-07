@@ -47,6 +47,8 @@ mockall::mock! {
             limit: usize,
         ) -> DbResult<FetchMessageResponse>;
 
+        fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()>;
+
         fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;
 
         fn hello(&self, connected_at: u64, uaid: Option<Uuid>, router_url: &str, defer_registration: bool) -> DbResult<HelloResponse>;
@@ -124,6 +126,10 @@ impl DbClient for Arc<MockDbClient> {
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
         Arc::as_ref(self).fetch_timestamp_messages(uaid, timestamp, limit)
+    }
+
+    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
+        Arc::as_ref(self).increment_storage(uaid, timestamp)
     }
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {

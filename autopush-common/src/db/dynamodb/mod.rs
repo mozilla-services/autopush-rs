@@ -510,6 +510,35 @@ impl DbClient for DdbClientImpl {
         })
     }
 
+    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
+        let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
+        let attr_values = hashmap! {
+            ":timestamp".to_string() => val!(N => timestamp.to_string()),
+            ":expiry".to_string() => val!(N => expiry),
+        };
+        let update_input = UpdateItemInput {
+            key: ddb_item! {
+                uaid: s => uaid.as_simple().to_string(),
+                chidmessageid: s => " ".to_string()
+            },
+            update_expression: Some(
+                "SET current_timestamp = :timestamp, expiry = :expiry".to_string(),
+            ),
+            expression_attribute_values: Some(attr_values),
+            table_name: self.settings.message_table.clone(),
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.db_client.update_item(update_input.clone()),
+                retryable_updateitem_error(self.metrics.clone()),
+            )
+            .await?;
+
+        Ok(())
+    }
+
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
         let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(uaid, message))?,
