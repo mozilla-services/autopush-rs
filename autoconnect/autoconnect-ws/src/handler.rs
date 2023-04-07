@@ -17,26 +17,26 @@ use crate::{
 };
 
 /// WebPush WebSocket handler Task
-pub async fn webpush_ws(
+pub fn spawn_webpush_ws(
     session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
     app_state: Arc<AppState>,
     ua: String,
 ) {
-    let client = UnidentifiedClient::new(ua, app_state);
-    let mut session = SessionImpl::new(session.clone());
-    let close_reason = _webpush_ws(client, &mut session, msg_stream)
-        .await
-        .unwrap_or_else(|e| {
-            Some(CloseReason {
-                code: e.close_code(),
-                // TODO: clip this String to =~ 100, WS control frames (such as
-                // close) are limited to 125 bytes
-                description: Some(e.to_string()),
-            })
-        });
-    trace!("webpush_ws: close_reason: {:#?}", close_reason);
-    let _ = session.close(close_reason).await;
+    actix_rt::spawn(async move {
+        let client = UnidentifiedClient::new(ua, app_state);
+        let mut session = SessionImpl::new(session);
+        let close_reason = webpush_ws(client, &mut session, msg_stream)
+            .await
+            .unwrap_or_else(|e| {
+                Some(CloseReason {
+                    code: e.close_code(),
+                    description: Some(e.close_description().to_owned()),
+                })
+            });
+        trace!("spawn_webpush_ws: close_reason: {:#?}", close_reason);
+        let _ = session.close(close_reason).await;
+    });
 }
 
 /// WebPush WebSocket handler
@@ -51,7 +51,7 @@ pub async fn webpush_ws(
 /// by `autoendpoint`), and in turn outgoing `ServerMessage`s written to the
 /// WebSocket connection in response to those events.
 /// - the lifecycle/cleanup of the Client
-async fn _webpush_ws(
+async fn webpush_ws(
     client: UnidentifiedClient,
     session: &mut impl Session,
     mut msg_stream: impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
@@ -70,7 +70,7 @@ async fn _webpush_ws(
     // Then send their Hello response and any initial notifications from storage
     for smsg in smsgs {
         trace!(
-            "_webpush_ws: New WebPushClient, ServerMessage -> session: {:#?}",
+            "webpush_ws: New WebPushClient, ServerMessage -> session: {:#?}",
             smsg
         );
         // TODO: Ensure these added to "unacked_stored_notifs"
@@ -218,7 +218,7 @@ mod tests {
 
     use crate::{error::WSError, session::MockSession};
 
-    use super::_webpush_ws;
+    use super::webpush_ws;
 
     fn uclient(app_state: AppState) -> UnidentifiedClient {
         UnidentifiedClient::new(UA.to_owned(), Arc::new(app_state))
@@ -237,7 +237,7 @@ mod tests {
             yield Ok(actix_ws::Message::Text(HELLO.into()));
         };
         pin_mut!(s);
-        let err = _webpush_ws(client, &mut MockSession::new(), s)
+        let err = webpush_ws(client, &mut MockSession::new(), s)
             .await
             .unwrap_err();
         assert!(matches!(err, WSError::HandshakeTimeout));
@@ -261,7 +261,7 @@ mod tests {
             Ok(actix_ws::Message::Text(HELLO.into())),
             Ok(actix_ws::Message::Nop),
         ]);
-        _webpush_ws(client, &mut session, s)
+        webpush_ws(client, &mut session, s)
             .await
             .expect("Handler failed");
     }
@@ -284,7 +284,7 @@ mod tests {
             tokio::time::sleep(Duration::from_secs_f32(0.3)).await;
         };
         pin_mut!(s);
-        _webpush_ws(client, &mut session, s)
+        webpush_ws(client, &mut session, s)
             .await
             .expect("Handler failed");
     }

@@ -1,6 +1,7 @@
 use actix_http::ws::{self, Codec};
 use actix_test::TestServer;
 use futures_util::{SinkExt, StreamExt};
+use serde_json::json;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use autoconnect_common::test_support::{hello_again_db, hello_db, DUMMY_UAID, HELLO, HELLO_AGAIN};
@@ -13,6 +14,8 @@ fn test_server(app_state: AppState) -> TestServer {
     actix_test::start(move || build_app!(app_state))
 }
 
+/// Extract the next message from the pending message queue and attempt to
+/// convert it into a parsed JSON Value
 async fn json_msg(
     framed: &mut actix_codec::Framed<impl AsyncRead + AsyncWrite + Unpin, Codec>,
 ) -> serde_json::Value {
@@ -61,7 +64,7 @@ pub async fn hello_again() {
 }
 
 #[actix_rt::test]
-pub async fn bad_websocket_message() {
+pub async fn unsupported_websocket_message() {
     let mut srv = test_server(AppState::default());
 
     let mut framed = srv.ws().await.unwrap();
@@ -72,14 +75,14 @@ pub async fn bad_websocket_message() {
 
     let item = framed.next().await.unwrap().unwrap();
     let ws::Frame::Close(Some(close_reason)) = item else {
-        panic!("Expected Close not {:#?}", item);
+        panic!("Expected Close(Some(..)) not {:#?}", item);
     };
     assert_eq!(close_reason.code, actix_http::ws::CloseCode::Unsupported);
     assert!(framed.next().await.is_none());
 }
 
 #[actix_rt::test]
-pub async fn bad_webpush_message() {
+pub async fn invalid_webpush_message() {
     let mut srv = test_server(AppState {
         db: hello_db().into_boxed_arc(),
         ..Default::default()
@@ -95,7 +98,30 @@ pub async fn bad_webpush_message() {
 
     let item = framed.next().await.unwrap().unwrap();
     let ws::Frame::Close(Some(close_reason)) = item else {
-        panic!("Expected Close not {:#?}", item);
+        panic!("Expected Close(Some(..)) not {:#?}", item);
+    };
+    assert_eq!(close_reason.code, actix_http::ws::CloseCode::Error);
+    assert!(framed.next().await.is_none());
+}
+
+#[actix_rt::test]
+pub async fn malformed_webpush_message() {
+    let mut srv = test_server(AppState {
+        db: hello_db().into_boxed_arc(),
+        ..Default::default()
+    });
+
+    let mut framed = srv.ws().await.unwrap();
+    framed
+        .send(ws::Message::Text(
+            json!({"messageType": "foo"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+
+    let item = framed.next().await.unwrap().unwrap();
+    let ws::Frame::Close(Some(close_reason)) = item else {
+        panic!("Expected Close(Some(..)) not {:#?}", item);
     };
     assert_eq!(close_reason.code, actix_http::ws::CloseCode::Error);
     assert!(framed.next().await.is_none());

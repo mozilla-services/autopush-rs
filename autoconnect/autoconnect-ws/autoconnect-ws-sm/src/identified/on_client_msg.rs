@@ -55,7 +55,7 @@ impl WebPushClient {
             )));
         }
 
-        let smsg = match self._register(&channel_id, key).await {
+        let smsg = match self.do_register(&channel_id, key).await {
             Ok(endpoint) => {
                 let _ = self.app_state.metrics.incr("ua.command.register");
                 self.stats.registers += 1;
@@ -77,7 +77,7 @@ impl WebPushClient {
         Ok(smsg)
     }
 
-    async fn _register(
+    async fn do_register(
         &mut self,
         channel_id: &Uuid,
         key: Option<String>,
@@ -165,7 +165,8 @@ impl WebPushClient {
     }
 
     async fn ping(&mut self) -> Result<ServerMessage, SMError> {
-        // TODO: why is this 45 vs the comment describing a minute?
+        // TODO: why is this 45 vs the comment describing a minute? and 45
+        // should be a setting
         // Clients shouldn't ping > than once per minute or we disconnect them
         if sec_since_epoch() - self.last_ping >= 45 {
             trace!("🏓WebPushClient Got a WebPush Ping, sending WebPush Pong");

@@ -625,6 +625,7 @@ dependencies = [
  "mockall 0.11.4",
  "serde_json",
  "slog-scope",
+ "strum",
  "thiserror",
  "tokio 1.27.0",
 ]
@@ -1433,7 +1434,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1220ad071cb8996454c20adf547a34ba3ac793759dab793d9dc04996a373ac83"
 dependencies = [
  "darling",
- "heck",
+ "heck 0.3.3",
  "petgraph",
  "proc-macro2 0.4.30",
  "quote 0.6.13",
@@ -2051,6 +2052,12 @@ checksum = "6d621efb26863f0e9924c6ac577e8275e5e6b77455db64ffa6c65c904e9e132c"
 dependencies = [
  "unicode-segmentation",
 ]
+
+[[package]]
+name = "heck"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "hermit-abi"
@@ -4637,6 +4644,28 @@ name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+
+[[package]]
+name = "strum"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e385be0d24f186b4ce2f9982191e7101bb737312ad61c1f2f984f34bcf85d59"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2 1.0.54",
+ "quote 1.0.26",
+ "rustversion",
+ "syn 1.0.109",
+]
 
 [[package]]
 name = "subtle"

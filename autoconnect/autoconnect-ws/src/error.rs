@@ -3,7 +3,7 @@ use actix_ws::CloseCode;
 use autoconnect_ws_sm::SMError;
 
 /// WebPush WebSocket Handler Errors
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, strum::AsRefStr, thiserror::Error)]
 pub enum WSError {
     #[error("State machine error: {0}")]
     SM(#[from] SMError),
@@ -34,6 +34,7 @@ pub enum WSError {
 }
 
 impl WSError {
+    /// Return an `actix_ws::CloseCode` for the WS session Close frame
     pub fn close_code(&self) -> actix_ws::CloseCode {
         match self {
             WSError::SM(e) => e.close_code(),
@@ -42,5 +43,13 @@ impl WSError {
             WSError::UnsupportedMessage(_) => CloseCode::Unsupported,
             _ => CloseCode::Error,
         }
+    }
+
+    /// Return a description for the WS session Close frame.
+    ///
+    /// Control frames are limited to 125 bytes so returns just the enum
+    /// variant's name (via `strum::AsRefStr`)
+    pub fn close_description(&self) -> &str {
+        self.as_ref()
     }
 }

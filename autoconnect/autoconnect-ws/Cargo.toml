@@ -19,6 +19,7 @@ tokio.workspace = true
 
 async-trait = "0.1"
 mockall = "0.11"
+strum = { version = "0.24", features = ["derive"] }
 
 autoconnect_common.workspace = true
 autoconnect_settings.workspace = true

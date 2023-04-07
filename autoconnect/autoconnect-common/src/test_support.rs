@@ -8,8 +8,10 @@ pub const UA: &str =
 pub const DUMMY_UAID: Uuid = Uuid::from_u128(0xdeadbeef_0000_0000_deca_fbad00000000);
 pub const DUMMY_CHID: Uuid = Uuid::from_u128(0xdeadbeef_0000_0000_abad_1dea00000000);
 
+/// A minimal websocket Push "hello" message, used by an unregistered UA with
+/// no existing channel subscriptions
 pub const HELLO: &str = r#"{"messageType": "hello", "use_webpush": true}"#;
-/// HELLO w/ DUMMY_UAID
+/// A post initial registration response
 pub const HELLO_AGAIN: &str = r#"{"messageType": "hello", "use_webpush": true,
                                   "uaid": "deadbeef-0000-0000-deca-fbad00000000"}"#;
 
