@@ -8,19 +8,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::{env, vec::Vec};
 
-use actix_http::StatusCode;
-use actix_web::middleware::ErrorHandlers;
-use actix_web::{web, App, HttpServer};
+use actix_web::HttpServer;
 use docopt::Docopt;
 use serde::Deserialize;
 use std::sync::RwLock;
 
-use autoconnect_settings::{options::AppState, Settings};
-use autoconnect_web::{
-    client::{Client, ClientChannels},
-    dockerflow,
-};
-use autopush_common::errors::{render_404, ApcErrorKind, Result};
+use autoconnect_settings::{AppState, Settings};
+use autoconnect_web::{build_app, client::ClientChannels, config};
+use autopush_common::errors::{ApcErrorKind, Result};
 
 mod middleware;
 
@@ -58,7 +53,9 @@ async fn main() -> Result<()> {
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
 
     // Perform any app global storage initialization.
-    if autopush_common::db::StorageType::DynamoDb == autopush_common::db::StorageType::from_dsn(&settings.db_dsn) {
+    if autopush_common::db::StorageType::DynamoDb
+        == autopush_common::db::StorageType::from_dsn(&settings.db_dsn)
+    {
         env::set_var("AWS_LOCAL_DYNAMODB", settings.db_dsn.clone().unwrap())
     }
 
@@ -77,50 +74,24 @@ async fn main() -> Result<()> {
         ..Default::default()
     });
 
-    let app_state = AppState::from_settings(&settings)?;
+    let port = settings.port;
+    let app_state = AppState::from_settings(settings)?;
+    let _client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
 
-    info!("Starting autoconnect on port {:?}", &settings.port);
-    HttpServer::new(move || {
-        let client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
-        let _sentry = sentry::init(sentry::ClientOptions {
-            release: sentry::release_name!(),
-            session_mode: sentry::SessionMode::Request, // new session per request
-            auto_session_tracking: true,
-            ..Default::default()
-        });
-
-        App::new()
-            // Actix4 recommends using the `web::Data` wrapper when storing app_data.
-            // internally, it uses Arc
-            .app_data(web::Data::new(app_state.clone()))
-            .app_data(web::Data::new(client_channels))
-            .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, render_404))
-            .wrap(crate::middleware::sentry::SentryWrapper::new(
-                app_state.metrics.clone(),
-                "error".to_owned(),
-            ))
-            // Websocket Handler
-            .route("/ws/", web::get().to(Client::ws_handler))
-            // TODO: Internode Message handler
-            //.service(web::resource("/push/{uaid}").route(web::push().to(autoconnect_web::route::InterNode::put))
-            .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
-            .service(web::resource("/health").route(web::get().to(dockerflow::health_route)))
-            .service(web::resource("/v1/err").route(web::get().to(dockerflow::log_check)))
-            // standardized
-            .service(web::resource("/__error__").route(web::get().to(dockerflow::log_check)))
-            // Dockerflow
-            .service(web::resource("/__heartbeat__").route(web::get().to(dockerflow::health_route)))
-            .service(
-                web::resource("/__lbheartbeat__")
-                    .route(web::get().to(dockerflow::lb_heartbeat_route)),
-            )
-            .service(web::resource("/__version__").route(web::get().to(dockerflow::version_route)))
+    info!("Starting autoconnect on port {:?}", port);
+    let srv = HttpServer::new(move || {
+        let app = build_app!(app_state);
+        // TODO: should live in build_app!
+        app.wrap(crate::middleware::sentry::SentryWrapper::new(
+            app_state.metrics.clone(),
+            "error".to_owned(),
+        ))
     })
-    .bind(("0.0.0.0", settings.port))?
-    .run()
-    .await
-    .map_err(|e| e.into())
-    .map(|v| {
+    .bind(("0.0.0.0", port))?
+    .run();
+
+    info!("Server starting, port: {}", port);
+    srv.await.map_err(|e| e.into()).map(|v| {
         info!("Shutting down autoconnect");
         v
     })

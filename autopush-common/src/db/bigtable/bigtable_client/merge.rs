@@ -13,19 +13,14 @@ use super::{
 
 /// List of the potential states when we are reading each value from the
 /// returned stream and composing a "row"
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 enum ReadState {
+    #[default]
     RowStart,
     CellStart,
     CellInProgress,
     CellComplete,
     RowComplete,
-}
-
-impl Default for ReadState {
-    fn default() -> Self {
-        ReadState::RowStart
-    }
 }
 
 /// An in-progress Cell data struct.

@@ -29,6 +29,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
 
+    resource_class: large
     steps:
       - checkout
       - run:
@@ -50,6 +51,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: -sharedDb -inMemory
+    resource_class: large
     environment:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
@@ -115,6 +117,7 @@ jobs:
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
+    resource_class: large
     working_directory: /dockerflow
     parameters:
       image:

@@ -47,13 +47,13 @@ impl Row {
         &mut self,
         family: &str,
         qualifier: &str,
-        value: &Vec<u8>,
+        value: &[u8],
         ttl: Option<SystemTime>,
     ) -> Result<Cell, BigTableError> {
         let mut cell = Cell {
             family: family.to_owned(),
             qualifier: qualifier.to_owned(),
-            value: value.clone(),
+            value: value.to_owned(),
             ..Default::default()
         };
         if let Some(ttl) = ttl {

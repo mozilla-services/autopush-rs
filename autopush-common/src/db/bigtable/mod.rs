@@ -2,7 +2,6 @@
 /// autopush-bt::bittable_client code.
 ///
 ///
-
 mod bigtable_client;
 
 pub use bigtable_client::error::BigTableError;
@@ -37,6 +36,6 @@ impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
         serde_json::from_str(setting_string)
-            .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)).into())
+            .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))
     }
 }

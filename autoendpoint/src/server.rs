@@ -65,9 +65,14 @@ impl Server {
         // `StorageType::from_dsn` is very preferential toward DynamoDB.
         let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
-            StorageType::BigTable => Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?),
+            StorageType::BigTable => {
+                Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
+            }
             _ => {
-                return Err(ApiErrorKind::General("Invalid or Unsupported DSN specified".to_owned()).into())
+                return Err(ApiErrorKind::General(
+                    "Invalid or Unsupported DSN specified".to_owned(),
+                )
+                .into())
             }
         };
         let http = reqwest::ClientBuilder::new()

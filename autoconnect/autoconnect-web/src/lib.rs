@@ -2,12 +2,54 @@
 /// handling dockerflow endpoints, `/push/' and `/notif' endpoints
 /// (used for inter-node routing)
 /// Also used for MegaphoneUpdater and BroadcastChangeTracker endpoints
-extern crate slog;
 #[macro_use]
 extern crate slog_scope;
 
-pub mod broadcast;
 pub mod client;
 pub mod dockerflow;
 pub mod metrics;
-pub mod protocol;
+#[cfg(test)]
+mod test;
+
+use actix_web::web;
+
+use autoconnect_ws::ws_handler;
+
+/// Requires import of the `config` function also in this module to use.
+#[macro_export]
+macro_rules! build_app {
+    ($app_state: expr) => {
+        actix_web::App::new()
+            .app_data(actix_web::web::Data::new($app_state.clone()))
+            .wrap(actix_web::middleware::ErrorHandlers::new().handler(
+                actix_http::StatusCode::NOT_FOUND,
+                autopush_common::errors::render_404,
+            ))
+            /*
+            .wrap(crate::middleware::sentry::SentryWrapper::new(
+                $app_state.metrics.clone(),
+                "error".to_owned(),
+            ))
+                */
+            .configure(config)
+    };
+}
+
+pub fn config(cfg: &mut web::ServiceConfig) {
+    cfg
+        // Websocket Handler
+        .route("/", web::get().to(ws_handler))
+        // TODO: Internode Message handler
+        //.service(web::resource("/push/{uaid}").route(web::push().to(autoconnect_web::route::InterNode::put))
+        .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
+        .service(web::resource("/health").route(web::get().to(dockerflow::health_route)))
+        .service(web::resource("/v1/err").route(web::get().to(dockerflow::log_check)))
+        // standardized
+        .service(web::resource("/__error__").route(web::get().to(dockerflow::log_check)))
+        // Dockerflow
+        .service(web::resource("/__heartbeat__").route(web::get().to(dockerflow::health_route)))
+        .service(
+            web::resource("/__lbheartbeat__").route(web::get().to(dockerflow::lb_heartbeat_route)),
+        )
+        .service(web::resource("/__version__").route(web::get().to(dockerflow::version_route)));
+}

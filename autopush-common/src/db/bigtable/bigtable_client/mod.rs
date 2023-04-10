@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use cadence::{StatsdClient, CountedExt};
+use cadence::{CountedExt, StatsdClient};
 use google_cloud_rust_raw::bigtable::v2::bigtable;
 use google_cloud_rust_raw::bigtable::v2::data;
 use google_cloud_rust_raw::bigtable::v2::{
@@ -18,10 +18,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings,
-    User,
-    Notification,
-    HelloResponse,
+    DbSettings, HelloResponse, Notification, User,
 };
 
 use self::row::Row;
@@ -60,6 +57,10 @@ pub fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
 
 pub fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     String::from_utf8(value).map_err(|_| DbError::DeserializeString(name.to_owned()))
+}
+
+pub fn as_key(uaid: &Uuid, channel_id: &str) -> String {
+    format!("{}#{}", uaid.simple(), channel_id)
 }
 
 impl BigTableClientImpl {
@@ -304,7 +305,7 @@ impl DbClient for BigTableClientImpl {
         row.add_cell(
             ROUTER_FAMILY,
             "connected_at",
-            &user.connected_at.to_be_bytes().to_vec(),
+            user.connected_at.to_be_bytes().as_ref(),
             None,
         )
         .map_err(|e| DbError::Serialization(format!("Could not write connected_at {:?}", e)))?;
@@ -319,7 +320,7 @@ impl DbClient for BigTableClientImpl {
             row.add_cell(
                 ROUTER_FAMILY,
                 "router_data",
-                &json!(router_data).to_string().as_bytes().to_vec(),
+                json!(router_data).to_string().as_bytes(),
                 None,
             )
             .map_err(|e| DbError::Serialization(format!("Could not write router_data {:?}", e)))?;
@@ -328,7 +329,7 @@ impl DbClient for BigTableClientImpl {
             row.add_cell(
                 ROUTER_FAMILY,
                 "last_connect",
-                &last_connect.to_be_bytes().to_vec(),
+                last_connect.to_be_bytes().as_ref(),
                 None,
             )
             .map_err(|e| DbError::Serialization(format!("Could not write last_connect {:?}", e)))?;
@@ -346,7 +347,7 @@ impl DbClient for BigTableClientImpl {
             row.add_cell(
                 ROUTER_FAMILY,
                 "record_version",
-                &record_version.to_be_bytes().to_vec(),
+                record_version.to_be_bytes().as_ref(),
                 None,
             )
             .map_err(|e| {
@@ -378,7 +379,7 @@ impl DbClient for BigTableClientImpl {
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
         let key = uaid.as_simple().to_string();
         let mut result = User {
-            uaid: uaid.clone(),
+            uaid: *uaid,
             ..Default::default()
         };
 
@@ -473,7 +474,7 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        let channels = self.get_channels(&uaid).await?;
+        let channels = self.get_channels(uaid).await?;
         for channel in channels {
             self.delete_row(&channel.simple().to_string()).await?;
         }
@@ -483,11 +484,7 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let key = format!(
-            "{}#{}",
-            uaid.simple().to_string(),
-            channel_id.simple().to_string()
-        );
+        let key = as_key(uaid, &channel_id.simple().to_string());
 
         let mut row = Row {
             row_key: key,
@@ -501,7 +498,7 @@ impl DbClient for BigTableClientImpl {
         row.add_cell(
             ROUTER_FAMILY,
             "updated",
-            &now.as_millis().to_be_bytes().to_vec(),
+            now.as_millis().to_be_bytes().as_ref(),
             None,
         )?;
 
@@ -575,11 +572,7 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
-        let row_key = format!(
-            "{}#{}",
-            uaid.simple().to_string(),
-            channel_id.simple().to_string()
-        );
+        let row_key = as_key(uaid, &channel_id.simple().to_string());
         self.delete_row(&row_key).await?;
         Ok(true)
     }
@@ -607,11 +600,7 @@ impl DbClient for BigTableClientImpl {
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
         let mut row = Row {
-            row_key: format!(
-                "{}#{}",
-                uaid.simple().to_string(),
-                message.channel_id.simple().to_string()
-            ),
+            row_key: as_key(uaid, &message.channel_id.simple().to_string()),
             ..Default::default()
         };
 
@@ -622,12 +611,7 @@ impl DbClient for BigTableClientImpl {
         } else {
             MESSAGE_FAMILY
         };
-        row.add_cell(
-            family,
-            "ttl",
-            &message.ttl.to_be_bytes().to_vec(),
-            Some(ttl),
-        )?;
+        row.add_cell(family, "ttl", message.ttl.to_be_bytes().as_ref(), Some(ttl))?;
         row.add_cell(
             family,
             "version",
@@ -640,7 +624,7 @@ impl DbClient for BigTableClientImpl {
         row.add_cell(
             family,
             "timestamp",
-            &message.timestamp.to_be_bytes().to_vec(),
+            message.timestamp.to_be_bytes().as_ref(),
             Some(ttl),
         )?;
         if let Some(data) = message.data {
@@ -650,7 +634,7 @@ impl DbClient for BigTableClientImpl {
             row.add_cell(
                 family,
                 "sortkey_timestamp",
-                &sortkey_timestamp.to_be_bytes().to_vec(),
+                sortkey_timestamp.to_be_bytes().as_ref(),
                 Some(ttl),
             )?;
         }
@@ -687,7 +671,7 @@ impl DbClient for BigTableClientImpl {
                 )))
             }
         };
-        let row_key = format!("{}#{}", uaid.simple().to_string(), channel_id);
+        let row_key = as_key(uaid, channel_id);
         self.delete_cells(&row_key, family, &["data"].to_vec(), None)
             .await
             .map_err(|e| e.into())
@@ -702,11 +686,8 @@ impl DbClient for BigTableClientImpl {
         req.set_filter({
             let mut regex_filter = data::RowFilter::default();
             // channels for a given UAID all begin with `{uaid}#`
-            regex_filter.set_row_key_regex_filter(
-                format!("^{}#", uaid.simple().to_string())
-                    .as_bytes()
-                    .to_vec(),
-            );
+            regex_filter
+                .set_row_key_regex_filter(format!("^{}#", uaid.simple()).as_bytes().to_vec());
             regex_filter
         });
 
@@ -739,11 +720,8 @@ impl DbClient for BigTableClientImpl {
             // first, only look for channelids for the given UAID.
             let mut regex_filter = data::RowFilter::default();
             // channels for a given UAID all begin with `{uaid}#`
-            regex_filter.set_row_key_regex_filter(
-                format!("^{}#", uaid.simple().to_string())
-                    .as_bytes()
-                    .to_vec(),
-            );
+            regex_filter
+                .set_row_key_regex_filter(format!("^{}#", uaid.simple()).as_bytes().to_vec());
             repeat_field.push(regex_filter);
 
             let chain = data::RowFilter_Chain {
@@ -765,48 +743,48 @@ impl DbClient for BigTableClientImpl {
     /// specific to the engine, unfortunately.
     ///
 
-    async fn hello(&self,
-    connected_at: u64,
-    uaid: Option<&Uuid>,
-    router_url: &str,
-    defer_registration: bool
-) -> DbResult<HelloResponse> {
-    let mut response = HelloResponse {
-        message_month: "INVALID".into(),
-        connected_at,
+    async fn hello(
+        &self,
+        connected_at: u64,
+        uaid: Option<&Uuid>,
+        router_url: &str,
+        defer_registration: bool,
+    ) -> DbResult<HelloResponse> {
+        let mut response = HelloResponse {
+            message_month: "INVALID".into(),
+            connected_at,
 
-        ..Default::default()
-    };
+            ..Default::default()
+        };
 
-    if let Some(uaid) = uaid {
-        let user = self.get_user(uaid).await;
+        if let Some(uaid) = uaid {
+            let user = self.get_user(uaid).await;
 
-        match user {
-            Ok(None) => {}
-            Ok(Some(mut user)) => {
-                // set the user's router_url to this.
-                user.node_id = Some(router_url.to_owned());
-                // We will never migrate users, so don't bother with that.
-                // instead, check if we need to defer the registration, or do it now.
-                if !defer_registration {
-                    self.add_user(&user).await?;
-                } else {
-                    response.deferred_user_registration = Some(user);
+            match user {
+                Ok(None) => {}
+                Ok(Some(mut user)) => {
+                    // set the user's router_url to this.
+                    user.node_id = Some(router_url.to_owned());
+                    // We will never migrate users, so don't bother with that.
+                    // instead, check if we need to defer the registration, or do it now.
+                    if !defer_registration {
+                        self.add_user(&user).await?;
+                    } else {
+                        response.deferred_user_registration = Some(user);
+                    }
+                }
+                Err(e) => {
+                    self.metrics
+                        .incr_with_tags("ua.expiration")
+                        .with_tag("code", "104")
+                        .send();
+                    self.remove_user(uaid).await?;
+                    return Err(e);
                 }
             }
-            Err(e) => {
-                self.metrics
-                    .incr_with_tags("ua.expiration")
-                    .with_tag("code", "104")
-                    .send();
-                self.remove_user(uaid).await?;
-                return Err(e);
-            }
         }
+        Ok(response)
     }
-    Ok(response)
-}
-
 
     async fn router_table_exists(&self) -> DbResult<bool> {
         Ok(true)
