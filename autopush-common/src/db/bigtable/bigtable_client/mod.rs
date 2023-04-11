@@ -63,6 +63,23 @@ pub fn as_key(uaid: &Uuid, channel_id: &str) -> String {
     format!("{}#{}", uaid.simple(), channel_id)
 }
 
+/// Connect to a BigTable storage model.
+///
+/// BigTable is available via the Google Console, and is a schema less storage system.
+///
+/// The `db_dsn` string should be in the form of
+/// `grpc://{BigTableEndpoint}/v2/projects/{project-id}/instances/{instance-id}/`
+///
+/// where:
+/// _BigTableEndpoint_ is the endpoint domain to use (the default is `bigtable.googleapis.com`) See
+/// [BigTable Endpoints](https://cloud.google.com/bigtable/docs/regional-endpoints) for more details.
+/// _project-id_ is the Google project identifier (see the Google developer console (e.g. 'autopush-dev'))
+/// _instance-id_ is the Google project instance, (see the Google developer console (e.g. 'development-1'))
+///
+/// This will automatically bring in the default credentials specified by the `GOOGLE_APPLICATION_CREDENTIALS`
+/// environment variable.
+/// 
+///
 impl BigTableClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         let channel_creds = ChannelCredentials::google_default_credentials()

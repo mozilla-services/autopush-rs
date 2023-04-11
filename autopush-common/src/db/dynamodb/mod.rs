@@ -587,6 +587,12 @@ impl DbClient for DdbClientImpl {
                         .message_table_names
                         .contains(&self.settings.current_message_month)
                     {
+                        // Before DynamoDB had TTL support for records, we needed
+                        // to write data to distinct "months" tables so that we could just
+                        // drop old months when they expired.
+                        // This is no longer required, technically, since DynamoDB added
+                        // externally controlled TTLs.
+                        // This could could be removed, but is kept for some legacy reasons.
                         if let Some(user_month) = user.current_month.clone() {
                             response.uaid = Some(user.uaid);
                             // the user's month is current, hopefully you don't have to migrate.

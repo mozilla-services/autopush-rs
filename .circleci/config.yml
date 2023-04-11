@@ -80,7 +80,8 @@ jobs:
       - run:
           name: Set up Rust
           command: |
-            sudo apt install cmake -y
+            sudo apt update
+            sudo apt install cmake
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
