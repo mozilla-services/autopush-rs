@@ -64,15 +64,20 @@ impl Server {
         // rusoto_core::Region::default(), which complicates things.
         // `StorageType::from_dsn` is very preferential toward DynamoDB.
         let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
-            StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
+            StorageType::DynamoDb => {
+                debug!("Using Dynamodb");
+                Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?)
+            }
             StorageType::BigTable => {
+                debug!("Using BigTable");
                 Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
             }
             _ => {
+                debug!("No idea what {:?} is", &db_settings.dsn);
                 return Err(ApiErrorKind::General(
                     "Invalid or Unsupported DSN specified".to_owned(),
                 )
-                .into())
+                .into());
             }
         };
         let http = reqwest::ClientBuilder::new()

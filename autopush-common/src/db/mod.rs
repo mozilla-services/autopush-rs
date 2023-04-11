@@ -54,8 +54,6 @@ pub enum StorageType {
 }
 
 impl StorageType {
-    /// currently, there is only one.
-    /// Check the `db_dsn` setting or `AWS_LOCAL_DYNAMODB` environment variable.
     pub fn from_dsn(dsn: &Option<String>) -> Self {
         if dsn.is_none() {
             info!("No DSN specified, failing over to old default dsn");
@@ -65,11 +63,19 @@ impl StorageType {
             .clone()
             .unwrap_or(std::env::var("AWS_LOCAL_DYNAMODB").unwrap_or_default());
         if dsn.starts_with("http") {
-            trace!("Using DynamoDb");
+            trace!("Found http");
             return Self::DynamoDb;
         }
         if dsn.starts_with("grpc") {
-            trace!("Using BigTable");
+            trace!("Found grpc");
+            // Credentials can be stored in either a path provided in an environment
+            // variable, or $HOME/.config/gcloud/applicaion_default_credentals.json
+            //
+            // NOTE: if no credentials are found, application will panic
+            //
+            if let Ok(cred) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+                trace!("Env: {:?}", cred);
+            }
             return Self::BigTable;
         }
         Self::INVALID

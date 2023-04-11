@@ -78,7 +78,10 @@ pub fn as_key(uaid: &Uuid, channel_id: &str) -> String {
 ///
 /// This will automatically bring in the default credentials specified by the `GOOGLE_APPLICATION_CREDENTIALS`
 /// environment variable.
-/// 
+///
+/// NOTE: Some configurations may look for the default credential file (pointed to by
+/// `GOOGLE_APPLICATION_CREDENTIALS`) to be stored in
+/// `$HOME/.config/gcloud/application_default_credentials.json`)
 ///
 impl BigTableClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
