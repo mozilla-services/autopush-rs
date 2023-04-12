@@ -29,6 +29,7 @@ pub fn spawn_webpush_ws(
         let close_reason = webpush_ws(client, &mut session, msg_stream)
             .await
             .unwrap_or_else(|e| {
+                error!("spawn_webpush_ws: Error: {}", e);
                 Some(CloseReason {
                     code: e.close_code(),
                     description: Some(e.close_description().to_owned()),
@@ -74,12 +75,9 @@ async fn webpush_ws(
             smsg
         );
         // TODO: Ensure these added to "unacked_stored_notifs"
-        session
-            .text(smsg)
-            .await
-            // TODO: try! (?) here dictates a scopeguard/other recovery to
-            // cleanup the clients entry
-            .map_err(|_| WSError::StreamClosed)?;
+        // TODO: try! (?) here dictates a scopeguard/other recovery to
+        // cleanup the clients entry
+        session.text(smsg).await?;
     }
 
     let result = identified_ws(&mut client, session, &mut msg_stream, &mut snotif_stream).await;
@@ -170,10 +168,7 @@ async fn identified_ws(
                 };
                 for smsg in client.on_client_msg(client_msg).await? {
                     trace!("identified_ws: msg_stream, ServerMessage -> session {:#?}", smsg);
-                    session
-                        .text(smsg)
-                        .await
-                        .map_err(|_| WSError::StreamClosed)?;
+                    session.text(smsg).await?;
                 }
             },
 
@@ -184,10 +179,7 @@ async fn identified_ws(
                 };
                 for smsg in client.on_server_notif(snotif).await? {
                     trace!("identified_ws: snotif_stream, ServerMessage -> session {:#?}", smsg);
-                    session
-                        .text(smsg)
-                        .await
-                        .map_err(|_| WSError::StreamClosed)?;
+                    session.text(smsg).await?;
                 }
             }
 

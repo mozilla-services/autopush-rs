@@ -79,14 +79,13 @@ impl UnidentifiedClient {
         };
 
         let _ = self.app_state.metrics.incr("ua.command.hello");
-        let flags = ClientFlags::from_hello(&hello_response);
         // TODO: broadcasts
         //let desired_broadcasts = Broadcast::from_hasmap(broadcasts.unwrap_or_default());
         //let (initialized_subs, broadcasts) = app_state.broadcast_init(&desired_broadcasts);
         let (wpclient, check_storage_smsgs) = WebPushClient::new(
             uaid,
             self.ua,
-            flags,
+            ClientFlags::from_hello(&hello_response),
             connected_at,
             hello_response.deferred_user_registration,
             self.app_state,
@@ -129,7 +128,7 @@ mod tests {
         let result = client.on_client_msg(ClientMessage::Ping).await;
         assert!(matches!(result, Err(SMError::InvalidMessage(_))));
 
-        let client = UnidentifiedClient::new(UA.to_owned(), Default::default());
+        let client = uclient(Default::default());
         let result = client
             .on_client_msg(ClientMessage::Register {
                 channel_id: DUMMY_CHID.to_string(),

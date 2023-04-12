@@ -14,8 +14,6 @@ mod test;
 
 use actix_web::web;
 
-use autoconnect_ws::ws_handler;
-
 /// Requires import of the `config` function also in this module to use.
 #[macro_export]
 macro_rules! build_app {
@@ -39,7 +37,7 @@ macro_rules! build_app {
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
         // Websocket Handler
-        .route("/", web::get().to(ws_handler))
+        .route("/", web::get().to(autoconnect_ws::ws_handler))
         // TODO: Internode Message handler
         //.service(web::resource("/push/{uaid}").route(web::push().to(autoconnect_web::route::InterNode::put))
         .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))

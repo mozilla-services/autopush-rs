@@ -19,6 +19,10 @@ autoconnect_settings.workspace = true
 autopush_common.workspace = true
 
 [dev-dependencies]
+actix-rt.workspace = true
+#env_logger.workspace = true
+#test-log = "0.2"
+slog-envlogger = "2.2"
 tokio.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }

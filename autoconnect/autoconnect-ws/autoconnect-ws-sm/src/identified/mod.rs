@@ -150,19 +150,19 @@ impl Default for ClientFlags {
 #[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct SessionStatistics {
-    /// Number of acknowledged messages that were sent directly (not vai storage)
+    /// Number of acknowledged messages that were sent directly (not via storage)
     direct_acked: i32,
-    /// number of messages sent to storage
+    /// Number of messages sent to storage
     direct_storage: i32,
-    /// number of messages taken from storage
+    /// Number of messages taken from storage
     stored_retrieved: i32,
-    /// number of message pulled from storage and acknowledged
+    /// Number of message pulled from storage and acknowledged
     stored_acked: i32,
-    /// number of messages total that are not acknowledged.
+    /// Number of messages total that are not acknowledged.
     nacks: i32,
-    /// number of unregister requests made
+    /// Number of unregister requests
     unregisters: i32,
-    /// number of register requests made
+    /// Number of register requests
     registers: i32,
 }
 
@@ -213,10 +213,50 @@ mod tests {
         .unwrap()
     }
 
-    #[tokio::test]
+    use autopush_common::notification::Notification;
+    fn make_webpush_notif(channel_id: &Uuid, ttl: u64) -> Notification {
+        use autopush_common::util::sec_since_epoch;
+        Notification {
+            channel_id: channel_id.clone(),
+            ttl,
+            timestamp: sec_since_epoch(),
+            ..Default::default()
+        }
+    }
+
+    #[actix_rt::test]
     async fn webpush_ping() {
         let (mut client, _) = wpclient(DUMMY_UAID, Default::default()).await;
         let pong = client.on_client_msg(ClientMessage::Ping).await.unwrap();
         assert!(matches!(pong.as_slice(), [ServerMessage::Ping]));
     }
+
+    #[actix_rt::test]
+    //#[test_log::test(actix_rt::test)]
+    async fn check_storage_stuff() {
+        use autopush_common::logging::init_logging;
+        init_logging(false).unwrap();
+        //let _ = slog_envlogger::init();
+        use autoconnect_common::protocol::ServerNotification;
+        use autopush_common::db::{client::FetchMessageResponse, mock::MockDbClient};
+        let mut db = MockDbClient::new();
+        let channel_id = Uuid::new_v4();
+        db.expect_fetch_messages()
+            .return_once(move |_uaid, _limit| {
+                Ok(FetchMessageResponse {
+                    timestamp: None,
+                    messages: vec![Default::default(), make_webpush_notif(&channel_id, 0)],
+                })
+            });
+
+        let (mut client, _) = wpclient(DUMMY_UAID, AppState {
+            db: db.into_boxed_arc(),
+            ..Default::default()
+        }).await;
+
+
+        let smsgs = client.on_server_notif(ServerNotification::CheckStorage).await.unwrap();
+        assert!(matches!(smsgs.as_slice(), []));
+    }
+
 }

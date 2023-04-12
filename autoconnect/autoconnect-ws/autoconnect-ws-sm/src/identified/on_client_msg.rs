@@ -55,26 +55,22 @@ impl WebPushClient {
             )));
         }
 
-        let smsg = match self.do_register(&channel_id, key).await {
+        let (status, push_endpoint) = match self.do_register(&channel_id, key).await {
             Ok(endpoint) => {
                 let _ = self.app_state.metrics.incr("ua.command.register");
                 self.stats.registers += 1;
-                ServerMessage::Register {
-                    channel_id,
-                    status: 200,
-                    push_endpoint: endpoint,
-                }
+                (200, endpoint)
             }
             Err(e) => {
                 error!("WebPushClient::register failed: {}", e);
-                ServerMessage::Register {
-                    channel_id,
-                    status: 500,
-                    push_endpoint: "".to_owned(),
-                }
+                (500, "".to_owned())
             }
         };
-        Ok(smsg)
+        Ok(ServerMessage::Register {
+            channel_id,
+            status,
+            push_endpoint,
+        })
     }
 
     async fn do_register(
@@ -124,7 +120,7 @@ impl WebPushClient {
             .db
             .remove_channel(&self.uaid, &channel_id)
             .await;
-        let smsg = match result {
+        let status = match result {
             Ok(_) => {
                 self.app_state
                     .metrics
@@ -132,20 +128,14 @@ impl WebPushClient {
                     .with_tag("code", &code.unwrap_or(200).to_string())
                     .send();
                 self.stats.unregisters += 1;
-                ServerMessage::Unregister {
-                    channel_id,
-                    status: 200,
-                }
+                200
             }
             Err(e) => {
                 error!("WebPushClient::unregister failed: {}", e);
-                ServerMessage::Unregister {
-                    channel_id,
-                    status: 500,
-                }
+                500
             }
         };
-        Ok(smsg)
+        Ok(ServerMessage::Unregister { channel_id, status })
     }
 
     async fn broadcast_subscribe(
@@ -164,11 +154,14 @@ impl WebPushClient {
                 .ack_state
                 .unacked_direct_notifs
                 .iter()
-                .position(|v| v.channel_id == notif.channel_id && v.version == notif.version);
+                .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
             if let Some(pos) = pos {
-                // XXX: debug log
-                self.stats.direct_acked += 1;
+                debug!("Ack";
+                       "channel_id" => notif.channel_id.as_hyphenated().to_string(),
+                       "version" => &notif.version
+                );
                 self.ack_state.unacked_direct_notifs.remove(pos);
+                self.stats.direct_acked += 1;
                 continue;
             };
 
@@ -176,13 +169,14 @@ impl WebPushClient {
                 .ack_state
                 .unacked_stored_notifs
                 .iter()
-                .position(|v| v.channel_id == notif.channel_id && v.version == notif.version);
+                .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
             if let Some(pos) = pos {
-                // XXX: debug log
-                self.stats.stored_acked += 1;
-                // XXX: this should remove the notif from here after
-                // remove_message, websocket.py has a comment about this?
-                let n = self.ack_state.unacked_stored_notifs.remove(pos);
+                debug!(
+                    "Ack";
+                    "channel_id" => notif.channel_id.as_hyphenated().to_string(),
+                    "version" => &notif.version
+                );
+                let n = &self.ack_state.unacked_stored_notifs[pos];
                 // Topic/legacy messages have no sortkey_timestamp
                 if n.sortkey_timestamp.is_none() {
                     self.app_state
@@ -190,6 +184,8 @@ impl WebPushClient {
                         .remove_message(&self.uaid, &n.sort_key())
                         .await?;
                 }
+                self.ack_state.unacked_stored_notifs.remove(pos);
+                self.stats.stored_acked += 1;
                 continue;
             };
         }
@@ -231,6 +227,7 @@ impl WebPushClient {
                 debug_assert!(!&self.flags.increment_storage);
             }
             trace!("WebPushClient:maybe_post_process_acks check_storage");
+            // XXX: this needs to return 
             self.check_storage().await
             // let smsgs = self.check_storage().await?;
             // smsgs.is_empty() could still mean recursive or at least??? increment_storage.

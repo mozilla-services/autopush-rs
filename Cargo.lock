@@ -634,12 +634,14 @@ dependencies = [
 name = "autoconnect_ws_sm"
 version = "1.66.0"
 dependencies = [
+ "actix-rt",
  "actix-web",
  "actix-ws",
  "autoconnect_common",
  "autoconnect_settings",
  "autopush_common",
  "cadence",
+ "slog-envlogger",
  "slog-scope",
  "thiserror",
  "tokio 1.27.0",

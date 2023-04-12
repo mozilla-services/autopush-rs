@@ -17,7 +17,6 @@ use crate::notification::Notification;
 use crate::util::sec_since_epoch;
 
 use async_trait::async_trait;
-// use crate::db::dynamodb::{ddb_item, hashmap, val};
 use cadence::{CountedExt, StatsdClient};
 use chrono::Utc;
 use rusoto_core::credential::StaticProvider;

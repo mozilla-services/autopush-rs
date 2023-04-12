@@ -21,7 +21,7 @@ impl WebPushClient {
         }
     }
 
-    /// Move queued push notifications to unacked_direct_notifs (to be stored
+    /// Move queued Push Notifications to unacked_direct_notifs (to be stored
     /// in the db)
     pub fn on_server_notif_shutdown(&mut self, snotif: ServerNotification) {
         if let ServerNotification::Notification(notif) = snotif {
@@ -30,6 +30,7 @@ impl WebPushClient {
     }
 
     pub(super) async fn check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
+        eprintln!("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ {}", self.flags.increment_storage);
         trace!("WebPushClient::check_storage");
         // TODO:
 
@@ -41,8 +42,8 @@ impl WebPushClient {
         // simply means we might enforce the limit at 90 (100-10) instead of
         // 100. we could also increase the limit to match the older behavior.
         //
-        self.flags.include_topic = true;
         self.flags.check_storage = true;
+        self.flags.include_topic = true;
         let CheckStorageResponse {
             include_topic,
             mut messages,
@@ -51,7 +52,7 @@ impl WebPushClient {
 
         // XXX:
         debug!(
-            "WebPushClient::check_storage include_topic: {} unacked_stored_highest -> {:?}",
+            "WebPushClient::check_storage include_topic -> {} unacked_stored_highest -> {:?}",
             include_topic, timestamp
         );
         self.flags.include_topic = include_topic;
@@ -60,8 +61,15 @@ impl WebPushClient {
             debug!("WebPushClient::check_storage finished");
             self.flags.check_storage = false;
             self.sent_from_storage = 0;
+            // No need to increment_storage
+            debug_assert!(!self.flags.increment_storage);
             // XXX: technically back to determine ack? (maybe_post_process_acks)?
             // XXX: DetermineAck
+            // XXX: if all we need to do is increment storage, just
+            // increment it right here. can't we be done then? and no
+            // DeterimeAck needed (only for init but that can be
+            // handled elsewhere probably..)
+            // XXX: if this actually needs to set check_storage to false then DetermineAck doesn't do shit anyway..?
             return Ok(vec![]);
         }
 
@@ -69,22 +77,13 @@ impl WebPushClient {
         // XXX: could be separated out of this method?
         let now = sec_since_epoch();
         messages.retain(|n| {
+            eprintln!("n: exp: {}, {:#?}", n.expired(now), n);
             if !n.expired(now) {
                 return true;
             }
+            // XXX: batch remove_messages would be nice?
             if n.sortkey_timestamp.is_none() {
-                // XXX: A batch remove_messages would be nice
-                let db = self.app_state.db.clone();
-                let uaid = self.uaid.clone();
-                let sort_key = n.sort_key();
-                rt::spawn(async move {
-                    if db.remove_message(&uaid, &sort_key).await.is_ok() {
-                        debug!(
-                            "Deleted expired message without sortkey_timestamp, sort_key: {}",
-                            sort_key
-                        );
-                    }
-                });
+                self.spawn_remove_message(n.sort_key());
             }
             false
         });
@@ -93,20 +92,39 @@ impl WebPushClient {
         // If there's still messages send them out
         if messages.is_empty() {
             // XXX: DetermineAck
+            // XXX: see above notes
+            if self.flags.increment_storage {
+                self.increment_storage().await?;
+            }
             return Ok(vec![]);
         }
         self.ack_state
             .unacked_stored_notifs
             .extend(messages.iter().cloned());
-        let smessages: Vec<_> = messages
+        let smsgs: Vec<_> = messages
             .into_iter()
             .inspect(|msg| {
                 emit_metrics_for_send(&self.app_state.metrics, msg, "Stored", &self.ua_info)
             })
             .map(ServerMessage::Notification)
             .collect();
-        self.sent_from_storage += smessages.len() as u32;
-        Ok(smessages)
+        // XXX: if less info needed could be metrics.count(.., smsgs.len());
+        self.sent_from_storage += smsgs.len() as u32;
+        Ok(smsgs)
+    }
+
+    fn spawn_remove_message(&self, sort_key: String) {
+        let db = self.app_state.db.clone();
+        let uaid = self.uaid.clone();
+        // XXX: could also make a self.spawn_remove_message(sort_key: &str)
+        rt::spawn(async move {
+            if db.remove_message(&uaid, &sort_key).await.is_ok() {
+                debug!(
+                    "Deleted expired message without sortkey_timestamp, sort_key: {}",
+                    sort_key
+                );
+            }
+        });
     }
 
     pub(super) async fn increment_storage(&mut self) -> Result<(), SMError> {
@@ -138,13 +156,19 @@ use autopush_common::db::CheckStorageResponse;
 use cadence::Counted;
 async fn check_storage(client: &mut WebPushClient) -> Result<CheckStorageResponse, SMError> {
     let timestamp = client.ack_state.unacked_stored_highest;
+    /*
+    let maybe_msgs = client.flags.include_topic.then(|| client.app_state.db.fetch_messages(&client.uaid, 11));
+    let Some(msgs) if !smsgs.is_empty() = maybe_msgs else {
+        
+    }
+    */
     let resp = if client.flags.include_topic {
         client.app_state.db.fetch_messages(&client.uaid, 11).await?
     } else {
         Default::default()
     };
     if !resp.messages.is_empty() {
-        debug!("Topic message returns: {:?}", resp.messages);
+        debug!("check_storage: Topic message returns: {:?}", resp.messages);
         client
             .app_state
             .metrics

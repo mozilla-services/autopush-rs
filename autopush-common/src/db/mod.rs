@@ -287,6 +287,7 @@ impl Default for User {
     }
 }
 
+/// TODO: Accurate? This is the record in the Db.
 /// The outbound message record.
 /// This is different that the stored `Notification`
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
