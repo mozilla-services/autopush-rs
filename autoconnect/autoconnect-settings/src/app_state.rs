@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+#[cfg(feature="bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
 use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};
@@ -62,6 +63,7 @@ impl AppState {
         };
         let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
+            #[cfg(feature="bigtable")]
             StorageType::BigTable => {
                 Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
             }

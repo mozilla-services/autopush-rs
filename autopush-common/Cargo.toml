@@ -69,3 +69,6 @@ protobuf = "=2.28.0"  # grpcio does not support protobuf 3+
 mockito = "0.31"
 tempfile = "3.2.0"
 tokio = { version = "0.2", features = ["macros"] }
+
+[features]
+bigtable = []

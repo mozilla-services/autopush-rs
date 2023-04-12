@@ -7,6 +7,7 @@ use actix_cors::Cors;
 use actix_web::{
     dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data, App, HttpServer,
 };
+#[cfg(feature="bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
@@ -68,6 +69,7 @@ impl Server {
                 debug!("Using Dynamodb");
                 Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?)
             }
+            #[cfg(feature="bigtable")]
             StorageType::BigTable => {
                 debug!("Using BigTable");
                 Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
