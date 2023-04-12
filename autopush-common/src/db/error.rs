@@ -4,7 +4,7 @@ use rusoto_dynamodb::{
 };
 use thiserror::Error;
 
-#[cfg(feature="bigtable")]
+#[cfg(feature = "bigtable")]
 use crate::db::bigtable::BigTableError;
 
 pub type DbResult<T> = Result<T, DbError>;
@@ -44,7 +44,7 @@ pub enum DbError {
     #[error("Unable to determine table status")]
     TableStatusUnknown,
 
-    #[cfg(feature="bigtable")]
+    #[cfg(feature = "bigtable")]
     #[error("BigTable error {0}")]
     BTError(#[from] BigTableError),
 

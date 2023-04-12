@@ -23,11 +23,11 @@ use crate::db::util::generate_last_connect;
 
 pub mod client;
 // #[feat(dynamodb)]
+#[cfg(feature = "bigtable")]
+pub mod bigtable;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
-#[cfg(feature="bigtable")]
-pub mod bigtable;
 // #[feat(postgres)]
 // pub mod postgres;
 mod util;
@@ -48,7 +48,7 @@ pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 #[derive(Eq, PartialEq)]
 pub enum StorageType {
     INVALID,
-    #[cfg(feature="bigtable")]
+    #[cfg(feature = "bigtable")]
     BigTable,
     DynamoDb,
     // Postgres,
@@ -67,7 +67,7 @@ impl StorageType {
             trace!("Found http");
             return Self::DynamoDb;
         }
-        #[cfg(feature="bigtable")]
+        #[cfg(feature = "bigtable")]
         if dsn.starts_with("grpc") {
             trace!("Found grpc");
             // Credentials can be stored in either a path provided in an environment
