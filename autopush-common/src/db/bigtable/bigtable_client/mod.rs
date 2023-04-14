@@ -820,3 +820,59 @@ impl DbClient for BigTableClientImpl {
         Box::new(self.clone())
     }
 }
+
+#[cfg(all(test, bigtable, emulate))]
+mod tests {
+
+    //! Currently, these test rely on having a BigTable emulator running on the current machine.
+    //! The tests presume to be able to connect to localhost:8086. See docs/bigtable.md for
+    //! details and how to set up and initialize an emulator.
+    //!
+    use std::sync::Arc;
+    use std::time::SystemTime;
+
+    use super::*;
+    use cadence::StatsdClientBuilder;
+
+    use crate::db::DbSettings;
+
+    pub fn new_client() -> DbResult<BigTableClientImpl> {
+        let settings = DbSettings {
+            // this presumes the table was created with
+            // `cbt -project test -instance test createtable autopush`
+            dsn: Some("grpc://localhost:8086/v2/projects/test/instances/test".to_owned()),
+            db_settings: json!({"table_name":"autopush"}).to_string(),
+            ..Default::default()
+        };
+
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+
+        BigTableClientImpl::new(metrics, &settings)
+    }
+
+    #[actix_rt::test]
+    async fn test_transaction() {
+        let client = new_client().unwrap();
+
+        let test_user = Uuid::new_v4();
+        let connected_at = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap();
+
+        // Register a fake user.
+        let result = client
+            .hello(
+                connected_at.as_secs(),
+                Some(&test_user),
+                "http://localhost",
+                false,
+            )
+            .await?;
+    }
+
+    // #[actix_rt::test]
+    // async fn sometest() {}
+
+    // #[test]
+    // fn sometest () {}
+}

@@ -769,6 +769,7 @@ name = "autopush_common"
 version = "1.66.0"
 dependencies = [
  "actix-http",
+ "actix-rt",
  "actix-web",
  "again",
  "async-trait",
