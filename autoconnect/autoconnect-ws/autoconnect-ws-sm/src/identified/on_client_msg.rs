@@ -227,8 +227,12 @@ impl WebPushClient {
                 debug_assert!(!&self.flags.increment_storage);
             }
             trace!("WebPushClient:maybe_post_process_acks check_storage");
-            // XXX: this needs to return 
-            self.check_storage().await
+            let smsgs = self.do_check_storage().await?;
+            if !smsgs.is_empty() {
+                // More notifications going out, so back to waiting for the Client
+                // to Ack them all before further processing
+                return Ok(smsgs);
+            }
             // let smsgs = self.check_storage().await?;
             // smsgs.is_empty() could still mean recursive or at least??? increment_storage.
             // but what else it need to do? rotate or reset uaid?
@@ -275,8 +279,23 @@ impl WebPushClient {
             } else if flags.check_storage {
                 trace!("WebPushClient:maybe_post_process_acks check_storage");
                 self.check_storage().await
-            */
+             */
+            /*
         } else if flags.rotate_message_table {
+            trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
+            unimplemented!()
+        } else if flags.reset_uaid {
+            trace!("WebPushClient:maybe_post_process_acks reset_uaid");
+            self.app_state.db.remove_user(&self.uaid).await?;
+            Err(SMError::UaidReset)
+        } else {
+            Ok(vec![])
+        }
+             */
+        }
+
+        let flags = &self.flags;
+        if flags.rotate_message_table {
             trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
             unimplemented!()
         } else if flags.reset_uaid {

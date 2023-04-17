@@ -30,6 +30,12 @@ impl WebPushClient {
     }
 
     pub(super) async fn check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
+        self.flags.check_storage = true;
+        self.flags.include_topic = true;
+        self.do_check_storage().await
+    }
+
+    pub(super) async fn do_check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         eprintln!("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ {}", self.flags.increment_storage);
         trace!("WebPushClient::check_storage");
         // TODO:
@@ -42,8 +48,6 @@ impl WebPushClient {
         // simply means we might enforce the limit at 90 (100-10) instead of
         // 100. we could also increase the limit to match the older behavior.
         //
-        self.flags.check_storage = true;
-        self.flags.include_topic = true;
         let CheckStorageResponse {
             include_topic,
             mut messages,
@@ -96,6 +100,8 @@ impl WebPushClient {
             if self.flags.increment_storage {
                 self.increment_storage().await?;
             }
+            self.flags.check_storage = false;
+            self.sent_from_storage = 0;
             return Ok(vec![]);
         }
         self.ack_state
