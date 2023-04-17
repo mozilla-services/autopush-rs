@@ -72,5 +72,7 @@ tokio = { version = "0.2", features = ["macros"] }
 actix-rt = "2.8"
 
 [features]
+# for testing:
+# default = ["bigtable", "emulator"]
 bigtable = []
-emulate = []  # used for testing big table, requires an external bigtable emulator running.
+emulator = []  # used for testing big table, requires an external bigtable emulator running.

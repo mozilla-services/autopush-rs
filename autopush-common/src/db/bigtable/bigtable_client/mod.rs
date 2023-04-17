@@ -43,8 +43,9 @@ const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 /// Wrapper for the BigTable connection
 pub struct BigTableClientImpl {
     pub(crate) settings: BigTableDbSettings,
-    // The client connection to BigTable.
+    /// The grpc client connection to BigTable (it carries no big table specific info)
     client: BigtableClient,
+    /// Metrics client
     metrics: Arc<StatsdClient>,
 }
 
@@ -68,13 +69,17 @@ pub fn as_key(uaid: &Uuid, channel_id: &str) -> String {
 /// BigTable is available via the Google Console, and is a schema less storage system.
 ///
 /// The `db_dsn` string should be in the form of
-/// `grpc://{BigTableEndpoint}/v2/projects/{project-id}/instances/{instance-id}/`
+/// `grpc://{BigTableEndpoint}`
+///
+/// The settings contains the `table_name` which is the GRPC path to the data.
+/// (e.g. `projects/{project_id}/instances/{instance_id}/tables/{table_id}`)
 ///
 /// where:
 /// _BigTableEndpoint_ is the endpoint domain to use (the default is `bigtable.googleapis.com`) See
 /// [BigTable Endpoints](https://cloud.google.com/bigtable/docs/regional-endpoints) for more details.
 /// _project-id_ is the Google project identifier (see the Google developer console (e.g. 'autopush-dev'))
 /// _instance-id_ is the Google project instance, (see the Google developer console (e.g. 'development-1'))
+/// _table_id_ is the Table Name (e.g. 'autopush')
 ///
 /// This will automatically bring in the default credentials specified by the `GOOGLE_APPLICATION_CREDENTIALS`
 /// environment variable.
@@ -85,8 +90,6 @@ pub fn as_key(uaid: &Uuid, channel_id: &str) -> String {
 ///
 impl BigTableClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
-        let channel_creds = ChannelCredentials::google_default_credentials()
-            .map_err(|e| DbError::ConnectionError(e.to_string()))?;
         let env = Arc::new(EnvBuilder::new().build());
         let endpoint = match &settings.dsn {
             Some(v) => v,
@@ -96,12 +99,51 @@ impl BigTableClientImpl {
                 ))
             }
         };
+        debug!("🉑 DSN: {}", &endpoint);
+        let parsed = url::Url::parse(endpoint).map_err(|e| {
+            DbError::ConnectionError(format!("Invalid DSN: {:?} : {:?}", endpoint, e))
+        })?;
+        // Url::parsed() doesn't know how to handle `grpc:` schema, so it returns "null".
+        let origin = format!(
+            "{}:{}",
+            parsed
+                .host_str()
+                .ok_or_else(|| DbError::ConnectionError(format!(
+                    "Invalid DSN: Unparsable host {:?}",
+                    endpoint
+                )))?,
+            parsed.port().unwrap_or(8086)
+        );
+        if !parsed.path().is_empty() {
+            return Err(DbError::ConnectionError(format!(
+                "Invalid DSN: Table paths belong in settings : {:?}",
+                endpoint
+            )));
+        }
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
-        let chan = ChannelBuilder::new(env)
+        let mut chan = ChannelBuilder::new(env)
             .max_send_message_len(1 << 28)
-            .max_receive_message_len(1 << 28)
-            .set_credentials(channel_creds)
-            .connect(endpoint);
+            .max_receive_message_len(1 << 28);
+        // Don't get the credentials if we are running in the emulator
+        if settings
+            .dsn
+            .clone()
+            .map(|v| v.contains("localhost"))
+            .unwrap_or(false)
+            || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
+        {
+            debug!("🉑 Using emulator");
+        } else {
+            chan = chan.set_credentials(
+                ChannelCredentials::google_default_credentials()
+                    .map_err(|e| DbError::ConnectionError(e.to_string()))?,
+            );
+            debug!("🉑 Using real");
+        }
+
+        let con_str = format!("{}{}", origin, parsed.path());
+        debug!("🉑 connection string {}", &con_str);
+        let chan = chan.connect(&con_str);
 
         Ok(Self {
             settings: db_settings,
@@ -116,7 +158,7 @@ impl BigTableClientImpl {
         row_key: &str,
         timestamp_filter: Option<u64>,
     ) -> Result<Option<row::Row>, error::BigTableError> {
-        debug!("Row key: {}", row_key);
+        debug!("🉑 Row key: {}", row_key);
 
         let mut row_keys = RepeatedField::default();
         row_keys.push(row_key.to_owned().as_bytes().to_vec());
@@ -781,7 +823,9 @@ impl DbClient for BigTableClientImpl {
             let user = self.get_user(uaid).await;
 
             match user {
-                Ok(None) => {}
+                Ok(None) => {
+                    debug!("🉑 user not found");
+                }
                 Ok(Some(mut user)) => {
                     // set the user's router_url to this.
                     user.node_id = Some(router_url.to_owned());
@@ -794,6 +838,7 @@ impl DbClient for BigTableClientImpl {
                     }
                 }
                 Err(e) => {
+                    warn!("🉑⚠ {:?}", &e);
                     self.metrics
                         .incr_with_tags("ua.expiration")
                         .with_tag("code", "104")
@@ -821,7 +866,7 @@ impl DbClient for BigTableClientImpl {
     }
 }
 
-#[cfg(all(test, bigtable, emulate))]
+#[cfg(all(test, bigtable))]
 mod tests {
 
     //! Currently, these test rely on having a BigTable emulator running on the current machine.
@@ -832,7 +877,7 @@ mod tests {
     use std::time::SystemTime;
 
     use super::*;
-    use cadence::StatsdClientBuilder;
+    use cadence::StatsdClient;
 
     use crate::db::DbSettings;
 
@@ -840,8 +885,9 @@ mod tests {
         let settings = DbSettings {
             // this presumes the table was created with
             // `cbt -project test -instance test createtable autopush`
-            dsn: Some("grpc://localhost:8086/v2/projects/test/instances/test".to_owned()),
-            db_settings: json!({"table_name":"autopush"}).to_string(),
+            dsn: Some("grpc://localhost:8086".to_owned()),
+            db_settings: json!({"table_name":"projects/test/instances/test/tables/autopush"})
+                .to_string(),
             ..Default::default()
         };
 
@@ -850,8 +896,10 @@ mod tests {
         BigTableClientImpl::new(metrics, &settings)
     }
 
+    #[cfg(emulator)]
     #[actix_rt::test]
-    async fn test_transaction() {
+    async fn test_bigtable_transaction() {
+        debug!("🉑 Getting new client...");
         let client = new_client().unwrap();
 
         let test_user = Uuid::new_v4();
@@ -867,7 +915,11 @@ mod tests {
                 "http://localhost",
                 false,
             )
-            .await?;
+            .await
+            .unwrap();
+        trace!("🉑 {:?}", &result);
+        assert_eq!(result.uaid, None);
+        assert_eq!(result.message_month, "INVALID");
     }
 
     // #[actix_rt::test]

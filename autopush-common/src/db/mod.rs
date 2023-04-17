@@ -219,7 +219,7 @@ impl Clone for Box<dyn DbCommandClient> {
 ///                webpush, used to be the sole carrier of data, can now be anything)
 ///  - data       (encrypted content)
 ///  - headers    (hash of crypto headers: encoding, encrypption, crypto-key, encryption-key)
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct HelloResponse {
     /// The UAID the client should use.
     pub uaid: Option<Uuid>,
