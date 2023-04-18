@@ -1,38 +1,38 @@
 //! Main application server
-
-use crate::db::client::{DbClient, DbClientImpl};
-use crate::error::{ApiError, ApiResult};
-use crate::metrics;
-use crate::middleware::sentry::sentry_middleware;
-use crate::routers::adm::router::AdmRouter;
-use crate::routers::apns::router::ApnsRouter;
-use crate::routers::fcm::router::FcmRouter;
-use crate::routes::health::{
-    health_route, lb_heartbeat_route, log_check, status_route, version_route,
-};
-use crate::routes::registration::{
-    get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
-    unregister_user_route, update_token_route,
-};
-use crate::routes::webpush::{delete_notification_route, webpush_route};
-use crate::settings::Settings;
-use actix_cors::Cors;
-use actix_web::{
-    dev, http::StatusCode, middleware::errhandlers::ErrorHandlers, web, App, FromRequest,
-    HttpServer,
-};
-use cadence::StatsdClient;
-use fernet::MultiFernet;
+#![forbid(unsafe_code)]
 use std::sync::Arc;
 use std::time::Duration;
 
+use actix_cors::Cors;
+use actix_web::{
+    dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data, App, HttpServer,
+};
+use cadence::StatsdClient;
+use fernet::MultiFernet;
+use serde_json::json;
+
+use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
+
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
+use crate::metrics;
+use crate::routers::{adm::router::AdmRouter, apns::router::ApnsRouter, fcm::router::FcmRouter};
+use crate::routes::{
+    health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
+    registration::{
+        get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
+        unregister_user_route, update_token_route,
+    },
+    webpush::{delete_notification_route, webpush_route},
+};
+use crate::settings::Settings;
+
 #[derive(Clone)]
-pub struct ServerState {
+pub struct AppState {
     /// Server Data
     pub metrics: Arc<StatsdClient>,
     pub settings: Settings,
     pub fernet: MultiFernet,
-    pub ddb: Box<dyn DbClient>,
+    pub db: Box<dyn DbClient>,
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
@@ -43,15 +43,31 @@ pub struct Server;
 
 impl Server {
     pub async fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
-        let metrics = Arc::new(metrics::metrics_from_opts(&settings)?);
+        let metrics = Arc::new(metrics::metrics_from_settings(&settings)?);
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();
-        let ddb = Box::new(DbClientImpl::new(
-            metrics.clone(),
-            settings.router_table_name.clone(),
-            settings.message_table_name.clone(),
-        )?);
+        let db_settings = DbSettings {
+            dsn: settings.db_dsn.clone(),
+            db_settings: if settings.db_settings.is_empty() {
+                warn!("❗ Using obsolete message_table and router_table args");
+                // backfill from the older arguments.
+                json!({"message_table": settings.message_table_name, "router_table":settings.router_table_name}).to_string()
+            } else {
+                settings.db_settings.clone()
+            },
+        };
+        // NOTE: Eventually, this should use a `*_DB_DSN` setting to indicate the database storage
+        // location and method. Existing versions of Autopush do not specify this, but instead
+        // rely on either the environment variable `AWS_LOCAL_DYNAMODB` or fall back to the
+        // rusoto_core::Region::default(), which complicates things.
+        // `StorageType::from_dsn` is very preferential toward DynamoDB.
+        let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
+            StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
+            StorageType::INVALID => {
+                return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())
+            }
+        };
         let http = reqwest::ClientBuilder::new()
             .connect_timeout(Duration::from_millis(settings.connection_timeout_millis))
             .timeout(Duration::from_millis(settings.request_timeout_millis))
@@ -63,7 +79,7 @@ impl Server {
                 endpoint_url.clone(),
                 http.clone(),
                 metrics.clone(),
-                ddb.clone(),
+                db.clone(),
             )
             .await?,
         );
@@ -72,7 +88,7 @@ impl Server {
                 settings.apns.clone(),
                 endpoint_url.clone(),
                 metrics.clone(),
-                ddb.clone(),
+                db.clone(),
             )
             .await?,
         );
@@ -81,13 +97,13 @@ impl Server {
             endpoint_url,
             http.clone(),
             metrics.clone(),
-            ddb.clone(),
+            db.clone(),
         )?);
-        let state = ServerState {
-            metrics,
+        let app_state = AppState {
+            metrics: metrics.clone(),
             settings,
             fernet,
-            ddb,
+            db,
             http,
             fcm_router,
             apns_router,
@@ -107,16 +123,19 @@ impl Server {
                 ])
                 .max_age(3600);
             App::new()
-                .data(state.clone())
+                // Actix 4 recommends wrapping structures wtih web::Data (internally an Arc)
+                .app_data(Data::new(app_state.clone()))
+                // Extractor configuration
+                .app_data(web::PayloadConfig::new(app_state.settings.max_data_bytes))
+                .app_data(web::JsonConfig::default().limit(app_state.settings.max_data_bytes))
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
-                .wrap_fn(sentry_middleware)
+                // Our modified Sentry wrapper which does some blocking of non-reportable errors.
+                .wrap(crate::middleware::sentry::SentryWrapper::new(
+                    metrics.clone(),
+                    "api_error".to_owned(),
+                ))
                 .wrap(cors)
-                // Extractor configuration
-                .app_data(web::Bytes::configure(|cfg| {
-                    cfg.limit(state.settings.max_data_bytes)
-                }))
-                .app_data(web::JsonConfig::default().limit(state.settings.max_data_bytes))
                 // Endpoints
                 .service(
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])

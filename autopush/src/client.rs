@@ -18,33 +18,41 @@ use std::time::Duration;
 use tokio_core::reactor::Timeout;
 use uuid::Uuid;
 
-use autopush_common::db::{CheckStorageResponse, DynamoDbUser, HelloResponse, RegisterResponse};
+use crate::db::{CheckStorageResponse, DynamoDbUser, HelloResponse, RegisterResponse};
 use autopush_common::endpoint::make_endpoint;
-use autopush_common::errors::{ApcError, ApcErrorKind, MyFuture};
+use autopush_common::errors::{ApcError, ApcErrorKind};
 use autopush_common::notification::Notification;
-use autopush_common::util::{ms_since_epoch, sec_since_epoch};
+use autopush_common::util::{ms_since_epoch, sec_since_epoch, user_agent::UserAgentInfo};
 
 use crate::megaphone::{Broadcast, BroadcastSubs};
 use crate::server::protocol::{ClientMessage, ServerMessage, ServerNotification};
 use crate::server::Server;
-use crate::user_agent::UserAgentInfo;
+use crate::MyFuture;
 
-// Created and handed to the AutopushServer
+/// Created and handed to the AutopushServer
 pub struct RegisteredClient {
+    /// The User Agent ID (assigned to the remote UserAgent by the server)
     pub uaid: Uuid,
+    /// Internally defined User ID
     pub uid: Uuid,
+    /// The inbound channel for delivery of locally routed Push Notifications
     pub tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
+/// Websocket connector client handler
 pub struct Client<T>
 where
     T: Stream<Item = ClientMessage, Error = ApcError>
         + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
+    /// The current state machine's state
     state_machine: UnAuthClientStateFuture<T>,
+    /// Handle back to the autoconnect server
     srv: Rc<Server>,
+    /// List of interested Broadcast/Megaphone subscriptions for this User Agent
     broadcast_subs: Rc<RefCell<BroadcastSubs>>,
+    /// local webpush router state command request channel.
     tx: mpsc::UnboundedSender<ServerNotification>,
 }
 
@@ -66,7 +74,8 @@ where
     /// call back into Python.
     pub fn new(ws: T, srv: &Rc<Server>, mut uarx: Receiver<String>) -> Client<T> {
         let srv = srv.clone();
-        let timeout = Timeout::new(srv.opts.open_handshake_timeout.unwrap(), &srv.handle).unwrap();
+        let timeout =
+            Timeout::new(srv.app_state.open_handshake_timeout.unwrap(), &srv.handle).unwrap();
         let (tx, rx) = mpsc::unbounded();
 
         // Pull out the user-agent, which we should have by now
@@ -83,7 +92,8 @@ where
         };
 
         let broadcast_subs = Rc::new(RefCell::new(Default::default()));
-        let sm = UnAuthClientState::start(
+        // Initialize the state machine. (UAs start off as Unauthorized )
+        let machine_state = UnAuthClientState::start(
             UnAuthClientData {
                 srv: srv.clone(),
                 ws,
@@ -96,18 +106,21 @@ where
         );
 
         Self {
-            state_machine: sm,
+            state_machine: machine_state,
             srv,
             broadcast_subs,
             tx,
         }
     }
 
+    /// Determine the difference between the User Agents list of broadcast IDs and the ones
+    /// currently known by the server
     pub fn broadcast_delta(&mut self) -> Option<Vec<Broadcast>> {
         let mut broadcast_subs = self.broadcast_subs.borrow_mut();
         self.srv.broadcast_delta(&mut broadcast_subs)
     }
 
+    /// Terminate all connections before shutting down the server.
     pub fn shutdown(&mut self) {
         let _result = self.tx.unbounded_send(ServerNotification::Disconnect);
     }
@@ -282,6 +295,9 @@ where
     }
 }
 
+/*
+STATE MACHINE
+*/
 #[derive(StateMachineFuture)]
 pub enum UnAuthClientState<T>
 where
@@ -375,7 +391,7 @@ where
 
         let AwaitHello { data, tx, rx, .. } = hello.take();
         let connected_at = ms_since_epoch();
-        trace!("### AwaitHello UAID: {:?}", uaid);
+        trace!("❓ AwaitHello UAID: {:?}", uaid);
         // Defer registration (don't write the user to the router table yet)
         // when no uaid was specified. We'll get back a pending DynamoDbUser
         // from the HelloResponse. It'll be potentially written to the db later
@@ -385,7 +401,7 @@ where
         let response = Box::new(data.srv.ddb.hello(
             connected_at,
             uaid.as_ref(),
-            &data.srv.opts.router_url,
+            &data.srv.app_state.router_url,
             defer_registration,
         ));
         transition!(AwaitProcessHello {
@@ -421,7 +437,7 @@ where
                     connected_at,
                     deferred_user_registration,
                 } => {
-                    trace!("### AfterAwaitProcessHello: uaid = {:?}", uaid);
+                    trace!("❓ AfterAwaitProcessHello: uaid = {:?}", uaid);
                     (
                         uaid,
                         message_month,
@@ -441,7 +457,7 @@ where
             }
         };
 
-        trace!("### post hello: {:?}", &uaid);
+        trace!("❓ post hello: {:?}", &uaid);
 
         let AwaitProcessHello {
             data,
@@ -452,7 +468,7 @@ where
         } = process_hello.take();
         let user_is_registered = deferred_user_registration.is_none();
         trace!(
-            "### Taken hello. user_is_registered: {}, {:?}",
+            "💬 Taken hello. user_is_registered: {}, {:?}",
             user_is_registered,
             uaid
         );
@@ -749,6 +765,9 @@ fn save_and_notify_undelivered_messages(
     );
 }
 
+/*
+STATE MACHINE: Main engine
+*/
 #[derive(StateMachineFuture)]
 pub enum AuthClientState<T>
 where
@@ -756,6 +775,7 @@ where
         + Sink<SinkItem = ServerMessage, SinkError = ApcError>
         + 'static,
 {
+    /// Send one or more locally routed notification messages
     #[state_machine_future(start, transitions(AwaitSend, DetermineAck))]
     Send {
         smessages: Vec<ServerMessage>,
@@ -894,7 +914,7 @@ where
         let AwaitSend { smessages, data } = await_send.take();
         let webpush_rc = data.webpush.clone();
         let webpush = webpush_rc.borrow();
-        if webpush.sent_from_storage > data.srv.opts.msg_limit {
+        if webpush.sent_from_storage > data.srv.app_state.msg_limit {
             // Exceeded the max limit of stored messages: drop the user to trigger a
             // re-register
             debug!("Dropping user: exceeded msg_limit");
@@ -996,10 +1016,10 @@ where
                     &uaid,
                     &channel_id,
                     key.as_deref(),
-                    &srv.opts.endpoint_url,
-                    &srv.opts.fernet,
+                    &srv.app_state.endpoint_url,
+                    &srv.app_state.fernet,
                 ) {
-                    Ok(endpoint) => srv.ddb.register(
+                    Ok(endpoint) => srv.ddb.register_channel(
                         &uaid,
                         &channel_id,
                         &message_month,
@@ -1026,8 +1046,11 @@ where
                 // register does
                 let uaid = webpush.uaid;
                 let message_month = webpush.message_month.clone();
-                let response =
-                    Box::new(data.srv.ddb.unregister(&uaid, &channel_id, &message_month));
+                let response = Box::new(data.srv.ddb.unregister_channel(
+                    &uaid,
+                    &channel_id,
+                    &message_month,
+                ));
                 transition!(AwaitUnregister {
                     channel_id,
                     code: code.unwrap_or(200),

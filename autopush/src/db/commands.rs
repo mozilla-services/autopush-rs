@@ -16,12 +16,14 @@ use rusoto_dynamodb::{
     UpdateItemError, UpdateItemInput, UpdateItemOutput,
 };
 
+use autopush_common::errors::{ApcError, ApcErrorKind, Result};
+use autopush_common::notification::Notification;
+use autopush_common::util::timing::sec_since_epoch;
+
 use super::models::{DynamoDbNotification, DynamoDbUser};
 use super::util::generate_last_connect;
 use super::{HelloResponse, MAX_EXPIRY, USER_RECORD_VERSION};
-use crate::errors::{ApcError, ApcErrorKind, MyFuture, Result};
-use crate::notification::Notification;
-use crate::util::timing::sec_since_epoch;
+use crate::MyFuture;
 
 macro_rules! retryable_error {
     ($name:ident, $type:ty, $property:ident) => {
@@ -224,8 +226,10 @@ pub fn get_uaid(
         key: ddb_item! { uaid: s => uaid.as_simple().to_string() },
         ..Default::default()
     };
-    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error)
-        .map_err(|_| ApcErrorKind::DatabaseError("Error fetching user".into()).into())
+    retry_if(move || ddb.get_item(input.clone()), retryable_getitem_error).map_err(|e| {
+        error!("get_uaid: {:?}", e.to_string());
+        ApcErrorKind::DatabaseError("Error fetching user".into()).into()
+    })
 }
 
 /// Register a user into the Router table.
@@ -251,7 +255,7 @@ pub fn register_user(
     future::Either::B(
         retry_if(
             move || {
-                debug!("### Registering user into {}: {:?}", router_table, item);
+                debug!("🧑🏼 Registering user into {}: {:?}", router_table, item);
                 ddb.put_item(PutItemInput {
                     item: item.clone(),
                     table_name: router_table.clone(),
@@ -438,15 +442,15 @@ pub fn lookup_user(
         );
         match user {
             Ok(user) => {
-                trace!("### returning user: {:?}", user.uaid);
+                trace!("🧑 returning user: {:?}", user.uaid);
                 Box::new(future::ok((hello_response, Some(user))))
             }
             Err((false, _)) => {
-                trace!("### handle_user_result false, _: {:?}", uaid2);
+                trace!("🧑 handle_user_result false, _: {:?}", uaid2);
                 Box::new(future::ok((hello_response, None)))
             }
             Err((true, code)) => {
-                trace!("### handle_user_result true, {}: {:?}", uaid2, code);
+                trace!("🧑 handle_user_result true, {}: {:?}", uaid2, code);
                 metrics
                     .incr_with_tags("ua.expiration")
                     .with_tag("code", &code.to_string())

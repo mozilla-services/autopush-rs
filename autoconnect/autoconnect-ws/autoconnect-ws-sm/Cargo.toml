@@ -1,0 +1,23 @@
+[package]
+name = "autoconnect_ws_sm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-ws.workspace = true
+cadence.workspace = true
+slog-scope.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+
+autoconnect_common.workspace = true
+autoconnect_settings.workspace = true
+autopush_common.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+autoconnect_common = { workspace = true, features = ["test-support"] }

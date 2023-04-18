@@ -1,34 +1,38 @@
-use crate::error::{ApiError, ApiErrorKind, ApiResult};
-use crate::extractors::token_info::{ApiVersion, TokenInfo};
-use crate::extractors::user::validate_user;
-use crate::headers::crypto_key::CryptoKeyHeader;
-use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
-use crate::metrics::Metrics;
-use crate::server::ServerState;
-use crate::tags::Tags;
-use actix_web::dev::{Payload, PayloadStream};
-use actix_web::web::Data;
-use actix_web::{FromRequest, HttpRequest};
-use autopush_common::db::DynamoDbUser;
-use autopush_common::endpoint::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
-use autopush_common::util::sec_since_epoch;
+use std::borrow::Cow;
+use std::str::FromStr;
+
+use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
+use autopush_common::{
+    db::User,
+    tags::Tags,
+    util::{b64_decode_std, b64_decode_url, sec_since_epoch},
+};
 use cadence::{CountedExt, StatsdClient};
-use futures::future::LocalBoxFuture;
-use futures::FutureExt;
+use futures::{future::LocalBoxFuture, FutureExt};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-use std::str::FromStr;
 use url::Url;
 use uuid::Uuid;
+
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
+use crate::extractors::{
+    token_info::{ApiVersion, TokenInfo},
+    user::validate_user,
+};
+use crate::headers::{
+    crypto_key::CryptoKeyHeader,
+    vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
+};
+use crate::metrics::Metrics;
+use crate::server::AppState;
 
 const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 #[derive(Clone, Debug)]
 pub struct Subscription {
-    pub user: DynamoDbUser,
+    pub user: User,
     pub channel_id: Uuid,
     pub vapid: Option<VapidHeaderWithKey>,
 }
@@ -53,21 +57,20 @@ impl Default for VapidClaims {
 impl FromRequest for Subscription {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let req = req.clone();
 
         async move {
             // Collect token info and server state
             let token_info = TokenInfo::extract(&req).await?;
             trace!("Token info: {:?}", &token_info);
-            let state: Data<ServerState> =
+            let app_state: Data<AppState> =
                 Data::extract(&req).await.expect("No server state found");
-            let metrics = Metrics::from(&state);
+            let metrics = Metrics::from(&app_state);
 
             // Decrypt the token
-            let token = state
+            let token = app_state
                 .fernet
                 .decrypt(&repad_base64(&token_info.token))
                 .map_err(|e| {
@@ -76,7 +79,7 @@ impl FromRequest for Subscription {
                 })?;
 
             // Parse VAPID and extract public key.
-            let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &state.metrics)?
+            let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &app_state.metrics)?
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
 
@@ -95,20 +98,20 @@ impl FromRequest for Subscription {
 
             trace!("UAID: {:?}, CHID: {:?}", uaid, channel_id);
 
-            let user = state
-                .ddb
-                .get_user(uaid)
+            let user = app_state
+                .db
+                .get_user(&uaid)
                 .await?
                 .ok_or(ApiErrorKind::NoSubscription)?;
 
             trace!("user: {:?}", &user);
-            validate_user(&user, &channel_id, &state).await?;
+            validate_user(&user, &channel_id, &app_state).await?;
 
             // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid, &state.settings.endpoint_url(), &metrics)?;
+                validate_vapid_jwt(vapid, &app_state.settings.endpoint_url(), &metrics)?;
 
-                state
+                app_state
                     .metrics
                     .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
             }
@@ -200,12 +203,12 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 /// in standard base64 encoding. (Both of these violate the VAPID RFC)
 /// Prior python versions ignored these errors, so we should too.
 fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
-    let engine = if public_key.contains(['/', '+']) {
-        STANDARD_NO_PAD
+    if public_key.contains(['/', '+']) {
+        b64_decode_std(public_key.trim_end_matches('='))
     } else {
-        URL_SAFE_NO_PAD
-    };
-    base64::decode_engine(public_key.trim_end_matches('='), &engine).map_err(|e| {
+        b64_decode_url(public_key.trim_end_matches('='))
+    }
+    .map_err(|e| {
         error!("decode_public_key: {:?}", e);
         VapidError::InvalidKey(e.to_string()).into()
     })
@@ -320,8 +323,7 @@ mod tests {
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
     use crate::metrics::Metrics;
-    use autopush_common::endpoint::STANDARD_NO_PAD;
-    use autopush_common::util::sec_since_epoch;
+    use autopush_common::util::{b64_decode_std, sec_since_epoch};
     use serde::{Deserialize, Serialize};
     use std::str::FromStr;
     use url::Url;
@@ -338,11 +340,10 @@ mod tests {
 
     #[test]
     fn vapid_aud_valid() {
-        let priv_key = base64::decode_engine(
+        let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            &STANDARD_NO_PAD,
         )
         .unwrap();
         // Specify a potentially invalid padding.
@@ -371,11 +372,10 @@ mod tests {
 
     #[test]
     fn vapid_aud_invalid() {
-        let priv_key = base64::decode_engine(
+        let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            &STANDARD_NO_PAD,
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
@@ -417,11 +417,10 @@ mod tests {
             sub: String,
         }
 
-        let priv_key = base64::decode_engine(
+        let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            &STANDARD_NO_PAD,
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
@@ -464,11 +463,10 @@ mod tests {
             sub: String,
         }
 
-        let priv_key = base64::decode_engine(
+        let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            &STANDARD_NO_PAD,
         )
         .unwrap();
         // pretty much matches the kind of key we get from some partners.
@@ -542,11 +540,10 @@ mod tests {
             sub: Option<String>,
         }
 
-        let priv_key = base64::decode_engine(
+        let priv_key = b64_decode_std(
             "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
                     oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
                     bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-            &STANDARD_NO_PAD,
         )
         .unwrap();
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();

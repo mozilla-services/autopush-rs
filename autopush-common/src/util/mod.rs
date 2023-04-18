@@ -1,42 +1,13 @@
 //! Various small utilities accumulated over time for the WebPush server
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::time::Duration;
 
-use futures::future::{Either, Future, IntoFuture};
-use tokio_core::reactor::{Handle, Timeout};
+use base64::Engine;
 
-use crate::errors::*;
-
-mod send_all;
 pub mod timing;
+pub mod user_agent;
 
-pub use self::send_all::MySendAll;
 pub use self::timing::{ms_since_epoch, sec_since_epoch, us_since_epoch};
-
-/// Convenience future to time out the resolution of `f` provided within the
-/// duration provided.
-///
-/// If the `dur` is `None` then the returned future is equivalent to `f` (no
-/// timeout) and otherwise the returned future will cancel `f` and resolve to an
-/// error if the `dur` timeout elapses before `f` resolves.
-pub fn timeout<F>(f: F, dur: Option<Duration>, handle: &Handle) -> MyFuture<F::Item>
-where
-    F: Future + 'static,
-    F::Error: Into<ApcError>,
-{
-    let dur = match dur {
-        Some(dur) => dur,
-        None => return Box::new(f.map_err(|e| e.into())),
-    };
-    let timeout = Timeout::new(dur, handle).into_future().flatten();
-    Box::new(f.select2(timeout).then(|res| match res {
-        Ok(Either::A((item, _timeout))) => Ok(item),
-        Err(Either::A((e, _timeout))) => Err(e.into()),
-        Ok(Either::B(((), _item))) => Err(ApcErrorKind::GeneralError("timed out".into()).into()),
-        Err(Either::B((e, _item))) => Err(e.into()),
-    }))
-}
 
 pub trait InsertOpt<K: Eq + Hash, V> {
     /// Insert an item only if it exists
@@ -49,4 +20,23 @@ impl<K: Eq + Hash, V> InsertOpt<K, V> for HashMap<K, V> {
             self.insert(key.into(), value.into());
         }
     }
+}
+
+/// Convenience wrapper for base64 decoding
+/// *note* The `base64` devs are HIGHLY opinionated and the method to encode/decode
+/// changes frequently. This function encapsulates that as much as possible.
+pub fn b64_decode_url(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(input.trim_end_matches('='))
+}
+
+pub fn b64_encode_url(input: &Vec<u8>) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(input)
+}
+
+pub fn b64_decode_std(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    base64::engine::general_purpose::STANDARD_NO_PAD.decode(input.trim_end_matches('='))
+}
+
+pub fn b64_encode_std(input: &Vec<u8>) -> String {
+    base64::engine::general_purpose::STANDARD_NO_PAD.encode(input)
 }

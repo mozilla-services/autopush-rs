@@ -4,21 +4,26 @@ extern crate slog_scope;
 #[macro_use]
 extern crate serde_derive;
 
+use std::time::Duration;
 use std::{env, os::raw::c_int, thread};
 
 use docopt::Docopt;
 
-use autopush_common::errors::{ApcErrorKind, Result};
+use autopush_common::errors::{ApcError, ApcErrorKind, Result};
+use futures::{future::Either, Future, IntoFuture};
+use tokio_core::reactor::{Handle, Timeout};
 
 mod client;
+mod db;
 mod http;
 mod megaphone;
 mod server;
 mod settings;
-mod user_agent;
 
-use crate::server::{AutopushServer, ServerOptions};
+use crate::server::{AppState, AutopushServer};
 use crate::settings::Settings;
+
+pub type MyFuture<T> = Box<dyn Future<Item = T, Error = autopush_common::errors::ApcError>>;
 
 const USAGE: &str = "
 Usage: autopush_rs [options]
@@ -53,8 +58,8 @@ fn main() -> Result<()> {
     if let Some(ref ddb_local) = settings.aws_ddb_endpoint {
         env::set_var("AWS_LOCAL_DYNAMODB", ddb_local);
     }
-    let server_opts = ServerOptions::from_settings(settings)?;
-    let server = AutopushServer::new(server_opts);
+    let app_state = AppState::from_settings(settings)?;
+    let server = AutopushServer::new(app_state);
     server.start();
     signal.recv().unwrap();
     server
@@ -74,4 +79,30 @@ fn notify(signals: &[c_int]) -> Result<crossbeam_channel::Receiver<c_int>> {
         }
     });
     Ok(r)
+}
+
+/// Convenience future to time out the resolution of `f` provided within the
+/// duration provided.
+///
+/// If the `dur` is `None` then the returned future is equivalent to `f` (no
+/// timeout) and otherwise the returned future will cancel `f` and resolve to an
+/// error if the `dur` timeout elapses before `f` resolves.
+pub fn timeout<F>(f: F, dur: Option<Duration>, handle: &Handle) -> MyFuture<F::Item>
+where
+    F: Future + 'static,
+    F::Error: Into<ApcError>,
+{
+    let dur = match dur {
+        Some(dur) => dur,
+        None => return Box::new(f.map_err(|e| e.into())),
+    };
+    let timeout = Timeout::new(dur, handle).into_future().flatten();
+    Box::new(f.select2(timeout).then(|res| match res {
+        Ok(Either::A((item, _timeout))) => Ok(item),
+        Err(Either::A((e, _timeout))) => Err(e.into()),
+        Ok(Either::B(((), _item))) => {
+            Err(ApcErrorKind::GeneralError("timed out".to_owned()).into())
+        }
+        Err(Either::B((e, _item))) => Err(e.into()),
+    }))
 }

@@ -26,25 +26,23 @@ use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tungstenite::handshake::server::Request;
 use tungstenite::{self, Message};
 
-use autopush_common::db::DynamoStorage;
-use autopush_common::errors::*;
 use autopush_common::errors::{ApcError, ApcErrorKind, Result};
 use autopush_common::logging;
 use autopush_common::notification::Notification;
-use autopush_common::util::timeout;
 
 use crate::client::Client;
-use crate::http;
+use crate::db::DynamoStorage;
 use crate::megaphone::{
     Broadcast, BroadcastChangeTracker, BroadcastSubs, BroadcastSubsInit, MegaphoneAPIResponse,
 };
 use crate::server::dispatch::{Dispatch, RequestType};
-use crate::server::metrics::metrics_from_opts;
+use crate::server::metrics::metrics_from_state;
 use crate::server::protocol::{BroadcastValue, ClientMessage, ServerMessage};
 use crate::server::rc::RcObject;
 use crate::server::registry::ClientRegistry;
 use crate::server::webpush_io::WebpushIo;
 use crate::settings::Settings;
+use crate::{http, timeout, MyFuture};
 
 mod dispatch;
 mod metrics;
@@ -79,13 +77,13 @@ fn fto_dur(seconds: f64) -> Option<Duration> {
 struct ShutdownHandle(oneshot::Sender<()>, thread::JoinHandle<()>);
 
 pub struct AutopushServer {
-    opts: Arc<ServerOptions>,
+    app_state: Arc<AppState>,
     shutdown_handles: Cell<Option<Vec<ShutdownHandle>>>,
     _guard: Option<sentry::ClientInitGuard>,
 }
 
 impl AutopushServer {
-    pub fn new(opts: ServerOptions) -> Self {
+    pub fn new(app_state: AppState) -> Self {
         let guard = if let Ok(dsn) = env::var("SENTRY_DSN") {
             let guard = sentry::init((
                 dsn,
@@ -103,15 +101,15 @@ impl AutopushServer {
             None
         };
         Self {
-            opts: Arc::new(opts),
+            app_state: Arc::new(app_state),
             shutdown_handles: Cell::new(None),
             _guard: guard,
         }
     }
 
     pub fn start(&self) {
-        logging::init_logging(!self.opts.human_logs).expect("init_logging failed");
-        let handles = Server::start(&self.opts).expect("failed to start server");
+        logging::init_logging(!self.app_state.human_logs).expect("init_logging failed");
+        let handles = Server::start(&self.app_state).expect("failed to start server");
         self.shutdown_handles.set(Some(handles));
     }
 
@@ -132,7 +130,7 @@ impl AutopushServer {
     }
 }
 
-pub struct ServerOptions {
+pub struct AppState {
     pub router_port: u16,
     pub port: u16,
     pub fernet: MultiFernet,
@@ -144,8 +142,8 @@ pub struct ServerOptions {
     pub auto_ping_timeout: Duration,
     pub max_connections: Option<u32>,
     pub close_handshake_timeout: Option<Duration>,
-    pub _message_table_name: String,
-    pub _router_table_name: String,
+    pub message_table_name: String,
+    pub router_table_name: String,
     pub router_url: String,
     pub endpoint_url: String,
     pub statsd_host: Option<String>,
@@ -157,7 +155,7 @@ pub struct ServerOptions {
     pub msg_limit: u32,
 }
 
-impl ServerOptions {
+impl AppState {
     pub fn from_settings(settings: Settings) -> Result<Self> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
@@ -184,8 +182,8 @@ impl ServerOptions {
                 Some(settings.statsd_host)
             },
             statsd_port: settings.statsd_port,
-            _message_table_name: settings.message_tablename,
-            _router_table_name: settings.router_tablename,
+            message_table_name: settings.message_tablename,
+            router_table_name: settings.router_tablename,
             router_url,
             endpoint_url,
             ssl_key: settings.router_ssl_key.map(PathBuf::from),
@@ -212,32 +210,41 @@ impl ServerOptions {
     }
 }
 
+/// The main AutoConnect server
 pub struct Server {
+    /// List of known Clients, mapped by UAID, for this node.
     pub clients: Arc<ClientRegistry>,
+    /// Handle to the Broadcast change monitor
     broadcaster: RefCell<BroadcastChangeTracker>,
+    /// Handle to the current Database Client
     pub ddb: DynamoStorage,
+    /// Count of open cells
     open_connections: Cell<u32>,
+    /// OBSOLETE
     tls_acceptor: Option<SslAcceptor>,
-    pub opts: Arc<ServerOptions>,
+    /// Application Communal Data
+    pub app_state: Arc<AppState>,
+    /// tokio reactor core handle
     pub handle: Handle,
+    /// analytics reporting
     pub metrics: Arc<StatsdClient>,
 }
 
 impl Server {
     /// Creates a new server handle used by Megaphone and other services.
     ///
-    /// This will spawn a new server with the `opts` specified, spinning up a
+    /// This will spawn a new server with the [`state`](autopush_rs::server::AppState) specified, spinning up a
     /// separate thread for the tokio reactor. The returned ShutdownHandles can
     /// be used to interact with it (e.g. shut it down).
-    fn start(opts: &Arc<ServerOptions>) -> Result<Vec<ShutdownHandle>> {
+    fn start(app_state: &Arc<AppState>) -> Result<Vec<ShutdownHandle>> {
         let mut shutdown_handles = vec![];
 
         let (inittx, initrx) = oneshot::channel();
         let (donetx, donerx) = oneshot::channel();
 
-        let opts = opts.clone();
+        let state = app_state.clone();
         let thread = thread::spawn(move || {
-            let (srv, mut core) = match Server::new(&opts) {
+            let (srv, mut core) = match Server::new(&state) {
                 Ok(core) => {
                     inittx.send(None).unwrap();
                     core
@@ -248,7 +255,8 @@ impl Server {
             // Internal HTTP server setup
             {
                 let handle = core.handle();
-                let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.router_port));
+                let addr = SocketAddr::from(([0, 0, 0, 0], srv.app_state.router_port));
+                debug!("Starting router: {:?}", addr);
                 let push_listener = TcpListener::bind(&addr, &handle).unwrap();
                 let http = Http::new();
                 let push_srv = push_listener.incoming().for_each(move |(socket, _)| {
@@ -278,10 +286,10 @@ impl Server {
     }
 
     #[allow(clippy::single_char_add_str)]
-    fn new(opts: &Arc<ServerOptions>) -> Result<(Rc<Server>, Core)> {
+    fn new(app_state: &Arc<AppState>) -> Result<(Rc<Server>, Core)> {
         let core = Core::new()?;
-        let broadcaster = if let Some(ref megaphone_url) = opts.megaphone_api_url {
-            let megaphone_token = opts
+        let broadcaster = if let Some(ref megaphone_url) = app_state.megaphone_api_url {
+            let megaphone_token = app_state
                 .megaphone_api_token
                 .as_ref()
                 .expect("Megaphone API requires a Megaphone API Token to be set");
@@ -290,24 +298,24 @@ impl Server {
         } else {
             BroadcastChangeTracker::new(Vec::new())
         };
-        let metrics = Arc::new(metrics_from_opts(opts)?);
+        let metrics = Arc::new(metrics_from_state(app_state)?);
 
         let srv = Rc::new(Server {
-            opts: opts.clone(),
+            app_state: app_state.clone(),
             broadcaster: RefCell::new(broadcaster),
-            ddb: DynamoStorage::from_opts(
-                &opts._message_table_name,
-                &opts._router_table_name,
+            ddb: DynamoStorage::from_settings(
+                &app_state.message_table_name,
+                &app_state.router_table_name,
                 metrics.clone(),
             )?,
             clients: Arc::new(ClientRegistry::default()),
             open_connections: Cell::new(0),
             handle: core.handle(),
-            tls_acceptor: tls::configure(opts),
+            tls_acceptor: tls::configure(app_state),
             metrics,
         });
-        let addr = SocketAddr::from(([0, 0, 0, 0], srv.opts.port));
-        debug!("{:?}", &addr);
+        let addr = SocketAddr::from(([0, 0, 0, 0], srv.app_state.port));
+        debug!("Starting server: {:?}", &addr);
         let ws_listener = TcpListener::bind(&addr, &srv.handle)?;
 
         let handle = core.handle();
@@ -319,18 +327,15 @@ impl Server {
                 .for_each(move |(socket, addr)| {
                     // Make sure we're not handling too many clients before we start the
                     // websocket handshake.
-                    let max = srv.opts.max_connections.unwrap_or(u32::max_value());
+                    let max = srv.app_state.max_connections.unwrap_or(u32::max_value());
                     if srv.open_connections.get() >= max {
                         info!(
-                            "dropping {} as we already have too many open \
-                         connections",
+                            "dropping {} as we already have too many open connections",
                             addr
                         );
                         return Ok(());
                     }
                     srv.open_connections.set(srv.open_connections.get() + 1);
-
-                    // TODO: TCP socket options here?
 
                     // Process TLS (if configured)
                     let socket = tls::accept(&srv, socket);
@@ -340,7 +345,7 @@ impl Server {
 
                     // Time out both the TLS accept (if any) along with the dispatch
                     // to figure out where we're going.
-                    let request = timeout(request, srv.opts.open_handshake_timeout, &handle);
+                    let request = timeout(request, srv.app_state.open_handshake_timeout, &handle);
                     let srv2 = srv.clone();
                     let handle2 = handle.clone();
 
@@ -374,7 +379,8 @@ impl Server {
                                 let ws = accept_hdr_async(socket, callback).map_err(|_e| {
                                     ApcErrorKind::GeneralError("failed to accept client".into())
                                 });
-                                let ws = timeout(ws, srv2.opts.open_handshake_timeout, &handle2);
+                                let ws =
+                                    timeout(ws, srv2.app_state.open_handshake_timeout, &handle2);
 
                                 // Once the handshake is done we'll start the main
                                 // communication with the client, managing pings
@@ -400,7 +406,12 @@ impl Server {
                     handle.spawn(client.then(move |res| {
                         srv.open_connections.set(srv.open_connections.get() - 1);
                         if let Err(e) = res {
-                            debug!("{}: {}", addr, e.to_string());
+                            let mut errstr: &str = &e.to_string();
+                            if errstr.contains("Connection closed normally") {
+                                // we don't need the stack for a Success Error.
+                                errstr = errstr.split('\n').collect::<Vec<&str>>()[0];
+                            }
+                            debug!("🤫 {}: {}", addr, errstr);
                         }
                         Ok(())
                     }));
@@ -408,15 +419,15 @@ impl Server {
                     Ok(())
                 });
 
-        if let Some(ref megaphone_url) = opts.megaphone_api_url {
-            let megaphone_token = opts
+        if let Some(ref megaphone_url) = app_state.megaphone_api_url {
+            let megaphone_token = app_state
                 .megaphone_api_token
                 .as_ref()
                 .expect("Megaphone API requires a Megaphone API Token to be set");
             let fut = MegaphoneUpdater::new(
                 megaphone_url,
                 megaphone_token,
-                opts.megaphone_poll_interval,
+                app_state.megaphone_poll_interval,
                 &srv2,
             )
             .expect("Unable to start megaphone updater");
@@ -485,6 +496,9 @@ impl Server {
     }
 }
 
+/*
+STATE MACHINE
+*/
 enum MegaphoneState {
     Waiting,
     Requesting(MyFuture<MegaphoneAPIResponse>),
@@ -565,7 +579,7 @@ impl Future for MegaphoneUpdater {
                             error!("📢Failed to get response, queue again {error:?}");
                             capture_message(
                                 &format!("Failed to get response, queue again {error:?}"),
-                                sentry::Level::Error,
+                                sentry::Level::Warning,
                             );
                         }
                     };
@@ -584,6 +598,9 @@ enum WaitingFor {
     Close,
 }
 
+/*
+STATE MACHINE
+*/
 enum CloseState<T> {
     Exchange(T),
     Closing,
@@ -618,9 +635,9 @@ impl PingManager {
         // an `Rc` object. This'll allow us to share it between the ping/pong
         // management and message shuffling.
         let socket = RcObject::new(WebpushSocket::new(socket));
-        trace!("🏓Ping interval {:?}", &srv.opts.auto_ping_interval);
+        trace!("🏓Ping interval {:?}", &srv.app_state.auto_ping_interval);
         Ok(PingManager {
-            timeout: Timeout::new(srv.opts.auto_ping_interval, &srv.handle)?,
+            timeout: Timeout::new(srv.app_state.auto_ping_interval, &srv.handle)?,
             waiting: WaitingFor::SendPing,
             socket: socket.clone(),
             client: CloseState::Exchange(Client::new(socket, srv, uarx)),
@@ -653,12 +670,12 @@ impl Future for PingManager {
                     // If we just sent a broadcast, reset the ping interval and clear the delta
                     if socket.broadcast_delta.is_some() {
                         trace!("📢 Pending");
-                        let at = Instant::now() + self.srv.opts.auto_ping_interval;
+                        let at = Instant::now() + self.srv.app_state.auto_ping_interval;
                         self.timeout.reset(at);
                         socket.broadcast_delta = None;
                         self.waiting = WaitingFor::SendPing
                     } else {
-                        let at = Instant::now() + self.srv.opts.auto_ping_timeout;
+                        let at = Instant::now() + self.srv.app_state.auto_ping_timeout;
                         self.timeout.reset(at);
                         self.waiting = WaitingFor::Pong
                     }
@@ -693,7 +710,7 @@ impl Future for PingManager {
                         // to send out a ping
                         trace!("🏓ws pong received, going back to sending a ping");
                         debug_assert!(!socket.ws_pong_timeout);
-                        let at = Instant::now() + self.srv.opts.auto_ping_interval;
+                        let at = Instant::now() + self.srv.app_state.auto_ping_interval;
                         self.timeout.reset(at);
                         self.waiting = WaitingFor::SendPing;
                         socket.ws_pong_received = false;
@@ -748,7 +765,7 @@ impl Future for PingManager {
             }
 
             self.client = CloseState::Closing;
-            if let Some(dur) = self.srv.opts.close_handshake_timeout {
+            if let Some(dur) = self.srv.app_state.close_handshake_timeout {
                 let at = Instant::now() + dur;
                 self.timeout.reset(at);
                 self.waiting = WaitingFor::Close;
@@ -839,7 +856,7 @@ where
             };
             match msg {
                 Message::Text(ref s) => {
-                    trace!("🚟 text message {}", s);
+                    trace!("🢤 text message {}", s);
                     let msg = s
                         .parse()
                         .map_err(|_e| ApcErrorKind::InvalidClientMessage(s.to_owned()))?;
@@ -891,14 +908,26 @@ where
         }
     }
 
+    /// Handle the poll completion.
+    /// Note, that this eats the errors of poll_complete(), because one of the known states
+    /// is "Error: Connection closed normally" which can raise a false error condition.
     fn poll_complete(&mut self) -> Poll<(), ApcError> {
         try_ready!(self.send_ws_ping());
-        Ok(self.inner.poll_complete()?)
+        if self.inner.poll_complete().is_err() {
+            warn!("Error encountered with poll_complete");
+        }
+        Ok(Async::Ready(()))
     }
 
     fn close(&mut self) -> Poll<(), ApcError> {
         try_ready!(self.poll_complete());
-        Ok(self.inner.close()?)
+        match self.inner.close() {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                warn!("Close generated an error, possibly ok?");
+                Err(From::from(e))
+            }
+        }
     }
 }
 

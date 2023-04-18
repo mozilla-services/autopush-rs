@@ -1,10 +1,9 @@
 use crate::auth::sign_with_key;
 use crate::error::{ApiError, ApiErrorKind};
 use crate::headers::util::get_header;
-use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
-use actix_web::web::Data;
-use actix_web::{FromRequest, HttpRequest};
+use crate::server::AppState;
+use actix_web::dev::Payload;
+use actix_web::{web::Data, FromRequest, HttpRequest};
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use openssl::error::ErrorStack;
@@ -49,9 +48,8 @@ impl AuthorizationCheck {
 impl FromRequest for AuthorizationCheck {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, _: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let req = req.clone();
 
         async move {
@@ -61,7 +59,7 @@ impl FromRequest for AuthorizationCheck {
                 .expect("{uaid} must be part of the path")
                 .parse::<Uuid>()
                 .map_err(|_| ApiErrorKind::NoUser)?;
-            let state: Data<ServerState> = Data::extract(&req)
+            let state: Data<AppState> = Data::extract(&req)
                 .into_inner()
                 .expect("No server state found");
             let auth_header = get_header(&req, "Authorization")

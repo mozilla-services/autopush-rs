@@ -1,13 +1,10 @@
 use crate::error::{ApiError, ApiErrorKind};
-use crate::extractors::message_id::MessageId;
-use crate::extractors::notification_headers::NotificationHeaders;
-use crate::extractors::subscription::Subscription;
-use crate::server::ServerState;
-use actix_web::dev::{Payload, PayloadStream};
-use actix_web::web::Data;
-use actix_web::{web, FromRequest, HttpRequest};
-use autopush_common::endpoint::URL_SAFE_NO_PAD;
-use autopush_common::util::{ms_since_epoch, sec_since_epoch};
+use crate::extractors::{
+    message_id::MessageId, notification_headers::NotificationHeaders, subscription::Subscription,
+};
+use crate::server::AppState;
+use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
+use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
 use cadence::CountedExt;
 use fernet::MultiFernet;
 use futures::{future, FutureExt};
@@ -34,15 +31,14 @@ pub struct Notification {
 impl FromRequest for Notification {
     type Error = ApiError;
     type Future = future::LocalBoxFuture<'static, Result<Self, Self::Error>>;
-    type Config = ();
 
-    fn from_request(req: &HttpRequest, payload: &mut Payload<PayloadStream>) -> Self::Future {
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
         let req = req.clone();
         let mut payload = payload.take();
 
         async move {
             let subscription = Subscription::extract(&req).await?;
-            let state = Data::<ServerState>::extract(&req)
+            let app_state = web::Data::<AppState>::extract(&req)
                 .await
                 .expect("No server state found");
 
@@ -58,14 +54,14 @@ impl FromRequest for Notification {
             let data = if data.is_empty() {
                 None
             } else {
-                Some(base64::encode_engine(data, &URL_SAFE_NO_PAD))
+                Some(b64_encode_url(&data.to_vec()))
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
             let timestamp = sec_since_epoch();
             let sort_key_timestamp = ms_since_epoch();
             let message_id = Self::generate_message_id(
-                &state.fernet,
+                &app_state.fernet,
                 subscription.user.uaid,
                 subscription.channel_id,
                 headers.topic.as_deref(),
@@ -75,7 +71,7 @@ impl FromRequest for Notification {
             // Record the encoding if we have an encrypted payload
             if let Some(encoding) = &headers.encoding {
                 if data.is_some() {
-                    state
+                    app_state
                         .metrics
                         .incr(&format!("updates.notification.encoding.{encoding}"))
                         .ok();

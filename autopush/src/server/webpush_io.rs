@@ -6,6 +6,7 @@
 //! data we already read as there's no ability to pass this in currently. That
 //! means we'll parse headers twice, but alas!
 
+use std::backtrace;
 use std::io::{self, Read, Write};
 
 use bytes::BytesMut;
@@ -41,7 +42,22 @@ impl Read for WebpushIo {
             }
         }
         self.header_to_read = None;
-        self.tcp.read(buf)
+        let res = self.tcp.read(buf);
+        if res.is_err() {
+            if let Some(e) = res.as_ref().err() {
+                if e.kind() == std::io::ErrorKind::WouldBlock {
+                    // quietly report the error. The socket closed early.
+                    trace!("🢤 Detected WouldBlock, connection terminated abruptly");
+                } else {
+                    // report the backtrace because it can be difficult to determine
+                    // what the caller is.
+                    warn!("🢤 ERR: {:?}\n{:?}", &e, backtrace::Backtrace::capture());
+                }
+            }
+        } else {
+            trace!("🢤 {:?}", &res);
+        }
+        res
     }
 }
 
@@ -49,10 +65,12 @@ impl Read for WebpushIo {
 // don't buffer this at all.
 impl Write for WebpushIo {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        trace!("🢧 {:?}", String::from_utf8_lossy(buf));
         self.tcp.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        trace!("🚽");
         self.tcp.flush()
     }
 }

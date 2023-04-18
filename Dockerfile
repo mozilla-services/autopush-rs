@@ -1,4 +1,4 @@
-FROM rust:1.65-buster as builder
+FROM rust:1.68-buster as builder
 ARG CRATE
 
 ADD . /app

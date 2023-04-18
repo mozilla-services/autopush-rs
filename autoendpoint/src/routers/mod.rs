@@ -1,12 +1,14 @@
 //! Routers route notifications to user agents
 
-use crate::db::error::DbError;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::adm::error::AdmError;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
+
+use autopush_common::db::error::DbError;
+
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use async_trait::async_trait;
@@ -62,7 +64,7 @@ impl From<RouterResponse> for HttpResponse {
         let mut builder = HttpResponse::build(router_response.status);
 
         for (key, value) in router_response.headers {
-            builder.set_header(key, value);
+            builder.insert_header((key, value));
         }
 
         builder.body(router_response.body.unwrap_or_default())
@@ -157,6 +159,40 @@ impl RouterError {
             RouterError::GCMAuthentication => Some(904),
 
             RouterError::Upstream { .. } => None,
+        }
+    }
+
+    pub fn metric_label(&self) -> Option<&'static str> {
+        let err = match self {
+            RouterError::Fcm(e) => match e {
+                FcmError::InvalidAppId(_) | FcmError::NoAppId => "fcm_badappid",
+                _ => "",
+            },
+            RouterError::Adm(e) => match e {
+                AdmError::NoProfile | AdmError::InvalidProfile => "adm_profile",
+                _ => "",
+            },
+            RouterError::Apns(e) => match e {
+                ApnsError::Unregistered => "apns_unregistered",
+                ApnsError::SizeLimit(_) => "apns_oversized",
+                _ => "",
+            },
+            _ => "",
+        };
+        if !err.is_empty() {
+            return Some(err);
+        }
+        None
+    }
+
+    pub fn is_sentry_event(&self) -> bool {
+        match self {
+            RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
+            RouterError::Apns(ApnsError::SizeLimit(_))
+            | RouterError::Apns(ApnsError::Unregistered) => false,
+            RouterError::Fcm(e) => !matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId),
+            RouterError::TooMuchData(_) => false,
+            _ => true,
         }
     }
 }
