@@ -46,27 +46,3 @@ impl From<PartialCell> for Cell {
         }
     }
 }
-
-/*
-/// Returns a list of filled cells for the given family.
-/// NOTE: Timestamp, here, means whatever the family GC rules dictate.
-/// XXX: this may be useful for testing, may remove later.
-pub fn fill_cells(
-    family: &str,
-    timestamp: SystemTime,
-    cell_data: HashMap<Qualifier, Vec<u8>>,
-) -> Vec<Cell> {
-    let mut cells: Vec<Cell> = Vec::new();
-    for (value_index, (qualifier, value)) in cell_data.into_iter().enumerate() {
-        cells.push(Cell {
-            family: family.to_owned(),
-            qualifier,
-            timestamp,
-            value,
-            value_index,
-            ..Default::default()
-        });
-    }
-    cells
-}
-*/

@@ -6,10 +6,7 @@ use futures::StreamExt;
 use google_cloud_rust_raw::bigtable::v2::bigtable::{ReadRowsResponse, ReadRowsResponse_CellChunk};
 use grpcio::ClientSStreamReceiver;
 
-use super::{
-    cell::Cell, error::BigTableError, row::Row, FamilyId, Qualifier, RowKey, MESSAGE_FAMILY,
-    MESSAGE_TOPIC_FAMILY,
-};
+use super::{cell::Cell, error::BigTableError, row::Row, FamilyId, Qualifier, RowKey};
 
 /// List of the potential states when we are reading each value from the
 /// returned stream and composing a "row"
@@ -179,7 +176,7 @@ impl RowMerger {
             return Ok(self);
             // return Err(BigTableError::InvalidChunk("Cell missing qualifier for new cell".to_owned()))
         }
-        let qualifier = chunk.get_qualifier().clone().take_value();
+        let qualifier = chunk.take_qualifier().get_value().to_vec();
         // dbg!(chunk.has_qualifier(), String::from_utf8(qualifier.clone()));
         let row = self.row_in_progress.borrow_mut();
 
@@ -194,7 +191,7 @@ impl RowMerger {
 
         let mut cell = row.cell_in_progress.borrow_mut();
         if chunk.has_family_name() {
-            cell.family = chunk.get_family_name().get_value().to_owned();
+            cell.family = chunk.take_family_name().get_value().to_owned();
         } else {
             if self.last_seen_cell_family.is_none() {
                 return Err(BigTableError::InvalidChunk(
@@ -215,7 +212,7 @@ impl RowMerger {
 
         // If there are additional labels for this cell, record them.
         // can't call map, so do this the semi-hard way
-        let labels = chunk.mut_labels();
+        let mut labels = chunk.take_labels();
         while let Some(label) = labels.pop() {
             cell.labels.push(label)
         }
@@ -226,16 +223,8 @@ impl RowMerger {
             cell.value = Vec::with_capacity(chunk.value_size as usize);
             self.state = ReadState::CellInProgress;
         } else {
-            cell.value.append(&mut chunk.value.clone());
             // Add the data to what we've got.
-            /*
-            if qualifier != "data".to_owned().as_bytes() {
-                cell.value.append(&mut chunk.value.clone());
-            } else {
-                let mut converted =base64::decode_config(chunk.value.clone(), base64::URL_SAFE_NO_PAD).map_err(|e| BigTableError::BigTableRead(e.to_string()))?;
-                cell.value.append(&mut converted);
-            }
-            */
+            cell.value.extend(chunk.value.clone());
             self.state = ReadState::CellComplete;
         }
 
@@ -300,20 +289,22 @@ impl RowMerger {
     ) -> Result<&Self, BigTableError> {
         let mut row_in_progress = self.row_in_progress.borrow_mut();
         // Read Only version of the row in progress.
+        // Needed because of mutability locks.
         let ro_row_in_progress = row_in_progress.clone();
         // the currently completed cell in progress.
-        let mut cell_in_progress = ro_row_in_progress.cell_in_progress.borrow_mut();
+        let cell_in_progress = ro_row_in_progress.cell_in_progress.borrow_mut();
 
         let cell_family = cell_in_progress.family.clone();
 
         let mut family_changed = false;
-        if ro_row_in_progress.last_family != cell_in_progress.family {
+        if row_in_progress.last_family != cell_in_progress.family {
             family_changed = true;
             let cip_family = cell_in_progress.family.clone();
             row_in_progress.last_family = cip_family.clone();
 
-            // append the completed cell to the row's cell list.
-            let cells = match ro_row_in_progress.cells.get(&cip_family) {
+            // append the cell in progress to the completed cells for this family in the row.
+            //
+            let cells = match row_in_progress.cells.get(&cip_family) {
                 Some(cells) => {
                     let mut cells = cells.clone();
                     cells.push(cell_in_progress.clone());
@@ -327,13 +318,15 @@ impl RowMerger {
         }
 
         // If the family changed, or the cell name changed
-        if family_changed || ro_row_in_progress.last_qualifier != cell_in_progress.qualifier {
+        if family_changed || row_in_progress.last_qualifier != cell_in_progress.qualifier {
             let qualifier = cell_in_progress.qualifier.clone();
             row_in_progress.last_qualifier = qualifier.clone();
             let qualifier_cells = vec![Cell {
                 family: cell_family,
                 timestamp: cell_in_progress.timestamp,
                 labels: cell_in_progress.labels.clone(),
+                qualifier: cell_in_progress.qualifier.clone(),
+                value: cell_in_progress.value.clone(),
                 ..Default::default()
             }];
             row_in_progress
@@ -343,9 +336,10 @@ impl RowMerger {
         }
 
         // reset the cell in progress
-        cell_in_progress.timestamp = SystemTime::now();
-        cell_in_progress.value = Vec::new();
-        cell_in_progress.value_index = 0;
+        let mut reset_cell = row_in_progress.cell_in_progress.borrow_mut();
+        reset_cell.timestamp = SystemTime::now();
+        reset_cell.value.clear();
+        reset_cell.value_index = 0;
 
         // If this isn't the last item in the row, keep going.
         self.state = if !chunk.has_commit_row() {
@@ -367,13 +361,7 @@ impl RowMerger {
         let row = self.row_in_progress.take();
         self.last_seen_row_key = Some(row.row_key.clone());
         new_row.row_key = row.row_key;
-        for (key, partial_cells) in row.cells {
-            let mut cells: Vec<Cell> = Vec::new();
-            for partial_cell in partial_cells {
-                cells.push(partial_cell.into())
-            }
-            new_row.cells.insert(key, cells);
-        }
+        new_row.cells = row.last_family_cells;
 
         // now that we're done, write a clean version.
         self.row_in_progress = RefCell::new(PartialRow::default());
@@ -462,13 +450,7 @@ impl RowMerger {
                     let mut finished_row = merger.row_complete(&mut chunk).await?;
                     if let Some(ts_filter) = timestamp_filter {
                         const TS_COL: &str = "sortkey_timestamp";
-                        let ts_val = finished_row
-                            .get_cell(MESSAGE_FAMILY, TS_COL)
-                            .unwrap_or_else(|| {
-                                finished_row
-                                    .get_cell(MESSAGE_TOPIC_FAMILY, TS_COL)
-                                    .unwrap_or_default()
-                            });
+                        let ts_val = finished_row.get_cell(TS_COL).unwrap();
                         if ts_val.value > ts_filter.to_be_bytes().to_vec() {
                             rows.insert(finished_row.row_key.clone(), finished_row);
                         }

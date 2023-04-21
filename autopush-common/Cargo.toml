@@ -73,6 +73,7 @@ actix-rt = "2.8"
 
 [features]
 # for testing:
-# default = ["bigtable", "emulator"]
+default = []
 bigtable = []
-emulator = []  # used for testing big table, requires an external bigtable emulator running.
+emulator = ["bigtable"]  # used for testing big table, requires an external bigtable emulator running.
+

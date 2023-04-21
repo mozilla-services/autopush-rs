@@ -36,7 +36,8 @@ you can then use the following commands:
 BIGTABLE_EMULATOR_HOST=localhost:8086 \
     cbt -project test -instance test createtable autopush && \
     cbt -project test -instance test createfamily autopush message && \
-    cbt -project test -instance test createfamily autopush router
+    cbt -project test -instance test createfamily autopush router && \
+    cbt -project test -instance test setgcpolicy autopush router maxversions=1
 ```
 
 This will create a new project named `test`, a new instance named `test` and a new table named `autopush`, along with column family definitions for `messsage` and `router`.
