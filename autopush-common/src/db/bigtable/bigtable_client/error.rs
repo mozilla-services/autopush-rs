@@ -9,8 +9,11 @@ pub enum BigTableError {
     InvalidChunk(String),
 
     #[error("BigTable read error {0}")]
-    BigTableRead(String),
+    Read(String),
 
     #[error("BigTable write error {0}")]
-    BigTableWrite(String),
+    Write(String),
+
+    #[error("BigTable Admin Error {0}")]
+    Admin(String),
 }

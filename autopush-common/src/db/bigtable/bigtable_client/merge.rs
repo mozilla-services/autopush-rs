@@ -450,11 +450,16 @@ impl RowMerger {
                     let mut finished_row = merger.row_complete(&mut chunk).await?;
                     if let Some(ts_filter) = timestamp_filter {
                         const TS_COL: &str = "sortkey_timestamp";
-                        let ts_val = finished_row.get_cell(TS_COL).unwrap();
-                        if ts_val.value > ts_filter.to_be_bytes().to_vec() {
+                        if let Some(ts_val) = finished_row.get_cell(TS_COL) {
+                            if ts_val.value > ts_filter.to_be_bytes().to_vec() {
+                                rows.insert(finished_row.row_key.clone(), finished_row);
+                            }
+                        } else {
+                            // No timestamp, so presume it's OK.
                             rows.insert(finished_row.row_key.clone(), finished_row);
                         }
                     } else {
+                        // No filter, so presume it's OK.
                         rows.insert(finished_row.row_key.clone(), finished_row);
                     }
                 } else if chunk.has_commit_row() {

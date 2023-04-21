@@ -7,12 +7,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
-use google_cloud_rust_raw::bigtable::v2::bigtable;
-use google_cloud_rust_raw::bigtable::v2::data;
+use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
+use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
+use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
 use google_cloud_rust_raw::bigtable::v2::{
     bigtable::ReadRowsRequest, bigtable_grpc::BigtableClient,
 };
-use grpcio::{ChannelBuilder, ChannelCredentials, EnvBuilder};
+use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -63,6 +64,8 @@ pub struct BigTableClientImpl {
     client: BigtableClient,
     /// Metrics client
     metrics: Arc<StatsdClient>,
+    /// Connection Channel
+    chan: Channel,
 }
 
 pub fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
@@ -79,8 +82,12 @@ pub fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     })
 }
 
-pub fn as_key(uaid: &Uuid, channel_id: &str) -> String {
-    format!("{}#{}", uaid.simple(), channel_id)
+pub fn as_key(uaid: &Uuid, channel_id: &str, sort_key: Option<String>) -> String {
+    if let Some(sort_key) = sort_key {
+        format!("{}#{}#{}", uaid.simple(), channel_id, &sort_key)
+    } else {
+        format!("{}#{}", uaid.simple(), channel_id)
+    }
 }
 
 /// Connect to a BigTable storage model.
@@ -163,10 +170,11 @@ impl BigTableClientImpl {
         let con_str = format!("{}{}", origin, parsed.path());
         debug!("🉑 connection string {}", &con_str);
         let chan = chan.connect(&con_str);
-
+        let client = BigtableClient::new(chan.clone());
         Ok(Self {
             settings: db_settings,
-            client: BigtableClient::new(chan),
+            client,
+            chan,
             metrics,
         })
     }
@@ -206,7 +214,7 @@ impl BigTableClientImpl {
             .client
             .clone()
             .read_rows(&req)
-            .map_err(|e| error::BigTableError::BigTableRead(e.to_string()))?;
+            .map_err(|e| error::BigTableError::Read(e.to_string()))?;
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
@@ -230,7 +238,7 @@ impl BigTableClientImpl {
                 let timestamp = cell
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(|e| error::BigTableError::BigTableWrite(e.to_string()))?;
+                    .map_err(|e| error::BigTableError::Write(e.to_string()))?;
                 set_cell.family_name = cell.family;
                 set_cell.set_column_qualifier(cell.qualifier.into_bytes());
                 set_cell.set_value(cell.value);
@@ -248,9 +256,9 @@ impl BigTableClientImpl {
         let _resp = self
             .client
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::BigTableWrite(e.to_string()))?
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
-            .map_err(|e| error::BigTableError::BigTableWrite(e.to_string()))?;
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
         Ok(())
     }
 
@@ -286,9 +294,9 @@ impl BigTableClientImpl {
         let _resp = self
             .client
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::BigTableWrite(e.to_string()))?
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
-            .map_err(|e| error::BigTableError::BigTableWrite(e.to_string()))?;
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
         Ok(())
     }
 
@@ -306,10 +314,29 @@ impl BigTableClientImpl {
         let _resp = self
             .client
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::BigTableWrite(e.to_string()))?
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
-            .map_err(|e| error::BigTableError::BigTableWrite(e.to_string()))?;
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
         Ok(())
+    }
+
+    /// This uses the admin interface to drop row ranges.
+    /// This will drop ALL data associated with these rows.
+    /// Note that deletion may take up to a week to occur.
+    /// see https://cloud.google.com/php/docs/reference/cloud-bigtable/latest/Admin.V2.DropRowRangeRequest
+    async fn delete_rows(&self, row_key: &str) -> Result<bool, error::BigTableError> {
+        let admin = BigtableTableAdminClient::new(self.chan.clone());
+        let mut req = DropRowRangeRequest::new();
+        req.set_name(self.settings.table_name.clone());
+        req.set_row_key_prefix(row_key.as_bytes().to_vec());
+        req.set_delete_all_data_from_table(true);
+        // TODO: Use *_async() instead?
+        admin.drop_row_range(&req).map_err(|e| {
+            error!("{:?}", e);
+            error::BigTableError::Admin("Could not delete data from table".to_string())
+        })?;
+
+        Ok(true)
     }
 
     fn rows_to_notifications(
@@ -545,17 +572,12 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        let channels = self.get_channels(uaid).await?;
-        for channel in channels {
-            self.delete_row(&channel.simple().to_string()).await?;
-        }
-        self.delete_row(&uaid.simple().to_string())
-            .await
-            .map_err(|e| e.into())
+        self.delete_rows(&as_key(uaid, "", None)).await?;
+        Ok(())
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let key = as_key(uaid, &channel_id.simple().to_string());
+        let key = as_key(uaid, &channel_id.simple().to_string(), None);
 
         let mut row = Row {
             row_key: key,
@@ -611,6 +633,8 @@ impl DbClient for BigTableClientImpl {
                 strip_filter.set_strip_value_transformer(true);
                 let mut regex_filter = data::RowFilter::default();
                 // Your regex expression must match the WHOLE string. No partial matches.
+                // For this, we only want to grab the channel meta records (which do not
+                // have a sort key suffix)
                 let key = format!("^{}#[^#]+", uaid.simple());
                 regex_filter.set_row_key_regex_filter(key.as_bytes().to_vec());
                 let mut chain = data::RowFilter_Chain::default();
@@ -642,9 +666,8 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
-        let row_key = as_key(uaid, &channel_id.simple().to_string());
-        self.delete_row(&row_key).await?;
-        Ok(true)
+        let row_key = as_key(uaid, &channel_id.simple().to_string(), None);
+        Ok(self.delete_rows(&row_key).await?)
     }
 
     /// Remove the node_id. Can't really "surgically strike" this
@@ -669,8 +692,9 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
+        let skt = message.sortkey_timestamp.map(|v| v.to_string());
         let mut row = Row {
-            row_key: as_key(uaid, &message.channel_id.simple().to_string()),
+            row_key: as_key(uaid, &message.channel_id.simple().to_string(), skt),
             ..Default::default()
         };
 
@@ -765,7 +789,7 @@ impl DbClient for BigTableClientImpl {
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
         // parse the sort_key to get the message's CHID
         let parts: Vec<&str> = sort_key.split(':').collect();
-        if parts.len() < 2 {
+        if parts.len() < 3 {
             return Err(DbError::General(format!(
                 "Invalid sort_key detected: {}",
                 sort_key
@@ -782,34 +806,17 @@ impl DbClient for BigTableClientImpl {
                 sort_key
             )));
         }
-        let row_key = as_key(uaid, parts[1]);
-        self.delete_cells(
-            &row_key,
-            family,
-            &[
-                "channel_id",
-                "data",
-                "sortkey_timestamp",
-                "timestamp",
-                "ttl",
-                "version",
-            ]
-            .to_vec(),
-            None,
-        )
-        .await
-        .map_err(|e| e.into())
+        let row_key = as_key(uaid, parts[1], Some(parts[2].to_owned()));
+        self.delete_row(&row_key).await.map_err(|e| e.into())
     }
 
     async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
-        // TODO
-        // limit rowset to `uaid#` to `uaid#ffffffffffffffffffffffffffffffff`?
-
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
         req.set_filter({
             let mut regex_filter = data::RowFilter::default();
             // channels for a given UAID all begin with `{uaid}#`
+            // this will fetch all messages for all channels and all sort_keys
             regex_filter
                 .set_row_key_regex_filter(format!("^{}#.+", uaid.simple()).as_bytes().to_vec());
             regex_filter
