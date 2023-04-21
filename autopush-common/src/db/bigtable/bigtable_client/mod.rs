@@ -593,7 +593,7 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let key = as_key(uaid, Some(&channel_id), None);
+        let key = as_key(uaid, Some(channel_id), None);
 
         // We can use the default timestamp here because there shouldn't be a time
         // based GC for router records.
