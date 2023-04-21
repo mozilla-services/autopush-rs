@@ -42,6 +42,8 @@ const ROUTER_FAMILY: &str = "router";
 const MESSAGE_FAMILY: &str = "message"; // The default family for messages
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 
+/// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
+// TODO:Should we create something similar for ChannelID?
 struct Uaid(Uuid);
 
 impl Display for Uaid {
@@ -68,25 +70,39 @@ pub struct BigTableClientImpl {
     chan: Channel,
 }
 
-pub fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
+fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
     let v: [u8; 8] = value
         .try_into()
         .map_err(|_| DbError::DeserializeU64(name.to_owned()))?;
     Ok(u64::from_be_bytes(v))
 }
 
-pub fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
+fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     String::from_utf8(value).map_err(|e| {
         debug!("🉑 cannot read string {}: {:?}", name, e);
         DbError::DeserializeString(name.to_owned())
     })
 }
 
-pub fn as_key(uaid: &Uuid, channel_id: &str, sort_key: Option<String>) -> String {
+/// Create a normalized index key.
+fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, sort_key: Option<String>) -> String {
     if let Some(sort_key) = sort_key {
-        format!("{}#{}#{}", uaid.simple(), channel_id, &sort_key)
+        format!(
+            "{}#{}#{}",
+            uaid.simple(),
+            channel_id
+                .map(|v| v.simple().to_string())
+                .unwrap_or_else(|| "".to_owned()),
+            &sort_key
+        )
     } else {
-        format!("{}#{}", uaid.simple(), channel_id)
+        format!(
+            "{}#{}",
+            uaid.simple(),
+            channel_id
+                .map(|v| v.simple().to_string())
+                .unwrap_or_else(|| "".to_owned())
+        )
     }
 }
 
@@ -572,13 +588,15 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        self.delete_rows(&as_key(uaid, "", None)).await?;
+        self.delete_rows(&as_key(uaid, None, None)).await?;
         Ok(())
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let key = as_key(uaid, &channel_id.simple().to_string(), None);
+        let key = as_key(uaid, Some(&channel_id), None);
 
+        // We can use the default timestamp here because there shouldn't be a time
+        // based GC for router records.
         let mut row = Row {
             row_key: key,
             ..Default::default()
@@ -665,8 +683,9 @@ impl DbClient for BigTableClientImpl {
         Ok(result)
     }
 
+    /// Delete the channel and all associated pending messages.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
-        let row_key = as_key(uaid, &channel_id.simple().to_string(), None);
+        let row_key = as_key(uaid, Some(channel_id), None);
         Ok(self.delete_rows(&row_key).await?)
     }
 
@@ -691,13 +710,16 @@ impl DbClient for BigTableClientImpl {
         .map_err(|e| e.into())
     }
 
+    /// Write the notification to storage.
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
         let skt = message.sortkey_timestamp.map(|v| v.to_string());
         let mut row = Row {
-            row_key: as_key(uaid, &message.channel_id.simple().to_string(), skt),
+            row_key: as_key(uaid, Some(&message.channel_id), skt),
             ..Default::default()
         };
 
+        // Remember, `timestamp` is effectively the time to kill the message, not the
+        // current time.
         let ttl = SystemTime::now() + Duration::from_secs(message.ttl);
 
         let mut cells: Vec<cell::Cell> = Vec::new();
@@ -786,6 +808,7 @@ impl DbClient for BigTableClientImpl {
         self.write_row(row).await.map_err(|e| e.into())
     }
 
+    /// Delete the notification from storage.
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
         // parse the sort_key to get the message's CHID
         let parts: Vec<&str> = sort_key.split(':').collect();
@@ -806,10 +829,13 @@ impl DbClient for BigTableClientImpl {
                 sort_key
             )));
         }
-        let row_key = as_key(uaid, parts[1], Some(parts[2].to_owned()));
+        let chid = Uuid::parse_str(parts[1])
+            .map_err(|_| error::BigTableError::Admin("Invalid SortKey component".to_string()))?;
+        let row_key = as_key(uaid, Some(&chid), Some(parts[2].to_owned()));
         self.delete_row(&row_key).await.map_err(|e| e.into())
     }
 
+    /// Return `limit` pending messages from storage. `limit=0` for all messages.
     async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
@@ -822,10 +848,14 @@ impl DbClient for BigTableClientImpl {
             regex_filter
         });
 
-        let rows = self.read_rows(req, None, Some(limit as u64)).await?;
+        let rows = self
+            .read_rows(req, None, if limit > 0 { Some(limit as u64) } else { None })
+            .await?;
         self.rows_to_notifications(rows)
     }
 
+    /// Return `limit` messages pending for a UAID that have a sortkey_timestamp after
+    /// what's specified. `limit=0` for all messages.
     async fn fetch_timestamp_messages(
         &self,
         uaid: &Uuid,
@@ -854,7 +884,13 @@ impl DbClient for BigTableClientImpl {
             regex_filter
         };
         req.set_filter(filter);
-        let rows = self.read_rows(req, timestamp, Some(limit as u64)).await?;
+        let rows = self
+            .read_rows(
+                req,
+                timestamp,
+                if limit > 0 { Some(limit as u64) } else { None },
+            )
+            .await?;
         self.rows_to_notifications(rows)
     }
 
@@ -862,7 +898,6 @@ impl DbClient for BigTableClientImpl {
     /// Each storage engine can be different, so the 'hello' function needs to be
     /// specific to the engine, unfortunately.
     ///
-
     async fn hello(
         &self,
         connected_at: u64,
@@ -910,9 +945,13 @@ impl DbClient for BigTableClientImpl {
         Ok(response)
     }
 
+    /// Returns true, because there's only one table in BigTable. We divide things up
+    /// by `family`.
     async fn router_table_exists(&self) -> DbResult<bool> {
         Ok(true)
     }
+    /// Returns true, because there's only one table in BigTable. We divide things up
+    /// by `family`.
     async fn message_table_exists(&self) -> DbResult<bool> {
         Ok(true)
     }

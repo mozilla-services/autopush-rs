@@ -14,6 +14,7 @@ pub struct Row {
 }
 
 impl Row {
+    /// Return all cells for a given column
     pub fn get_cells(&self, column: &str) -> Option<Vec<Cell>> {
         self.cells.get(column).cloned()
     }
@@ -26,7 +27,8 @@ impl Row {
         None
     }
 
-    pub fn add_cells(&mut self, family: &str, cells: Vec<Cell>) -> Option<Vec<Cell>> {
-        self.cells.insert(family.to_owned(), cells)
+    /// Add cells to a given column
+    pub fn add_cells(&mut self, column: &str, cells: Vec<Cell>) -> Option<Vec<Cell>> {
+        self.cells.insert(column.to_owned(), cells)
     }
 }
