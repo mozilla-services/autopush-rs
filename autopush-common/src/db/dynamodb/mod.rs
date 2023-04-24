@@ -291,7 +291,7 @@ impl DbClient for DdbClientImpl {
     ) -> DbResult<()> {
         let chids: Vec<String> = channel_list
             .into_iter()
-            .map(|v| v.simple().to_string())
+            .map(|v| v.as_hyphenated().to_string())
             .collect();
         let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
         let attr_values = hashmap! {
