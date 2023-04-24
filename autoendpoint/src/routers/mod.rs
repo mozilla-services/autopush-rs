@@ -163,20 +163,20 @@ impl RouterError {
     }
 
     pub fn metric_label(&self) -> Option<&'static str> {
+        // NOTE: Some metrics are emitted for other Errors via handle_error
+        // callbacks, whereas some are emitted via this method. These 2 should
+        // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
         let err = match self {
-            RouterError::Fcm(e) => match e {
-                FcmError::InvalidAppId(_) | FcmError::NoAppId => "fcm_badappid",
-                _ => "",
-            },
-            RouterError::Adm(e) => match e {
-                AdmError::NoProfile | AdmError::InvalidProfile => "adm_profile",
-                _ => "",
-            },
-            RouterError::Apns(e) => match e {
-                ApnsError::Unregistered => "apns_unregistered",
-                ApnsError::SizeLimit(_) => "apns_oversized",
-                _ => "",
-            },
+            RouterError::Adm(e) if matches!(e, AdmError::InvalidProfile | AdmError::NoProfile) => {
+                "notification.bridge.error.adm.profile"
+            }
+            RouterError::Apns(ApnsError::SizeLimit(_)) => {
+                "notification.bridge.error.apns.oversized"
+            }
+            RouterError::Fcm(e) if matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId) => {
+                "notification.bridge.error.fcm.badappid"
+            }
+            RouterError::TooMuchData(_) => "notification.bridge.error.too_much_data",
             _ => "",
         };
         if !err.is_empty() {
@@ -188,10 +188,18 @@ impl RouterError {
     pub fn is_sentry_event(&self) -> bool {
         match self {
             RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
+            // apns handle_error emits a metric for ApnsError::Unregistered
             RouterError::Apns(ApnsError::SizeLimit(_))
             | RouterError::Apns(ApnsError::Unregistered) => false,
             RouterError::Fcm(e) => !matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId),
-            RouterError::TooMuchData(_) => false,
+            // common handle_error emits metrics for these
+            RouterError::Authentication
+            | RouterError::GCMAuthentication
+            | RouterError::Connect(_)
+            | RouterError::NotFound
+            | RouterError::RequestTimeout
+            | RouterError::TooMuchData(_)
+            | RouterError::Upstream { .. } => false,
             _ => true,
         }
     }
