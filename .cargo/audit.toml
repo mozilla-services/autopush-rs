@@ -4,5 +4,5 @@ ignore = [
     "RUSTSEC-2021-0078", # Bound by Rusoto 0.42, Reqwest 0.9 requiring Hyper 0.12
     "RUSTSEC-2021-0079", # Bound by Rusoto 0.42, Reqwest 0.9, a2 0.5 requiring Hyper 0.12
     "RUSTSEC-2021-0124", # Bound by tokio restrictions, rusoto, reqwest, hyper...
-    "RUSTSEC-2023-0034", # Bound by a2 0.5.2, rusoto, hyper < 0.13.17
+    "RUSTSEC-2023-0034", # Bound by Rusoto 0.42, Reqwest 0.9, a2 0.5 requiring Hyper 0.12
 ]

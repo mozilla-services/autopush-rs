@@ -159,7 +159,7 @@ impl ApiErrorKind {
     pub fn metric_label(&self) -> Option<&'static str> {
         Some(match self {
             ApiErrorKind::PayloadError(_) => "payload_error",
-            ApiErrorKind::Router(e) => e.metric_label().unwrap_or("router"),
+            ApiErrorKind::Router(e) => return e.metric_label(),
 
             ApiErrorKind::Validation(_) => "validation",
             ApiErrorKind::InvalidEncryption(_) => "invalid_encryption",
