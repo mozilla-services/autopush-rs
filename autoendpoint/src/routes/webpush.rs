@@ -7,12 +7,13 @@ use crate::extractors::routers::{RouterType, Routers};
 use crate::server::AppState;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
+use cadence::CountedExt;
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
-    _app_state: Data<AppState>,
+    app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     // TODO:
     sentry::configure_scope(|scope| {
@@ -25,7 +26,9 @@ pub async fn webpush_route(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
     );
-
+    if notification.has_topic() {
+        app_state.metrics.incr("ua.notification.topic")?;
+    }
     Ok(router.route_notification(&notification).await?.into())
 }
 
