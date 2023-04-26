@@ -203,6 +203,7 @@ impl WebPushClient {
         // Clients shouldn't ping > than once per minute or we disconnect them
         if sec_since_epoch() - self.last_ping >= 45 {
             trace!("🏓WebPushClient Got a WebPush Ping, sending WebPush Pong");
+            self.last_ping = sec_since_epoch();
             Ok(ServerMessage::Ping)
         } else {
             Err(SMError::ExcessivePing)

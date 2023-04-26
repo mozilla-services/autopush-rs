@@ -121,8 +121,7 @@ impl WebPushClient {
 
     fn spawn_remove_message(&self, sort_key: String) {
         let db = self.app_state.db.clone();
-        let uaid = self.uaid.clone();
-        // XXX: could also make a self.spawn_remove_message(sort_key: &str)
+        let uaid = self.uaid;
         rt::spawn(async move {
             if db.remove_message(&uaid, &sort_key).await.is_ok() {
                 debug!(
@@ -213,7 +212,7 @@ async fn check_storage(client: &mut WebPushClient) -> Result<CheckStorageRespons
     Ok(CheckStorageResponse {
         include_topic: false,
         messages: resp.messages,
-        timestamp: timestamp,
+        timestamp,
     })
 }
 

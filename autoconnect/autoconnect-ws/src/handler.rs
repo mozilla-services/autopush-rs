@@ -117,7 +117,7 @@ async fn unidentified_ws(
         Ok(None) => return Err(WSError::StreamClosed),
         Err(_) => return Err(WSError::HandshakeTimeout),
     };
-    trace!("unidentified_ws: Handshake msg: {:#?}", msg);
+    trace!("unidentified_ws: Handshake msg: {:?}", msg);
 
     let client_msg = match msg {
         Message::Text(ref bytestring) => bytestring.parse()?,

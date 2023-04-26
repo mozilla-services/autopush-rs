@@ -19,7 +19,7 @@ pub async fn push_route(
     let result = state
         .clients
         .notify(uaid.into_inner(), notif.into_inner())
-        .await
+        .await;
         /*.map_or_else(
             || HttpResponse::NotFound().body("Client not available"),
             |_| HttpResponse::Ok().finish()
