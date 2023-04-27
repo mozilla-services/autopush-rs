@@ -148,6 +148,10 @@ impl Notification {
         message_id.encrypt(fernet)
     }
 
+    pub fn has_topic(&self) -> bool {
+        self.headers.topic.is_some()
+    }
+
     /// Serialize the notification for delivery to the connection server. Some
     /// fields in `autopush_common`'s `Notification` are marked with
     /// `#[serde(skip_serializing)]` so they are not shown to the UA. These
