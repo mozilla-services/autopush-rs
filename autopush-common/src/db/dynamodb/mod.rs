@@ -547,7 +547,7 @@ impl DbClient for DdbClientImpl {
             )
             .await?;
         self.metrics
-            .incr_with_tags("notification.message.removed")
+            .incr_with_tags("notification.message.deleted")
             .send();
         Ok(())
     }
