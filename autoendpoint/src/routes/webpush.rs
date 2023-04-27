@@ -25,7 +25,6 @@ pub async fn webpush_route(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
     );
-
     Ok(router.route_notification(&notification).await?.into())
 }
 
