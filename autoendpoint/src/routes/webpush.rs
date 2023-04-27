@@ -7,13 +7,12 @@ use crate::extractors::routers::{RouterType, Routers};
 use crate::server::AppState;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
-use cadence::CountedExt;
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
-    app_state: Data<AppState>,
+    _app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     // TODO:
     sentry::configure_scope(|scope| {

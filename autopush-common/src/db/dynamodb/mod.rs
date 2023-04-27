@@ -511,7 +511,7 @@ impl DbClient for DdbClientImpl {
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
-        let topic = message.topic.clone();
+        let topic = message.topic.clone().is_some().to_string();
         let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(uaid, message))?,
             table_name: self.settings.message_table.clone(),
@@ -525,8 +525,10 @@ impl DbClient for DdbClientImpl {
             )
             .await?;
 
-        self.metrics.incr_with_tags("notification.message.stored")
-            .with_tag("topic", message.topic.is_some().to_string()).send()
+        self.metrics
+            .incr_with_tags("notification.message.stored")
+            .with_tag("topic", &topic)
+            .send();
         Ok(())
     }
 
