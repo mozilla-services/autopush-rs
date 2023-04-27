@@ -525,13 +525,8 @@ impl DbClient for DdbClientImpl {
             )
             .await?;
 
-        let metric = self.metrics.incr_with_tags("notification.message.stored");
-        if let Some(topic) = topic {
-            metric.with_tag("topic", topic.as_str()).send();
-        } else {
-            metric.send();
-        }
-
+        self.metrics.incr_with_tags("notification.message.stored")
+            .with_tag("topic", message.topic.is_some().to_string()).send()
         Ok(())
     }
 
