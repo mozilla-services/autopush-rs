@@ -111,6 +111,17 @@ impl Server {
         };
 
         let server = HttpServer::new(move || {
+            // These have a bad habit of being reset. Specify them explicitly.
+            let cors = Cors::default()
+                .allow_any_origin()
+                .allow_any_header()
+                .allowed_methods(vec![
+                    actix_web::http::Method::DELETE,
+                    actix_web::http::Method::GET,
+                    actix_web::http::Method::POST,
+                    actix_web::http::Method::PUT,
+                ])
+                .max_age(3600);
             App::new()
                 // Actix 4 recommends wrapping structures wtih web::Data (internally an Arc)
                 .app_data(Data::new(app_state.clone()))
@@ -124,7 +135,7 @@ impl Server {
                     metrics.clone(),
                     "api_error".to_owned(),
                 ))
-                .wrap(Cors::default())
+                .wrap(cors)
                 // Endpoints
                 .service(
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])
