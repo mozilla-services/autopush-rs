@@ -939,6 +939,7 @@ where
             transition!(CheckStorage { data });
         } else if all_acked && webpush.flags.rotate_message_table {
             debug!("Triggering migration");
+            data.srv.metrics.incr("ua.rotate_message_table").ok();
             let response = Box::new(
                 data.srv
                     .ddb
