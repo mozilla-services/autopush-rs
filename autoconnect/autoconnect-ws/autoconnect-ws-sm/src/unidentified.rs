@@ -103,6 +103,25 @@ impl UnidentifiedClient {
     }
 }
 
+use uuid::Uuid;
+use autopush_common::db::{HelloResponse, error::DbResult};
+fn hello(client: &UnidentifiedClient,
+        connected_at: u64,
+        uaid: Option<&Uuid>,
+        router_url: &str,
+) -> DbResult<HelloResponse> {
+    trace!("hello🧑🏼 uaid {:?}", &uaid);
+    if let Some(uaid) = uaid {
+        let user = self.get_user(uaid).await;
+        match user {
+            Some(user) => {
+            }
+        }
+    }
+    panic!();
+}
+
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

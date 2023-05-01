@@ -2,6 +2,7 @@ use actix_ws::CloseCode;
 
 use autoconnect_ws_sm::SMError;
 
+// TODO: WSError should likely include a backtrace
 /// WebPush WebSocket Handler Errors
 #[derive(Debug, strum::AsRefStr, thiserror::Error)]
 pub enum WSError {
