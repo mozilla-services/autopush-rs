@@ -38,6 +38,8 @@ macro_rules! build_app {
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
         // Websocket Handler
+        // NOTE: if you're trying to connect to this using websocat, DO NOT USE `ws://localhost:{port}`,
+        // use `websocat ws://127.0.0.1:{port}/`
         .route("/", web::get().to(ws_handler))
         // TODO: Internode Message handler
         //.service(web::resource("/push/{uaid}").route(web::push().to(autoconnect_web::route::InterNode::put))

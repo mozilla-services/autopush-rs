@@ -6,7 +6,7 @@ extern crate slog_scope;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::{env, vec::Vec};
+use std::{env, error::Error, vec::Vec};
 
 use actix_web::HttpServer;
 use docopt::Docopt;
@@ -15,7 +15,8 @@ use std::sync::RwLock;
 
 use autoconnect_settings::{AppState, Settings};
 use autoconnect_web::{build_app, client::ClientChannels, config};
-use autopush_common::errors::{ApcErrorKind, Result};
+use autopush_common::errors::ApcErrorKind;
+use autopush_common::logging;
 
 mod middleware;
 
@@ -36,10 +37,9 @@ struct Args {
     flag_config_shared: Option<String>,
 }
 
-#[actix_web::main]
-async fn main() -> Result<()> {
+#[actix_rt::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
@@ -52,6 +52,8 @@ async fn main() -> Result<()> {
     }
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
+    logging::init_logging(!settings.human_logs).expect("Failed to start logging");
+    debug!("Starting up...");
 
     //TODO: Eventually this will match between the various storage engines that
     // we support. For now, it's just the one, DynamoDB.
