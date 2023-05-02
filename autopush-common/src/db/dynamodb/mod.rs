@@ -24,7 +24,7 @@ use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
     AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
-    DynamoDbClient, GetItemInput, PutItemInput, QueryInput, UpdateItemInput,
+    DynamoDbClient, GetItemInput, PutItemInput, QueryInput, UpdateItemInput, ListTablesInput,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -668,6 +668,24 @@ impl DbClient for DdbClientImpl {
     fn message_table(&self) -> &str {
         trace!("ddb message table {:?}", &self.settings.message_table);
         &self.settings.message_table
+    }
+
+    /// Perform a simple health check to make sure that the database is there.
+    /// This is called by __health__, so it should be reasonably light weight.
+    async fn health_check(&self) -> DbResult<bool> {
+        let input = ListTablesInput {
+            exclusive_start_table_name: Some(self.settings.message_table.clone()),
+            ..Default::default()
+        };
+        // if we can't connect, that's a fail.
+        let result = self.db_client.list_tables(input).await.map_err(|e| DbError::General(format!("DynamoDB health check failure: {:?}", e)))?;
+        if let Some(names) = result.table_names {
+            // We found at least one table that matches the message_table
+            return Ok(!names.is_empty())
+        }
+        // Huh, we couldn't find a message table? That's a failure.
+        return Err(DbError::General(format!("DynamoDB health check failure: No message table found")))
+
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {
