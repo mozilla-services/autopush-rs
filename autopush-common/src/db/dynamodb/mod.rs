@@ -684,7 +684,7 @@ impl DbClient for DdbClientImpl {
             return Ok(!names.is_empty())
         }
         // Huh, we couldn't find a message table? That's a failure.
-        return Err(DbError::General(format!("DynamoDB health check failure: No message table found")))
+        return Err(DbError::General("DynamoDB health check failure: No message table found".to_owned()))
 
     }
 
