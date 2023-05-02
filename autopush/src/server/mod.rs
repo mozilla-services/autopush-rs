@@ -406,12 +406,14 @@ impl Server {
                     handle.spawn(client.then(move |res| {
                         srv.open_connections.set(srv.open_connections.get() - 1);
                         if let Err(e) = res {
-                            let mut errstr: &str = &e.to_string();
-                            if errstr.contains("Connection closed normally") {
-                                // we don't need the stack for a Success Error.
-                                errstr = errstr.split('\n').collect::<Vec<&str>>()[0];
+                            // No need to log ConnectionClosed (denotes the
+                            // connection closed normally)
+                            if !matches!(
+                                e.kind,
+                                ApcErrorKind::Ws(tungstenite::error::Error::ConnectionClosed)
+                            ) {
+                                debug!("🤫 {}: {}", addr, e.to_string());
                             }
-                            debug!("🤫 {}: {}", addr, errstr);
                         }
                         Ok(())
                     }));
@@ -909,14 +911,9 @@ where
     }
 
     /// Handle the poll completion.
-    /// Note, that this eats the errors of poll_complete(), because one of the known states
-    /// is "Error: Connection closed normally" which can raise a false error condition.
     fn poll_complete(&mut self) -> Poll<(), ApcError> {
         try_ready!(self.send_ws_ping());
-        if self.inner.poll_complete().is_err() {
-            warn!("Error encountered with poll_complete");
-        }
-        Ok(Async::Ready(()))
+        Ok(self.inner.poll_complete()?)
     }
 
     fn close(&mut self) -> Poll<(), ApcError> {
