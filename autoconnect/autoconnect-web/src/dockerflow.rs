@@ -9,20 +9,34 @@ use serde_json::json;
 use autoconnect_settings::AppState;
 
 /// Handle the `/health` and `/__heartbeat__` routes
-pub async fn health_route(_state: Data<AppState>) -> Json<serde_json::Value> {
+pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
+    let status = if state.db.health_check().await.is_ok() {
+        "OK"
+    } else {
+        "ERROR"
+    };
     //TODO: query local state and report results
     Json(json!({
-        "status": "OK",
+        "status": status,
         "version": env!("CARGO_PKG_VERSION"),
     }))
 }
 
 /// Handle the `/status` route
-pub async fn status_route() -> Json<serde_json::Value> {
-    Json(json!({
-        "status": "OK",
-        "version": env!("CARGO_PKG_VERSION"),
-    }))
+pub async fn status_route(state: Data<AppState>) -> Json<serde_json::Value> {
+    let mut status:std::collections::HashMap<&str, String> = std::collections::HashMap::new();
+    status.insert("version",env!("CARGO_PKG_VERSION").to_owned());
+    let check = state.db.health_check().await;
+    if check.is_ok() {
+        status.insert("status", "OK".to_owned());
+    } else {
+        status.insert("status", "ERROR".to_owned());
+    }
+    if let Some(err) = check.err().map(|v| v.to_string()) {
+        status.insert("error", err);
+    };
+
+     Json(json!(status))
 }
 
 /// Handle the `/__lbheartbeat__` route

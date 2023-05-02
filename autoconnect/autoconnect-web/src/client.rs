@@ -1,3 +1,10 @@
+// TODO master list:
+// - [ ] Add state machine stuff
+//   - [ ] timeout drops on new connection without hello
+// - [ ] Add megaphone support
+//   - [ ] add channel handler to feed messages to main loop
+
+
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
@@ -122,7 +129,6 @@ impl Client {
             actix_ws::handle(&req, body).map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?;
 
         let _thread = actix_rt::spawn(async move {
-            //TODO: Create a new client (set values, use ..Default::default() if needed)
             let mut client = Client {
                 uaid: None,
                 uid: Uuid::new_v4(),

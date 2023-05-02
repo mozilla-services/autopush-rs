@@ -85,6 +85,9 @@ pub trait DbClient: Send + Sync {
         defer_registration: bool,
     ) -> DbResult<HelloResponse>;
 
+    /// General health check
+    async fn health_check(&self) -> DbResult<bool>;
+
     /// Check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool>;
 
