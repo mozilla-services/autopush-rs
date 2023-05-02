@@ -1,3 +1,32 @@
+<a name="1.67.0"></a>
+## 1.67.0 (2023-05-02)
+
+
+#### Refactor
+
+*   more db_client -> db ([61beb2e1](https://github.com/mozilla-services/autopush-rs/commit/61beb2e10f53253463ec5c20bf1ca504550707be))
+*   options -> app_state ([5a6a35a5](https://github.com/mozilla-services/autopush-rs/commit/5a6a35a5759d827d7c89ca4b05c93b9cc6c8942f))
+*   reduce settings duplication w/ deserialize_with ([4f3e4501](https://github.com/mozilla-services/autopush-rs/commit/4f3e4501d5755f4888002cd9a7250c257c70afdc))
+*   move broadcast/protocol/registry into a common crate (#357) ([fa9109dc](https://github.com/mozilla-services/autopush-rs/commit/fa9109dc155676c1dd2231347d1513d93502d790))
+
+#### Features
+
+*   metric message table rotations (#371) ([647ffb14](https://github.com/mozilla-services/autopush-rs/commit/647ffb1496d8aacf43622a48e44351a73ad439dd))
+*   quiet more router errors from sentry (#368) ([f90fc066](https://github.com/mozilla-services/autopush-rs/commit/f90fc066e0d6f79d0d070c406c30a9597736b3f0))
+*   add the initial autoconnect-ws/state machine crates (#363) ([b4298eab](https://github.com/mozilla-services/autopush-rs/commit/b4298eab64a35439f03c07e4b88b58bc97c2fcd4))
+*   reduce the number of errors reported to sentry.io (#358) ([a9a88f34](https://github.com/mozilla-services/autopush-rs/commit/a9a88f34147d29f08a1de3bd01545a715918d0e8))
+*   Add metrics to try and analyze UpdateItem bug. (#344) ([7641d18d](https://github.com/mozilla-services/autopush-rs/commit/7641d18d9bfe53311099b2130302668dd7d2e113))
+*   Add extra to sentry. [CONSVC-1886] (#333) ([008e3e8c](https://github.com/mozilla-services/autopush-rs/commit/008e3e8c400d85ab7b863e96d8d12a849733c8e9))
+
+#### Bug Fixes
+
+*   don't eat WebpushSocket poll_complete errors (#374) ([f8e65255](https://github.com/mozilla-services/autopush-rs/commit/f8e65255ba495d3115310ac5051ca47744de8ddb))
+*   Add back missing metrics (#372) ([19525593](https://github.com/mozilla-services/autopush-rs/commit/19525593756c7b2573368a3a8bb0872d6207f04e))
+*   make CORS default less restrictive. (#348) ([d421e8de](https://github.com/mozilla-services/autopush-rs/commit/d421e8de422b36f6e5838c3b46a99ab017ea08f0))
+*   channel_id should be hyphenated (#365) ([0067ae42](https://github.com/mozilla-services/autopush-rs/commit/0067ae42f668bbf0afc3fc61fdd8c03364054053))
+
+
+
 <a name="1.66.0"></a>
 ## 1.66.0 (2023-01-23)
 
