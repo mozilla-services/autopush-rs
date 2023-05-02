@@ -31,19 +31,9 @@ pub struct ApcError {
     pub backtrace: Box<Backtrace>,
 }
 
-// Print out the error and backtrace, including source errors
 impl Display for ApcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}\nBacktrace: \n{:?}", self.kind, self.backtrace)?;
-
-        // Go down the chain of errors
-        let mut error: &dyn std::error::Error = &self.kind;
-        while let Some(source) = error.source() {
-            write!(f, "\n\nCaused by: {source}")?;
-            error = source;
-        }
-
-        Ok(())
+        self.kind.fmt(f)
     }
 }
 

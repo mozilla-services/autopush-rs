@@ -638,6 +638,9 @@ where
         let error = if let Some(ref err) = error {
             let ua_info = ua_info.clone();
             let mut event = sentry::event_from_error(err);
+            event.exception.last_mut().unwrap().stacktrace =
+                sentry::integrations::backtrace::backtrace_to_stacktrace(&err.backtrace);
+
             event.user = Some(sentry::User {
                 id: Some(webpush.uaid.as_simple().to_string()),
                 ..Default::default()
@@ -939,6 +942,7 @@ where
             transition!(CheckStorage { data });
         } else if all_acked && webpush.flags.rotate_message_table {
             debug!("Triggering migration");
+            data.srv.metrics.incr("ua.rotate_message_table").ok();
             let response = Box::new(
                 data.srv
                     .ddb

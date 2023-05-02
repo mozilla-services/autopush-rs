@@ -65,6 +65,12 @@ impl Router for WebPushRouter {
                     );
                 }
                 Err(error) => {
+                    if error.is_timeout() {
+                        self.metrics.incr("error.node.timeout")?;
+                    };
+                    if error.is_connect() {
+                        self.metrics.incr("error.node.connect")?;
+                    }
                     debug!("Error while sending webpush notification: {}", error);
                     self.remove_node_id(user, node_id).await?
                 }

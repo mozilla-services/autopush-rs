@@ -291,7 +291,7 @@ impl DbClient for DdbClientImpl {
     ) -> DbResult<()> {
         let chids: Vec<String> = channel_list
             .into_iter()
-            .map(|v| v.simple().to_string())
+            .map(|v| v.as_hyphenated().to_string())
             .collect();
         let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
         let attr_values = hashmap! {
@@ -511,6 +511,7 @@ impl DbClient for DdbClientImpl {
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
+        let topic = message.topic.is_some().to_string();
         let input = PutItemInput {
             item: serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(uaid, message))?,
             table_name: self.settings.message_table.clone(),
@@ -524,6 +525,10 @@ impl DbClient for DdbClientImpl {
             )
             .await?;
 
+        self.metrics
+            .incr_with_tags("notification.message.stored")
+            .with_tag("topic", &topic)
+            .send();
         Ok(())
     }
 
@@ -543,6 +548,9 @@ impl DbClient for DdbClientImpl {
                 retryable_delete_error(self.metrics.clone()),
             )
             .await?;
+        self.metrics
+            .incr_with_tags("notification.message.deleted")
+            .send();
         Ok(())
     }
 
