@@ -4,7 +4,6 @@
 // - [ ] Add megaphone support
 //   - [ ] add channel handler to feed messages to main loop
 
-
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};

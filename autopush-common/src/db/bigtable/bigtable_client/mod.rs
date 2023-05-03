@@ -945,6 +945,25 @@ impl DbClient for BigTableClientImpl {
         Ok(response)
     }
 
+    async fn health_check(&self) -> DbResult<bool> {
+        let mut req = bigtable::ReadRowsRequest::default();
+        req.set_table_name(self.settings.table_name.clone());
+        let mut row = data::Row::default();
+        // Pick an non-existant key.
+        row.set_key("NOT_FOUND".to_owned().as_bytes().to_vec());
+        // Block any possible results.
+        let mut filter = data::RowFilter::default();
+        filter.set_block_all_filter(true);
+        req.set_filter(filter);
+        // we don't care about the return (it's going to be empty) but we DO care if it fails.
+        let _ = self
+            .client
+            .read_rows(&req)
+            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
+
+        Ok(true)
+    }
+
     /// Returns true, because there's only one table in BigTable. We divide things up
     /// by `family`.
     async fn router_table_exists(&self) -> DbResult<bool> {

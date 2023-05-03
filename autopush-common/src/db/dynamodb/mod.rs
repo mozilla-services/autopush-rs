@@ -24,7 +24,7 @@ use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
     AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
-    DynamoDbClient, GetItemInput, PutItemInput, QueryInput, UpdateItemInput, ListTablesInput,
+    DynamoDbClient, GetItemInput, ListTablesInput, PutItemInput, QueryInput, UpdateItemInput,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -684,14 +684,19 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
         // if we can't connect, that's a fail.
-        let result = self.db_client.list_tables(input).await.map_err(|e| DbError::General(format!("DynamoDB health check failure: {:?}", e)))?;
+        let result = self
+            .db_client
+            .list_tables(input)
+            .await
+            .map_err(|e| DbError::General(format!("DynamoDB health check failure: {:?}", e)))?;
         if let Some(names) = result.table_names {
             // We found at least one table that matches the message_table
-            return Ok(!names.is_empty())
+            return Ok(!names.is_empty());
         }
         // Huh, we couldn't find a message table? That's a failure.
-        return Err(DbError::General("DynamoDB health check failure: No message table found".to_owned()))
-
+        return Err(DbError::General(
+            "DynamoDB health check failure: No message table found".to_owned(),
+        ));
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {
