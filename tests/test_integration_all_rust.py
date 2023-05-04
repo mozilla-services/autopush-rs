@@ -26,7 +26,7 @@ import requests
 import websocket
 import twisted.internet.base
 from .db import (
-    DynamoDBResource, create_message_table, get_router_table,
+    DynamoDBResource, create_message_table_ddb, get_router_table,
     base64url_encode
 )
 from cryptography.fernet import Fernet
@@ -537,7 +537,7 @@ def setup_dynamodb():
 
     # Setup the necessary tables
     boto_resource = DynamoDBResource()
-    create_message_table(MESSAGE_TABLE, boto_resource=boto_resource)
+    create_message_table_ddb(MESSAGE_TABLE, boto_resource=boto_resource)
     get_router_table(ROUTER_TABLE, boto_resource=boto_resource)
 
 

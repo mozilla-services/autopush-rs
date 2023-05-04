@@ -243,39 +243,39 @@ def hasher(uaid):
     return uaid
 
 
-def make_rotating_tablename(prefix, delta=0, date=None):
-    # type: (str, int, Optional[datetime.date]) -> str
-    """Creates a tablename for table rotation based on a prefix with a given
-    month delta."""
-    if not date:
-        date = get_month(delta=delta)
-    return "{}_{:04d}_{:02d}".format(prefix, date.year, date.month)
+# def make_rotating_tablename(prefix, delta=0, date=None):
+#     # type: (str, int, Optional[datetime.date]) -> str
+#     """Creates a tablename for table rotation based on a prefix with a given
+#     month delta."""
+#     if not date:
+#         date = get_month(delta=delta)
+#     return "{}_{:04d}_{:02d}".format(prefix, date.year, date.month)
 
 
-def create_rotating_message_table(
-        prefix="message",     # type: str
-        delta=0,              # type: int
-        date=None,            # type: Optional[datetime.date]
-        read_throughput=5,    # type: int
-        write_throughput=5,   # type: int
-        boto_resource=None    # type: DynamoDBResource
-        ):
-    # type: (...) -> Any  # noqa
-    """Create a new message table for webpush style message storage with a
-        rotating name.
+# def create_rotating_message_table(
+#         prefix="message",     # type: str
+#         delta=0,              # type: int
+#         date=None,            # type: Optional[datetime.date]
+#         read_throughput=5,    # type: int
+#         write_throughput=5,   # type: int
+#         boto_resource=None    # type: DynamoDBResource
+#         ):
+#     # type: (...) -> Any  # noqa
+#     """Create a new message table for webpush style message storage with a
+#         rotating name.
+#
+#         """
+# 
+#     tablename = make_rotating_tablename(prefix, delta, date)
+#     return create_message_table(
+#         tablename=tablename,
+#         read_throughput=read_throughput,
+#         write_throughput=write_throughput,
+#         boto_resource=boto_resource
+#     )
 
-        """
 
-    tablename = make_rotating_tablename(prefix, delta, date)
-    return create_message_table(
-        tablename=tablename,
-        read_throughput=read_throughput,
-        write_throughput=write_throughput,
-        boto_resource=boto_resource
-    )
-
-
-def create_message_table(
+def create_message_table_ddb(
         tablename,  # type: str
         read_throughput=5,  # type: int
         write_throughput=5,  # type: int
@@ -331,30 +331,30 @@ def create_message_table(
     return table
 
 
-def get_rotating_message_tablename(
-        prefix="message",            # type: str
-        delta=0,                     # type: int
-        date=None,                   # type: Optional[datetime.date]
-        message_read_throughput=5,   # type: int
-        message_write_throughput=5,  # type: int
-        boto_resource=None           # type: DynamoDBResource
-        ):
-    # type: (...) -> str  # noqa
-    """Gets the message table for the current month."""
-    tablename = make_rotating_tablename(prefix, delta, date)
-    if not table_exists(tablename, boto_resource=boto_resource):
-        create_rotating_message_table(
-            prefix=prefix, delta=delta, date=date,
-            read_throughput=message_read_throughput,
-            write_throughput=message_write_throughput,
-            boto_resource=boto_resource
-        )
-        return tablename
-    else:
-        return tablename
+#def get_rotating_message_tablename(
+#        prefix="message",            # type: str
+#        delta=0,                     # type: int
+#        date=None,                   # type: Optional[datetime.date]
+#        message_read_throughput=5,   # type: int
+#        message_write_throughput=5,  # type: int
+#        boto_resource=None           # type: DynamoDBResource
+#        ):
+#    # type: (...) -> str  # noqa
+#    """Gets the message table for the current month."""
+#    tablename = make_rotating_tablename(prefix, delta, date)
+#    if not table_exists(tablename, boto_resource=boto_resource):
+#        create_rotating_message_table(
+#            prefix=prefix, delta=delta, date=date,
+#            read_throughput=message_read_throughput,
+#            write_throughput=message_write_throughput,
+#            boto_resource=boto_resource
+#        )
+#        return tablename
+#    else:
+#        return tablename
 
 
-def create_router_table(tablename="router", read_throughput=5,
+def create_router_table_ddb(tablename="router", read_throughput=5,
                         write_throughput=5,
                         boto_resource=None):
     # type: (str, int, int, DynamoDBResource) -> Any
@@ -436,7 +436,7 @@ def get_router_table(tablename="router", read_throughput=5,
     existing table.
 
     """
-    return _make_table(create_router_table, tablename, read_throughput,
+    return _make_table(create_router_table_ddb, tablename, read_throughput,
                        write_throughput, boto_resource=boto_resource)
 
 
@@ -1059,26 +1059,27 @@ class DatabaseManager(object):
     current_msg_month = attrib(init=False)          # type: Optional[str]
     current_month = attrib(init=False)              # type: Optional[int]
     _message = attrib(default=None)                 # type: Optional[Message]
-    allow_table_rotation = attrib(default=True)     # type: Optional[bool]
+    allow_table_rotation = attrib(default=False)     # type: Optional[bool]
     # for testing:
 
     def __attrs_post_init__(self):
         """Initialize sane defaults"""
-        if self.allow_table_rotation:
-            today = datetime.date.today()
-            self.current_month = today.month
-            self.current_msg_month = make_rotating_tablename(
-                self._message_conf.tablename,
-                date=today
-            )
-        else:
-            # fetch out the last message table as the "current_msg_month"
-            # Message may still init to this table if it recv's None, but
-            # this makes the value explicit.
-            resource = self.resource
-            self.current_msg_month = resource.get_latest_message_tablename(
-                prefix=self._message_conf.tablename
-            )
+        # if self.allow_table_rotation:
+        #     today = datetime.date.today()
+        #     self.current_month = today.month
+        #     self.current_msg_month = make_rotating_tablename(
+        #         self._message_conf.tablename,
+        #         date=today
+        #     )
+        # else:
+
+        # fetch out the last message table as the "current_msg_month"
+        # Message may still init to this table if it recv's None, but
+        # this makes the value explicit.
+        resource = self.resource
+        self.current_msg_month = resource.get_latest_message_tablename(
+            prefix=self._message_conf.tablename
+        )
 
         if not self.resource:
             self.resource = DynamoDBResource()
@@ -1099,7 +1100,7 @@ class DatabaseManager(object):
             message_conf=conf.message_table,
             # metrics=metrics,
             resource=resource,
-            allow_table_rotation=conf.allow_table_rotation,
+            # allow_table_rotation=conf.allow_table_rotation,
             **kwargs
         )
 
@@ -1150,51 +1151,51 @@ class DatabaseManager(object):
         an entry for tomorrow, if tomorrow is a new month.
 
         """
-        if not self.allow_table_rotation:
-            tablenames = self.resource.get_latest_message_tablenames(
-                prefix=self._message_conf.tablename,
-                previous=3
+        #if not self.allow_table_rotation:
+        tablenames = self.resource.get_latest_message_tablenames(
+            prefix=self._message_conf.tablename,
+            previous=3
+        )
+        # Create the most recent table if it's not there.
+        tablename = tablenames[-1]
+        if not table_exists(tablename,
+                            boto_resource=self.resource):
+            create_message_table_ddb(
+                tablename=tablename,
+                read_throughput=self._message_conf.read_throughput,
+                write_throughput=self._message_conf.write_throughput,
+                boto_resource=self.resource
             )
-            # Create the most recent table if it's not there.
-            tablename = tablenames[-1]
-            if not table_exists(tablename,
-                                boto_resource=self.resource):
-                create_message_table(
-                    tablename=tablename,
-                    read_throughput=self._message_conf.read_throughput,
-                    write_throughput=self._message_conf.write_throughput,
-                    boto_resource=self.resource
-                )
-            self.message_tables.extend(tablenames)
-            return
+        self.message_tables.extend(tablenames)
+        return
 
-        mconf = self._message_conf
-        today = datetime.date.today()
-        last_month = get_rotating_message_tablename(
-            prefix=mconf.tablename,
-            delta=-1,
-            message_read_throughput=mconf.read_throughput,
-            message_write_throughput=mconf.write_throughput,
-            boto_resource=self.resource,
-        )
-        this_month = get_rotating_message_tablename(
-            prefix=mconf.tablename,
-            message_read_throughput=mconf.read_throughput,
-            message_write_throughput=mconf.write_throughput,
-            boto_resource=self.resource,
-        )
-        self.current_month = today.month
-        self.current_msg_month = this_month
-        self.message_tables = [last_month, this_month]
-        if self._tomorrow().month != today.month:
-            next_month = get_rotating_message_tablename(
-                prefix=mconf.tablename,
-                delta=1,
-                message_read_throughput=mconf.read_throughput,
-                message_write_throughput=mconf.write_throughput,
-                boto_resource=self.resource,
-            )
-            self.message_tables.append(next_month)
+#        mconf = self._message_conf
+#        today = datetime.date.today()
+#        last_month = get_rotating_message_tablename(
+#            prefix=mconf.tablename,
+#            delta=-1,
+#            message_read_throughput=mconf.read_throughput,
+#            message_write_throughput=mconf.write_throughput,
+#            boto_resource=self.resource,
+#        )
+#        this_month = get_rotating_message_tablename(
+#            prefix=mconf.tablename,
+#            message_read_throughput=mconf.read_throughput,
+#            message_write_throughput=mconf.write_throughput,
+#            boto_resource=self.resource,
+#        )
+#        self.current_month = today.month
+#        self.current_msg_month = this_month
+#        self.message_tables = [last_month, this_month]
+#        if self._tomorrow().month != today.month:
+#            next_month = get_rotating_message_tablename(
+#                prefix=mconf.tablename,
+#                delta=1,
+#                message_read_throughput=mconf.read_throughput,
+#                message_write_throughput=mconf.write_throughput,
+#                boto_resource=self.resource,
+#            )
+#            self.message_tables.append(next_month)
 #
 #    @inlineCallbacks
 #    def update_rotating_tables(self):
