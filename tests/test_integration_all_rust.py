@@ -2,7 +2,6 @@
 Rust Connection and Endpoint Node Integration Tests
 """
 
-from base64 import urlsafe_b64encode
 import copy
 import json
 import logging
@@ -16,30 +15,27 @@ import subprocess
 import sys
 import time
 import uuid
-from functools import wraps
 from jose import jws
 from threading import Event, Thread
 from unittest import SkipTest
 
 import bottle
 import ecdsa
-import httplib
 import psutil
 import requests
 import websocket
 import twisted.internet.base
-from autopush.db import (
-    DynamoDBResource, create_message_table, get_router_table
+from .db import (
+    DynamoDBResource, create_message_table, get_router_table,
+    base64url_encode
 )
-from autopush.utils import base64url_encode
 from cryptography.fernet import Fernet
-from Queue import Empty, Queue
+from queue import Empty, Queue
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.threads import deferToThread
 from twisted.trial import unittest
-from typing import Optional
-from urlparse import urlparse
+from urllib.parse import urlparse
 
 app = bottle.Bottle()
 logging.basicConfig(level=logging.DEBUG)
@@ -155,7 +151,7 @@ class Client(object):
         self.use_webpush = True
         self.channels = {}
         self.messages = {}
-        self.notif_response = None  # type: Optional[httplib.HTTPResponse]
+        self.notif_response = None  # type: Optional[requests.HTTPResponse]
         self._crypto_key = """\
 keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 """
@@ -247,15 +243,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         log.debug("Delete: %s", message)
         url = urlparse(message)
-        http = None
-        if url.scheme == "https":  # pragma: nocover
-            http = httplib.HTTPSConnection(url.netloc, context=self.sslcontext)
-        else:
-            http = httplib.HTTPConnection(url.netloc)
-
-        http.request("DELETE", url.path)
-        resp = http.getresponse()
-        http.close()
+        resp = requests.delete(url.path)
         assert resp.status == status
 
     def send_notification(self, channel=None, version=None, data=None,
@@ -267,11 +255,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         endpoint = endpoint or self.channels[channel]
         url = urlparse(endpoint)
-        http = None
-        if url.scheme == "https":  # pragma: nocover
-            http = httplib.HTTPSConnection(url.netloc, context=self.sslcontext)
-        else:
-            http = httplib.HTTPConnection(url.netloc)
 
         headers = {}
         if ttl is not None:
@@ -300,10 +283,12 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         log.debug("%s body: %s", method, body)
         log.debug("  headers: %s", headers)
-        http.request(method, url.path.encode("utf-8"), body, headers)
-        resp = http.getresponse()
+        resp = requests.request(
+            method=method,
+            url=url.path.encode("utf-8"),
+            body=body,
+            headers=headers)
         log.debug("%s Response (%s): %s", method, resp.status, resp.read())
-        http.close()
         assert resp.status == status, \
             "Expected %d, got %d" % (status, resp.status)
         self.notif_response = resp
@@ -462,7 +447,6 @@ def max_logs(endpoint=None, conn=None):
 
     """
     def max_logs_decorator(func):
-        @wraps(func)
         def wrapper(self, *args, **kwargs):
             if endpoint is not None:
                 self.max_endpoint_logs = endpoint
@@ -525,7 +509,7 @@ def get_rust_binary_path(binary):
 def write_config_to_env(config, prefix):
     for key, val in config.items():
         new_key = prefix + key
-        log.debug(u"write config {} => {}".format(new_key, val))
+        log.debug("✍ config {} => {}".format(new_key, val))
         os.environ[new_key.upper()] = str(val)
 
 
@@ -706,7 +690,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def quick_register(self, sslcontext=None):
-        print("Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
+        print("#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT),
                         sslcontext=sslcontext)
         yield client.connect()
@@ -1001,7 +985,8 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        yield client.send_notification(data=data, ttl=1, topic="test", status=201)
+        yield client.send_notification(
+            data=data, ttl=1, topic="test", status=201)
         yield client.sleep(2)
         yield client.connect()
         yield client.hello()
@@ -1271,27 +1256,29 @@ class TestRustWebPush(unittest.TestCase):
         """Test that we accept a large message.
 
         Using pywebpush I encoded a 4096 block
-        of random data into a 4216b block. B64 encoding that produced a block that was
-        5624 bytes long. We'll skip the binary bit for a 4216 block of "text" we then
-        b64 encode to send.
+        of random data into a 4216b block. B64 encoding that produced a
+        block that was 5624 bytes long. We'll skip the binary bit for a
+        4216 block of "text" we then b64 encode to send.
         """
-        import base64;
+        import base64
         client = yield self.quick_register()
         data = base64.urlsafe_b64encode(
-            ''.join(random.choice(string.ascii_letters+string.digits+string.punctuation)
-            for _ in xrange(0, 4216))
+            ''.join(random.choice(
+                string.ascii_letters+string.digits+string.punctuation)
+                for _ in range(0, 4216))
             )
         result = yield client.send_notification(data=data)
         dd = result.get("data")
         dh = base64.b64decode(dd + "==="[:len(dd) % 4])
         assert dh == data
 
-    # Need to dig into this test a bit more. I'm not sure it's structured correctly
-    # since we resolved a bug about returning 202 v. 201, and it's using a dependent
-    # library to do the Client calls. In short, this test will fail in `send_notification()`
-    # because the response will be a 202 instead of 201, and Client.send_notification will
-    # fail to record the message into it's internal message array, which will cause
-    # Client.delete_notification to fail.
+    # Need to dig into this test a bit more. I'm not sure it's structured
+    # correctly since we resolved a bug about returning 202 v. 201, and
+    # it's using a dependent library to do the Client calls. In short,
+    # this test will fail in `send_notification()` because the response
+    # will be a 202 instead of 201, and Client.send_notification will
+    # fail to record the message into it's internal message array, which will
+    # cause Client.delete_notification to fail.
 
     # Skipping test for now.
     """
