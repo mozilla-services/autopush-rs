@@ -42,7 +42,7 @@ jobs:
 
   test:
     docker:
-      - image: circleci/python:3.11
+      - image: circleci/python:3.10
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
