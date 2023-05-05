@@ -89,7 +89,7 @@ impl AutopushServer {
                 dsn,
                 sentry::ClientOptions {
                     release: sentry::release_name!(),
-                    ..Default::default()
+                    ..autopush_common::sentry::client_options()
                 },
             ));
             /*

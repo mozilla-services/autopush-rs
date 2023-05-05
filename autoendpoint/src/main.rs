@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let _sentry = sentry::init(sentry::ClientOptions {
         release: sentry::release_name!(),
         attach_stacktrace: true,
-        ..Default::default()
+        ..autopush_common::sentry::client_options()
     });
 
     // Run server...
