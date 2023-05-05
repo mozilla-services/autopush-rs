@@ -379,7 +379,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
 
 def _get_vapid(
-    key: Optional[ecdsa.SigningKey] = None,
+    key: ecdsa.SigningKey | None = None, 
     payload: Optional[Dict[str, str | int]] = None,
     endpoint: Optional[str] = None,
 ) -> Dict[str, str | bytes]:
@@ -401,7 +401,7 @@ def _get_vapid(
         payload["aud"] = endpoint
     if not key:
         key: ecdsa.SigningKey = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
-    vk: ecdsa.VerifyingKey = key.get_verifying_key()
+    vk: ecdsa.VerifyingKey | None  = key.get_verifying_key()
     auth: str = jws.sign(payload, key, algorithm="ES256").strip("=")
     crypto_key: str = base64url_encode((b"\4" + vk.to_string()))
     return {"auth": auth, "crypto-key": crypto_key, "key": key}
