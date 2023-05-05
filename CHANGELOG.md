@@ -1,3 +1,13 @@
+<a name="1.67.1"></a>
+## 1.67.1 (2023-05-05)
+
+
+#### Bug Fixes
+
+*   disable sentry's debug-images feature (#375) ([ed730974](https://github.com/mozilla-services/autopush-rs/commit/ed73097471c914ed555de6cc037b4a3db00e4974))
+
+
+
 <a name="1.67.0"></a>
 ## 1.67.0 (2023-05-02)
 
