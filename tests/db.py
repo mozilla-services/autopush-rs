@@ -92,8 +92,7 @@ class ItemNotFound(Exception):
     """Signals missing DynamoDB Item data"""
 
 # Autopush utils:
-def generate_hash(key, payload):
-    # type: (str, str) -> str
+def generate_hash(key:bytes, payload:bytes) -> str:
     """Generate a HMAC for the uaid using the secret
 
     :returns: HMAC hash and the nonce used as a tuple (nonce, hash).
@@ -111,10 +110,12 @@ def normalize_id(ident):
     except ValueError:
         raise ValueError("Invalid UUID")
 
-def base64url_encode(string):
-    # type: (str) -> str
+def base64url_encode(value):
+    if isinstance(value, str):
+        value = bytes(value, "utf-8")
+    # type: (bytes) -> str
     """Encodes an unpadded Base64 URL-encoded string per RFC 7515."""
-    return base64.urlsafe_b64encode(string).strip('=')
+    return base64.urlsafe_b64encode(value).strip(b'=').decode('utf-8')
 
 
 @attrs(slots=True)
@@ -131,27 +132,27 @@ class WebPushNotification(object):
     precise message in the appropriate message table.
 
     """
-    uaid = attrib()  # type: uuid.UUID
-    channel_id = attrib()  # type: uuid.UUID
-    ttl = attrib()  # type: int
-    data = attrib(default=None)  # type: Optional[str]
-    headers = attrib(default=None)  # type: Optional[Dict[str, str]]
-    timestamp = attrib(default=Factory(lambda: int(time.time())))  # type: int
-    sortkey_timestamp = attrib(default=None)  # type: Optional[int]
-    topic = attrib(default=None)  # type: Optional[str]
-    source = attrib(default="Direct")  # type: Optional[str]
+    uaid:uuid.UUID = attrib()
+    channel_id:uuid.UUID = attrib()
+    ttl:int = attrib()  # type: int
+    data:Optional[str] = attrib(default=None)
+    headers:Optional[Dict[str, str]] = attrib(default=None)
+    timestamp:int = attrib(default=Factory(lambda: int(time.time())))
+    sortkey_timestamp:Optional[int] = attrib(default=None)
+    topic:Optional[str] = attrib(default=None)
+    source:Optional[str] = attrib(default="Direct")
 
-    message_id = attrib(default=None)  # type: str
+    message_id:str = attrib(default=None)
 
     # Not an alias for message_id, for backwards compat and cases where an old
     # message with any update_id should be removed.
-    update_id = attrib(default=None)  # type: str
+    update_id:str = attrib(default=None)
 
     # Whether this notification should follow legacy non-topic rules
-    legacy = attrib(default=False)  # type: bool
+    legacy:bool = attrib(default=False)
 
     @staticmethod
-    def parse_sort_key(sort_key):
+    def parse_sort_key(sort_key:str) -> Dict[str, Any]:
         # type: (str) -> Dict[str, Any]
         """Parse the sort key from the database"""
         topic = None
@@ -171,14 +172,14 @@ class WebPushNotification(object):
 
 
     @classmethod
-    def from_message_table(cls, uaid, item):
+    def from_message_table(cls, uaid:str, item:Dict[str, (str | Dict[str, str])]):
         # type: (uuid.UUID, Dict[str, Any]) -> WebPushNotification
         """Create a WebPushNotification from a message table item"""
         key_info = cls.parse_sort_key(item["chidmessageid"])
         if key_info["api_ver"] in ["01", "02"]:
             key_info["message_id"] = item["updateid"]
         notif = cls(
-            uaid=uaid,
+            uaid=uuid.UUID(uaid),
             channel_id=uuid.UUID(key_info["channel_id"]),
             data=item.get("data"),
             headers=item.get("headers"),
@@ -1059,7 +1060,7 @@ class DatabaseManager(object):
     current_msg_month = attrib(init=False)          # type: Optional[str]
     current_month = attrib(init=False)              # type: Optional[int]
     _message = attrib(default=None)                 # type: Optional[Message]
-    allow_table_rotation = attrib(default=False)     # type: Optional[bool]
+    allow_table_rotation = attrib(default=False)    # type: Optional[bool]
     # for testing:
 
     def __attrs_post_init__(self):
