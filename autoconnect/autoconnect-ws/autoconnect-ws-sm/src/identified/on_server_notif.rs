@@ -32,11 +32,16 @@ impl WebPushClient {
     pub(super) async fn check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         self.flags.check_storage = true;
         self.flags.include_topic = true;
+        // XXX: what about
+        //while self.flags.check_storage, do it (checking limit?), extending a vec. when we get 0 from do_check, we set check_storage to false?
         self.do_check_storage().await
     }
 
     pub(super) async fn do_check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
-        eprintln!("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ {}", self.flags.increment_storage);
+        eprintln!(
+            "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ {}",
+            self.flags.increment_storage
+        );
         trace!("WebPushClient::check_storage");
         // TODO:
 
@@ -110,6 +115,7 @@ impl WebPushClient {
         let smsgs: Vec<_> = messages
             .into_iter()
             .inspect(|msg| {
+                trace!("WebPushClient::check_storage Sending stored");
                 emit_metrics_for_send(&self.app_state.metrics, msg, "Stored", &self.ua_info)
             })
             .map(ServerMessage::Notification)
@@ -164,10 +170,11 @@ async fn check_storage(client: &mut WebPushClient) -> Result<CheckStorageRespons
     /*
     let maybe_msgs = client.flags.include_topic.then(|| client.app_state.db.fetch_messages(&client.uaid, 11));
     let Some(msgs) if !smsgs.is_empty() = maybe_msgs else {
-        
+
     }
     */
     let resp = if client.flags.include_topic {
+        debug!("check_storage: fetch_messages");
         client.app_state.db.fetch_messages(&client.uaid, 11).await?
     } else {
         Default::default()
@@ -192,7 +199,8 @@ async fn check_storage(client: &mut WebPushClient) -> Result<CheckStorageRespons
     } else {
         timestamp
     };
-    let resp = if resp.timestamp.is_some() {
+    let resp = if resp.messages.is_empty() || resp.timestamp.is_some() {
+        debug!("check_storage: fetch_timestamp_messages");
         client
             .app_state
             .db

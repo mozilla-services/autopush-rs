@@ -18,6 +18,10 @@ use super::HelloResponse;
 // this workaround. See https://github.com/asomers/mockall/issues/75
 mockall::mock! {
     pub DbClient {
+        fn current_message_month(&self) -> Option<String>;
+
+        fn message_tables(&self) -> &Vec<String>;
+
         fn add_user(&self, user: &User) -> DbResult<()>;
 
         fn update_user(&self, user: &User) -> DbResult<()>;
@@ -65,6 +69,14 @@ mockall::mock! {
 
 #[async_trait]
 impl DbClient for Arc<MockDbClient> {
+    fn current_message_month(&self) -> Option<String> {
+        Arc::as_ref(self).current_message_month()
+    }
+
+    fn message_tables(&self) -> &Vec<String> {
+        Arc::as_ref(self).message_tables()
+    }
+
     async fn add_user(&self, user: &User) -> DbResult<()> {
         Arc::as_ref(self).add_user(user)
     }

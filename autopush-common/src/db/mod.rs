@@ -287,6 +287,17 @@ impl Default for User {
     }
 }
 
+impl User {
+    pub fn set_last_connect(&mut self) {
+        use super::db::dynamodb::has_connected_this_month;
+        self.last_connect = if has_connected_this_month(&self) {
+            None
+        } else {
+            Some(generate_last_connect())
+        }
+    }
+}
+
 /// TODO: Accurate? This is the record in the Db.
 /// The outbound message record.
 /// This is different that the stored `Notification`

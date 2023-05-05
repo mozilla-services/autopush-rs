@@ -56,7 +56,47 @@ impl UnidentifiedClient {
             .transpose()
             .map_err(|_| SMError::InvalidMessage("Invalid uaid".to_owned()))?;
 
+        /*
         let defer_registration = uaid.is_none();
+        let (user, flags) = if let Some(uaid) = uaid {
+            let maybe_user = self.app_state.db.get_user(&uaid).await?;
+            if let Some(mut user) = maybe_user {
+                let flags = process_existing_user(&self.app_state.db, &mut user).await?;
+                self.app_state.db.update_user(&user).await?;
+                (user, flags)
+            } else {
+                (Default::default(), Default::default())
+            }
+        } else {
+            (Default::default(), Default::default())
+        };
+         */
+        let mut user_record = None;
+        //let mut user = None;
+        //let mut flags = None;
+        if let Some(uaid) = uaid {
+            let maybe_user = self.app_state.db.get_user(&uaid).await?;
+            if let Some(auser) = maybe_user {
+                use crate::identified::process_existing_user;
+                let (mut puser, pflags) = process_existing_user(&self.app_state.db, auser).await?;
+                // XXX: we also previously set puser.node_id = Some(router_url), why?
+                puser.connected_at = connected_at;
+                self.app_state.db.update_user(&puser).await?;
+                user_record = Some((puser, pflags))
+            }
+        }
+        let defer_registration = user_record.is_none();
+        let (mut user, flags) = user_record.unwrap_or_default();
+        if defer_registration {
+            user.current_month = self.app_state.db.current_message_month();
+            user.node_id = Some(self.app_state.router_url.to_owned());
+            user.connected_at = connected_at;
+        }
+        //let user = user.unwrap_or_default();
+        //let flags = flags.unwrap_or_default();
+
+        // XXX: should check if the user_record is None
+        /*
         let hello_response = self
             .app_state
             .db
@@ -67,27 +107,39 @@ impl UnidentifiedClient {
                 defer_registration,
             )
             .await?;
+         */
+        let uaid = user.uaid.clone();
         trace!(
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {:?} user_is_registered: {}",
-            hello_response.uaid,
-            hello_response.deferred_user_registration.is_none()
+            uaid,
+            !defer_registration,
         );
 
+        // XXX: This used to be triggered by *any* error returned from
+        // update_user. The intention was to trap the specific case of where
+        // connected_at <: connected_at. Either way, the result is the same:
+        // disconnect the client. We now propagate any error from update_user,
+        // which disconnects them anyway, so I don't think this check is even
+        // needed any longer.
+        /*
         let Some(uaid) = hello_response.uaid else {
             trace!("💬UnidentifiedClient::on_client_msg AlreadyConnected {:?}", hello_response.uaid);
             return Err(SMError::AlreadyConnected);
         };
+        */
 
         let _ = self.app_state.metrics.incr("ua.command.hello");
         // TODO: broadcasts
         //let desired_broadcasts = Broadcast::from_hasmap(broadcasts.unwrap_or_default());
         //let (initialized_subs, broadcasts) = app_state.broadcast_init(&desired_broadcasts);
         let (wpclient, check_storage_smsgs) = WebPushClient::new(
-            uaid,
+            uaid.clone(),
             self.ua,
-            ClientFlags::from_hello(&hello_response),
+            //ClientFlags::from_hello(&hello_response),
+            flags,
             connected_at,
-            hello_response.deferred_user_registration,
+            //hello_response.deferred_user_registration,
+            if defer_registration { Some(user) } else { None },
             self.app_state,
         )
         .await?;
@@ -103,24 +155,31 @@ impl UnidentifiedClient {
     }
 }
 
+use autopush_common::db::{error::DbResult, HelloResponse};
 use uuid::Uuid;
-use autopush_common::db::{HelloResponse, error::DbResult};
-fn hello(client: &UnidentifiedClient,
-        connected_at: u64,
-        uaid: Option<&Uuid>,
-        router_url: &str,
+async fn hello(
+    client: &UnidentifiedClient,
+    connected_at: u64,
+    uaid: Option<&Uuid>,
+    router_url: &str,
 ) -> DbResult<HelloResponse> {
+    // XXX: should just always require a uaid..
     trace!("hello🧑🏼 uaid {:?}", &uaid);
+    /*
     if let Some(uaid) = uaid {
-        let user = self.get_user(uaid).await;
-        match user {
-            Some(user) => {
-            }
-        }
+        let maybe_user = client.app_state.db.get_user(uaid).await?;
+        let user = if let Some(user) = maybe_user {
+            process_existing_user(&user)?;
+            user
+        } else {
+            // XXX: need current_month and node_id (router_url)
+            Default::default()
+        };
+
     }
+    */
     panic!();
 }
-
 
 #[cfg(test)]
 mod tests {

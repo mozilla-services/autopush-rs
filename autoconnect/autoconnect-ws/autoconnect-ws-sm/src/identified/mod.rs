@@ -110,6 +110,36 @@ impl WebPushClient {
     }
 }
 
+//use autopush_common::db::User;
+use autopush_common::db::client::DbClient;
+use autopush_common::db::error::DbResult;
+pub async fn process_existing_user(
+    db: &Box<dyn DbClient>,
+    mut user: User,
+) -> DbResult<(User, ClientFlags)> {
+    let flags = ClientFlags::default();
+    let message_tables = db.message_tables();
+    // XXX: verify these aren't empty on ddb
+    if !message_tables.is_empty()
+        && (user.current_month.is_none()
+            || !message_tables.contains(&user.current_month.as_ref().unwrap()))
+    {
+        db.remove_user(&user.uaid).await?;
+        user = Default::default();
+    }
+    let USER_RECORD_VERSION: u8 = 1;
+    let flags = ClientFlags {
+        check_storage: true,
+        reset_uaid: user
+            .record_version
+            .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
+        rotate_message_table: user.current_month != db.current_message_month(),
+        ..Default::default()
+    };
+    user.set_last_connect();
+    Ok((user, flags))
+}
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ClientFlags {
@@ -249,14 +279,19 @@ mod tests {
                 })
             });
 
-        let (mut client, _) = wpclient(DUMMY_UAID, AppState {
-            db: db.into_boxed_arc(),
-            ..Default::default()
-        }).await;
+        let (mut client, _) = wpclient(
+            DUMMY_UAID,
+            AppState {
+                db: db.into_boxed_arc(),
+                ..Default::default()
+            },
+        )
+        .await;
 
-
-        let smsgs = client.on_server_notif(ServerNotification::CheckStorage).await.unwrap();
+        let smsgs = client
+            .on_server_notif(ServerNotification::CheckStorage)
+            .await
+            .unwrap();
         assert!(matches!(smsgs.as_slice(), []));
     }
-
 }

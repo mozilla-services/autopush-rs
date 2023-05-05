@@ -21,6 +21,11 @@ pub struct FetchMessageResponse {
 ///
 #[async_trait]
 pub trait DbClient: Send + Sync {
+    /// XXX:
+    fn current_message_month(&self) -> Option<String>;
+
+    fn message_tables(&self) -> &Vec<String>;
+
     /// Add a new user to the database. An error will occur if the user already
     /// exists.
     async fn add_user(&self, user: &User) -> DbResult<()>;

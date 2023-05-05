@@ -160,6 +160,14 @@ where
 #[allow(clippy::field_reassign_with_default)]
 #[async_trait]
 impl DbClient for DdbClientImpl {
+    fn current_message_month(&self) -> Option<String> {
+        Some(self.settings.current_message_month.clone())
+    }
+
+    fn message_tables(&self) -> &Vec<String> {
+        &self.settings.message_table_names
+    }
+
     async fn add_user(&self, user: &User) -> DbResult<()> {
         let input = PutItemInput {
             table_name: self.settings.router_table.clone(),
@@ -178,6 +186,7 @@ impl DbClient for DdbClientImpl {
     }
 
     async fn update_user(&self, user: &User) -> DbResult<()> {
+        eprintln!("user: {:#?}", user);
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {
@@ -544,6 +553,7 @@ impl DbClient for DdbClientImpl {
             table_name: self.settings.message_table.clone(),
             ..Default::default()
         };
+        //eprintln!("save_message PutItemInput: {:#?}", input);
 
         retry_policy()
             .retry_if(
@@ -696,7 +706,7 @@ impl DbClient for DdbClientImpl {
 }
 
 /// Indicate whether this last_connect falls in the current month
-fn has_connected_this_month(user: &User) -> bool {
+pub(crate) fn has_connected_this_month(user: &User) -> bool {
     user.last_connect.map_or(false, |v| {
         let pat = Utc::now().format("%Y%m").to_string();
         v.to_string().starts_with(&pat)

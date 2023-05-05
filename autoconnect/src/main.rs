@@ -15,7 +15,10 @@ use std::sync::RwLock;
 
 use autoconnect_settings::{AppState, Settings};
 use autoconnect_web::{build_app, client::ClientChannels, config};
-use autopush_common::errors::{ApcErrorKind, Result};
+use autopush_common::{
+    errors::{ApcErrorKind, Result},
+    logging,
+};
 
 mod middleware;
 
@@ -52,6 +55,8 @@ async fn main() -> Result<()> {
     }
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
+    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+    debug!("Starting up...");
 
     //TODO: Eventually this will match between the various storage engines that
     // we support. For now, it's just the one, DynamoDB.

@@ -55,6 +55,8 @@ impl WebPushClient {
             )));
         }
 
+        // TODO: catch make_endpoint failures to return a (400, "Failed to
+        // generate endpoint") instead
         let (status, push_endpoint) = match self.do_register(&channel_id, key).await {
             Ok(endpoint) => {
                 let _ = self.app_state.metrics.incr("ua.command.register");
@@ -282,17 +284,17 @@ impl WebPushClient {
                 self.check_storage().await
              */
             /*
-        } else if flags.rotate_message_table {
-            trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
-            unimplemented!()
-        } else if flags.reset_uaid {
-            trace!("WebPushClient:maybe_post_process_acks reset_uaid");
-            self.app_state.db.remove_user(&self.uaid).await?;
-            Err(SMError::UaidReset)
-        } else {
-            Ok(vec![])
-        }
-             */
+            } else if flags.rotate_message_table {
+                trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
+                unimplemented!()
+            } else if flags.reset_uaid {
+                trace!("WebPushClient:maybe_post_process_acks reset_uaid");
+                self.app_state.db.remove_user(&self.uaid).await?;
+                Err(SMError::UaidReset)
+            } else {
+                Ok(vec![])
+            }
+                 */
         }
 
         let flags = &self.flags;

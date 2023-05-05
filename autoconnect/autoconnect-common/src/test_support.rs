@@ -17,18 +17,35 @@ pub const HELLO_AGAIN: &str = r#"{"messageType": "hello", "use_webpush": true,
 
 /// Return a simple MockDbClient that responds to hello (once) with a new uaid.
 pub fn hello_db() -> MockDbClient {
-    hello_again_db(uuid::Uuid::new_v4())
+    //hello_again_db(uuid::Uuid::new_v4())
+    MockDbClient::new()
 }
 
 /// Return a simple MockDbClient that responds to hello (once) with the
 /// specified uaid.
 pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     let mut db = MockDbClient::new();
+    /*
     db.expect_hello().times(1).return_once(move |_, _, _, _| {
         Ok(HelloResponse {
             uaid: Some(uaid),
             ..Default::default()
         })
     });
+     */
+    use autopush_common::db::User;
+    let current_month = "202305";
+    db.expect_get_user().times(1).return_once(move |_| {
+        Ok(Some(User {
+            uaid: uaid,
+            current_month: Some(current_month.to_owned()),
+            ..Default::default()
+        }))
+    });
+    let message_tables = vec![current_month.to_owned()];
+    db.expect_message_tables().times(1).return_const(message_tables);
+    db.expect_current_message_month()./*times(1).*/return_const(Some(current_month.to_owned()));
+    db.expect_update_user().times(1).return_once(|_| Ok(()));
+    db.expect_fetch_messages().times(1).return_once(|_, _| Ok(Default::default()));
     db
 }
