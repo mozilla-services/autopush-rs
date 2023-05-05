@@ -12,7 +12,7 @@ pub mod errors;
 pub mod logging;
 pub mod metrics;
 pub mod notification;
-// pending actix 4:
+pub mod sentry;
 pub mod tags;
 
 #[macro_use]
