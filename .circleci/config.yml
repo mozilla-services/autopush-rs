@@ -63,9 +63,9 @@ jobs:
       #     command: |
       #       curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
       #       curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
-      - restore_cache:
-          name: Restoring Python cache
-          key: python-v1-{{ checksum "requirements.txt" }}-{{ checksum "test-requirements.txt" }}
+      #- restore_cache:
+      #    name: Restoring Python cache
+      #    key: python-v1-{{ checksum "requirements.txt" }}-{{ checksum "test-requirements.txt" }}
       - restore_cache:
           name: Restoring Rust cache
           key: rust-v1-{{ .Branch }}-{{ checksum "Cargo.lock" }}

@@ -11,7 +11,7 @@ import signal
 import string
 import socket
 import subprocess
-from typing import Any, Optional, List, Dict, AnyStr, Self
+from typing import Any, Optional, List, Dict, AnyStr
 
 import sys
 import time
@@ -379,7 +379,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
 
 def _get_vapid(
-    key: ecdsa.SigningKey | None = None, 
+    key: ecdsa.SigningKey | None = None,
     payload: Optional[Dict[str, str | int]] = None,
     endpoint: Optional[str] = None,
 ) -> Dict[str, str | bytes]:
