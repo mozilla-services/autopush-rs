@@ -58,11 +58,11 @@ jobs:
       - checkout
       # Need to download the requirements.txt files so we can use their
       # checksums in restore_cache.
-      - run:
-          name: Download Python dependency lists
-          command: |
-            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
-            curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
+      # - run:
+      #     name: Download Python dependency lists
+      #     command: |
+      #       curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
+      #       curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
       - restore_cache:
           name: Restoring Python cache
           key: python-v1-{{ checksum "requirements.txt" }}-{{ checksum "test-requirements.txt" }}
@@ -74,7 +74,7 @@ jobs:
           command: |
             pip install --upgrade pip
             pip install bottle
-            pip install -r requirements.txt
+            pip install -r tests/requirements.txt
       - run:
           name: Set up Rust
           command: |
@@ -90,7 +90,9 @@ jobs:
             cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
       - run:
           name: Integration tests
-          command: py.test -v
+          command: |
+            cd tests
+            py.test -v
       - run:
           name: Rust tests
           command: cargo test
