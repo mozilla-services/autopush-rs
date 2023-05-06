@@ -6,10 +6,7 @@ use autoconnect_common::protocol::{ClientMessage, ServerMessage};
 use autoconnect_settings::AppState;
 use autopush_common::util::ms_since_epoch;
 
-use crate::{
-    error::SMError,
-    identified::{ClientFlags, WebPushClient},
-};
+use crate::{error::SMError, identified::WebPushClient};
 
 /// Represents a Client waiting for (or yet to process) a Hello message
 /// identifying itself
@@ -56,24 +53,7 @@ impl UnidentifiedClient {
             .transpose()
             .map_err(|_| SMError::InvalidMessage("Invalid uaid".to_owned()))?;
 
-        /*
-        let defer_registration = uaid.is_none();
-        let (user, flags) = if let Some(uaid) = uaid {
-            let maybe_user = self.app_state.db.get_user(&uaid).await?;
-            if let Some(mut user) = maybe_user {
-                let flags = process_existing_user(&self.app_state.db, &mut user).await?;
-                self.app_state.db.update_user(&user).await?;
-                (user, flags)
-            } else {
-                (Default::default(), Default::default())
-            }
-        } else {
-            (Default::default(), Default::default())
-        };
-         */
         let mut user_record = None;
-        //let mut user = None;
-        //let mut flags = None;
         if let Some(uaid) = uaid {
             let maybe_user = self.app_state.db.get_user(&uaid).await?;
             if let Some(auser) = maybe_user {
@@ -85,34 +65,22 @@ impl UnidentifiedClient {
                 user_record = Some((puser, pflags))
             }
         }
-        let defer_registration = user_record.is_none();
+        // NOTE: when a uaid is specified and get_user returns None we're now
+        // deferring registration (a change from previous versions)
+        let user_is_registered = user_record.is_some();
         let (mut user, flags) = user_record.unwrap_or_default();
-        if defer_registration {
+        if !user_is_registered {
             user.current_month = self.app_state.db.current_message_month();
             user.node_id = Some(self.app_state.router_url.to_owned());
             user.connected_at = connected_at;
         }
-        //let user = user.unwrap_or_default();
-        //let flags = flags.unwrap_or_default();
 
         // XXX: should check if the user_record is None
-        /*
-        let hello_response = self
-            .app_state
-            .db
-            .hello(
-                connected_at,
-                uaid.as_ref(),
-                &self.app_state.router_url,
-                defer_registration,
-            )
-            .await?;
-         */
         let uaid = user.uaid.clone();
         trace!(
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {:?} user_is_registered: {}",
             uaid,
-            !defer_registration,
+            user_is_registered,
         );
 
         // XXX: This used to be triggered by *any* error returned from
@@ -135,11 +103,9 @@ impl UnidentifiedClient {
         let (wpclient, check_storage_smsgs) = WebPushClient::new(
             uaid.clone(),
             self.ua,
-            //ClientFlags::from_hello(&hello_response),
             flags,
             connected_at,
-            //hello_response.deferred_user_registration,
-            if defer_registration { Some(user) } else { None },
+            (!user_is_registered).then_some(user),
             self.app_state,
         )
         .await?;
@@ -155,42 +121,15 @@ impl UnidentifiedClient {
     }
 }
 
-use autopush_common::db::{error::DbResult, HelloResponse};
-use uuid::Uuid;
-async fn hello(
-    client: &UnidentifiedClient,
-    connected_at: u64,
-    uaid: Option<&Uuid>,
-    router_url: &str,
-) -> DbResult<HelloResponse> {
-    // XXX: should just always require a uaid..
-    trace!("hello🧑🏼 uaid {:?}", &uaid);
-    /*
-    if let Some(uaid) = uaid {
-        let maybe_user = client.app_state.db.get_user(uaid).await?;
-        let user = if let Some(user) = maybe_user {
-            process_existing_user(&user)?;
-            user
-        } else {
-            // XXX: need current_month and node_id (router_url)
-            Default::default()
-        };
-
-    }
-    */
-    panic!();
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use autoconnect_common::{
         protocol::ClientMessage,
-        test_support::{hello_again_db, DUMMY_CHID, DUMMY_UAID, UA},
+        test_support::{hello_again_db, hello_db, DUMMY_CHID, DUMMY_UAID, UA},
     };
     use autoconnect_settings::AppState;
-    use autopush_common::db::{mock::MockDbClient, HelloResponse, User};
 
     use crate::error::SMError;
 
@@ -233,22 +172,9 @@ mod tests {
 
     #[tokio::test]
     async fn hello_new_user() {
-        let mut db = MockDbClient::new();
-        // Ensure no write to the db
-        db.expect_hello()
-            .withf(|_, _, _, defer_registration| defer_registration == &true)
-            .return_once(move |_, _, _, _| {
-                Ok(HelloResponse {
-                    uaid: Some(DUMMY_UAID),
-                    deferred_user_registration: Some(User {
-                        uaid: DUMMY_UAID,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                })
-            });
         let client = uclient(AppState {
-            db: db.into_boxed_arc(),
+            // Simple hello_db ensures no writes to the db
+            db: hello_db().into_boxed_arc(),
             ..Default::default()
         });
         let msg = ClientMessage::Hello {

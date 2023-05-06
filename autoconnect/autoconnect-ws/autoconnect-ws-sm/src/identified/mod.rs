@@ -110,16 +110,14 @@ impl WebPushClient {
     }
 }
 
-//use autopush_common::db::User;
-use autopush_common::db::client::DbClient;
-use autopush_common::db::error::DbResult;
+use autopush_common::db::{client::DbClient, error::DbResult, USER_RECORD_VERSION};
+// XXX: likely simpler for this to reside in the Db trait
 pub async fn process_existing_user(
     db: &Box<dyn DbClient>,
     mut user: User,
 ) -> DbResult<(User, ClientFlags)> {
-    let flags = ClientFlags::default();
+    // XXX: could verify these aren't empty on ddb
     let message_tables = db.message_tables();
-    // XXX: verify these aren't empty on ddb
     if !message_tables.is_empty()
         && (user.current_month.is_none()
             || !message_tables.contains(&user.current_month.as_ref().unwrap()))
@@ -127,7 +125,6 @@ pub async fn process_existing_user(
         db.remove_user(&user.uaid).await?;
         user = Default::default();
     }
-    let USER_RECORD_VERSION: u8 = 1;
     let flags = ClientFlags {
         check_storage: true,
         reset_uaid: user
@@ -262,7 +259,6 @@ mod tests {
     }
 
     #[actix_rt::test]
-    //#[test_log::test(actix_rt::test)]
     async fn check_storage_stuff() {
         use autopush_common::logging::init_logging;
         init_logging(false).unwrap();
