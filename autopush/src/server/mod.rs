@@ -169,7 +169,8 @@ impl AppState {
             .split(',')
             .map(|s| s.trim().to_string())
             .map(|key| {
-                Fernet::new(&key).unwrap_or_else(|| panic!("Invalid AUTOPUSH__CRYPTO_KEY: {:?}", key))
+                Fernet::new(&key)
+                    .unwrap_or_else(|| panic!("Invalid AUTOPUSH__CRYPTO_KEY: {:?}", key))
             })
             .collect();
         let fernet = MultiFernet::new(fernets);
