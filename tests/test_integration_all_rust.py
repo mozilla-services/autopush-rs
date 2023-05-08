@@ -47,8 +47,8 @@ log = logging.getLogger(__name__)
 here_dir = os.path.abspath(os.path.dirname(__file__))
 root_dir = os.path.dirname(here_dir)
 
-DDB_JAR = os.path.join(root_dir, "ddb", "DynamoDBLocal.jar")
-DDB_LIB_DIR = os.path.join(root_dir, "ddb", "DynamoDBLocal_lib")
+DDB_JAR = os.path.join(root_dir, "tests", "ddb", "DynamoDBLocal.jar")
+DDB_LIB_DIR = os.path.join(root_dir, "tests", "ddb", "DynamoDBLocal_lib")
 DDB_PROCESS: Optional[subprocess.Popen] = None
 
 twisted.internet.base.DelayedCall.debug = True
@@ -57,7 +57,7 @@ ROUTER_TABLE = os.environ.get("ROUTER_TABLE", "router_int_test")
 MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
 MSG_LIMIT = 20
 
-CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key()
+CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode("utf-8")
 CONNECTION_PORT = 9150
 ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
@@ -71,7 +71,7 @@ MOCK_SERVER_THREAD = None
 CN_QUEUES: List = []
 EP_QUEUES: List = []
 STRICT_LOG_COUNTS = True
-RUST_LOG = "autoendpoint=debug,autopush_rs=debug,autopush_common=debug,error"
+RUST_LOG = "autoconnect=debug,autoendpoint=debug,autopush_rs=debug,autopush_common=debug,error"
 
 
 def get_free_port() -> int:
@@ -115,7 +115,7 @@ CONNECTION_CONFIG: Dict[str, str | int | float] = dict(
 For local test debugging, set `AUTOPUSH_MP_CONFIG=_url_` to override
 creation of the local server.
 """
-MEGAPHONE_CONFIG = copy.deepcopy(CONNECTION_CONFIG)
+MEGAPHONE_CONFIG:dict[str, str|int|float|None] = copy.deepcopy(CONNECTION_CONFIG)
 MEGAPHONE_CONFIG.update(
     port=MP_CONNECTION_PORT,
     endpoint_port=ENDPOINT_PORT,
@@ -543,7 +543,6 @@ def setup_dynamodb():
     global DDB_PROCESS
 
     if os.getenv("AWS_LOCAL_DYNAMODB") is None:
-        print("Starting new DynamoDB instance")
         cmd = " ".join(
             [
                 "java",
@@ -660,6 +659,7 @@ def setup_endpoint_server():
         stderr=subprocess.PIPE,
         universal_newlines=True,
     )
+
 
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(EP_SERVER.stdout)

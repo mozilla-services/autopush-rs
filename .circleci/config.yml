@@ -76,8 +76,16 @@ jobs:
             pip install bottle
             pip install -r tests/requirements.txt
       - run:
+         name: Set up Java (for ddb emulator)
+         command: |
+          apt install default-jre
+          pushd tests/ddb
+          tar -xvf dynamodb_local_latest.tar.gz
+          popd
+      - run:
           name: Set up Rust
           command: |
+            apt install libssl-dev
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
