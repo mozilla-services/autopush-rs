@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
         release: sentry::release_name!(),
         session_mode: sentry::SessionMode::Request, // new session per request
         auto_session_tracking: true,
-        ..Default::default()
+        ..autopush_common::sentry::client_options()
     });
 
     let port = settings.port;
