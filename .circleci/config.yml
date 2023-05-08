@@ -70,6 +70,12 @@ jobs:
           name: Restoring Rust cache
           key: rust-v1-{{ .Branch }}-{{ checksum "Cargo.lock" }}
       - run:
+          name: Set up system
+          command: |
+            sudo apt update
+            sudo apt install libssl-dev
+            sudo apt install default-jre
+      - run:
           name: Set up Python
           command: |
             pip install --upgrade pip
@@ -78,14 +84,12 @@ jobs:
       - run:
          name: Set up Java (for ddb emulator)
          command: |
-          apt install default-jre
           pushd tests/ddb
           tar -xvf dynamodb_local_latest.tar.gz
           popd
       - run:
           name: Set up Rust
           command: |
-            apt install libssl-dev
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
