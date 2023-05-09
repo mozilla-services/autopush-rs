@@ -51,7 +51,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: -sharedDb -inMemory
-    resource_class: large
+    resource_class: xlarge
     environment:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
