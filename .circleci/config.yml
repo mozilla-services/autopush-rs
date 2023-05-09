@@ -58,14 +58,9 @@ jobs:
       - checkout
       # Need to download the requirements.txt files so we can use their
       # checksums in restore_cache.
-      # - run:
-      #     name: Download Python dependency lists
-      #     command: |
-      #       curl https://raw.githubusercontent.com/mozilla-services/autopush/master/requirements.txt > requirements.txt
-      #       curl https://raw.githubusercontent.com/mozilla-services/autopush/master/test-requirements.txt > test-requirements.txt
-      #- restore_cache:
-      #    name: Restoring Python cache
-      #    key: python-v1-{{ checksum "requirements.txt" }}-{{ checksum "test-requirements.txt" }}
+      - restore_cache:
+          name: Restoring Python cache
+          key: python-v1-{{ checksum "tests/requirements.txt" }}-{{ checksum "tests/test_integration_all_rust.py"}}
       - restore_cache:
           name: Restoring Rust cache
           key: rust-v1-{{ .Branch }}-{{ checksum "Cargo.lock" }}
