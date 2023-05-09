@@ -158,7 +158,7 @@ impl WebPushClient {
                 .iter()
                 .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
             if let Some(pos) = pos {
-                debug!("Ack";
+                debug!("Ack (Direct)";
                        "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                        "version" => &notif.version
                 );
@@ -174,17 +174,20 @@ impl WebPushClient {
                 .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
             if let Some(pos) = pos {
                 debug!(
-                    "Ack";
+                    "Ack (Stored)";
                     "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                     "version" => &notif.version
                 );
                 let n = &self.ack_state.unacked_stored_notifs[pos];
+                debug!("ZZZZZ: check: {} {:#?}", self.flags.check_storage, &n);
                 // Topic/legacy messages have no sortkey_timestamp
                 if n.sortkey_timestamp.is_none() {
+                    debug!("Removing sort_key: {}", &n.sort_key());
                     self.app_state
                         .db
                         .remove_message(&self.uaid, &n.sort_key())
                         .await?;
+                    // XXX: incr_with_tags("notification.message.deleted") with_tag("topic"
                 }
                 self.ack_state.unacked_stored_notifs.remove(pos);
                 self.stats.stored_acked += 1;
@@ -230,6 +233,9 @@ impl WebPushClient {
                 debug_assert!(!&self.flags.increment_storage);
             }
             trace!("WebPushClient:maybe_post_process_acks check_storage");
+            //let smsgs = self.do_check_storage().await?;
+            // why was this only do_? because the flags aren't set..
+            // XXX: you probably want the looping here without the flags being set sigh
             let smsgs = self.do_check_storage().await?;
             if !smsgs.is_empty() {
                 // More notifications going out, so back to waiting for the Client

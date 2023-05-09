@@ -123,6 +123,7 @@ pub async fn process_existing_user(
             || !message_tables.contains(&user.current_month.as_ref().unwrap()))
     {
         db.remove_user(&user.uaid).await?;
+        // XXX: no current_month/node_id are set in this case! return None instead?
         user = Default::default();
     }
     let flags = ClientFlags {

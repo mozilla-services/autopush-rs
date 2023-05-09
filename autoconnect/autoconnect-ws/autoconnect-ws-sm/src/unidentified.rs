@@ -119,6 +119,22 @@ impl UnidentifiedClient {
         let smsgs = std::iter::once(smsg).chain(check_storage_smsgs);
         Ok((wpclient, smsgs))
     }
+
+    /*
+    async fn hello(&self, uaid: &Uuid) -> DbResult<(User, ClientFlags) {
+        let user = self.app_state.db.get_user(uaid).await? else {
+            // User doesn't exist
+            return Ok((Default::default(), Default::default()));
+        }
+        use crate::identified::process_existing_user;
+        let (mut user, flags) = process_existing_user(&self.app_state.db, user).await?;
+        // XXX: we also previously set puser.node_id = Some(router_url), why?
+            user.connected_at = connected_at;
+            self.app_state.db.update_user(&user).await?;
+            return Some((user, flags));
+        }
+    }
+    */
 }
 
 #[cfg(test)]

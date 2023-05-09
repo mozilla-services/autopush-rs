@@ -32,9 +32,22 @@ impl WebPushClient {
     pub(super) async fn check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         self.flags.check_storage = true;
         self.flags.include_topic = true;
-        // XXX: what about
-        //while self.flags.check_storage, do it (checking limit?), extending a vec. when we get 0 from do_check, we set check_storage to false?
         self.do_check_storage().await
+
+            /*
+        let mut all_smsgs = vec![];
+        while self.flags.check_storage {
+            let smsgs = self.check_storage_loop().await?;
+            all_smsgs.extend(smsgs);
+            if self.flags.include_topic {
+                break;
+            }
+        }
+        if !self.flags.include_topic && all_smsgs.is_empty() && self.flags.increment_storage {
+            self.increment_storage().await?;
+        }
+        Ok(all_smsgs)
+            */
     }
 
     pub(super) async fn do_check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
@@ -71,7 +84,7 @@ impl WebPushClient {
             self.flags.check_storage = false;
             self.sent_from_storage = 0;
             // No need to increment_storage
-            debug_assert!(!self.flags.increment_storage);
+            //debug_assert!(!self.flags.increment_storage);
             // XXX: technically back to determine ack? (maybe_post_process_acks)?
             // XXX: DetermineAck
             // XXX: if all we need to do is increment storage, just
@@ -100,6 +113,7 @@ impl WebPushClient {
         self.flags.increment_storage = !include_topic && timestamp.is_some();
         // If there's still messages send them out
         if messages.is_empty() {
+            /*
             // XXX: DetermineAck
             // XXX: see above notes
             if self.flags.increment_storage {
@@ -107,6 +121,8 @@ impl WebPushClient {
             }
             self.flags.check_storage = false;
             self.sent_from_storage = 0;
+            return Ok(vec![]);
+             */
             return Ok(vec![]);
         }
         self.ack_state
