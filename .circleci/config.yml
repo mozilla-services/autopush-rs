@@ -51,7 +51,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: -sharedDb -inMemory
-    resource_class: xlarge
+    resource_class: large
     environment:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
@@ -69,19 +69,12 @@ jobs:
           command: |
             sudo apt update
             sudo apt install libssl-dev
-            sudo apt install default-jre
       - run:
           name: Set up Python
           command: |
             pip install --upgrade pip
             pip install bottle
             pip install -r tests/requirements.txt
-      - run:
-         name: Set up Java (for ddb emulator)
-         command: |
-          pushd tests/ddb
-          tar -xvf dynamodb_local_latest.tar.gz
-          popd
       - run:
           name: Set up Rust
           command: |
