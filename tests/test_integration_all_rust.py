@@ -11,7 +11,7 @@ import signal
 import string
 import socket
 import subprocess
-from typing import Any, Optional, List, Dict, AnyStr
+from typing import Any, Optional, List, Dict
 
 import sys
 import time
@@ -57,7 +57,9 @@ ROUTER_TABLE = os.environ.get("ROUTER_TABLE", "router_int_test")
 MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
 MSG_LIMIT = 20
 
-CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode("utf-8")
+CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode(
+    "utf-8"
+)
 CONNECTION_PORT = 9150
 ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
@@ -115,7 +117,9 @@ CONNECTION_CONFIG: Dict[str, str | int | float] = dict(
 For local test debugging, set `AUTOPUSH_MP_CONFIG=_url_` to override
 creation of the local server.
 """
-MEGAPHONE_CONFIG:dict[str, str|int|float|None] = copy.deepcopy(CONNECTION_CONFIG)
+MEGAPHONE_CONFIG: dict[str, str | int | float | None] = copy.deepcopy(
+    CONNECTION_CONFIG
+)
 MEGAPHONE_CONFIG.update(
     port=MP_CONNECTION_PORT,
     endpoint_port=ENDPOINT_PORT,
@@ -151,7 +155,7 @@ class Client(object):
     def __init__(self, url, sslcontext=None) -> None:
         self.url: str = url
         self.uaid: Optional[uuid.UUID] = None
-        # self.ws:Optional[websocket.WebSocket] = None
+        self.ws: Optional[websocket.WebSocket] = None
         self.use_webpush: bool = True
         self.channels = {}
         self.messages = {}
@@ -183,7 +187,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.ws = websocket.create_connection(url, header=self.headers)
         return self.ws.connected
 
-    def hello(self, uaid: Optional[str] = None, services: Optional[List[str]] = None):
+    def hello(
+        self, uaid: Optional[str] = None, services: Optional[List[str]] = None
+    ):
         if self.channels:
             chans = list(self.channels.keys())
         else:
@@ -197,45 +203,55 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             hello_dict["broadcasts"] = services
         msg = json.dumps(hello_dict)
         log.debug("Send: %s", msg)
-        self.ws.send(msg)
-        result = json.loads(self.ws.recv())
-        log.debug("Recv: %s", result)
-        assert result["status"] == 200
-        assert "-" not in result["uaid"]
-        if self.uaid and self.uaid != result["uaid"]:  # pragma: nocover
-            log.debug(
-                "Mismatch on re-using uaid. Old: %s, New: %s", self.uaid, result["uaid"]
-            )
-            self.channels = {}
-        self.uaid = result["uaid"]
-        return result
+        if self.ws:
+            self.ws.send(msg)
+            result = json.loads(self.ws.recv())
+            log.debug("Recv: %s", result)
+            assert result["status"] == 200
+            assert "-" not in result["uaid"]
+            if self.uaid and self.uaid != result["uaid"]:  # pragma: nocover
+                log.debug(
+                    "Mismatch on re-using uaid. Old: %s, New: %s",
+                    self.uaid,
+                    result["uaid"],
+                )
+                self.channels = {}
+            self.uaid = result["uaid"]
+            return result
 
     def broadcast_subscribe(self, services: List[str]):  # pragma: nocover
-        msg = json.dumps(dict(messageType="broadcast_subscribe", broadcasts=services))
+        msg = json.dumps(
+            dict(messageType="broadcast_subscribe", broadcasts=services)
+        )
         log.debug("Send: %s", msg)
-        self.ws.send(msg)
+        if self.ws:
+            self.ws.send(msg)
 
     def register(self, chid: Optional[str] = None, key=None, status=200):
         chid = chid or str(uuid.uuid4())
-        msg = json.dumps(dict(messageType="register", channelID=chid, key=key))
+        msg = json.dumps(
+            dict(messageType="register", channelID=chid, key=key)
+        )
         log.debug("Send: %s", msg)
-        self.ws.send(msg)
-        rcv = self.ws.recv()
-        result = json.loads(rcv)
-        log.debug("Recv: %s", result)
-        assert result["status"] == status
-        assert result["channelID"] == chid
-        if status == 200:
-            self.channels[chid] = result["pushEndpoint"]
-        return result
+        if self.ws:
+            self.ws.send(msg)
+            rcv = self.ws.recv()
+            result = json.loads(rcv)
+            log.debug("Recv: %s", result)
+            assert result["status"] == status
+            assert result["channelID"] == chid
+            if status == 200:
+                self.channels[chid] = result["pushEndpoint"]
+            return result
 
     def unregister(self, chid):
         msg = json.dumps(dict(messageType="unregister", channelID=chid))
         log.debug("Send: %s", msg)
-        self.ws.send(msg)
-        result = json.loads(self.ws.recv())
-        log.debug("Recv: %s", result)
-        return result
+        if self.ws:
+            self.ws.send(msg)
+            result = json.loads(self.ws.recv())
+            log.debug("Recv: %s", result)
+            return result
 
     def delete_notification(self, channel, message=None, status=204):
         messages = self.messages[channel]
@@ -282,7 +298,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         if vapid:
             headers.update({"Authorization": "Bearer " + vapid.get("auth")})
             ckey = 'p256ecdsa="' + vapid.get("crypto-key") + '"'
-            headers.update({"Crypto-Key": headers.get("Crypto-Key", "") + ";" + ckey})
+            headers.update(
+                {"Crypto-Key": headers.get("Crypto-Key", "") + ";" + ckey}
+            )
         if topic:
             headers["Topic"] = topic
         body = data or ""
@@ -321,49 +339,57 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             return resp
 
     def get_notification(self, timeout=1):
-        orig_timeout = self.ws.gettimeout()
-        self.ws.settimeout(timeout)
-        try:
-            d = self.ws.recv()
-            log.debug("Recv: %s", d)
-            return json.loads(d)
-        except Exception:
-            return None
-        finally:
-            self.ws.settimeout(orig_timeout)
+        if self.ws:
+            orig_timeout = self.ws.gettimeout()
+            self.ws.settimeout(timeout)
+            try:
+                d = self.ws.recv()
+                log.debug("Recv: %s", d)
+                return json.loads(d)
+            except Exception:
+                return None
+            finally:
+                self.ws.settimeout(orig_timeout)
 
     def get_broadcast(self, timeout=1):  # pragma: nocover
-        orig_timeout = self.ws.gettimeout()
-        self.ws.settimeout(timeout)
-        try:
-            d = self.ws.recv()
-            log.debug("Recv: %s", d)
-            result = json.loads(d)
-            assert result.get("messageType") == "broadcast"
-            return result
-        except Exception as ex:  # pragma: nocover
-            log.error("Error: {}".format(ex))
-            return None
-        finally:
-            self.ws.settimeout(orig_timeout)
+        if self.ws:
+            orig_timeout = self.ws.gettimeout()
+            self.ws.settimeout(timeout)
+            try:
+                d = self.ws.recv()
+                log.debug("Recv: %s", d)
+                result = json.loads(d)
+                assert result.get("messageType") == "broadcast"
+                return result
+            except Exception as ex:  # pragma: nocover
+                log.error("Error: {}".format(ex))
+                return None
+            finally:
+                self.ws.settimeout(orig_timeout)
 
     def ping(self):
-        log.debug("Send: %s", "{}")
-        self.ws.send("{}")
-        result = self.ws.recv()
-        log.debug("Recv: %s", result)
-        assert result == "{}"
-        return result
+        if self.ws:
+            log.debug("Send: %s", "{}")
+            self.ws.send("{}")
+            result = self.ws.recv()
+            log.debug("Recv: %s", result)
+            assert result == "{}"
+            return result
 
     def ack(self, channel, version):
-        msg = json.dumps(
-            dict(messageType="ack", updates=[dict(channelID=channel, version=version)])
-        )
-        log.debug("Send: %s", msg)
-        self.ws.send(msg)
+        if self.ws:
+            msg = json.dumps(
+                dict(
+                    messageType="ack",
+                    updates=[dict(channelID=channel, version=version)],
+                )
+            )
+            log.debug("Send: %s", msg)
+            self.ws.send(msg)
 
     def disconnect(self):
-        self.ws.close()
+        if self.ws:
+            self.ws.close()
 
     def sleep(self, duration: int):  # pragma: nocover
         time.sleep(duration)
@@ -400,8 +426,10 @@ def _get_vapid(
     if not payload.get("aud"):
         payload["aud"] = endpoint
     if not key:
-        key: ecdsa.SigningKey = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
-    vk: ecdsa.VerifyingKey | None  = key.get_verifying_key()
+        key: ecdsa.SigningKey = ecdsa.SigningKey.generate(
+            curve=ecdsa.NIST256p
+        )
+    vk: ecdsa.VerifyingKey = key.get_verifying_key()
     auth: str = jws.sign(payload, key, algorithm="ES256").strip("=")
     crypto_key: str = base64url_encode((b"\4" + vk.to_string()))
     return {"auth": auth, "crypto-key": crypto_key, "key": key}
@@ -441,7 +469,9 @@ def process_logs(testcase):
     if not STRICT_LOG_COUNTS:
         return
 
-    msg = "endpoint node emitted excessive log statements, count: {} > max: {}"
+    msg = (
+        "endpoint node emitted excessive log statements, count: {} > max: {}"
+    )
     # Give an extra to endpoint for potential startup log messages
     # (e.g. when running tests individually)
     max_endpoint_logs = testcase.max_endpoint_logs + 1
@@ -574,7 +604,9 @@ def setup_mock_server():
     MOCK_SERVER_THREAD.start()
 
     # Sentry API mock
-    os.environ["SENTRY_DSN"] = "http://foo:bar@localhost:{}/1".format(MOCK_SERVER_PORT)
+    os.environ["SENTRY_DSN"] = "http://foo:bar@localhost:{}/1".format(
+        MOCK_SERVER_PORT
+    )
 
 
 def setup_connection_server(connection_binary):
@@ -660,7 +692,6 @@ def setup_endpoint_server():
         universal_newlines=True,
     )
 
-
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(EP_SERVER.stdout)
     err_q = capture_output_to_queue(EP_SERVER.stderr)
@@ -704,7 +735,10 @@ class TestRustWebPush(unittest.TestCase):
     # Max log lines allowed to be emitted by each node type
     max_endpoint_logs = 8
     max_conn_logs = 3
-    vapid_payload = {"exp": int(time.time()) + 86400, "sub": "mailto:admin@example.com"}
+    vapid_payload = {
+        "exp": int(time.time()) + 86400,
+        "sub": "mailto:admin@example.com",
+    }
 
     def tearDown(self):
         process_logs(self)
@@ -719,7 +753,8 @@ class TestRustWebPush(unittest.TestCase):
     def quick_register(self, sslcontext=None):
         print("#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client(
-            "ws://localhost:{}/".format(CONNECTION_PORT), sslcontext=sslcontext
+            "ws://localhost:{}/".format(CONNECTION_PORT),
+            sslcontext=sslcontext,
         )
         yield client.connect()
         yield client.hello()
@@ -749,7 +784,9 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
         # LogCheck does throw an error every time
-        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT))
+        requests.get(
+            "http://localhost:{}/v1/err/crit".format(CONNECTION_PORT)
+        )
         try:
             data = MOCK_SENTRY_QUEUE.get(timeout=5)
         except ValueError as ex:
@@ -871,7 +908,9 @@ class TestRustWebPush(unittest.TestCase):
             payload=self.vapid_payload, endpoint=self.host_endpoint(client)
         )
         vapid_info["crypto-key"] = "invalid"
-        yield client.send_notification(data=data, vapid=vapid_info, status=401)
+        yield client.send_notification(
+            data=data, vapid=vapid_info, status=401
+        )
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -886,7 +925,9 @@ class TestRustWebPush(unittest.TestCase):
             }
         )
         vapid_info["crypto-key"] = "invalid"
-        yield client.send_notification(data=data, vapid=vapid_info, status=401)
+        yield client.send_notification(
+            data=data, vapid=vapid_info, status=401
+        )
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -898,7 +939,9 @@ class TestRustWebPush(unittest.TestCase):
             endpoint=self.host_endpoint(client),
         )
         vapid_info["auth"] = ""
-        yield client.send_notification(data=data, vapid=vapid_info, status=401)
+        yield client.send_notification(
+            data=data, vapid=vapid_info, status=401
+        )
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -912,7 +955,9 @@ class TestRustWebPush(unittest.TestCase):
             }
         )
         vapid_info["auth"] = vapid_info["auth"][:-3] + "bad"
-        yield client.send_notification(data=data, vapid=vapid_info, status=401)
+        yield client.send_notification(
+            data=data, vapid=vapid_info, status=401
+        )
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -923,7 +968,9 @@ class TestRustWebPush(unittest.TestCase):
             payload=self.vapid_payload, endpoint=self.host_endpoint(client)
         )
         vapid_info["crypto-key"] = "invalid|"
-        yield client.send_notification(data=data, vapid=vapid_info, status=401)
+        yield client.send_notification(
+            data=data, vapid=vapid_info, status=401
+        )
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -997,7 +1044,9 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        yield client.send_notification(data=data, ttl=1, topic="test", status=201)
+        yield client.send_notification(
+            data=data, ttl=1, topic="test", status=201
+        )
         yield client.sleep(2)
         yield client.connect()
         yield client.hello()
@@ -1092,7 +1141,10 @@ class TestRustWebPush(unittest.TestCase):
         result = yield client.send_notification(data=data, status=410)
 
         # Verify cache-control
-        assert client.notif_response.headers.get("Cache-Control") == "max-age=86400"
+        assert (
+            client.notif_response.headers.get("Cache-Control")
+            == "max-age=86400"
+        )
 
         assert result is None
         yield self.shut_down(client)
@@ -1201,7 +1253,9 @@ class TestRustWebPush(unittest.TestCase):
     def test_message_without_crypto_headers(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
-        result = yield client.send_notification(data=data, use_header=False, status=400)
+        result = yield client.send_notification(
+            data=data, use_header=False, status=400
+        )
         assert result is None
         yield self.shut_down(client)
 
@@ -1271,7 +1325,9 @@ class TestRustWebPush(unittest.TestCase):
 
         client = yield self.quick_register()
         bulk = "".join(
-            random.choice(string.ascii_letters + string.digits + string.punctuation)
+            random.choice(
+                string.ascii_letters + string.digits + string.punctuation
+            )
             for _ in range(0, 4216)
         )
         data = base64.urlsafe_b64encode(bytes(bulk, "utf-8"))
@@ -1338,7 +1394,9 @@ class TestRustWebPush(unittest.TestCase):
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
-        result = yield client.register(chid=chid, key="af1883%&!@#*(", status=400)
+        result = yield client.register(
+            chid=chid, key="af1883%&!@#*(", status=400
+        )
         assert result["status"] == 400
 
         yield self.shut_down(client)
@@ -1389,7 +1447,9 @@ class TestRustWebPushBroadcast(unittest.TestCase):
     @inlineCallbacks
     def quick_register(self, sslcontext=None, connection_port=None):
         conn_port = connection_port or MP_CONNECTION_PORT
-        client = Client("ws://localhost:{}/".format(conn_port), sslcontext=sslcontext)
+        client = Client(
+            "ws://localhost:{}/".format(conn_port), sslcontext=sslcontext
+        )
         yield client.connect()
         yield client.hello()
         yield client.register()
@@ -1442,7 +1502,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
-        assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
+        assert (
+            result["broadcasts"]["errors"]["kinto:456"]
+            == "Broadcast not found"
+        )
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -1491,7 +1554,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         client.broadcast_subscribe(old_ver)
         result = yield client.get_broadcast()
         assert result["broadcasts"]["kinto:123"] == "ver1"
-        assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
+        assert (
+            result["broadcasts"]["errors"]["kinto:456"]
+            == "Broadcast not found"
+        )
 
         yield self.shut_down(client)
 
