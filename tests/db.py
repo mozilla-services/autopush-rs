@@ -45,6 +45,7 @@ from functools import wraps
 from attr import attrs, attrib, Factory
 
 import boto3
+import botocore
 from boto3.resources.base import ServiceResource  # noqa
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
@@ -446,8 +447,15 @@ class DynamoDBResource(threading.local):
             del conf["endpoint_url"]
         if "region_name" in conf:
             del conf["region_name"]
+        region = conf.get(
+            "region_name", os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+        )
         self.conf = conf
-        self._resource = boto3.resource("dynamodb", **self.conf)
+        self._resource = boto3.resource(
+            "dynamodb",
+            config=botocore.config.Config(region_name=region),
+            **self.conf
+        )
 
     def __getattr__(self, name):
         return getattr(self._resource, name)
@@ -466,7 +474,7 @@ class DynamoDBResource(threading.local):
         if not len(tables) or tables[0] is None:
             return [prefix]
         tables.sort()
-        return tables[0 - previous:]
+        return tables[0 - previous :]
 
     def get_latest_message_tablename(self, prefix="message"):
         # type: (Optional[str]) -> str  # noqa
