@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::db::client::DbClient;
 use crate::db::dynamodb::retry::{
     retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
-    retryable_putitem_error, retryable_updateitem_error,
+    retryable_putitem_error, retryable_updateitem_error, retryable_batchwriteitem_error
 };
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
@@ -562,6 +562,43 @@ impl DbClient for DdbClientImpl {
             )
             .await?;
 
+        Ok(())
+    }
+
+    async fn save_messages(
+        &self,
+        uaid: &Uuid,
+        messages: Vec<Notification>,
+    ) -> DbResult<()> {
+        use rusoto_dynamodb::{BatchWriteItemInput, PutRequest, WriteRequest};
+        let put_items: Vec<WriteRequest> = messages
+            .into_iter()
+            .filter_map(|n| {
+                // eventually include `internal` if `meta` defined.
+                // XXX: count_with_tags instead
+                self.metrics
+                    .incr_with_tags("notification.message.stored")
+                    .with_tag("topic", &n.topic.is_some().to_string())
+                    .send();
+                serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(uaid, n))
+                    .ok()
+                    .map(|hm| WriteRequest {
+                        put_request: Some(PutRequest { item: hm }),
+                        delete_request: None,
+                    })
+            })
+            .collect();
+        let batch_input = BatchWriteItemInput {
+            request_items: hashmap! { self.settings.message_table.clone() => put_items },
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.db_client.batch_write_item(batch_input.clone()),
+                retryable_batchwriteitem_error(self.metrics.clone()),
+            )
+            .await?;
         Ok(())
     }
 

@@ -42,6 +42,12 @@ mockall::mock! {
 
         fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()>;
 
+        fn save_messages(
+            &self,
+            uaid: &Uuid,
+            messages: Vec<Notification>,
+        ) -> DbResult<()>;
+
         fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>;
 
         fn fetch_timestamp_messages(
@@ -125,6 +131,14 @@ impl DbClient for Arc<MockDbClient> {
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
         Arc::as_ref(self).save_message(uaid, message)
+    }
+
+    async fn save_messages(
+        &self,
+        uaid: &Uuid,
+        messages: Vec<Notification>,
+    ) -> DbResult<()> {
+        Arc::as_ref(self).save_messages(uaid, messages)
     }
 
     async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {

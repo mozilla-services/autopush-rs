@@ -10,6 +10,7 @@ authors.workspace = true
 actix-web.workspace = true
 actix-ws.workspace = true
 cadence.workspace = true
+reqwest.workspace = true  # XXX:
 slog-scope.workspace = true
 uuid.workspace = true
 thiserror.workspace = true

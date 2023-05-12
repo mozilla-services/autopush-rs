@@ -2,7 +2,7 @@ use again::RetryPolicy;
 use cadence::{CountedExt, StatsdClient};
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
-    DeleteItemError, DescribeTableError, GetItemError, PutItemError, UpdateItemError,
+    BatchWriteItemError, DeleteItemError, DescribeTableError, GetItemError, PutItemError, UpdateItemError,
 };
 use std::sync::Arc;
 
@@ -30,6 +30,7 @@ retryable_error!(retryable_getitem_error, GetItemError, "get_item");
 retryable_error!(retryable_updateitem_error, UpdateItemError, "update_item");
 retryable_error!(retryable_putitem_error, PutItemError, "put_item");
 retryable_error!(retryable_delete_error, DeleteItemError, "delete_item");
+retryable_error!(retryable_batchwriteitem_error, BatchWriteItemError, "batch_write_item");
 
 // DescribeTableError does not have a ProvisionedThroughputExceeded variant
 pub fn retryable_describe_table_error(

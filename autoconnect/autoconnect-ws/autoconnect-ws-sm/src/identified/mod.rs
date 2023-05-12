@@ -92,10 +92,11 @@ impl WebPushClient {
         } else {
             vec![]
         };
+        trace!("WebPushClient::new: Initial smsgs count: {}", smsgs.len());
         Ok((client, smsgs))
     }
 
-    pub fn shutdown(&mut self) {
+    pub fn shutdown(mut self) {
         // TODO: logging
         let now = ms_since_epoch();
         let elapsed = (now - self.connected_at) / 1_000;
@@ -106,7 +107,51 @@ impl WebPushClient {
             .with_tag("ua_browser_family", &self.ua_info.metrics_browser)
             .send();
 
-        // TODO: save unacked notifs, logging
+        // Save any unAck'd Direct notifs
+        if !self.ack_state.unacked_direct_notifs.is_empty() {
+            self.save_and_notify_undelivered_notifs();
+        }
+    }
+
+    fn save_and_notify_undelivered_notifs(&mut self) {
+        use std::mem;
+        use std::time::Duration;
+        use actix_web::rt;
+
+        let mut notifs = mem::take(&mut self.ack_state.unacked_direct_notifs);
+        self.stats.direct_storage += notifs.len() as i32;
+        // XXX: Ensure we don't store these as legacy by setting a 0 as the
+        // sortkey_timestamp. This ensures the Python side doesn't mark it as
+        // legacy during conversion and still get the correct default us_time
+        // when saving
+        for notif in &mut notifs {
+            notif.sortkey_timestamp = Some(0);
+        }
+
+        let db = self.app_state.db.clone();
+        let uaid = self.uaid;
+        let connected_at = self.connected_at;
+        rt::spawn(async move {
+            db.save_messages(&uaid, notifs).await?;
+            debug!("Finished saving unacked direct notifications, checking for reconnect");
+            let Some(user) = db.get_user(&uaid).await? else {
+                // XXX:
+                panic!();
+            };
+            if connected_at == user.connected_at {
+                return Ok(());
+            }
+            if let Some(node_id) = user.node_id {
+                // XXX: app_state.reqwest
+                let client = reqwest::Client::builder()
+                    .timeout(Duration::from_secs(1))
+                    .build()
+                    .map_err(|e| SMError::Internal("XXX".to_owned()))?;
+                let notify_url = format!("{}/notif/{}", node_id, uaid.as_simple());
+                client.put(&notify_url).send().await?.error_for_status()?;
+            }
+            Ok::<(), SMError>(())
+        });
     }
 }
 

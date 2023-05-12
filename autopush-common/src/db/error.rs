@@ -1,6 +1,6 @@
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
-    DeleteItemError, DescribeTableError, GetItemError, PutItemError, QueryError, UpdateItemError,
+    BatchWriteItemError, DeleteItemError, DescribeTableError, GetItemError, PutItemError, QueryError, UpdateItemError,
 };
 use thiserror::Error;
 
@@ -19,6 +19,9 @@ pub enum DbError {
 
     #[error("Database error while performing DeleteItem")]
     DdbDeleteItem(#[from] RusotoError<DeleteItemError>),
+
+    #[error("Database error while performing BatchWriteItem")]
+    DdbBatchWriteItem(#[from] RusotoError<BatchWriteItemError>),
 
     #[error("Database error while performing DescribeTable")]
     DdbDescribeTable(#[from] RusotoError<DescribeTableError>),

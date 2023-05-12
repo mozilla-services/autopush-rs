@@ -33,24 +33,78 @@ impl WebPushClient {
         self.flags.check_storage = true;
         self.flags.include_topic = true;
         self.do_check_storage().await
-
-            /*
-        let mut all_smsgs = vec![];
-        while self.flags.check_storage {
-            let smsgs = self.check_storage_loop().await?;
-            all_smsgs.extend(smsgs);
-            if self.flags.include_topic {
-                break;
-            }
-        }
-        if !self.flags.include_topic && all_smsgs.is_empty() && self.flags.increment_storage {
-            self.increment_storage().await?;
-        }
-        Ok(all_smsgs)
-            */
     }
 
     pub(super) async fn do_check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
+        while self.flags.check_storage {
+            trace!("WebPushClient::check_storage check_storage_loop");
+            let smsgs = self.check_storage_loop().await?;
+            if !smsgs.is_empty() {
+                return Ok(smsgs);
+            }
+        }
+        Ok(vec![])
+        /*
+        let mut all_smsgs = vec![];
+        while self.flags.check_storage && all_smsgs.is_empty() {
+            trace!("WebPushClient::check_storage check_storage_loop");
+            let smsgs = self.check_storage_loop().await?;
+            all_smsgs.extend(smsgs);
+            //self.check_msg_limit().await?;
+            //if self.flags.include_topic {
+            //    break;
+            //}
+        }
+        Ok(all_smsgs)
+        */
+    }
+
+    pub(super) async fn do_check_storage2(&mut self) -> Result<Vec<ServerMessage>, SMError> {
+        let mut all_smsgs = vec![];
+        // XXX: same bug here I think? bug if we loop until check_storage is false then we won't trigger check_storage && increment_storage in maybe_process_ack...
+        while self.flags.check_storage && self.flags.include_topic && !self.ack_state.unacked_notifs() {
+        //while self.flags.check_storage && self.flags.include_topic && self.ack_state.unacked_stored_notifs.is_empty() {
+            trace!("WebPushClient::check_storage check_storage_loop include_topic: true");
+            let smsgs = self.check_storage_loop().await?;
+            all_smsgs.extend(smsgs);
+            //self.check_msg_limit().await?;
+            //if self.flags.include_topic {
+            //    break;
+            //}
+        }
+        // or !self.ack_state.unacked_notifs()?
+        if !all_smsgs.is_empty() {
+            trace!("WebPushClient::check_storage done (returning only include_topic)");
+            // Client needs to Ack all topic messages before we proceed to
+            // reading timestamp messages
+            return Ok(all_smsgs);
+        }
+        // XXX: bug if we loop until check_storage is false then we won't trigger check_storage && increment_storage in maybe_process_ack...
+        while self.flags.check_storage && all_smsgs.is_empty() {
+            trace!("WebPushClient::check_storage check_storage_loop");
+            let smsgs = self.check_storage_loop().await?;
+            all_smsgs.extend(smsgs);
+            //self.check_msg_limit().await?;
+            //if self.flags.include_topic {
+            //    break;
+            //}
+        }
+        // Can I increment here then?
+        // XXX: should be !ack_state.unacked_notifs() instead of is_empty probably?
+        if self.flags.check_storage && self.flags.increment_storage && all_smsgs.is_empty() {
+            trace!("WebPushClient::check_storage increment_storage");
+            self.increment_storage().await?;
+        }
+        /*
+        if !self.flags.include_topic && all_smsgs.is_empty() && self.flags.increment_storage {
+            self.increment_storage().await?;
+        }
+        */
+        ////self.check_msg_limit().await?;
+        Ok(all_smsgs)
+    }
+
+    pub(super) async fn check_storage_loop(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         eprintln!(
             "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ {}",
             self.flags.increment_storage
@@ -82,7 +136,7 @@ impl WebPushClient {
         if messages.is_empty() {
             debug!("WebPushClient::check_storage finished");
             self.flags.check_storage = false;
-            self.sent_from_storage = 0;
+            //self.sent_from_storage = 0;
             // No need to increment_storage
             //debug_assert!(!self.flags.increment_storage);
             // XXX: technically back to determine ack? (maybe_post_process_acks)?
@@ -137,6 +191,7 @@ impl WebPushClient {
             .map(ServerMessage::Notification)
             .collect();
         // XXX: if less info needed could be metrics.count(.., smsgs.len());
+        trace!("WebPushClient::check_storage: sent_from_storage: {}, +{}", self.sent_from_storage, smsgs.len() as u32);
         self.sent_from_storage += smsgs.len() as u32;
         Ok(smsgs)
     }
@@ -177,6 +232,19 @@ impl WebPushClient {
         emit_metrics_for_send(&self.app_state.metrics, &notif, "Direct", &self.ua_info);
         Ok(ServerMessage::Notification(notif))
     }
+
+    // XXX: move to mod?
+    pub async fn check_msg_limit(&mut self) -> Result<(), SMError> {
+        trace!("WebPushClient::check_msg_limit: sent_from_storage: {} msg_limit: {}", self.sent_from_storage, self.app_state.settings.msg_limit);
+        if self.sent_from_storage > self.app_state.settings.msg_limit {
+            // Exceeded the max limit of stored messages: drop the user to
+            // trigger a re-register
+            self.app_state.db.remove_user(&self.uaid).await?;
+            // TODO: this previously closed the connection cleanly
+            return Err(SMError::UaidReset);
+        }
+        Ok(())
+    }
 }
 
 use autopush_common::db::CheckStorageResponse;
@@ -215,6 +283,7 @@ async fn check_storage(client: &mut WebPushClient) -> Result<CheckStorageRespons
     } else {
         timestamp
     };
+    // is_empty implied!! always true! wtf.
     let resp = if resp.messages.is_empty() || resp.timestamp.is_some() {
         debug!("check_storage: fetch_timestamp_messages");
         client
