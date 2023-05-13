@@ -222,6 +222,57 @@ impl WebPushClient {
             return Ok(vec![]);
         }
 
+        let flags = &self.flags;
+        if flags.check_storage {
+            if flags.increment_storage {
+                trace!("WebPushClient:maybe_post_process_acks check_storage && increment_storage");
+                self.increment_storage().await?;
+                debug_assert!(&self.flags.check_storage);
+                debug_assert!(!&self.flags.increment_storage);
+            }
+
+            trace!("WebPushClient:maybe_post_process_acks check_storage");
+            let smsgs = self.do_check_storage().await?;
+            // do_check_storage loops until either:
+            // a) it reads notifications to go out
+            if !smsgs.is_empty() {
+                // More notifications going out, so back to waiting for the Client
+                // to Ack them all before further processing
+                return Ok(smsgs);
+            }
+            // or b) or it's finished (check_storage = false)
+            let flags = &self.flags;
+            debug_assert!(!&self.flags.check_storage);
+            if flags.increment_storage {
+                // All done, make the final increment_storage (if necessary)
+                trace!("WebPushClient:maybe_post_process_acks !check_storage && increment_storage");
+                self.increment_storage().await?;
+                debug_assert!(!&self.flags.increment_storage);
+            }
+        }
+
+        // All Ack'd and finished checking/incrementing storage
+        debug_assert!(!self.ack_state.unacked_notifs());
+        let flags = &self.flags;
+        if flags.rotate_message_table {
+            trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
+            unimplemented!()
+        } else if flags.reset_uaid {
+            trace!("WebPushClient:maybe_post_process_acks reset_uaid");
+            self.app_state.db.remove_user(&self.uaid).await?;
+            Err(SMError::UaidReset)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    async fn maybe_post_process_acks2(&mut self) -> Result<Vec<ServerMessage>, SMError> {
+        if self.ack_state.unacked_notifs() {
+            // Waiting for the Client to Ack all notifications it's been sent
+            // before further processing
+            return Ok(vec![]);
+        }
+
         // TODO:
         let flags = &self.flags;
         if flags.check_storage {
