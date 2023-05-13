@@ -70,7 +70,7 @@ async fn webpush_ws(
         .connect(client.uaid, client.uid)
         .await;
 
-    let result = do_webpush_ws(&mut client, smsgs, session, msg_stream, &mut snotif_stream).await;
+    let result = identified_ws(&mut client, smsgs, session, msg_stream, &mut snotif_stream).await;
 
     // Ignore disconnect Errors (Client wasn't connected)
     let _ = client
@@ -83,36 +83,14 @@ async fn webpush_ws(
     while let Some(snotif) = snotif_stream.next().await {
         client.on_server_notif_shutdown(snotif);
     }
-    client.shutdown(result.as_ref().err().map_or("".to_owned(), |e| e.to_string()));
+    client.shutdown(result.as_ref().err().map(|e| e.to_string()));
 
     if let Err(ref e) = result {
         if e.is_sentry_event() {
-            crate::sentry::capture_error(&client, e);
+            sentry::capture_event(e.to_sentry_event(&client));
         }
     }
-
     result
-}
-
-async fn do_webpush_ws(
-    client: &mut WebPushClient,
-    smsgs: impl IntoIterator<Item = ServerMessage>,
-    session: &mut impl Session,
-    mut msg_stream: impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
-        + Unpin,
-    snotif_stream: &mut mpsc::UnboundedReceiver<ServerNotification>,
-) -> Result<Option<CloseReason>, WSError> {
-    // XXX: could just put this into identified_ws..
-    // Send the Hello response and any initial notifications from storage
-    for smsg in smsgs {
-        trace!(
-            "webpush_ws: New WebPushClient, ServerMessage -> session: {:#?}",
-            smsg
-        );
-        // TODO: Ensure these added to "unacked_stored_notifs"
-        session.text(smsg).await?;
-    }
-    identified_ws(client, session, &mut msg_stream, snotif_stream).await
 }
 
 /// `UnidentifiedClient` handler
@@ -149,11 +127,22 @@ async fn unidentified_ws(
 /// TODO: docs
 async fn identified_ws(
     client: &mut WebPushClient,
+    smsgs: impl IntoIterator<Item = ServerMessage>,
     session: &mut impl Session,
-    msg_stream: &mut (impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
-              + Unpin),
+    mut msg_stream: impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
+        + Unpin,
     snotif_stream: &mut mpsc::UnboundedReceiver<ServerNotification>,
 ) -> Result<Option<CloseReason>, WSError> {
+    // Send the Hello response and any initial notifications from storage
+    for smsg in smsgs {
+        trace!(
+            "identified_ws: New WebPushClient, ServerMessage -> session: {:#?}",
+            smsg
+        );
+        // TODO: Ensure these added to "unacked_stored_notifs"
+        session.text(smsg).await?;
+    }
+
     let mut ping_interval = interval(client.app_state.settings.auto_ping_interval);
     ping_interval.tick().await;
     let close_reason = loop {

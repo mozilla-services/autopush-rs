@@ -198,8 +198,8 @@ impl WebPushClient {
         }
 
         if self.ack_state.unacked_notifs() {
-            // Waiting for the Client to Ack all notifications it's been sent
-            // before further processing
+            // Wait for the Client to Ack all notifications before further
+            // processing
             Ok(vec![])
         } else {
             self.post_process_all_acked().await

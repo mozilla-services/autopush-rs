@@ -42,6 +42,7 @@ impl WebPushClient {
             if !smsgs.is_empty() {
                 return Ok(smsgs);
             }
+            self.check_msg_limit().await?;
         }
         Ok(vec![])
     }
@@ -74,7 +75,7 @@ impl WebPushClient {
         if messages.is_empty() {
             debug!("WebPushClient::check_storage finished");
             self.flags.check_storage = false;
-            //self.sent_from_storage = 0;
+            self.sent_from_storage = 0;
             // No need to increment_storage
             //debug_assert!(!self.flags.increment_storage);
             // XXX: technically back to determine ack? (maybe_post_process_acks)?
@@ -129,7 +130,11 @@ impl WebPushClient {
             .map(ServerMessage::Notification)
             .collect();
         // XXX: if less info needed could be metrics.count(.., smsgs.len());
-        trace!("WebPushClient::check_storage: sent_from_storage: {}, +{}", self.sent_from_storage, smsgs.len() as u32);
+        trace!(
+            "WebPushClient::check_storage: sent_from_storage: {}, +{}",
+            self.sent_from_storage,
+            smsgs.len() as u32
+        );
         self.sent_from_storage += smsgs.len() as u32;
         Ok(smsgs)
     }
@@ -173,7 +178,11 @@ impl WebPushClient {
 
     // XXX: move to mod?
     pub async fn check_msg_limit(&mut self) -> Result<(), SMError> {
-        trace!("WebPushClient::check_msg_limit: sent_from_storage: {} msg_limit: {}", self.sent_from_storage, self.app_state.settings.msg_limit);
+        trace!(
+            "WebPushClient::check_msg_limit: sent_from_storage: {} msg_limit: {}",
+            self.sent_from_storage,
+            self.app_state.settings.msg_limit
+        );
         if self.sent_from_storage > self.app_state.settings.msg_limit {
             // Exceeded the max limit of stored messages: drop the user to
             // trigger a re-register

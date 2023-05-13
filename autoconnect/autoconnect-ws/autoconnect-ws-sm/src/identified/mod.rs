@@ -1,5 +1,6 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, mem, sync::Arc, time::Duration};
 
+use actix_web::rt;
 use cadence::Timed;
 use uuid::Uuid;
 
@@ -96,7 +97,7 @@ impl WebPushClient {
         Ok((client, smsgs))
     }
 
-    pub fn shutdown(&mut self, disconnect_reason: String) {
+    pub fn shutdown(&mut self, reason: Option<String>) {
         // XXX: elapsed_ms?
         let elapsed = (ms_since_epoch() - self.connected_at) / 1_000;
 
@@ -107,14 +108,12 @@ impl WebPushClient {
 
         let stats = &self.stats;
         let ua_info = self.ua_info.clone();
-
         self.app_state
             .metrics
             .time_with_tags("ua.connection.lifespan", elapsed)
-            .with_tag("ua_os_family", &self.ua_info.metrics_os)
-            .with_tag("ua_browser_family", &self.ua_info.metrics_browser)
+            .with_tag("ua_os_family", &ua_info.metrics_os)
+            .with_tag("ua_browser_family", &ua_info.metrics_browser)
             .send();
-
         // Log out the final stats message
         info!("Session";
             "uaid_hash" => self.uaid.as_simple().to_string(),
@@ -135,15 +134,11 @@ impl WebPushClient {
             "nacks" => stats.nacks,
             "registers" => stats.registers,
             "unregisters" => stats.unregisters,
-            "disconnect_reason" => disconnect_reason,
+            "disconnect_reason" => reason.unwrap_or_else(|| "".to_owned()),
         );
     }
 
     fn save_and_notify_undelivered_notifs(&mut self) {
-        use std::mem;
-        use std::time::Duration;
-        use actix_web::rt;
-
         let mut notifs = mem::take(&mut self.ack_state.unacked_direct_notifs);
         self.stats.direct_storage += notifs.len() as i32;
         // XXX: Ensure we don't store these as legacy by setting a 0 as the
@@ -184,14 +179,14 @@ impl WebPushClient {
 use autopush_common::db::{client::DbClient, error::DbResult, USER_RECORD_VERSION};
 // XXX: likely simpler for this to reside in the Db trait
 pub async fn process_existing_user(
-    db: &Box<dyn DbClient>,
+    db: &dyn DbClient,
     mut user: User,
 ) -> DbResult<(User, ClientFlags)> {
     // XXX: could verify these aren't empty on ddb
     let message_tables = db.message_tables();
     if !message_tables.is_empty()
         && (user.current_month.is_none()
-            || !message_tables.contains(&user.current_month.as_ref().unwrap()))
+            || !message_tables.contains(user.current_month.as_ref().unwrap()))
     {
         db.remove_user(&user.uaid).await?;
         // XXX: no current_month/node_id are set in this case! return None instead?

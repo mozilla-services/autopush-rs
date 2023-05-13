@@ -1,6 +1,6 @@
 use actix_ws::CloseCode;
 
-use autoconnect_ws_sm::SMError;
+use autoconnect_ws_sm::{SMError, WebPushClient};
 
 // TODO: WSError should likely include a backtrace
 /// WebPush WebSocket Handler Errors
@@ -54,5 +54,34 @@ impl WSError {
     /// Whether this error is reported to sentry
     pub fn is_sentry_event(&self) -> bool {
         true
+    }
+
+    pub fn to_sentry_event(&self, client: &WebPushClient) -> sentry::protocol::Event<'static> {
+        let mut event = sentry::event_from_error(self);
+        // TODO:
+        //event.exception.last_mut().unwrap().stacktrace =
+        //    sentry::integrations::backtrace::backtrace_to_stacktrace(&self.backtrace);
+
+        event.user = Some(sentry::User {
+            id: Some(client.uaid.as_simple().to_string()),
+            ..Default::default()
+        });
+        let ua_info = client.ua_info.clone();
+        event
+            .tags
+            .insert("ua_name".to_owned(), ua_info.browser_name);
+        event
+            .tags
+            .insert("ua_os_family".to_owned(), ua_info.metrics_os);
+        event
+            .tags
+            .insert("ua_os_ver".to_owned(), ua_info.os_version);
+        event
+            .tags
+            .insert("ua_browser_family".to_owned(), ua_info.metrics_browser);
+        event
+            .tags
+            .insert("ua_browser_ver".to_owned(), ua_info.browser_version);
+        event
     }
 }

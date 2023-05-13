@@ -31,7 +31,7 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     use autopush_common::db::User;
     db.expect_get_user().times(1).return_once(move |_| {
         Ok(Some(User {
-            uaid: uaid,
+            uaid,
             current_month: Some(CURRENT_MONTH.to_owned()),
             ..Default::default()
         }))

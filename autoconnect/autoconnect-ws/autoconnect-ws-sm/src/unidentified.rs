@@ -58,7 +58,7 @@ impl UnidentifiedClient {
             let maybe_user = self.app_state.db.get_user(&uaid).await?;
             if let Some(auser) = maybe_user {
                 use crate::identified::process_existing_user;
-                let (mut puser, pflags) = process_existing_user(&self.app_state.db, auser).await?;
+                let (mut puser, pflags) = process_existing_user(&*self.app_state.db, auser).await?;
                 // XXX: we also previously set puser.node_id = Some(router_url), why?
                 puser.connected_at = connected_at;
                 self.app_state.db.update_user(&puser).await?;
@@ -76,7 +76,7 @@ impl UnidentifiedClient {
         }
 
         // XXX: should check if the user_record is None
-        let uaid = user.uaid.clone();
+        let uaid = user.uaid;
         trace!(
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {:?} user_is_registered: {}",
             uaid,
@@ -101,7 +101,7 @@ impl UnidentifiedClient {
         //let desired_broadcasts = Broadcast::from_hasmap(broadcasts.unwrap_or_default());
         //let (initialized_subs, broadcasts) = app_state.broadcast_init(&desired_broadcasts);
         let (wpclient, check_storage_smsgs) = WebPushClient::new(
-            uaid.clone(),
+            uaid,
             self.ua,
             flags,
             connected_at,
