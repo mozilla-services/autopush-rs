@@ -229,27 +229,27 @@ impl WebPushClient {
             if flags.increment_storage {
                 trace!("WebPushClient:maybe_post_process_acks check_storage && increment_storage");
                 self.increment_storage().await?;
-                debug_assert!(&self.flags.check_storage);
-                debug_assert!(!&self.flags.increment_storage);
             }
 
             trace!("WebPushClient:maybe_post_process_acks check_storage");
-            let smsgs = self.do_check_storage().await?;
+            let smsgs = self.check_storage_loop().await?;
             // do_check_storage loops until either:
             // a) it reads notifications to go out
+            //if flags.check_storage {
+            let flags = &self.flags;
             if !smsgs.is_empty() {
+                debug_assert!(flags.check_storage);
                 // Back to waiting for the Client to Ack all these outgoing
                 // notifications before further processing
                 return Ok(smsgs);
             }
             // or b) or it's finished (check_storage = false)
-            let flags = &self.flags;
-            debug_assert!(!&self.flags.check_storage);
+            //let flags = &self.flags;
+            debug_assert!(&self.flags.check_storage);
             // Finished checking storage: make the final increment_storage if necessary
             if flags.increment_storage {
                 trace!("WebPushClient:maybe_post_process_acks !check_storage && increment_storage");
                 self.increment_storage().await?;
-                debug_assert!(!&self.flags.increment_storage);
             }
         }
 
@@ -266,5 +266,18 @@ impl WebPushClient {
         } else {
             Ok(vec![])
         }
+    }
+
+    async fn increment_storage(&mut self) -> Result<(), SMError> {
+        let timestamp = self
+            .ack_state
+            .unacked_stored_highest
+            .ok_or_else(|| SMError::Internal("unacked_stored_highest unset".to_owned()))?;
+        self.app_state
+            .db
+            .increment_storage(&self.uaid, timestamp)
+            .await?;
+        self.flags.increment_storage = false;
+        Ok(())
     }
 }

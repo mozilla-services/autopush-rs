@@ -6,7 +6,7 @@ use autoconnect_ws_sm::{SMError, WebPushClient};
 /// WebPush WebSocket Handler Errors
 #[derive(Debug, strum::AsRefStr, thiserror::Error)]
 pub enum WSError {
-    #[error("State machine error: {0}")]
+    #[error("State error: {0}")]
     SM(#[from] SMError),
 
     #[error("Couldn't parse WebSocket message JSON: {0}")]
