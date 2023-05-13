@@ -623,6 +623,7 @@ dependencies = [
  "autoconnect_ws_sm",
  "futures 0.3.27",
  "mockall 0.11.4",
+ "sentry",
  "serde_json",
  "slog-scope",
  "strum",

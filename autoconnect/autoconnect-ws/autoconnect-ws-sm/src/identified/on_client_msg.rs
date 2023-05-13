@@ -55,13 +55,15 @@ impl WebPushClient {
             )));
         }
 
-        // TODO: catch make_endpoint failures to return a (400, "Failed to
-        // generate endpoint") instead
         let (status, push_endpoint) = match self.do_register(&channel_id, key).await {
             Ok(endpoint) => {
                 let _ = self.app_state.metrics.incr("ua.command.register");
                 self.stats.registers += 1;
                 (200, endpoint)
+            }
+            Err(SMError::MakeEndpoint(msg)) => {
+                error!("WebPushClient::register make_endpoint failed: {}", msg);
+                (400, "Failed to generate endpoint".to_owned())
             }
             Err(e) => {
                 error!("WebPushClient::register failed: {}", e);
@@ -195,7 +197,13 @@ impl WebPushClient {
             };
         }
 
-        self.maybe_post_process_acks().await
+        if self.ack_state.unacked_notifs() {
+            // Waiting for the Client to Ack all notifications it's been sent
+            // before further processing
+            Ok(vec![])
+        } else {
+            self.post_process_all_acked().await
+        }
     }
 
     async fn nack(&mut self, _code: Option<i32>) -> Result<(), SMError> {
@@ -215,13 +223,7 @@ impl WebPushClient {
         }
     }
 
-    async fn maybe_post_process_acks(&mut self) -> Result<Vec<ServerMessage>, SMError> {
-        if self.ack_state.unacked_notifs() {
-            // Waiting for the Client to Ack all notifications it's been sent
-            // before further processing
-            return Ok(vec![]);
-        }
-
+    async fn post_process_all_acked(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         let flags = &self.flags;
         if flags.check_storage {
             if flags.increment_storage {
@@ -236,15 +238,15 @@ impl WebPushClient {
             // do_check_storage loops until either:
             // a) it reads notifications to go out
             if !smsgs.is_empty() {
-                // More notifications going out, so back to waiting for the Client
-                // to Ack them all before further processing
+                // Back to waiting for the Client to Ack all these outgoing
+                // notifications before further processing
                 return Ok(smsgs);
             }
             // or b) or it's finished (check_storage = false)
             let flags = &self.flags;
             debug_assert!(!&self.flags.check_storage);
+            // Finished checking storage: make the final increment_storage if necessary
             if flags.increment_storage {
-                // All done, make the final increment_storage (if necessary)
                 trace!("WebPushClient:maybe_post_process_acks !check_storage && increment_storage");
                 self.increment_storage().await?;
                 debug_assert!(!&self.flags.increment_storage);
@@ -253,107 +255,6 @@ impl WebPushClient {
 
         // All Ack'd and finished checking/incrementing storage
         debug_assert!(!self.ack_state.unacked_notifs());
-        let flags = &self.flags;
-        if flags.rotate_message_table {
-            trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
-            unimplemented!()
-        } else if flags.reset_uaid {
-            trace!("WebPushClient:maybe_post_process_acks reset_uaid");
-            self.app_state.db.remove_user(&self.uaid).await?;
-            Err(SMError::UaidReset)
-        } else {
-            Ok(vec![])
-        }
-    }
-
-    async fn maybe_post_process_acks2(&mut self) -> Result<Vec<ServerMessage>, SMError> {
-        if self.ack_state.unacked_notifs() {
-            // Waiting for the Client to Ack all notifications it's been sent
-            // before further processing
-            return Ok(vec![]);
-        }
-
-        // TODO:
-        let flags = &self.flags;
-        if flags.check_storage {
-            if flags.increment_storage {
-                trace!("WebPushClient:maybe_post_process_acks check_storage && increment_storage");
-                self.increment_storage().await?;
-                // Successful increment_storage should set these accordingly
-                debug_assert!(&self.flags.check_storage);
-                debug_assert!(!&self.flags.increment_storage);
-            }
-            trace!("WebPushClient:maybe_post_process_acks check_storage");
-            //let smsgs = self.do_check_storage().await?;
-            // why was this only do_? because the flags aren't set..
-            // XXX: you probably want the looping here without the flags being set sigh
-            let smsgs = self.do_check_storage().await?;
-            if !smsgs.is_empty() {
-                // More notifications going out, so back to waiting for the Client
-                // to Ack them all before further processing
-                return Ok(smsgs);
-            }
-            // let smsgs = self.check_storage().await?;
-            // smsgs.is_empty() could still mean recursive or at least??? increment_storage.
-            // but what else it need to do? rotate or reset uaid?
-            // means you might
-            // XXX: OR??
-            //let smsgs = self.check_storage().await?;
-            //if self.ack_state.unacked_notifs() {
-            // XXX: possibly this
-            /*
-                    let smsgs = self.check_storage().await?;
-                    // or maybe if !smsgs.is_empty() ? debug_assert!(unacked_notifs)
-                    if self.ack_state.unacked_notifs() {
-                        // New messages from check_storage
-                        debug_assert!(!smsgs.is_empty());
-                        return Ok(smsgs);
-                    }
-
-                // XXX: might you need need to incremement storage here?
-                // or does returning nothing (!unacked_notifs) i think so
-                // because increment storage means something came back
-                // from the db. the results could be filtered to 0 }
-                // Should have tests for TTL shit like this..
-
-            if flags.rotate_message_table {
-                trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
-                unimplemented!()
-            } else if flags.reset_uaid {
-                trace!("WebPushClient:maybe_post_process_acks reset_uaid");
-                self.app_state.db.remove_user(&self.uaid).await?;
-                Err(SMError::UaidReset)
-            } else {
-                Ok(vec![])
-            }
-                    */
-
-            /*
-            if flags.check_storage && flags.increment_storage {
-                trace!("WebPushClient:maybe_post_process_acks check_storage && increment_storage");
-                self.increment_storage().await?;
-                // Successful increment_storage should set these accordingly
-                debug_assert!(&self.flags.check_storage);
-                debug_assert!(!&self.flags.increment_storage);
-                self.check_storage().await
-            } else if flags.check_storage {
-                trace!("WebPushClient:maybe_post_process_acks check_storage");
-                self.check_storage().await
-             */
-            /*
-            } else if flags.rotate_message_table {
-                trace!("WebPushClient:maybe_post_process_acks rotate_message_table");
-                unimplemented!()
-            } else if flags.reset_uaid {
-                trace!("WebPushClient:maybe_post_process_acks reset_uaid");
-                self.app_state.db.remove_user(&self.uaid).await?;
-                Err(SMError::UaidReset)
-            } else {
-                Ok(vec![])
-            }
-                 */
-        }
-
         let flags = &self.flags;
         if flags.rotate_message_table {
             trace!("WebPushClient:maybe_post_process_acks rotate_message_table");

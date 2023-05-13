@@ -23,7 +23,7 @@ pub struct WebPushClient {
     /// Unique, local (to each autoconnect instance) identifier
     pub uid: Uuid,
     /// The User Agent information block derived from the User-Agent header
-    ua_info: UserAgentInfo,
+    pub ua_info: UserAgentInfo,
 
     //broadcast_subs: BroadcastSubs,
     flags: ClientFlags,
@@ -96,10 +96,18 @@ impl WebPushClient {
         Ok((client, smsgs))
     }
 
-    pub fn shutdown(mut self) {
-        // TODO: logging
-        let now = ms_since_epoch();
-        let elapsed = (now - self.connected_at) / 1_000;
+    pub fn shutdown(&mut self, disconnect_reason: String) {
+        // XXX: elapsed_ms?
+        let elapsed = (ms_since_epoch() - self.connected_at) / 1_000;
+
+        // Save any unAck'd Direct notifs
+        if !self.ack_state.unacked_direct_notifs.is_empty() {
+            self.save_and_notify_undelivered_notifs();
+        }
+
+        let stats = &self.stats;
+        let ua_info = self.ua_info.clone();
+
         self.app_state
             .metrics
             .time_with_tags("ua.connection.lifespan", elapsed)
@@ -107,10 +115,28 @@ impl WebPushClient {
             .with_tag("ua_browser_family", &self.ua_info.metrics_browser)
             .send();
 
-        // Save any unAck'd Direct notifs
-        if !self.ack_state.unacked_direct_notifs.is_empty() {
-            self.save_and_notify_undelivered_notifs();
-        }
+        // Log out the final stats message
+        info!("Session";
+            "uaid_hash" => self.uaid.as_simple().to_string(),
+            //"uaid_reset" => stats.uaid_reset,
+            //"existing_uaid" => stats.existing_uaid,
+            "connection_type" => "webpush",
+            "ua_name" => ua_info.browser_name,
+            "ua_os_family" => ua_info.metrics_os,
+            "ua_os_ver" => ua_info.os_version,
+            "ua_browser_family" => ua_info.metrics_browser,
+            "ua_browser_ver" => ua_info.browser_version,
+            "ua_category" => ua_info.category,
+            "connection_time" => elapsed,
+            "direct_acked" => stats.direct_acked,
+            "direct_storage" => stats.direct_storage,
+            "stored_retrieved" => stats.stored_retrieved,
+            "stored_acked" => stats.stored_acked,
+            "nacks" => stats.nacks,
+            "registers" => stats.registers,
+            "unregisters" => stats.unregisters,
+            "disconnect_reason" => disconnect_reason,
+        );
     }
 
     fn save_and_notify_undelivered_notifs(&mut self) {

@@ -58,45 +58,61 @@ async fn webpush_ws(
     mut msg_stream: impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
         + Unpin,
 ) -> Result<Option<CloseReason>, WSError> {
+    // NOTE: UnidentifiedClient doesn't require shutdown/cleanup, so its
+    // Error's propagated. We don't propagate Errors afterwards to handle
+    // shutdown/cleanup of WebPushClient
     let (mut client, smsgs) = unidentified_ws(client, &mut msg_stream).await?;
 
     // Client now identified: add them to the registry to recieve ServerNotifications
-    // TODO: should return a scopeguard to ensure disconnect() always called
     let mut snotif_stream = client
         .app_state
         .clients
         .connect(client.uaid, client.uid)
         .await;
 
-    // Then send their Hello response and any initial notifications from storage
+    let result = do_webpush_ws(&mut client, smsgs, session, msg_stream, &mut snotif_stream).await;
+
+    // Ignore disconnect Errors (Client wasn't connected)
+    let _ = client
+        .app_state
+        .clients
+        .disconnect(&client.uaid, &client.uid)
+        .await;
+
+    snotif_stream.close();
+    while let Some(snotif) = snotif_stream.next().await {
+        client.on_server_notif_shutdown(snotif);
+    }
+    client.shutdown(result.as_ref().err().map_or("".to_owned(), |e| e.to_string()));
+
+    if let Err(ref e) = result {
+        if e.is_sentry_event() {
+            crate::sentry::capture_error(&client, e);
+        }
+    }
+
+    result
+}
+
+async fn do_webpush_ws(
+    client: &mut WebPushClient,
+    smsgs: impl IntoIterator<Item = ServerMessage>,
+    session: &mut impl Session,
+    mut msg_stream: impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
+        + Unpin,
+    snotif_stream: &mut mpsc::UnboundedReceiver<ServerNotification>,
+) -> Result<Option<CloseReason>, WSError> {
+    // XXX: could just put this into identified_ws..
+    // Send the Hello response and any initial notifications from storage
     for smsg in smsgs {
         trace!(
             "webpush_ws: New WebPushClient, ServerMessage -> session: {:#?}",
             smsg
         );
         // TODO: Ensure these added to "unacked_stored_notifs"
-        // TODO: try! (?) here dictates a scopeguard/other recovery to
-        // cleanup the clients entry
         session.text(smsg).await?;
     }
-
-    let result = identified_ws(&mut client, session, &mut msg_stream, &mut snotif_stream).await;
-
-    client
-        .app_state
-        .clients
-        .disconnect(&client.uaid, &client.uid)
-        .await
-        .map_err(|_| WSError::RegistryNotConnected)?;
-    snotif_stream.close();
-    while let Some(snotif) = snotif_stream.next().await {
-        client.on_server_notif_shutdown(snotif);
-    }
-    client.shutdown();
-
-    // TODO: report errors to sentry
-
-    result
+    identified_ws(client, session, &mut msg_stream, snotif_stream).await
 }
 
 /// `UnidentifiedClient` handler

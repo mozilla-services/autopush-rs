@@ -10,6 +10,7 @@ use autoconnect_settings::AppState;
 
 mod error;
 mod handler;
+mod sentry;
 mod session;
 
 /// Handles connected WebSocket clients to a WebPush server

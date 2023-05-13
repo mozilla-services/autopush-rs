@@ -29,9 +29,6 @@ pub enum WSError {
 
     #[error("ClientRegistry unexpectedly disconnected")]
     RegistryDisconnected,
-
-    #[error("ClientRegistry disconnect unexpectedly failed (Client not connected)")]
-    RegistryNotConnected,
 }
 
 impl WSError {
@@ -52,5 +49,10 @@ impl WSError {
     /// variant's name (via `strum::AsRefStr`)
     pub fn close_description(&self) -> &str {
         self.as_ref()
+    }
+
+    /// Whether this error is reported to sentry
+    pub fn is_sentry_event(&self) -> bool {
+        true
     }
 }
