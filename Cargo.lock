@@ -577,6 +577,7 @@ dependencies = [
  "fernet",
  "lazy_static",
  "mozsvc-common",
+ "reqwest 0.11.16",
  "serde",
  "serde_derive",
  "slog",

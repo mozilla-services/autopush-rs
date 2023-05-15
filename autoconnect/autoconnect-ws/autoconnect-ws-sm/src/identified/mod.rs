@@ -1,4 +1,4 @@
-use std::{fmt, mem, sync::Arc, time::Duration};
+use std::{fmt, mem, sync::Arc};
 
 use actix_web::rt;
 use cadence::Timed;
@@ -7,7 +7,7 @@ use uuid::Uuid;
 use autoconnect_common::protocol::ServerMessage;
 use autoconnect_settings::AppState;
 use autopush_common::{
-    db::{HelloResponse, User},
+    db::User,
     notification::Notification,
     util::{ms_since_epoch, user_agent::UserAgentInfo},
 };
@@ -52,6 +52,7 @@ impl fmt::Debug for WebPushClient {
             .field("uaid", &self.uaid)
             .field("uid", &self.uid)
             .field("ua_info", &self.ua_info)
+            //.field("broadcast_subs", &self.broadcast_subs)
             .field("flags", &self.flags)
             .field("ack_state", &self.ack_state)
             .field("sent_from_storage", &self.sent_from_storage)
@@ -98,34 +99,34 @@ impl WebPushClient {
     }
 
     pub fn shutdown(&mut self, reason: Option<String>) {
-        // XXX: elapsed_ms?
-        let elapsed = (ms_since_epoch() - self.connected_at) / 1_000;
-
         // Save any unAck'd Direct notifs
         if !self.ack_state.unacked_direct_notifs.is_empty() {
-            self.save_and_notify_undelivered_notifs();
+            self.save_and_notify_unacked_direct_notifs();
         }
 
+        // XXX: elapsed_ms?
+        let elapsed = (ms_since_epoch() - self.connected_at) / 1_000;
+        let ua_info = &self.ua_info;
         let stats = &self.stats;
-        let ua_info = self.ua_info.clone();
         self.app_state
             .metrics
             .time_with_tags("ua.connection.lifespan", elapsed)
             .with_tag("ua_os_family", &ua_info.metrics_os)
             .with_tag("ua_browser_family", &ua_info.metrics_browser)
             .send();
+
         // Log out the final stats message
         info!("Session";
             "uaid_hash" => self.uaid.as_simple().to_string(),
             //"uaid_reset" => stats.uaid_reset,
             //"existing_uaid" => stats.existing_uaid,
             "connection_type" => "webpush",
-            "ua_name" => ua_info.browser_name,
-            "ua_os_family" => ua_info.metrics_os,
-            "ua_os_ver" => ua_info.os_version,
-            "ua_browser_family" => ua_info.metrics_browser,
-            "ua_browser_ver" => ua_info.browser_version,
-            "ua_category" => ua_info.category,
+            "ua_name" => &ua_info.browser_name,
+            "ua_os_family" => &ua_info.metrics_os,
+            "ua_os_ver" => &ua_info.os_version,
+            "ua_browser_family" => &ua_info.metrics_browser,
+            "ua_browser_ver" => &ua_info.browser_version,
+            "ua_category" => &ua_info.category,
             "connection_time" => elapsed,
             "direct_acked" => stats.direct_acked,
             "direct_storage" => stats.direct_storage,
@@ -138,10 +139,11 @@ impl WebPushClient {
         );
     }
 
-    fn save_and_notify_undelivered_notifs(&mut self) {
+    fn save_and_notify_unacked_direct_notifs(&mut self) {
         let mut notifs = mem::take(&mut self.ack_state.unacked_direct_notifs);
         self.stats.direct_storage += notifs.len() as i32;
-        // XXX: Ensure we don't store these as legacy by setting a 0 as the
+        // TODO: clarify this comment re the Python version
+        // Ensure we don't store these as legacy by setting a 0 as the
         // sortkey_timestamp. This ensures the Python side doesn't mark it as
         // legacy during conversion and still get the correct default us_time
         // when saving
@@ -150,28 +152,25 @@ impl WebPushClient {
         }
 
         let db = self.app_state.db.clone();
+        let http = self.app_state.http.clone();
         let uaid = self.uaid;
         let connected_at = self.connected_at;
         rt::spawn(async move {
             db.save_messages(&uaid, notifs).await?;
-            debug!("Finished saving unacked direct notifications, checking for reconnect");
+            debug!("Finished saving unacked direct notifs, checking for reconnect");
             let Some(user) = db.get_user(&uaid).await? else {
-                // XXX:
-                panic!();
+                return Err(SMError::Internal(format!("User not found for unacked direct notifs: {uaid}")));
             };
             if connected_at == user.connected_at {
                 return Ok(());
             }
             if let Some(node_id) = user.node_id {
-                // XXX: app_state.reqwest
-                let client = reqwest::Client::builder()
-                    .timeout(Duration::from_secs(1))
-                    .build()
-                    .map_err(|e| SMError::Internal("XXX".to_owned()))?;
-                let notify_url = format!("{}/notif/{}", node_id, uaid.as_simple());
-                client.put(&notify_url).send().await?.error_for_status()?;
+                http.put(&format!("{}/notif/{}", node_id, uaid.as_simple()))
+                    .send()
+                    .await?
+                    .error_for_status()?;
             }
-            Ok::<(), SMError>(())
+            Ok(())
         });
     }
 }
@@ -182,6 +181,7 @@ pub async fn process_existing_user(
     db: &dyn DbClient,
     mut user: User,
 ) -> DbResult<(User, ClientFlags)> {
+    // XXX: look at autoendpoint's validate_user/webpush_user
     // XXX: could verify these aren't empty on ddb
     let message_tables = db.message_tables();
     if !message_tables.is_empty()
@@ -216,17 +216,6 @@ pub struct ClientFlags {
     /// Flags the need to drop the user record
     reset_uaid: bool,
     rotate_message_table: bool,
-}
-
-impl ClientFlags {
-    pub fn from_hello(hello_response: &HelloResponse) -> Self {
-        Self {
-            check_storage: hello_response.check_storage,
-            reset_uaid: hello_response.reset_uaid,
-            rotate_message_table: hello_response.rotate_message_table,
-            ..Default::default()
-        }
-    }
 }
 
 impl Default for ClientFlags {

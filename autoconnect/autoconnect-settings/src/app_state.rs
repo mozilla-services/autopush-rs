@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{time::Duration, sync::Arc};
 
 use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};
@@ -17,6 +17,7 @@ pub struct AppState {
     /// Handle to the data storage object
     pub db: Box<dyn DbClient>,
     pub metrics: Arc<StatsdClient>,
+    pub http: reqwest::Client,
 
     /// Encryption object for the endpoint URL
     pub fernet: MultiFernet,
@@ -63,6 +64,10 @@ impl AppState {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
             StorageType::INVALID => panic!("Invalid Storage type. Check {}_DB_DSN.", ENV_PREFIX),
         };
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(1))
+            .build()
+            .unwrap_or_else(|e| panic!("Error while building reqwest::Client: {}", e));
 
         let router_url = settings.router_url();
         let endpoint_url = settings.endpoint_url();
@@ -70,6 +75,7 @@ impl AppState {
         Ok(Self {
             db,
             metrics,
+            http,
             fernet,
             clients: Arc::new(ClientRegistry::default()),
             settings,

@@ -30,7 +30,7 @@ impl WebPushClient {
                 .map_or_else(Vec::new, |smsg| vec![smsg])),
             ClientMessage::Ack { updates } => self.ack(&updates).await,
             ClientMessage::Nack { code, .. } => {
-                self.nack(code).await?;
+                self.nack(code);
                 Ok(vec![])
             }
             ClientMessage::Ping => Ok(vec![self.ping().await?]),
@@ -206,8 +206,17 @@ impl WebPushClient {
         }
     }
 
-    async fn nack(&mut self, _code: Option<i32>) -> Result<(), SMError> {
-        unimplemented!();
+    fn nack(&mut self, code: Option<i32>) {
+        // only metric codes expected from the client (or 0)
+        let code = code
+            .and_then(|code| (301..=303).contains(&code).then_some(code))
+            .unwrap_or(0);
+        self.app_state
+            .metrics
+            .incr_with_tags("ua.command.nack")
+            .with_tag("code", &code.to_string())
+            .send();
+        self.stats.nacks += 1;
     }
 
     async fn ping(&mut self) -> Result<ServerMessage, SMError> {
@@ -269,10 +278,9 @@ impl WebPushClient {
     }
 
     async fn increment_storage(&mut self) -> Result<(), SMError> {
-        let timestamp = self
-            .ack_state
-            .unacked_stored_highest
-            .ok_or_else(|| SMError::Internal("unacked_stored_highest unset".to_owned()))?;
+        let Some(timestamp) = self.ack_state.unacked_stored_highest else {
+            return Err(SMError::Internal("increment_storage without an unacked_stored_highest".to_owned()));
+        };
         self.app_state
             .db
             .increment_storage(&self.uaid, timestamp)

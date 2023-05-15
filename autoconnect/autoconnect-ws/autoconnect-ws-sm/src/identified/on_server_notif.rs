@@ -1,11 +1,9 @@
 use actix_web::rt;
-use cadence::{Counted, CountedExt, StatsdClient};
+use cadence::{Counted, CountedExt};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autopush_common::{
-    db::CheckStorageResponse,
-    notification::Notification,
-    util::{sec_since_epoch, user_agent::UserAgentInfo},
+    db::CheckStorageResponse, notification::Notification, util::sec_since_epoch,
 };
 
 use super::WebPushClient;
@@ -36,7 +34,7 @@ impl WebPushClient {
         if notif.ttl != 0 {
             self.ack_state.unacked_direct_notifs.push(notif.clone());
         }
-        emit_metrics_for_send(&self.app_state.metrics, &notif, "Direct", &self.ua_info);
+        self.emit_send_metrics(&notif, "Direct");
         Ok(ServerMessage::Notification(notif))
     }
 
@@ -109,7 +107,7 @@ impl WebPushClient {
             .into_iter()
             .inspect(|msg| {
                 trace!("WebPushClient::check_storage_advance Sending stored");
-                emit_metrics_for_send(&self.app_state.metrics, msg, "Stored", &self.ua_info)
+                self.emit_send_metrics(msg, "Stored")
             })
             .map(ServerMessage::Notification)
             .collect();
@@ -210,27 +208,24 @@ impl WebPushClient {
         }
         Ok(())
     }
-}
 
-fn emit_metrics_for_send(
-    metrics: &StatsdClient,
-    notif: &Notification,
-    source: &'static str,
-    user_agent_info: &UserAgentInfo,
-) {
-    metrics
-        .incr_with_tags("ua.notification.sent")
-        .with_tag("source", source)
-        .with_tag("topic", &notif.topic.is_some().to_string())
-        .with_tag("os", &user_agent_info.metrics_os)
-        // TODO: include `internal` if meta is set
-        .send();
-    metrics
-        .count_with_tags(
-            "ua.message_data",
-            notif.data.as_ref().map_or(0, |data| data.len() as i64),
-        )
-        .with_tag("source", source)
-        .with_tag("os", &user_agent_info.metrics_os)
-        .send();
+    fn emit_send_metrics(&self, notif: &Notification, source: &'static str) {
+        let metrics = &self.app_state.metrics;
+        let ua_info = &self.ua_info;
+        metrics
+            .incr_with_tags("ua.notification.sent")
+            .with_tag("source", source)
+            .with_tag("topic", &notif.topic.is_some().to_string())
+            .with_tag("os", &ua_info.metrics_os)
+            // TODO: include `internal` if meta is set
+            .send();
+        metrics
+            .count_with_tags(
+                "ua.message_data",
+                notif.data.as_ref().map_or(0, |data| data.len() as i64),
+            )
+            .with_tag("source", source)
+            .with_tag("os", &ua_info.metrics_os)
+            .send();
+    }
 }
