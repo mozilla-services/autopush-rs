@@ -751,9 +751,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     def quick_register(self):
         print("#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
-        client = Client(
-            "ws://localhost:{}/".format(CONNECTION_PORT)
-        )
+        client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
         yield client.register()
@@ -1445,9 +1443,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
     @inlineCallbacks
     def quick_register(self, connection_port=None):
         conn_port = connection_port or MP_CONNECTION_PORT
-        client = Client(
-            "ws://localhost:{}/".format(conn_port)
-        )
+        client = Client("ws://localhost:{}/".format(conn_port))
         yield client.connect()
         yield client.hello()
         yield client.register()

@@ -491,4 +491,3 @@ class DynamoDBTable(threading.local):
 
     def __getattr__(self, name):
         return getattr(self._table, name)
-
