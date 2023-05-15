@@ -11,7 +11,7 @@ import signal
 import string
 import socket
 import subprocess
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, List
 
 import sys
 import time
@@ -85,7 +85,7 @@ def get_free_port() -> int:
 
 
 MOCK_SERVER_PORT = get_free_port()
-MOCK_MP_SERVICES: Dict = {}
+MOCK_MP_SERVICES: dict = {}
 MOCK_MP_TOKEN: str = "Bearer {}".format(uuid.uuid4().hex)
 MOCK_MP_POLLED = Event()
 MOCK_SENTRY_QUEUE = Queue()
@@ -94,7 +94,7 @@ MOCK_SENTRY_QUEUE = Queue()
 For local test debugging, set `AUTOPUSH_CN_CONFIG=_url_` to override
 creation of the local server.
 """
-CONNECTION_CONFIG: Dict[str, str | int | float] = dict(
+CONNECTION_CONFIG: dict[str, str | int | float] = dict(
     hostname="localhost",
     port=CONNECTION_PORT,
     endpoint_hostname="localhost",
@@ -152,7 +152,7 @@ ENDPOINT_CONFIG = dict(
 class Client(object):
     """Test Client"""
 
-    def __init__(self, url, sslcontext=None) -> None:
+    def __init__(self, url) -> None:
         self.url: str = url
         self.uaid: Optional[uuid.UUID] = None
         self.ws: Optional[websocket.WebSocket] = None
@@ -163,8 +163,7 @@ class Client(object):
         self._crypto_key: str = """\
 keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 """
-        self.sslcontext = sslcontext
-        self.headers: Dict[str, str] = {
+        self.headers: dict[str, str] = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) "
             "Gecko/20100101 Firefox/61.0"
         }
@@ -194,7 +193,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             chans = list(self.channels.keys())
         else:
             chans = []
-        hello_dict: Dict[str, Any] = dict(
+        hello_dict: dict[str, Any] = dict(
             messageType="hello", use_webpush=True, channelIDs=chans
         )
         if uaid or self.uaid:
@@ -406,9 +405,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
 def _get_vapid(
     key: ecdsa.SigningKey | None = None,
-    payload: Optional[Dict[str, str | int]] = None,
+    payload: Optional[dict[str, str | int]] = None,
     endpoint: Optional[str] = None,
-) -> Dict[str, str | bytes]:
+) -> dict[str, str | bytes]:
     global CONNECTION_CONFIG
 
     if endpoint is None:
@@ -750,11 +749,10 @@ class TestRustWebPush(unittest.TestCase):
         "{}://{}".format(parsed.scheme, parsed.netloc)
 
     @inlineCallbacks
-    def quick_register(self, sslcontext=None):
+    def quick_register(self):
         print("#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client(
-            "ws://localhost:{}/".format(CONNECTION_PORT),
-            sslcontext=sslcontext,
+            "ws://localhost:{}/".format(CONNECTION_PORT)
         )
         yield client.connect()
         yield client.hello()
@@ -1445,10 +1443,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         process_logs(self)
 
     @inlineCallbacks
-    def quick_register(self, sslcontext=None, connection_port=None):
+    def quick_register(self, connection_port=None):
         conn_port = connection_port or MP_CONNECTION_PORT
         client = Client(
-            "ws://localhost:{}/".format(conn_port), sslcontext=sslcontext
+            "ws://localhost:{}/".format(conn_port)
         )
         yield client.connect()
         yield client.hello()
