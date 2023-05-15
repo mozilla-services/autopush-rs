@@ -63,7 +63,6 @@ impl WebPushClient {
             include_topic,
             mut messages,
             timestamp,
-            //} = do_check_storage(self).await?;
         } = self.do_check_storage().await?;
 
         // XXX:
@@ -123,22 +122,19 @@ impl WebPushClient {
     }
 
     async fn do_check_storage(&self) -> Result<CheckStorageResponse, SMError> {
-        trace!("do_check_storage");
+        trace!("WebPushClient::do_check_storage");
         let timestamp = self.ack_state.unacked_stored_highest;
-        /*
-            let maybe_msgs = self.flags.include_topic.then(|| self.app_state.db.fetch_messages(&self.uaid, 11));
-            let Some(msgs) if !smsgs.is_empty() = maybe_msgs else {
-
-        }
-             */
         let resp = if self.flags.include_topic {
-            debug!("check_storage: fetch_messages");
+            debug!("WebPushClient::do_check_storage: fetch_messages");
             self.app_state.db.fetch_messages(&self.uaid, 11).await?
         } else {
             Default::default()
         };
         if !resp.messages.is_empty() {
-            debug!("check_storage: Topic message returns: {:?}", resp.messages);
+            debug!(
+                "WebPushClient::do_check_storage: Topic message returns: {:?}",
+                resp.messages
+            );
             self.app_state
                 .metrics
                 .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
@@ -158,7 +154,7 @@ impl WebPushClient {
         };
         // is_empty implied!! always true! wtf.
         let resp = if resp.messages.is_empty() || resp.timestamp.is_some() {
-            debug!("check_storage: fetch_timestamp_messages");
+            debug!("WebPushClient::do_check_storage: fetch_timestamp_messages");
             self.app_state
                 .db
                 .fetch_timestamp_messages(&self.uaid, timestamp, 10)
@@ -203,7 +199,6 @@ impl WebPushClient {
             // Exceeded the max limit of stored messages: drop the user to
             // trigger a re-register
             self.app_state.db.remove_user(&self.uaid).await?;
-            // TODO: this previously closed the connection cleanly
             return Err(SMError::UaidReset);
         }
         Ok(())

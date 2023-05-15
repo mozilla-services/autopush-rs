@@ -1,7 +1,7 @@
 use std::{fmt, mem, sync::Arc};
 
 use actix_web::rt;
-use cadence::Timed;
+use cadence::{CountedExt, Timed};
 use uuid::Uuid;
 
 use autoconnect_common::protocol::ServerMessage;
@@ -17,7 +17,17 @@ use crate::error::SMError;
 mod on_client_msg;
 mod on_server_notif;
 
-/// TODO: more docs in this module
+/// A WebPush Client that's successfully identified itself to the server via a
+/// Hello message.
+///
+/// The `webpush_ws` handler feeds input from both the WebSocket connection
+/// (`ClientMessage`) and the `ClientRegistry` (`ServerNotification`)
+/// triggered by autoendpoint to this type's `on_client_msg` and
+/// `on_server_notif` methods whos impls reside in their own modules.
+///
+/// Note the `check_storage` method (residing in the `on_server_notif` module)
+/// is not only triggered by a `ServerNotification` but also by this type's
+/// constructor
 pub struct WebPushClient {
     /// Push User Agent identifier. Each Push client recieves a unique UAID
     pub uaid: Uuid,
@@ -36,6 +46,7 @@ pub struct WebPushClient {
     /// Exists when we didn't register this new user during Hello
     deferred_user_registration: Option<User>,
 
+    /// WebPush Session Statistics
     stats: SessionStatistics,
 
     /// Timestamp of when the UA connected (used by database lookup, thus u64)
@@ -76,6 +87,10 @@ impl WebPushClient {
         deferred_user_registration: Option<User>,
         app_state: Arc<AppState>,
     ) -> Result<(Self, Vec<ServerMessage>), SMError> {
+        let stats = SessionStatistics {
+            existing_uaid: flags.check_storage,
+            ..Default::default()
+        };
         let mut client = WebPushClient {
             uaid,
             uid: Uuid::new_v4(),
@@ -86,9 +101,10 @@ impl WebPushClient {
             connected_at,
             deferred_user_registration,
             last_ping: Default::default(),
-            stats: Default::default(),
+            stats,
             app_state,
         };
+
         let smsgs = if client.flags.check_storage {
             client.check_storage().await?
         } else {
@@ -104,13 +120,12 @@ impl WebPushClient {
             self.save_and_notify_unacked_direct_notifs();
         }
 
-        // XXX: elapsed_ms?
-        let elapsed = (ms_since_epoch() - self.connected_at) / 1_000;
         let ua_info = &self.ua_info;
         let stats = &self.stats;
+        let elapsed_sec = (ms_since_epoch() - self.connected_at) / 1_000;
         self.app_state
             .metrics
-            .time_with_tags("ua.connection.lifespan", elapsed)
+            .time_with_tags("ua.connection.lifespan", elapsed_sec)
             .with_tag("ua_os_family", &ua_info.metrics_os)
             .with_tag("ua_browser_family", &ua_info.metrics_browser)
             .send();
@@ -118,8 +133,8 @@ impl WebPushClient {
         // Log out the final stats message
         info!("Session";
             "uaid_hash" => self.uaid.as_simple().to_string(),
-            //"uaid_reset" => stats.uaid_reset,
-            //"existing_uaid" => stats.existing_uaid,
+            "uaid_reset" => self.flags.reset_uaid,
+            "existing_uaid" => stats.existing_uaid,
             "connection_type" => "webpush",
             "ua_name" => &ua_info.browser_name,
             "ua_os_family" => &ua_info.metrics_os,
@@ -127,7 +142,7 @@ impl WebPushClient {
             "ua_browser_family" => &ua_info.metrics_browser,
             "ua_browser_ver" => &ua_info.browser_version,
             "ua_category" => &ua_info.category,
-            "connection_time" => elapsed,
+            "connection_time" => elapsed_sec,
             "direct_acked" => stats.direct_acked,
             "direct_storage" => stats.direct_storage,
             "stored_retrieved" => stats.stored_retrieved,
@@ -151,21 +166,22 @@ impl WebPushClient {
             notif.sortkey_timestamp = Some(0);
         }
 
-        let db = self.app_state.db.clone();
-        let http = self.app_state.http.clone();
+        let app_state = Arc::clone(&self.app_state);
         let uaid = self.uaid;
         let connected_at = self.connected_at;
         rt::spawn(async move {
-            db.save_messages(&uaid, notifs).await?;
+            app_state.db.save_messages(&uaid, notifs).await?;
             debug!("Finished saving unacked direct notifs, checking for reconnect");
-            let Some(user) = db.get_user(&uaid).await? else {
+            let Some(user) = app_state.db.get_user(&uaid).await? else {
                 return Err(SMError::Internal(format!("User not found for unacked direct notifs: {uaid}")));
             };
             if connected_at == user.connected_at {
                 return Ok(());
             }
             if let Some(node_id) = user.node_id {
-                http.put(&format!("{}/notif/{}", node_id, uaid.as_simple()))
+                app_state
+                    .http
+                    .put(&format!("{}/notif/{}", node_id, uaid.as_simple()))
                     .send()
                     .await?
                     .error_for_status()?;
@@ -175,29 +191,32 @@ impl WebPushClient {
     }
 }
 
-use autopush_common::db::{client::DbClient, error::DbResult, USER_RECORD_VERSION};
-// XXX: likely simpler for this to reside in the Db trait
+use autopush_common::db::{error::DbResult, USER_RECORD_VERSION};
+// XXX: likely simpler for this to reside in the Db trait?
+/// Ensure the user is not inactive and return its set of `ClientFlags`.
+///
+/// Similar to autoendpoint's `validate_webpush_user` function
 pub async fn process_existing_user(
-    db: &dyn DbClient,
+    app_state: &Arc<AppState>,
     mut user: User,
 ) -> DbResult<(User, ClientFlags)> {
-    // XXX: look at autoendpoint's validate_user/webpush_user
-    // XXX: could verify these aren't empty on ddb
-    let message_tables = db.message_tables();
-    if !message_tables.is_empty()
-        && (user.current_month.is_none()
-            || !message_tables.contains(user.current_month.as_ref().unwrap()))
-    {
-        db.remove_user(&user.uaid).await?;
+    if user.current_month.is_none() {
+        app_state
+            .metrics
+            .incr_with_tags("ua.expiration")
+            .with_tag("errno", "104")
+            .send();
+        app_state.db.remove_user(&user.uaid).await?;
         // XXX: no current_month/node_id are set in this case! return None instead?
         user = Default::default();
     }
+
     let flags = ClientFlags {
         check_storage: true,
         reset_uaid: user
             .record_version
             .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
-        rotate_message_table: user.current_month != db.current_message_month(),
+        rotate_message_table: user.current_month.as_deref() != Some(app_state.db.message_table()),
         ..Default::default()
     };
     user.set_last_connect();
@@ -230,7 +249,10 @@ impl Default for ClientFlags {
     }
 }
 
-#[allow(dead_code)]
+/// WebPush Session Statistics
+///
+/// Tracks statistics about the session that are logged when the session's
+/// closed
 #[derive(Debug, Default)]
 pub struct SessionStatistics {
     /// Number of acknowledged messages that were sent directly (not via storage)
@@ -247,10 +269,11 @@ pub struct SessionStatistics {
     unregisters: i32,
     /// Number of register requests
     registers: i32,
+    /// Whether this uaid was previously registered
+    existing_uaid: bool,
 }
 
 /// Record of Notifications sent to the Client.
-#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct AckState {
     /// List of unAck'd directly sent (never stored) notifications
@@ -263,6 +286,8 @@ struct AckState {
 }
 
 impl AckState {
+    /// Whether the Client has outstanding notifications sent to it that it has
+    /// yet to Ack'd
     fn unacked_notifs(&self) -> bool {
         !self.unacked_stored_notifs.is_empty() || !self.unacked_direct_notifs.is_empty()
     }

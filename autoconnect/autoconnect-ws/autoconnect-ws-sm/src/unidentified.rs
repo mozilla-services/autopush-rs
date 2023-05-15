@@ -58,7 +58,7 @@ impl UnidentifiedClient {
             let maybe_user = self.app_state.db.get_user(&uaid).await?;
             if let Some(auser) = maybe_user {
                 use crate::identified::process_existing_user;
-                let (mut puser, pflags) = process_existing_user(&*self.app_state.db, auser).await?;
+                let (mut puser, pflags) = process_existing_user(&self.app_state, auser).await?;
                 // XXX: we also previously set puser.node_id = Some(router_url), why?
                 puser.connected_at = connected_at;
                 self.app_state.db.update_user(&puser).await?;
@@ -74,6 +74,8 @@ impl UnidentifiedClient {
             user.node_id = Some(self.app_state.router_url.to_owned());
             user.connected_at = connected_at;
         }
+        // XXX: check_storage should be false when !user_is_registered (no need) (I think it is)
+        // what did the old code do?
 
         // XXX: should check if the user_record is None
         let uaid = user.uaid;

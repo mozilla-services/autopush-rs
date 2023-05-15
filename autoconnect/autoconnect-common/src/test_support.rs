@@ -36,9 +36,7 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
             ..Default::default()
         }))
     });
-    let message_tables = vec![CURRENT_MONTH.to_owned()];
-    db.expect_message_tables().times(1).return_const(message_tables);
-    db.expect_current_message_month()./*times(1).*/return_const(Some(CURRENT_MONTH.to_owned()));
+    db.expect_message_table().times(1).return_const(CURRENT_MONTH.to_owned());
     db.expect_update_user().times(1).return_once(|_| Ok(()));
     db.expect_fetch_messages().times(1).return_once(|_, _| Ok(Default::default()));
     // XXX: likely shouldn't need this?
