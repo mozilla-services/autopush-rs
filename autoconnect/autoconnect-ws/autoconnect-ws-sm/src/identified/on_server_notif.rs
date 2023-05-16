@@ -53,7 +53,7 @@ impl WebPushClient {
     /// Initializes the top level `check_storage` and `include_topic` flags and
     /// runs `check_storage_loop`
     pub(super) async fn check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
-        trace!("WebPushClient::check_storage");
+        trace!("🗄️ WebPushClient::check_storage");
         self.flags.check_storage = true;
         self.flags.include_topic = true;
         // XXX: we could have triggered check_storage at startup or from the
@@ -75,7 +75,7 @@ impl WebPushClient {
     /// no more Notifications in storage (signaled by `check_storage` reset to
     /// false)
     pub(super) async fn check_storage_loop(&mut self) -> Result<Vec<ServerMessage>, SMError> {
-        trace!("WebPushClient::check_storage_loop");
+        trace!("🗄️ WebPushClient::check_storage_loop");
         while self.flags.check_storage {
             let smsgs = self.check_storage_advance().await?;
             if !smsgs.is_empty() {
@@ -88,7 +88,7 @@ impl WebPushClient {
         // advanced through expired timestamp messages and need to
         // increment_storage to "delete" them.
         if self.flags.increment_storage {
-            trace!("WebPushClient:check_storage_loop increment_storage");
+            trace!("🗄️ WebPushClient:check_storage_loop increment_storage");
             self.increment_storage().await?;
         }
         Ok(vec![])
@@ -101,7 +101,7 @@ impl WebPushClient {
     /// it should be called in a loop to advance through the Notification
     /// records
     async fn check_storage_advance(&mut self) -> Result<Vec<ServerMessage>, SMError> {
-        trace!("WebPushClient::check_storage_advance");
+        trace!("🗄️ WebPushClient::check_storage_advance");
         let CheckStorageResponse {
             include_topic,
             mut messages,
@@ -109,7 +109,7 @@ impl WebPushClient {
         } = self.do_check_storage().await?;
 
         debug!(
-            "WebPushClient::check_storage_advance \
+            "🗄️ WebPushClient::check_storage_advance \
                  include_topic: {} -> {} \
                  unacked_stored_highest: {:?} -> {:?}",
             self.flags.include_topic,
@@ -119,8 +119,9 @@ impl WebPushClient {
         );
         self.flags.include_topic = include_topic;
         self.ack_state.unacked_stored_highest = timestamp;
+
         if messages.is_empty() {
-            debug!("WebPushClient::check_storage_advance finished");
+            trace!("🗄️ WebPushClient::check_storage_advance finished");
             self.flags.check_storage = false;
             self.sent_from_storage = 0;
             return Ok(vec![]);
@@ -140,8 +141,9 @@ impl WebPushClient {
         });
 
         self.flags.increment_storage = !include_topic && timestamp.is_some();
-        // If there's still messages send them out
+
         if messages.is_empty() {
+            trace!("🗄️ WebPushClient::check_storage_advance empty response (filtered expired)");
             return Ok(vec![]);
         }
 
@@ -151,34 +153,33 @@ impl WebPushClient {
         let smsgs: Vec<_> = messages
             .into_iter()
             .inspect(|msg| {
-                trace!("WebPushClient::check_storage_advance Sending stored");
+                trace!("🗄️ WebPushClient::check_storage_advance Sending stored");
                 self.emit_send_metrics(msg, "Stored")
             })
             .map(ServerMessage::Notification)
             .collect();
         // TODO: if less info needed could be metrics.count(.., smsgs.len());
         let count = smsgs.len() as u32;
-        trace!(
-            "WebPushClient::check_storage_advance: sent_from_storage: {}, +{}",
-            self.sent_from_storage,
-            count
+        debug!(
+            "🗄️ WebPushClient::check_storage_advance: sent_from_storage: {}, +{}",
+            self.sent_from_storage, count
         );
         self.sent_from_storage += count;
         Ok(smsgs)
     }
 
     async fn do_check_storage(&self) -> Result<CheckStorageResponse, SMError> {
-        trace!("WebPushClient::do_check_storage");
+        trace!("🗄️ WebPushClient::do_check_storage");
         let timestamp = self.ack_state.unacked_stored_highest;
         let resp = if self.flags.include_topic {
-            debug!("WebPushClient::do_check_storage: fetch_messages");
+            debug!("🗄️ WebPushClient::do_check_storage: fetch_messages");
             self.app_state.db.fetch_messages(&self.uaid, 11).await?
         } else {
             Default::default()
         };
         if !resp.messages.is_empty() {
-            debug!(
-                "WebPushClient::do_check_storage: Topic message returns: {:?}",
+            trace!(
+                "🗄️ WebPushClient::do_check_storage: Topic message returns: {:#?}",
                 resp.messages
             );
             self.app_state
@@ -198,9 +199,10 @@ impl WebPushClient {
         } else {
             timestamp
         };
-        // is_empty implied!! always true! wtf.
+        /*
+        // XXX: is_empty implied!! always true! wtf.
         let resp = if resp.messages.is_empty() || resp.timestamp.is_some() {
-            debug!("WebPushClient::do_check_storage: fetch_timestamp_messages");
+            debug!("🗄️ WebPushClient::do_check_storage: fetch_timestamp_messages");
             self.app_state
                 .db
                 .fetch_timestamp_messages(&self.uaid, timestamp, 10)
@@ -208,6 +210,12 @@ impl WebPushClient {
         } else {
             Default::default()
         };
+         */
+        let resp = self
+            .app_state
+            .db
+            .fetch_timestamp_messages(&self.uaid, timestamp, 10)
+            .await?;
         let timestamp = resp.timestamp.or(timestamp);
         self.app_state
             .metrics

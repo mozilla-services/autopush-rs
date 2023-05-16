@@ -86,7 +86,7 @@ impl WebPushClient {
         key: Option<String>,
     ) -> Result<String, SMError> {
         if let Some(user) = &self.deferred_user_registration {
-            trace!(
+            debug!(
                 "💬WebPushClient::register: User not yet registered... {:?}",
                 &user.uaid
             );
@@ -258,26 +258,16 @@ impl WebPushClient {
 
             trace!("WebPushClient:maybe_post_process_acks check_storage");
             let smsgs = self.check_storage_loop().await?;
-            // check_storage_loop loops until either:
-            // a) it reads notifications to go out
-            let flags = &self.flags;
             if !smsgs.is_empty() {
-                debug_assert!(flags.check_storage);
-                // Back to waiting for the Client to Ack all these outgoing
-                // notifications before further processing
+                debug_assert!(self.flags.check_storage);
+                // More outgoing notifications: send them out and go back to
+                // waiting for the Client to Ack them all before further
+                // processing
                 return Ok(smsgs);
             }
-            /*
-            // or b) or it's finished (check_storage = false)
-            //let flags = &self.flags;
-            assert!(&self.flags.check_storage);
-            debug_assert!(&self.flags.check_storage);
-            // Finished checking storage: make the final increment_storage if necessary
-            if flags.increment_storage {
-                trace!("WebPushClient:maybe_post_process_acks !check_storage && increment_storage");
-                self.increment_storage().await?;
-            }
-            */
+            // Otherwise check_storage is finished
+            debug_assert!(!self.flags.check_storage);
+            debug_assert!(!self.flags.increment_storage);
         }
 
         // All Ack'd and finished checking/incrementing storage
@@ -300,7 +290,7 @@ impl WebPushClient {
     /// TODO: more docs
     pub(super) async fn increment_storage(&mut self) -> Result<(), SMError> {
         let Some(timestamp) = self.ack_state.unacked_stored_highest else {
-            return Err(SMError::Internal("increment_storage without an unacked_stored_highest".to_owned()));
+            return Err(SMError::Internal("increment_storage w/ no unacked_stored_highest".to_owned()));
         };
         self.app_state
             .db
