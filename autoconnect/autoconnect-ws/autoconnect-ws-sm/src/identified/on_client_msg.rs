@@ -10,6 +10,8 @@ use super::WebPushClient;
 use crate::error::SMError;
 
 impl WebPushClient {
+    /// Handle a WebPush `ClientMessage` sent from the user agent over the
+    /// WebSocket for this user
     pub async fn on_client_msg(
         &mut self,
         msg: ClientMessage,
@@ -37,6 +39,7 @@ impl WebPushClient {
         }
     }
 
+    /// Register a new Push subscription
     async fn register(
         &mut self,
         channel_id_str: String,
@@ -106,6 +109,7 @@ impl WebPushClient {
         Ok(endpoint)
     }
 
+    /// Unregister an existing Push subscription
     async fn unregister(
         &mut self,
         channel_id: Uuid,
@@ -142,6 +146,7 @@ impl WebPushClient {
         Ok(ServerMessage::Unregister { channel_id, status })
     }
 
+    /// Subscribe to a new set of Broadcasts
     async fn broadcast_subscribe(
         &mut self,
         _broadcasts: HashMap<String, String>,
@@ -149,6 +154,7 @@ impl WebPushClient {
         unimplemented!();
     }
 
+    /// Acknowledge receipt of one or more Push Notifications
     async fn ack(&mut self, updates: &[ClientAck]) -> Result<Vec<ServerMessage>, SMError> {
         trace!("WebPushClient:ack");
         let _ = self.app_state.metrics.incr("ua.command.ack");
@@ -206,6 +212,8 @@ impl WebPushClient {
         }
     }
 
+    /// Negative Acknowledgement (an error occurred) of one or more Push
+    /// Notifications
     fn nack(&mut self, code: Option<i32>) {
         // only metric codes expected from the client (or 0)
         let code = code
@@ -219,6 +227,10 @@ impl WebPushClient {
         self.stats.nacks += 1;
     }
 
+    /// Handle a WebPush Ping
+    ///
+    /// Note this is the WebPush Protocol level's Ping: this differs from the
+    /// lower level WebSocket Ping frame (handled by the `webpush_ws` handler).
     async fn ping(&mut self) -> Result<ServerMessage, SMError> {
         // TODO: why is this 45 vs the comment describing a minute? and 45
         // should be a setting
@@ -232,6 +244,10 @@ impl WebPushClient {
         }
     }
 
+    /// Post process the Client succesfully Ack'ing all Push Notifications it's
+    /// been sent.
+    ///
+    /// TODO: more docs
     async fn post_process_all_acked(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         let flags = &self.flags;
         if flags.check_storage {
@@ -242,9 +258,8 @@ impl WebPushClient {
 
             trace!("WebPushClient:maybe_post_process_acks check_storage");
             let smsgs = self.check_storage_loop().await?;
-            // do_check_storage loops until either:
+            // check_storage_loop loops until either:
             // a) it reads notifications to go out
-            //if flags.check_storage {
             let flags = &self.flags;
             if !smsgs.is_empty() {
                 debug_assert!(flags.check_storage);
@@ -252,14 +267,17 @@ impl WebPushClient {
                 // notifications before further processing
                 return Ok(smsgs);
             }
+            /*
             // or b) or it's finished (check_storage = false)
             //let flags = &self.flags;
+            assert!(&self.flags.check_storage);
             debug_assert!(&self.flags.check_storage);
             // Finished checking storage: make the final increment_storage if necessary
             if flags.increment_storage {
                 trace!("WebPushClient:maybe_post_process_acks !check_storage && increment_storage");
                 self.increment_storage().await?;
             }
+            */
         }
 
         // All Ack'd and finished checking/incrementing storage
@@ -277,7 +295,10 @@ impl WebPushClient {
         }
     }
 
-    async fn increment_storage(&mut self) -> Result<(), SMError> {
+    /// XXX: should move back to on_server_notif?
+    /// Update the user's last message read timestamp (for timestamp messages)
+    /// TODO: more docs
+    pub(super) async fn increment_storage(&mut self) -> Result<(), SMError> {
         let Some(timestamp) = self.ack_state.unacked_stored_highest else {
             return Err(SMError::Internal("increment_storage without an unacked_stored_highest".to_owned()));
         };

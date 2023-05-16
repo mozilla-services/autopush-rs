@@ -44,7 +44,7 @@ impl UnidentifiedClient {
                 r#"Expected messageType="hello", "use_webpush": true"#.to_owned()
             ));
         };
-        trace!("👋UnidentifiedClient::on_client_msg Hello {:?}", uaid);
+        debug!("👋UnidentifiedClient::on_client_msg Hello from uaid?: {:?}", uaid);
 
         let connected_at = ms_since_epoch();
         let uaid = uaid
@@ -53,6 +53,8 @@ impl UnidentifiedClient {
             .transpose()
             .map_err(|_| SMError::InvalidMessage("Invalid uaid".to_owned()))?;
 
+        // XXX:
+        // let user_and_flags = None
         let mut user_record = None;
         if let Some(uaid) = uaid {
             let maybe_user = self.app_state.db.get_user(&uaid).await?;
@@ -61,25 +63,30 @@ impl UnidentifiedClient {
                 let (mut puser, pflags) = process_existing_user(&self.app_state, auser).await?;
                 // XXX: we also previously set puser.node_id = Some(router_url), why?
                 puser.connected_at = connected_at;
+                // XXX: set_last_connect here instead?
                 self.app_state.db.update_user(&puser).await?;
                 user_record = Some((puser, pflags))
             }
         }
         // NOTE: when a uaid is specified and get_user returns None we're now
         // deferring registration (a change from previous versions)
+        // XXX: user_is_registered -> existing_user?
         let user_is_registered = user_record.is_some();
         let (mut user, flags) = user_record.unwrap_or_default();
         if !user_is_registered {
-            user.current_month = self.app_state.db.current_message_month();
+            user.current_month = Some(self.app_state.db.message_table().to_owned());
             user.node_id = Some(self.app_state.router_url.to_owned());
             user.connected_at = connected_at;
         }
+        // XXX: set connected_at here for everyone?
+        // XXX: what about set_last_connect? should be set before writing, same with connected_at I think
+        
         // XXX: check_storage should be false when !user_is_registered (no need) (I think it is)
         // what did the old code do?
 
         // XXX: should check if the user_record is None
         let uaid = user.uaid;
-        trace!(
+        debug!(
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {:?} user_is_registered: {}",
             uaid,
             user_is_registered,
@@ -175,6 +182,7 @@ mod tests {
 
     #[tokio::test]
     async fn hello_existing_user() {
+        autopush_common::logging::init_logging(false).unwrap();
         let client = uclient(AppState {
             db: hello_again_db(DUMMY_UAID).into_boxed_arc(),
             ..Default::default()

@@ -20,7 +20,7 @@ pub const CURRENT_MONTH: &str = "message_2023_5";
 /// Return a simple MockDbClient that responds to hello (once) with a new uaid.
 pub fn hello_db() -> MockDbClient {
     let mut db = MockDbClient::new();
-    db.expect_current_message_month().times(1).return_const(Some(CURRENT_MONTH.to_owned()));
+    db.expect_message_table().times(1).return_const(CURRENT_MONTH.to_owned());
     db
 }
 
@@ -39,7 +39,6 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     db.expect_message_table().times(1).return_const(CURRENT_MONTH.to_owned());
     db.expect_update_user().times(1).return_once(|_| Ok(()));
     db.expect_fetch_messages().times(1).return_once(|_, _| Ok(Default::default()));
-    // XXX: likely shouldn't need this?
     db.expect_fetch_timestamp_messages().times(1).return_once(|_, _, _| Ok(Default::default()));
     db
 }

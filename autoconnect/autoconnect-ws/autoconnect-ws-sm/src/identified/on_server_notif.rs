@@ -10,6 +10,13 @@ use super::WebPushClient;
 use crate::error::SMError;
 
 impl WebPushClient {
+    /// Handle a `ServerNotification` for this user
+    ///
+    /// `ServerNotification::Disconnect` is emitted by the same autoconnect
+    /// node recieving it when a User has logged into that same node twice to
+    /// "Ghost" (disconnect) the first user's session for its second session.
+    ///
+    /// The other variants are emitted by autoendpoint
     pub async fn on_server_notif(
         &mut self,
         snotif: ServerNotification,
@@ -21,14 +28,17 @@ impl WebPushClient {
         }
     }
 
-    /// Move queued Push Notifications to unacked_direct_notifs (to be stored
-    /// in the db)
+    /// After closing the `snotif_stream`, moves any queued Direct Push
+    /// Notifications to unacked_direct_notifs (to be stored in the db on
+    /// `shutdown`)
     pub fn on_server_notif_shutdown(&mut self, snotif: ServerNotification) {
+        trace!("WebPushClient::on_server_notif_shutdown");
         if let ServerNotification::Notification(notif) = snotif {
             self.ack_state.unacked_direct_notifs.push(notif);
         }
     }
 
+    /// Send a Direct Push Notification to this user
     async fn notif(&mut self, notif: Notification) -> Result<ServerMessage, SMError> {
         trace!("WebPushClient::notif Sending a direct notif");
         if notif.ttl != 0 {
@@ -38,13 +48,32 @@ impl WebPushClient {
         Ok(ServerMessage::Notification(notif))
     }
 
+    /// Top level read of Push Notifications from storage
+    ///
+    /// Initializes the top level `check_storage` and `include_topic` flags and
+    /// runs `check_storage_loop`
     pub(super) async fn check_storage(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         trace!("WebPushClient::check_storage");
         self.flags.check_storage = true;
         self.flags.include_topic = true;
+        // XXX: we could have triggered check_storage at startup or from the
+        // registry. Let's say no messages were returned but we moved the
+        // timestamp up because a bunch of timestamp messages were
+        // expired. Nobody would increment storage! So we should probably do it
+        // here? or loop could do it..
+
+        // let's say on startup:
+        // we check_storage, reading until we get a notif or empty (no more check_storage).
+        // if we get a notif, ack will fix up storage.
+        // if we get nothing back, we would have needed to move the timestamp and check_storage would be set to false. so we need to increment storage whenever returning empties
         self.check_storage_loop().await
     }
 
+    /// Loop the read of Push Notifications from storage
+    ///
+    /// This loops until any unexpired Push Notifications are read or there's
+    /// no more Notifications in storage (signaled by `check_storage` reset to
+    /// false)
     pub(super) async fn check_storage_loop(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         trace!("WebPushClient::check_storage_loop");
         while self.flags.check_storage {
@@ -54,9 +83,23 @@ impl WebPushClient {
                 return Ok(smsgs);
             }
         }
+        // No more notifications left to read (self.flags.check_storage =
+        // false).  Despite returning no notifs here, it's possible that we
+        // advanced through expired timestamp messages and need to
+        // increment_storage to "delete" them.
+        if self.flags.increment_storage {
+            trace!("WebPushClient:check_storage_loop increment_storage");
+            self.increment_storage().await?;
+        }
         Ok(vec![])
     }
 
+    /// Reads a small (max count 10 returned) chunk of Notifications from storage
+    ///
+    /// This filters out expired Notifications so it can return an empty result
+    /// set when there's still pending unexpired Notifications to be read. So
+    /// it should be called in a loop to advance through the Notification
+    /// records
     async fn check_storage_advance(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         trace!("WebPushClient::check_storage_advance");
         let CheckStorageResponse {
@@ -65,10 +108,14 @@ impl WebPushClient {
             timestamp,
         } = self.do_check_storage().await?;
 
-        // XXX:
         debug!(
-            "WebPushClient::check_storage_advance include_topic -> {} unacked_stored_highest -> {:?}",
-            include_topic, timestamp
+            "WebPushClient::check_storage_advance \
+                 include_topic: {} -> {} \
+                 unacked_stored_highest: {:?} -> {:?}",
+            self.flags.include_topic,
+            include_topic,
+            self.ack_state.unacked_stored_highest,
+            timestamp
         );
         self.flags.include_topic = include_topic;
         self.ack_state.unacked_stored_highest = timestamp;
@@ -80,14 +127,12 @@ impl WebPushClient {
         }
 
         // Filter out TTL expired messages
-        // XXX: could be separated out of this method?
-        let now = sec_since_epoch();
+        let now_sec = sec_since_epoch();
         messages.retain(|n| {
-            eprintln!("n: exp: {}, {:#?}", n.expired(now), n);
-            if !n.expired(now) {
+            if !n.expired(now_sec) {
                 return true;
             }
-            // XXX: batch remove_messages would be nice?
+            // TODO: A batch remove_messages would be nicer
             if n.sortkey_timestamp.is_none() {
                 self.spawn_remove_message(n.sort_key());
             }
@@ -99,6 +144,7 @@ impl WebPushClient {
         if messages.is_empty() {
             return Ok(vec![]);
         }
+
         self.ack_state
             .unacked_stored_notifs
             .extend(messages.iter().cloned());
@@ -110,7 +156,7 @@ impl WebPushClient {
             })
             .map(ServerMessage::Notification)
             .collect();
-        // XXX: if less info needed could be metrics.count(.., smsgs.len());
+        // TODO: if less info needed could be metrics.count(.., smsgs.len());
         let count = smsgs.len() as u32;
         trace!(
             "WebPushClient::check_storage_advance: sent_from_storage: {}, +{}",
@@ -176,6 +222,7 @@ impl WebPushClient {
         })
     }
 
+    /// Spawn a background task to remove a message from storage
     fn spawn_remove_message(&self, sort_key: String) {
         let db = self.app_state.db.clone();
         let uaid = self.uaid;
@@ -189,6 +236,11 @@ impl WebPushClient {
         });
     }
 
+    /// Ensure this user hasn't exceeded the maximum allowed number of messages
+    /// read from storage (`Settings::msg_limit`)
+    ///
+    /// Drops the user record and returns the `SMError::UaidReset` error if
+    /// they have
     async fn check_msg_limit(&mut self) -> Result<(), SMError> {
         trace!(
             "WebPushClient::check_msg_limit: sent_from_storage: {} msg_limit: {}",
@@ -204,6 +256,7 @@ impl WebPushClient {
         Ok(())
     }
 
+    /// Emit metrics for a Notification to be sent to the user
     fn emit_send_metrics(&self, notif: &Notification, source: &'static str) {
         let metrics = &self.app_state.metrics;
         let ua_info = &self.ua_info;

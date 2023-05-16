@@ -5,9 +5,10 @@ use cadence::{CountedExt, Timed};
 use uuid::Uuid;
 
 use autoconnect_common::protocol::ServerMessage;
+
 use autoconnect_settings::AppState;
 use autopush_common::{
-    db::User,
+    db::{error::DbResult, User, USER_RECORD_VERSION},
     notification::Notification,
     util::{ms_since_epoch, user_agent::UserAgentInfo},
 };
@@ -87,6 +88,7 @@ impl WebPushClient {
         deferred_user_registration: Option<User>,
         app_state: Arc<AppState>,
     ) -> Result<(Self, Vec<ServerMessage>), SMError> {
+        trace!("WebPushClient::new");
         let stats = SessionStatistics {
             existing_uaid: flags.check_storage,
             ..Default::default()
@@ -110,11 +112,15 @@ impl WebPushClient {
         } else {
             vec![]
         };
-        trace!("WebPushClient::new: Initial smsgs count: {}", smsgs.len());
+        debug!(
+            "WebPushClient::new: Initial check_storage smsgs count: {}",
+            smsgs.len()
+        );
         Ok((client, smsgs))
     }
 
     pub fn shutdown(&mut self, reason: Option<String>) {
+        trace!("WebPushClient::shutdown");
         // Save any unAck'd Direct notifs
         if !self.ack_state.unacked_direct_notifs.is_empty() {
             self.save_and_notify_unacked_direct_notifs();
@@ -155,6 +161,7 @@ impl WebPushClient {
     }
 
     fn save_and_notify_unacked_direct_notifs(&mut self) {
+        trace!("WebPushClient::save_and_notify_unacked_direct_notifs");
         let mut notifs = mem::take(&mut self.ack_state.unacked_direct_notifs);
         self.stats.direct_storage += notifs.len() as i32;
         // TODO: clarify this comment re the Python version
@@ -191,8 +198,6 @@ impl WebPushClient {
     }
 }
 
-use autopush_common::db::{error::DbResult, USER_RECORD_VERSION};
-// XXX: likely simpler for this to reside in the Db trait?
 /// Ensure the user is not inactive and return its set of `ClientFlags`.
 ///
 /// Similar to autoendpoint's `validate_webpush_user` function
@@ -223,7 +228,6 @@ pub async fn process_existing_user(
     Ok((user, flags))
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ClientFlags {
     /// Whether check_storage queries for topic (not "timestamped") messages
@@ -287,7 +291,7 @@ struct AckState {
 
 impl AckState {
     /// Whether the Client has outstanding notifications sent to it that it has
-    /// yet to Ack'd
+    /// yet to Ack
     fn unacked_notifs(&self) -> bool {
         !self.unacked_stored_notifs.is_empty() || !self.unacked_direct_notifs.is_empty()
     }

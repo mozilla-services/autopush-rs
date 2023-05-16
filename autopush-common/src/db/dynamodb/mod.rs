@@ -160,14 +160,6 @@ where
 #[allow(clippy::field_reassign_with_default)]
 #[async_trait]
 impl DbClient for DdbClientImpl {
-    fn current_message_month(&self) -> Option<String> {
-        Some(self.settings.current_message_month.clone())
-    }
-
-    fn message_tables(&self) -> &Vec<String> {
-        &self.settings.message_table_names
-    }
-
     async fn add_user(&self, user: &User) -> DbResult<()> {
         let input = PutItemInput {
             table_name: self.settings.router_table.clone(),
