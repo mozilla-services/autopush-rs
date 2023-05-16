@@ -8,6 +8,12 @@ use autopush_common::util::ms_since_epoch;
 
 use crate::{error::SMError, identified::WebPushClient};
 
+// XXX:
+use uuid::Uuid;
+use crate::identified::ClientFlags;
+use autopush_common::db::{User, error::DbResult};
+
+
 /// Represents a Client waiting for (or yet to process) a Hello message
 /// identifying itself
 pub struct UnidentifiedClient {
@@ -46,13 +52,14 @@ impl UnidentifiedClient {
         };
         debug!("👋UnidentifiedClient::on_client_msg Hello from uaid?: {:?}", uaid);
 
-        let connected_at = ms_since_epoch();
+        //let connected_at = ms_since_epoch();
         let uaid = uaid
             .as_deref()
             .map(uuid::Uuid::try_parse)
             .transpose()
             .map_err(|_| SMError::InvalidMessage("Invalid uaid".to_owned()))?;
 
+        /*
         // XXX:
         // let user_and_flags = None
         let mut user_record = None;
@@ -78,6 +85,8 @@ impl UnidentifiedClient {
             user.node_id = Some(self.app_state.router_url.to_owned());
             user.connected_at = connected_at;
         }
+        */
+        let GetOrCreateUser {user, existing_user, flags} = self.get_or_create_user(uaid).await?;
         // XXX: set connected_at here for everyone?
         // XXX: what about set_last_connect? should be set before writing, same with connected_at I think
         
@@ -87,16 +96,16 @@ impl UnidentifiedClient {
         // XXX: should check if the user_record is None
         let uaid = user.uaid;
         debug!(
-            "💬UnidentifiedClient::on_client_msg Hello! uaid: {:?} user_is_registered: {}",
+            "💬UnidentifiedClient::on_client_msg Hello! uaid: {:?} existing_user: {}",
             uaid,
-            user_is_registered,
+            existing_user,
         );
 
         // XXX: This used to be triggered by *any* error returned from
         // update_user. The intention was to trap the specific case of where
         // connected_at <: connected_at. Either way, the result is the same:
         // disconnect the client. We now propagate any error from update_user,
-        // which disconnects them anyway, so I don't think this check is even
+
         // needed any longer.
         /*
         let Some(uaid) = hello_response.uaid else {
@@ -113,8 +122,9 @@ impl UnidentifiedClient {
             uaid,
             self.ua,
             flags,
-            connected_at,
-            (!user_is_registered).then_some(user),
+            user.connected_at,
+            //(!user_is_registered).then_some(user),
+            (!existing_user).then_some(user),
             self.app_state,
         )
         .await?;
@@ -129,21 +139,47 @@ impl UnidentifiedClient {
         Ok((wpclient, smsgs))
     }
 
-    /*
-    async fn hello(&self, uaid: &Uuid) -> DbResult<(User, ClientFlags) {
-        let user = self.app_state.db.get_user(uaid).await? else {
-            // User doesn't exist
-            return Ok((Default::default(), Default::default()));
+    async fn get_or_create_user(&self, uaid: Option<Uuid>) -> DbResult<GetOrCreateUser> {
+        trace!("❓UnidentifiedClient::hello");
+        let connected_at = ms_since_epoch();
+
+        let mut user_and_flags = None;
+        if let Some(uaid) = uaid {
+            let maybe_user = self.app_state.db.get_user(&uaid).await?;
+            if let Some(user) = maybe_user {
+                use crate::identified::process_existing_user;
+                let (mut user, flags) = process_existing_user(&self.app_state, user).await?;
+                // XXX: set_last_connect here instead?
+                user.node_id = Some(self.app_state.router_url.to_owned());
+                user.connected_at = connected_at;
+                self.app_state.db.update_user(&user).await?;
+                user_and_flags = Some((user, flags))
+            }
         }
-        use crate::identified::process_existing_user;
-        let (mut user, flags) = process_existing_user(&self.app_state.db, user).await?;
-        // XXX: we also previously set puser.node_id = Some(router_url), why?
+        // NOTE: when a uaid is specified and get_user returns None we're now
+        // deferring registration (a change from previous versions)
+        // XXX: user_is_registered -> existing_user?
+        let existing_user = user_and_flags.is_some();
+        // XXX: could be unwrap_or(|| but that's also ugly
+        let (mut user, flags) = user_and_flags.unwrap_or_default();
+        if !existing_user {
+            user.current_month = Some(self.app_state.db.message_table().to_owned());
+            user.node_id = Some(self.app_state.router_url.to_owned());
             user.connected_at = connected_at;
-            self.app_state.db.update_user(&user).await?;
-            return Some((user, flags));
         }
+        //Ok((user, existing_user, flags))
+        Ok(GetOrCreateUser {
+            user,
+            existing_user,
+            flags,
+        })
     }
-    */
+}
+
+struct GetOrCreateUser {
+    user: User,
+    existing_user: bool,
+    flags: ClientFlags,
 }
 
 #[cfg(test)]
