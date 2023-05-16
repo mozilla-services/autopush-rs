@@ -54,14 +54,8 @@ from typing import (  # noqa
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    Generator,
-    Iterable,
-    List,
     Optional,
-    Set,
     TypeVar,
-    Tuple,
     Union,
 )
 
@@ -103,92 +97,6 @@ def base64url_encode(value):
     # type: (bytes) -> str
     """Encodes an unpadded Base64 URL-encoded string per RFC 7515."""
     return base64.urlsafe_b64encode(value).strip(b"=").decode("utf-8")
-
-
-@attrs(slots=True)
-class WebPushNotification(object):
-    """WebPush Notification
-
-    This object centralizes all logic involving the addressing of a single
-    WebPush Notification.
-
-    message_id serves a complex purpose. It's returned as the Location header
-    value so that an application server may delete the message. It's used as
-    part of the non-versioned sort-key. Due to this, its an encrypted value
-    that contains the necessary information to derive the location of this
-    precise message in the appropriate message table.
-
-    """
-
-    uaid: uuid.UUID = attrib()
-    channel_id: uuid.UUID = attrib()
-    ttl: int = attrib()  # type: int
-    data: Optional[str] = attrib(default=None)
-    headers: Optional[Dict[str, str]] = attrib(default=None)
-    timestamp: int = attrib(default=Factory(lambda: int(time.time())))
-    sortkey_timestamp: Optional[int] = attrib(default=None)
-    topic: Optional[str] = attrib(default=None)
-    source: Optional[str] = attrib(default="Direct")
-
-    message_id: str = attrib(default=None)
-
-    # Not an alias for message_id, for backwards compat and cases where an old
-    # message with any update_id should be removed.
-    update_id: str = attrib(default=None)
-
-    # Whether this notification should follow legacy non-topic rules
-    legacy: bool = attrib(default=False)
-
-    @staticmethod
-    def parse_sort_key(sort_key: str) -> Dict[str, Any]:
-        # type: (str) -> Dict[str, Any]
-        """Parse the sort key from the database"""
-        topic = None
-        sortkey_timestamp = None
-        message_id = None
-        if sort_key.startswith("01:"):
-            api_ver, channel_id, topic = sort_key.split(":")
-        elif sort_key.startswith("02:"):
-            api_ver, raw_sortkey, channel_id = sort_key.split(":")
-            sortkey_timestamp = int(raw_sortkey)
-        else:
-            channel_id, message_id = sort_key.split(":")
-            api_ver = "00"
-        return dict(
-            api_ver=api_ver,
-            channel_id=channel_id,
-            topic=topic,
-            message_id=message_id,
-            sortkey_timestamp=sortkey_timestamp,
-        )
-
-    @classmethod
-    def from_message_table(
-        cls, uaid: str, item: Dict[str, (str | Dict[str, str])]
-    ):
-        # type: (uuid.UUID, Dict[str, Any]) -> WebPushNotification
-        """Create a WebPushNotification from a message table item"""
-        key_info = cls.parse_sort_key(item["chidmessageid"])
-        if key_info["api_ver"] in ["01", "02"]:
-            key_info["message_id"] = item["updateid"]
-        notif = cls(
-            uaid=uuid.UUID(uaid),
-            channel_id=uuid.UUID(key_info["channel_id"]),
-            data=item.get("data"),
-            headers=item.get("headers"),
-            ttl=item.get("ttl", 0),
-            topic=key_info.get("topic"),
-            message_id=key_info["message_id"],
-            update_id=item.get("updateid"),
-            timestamp=item.get("timestamp"),
-            sortkey_timestamp=key_info.get("sortkey_timestamp"),
-            source="Stored",
-        )
-        # Ensure we generate the sort-key properly for legacy messges
-        if key_info["api_ver"] == "00":
-            notif.legacy = True
-
-        return notif
 
 
 # Max DynamoDB record lifespan (~ 30 days)
@@ -384,8 +292,7 @@ def track_provisioned(func):
     return wrapper
 
 
-def has_connected_this_month(item):
-    # type: (Dict[str, Any]) -> bool
+def has_connected_this_month(item: dict[str, Any]) -> bool:
     """Whether or not a router item has connected this month"""
     last_connect = item.get("last_connect")
     if not last_connect:
@@ -396,7 +303,7 @@ def has_connected_this_month(item):
     return str(last_connect).startswith(val)
 
 
-def generate_last_connect():
+def generate_last_connect() -> int:
     # type: () -> int
     """Generate a last_connect
 
@@ -418,7 +325,7 @@ def generate_last_connect():
 
 
 def table_exists(tablename, boto_resource=None):
-    # type: (str, DynamoDBResource) -> bool
+    # type: (str, Optional[DynamoDBResource | ServiceResource]) -> bool
     """Determine if the specified Table exists"""
     try:
         return boto_resource.Table(tablename).table_status in [

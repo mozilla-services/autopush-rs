@@ -11,7 +11,7 @@ import signal
 import string
 import socket
 import subprocess
-from typing import Any, Optional, List
+from typing import Any, Optional
 
 import sys
 import time
@@ -70,8 +70,8 @@ CN_SERVER: Optional[subprocess.Popen] = None
 CN_MP_SERVER: Optional[subprocess.Popen] = None
 EP_SERVER: Optional[subprocess.Popen] = None
 MOCK_SERVER_THREAD = None
-CN_QUEUES: List = []
-EP_QUEUES: List = []
+CN_QUEUES: list = []
+EP_QUEUES: list = []
 STRICT_LOG_COUNTS = True
 RUST_LOG = "autoconnect=debug,autoendpoint=debug,autopush_rs=debug,autopush_common=debug,error"
 
@@ -187,7 +187,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return self.ws.connected
 
     def hello(
-        self, uaid: Optional[str] = None, services: Optional[List[str]] = None
+        self, uaid: Optional[str] = None, services: Optional[list[str]] = None
     ):
         if self.channels:
             chans = list(self.channels.keys())
@@ -202,29 +202,27 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             hello_dict["broadcasts"] = services
         msg = json.dumps(hello_dict)
         log.debug("Send: %s", msg)
-        if self.ws:
-            self.ws.send(msg)
-            result = json.loads(self.ws.recv())
-            log.debug("Recv: %s", result)
-            assert result["status"] == 200
-            assert "-" not in result["uaid"]
-            if self.uaid and self.uaid != result["uaid"]:  # pragma: nocover
-                log.debug(
-                    "Mismatch on re-using uaid. Old: %s, New: %s",
-                    self.uaid,
-                    result["uaid"],
-                )
-                self.channels = {}
-            self.uaid = result["uaid"]
-            return result
+        self.ws.send(msg)
+        result = json.loads(self.ws.recv())
+        log.debug("Recv: %s", result)
+        assert result["status"] == 200
+        assert "-" not in result["uaid"]
+        if self.uaid and self.uaid != result["uaid"]:  # pragma: nocover
+            log.debug(
+                "Mismatch on re-using uaid. Old: %s, New: %s",
+                self.uaid,
+                result["uaid"],
+            )
+            self.channels = {}
+        self.uaid = result["uaid"]
+        return result
 
-    def broadcast_subscribe(self, services: List[str]):  # pragma: nocover
+    def broadcast_subscribe(self, services: list[str]):  # pragma: nocover
         msg = json.dumps(
             dict(messageType="broadcast_subscribe", broadcasts=services)
         )
         log.debug("Send: %s", msg)
-        if self.ws:
-            self.ws.send(msg)
+        self.ws.send(msg)
 
     def register(self, chid: Optional[str] = None, key=None, status=200):
         chid = chid or str(uuid.uuid4())
@@ -232,25 +230,25 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             dict(messageType="register", channelID=chid, key=key)
         )
         log.debug("Send: %s", msg)
-        if self.ws:
-            self.ws.send(msg)
-            rcv = self.ws.recv()
-            result = json.loads(rcv)
-            log.debug("Recv: %s", result)
-            assert result["status"] == status
-            assert result["channelID"] == chid
-            if status == 200:
-                self.channels[chid] = result["pushEndpoint"]
-            return result
+        self.ws.send(msg)
+        rcv = self.ws.recv()
+        result = json.loads(rcv)
+        log.debug("Recv: %s", result)
+        assert result["status"] == status
+        assert result["channelID"] == chid
+        if status == 200:
+            self.channels[chid] = result["pushEndpoint"]
+        return result
+
 
     def unregister(self, chid):
         msg = json.dumps(dict(messageType="unregister", channelID=chid))
         log.debug("Send: %s", msg)
-        if self.ws:
-            self.ws.send(msg)
-            result = json.loads(self.ws.recv())
-            log.debug("Recv: %s", result)
-            return result
+        self.ws.send(msg)
+        result = json.loads(self.ws.recv())
+        log.debug("Recv: %s", result)
+        return result
+
 
     def delete_notification(self, channel, message=None, status=204):
         messages = self.messages[channel]
@@ -338,57 +336,53 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             return resp
 
     def get_notification(self, timeout=1):
-        if self.ws:
-            orig_timeout = self.ws.gettimeout()
-            self.ws.settimeout(timeout)
-            try:
-                d = self.ws.recv()
-                log.debug("Recv: %s", d)
-                return json.loads(d)
-            except Exception:
-                return None
-            finally:
-                self.ws.settimeout(orig_timeout)
+        orig_timeout = self.ws.gettimeout()
+        self.ws.settimeout(timeout)
+        try:
+            d = self.ws.recv()
+            log.debug("Recv: %s", d)
+            return json.loads(d)
+        except Exception:
+            return None
+        finally:
+            self.ws.settimeout(orig_timeout)
 
     def get_broadcast(self, timeout=1):  # pragma: nocover
-        if self.ws:
-            orig_timeout = self.ws.gettimeout()
-            self.ws.settimeout(timeout)
-            try:
-                d = self.ws.recv()
-                log.debug("Recv: %s", d)
-                result = json.loads(d)
-                assert result.get("messageType") == "broadcast"
-                return result
-            except Exception as ex:  # pragma: nocover
-                log.error("Error: {}".format(ex))
-                return None
-            finally:
-                self.ws.settimeout(orig_timeout)
+        orig_timeout = self.ws.gettimeout()
+        self.ws.settimeout(timeout)
+        try:
+            d = self.ws.recv()
+            log.debug("Recv: %s", d)
+            result = json.loads(d)
+            assert result.get("messageType") == "broadcast"
+            return result
+        except Exception as ex:  # pragma: nocover
+            log.error("Error: {}".format(ex))
+            return None
+        finally:
+            self.ws.settimeout(orig_timeout)
+
 
     def ping(self):
-        if self.ws:
-            log.debug("Send: %s", "{}")
-            self.ws.send("{}")
-            result = self.ws.recv()
-            log.debug("Recv: %s", result)
-            assert result == "{}"
-            return result
+        log.debug("Send: %s", "{}")
+        self.ws.send("{}")
+        result = self.ws.recv()
+        log.debug("Recv: %s", result)
+        assert result == "{}"
+        return result
 
     def ack(self, channel, version):
-        if self.ws:
-            msg = json.dumps(
-                dict(
-                    messageType="ack",
-                    updates=[dict(channelID=channel, version=version)],
-                )
+        msg = json.dumps(
+            dict(
+                messageType="ack",
+                updates=[dict(channelID=channel, version=version)],
             )
-            log.debug("Send: %s", msg)
-            self.ws.send(msg)
+        )
+        log.debug("Send: %s", msg)
+        self.ws.send(msg)
 
     def disconnect(self):
-        if self.ws:
-            self.ws.close()
+        self.ws.close()
 
     def sleep(self, duration: int):  # pragma: nocover
         time.sleep(duration)
