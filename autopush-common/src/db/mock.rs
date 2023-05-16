@@ -121,11 +121,7 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).save_message(uaid, message)
     }
 
-    async fn save_messages(
-        &self,
-        uaid: &Uuid,
-        messages: Vec<Notification>,
-    ) -> DbResult<()> {
+    async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
         Arc::as_ref(self).save_messages(uaid, messages)
     }
 

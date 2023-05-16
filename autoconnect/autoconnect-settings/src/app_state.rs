@@ -1,4 +1,4 @@
-use std::{time::Duration, sync::Arc};
+use std::{sync::Arc, time::Duration};
 
 use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};

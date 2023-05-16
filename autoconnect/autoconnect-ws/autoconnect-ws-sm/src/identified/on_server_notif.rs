@@ -28,8 +28,8 @@ impl WebPushClient {
         }
     }
 
-    /// After closing the `snotif_stream`, moves any queued Direct Push
-    /// Notifications to unacked_direct_notifs (to be stored in the db on
+    /// After disconnecting from the `ClientRegistry`, moves any queued Direct
+    /// Push Notifications to unacked_direct_notifs (to be stored in the db on
     /// `shutdown`)
     pub fn on_server_notif_shutdown(&mut self, snotif: ServerNotification) {
         trace!("WebPushClient::on_server_notif_shutdown");
@@ -56,16 +56,6 @@ impl WebPushClient {
         trace!("🗄️ WebPushClient::check_storage");
         self.flags.check_storage = true;
         self.flags.include_topic = true;
-        // XXX: we could have triggered check_storage at startup or from the
-        // registry. Let's say no messages were returned but we moved the
-        // timestamp up because a bunch of timestamp messages were
-        // expired. Nobody would increment storage! So we should probably do it
-        // here? or loop could do it..
-
-        // let's say on startup:
-        // we check_storage, reading until we get a notif or empty (no more check_storage).
-        // if we get a notif, ack will fix up storage.
-        // if we get nothing back, we would have needed to move the timestamp and check_storage would be set to false. so we need to increment storage whenever returning empties
         self.check_storage_loop().await
     }
 
@@ -83,12 +73,11 @@ impl WebPushClient {
                 return Ok(smsgs);
             }
         }
-        // No more notifications left to read (self.flags.check_storage =
-        // false).  Despite returning no notifs here, it's possible that we
-        // advanced through expired timestamp messages and need to
-        // increment_storage to "delete" them.
+        // No more notifications (check_storage = false). Despite returning no
+        // notifs it's possible we advanced through expired timestamp messages
+        // and need to increment_storage to mark them as deleted
         if self.flags.increment_storage {
-            trace!("🗄️ WebPushClient:check_storage_loop increment_storage");
+            debug!("🗄️ WebPushClient:check_storage_loop increment_storage");
             self.increment_storage().await?;
         }
         Ok(vec![])
@@ -199,18 +188,6 @@ impl WebPushClient {
         } else {
             timestamp
         };
-        /*
-        // XXX: is_empty implied!! always true! wtf.
-        let resp = if resp.messages.is_empty() || resp.timestamp.is_some() {
-            debug!("🗄️ WebPushClient::do_check_storage: fetch_timestamp_messages");
-            self.app_state
-                .db
-                .fetch_timestamp_messages(&self.uaid, timestamp, 10)
-                .await?
-        } else {
-            Default::default()
-        };
-         */
         let resp = self
             .app_state
             .db
@@ -228,20 +205,6 @@ impl WebPushClient {
             messages: resp.messages,
             timestamp,
         })
-    }
-
-    /// Spawn a background task to remove a message from storage
-    fn spawn_remove_message(&self, sort_key: String) {
-        let db = self.app_state.db.clone();
-        let uaid = self.uaid;
-        rt::spawn(async move {
-            if db.remove_message(&uaid, &sort_key).await.is_ok() {
-                debug!(
-                    "Deleted expired message without sortkey_timestamp, sort_key: {}",
-                    sort_key
-                );
-            }
-        });
     }
 
     /// Ensure this user hasn't exceeded the maximum allowed number of messages
@@ -262,6 +225,20 @@ impl WebPushClient {
             return Err(SMError::UaidReset);
         }
         Ok(())
+    }
+
+    /// Spawn a background task to remove a message from storage
+    fn spawn_remove_message(&self, sort_key: String) {
+        let db = self.app_state.db.clone();
+        let uaid = self.uaid;
+        rt::spawn(async move {
+            if db.remove_message(&uaid, &sort_key).await.is_ok() {
+                debug!(
+                    "Deleted expired message without sortkey_timestamp, sort_key: {}",
+                    sort_key
+                );
+            }
+        });
     }
 
     /// Emit metrics for a Notification to be sent to the user

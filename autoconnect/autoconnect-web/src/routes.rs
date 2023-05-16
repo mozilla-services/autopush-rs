@@ -20,10 +20,10 @@ pub async fn push_route(
         .clients
         .notify(uaid.into_inner(), notif.into_inner())
         .await;
-        /*.map_or_else(
-            || HttpResponse::NotFound().body("Client not available"),
-            |_| HttpResponse::Ok().finish()
-        )*/
+    /*.map_or_else(
+        || HttpResponse::NotFound().body("Client not available"),
+        |_| HttpResponse::Ok().finish()
+    )*/
     if result.is_ok() {
         HttpResponse::Ok().finish()
     } else {

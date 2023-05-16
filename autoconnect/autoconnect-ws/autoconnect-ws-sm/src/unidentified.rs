@@ -100,7 +100,7 @@ impl UnidentifiedClient {
         trace!("❓UnidentifiedClient::get_or_create_user");
         let connected_at = ms_since_epoch();
 
-        let mut user_and_flags = None;
+        //let mut user_and_flags = None;
         if let Some(uaid) = uaid {
             let maybe_user = self.app_state.db.get_user(&uaid).await?;
             if let Some(user) = maybe_user {
@@ -112,12 +112,21 @@ impl UnidentifiedClient {
                 user.node_id = Some(self.app_state.router_url.to_owned());
                 user.connected_at = connected_at;
                 self.app_state.db.update_user(&user).await?;
-                user_and_flags = Some((user, flags))
+                //user_and_flags = Some((user, flags))
+                return Ok(GetOrCreateUser {
+                    user,
+                    existing_user: true,
+                    flags,
+                });
             }
+            // NOTE: when the client specified a uaid and get_user returns None
+            // we're now deferring registration (this is change from the
+            // previous state machine impl)
+            
         }
-        // NOTE: when a uaid is specified and get_user returns None we're now
-        // deferring registration (a change from previous versions)
         // XXX: user_is_registered -> existing_user?
+        /*
+
         let existing_user = user_and_flags.is_some();
         // XXX: could be unwrap_or(|| but that's also ugly
         let (mut user, flags) = user_and_flags.unwrap_or_default();
@@ -132,10 +141,22 @@ impl UnidentifiedClient {
             existing_user,
             flags,
         })
+         */
+        let user = User {
+            current_month: Some(self.app_state.db.message_table().to_owned()),
+            node_id: Some(self.app_state.router_url.to_owned()),
+            connected_at,
+            ..Default::default()
+        };
+        Ok(GetOrCreateUser {
+            user,
+            existing_user: false,
+            flags: Default::default(),
+        })
     }
 }
 
-/// Result of a User lookup for the Hello message
+/// Result of a User lookup for a Hello message
 struct GetOrCreateUser {
     user: User,
     existing_user: bool,

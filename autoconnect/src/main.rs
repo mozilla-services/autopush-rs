@@ -102,7 +102,9 @@ async fn main() -> Result<()> {
     .bind(("0.0.0.0", port))?
     .bind(("0.0.0.0", router_port))?
     .run()
-    .await.map_err(|e| e.into()).map(|v| {
+    .await
+    .map_err(|e| e.into())
+    .map(|v| {
         info!("Shutting down autoconnect");
         v
     })

@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use crate::db::client::DbClient;
 use crate::db::dynamodb::retry::{
-    retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
-    retryable_putitem_error, retryable_updateitem_error, retryable_batchwriteitem_error
+    retry_policy, retryable_batchwriteitem_error, retryable_delete_error,
+    retryable_describe_table_error, retryable_getitem_error, retryable_putitem_error,
+    retryable_updateitem_error,
 };
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
@@ -557,11 +558,7 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn save_messages(
-        &self,
-        uaid: &Uuid,
-        messages: Vec<Notification>,
-    ) -> DbResult<()> {
+    async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
         use rusoto_dynamodb::{BatchWriteItemInput, PutRequest, WriteRequest};
         let put_items: Vec<WriteRequest> = messages
             .into_iter()

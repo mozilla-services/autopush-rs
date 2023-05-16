@@ -198,9 +198,9 @@ impl WebPushClient {
     }
 }
 
-/// Ensure the user is not inactive and return its set of `ClientFlags`.
+/// Ensure an existing user's record is valid and return its `ClientFlags`
 ///
-/// Similar to autoendpoint's `validate_webpush_user` function
+/// Somewhat similar to autoendpoint's `validate_webpush_user` function
 pub async fn process_existing_user(
     app_state: &Arc<AppState>,
     mut user: User,

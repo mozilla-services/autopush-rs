@@ -1,6 +1,7 @@
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
-    BatchWriteItemError, DeleteItemError, DescribeTableError, GetItemError, PutItemError, QueryError, UpdateItemError,
+    BatchWriteItemError, DeleteItemError, DescribeTableError, GetItemError, PutItemError,
+    QueryError, UpdateItemError,
 };
 use thiserror::Error;
 
