@@ -14,7 +14,7 @@ pub enum SMError {
     #[error("Internal error: {0}")]
     Internal(String),
 
-    #[error("Reqwest error: {:?}", _0)]
+    #[error("Reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
 
     #[error("UAID dropped")]

@@ -1,17 +1,19 @@
 use std::{fmt, sync::Arc};
 
 use cadence::CountedExt;
+use uuid::Uuid;
 
 use autoconnect_common::protocol::{ClientMessage, ServerMessage};
 use autoconnect_settings::AppState;
-use autopush_common::util::ms_since_epoch;
+use autopush_common::{
+    db::{error::DbResult, User},
+    util::ms_since_epoch,
+};
 
-use crate::{error::SMError, identified::WebPushClient};
-
-// XXX:
-use crate::identified::ClientFlags;
-use autopush_common::db::{error::DbResult, User};
-use uuid::Uuid;
+use crate::{
+    error::SMError,
+    identified::{process_existing_user, ClientFlags, WebPushClient},
+};
 
 /// Represents a Client waiting for (or yet to process) a Hello message
 /// identifying itself
@@ -34,6 +36,10 @@ impl UnidentifiedClient {
         UnidentifiedClient { ua, app_state }
     }
 
+    /// Handle a WebPush `ClientMessage` sent from the user agent over the
+    /// WebSocket for this user
+    ///
+    /// Anything but a Hello message is rejected as an Error
     pub async fn on_client_msg(
         self,
         msg: ClientMessage,
@@ -56,7 +62,7 @@ impl UnidentifiedClient {
 
         let uaid = uaid
             .as_deref()
-            .map(uuid::Uuid::try_parse)
+            .map(Uuid::try_parse)
             .transpose()
             .map_err(|_| SMError::InvalidMessage("Invalid uaid".to_owned()))?;
 
@@ -65,10 +71,9 @@ impl UnidentifiedClient {
             existing_user,
             flags,
         } = self.get_or_create_user(uaid).await?;
-        // XXX: what about set_last_connect? should be set before writing, same with connected_at I think
         let uaid = user.uaid;
         debug!(
-            "💬UnidentifiedClient::on_client_msg Hello! uaid: {:?} existing_user: {}",
+            "💬UnidentifiedClient::on_client_msg Hello! uaid: {} existing_user: {}",
             uaid, existing_user,
         );
 
@@ -100,48 +105,34 @@ impl UnidentifiedClient {
         trace!("❓UnidentifiedClient::get_or_create_user");
         let connected_at = ms_since_epoch();
 
-        //let mut user_and_flags = None;
         if let Some(uaid) = uaid {
+            // NOTE: previously a user would be dropped when
+            // serde_dynamodb::from_hashmap failed (but this now occurs inside
+            // the db impl)
             let maybe_user = self.app_state.db.get_user(&uaid).await?;
             if let Some(user) = maybe_user {
-                use crate::identified::process_existing_user;
-                let (mut user, flags) = process_existing_user(&self.app_state, user).await?;
-                // XXX: set_last_connect here instead?
-                // XXX: followup it would be nice to consolidate this
-                // with the !existing_user block below
-                user.node_id = Some(self.app_state.router_url.to_owned());
-                user.connected_at = connected_at;
-                self.app_state.db.update_user(&user).await?;
-                //user_and_flags = Some((user, flags))
-                return Ok(GetOrCreateUser {
-                    user,
-                    existing_user: true,
-                    flags,
-                });
+                if let Some((mut user, flags)) =
+                    process_existing_user(&self.app_state, user).await?
+                {
+                    user.node_id = Some(self.app_state.router_url.to_owned());
+                    user.connected_at = connected_at;
+                    user.set_last_connect();
+                    self.app_state.db.update_user(&user).await?;
+                    return Ok(GetOrCreateUser {
+                        user,
+                        existing_user: true,
+                        flags,
+                    });
+                }
             }
             // NOTE: when the client specified a uaid and get_user returns None
-            // we're now deferring registration (this is change from the
-            // previous state machine impl)
-            
+            // (or process_existing_user dropped the user record because it was
+            // invalid) we're now deferring registration (this is change from
+            // the previous state machine impl)
         }
-        // XXX: user_is_registered -> existing_user?
-        /*
 
-        let existing_user = user_and_flags.is_some();
-        // XXX: could be unwrap_or(|| but that's also ugly
-        let (mut user, flags) = user_and_flags.unwrap_or_default();
-        if !existing_user {
-            user.current_month = Some(self.app_state.db.message_table().to_owned());
-            user.node_id = Some(self.app_state.router_url.to_owned());
-            user.connected_at = connected_at;
-        }
-        //Ok((user, existing_user, flags))
-        Ok(GetOrCreateUser {
-            user,
-            existing_user,
-            flags,
-        })
-         */
+        // TODO: NOTE: A new User doesn't get a `set_last_connect()` (matching
+        // the previous impl)
         let user = User {
             current_month: Some(self.app_state.db.message_table().to_owned()),
             node_id: Some(self.app_state.router_url.to_owned()),
@@ -199,7 +190,6 @@ mod tests {
 
     #[tokio::test]
     async fn hello_existing_user() {
-        autopush_common::logging::init_logging(false).unwrap();
         let client = uclient(AppState {
             db: hello_again_db(DUMMY_UAID).into_boxed_arc(),
             ..Default::default()

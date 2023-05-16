@@ -1,4 +1,3 @@
-#![warn(unused_extern_crates)]
 /// Handles most of the web interface aspects including
 /// handling dockerflow endpoints, `/push/' and `/notif' endpoints
 /// (used for inter-node routing)

@@ -644,7 +644,6 @@ dependencies = [
  "autopush_common",
  "cadence",
  "reqwest 0.11.16",
- "slog-envlogger",
  "slog-scope",
  "thiserror",
  "tokio 1.27.0",

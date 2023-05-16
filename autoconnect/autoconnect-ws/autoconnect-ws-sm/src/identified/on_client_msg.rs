@@ -187,7 +187,6 @@ impl WebPushClient {
                     "version" => &notif.version
                 );
                 let n = &self.ack_state.unacked_stored_notifs[pos];
-                debug!("ZZZZZ: check: {} {:#?}", self.flags.check_storage, &n);
                 // Topic/legacy messages have no sortkey_timestamp
                 if n.sortkey_timestamp.is_none() {
                     debug!("Removing sort_key: {}", &n.sort_key());
@@ -195,7 +194,7 @@ impl WebPushClient {
                         .db
                         .remove_message(&self.uaid, &n.sort_key())
                         .await?;
-                    // XXX: incr_with_tags("notification.message.deleted") with_tag("topic"
+                    // TODO: incr_with_tags("notification.message.deleted") with_tag("topic"
                 }
                 self.ack_state.unacked_stored_notifs.remove(pos);
                 self.stats.stored_acked += 1;
@@ -283,20 +282,5 @@ impl WebPushClient {
         } else {
             Ok(vec![])
         }
-    }
-
-    /// XXX: should move back to on_server_notif?
-    /// Update the user's last message read timestamp (for timestamp messages)
-    /// TODO: more docs
-    pub(super) async fn increment_storage(&mut self) -> Result<(), SMError> {
-        let Some(timestamp) = self.ack_state.unacked_stored_highest else {
-            return Err(SMError::Internal("increment_storage w/ no unacked_stored_highest".to_owned()));
-        };
-        self.app_state
-            .db
-            .increment_storage(&self.uaid, timestamp)
-            .await?;
-        self.flags.increment_storage = false;
-        Ok(())
     }
 }

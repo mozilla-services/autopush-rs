@@ -10,7 +10,7 @@ authors.workspace = true
 actix-web.workspace = true
 actix-ws.workspace = true
 cadence.workspace = true
-reqwest.workspace = true  # XXX:
+reqwest.workspace = true
 slog-scope.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
@@ -21,9 +21,6 @@ autopush_common.workspace = true
 
 [dev-dependencies]
 actix-rt.workspace = true
-#env_logger.workspace = true
-#test-log = "0.2"
-slog-envlogger = "2.2"
 tokio.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }

@@ -207,6 +207,20 @@ impl WebPushClient {
         })
     }
 
+    /// Update the user's last message read timestamp (for timestamp messages)
+    /// TODO: more docs
+    pub(super) async fn increment_storage(&mut self) -> Result<(), SMError> {
+        let Some(timestamp) = self.ack_state.unacked_stored_highest else {
+            return Err(SMError::Internal("increment_storage w/ no unacked_stored_highest".to_owned()));
+        };
+        self.app_state
+            .db
+            .increment_storage(&self.uaid, timestamp)
+            .await?;
+        self.flags.increment_storage = false;
+        Ok(())
+    }
+
     /// Ensure this user hasn't exceeded the maximum allowed number of messages
     /// read from storage (`Settings::msg_limit`)
     ///
