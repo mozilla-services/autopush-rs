@@ -66,6 +66,11 @@ ROUTER_PORT = 9170
 MP_CONNECTION_PORT = 9052
 MP_ROUTER_PORT = 9072
 
+CONNECTION_BINARY = os.environ.get("CONNECTION_BINARY", "autopush_rs")
+CONNECTION_SETTINGS_PREFIX = os.environ.get(
+    "CONNECTION_SETTINGS_PREFIX", "autopush__"
+)
+
 CN_SERVER: Optional[subprocess.Popen] = None
 CN_MP_SERVER: Optional[subprocess.Popen] = None
 EP_SERVER: Optional[subprocess.Popen] = None
@@ -101,7 +106,6 @@ CONNECTION_CONFIG: dict[str, str | int | float] = dict(
     endpoint_port=ENDPOINT_PORT,
     router_port=ROUTER_PORT,
     endpoint_scheme="http",
-    statsd_host="",
     router_tablename=ROUTER_TABLE,
     message_tablename=MESSAGE_TABLE,
     crypto_key="[{}]".format(CRYPTO_KEY),
@@ -111,6 +115,15 @@ CONNECTION_CONFIG: dict[str, str | int | float] = dict(
     max_connections=5000,
     human_logs="true",
     msg_limit=MSG_LIMIT,
+    # new autoconnect
+    db_dsn="http://127.0.0.1:8000",
+    db_settings=json.dumps(
+        dict(
+            router_table=ROUTER_TABLE,
+            message_table=MESSAGE_TABLE,
+            current_message_month=MESSAGE_TABLE,
+        )
+    ),
 )
 
 """Connection Megaphone Config:
@@ -240,7 +253,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             self.channels[chid] = result["pushEndpoint"]
         return result
 
-
     def unregister(self, chid):
         msg = json.dumps(dict(messageType="unregister", channelID=chid))
         log.debug("Send: %s", msg)
@@ -248,7 +260,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         result = json.loads(self.ws.recv())
         log.debug("Recv: %s", result)
         return result
-
 
     def delete_notification(self, channel, message=None, status=204):
         messages = self.messages[channel]
@@ -362,7 +373,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         finally:
             self.ws.settimeout(orig_timeout)
 
-
     def ping(self):
         log.debug("Send: %s", "{}")
         self.ws.send("{}")
@@ -456,7 +466,7 @@ def process_logs(testcase):
     conn_count = sum(queue.qsize() for queue in CN_QUEUES)
     endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
 
-    print_lines_in_queues(CN_QUEUES, "AUTOPUSH: ")
+    print_lines_in_queues(CN_QUEUES, f"{CONNECTION_BINARY.upper()}: ")
     print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
 
     if not STRICT_LOG_COUNTS:
@@ -593,7 +603,7 @@ def setup_mock_server():
     MOCK_SERVER_THREAD = Thread(
         target=app.run, kwargs=dict(port=MOCK_SERVER_PORT, debug=True)
     )
-    MOCK_SERVER_THREAD.setDaemon(True)
+    MOCK_SERVER_THREAD.daemon = True
     MOCK_SERVER_THREAD.start()
 
     # Sentry API mock
@@ -615,10 +625,10 @@ def setup_connection_server(connection_binary):
         CONNECTION_CONFIG["hostname"] = parsed.hostname
         CONNECTION_CONFIG["port"] = parsed.port
         CONNECTION_CONFIG["endpoint_scheme"] = parsed.scheme
-        write_config_to_env(CONNECTION_CONFIG, "autopush__")
+        write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
         return
     else:
-        write_config_to_env(CONNECTION_CONFIG, "autopush__")
+        write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
     CN_SERVER = subprocess.Popen(
         cmd,
@@ -648,10 +658,10 @@ def setup_megaphone_server(connection_binary):
         if url is not None:
             parsed = urlparse(url)
             MEGAPHONE_CONFIG["endpoint_port"] = parsed.port
-        write_config_to_env(MEGAPHONE_CONFIG, "autopush__")
+        write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
         return
     else:
-        write_config_to_env(MEGAPHONE_CONFIG, "autopush__")
+        write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
 
@@ -708,7 +718,7 @@ def setup_module():
     setup_mock_server()
 
     os.environ["RUST_LOG"] = RUST_LOG
-    connection_binary = get_rust_binary_path("autopush_rs")
+    connection_binary = get_rust_binary_path(CONNECTION_BINARY)
     setup_connection_server(connection_binary)
     setup_megaphone_server(connection_binary)
     setup_endpoint_server()
