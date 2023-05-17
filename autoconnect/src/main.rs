@@ -90,7 +90,10 @@ async fn main() -> Result<()> {
     let app_state = AppState::from_settings(settings)?;
     let _client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
 
-    info!("Starting autoconnect on port {:?}", port);
+    info!(
+        "Starting autoconnect on port {} (router_port: {})",
+        port, router_port
+    );
     HttpServer::new(move || {
         let app = build_app!(app_state);
         // TODO: should live in build_app!
