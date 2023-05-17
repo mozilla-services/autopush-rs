@@ -126,9 +126,9 @@ impl UnidentifiedClient {
                 }
             }
             // NOTE: when the client's specified a uaid but get_user returns
-            // None (or process_existing_user dropped the user record because
-            // it was invalid) we're now deferring registration (a change from
-            // the previous state machine impl)
+            // None (or process_existing_user dropped the user record due to it
+            // being invalid) we're now deferring the db.add_user call (a
+            // change from the previous state machine impl)
         }
 
         // TODO: NOTE: A new User doesn't get a `set_last_connect()` (matching
