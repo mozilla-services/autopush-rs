@@ -277,6 +277,7 @@ fn validate_vapid_jwt(
                     .clone()
                     .incr_with_tags("notification.auth.bad_vapid.json", Some(tags));
                 if e.is_data() {
+                    debug!("VAPID data warning: {:?}", e);
                     return Err(VapidError::InvalidVapid(
                         "A value in the vapid claims is either missing or incorrectly specified (e.g. \"exp\":\"12345\" or \"sub\":null). Please correct and retry.".to_owned(),
                     )
