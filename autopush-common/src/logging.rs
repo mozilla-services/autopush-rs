@@ -47,3 +47,15 @@ pub fn reset_logging() {
     let logger = slog::Logger::root(slog::Discard, o!());
     slog_scope::set_global_logger(logger).cancel_reset();
 }
+
+/// Initialize logging to `slog_term::TestStdoutWriter` for tests
+///
+/// Note: unfortunately this disables slog's `TermDecorator` (which can't be
+/// captured by cargo test) color output
+pub fn init_test_logging() {
+    let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
+    let drain = std::sync::Mutex::new(slog_term::FullFormat::new(decorator).build()).fuse();
+    let logger = slog::Logger::root(drain, slog::o!());
+    slog_scope::set_global_logger(logger).cancel_reset();
+    slog_stdlog::init().ok();
+}

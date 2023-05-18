@@ -10,7 +10,10 @@ use autoconnect_settings::AppState;
 
 mod error;
 mod handler;
+mod ping;
 mod session;
+#[cfg(test)]
+mod test;
 
 /// Handles connected WebSocket clients to a WebPush server
 pub async fn ws_handler(

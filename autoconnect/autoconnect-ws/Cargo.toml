@@ -28,5 +28,7 @@ autoconnect_ws_sm = { path = "./autoconnect-ws-sm" }
 
 [dev-dependencies]
 async-stream = "0.3"
+ctor.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
+autopush_common.workspace = true

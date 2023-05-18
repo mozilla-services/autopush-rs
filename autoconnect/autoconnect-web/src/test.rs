@@ -10,6 +10,11 @@ use autopush_common::notification::Notification;
 
 use crate::{build_app, config};
 
+#[ctor::ctor]
+fn init_test_logging() {
+    autopush_common::logging::init_test_logging();
+}
+
 fn test_server(app_state: AppState) -> TestServer {
     actix_test::start(move || build_app!(app_state))
 }

@@ -2,11 +2,15 @@ use std::{fmt, mem, sync::Arc};
 
 use actix_web::rt;
 use cadence::{CountedExt, Timed};
+use futures::channel::mpsc;
 use uuid::Uuid;
 
-use autoconnect_common::protocol::ServerMessage;
+use autoconnect_common::{
+    broadcast::{Broadcast, BroadcastSubs},
+    protocol::{ServerMessage, ServerNotification},
+};
 
-use autoconnect_settings::AppState;
+use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
     db::{error::DbResult, User, USER_RECORD_VERSION},
     notification::Notification,
@@ -36,8 +40,12 @@ pub struct WebPushClient {
     /// The User Agent information block derived from the User-Agent header
     pub ua_info: UserAgentInfo,
 
-    //broadcast_subs: BroadcastSubs,
+    /// Broadcast Subscriptions this Client is subscribed to
+    broadcast_subs: BroadcastSubs,
+
+    /// Set of session specific flags
     flags: ClientFlags,
+    /// Notification Ack(knowledgement) related state
     ack_state: AckState,
     /// Count of messages sent from storage (for enforcing
     /// `settings.msg_limit`). Resets to 0 when storage is emptied
@@ -55,7 +63,7 @@ pub struct WebPushClient {
     /// Timestamp of the last WebPush Ping message
     last_ping: u64,
 
-    pub app_state: Arc<AppState>,
+    app_state: Arc<AppState>,
 }
 
 impl fmt::Debug for WebPushClient {
@@ -64,7 +72,7 @@ impl fmt::Debug for WebPushClient {
             .field("uaid", &self.uaid)
             .field("uid", &self.uid)
             .field("ua_info", &self.ua_info)
-            //.field("broadcast_subs", &self.broadcast_subs)
+            .field("broadcast_subs", &self.broadcast_subs)
             .field("flags", &self.flags)
             .field("ack_state", &self.ack_state)
             .field("sent_from_storage", &self.sent_from_storage)
@@ -80,6 +88,7 @@ impl WebPushClient {
     pub async fn new(
         uaid: Uuid,
         ua: String,
+        broadcast_subs: BroadcastSubs,
         flags: ClientFlags,
         connected_at: u64,
         deferred_add_user: Option<User>,
@@ -94,6 +103,7 @@ impl WebPushClient {
             uaid,
             uid: Uuid::new_v4(),
             ua_info: UserAgentInfo::from(ua.as_str()),
+            broadcast_subs,
             flags,
             ack_state: Default::default(),
             sent_from_storage: Default::default(),
@@ -105,15 +115,43 @@ impl WebPushClient {
         };
 
         let smsgs = if client.flags.check_storage {
-            client.check_storage().await?
+            let smsgs = client.check_storage().await?;
+            debug!(
+                "WebPushClient::new: check_storage smsgs.len(): {}",
+                smsgs.len()
+            );
+            smsgs
         } else {
             vec![]
         };
-        debug!(
-            "WebPushClient::new: Initial check_storage smsgs count: {}",
-            smsgs.len()
-        );
         Ok((client, smsgs))
+    }
+
+    /// Connect this `WebPushClient` to the `ClientRegistry`
+    ///
+    /// Returning a `Stream` of `ServerNotification`s from it
+    pub async fn registry_connect(&self) -> mpsc::UnboundedReceiver<ServerNotification> {
+        self.app_state.clients.connect(self.uaid, self.uid).await
+    }
+
+    /// Disconnect this `WebPushClient` from the `ClientRegistry`
+    pub async fn registry_disconnect(&self) {
+        // Ignore disconnect (Client wasn't connected) Errors
+        let _ = self
+            .app_state
+            .clients
+            .disconnect(&self.uaid, &self.uid)
+            .await;
+    }
+
+    /// Return the difference between the Client's Broadcast Subscriptions and
+    /// the this server's Broadcasts
+    pub async fn broadcast_delta(&mut self) -> Option<Vec<Broadcast>> {
+        self.app_state
+            .broadcaster
+            .read()
+            .await
+            .change_count_delta(&mut self.broadcast_subs)
     }
 
     /// Cleanup after the session has ended
@@ -201,6 +239,11 @@ impl WebPushClient {
             }
             Ok(())
         });
+    }
+
+    /// Return a reference to `AppState`'s `Settings`
+    pub fn app_settings(&self) -> &Settings {
+        &self.app_state.settings
     }
 }
 
@@ -328,6 +371,7 @@ mod tests {
             uaid,
             UA.to_owned(),
             Default::default(),
+            Default::default(),
             ms_since_epoch(),
             None,
             Arc::new(app_state),
@@ -362,6 +406,7 @@ mod tests {
         db.expect_fetch_timestamp_messages()
             .times(1)
             .in_sequence(&mut seq)
+            .withf(move |_, ts, _| ts.is_none())
             .return_once(move |_, _, _| {
                 Ok(FetchMessageResponse {
                     timestamp: Some(timestamp),
@@ -401,7 +446,7 @@ mod tests {
         let smsgs = client
             .on_server_notif(ServerNotification::CheckStorage)
             .await
-            .unwrap();
+            .expect("CheckStorage failed");
         assert!(smsgs.is_empty())
     }
 }
