@@ -86,24 +86,17 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
 
 /// Create a normalized index key.
 fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, sort_key: Option<String>) -> String {
-    if let Some(sort_key) = sort_key {
-        format!(
-            "{}#{}#{}",
-            uaid.simple(),
-            channel_id
-                .map(|v| v.simple().to_string())
-                .unwrap_or_else(|| "".to_owned()),
-            &sort_key
-        )
-    } else {
-        format!(
-            "{}#{}",
-            uaid.simple(),
-            channel_id
-                .map(|v| v.simple().to_string())
-                .unwrap_or_else(|| "".to_owned())
-        )
+    let mut parts: Vec<String> = Vec::new();
+    parts.push(uaid.simple().to_string());
+    if let Some(channel_id) = channel_id {
+        parts.push(channel_id.simple().to_string());
+    } else if sort_key.is_some() {
+        parts.push("".to_string())
     }
+    if let Some(sort_key) = sort_key {
+        parts.push(sort_key)
+    }
+    parts.join("#")
 }
 
 /// Connect to a BigTable storage model.
@@ -696,7 +689,7 @@ impl DbClient for BigTableClientImpl {
             &uaid.simple().to_string(),
             UNIX_EPOCH + Duration::from_secs(connected_at)
         );
-        let row_key = uaid.simple().to_string();
+        let row_key = as_key(uaid, None, None);
         let mut time_range = data::TimestampRange::default();
         // convert connected at seconds into microseconds
         time_range.set_end_timestamp_micros((connected_at * 1000000) as i64);
@@ -805,6 +798,46 @@ impl DbClient for BigTableClientImpl {
         }
         row.add_cells(family, cells);
         trace!("Adding row");
+        self.write_row(row).await.map_err(|e| e.into())
+    }
+
+    /// Save a batch of messages to the database.
+    ///
+    /// Currently just iterating through the list and saving one at a time. There's a bulk way
+    /// to save messages, but there are other considerations (e.g. mutation limits)
+    async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
+        // plate simple way of solving this:
+        for message in messages {
+            self.save_message(uaid, message).await?;
+        }
+        Ok(())
+    }
+
+    /// Set the timestamp in the meta record for this user agent.
+    ///
+    /// This is a bit different for BigTable. Field expiration (technically cell
+    /// expiration) is determined by the lifetime assigned to the cell once it hits
+    /// a given date. That means you can't really extend a lifetime by adjusting a
+    /// single field. You'd have to adjust all the cells that are in the family.
+    /// So, we're not going to do expiration that way.
+    ///
+    /// That leave the meta "timestamp" field. We can adjust that, but I don't think
+    /// that we currently use it for any active queries.
+    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
+        let mut row = Row {
+            row_key: as_key(uaid, None, None),
+            ..Default::default()
+        };
+
+        row.cells.insert(
+            MESSAGE_FAMILY.to_owned(),
+            vec![cell::Cell {
+                family: MESSAGE_FAMILY.to_owned(),
+                qualifier: "timestamp".to_owned(),
+                value: timestamp.to_be_bytes().to_vec(),
+                ..Default::default()
+            }],
+        );
         self.write_row(row).await.map_err(|e| e.into())
     }
 

@@ -11,6 +11,12 @@ pub enum SMError {
     #[error("Invalid WebPush message: {0}")]
     InvalidMessage(String),
 
+    #[error("Internal error: {0}")]
+    Internal(String),
+
+    #[error("Reqwest error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+
     #[error("UAID dropped")]
     UaidReset,
 

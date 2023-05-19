@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use crate::db::client::DbClient;
 use crate::db::dynamodb::retry::{
-    retry_policy, retryable_delete_error, retryable_describe_table_error, retryable_getitem_error,
-    retryable_putitem_error, retryable_updateitem_error,
+    retry_policy, retryable_batchwriteitem_error, retryable_delete_error,
+    retryable_describe_table_error, retryable_getitem_error, retryable_putitem_error,
+    retryable_updateitem_error,
 };
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
@@ -16,21 +17,20 @@ use crate::db::{
 use crate::notification::Notification;
 use crate::util::sec_since_epoch;
 
+use super::util::generate_last_connect;
+use super::{HelloResponse, USER_RECORD_VERSION};
 use async_trait::async_trait;
-// use crate::db::dynamodb::{ddb_item, hashmap, val};
 use cadence::{CountedExt, StatsdClient};
 use chrono::Utc;
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
-    AttributeValue, DeleteItemInput, DescribeTableError, DescribeTableInput, DynamoDb,
-    DynamoDbClient, GetItemInput, ListTablesInput, PutItemInput, QueryInput, UpdateItemInput,
+    AttributeValue, BatchWriteItemInput, DeleteItemInput, DescribeTableError, DescribeTableInput,
+    DynamoDb, DynamoDbClient, GetItemInput, ListTablesInput, PutItemInput, PutRequest, QueryInput,
+    UpdateItemInput, WriteRequest,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-use super::util::generate_last_connect;
-use super::{HelloResponse, USER_RECORD_VERSION};
 
 #[macro_use]
 pub mod macros;
@@ -510,6 +510,35 @@ impl DbClient for DdbClientImpl {
         })
     }
 
+    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
+        let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
+        let attr_values = hashmap! {
+            ":timestamp".to_string() => val!(N => timestamp.to_string()),
+            ":expiry".to_string() => val!(N => expiry),
+        };
+        let update_input = UpdateItemInput {
+            key: ddb_item! {
+                uaid: s => uaid.as_simple().to_string(),
+                chidmessageid: s => " ".to_string()
+            },
+            update_expression: Some(
+                "SET current_timestamp = :timestamp, expiry = :expiry".to_string(),
+            ),
+            expression_attribute_values: Some(attr_values),
+            table_name: self.settings.message_table.clone(),
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.db_client.update_item(update_input.clone()),
+                retryable_updateitem_error(self.metrics.clone()),
+            )
+            .await?;
+
+        Ok(())
+    }
+
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
         let topic = message.topic.is_some().to_string();
         let input = PutItemInput {
@@ -529,6 +558,37 @@ impl DbClient for DdbClientImpl {
             .incr_with_tags("notification.message.stored")
             .with_tag("topic", &topic)
             .send();
+        Ok(())
+    }
+
+    async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
+        let put_items: Vec<WriteRequest> = messages
+            .into_iter()
+            .filter_map(|n| {
+                // eventually include `internal` if `meta` defined.
+                self.metrics
+                    .incr_with_tags("notification.message.stored")
+                    .with_tag("topic", &n.topic.is_some().to_string())
+                    .send();
+                serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(uaid, n))
+                    .ok()
+                    .map(|hm| WriteRequest {
+                        put_request: Some(PutRequest { item: hm }),
+                        delete_request: None,
+                    })
+            })
+            .collect();
+        let batch_input = BatchWriteItemInput {
+            request_items: hashmap! { self.settings.message_table.clone() => put_items },
+            ..Default::default()
+        };
+
+        retry_policy()
+            .retry_if(
+                || self.db_client.batch_write_item(batch_input.clone()),
+                retryable_batchwriteitem_error(self.metrics.clone()),
+            )
+            .await?;
         Ok(())
     }
 
@@ -705,7 +765,7 @@ impl DbClient for DdbClientImpl {
 }
 
 /// Indicate whether this last_connect falls in the current month
-fn has_connected_this_month(user: &User) -> bool {
+pub(crate) fn has_connected_this_month(user: &User) -> bool {
     user.last_connect.map_or(false, |v| {
         let pat = Utc::now().format("%Y%m").to_string();
         v.to_string().starts_with(&pat)

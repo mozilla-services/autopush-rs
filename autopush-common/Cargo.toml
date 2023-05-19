@@ -23,6 +23,7 @@ httparse.workspace = true
 hyper.workspace = true
 lazy_static.workspace = true
 log.workspace = true
+mockall.workspace = true
 openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
@@ -57,7 +58,6 @@ async-trait = "0.1"
 futures-backoff = "0.1.0"
 mozsvc-common = "0.2"
 woothee = "0.13"
-mockall = "0.8.3"  # 0.9+ requires reworking tests
 
 # #[cfg(bigtable)] for this section.
 # the following three crates must match what is specifed in google-cloud-rust-raw's dependencies

@@ -38,6 +38,12 @@ mockall::mock! {
 
         fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()>;
 
+        fn save_messages(
+            &self,
+            uaid: &Uuid,
+            messages: Vec<Notification>,
+        ) -> DbResult<()>;
+
         fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>;
 
         fn fetch_timestamp_messages(
@@ -46,6 +52,8 @@ mockall::mock! {
             timestamp: Option<u64>,
             limit: usize,
         ) -> DbResult<FetchMessageResponse>;
+
+        fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()>;
 
         fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;
 
@@ -115,6 +123,10 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).save_message(uaid, message)
     }
 
+    async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
+        Arc::as_ref(self).save_messages(uaid, messages)
+    }
+
     async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
         Arc::as_ref(self).fetch_messages(uaid, limit)
     }
@@ -126,6 +138,10 @@ impl DbClient for Arc<MockDbClient> {
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
         Arc::as_ref(self).fetch_timestamp_messages(uaid, timestamp, limit)
+    }
+
+    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
+        Arc::as_ref(self).increment_storage(uaid, timestamp)
     }
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
