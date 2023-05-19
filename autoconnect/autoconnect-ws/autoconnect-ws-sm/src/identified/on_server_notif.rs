@@ -156,34 +156,39 @@ impl WebPushClient {
     }
 
     /// Read a chunk (max count 10 returned) of Notifications from storage
+    ///
+    /// TODO: document topic vs timestamp messages
     async fn do_check_storage(&self) -> Result<CheckStorageResponse, SMError> {
         trace!("🗄️ WebPushClient::do_check_storage");
         let timestamp = self.ack_state.unacked_stored_highest;
-        let resp = if self.flags.include_topic {
+        let topic_resp = if self.flags.include_topic {
             trace!("🗄️ WebPushClient::do_check_storage: fetch_messages");
             self.app_state.db.fetch_messages(&self.uaid, 11).await?
         } else {
             Default::default()
         };
-        if !resp.messages.is_empty() {
+        if !topic_resp.messages.is_empty() {
             trace!(
                 "🗄️ WebPushClient::do_check_storage: Topic message returns: {:#?}",
-                resp.messages
+                topic_resp.messages
             );
             self.app_state
                 .metrics
-                .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
+                .count_with_tags(
+                    "notification.message.retrieved",
+                    topic_resp.messages.len() as i64,
+                )
                 .with_tag("topic", "true")
                 .send();
             return Ok(CheckStorageResponse {
                 include_topic: true,
-                messages: resp.messages,
-                timestamp: resp.timestamp,
+                messages: topic_resp.messages,
+                timestamp: topic_resp.timestamp,
             });
         }
 
         let timestamp = if self.flags.include_topic {
-            resp.timestamp
+            topic_resp.timestamp
         } else {
             timestamp
         };
@@ -191,29 +196,32 @@ impl WebPushClient {
             "🗄️ WebPushClient::do_check_storage: fetch_timestamp_messages timestamp: {:?}",
             timestamp
         );
-        let resp = self
+        let timestamp_resp = self
             .app_state
             .db
             .fetch_timestamp_messages(&self.uaid, timestamp, 10)
             .await?;
-        if !resp.messages.is_empty() {
+        if !timestamp_resp.messages.is_empty() {
             trace!(
                 "🗄️ WebPushClient::do_check_storage: Timestamp message returns: {:#?}",
-                resp.messages
+                timestamp_resp.messages
             );
             self.app_state
                 .metrics
-                .count_with_tags("notification.message.retrieved", resp.messages.len() as i64)
+                .count_with_tags(
+                    "notification.message.retrieved",
+                    timestamp_resp.messages.len() as i64,
+                )
                 .with_tag("topic", "false")
                 .send();
         }
 
         Ok(CheckStorageResponse {
             include_topic: false,
-            messages: resp.messages,
+            messages: timestamp_resp.messages,
             // If we didn't get a timestamp off the last query, use the
             // original value if passed one
-            timestamp: resp.timestamp.or(timestamp),
+            timestamp: timestamp_resp.timestamp.or(timestamp),
         })
     }
 

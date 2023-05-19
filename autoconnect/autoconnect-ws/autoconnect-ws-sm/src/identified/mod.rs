@@ -119,10 +119,7 @@ impl WebPushClient {
     /// Cleanup after the session has ended
     pub fn shutdown(&mut self, reason: Option<String>) {
         trace!("WebPushClient::shutdown");
-        // Save any unAck'd Direct notifs
-        if !self.ack_state.unacked_direct_notifs.is_empty() {
-            self.save_and_notify_unacked_direct_notifs();
-        }
+        self.save_and_notify_unacked_direct_notifs();
 
         let ua_info = &self.ua_info;
         let stats = &self.stats;
@@ -163,8 +160,15 @@ impl WebPushClient {
     /// Direct messages are solely stored in memory until Ack'd by the Client,
     /// so on shutdown, any not Ack'd are stored in the db to not be lost
     fn save_and_notify_unacked_direct_notifs(&mut self) {
-        trace!("WebPushClient::save_and_notify_unacked_direct_notifs");
         let mut notifs = mem::take(&mut self.ack_state.unacked_direct_notifs);
+        trace!(
+            "WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
+            notifs.len()
+        );
+        if notifs.is_empty() {
+            return;
+        }
+
         self.stats.direct_storage += notifs.len() as i32;
         // TODO: clarify this comment re the Python version
         // Ensure we don't store these as legacy by setting a 0 as the
