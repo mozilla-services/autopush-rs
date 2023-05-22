@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use autopush_common::db::{mock::MockDbClient, HelloResponse};
+use autopush_common::db::{mock::MockDbClient, User};
 
 pub const UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/110.0";
@@ -15,20 +15,37 @@ pub const HELLO: &str = r#"{"messageType": "hello", "use_webpush": true}"#;
 pub const HELLO_AGAIN: &str = r#"{"messageType": "hello", "use_webpush": true,
                                   "uaid": "deadbeef-0000-0000-deca-fbad00000000"}"#;
 
+pub const CURRENT_MONTH: &str = "message_2018_06";
+
 /// Return a simple MockDbClient that responds to hello (once) with a new uaid.
 pub fn hello_db() -> MockDbClient {
-    hello_again_db(uuid::Uuid::new_v4())
+    let mut db = MockDbClient::new();
+    db.expect_message_table()
+        .times(1)
+        .return_const(CURRENT_MONTH.to_owned());
+    db
 }
 
 /// Return a simple MockDbClient that responds to hello (once) with the
 /// specified uaid.
 pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     let mut db = MockDbClient::new();
-    db.expect_hello().times(1).return_once(move |_, _, _, _| {
-        Ok(HelloResponse {
-            uaid: Some(uaid),
+    db.expect_get_user().times(1).return_once(move |_| {
+        Ok(Some(User {
+            uaid,
+            current_month: Some(CURRENT_MONTH.to_owned()),
             ..Default::default()
-        })
+        }))
     });
+    db.expect_message_table()
+        .times(1)
+        .return_const(CURRENT_MONTH.to_owned());
+    db.expect_update_user().times(1).return_once(|_| Ok(()));
+    db.expect_fetch_messages()
+        .times(1)
+        .return_once(|_, _| Ok(Default::default()));
+    db.expect_fetch_timestamp_messages()
+        .times(1)
+        .return_once(|_, _, _| Ok(Default::default()));
     db
 }

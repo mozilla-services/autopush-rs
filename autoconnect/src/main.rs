@@ -15,7 +15,10 @@ use std::sync::RwLock;
 
 use autoconnect_settings::{AppState, Settings};
 use autoconnect_web::{build_app, client::ClientChannels, config};
-use autopush_common::errors::{ApcErrorKind, Result};
+use autopush_common::{
+    errors::{ApcErrorKind, Result},
+    logging,
+};
 
 mod middleware;
 
@@ -52,6 +55,8 @@ async fn main() -> Result<()> {
     }
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
+    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+    debug!("Starting up...");
 
     //TODO: Eventually this will match between the various storage engines that
     // we support. For now, it's just the one, DynamoDB.
@@ -81,11 +86,15 @@ async fn main() -> Result<()> {
     });
 
     let port = settings.port;
+    let router_port = settings.router_port;
     let app_state = AppState::from_settings(settings)?;
     let _client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
 
-    info!("Starting autoconnect on port {:?}", port);
-    let srv = HttpServer::new(move || {
+    info!(
+        "Starting autoconnect on port {} (router_port: {})",
+        port, router_port
+    );
+    HttpServer::new(move || {
         let app = build_app!(app_state);
         // TODO: should live in build_app!
         app.wrap(crate::middleware::sentry::SentryWrapper::new(
@@ -94,10 +103,11 @@ async fn main() -> Result<()> {
         ))
     })
     .bind(("0.0.0.0", port))?
-    .run();
-
-    info!("Server starting, port: {}", port);
-    srv.await.map_err(|e| e.into()).map(|v| {
+    .bind(("0.0.0.0", router_port))?
+    .run()
+    .await
+    .map_err(|e| e.into())
+    .map(|v| {
         info!("Shutting down autoconnect");
         v
     })

@@ -124,6 +124,7 @@ pub async fn malformed_webpush_message() {
         panic!("Expected Close(Some(..)) not {:#?}", item);
     };
     assert_eq!(close_reason.code, actix_http::ws::CloseCode::Error);
+    assert_eq!(close_reason.description.unwrap(), "Json");
     assert!(framed.next().await.is_none());
 }
 

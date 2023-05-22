@@ -8,12 +8,11 @@ extern crate slog_scope;
 pub mod client;
 pub mod dockerflow;
 pub mod metrics;
+pub mod routes;
 #[cfg(test)]
 mod test;
 
 use actix_web::web;
-
-use autoconnect_ws::ws_handler;
 
 /// Requires import of the `config` function also in this module to use.
 #[macro_export]
@@ -38,12 +37,14 @@ macro_rules! build_app {
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
         // Websocket Handler
-        .route("/", web::get().to(ws_handler))
-        // TODO: Internode Message handler
-        //.service(web::resource("/push/{uaid}").route(web::push().to(autoconnect_web::route::InterNode::put))
+        .route("/", web::get().to(autoconnect_ws::ws_handler))
+        .service(web::resource("/push/{uaid}").route(web::put().to(crate::routes::push_route)))
+        .service(
+            web::resource("/notif/{uaid}").route(web::put().to(crate::routes::check_storage_route)),
+        )
         .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
         .service(web::resource("/health").route(web::get().to(dockerflow::health_route)))
-        .service(web::resource("/v1/err").route(web::get().to(dockerflow::log_check)))
+        .service(web::resource("/v1/err/crit").route(web::get().to(dockerflow::log_check)))
         // standardized
         .service(web::resource("/__error__").route(web::get().to(dockerflow::log_check)))
         // Dockerflow
