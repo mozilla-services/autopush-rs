@@ -278,6 +278,7 @@ impl WebPushClient {
         debug_assert!(!self.ack_state.unacked_notifs());
         let flags = &self.flags;
         if flags.rotate_message_table {
+            // TODO: probably remove entirely
             debug!("▶️ WebPushClient:post_process_all_acked rotate_message_table");
             unimplemented!()
         } else if flags.reset_uaid {

@@ -15,7 +15,7 @@ pub const HELLO: &str = r#"{"messageType": "hello", "use_webpush": true}"#;
 pub const HELLO_AGAIN: &str = r#"{"messageType": "hello", "use_webpush": true,
                                   "uaid": "deadbeef-0000-0000-deca-fbad00000000"}"#;
 
-pub const CURRENT_MONTH: &str = "message_2023_5";
+pub const CURRENT_MONTH: &str = "message_2018_06";
 
 /// Return a simple MockDbClient that responds to hello (once) with a new uaid.
 pub fn hello_db() -> MockDbClient {
