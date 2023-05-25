@@ -16,7 +16,6 @@ use a2::{
 };
 use actix_web::http::StatusCode;
 use async_trait::async_trait;
-use bytebuffer::ByteBuffer;
 use cadence::StatsdClient;
 use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
@@ -143,20 +142,19 @@ impl ApnsRouter {
         } else {
             Endpoint::Production
         };
-        let mut cert = ByteBuffer::from_vec(if !settings.cert.starts_with('-') {
+        let cert = if !settings.cert.starts_with('-') {
             tokio::fs::read(settings.cert).await?
         } else {
             settings.cert.as_bytes().to_vec()
-        });
-        let key = String::from_utf8(if !settings.key.starts_with('-') {
+        };
+        let key = if !settings.key.starts_with('-') {
             tokio::fs::read(settings.key).await?
         } else {
             settings.key.as_bytes().to_vec()
-        })
-        .map_err(|e| ApnsError::Config("Bad Key".to_owned(), e.to_string()))?;
+        };
         let client = ApnsClientData {
             client: Box::new(
-                a2::Client::certificate(&mut cert, &key, endpoint)
+                a2::Client::certificate_parts(&cert, &key, endpoint)
                     .map_err(ApnsError::ApnsClient)?,
             ),
             topic: settings
