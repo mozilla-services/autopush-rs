@@ -44,8 +44,8 @@ impl BroadcastRegistry {
         }
     }
 
-    // Add's a new broadcast to the lookup table, returns the existing key if the broadcast already
-    // exists
+    /// Add's a new broadcast to the lookup table, returns the existing key if
+    /// the broadcast already exists
     fn add_broadcast(&mut self, broadcast_id: String) -> BroadcastKey {
         if let Some(v) = self.lookup.get(&broadcast_id) {
             return *v;
@@ -126,8 +126,8 @@ pub struct BroadcastSubsInit(
     pub Vec<Broadcast>, // server provided list of string IDs and versions
 );
 
-// BroadcastChangeTracker tracks the broadcasts, their change_count, and the broadcast lookup
-// registry
+/// BroadcastChangeTracker tracks the broadcasts, their change_count, and the
+/// broadcast lookup registry
 #[derive(Debug)]
 pub struct BroadcastChangeTracker {
     broadcast_list: Vec<BroadcastRevision>,

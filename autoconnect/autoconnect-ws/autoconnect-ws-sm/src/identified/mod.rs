@@ -129,7 +129,7 @@ impl WebPushClient {
 
     /// Connect this `WebPushClient` to the `ClientRegistry`
     ///
-    /// Returning a `Stream` of `ServerNotification`s from it
+    /// Returning a `Stream` of `ServerNotification`s from the `ClientRegistry`
     pub async fn registry_connect(&self) -> mpsc::UnboundedReceiver<ServerNotification> {
         self.app_state.clients.connect(self.uaid, self.uid).await
     }

@@ -29,11 +29,12 @@ pub struct PingManager {
 
 impl PingManager {
     pub async fn new(settings: &Settings) -> PingManager {
-        let mut ping = interval(settings.auto_ping_interval);
-        ping.tick().await;
+        // Begin by waiting to Ping
+        let mut ping_or_timeout = interval(settings.auto_ping_interval);
+        ping_or_timeout.tick().await;
         Self {
             waiting: Waiting::ToPing,
-            ping_or_timeout: ping,
+            ping_or_timeout,
         }
     }
 
