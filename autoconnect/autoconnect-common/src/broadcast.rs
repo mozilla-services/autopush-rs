@@ -11,26 +11,16 @@
 /// see api discussion: https://docs.google.com/document/d/1Wxqf1a4HDkKgHDIswPmhmdvk8KPoMEh2q6SPhaz4LNE/edit#
 ///
 use std::collections::HashMap;
-use std::time::Duration;
 
 use serde_derive::{Deserialize, Serialize};
 
 use autopush_common::errors::{ApcErrorKind, Result};
 
+use crate::protocol::BroadcastValue;
+
 /// A Broadcast entry Key in a BroadcastRegistry
 /// This is the way that both the client and server identify a given Broadcast.
 type BroadcastKey = u32;
-// #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
-// struct BroadcastKey(u32);
-
-/// Client provided list of broadcasts See ClientMessage.Hello.broadcasts and
-/// ServerMessage.Broadcast.broadcasts
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub enum BroadcastValue {
-    Value(String),
-    Nested(HashMap<String, BroadcastValue>),
-}
 
 /// Broadcast Subscriptions a client is subscribed to and the last change seen
 #[derive(Debug, Default)]
@@ -54,8 +44,8 @@ impl BroadcastRegistry {
         }
     }
 
-    // Add's a new broadcast to the lookup table, returns the existing key if the broadcast already
-    // exists
+    /// Add's a new broadcast to the lookup table, returns the existing key if
+    /// the broadcast already exists
     fn add_broadcast(&mut self, broadcast_id: String) -> BroadcastKey {
         if let Some(v) = self.lookup.get(&broadcast_id) {
             return *v;
@@ -136,14 +126,8 @@ pub struct BroadcastSubsInit(
     pub Vec<Broadcast>, // server provided list of string IDs and versions
 );
 
-/// Deserialize the remote servers version set.
-#[derive(Deserialize)]
-pub struct MegaphoneAPIResponse {
-    pub broadcasts: HashMap<String, String>,
-}
-
-// BroadcastChangeTracker tracks the broadcasts, their change_count, and the broadcast lookup
-// registry
+/// BroadcastChangeTracker tracks the broadcasts, their change_count, and the
+/// broadcast lookup registry
 #[derive(Debug)]
 pub struct BroadcastChangeTracker {
     broadcast_list: Vec<BroadcastRevision>,
@@ -168,27 +152,15 @@ impl BroadcastChangeTracker {
         tracker
     }
 
-    /// Creates a new `BroadcastChangeTracker` initialized from a Megaphone API server version set
-    /// as provided as the fetch URL.
+    /// Add a `Vec` of `Broadcast`s via `self.add_broadcast`
     ///
-    /// This method uses a synchronous HTTP call.
-    pub async fn with_api_broadcasts(
-        url: &str,
-        token: &str,
-    ) -> reqwest::Result<BroadcastChangeTracker> {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(1))
-            .build()?;
-        let MegaphoneAPIResponse { broadcasts } = client
-            .get(url)
-            .header("Authorization", token.to_string())
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        let broadcasts = Broadcast::from_hashmap(broadcasts);
-        Ok(BroadcastChangeTracker::new(broadcasts))
+    /// Returning the latest change_count (or `None` for an empty `Vec`)
+    pub fn add_broadcasts(&mut self, broadcasts: Vec<Broadcast>) -> Option<u32> {
+        let mut change_count = None;
+        for broadcast in broadcasts {
+            change_count.replace(self.add_broadcast(broadcast));
+        }
+        change_count
     }
 
     /// Add a new broadcast to the BroadcastChangeTracker, triggering a change_count increase.
@@ -237,13 +209,7 @@ impl BroadcastChangeTracker {
             .broadcast_list
             .iter()
             .enumerate()
-            .filter_map(|(i, bcast)| {
-                if bcast.broadcast == key {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(i, bcast)| (bcast.broadcast == key).then_some(i))
             .next();
         self.change_count += 1;
         if let Some(bcast_index) = bcast_index {
@@ -287,11 +253,7 @@ impl BroadcastChangeTracker {
             }
         }
         client_set.change_count = self.change_count;
-        if bcast_delta.is_empty() {
-            None
-        } else {
-            Some(bcast_delta)
-        }
+        (!bcast_delta.is_empty()).then_some(bcast_delta)
     }
 
     /// Returns a delta for `broadcasts` that are out of date with the latest version and a
@@ -343,11 +305,7 @@ impl BroadcastChangeTracker {
                 broadcast_subs.broadcast_list.push(bcast_key)
             }
         }
-        if bcast_delta.is_empty() {
-            None
-        } else {
-            Some(bcast_delta)
-        }
+        (!bcast_delta.is_empty()).then_some(bcast_delta)
     }
 
     /// Check a broadcast list and return unknown broadcast id's with their appropriate error
@@ -355,15 +313,10 @@ impl BroadcastChangeTracker {
         broadcasts
             .iter()
             .filter_map(|b| {
-                if self
-                    .broadcast_registry
+                self.broadcast_registry
                     .lookup_key(&b.broadcast_id)
                     .is_none()
-                {
-                    Some(b.clone().error())
-                } else {
-                    None
-                }
+                    .then(|| b.clone().error())
             })
             .collect()
     }

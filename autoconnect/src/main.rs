@@ -88,6 +88,7 @@ async fn main() -> Result<()> {
     let port = settings.port;
     let router_port = settings.router_port;
     let app_state = AppState::from_settings(settings)?;
+    app_state.init_and_spawn_megaphone_updater().await?;
     let _client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
 
     info!(
