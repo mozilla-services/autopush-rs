@@ -27,6 +27,9 @@ pub enum WSError {
     #[error("Timeout waiting for handshake")]
     HandshakeTimeout,
 
+    #[error("Timeout waiting for Pong")]
+    PongTimeout,
+
     #[error("ClientRegistry unexpectedly disconnected")]
     RegistryDisconnected,
 }

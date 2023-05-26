@@ -1,10 +1,13 @@
-use std::{fmt, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use cadence::CountedExt;
 use uuid::Uuid;
 
-use autoconnect_common::protocol::{ClientMessage, ServerMessage};
-use autoconnect_settings::AppState;
+use autoconnect_common::{
+    broadcast::{Broadcast, BroadcastSubs, BroadcastSubsInit},
+    protocol::{BroadcastValue, ClientMessage, ServerMessage},
+};
+use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
     db::{error::DbResult, User},
     util::ms_since_epoch,
@@ -20,7 +23,7 @@ use crate::{
 pub struct UnidentifiedClient {
     /// Client's User-Agent header
     ua: String,
-    pub app_state: Arc<AppState>,
+    app_state: Arc<AppState>,
 }
 
 impl fmt::Debug for UnidentifiedClient {
@@ -48,7 +51,7 @@ impl UnidentifiedClient {
         let ClientMessage::Hello {
             uaid,
             use_webpush: Some(true),
-            //broadcasts,
+            broadcasts,
             ..
         } = msg else {
             return Err(SMError::InvalidMessage(
@@ -76,26 +79,27 @@ impl UnidentifiedClient {
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {} existing_user: {}",
             uaid, existing_user,
         );
-
         let _ = self.app_state.metrics.incr("ua.command.hello");
-        // TODO: broadcasts
-        //let desired_broadcasts = Broadcast::from_hasmap(broadcasts.unwrap_or_default());
-        //let (initialized_subs, broadcasts) = app_state.broadcast_init(&desired_broadcasts);
+
+        let (broadcast_subs, broadcasts) = self
+            .broadcast_init(&Broadcast::from_hashmap(broadcasts.unwrap_or_default()))
+            .await;
         let (wpclient, check_storage_smsgs) = WebPushClient::new(
             uaid,
             self.ua,
+            broadcast_subs,
             flags,
             user.connected_at,
             (!existing_user).then_some(user),
             self.app_state,
         )
         .await?;
+
         let smsg = ServerMessage::Hello {
             uaid: uaid.as_simple().to_string(),
             status: 200,
             use_webpush: Some(true),
-            // TODO:
-            broadcasts: std::collections::HashMap::new(),
+            broadcasts,
         };
         let smsgs = std::iter::once(smsg).chain(check_storage_smsgs);
         Ok((wpclient, smsgs))
@@ -145,6 +149,30 @@ impl UnidentifiedClient {
             flags: Default::default(),
         })
     }
+
+    /// Initialize `Broadcast`s for a new `WebPushClient`
+    pub async fn broadcast_init(
+        &self,
+        broadcasts: &[Broadcast],
+    ) -> (BroadcastSubs, HashMap<String, BroadcastValue>) {
+        trace!("UnidentifiedClient::broadcast_init");
+        let bc = self.app_state.broadcaster.read().await;
+        let BroadcastSubsInit(broadcast_subs, delta) = bc.broadcast_delta(broadcasts);
+        let mut response = Broadcast::vec_into_hashmap(delta);
+        let missing = bc.missing_broadcasts(broadcasts);
+        if !missing.is_empty() {
+            response.insert(
+                "errors".to_owned(),
+                BroadcastValue::Nested(Broadcast::vec_into_hashmap(missing)),
+            );
+        }
+        (broadcast_subs, response)
+    }
+
+    /// Return a reference to `AppState`'s `Settings`
+    pub fn app_settings(&self) -> &Settings {
+        &self.app_state.settings
+    }
 }
 
 /// Result of a User lookup for a Hello message
@@ -167,6 +195,11 @@ mod tests {
     use crate::error::SMError;
 
     use super::UnidentifiedClient;
+
+    #[ctor::ctor]
+    fn init_test_logging() {
+        autopush_common::logging::init_test_logging();
+    }
 
     fn uclient(app_state: AppState) -> UnidentifiedClient {
         UnidentifiedClient::new(UA.to_owned(), Arc::new(app_state))

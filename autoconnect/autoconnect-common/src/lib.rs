@@ -2,6 +2,7 @@
 extern crate slog_scope;
 
 pub mod broadcast;
+pub mod megaphone;
 pub mod protocol;
 pub mod registry;
 #[cfg(feature = "test-support")]
