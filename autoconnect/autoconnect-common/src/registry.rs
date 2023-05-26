@@ -36,7 +36,7 @@ impl ClientRegistry {
         uaid: Uuid,
         uid: Uuid,
     ) -> mpsc::UnboundedReceiver<ServerNotification> {
-        debug!("Connecting a client!");
+        trace!("ClientRegistry::connect");
         let (tx, snotif_stream) = mpsc::unbounded();
         let client = RegisteredClient { uaid, uid, tx };
         let mut clients = self.clients.write().await;
@@ -44,7 +44,7 @@ impl ClientRegistry {
             // Drop existing connection
             let result = client.tx.unbounded_send(ServerNotification::Disconnect);
             if result.is_ok() {
-                debug!("Told client to disconnect as a new one wants to connect");
+                debug!("ClientRegistry::connect Ghosting client, new one wants to connect");
             }
         }
         snotif_stream
@@ -52,15 +52,15 @@ impl ClientRegistry {
 
     /// A notification has come for the uaid
     pub async fn notify(&self, uaid: Uuid, notif: Notification) -> Result<()> {
+        trace!("ClientRegistry::notify");
         let clients = self.clients.read().await;
-        debug!("Sending notification");
         if let Some(client) = clients.get(&uaid) {
-            debug!("Found a client to deliver a notification to");
+            debug!("ClientRegistry::notify Found a client to deliver a notification to");
             let result = client
                 .tx
                 .unbounded_send(ServerNotification::Notification(notif));
             if result.is_ok() {
-                debug!("Dropped notification in queue");
+                debug!("ClientRegistry::notify Dropped notification in queue");
                 return Ok(());
             }
         }
@@ -69,11 +69,12 @@ impl ClientRegistry {
 
     /// A check for notification command has come for the uaid
     pub async fn check_storage(&self, uaid: Uuid) -> Result<()> {
+        trace!("ClientRegistry::check_storage");
         let clients = self.clients.read().await;
         if let Some(client) = clients.get(&uaid) {
             let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
             if result.is_ok() {
-                debug!("Told client to check storage");
+                debug!("ClientRegistry::check_storage Told client to check storage");
                 return Ok(());
             }
         }
@@ -82,7 +83,7 @@ impl ClientRegistry {
 
     /// The client specified by `uaid` has disconnected.
     pub async fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> Result<()> {
-        debug!("Disconnecting client!");
+        trace!("ClientRegistry::disconnect");
         let mut clients = self.clients.write().await;
         let client_exists = clients.get(uaid).map_or(false, |client| client.uid == *uid);
         if client_exists {

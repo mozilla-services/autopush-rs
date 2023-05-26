@@ -15,6 +15,7 @@ serde.workspace = true
 serde_derive.workspace = true
 slog.workspace = true
 slog-scope.workspace = true
+tokio.workspace = true
 
 autoconnect_common.workspace = true
 autopush_common.workspace = true

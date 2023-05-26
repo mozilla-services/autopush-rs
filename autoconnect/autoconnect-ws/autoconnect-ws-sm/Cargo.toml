@@ -10,6 +10,7 @@ authors.workspace = true
 actix-web.workspace = true
 actix-ws.workspace = true
 cadence.workspace = true
+futures.workspace = true
 reqwest.workspace = true
 slog-scope.workspace = true
 uuid.workspace = true
@@ -21,6 +22,7 @@ autopush_common.workspace = true
 
 [dev-dependencies]
 actix-rt.workspace = true
+ctor.workspace = true
 mockall.workspace = true
 tokio.workspace = true
 

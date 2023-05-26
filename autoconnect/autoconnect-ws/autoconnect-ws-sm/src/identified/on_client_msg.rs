@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use cadence::CountedExt;
 use uuid::Uuid;
 
-use autoconnect_common::protocol::{ClientAck, ClientMessage, ServerMessage};
+use autoconnect_common::{
+    broadcast::Broadcast,
+    protocol::{BroadcastValue, ClientAck, ClientMessage, ServerMessage},
+};
 use autopush_common::{endpoint::make_endpoint, util::sec_since_epoch};
 
 use super::WebPushClient;
@@ -27,7 +30,8 @@ impl WebPushClient {
                 Ok(vec![self.unregister(channel_id, code).await?])
             }
             ClientMessage::BroadcastSubscribe { broadcasts } => Ok(self
-                .broadcast_subscribe(broadcasts)?
+                .broadcast_subscribe(broadcasts)
+                .await?
                 .map_or_else(Vec::new, |smsg| vec![smsg])),
             ClientMessage::Ack { updates } => self.ack(&updates).await,
             ClientMessage::Nack { code, .. } => {
@@ -146,12 +150,29 @@ impl WebPushClient {
     }
 
     /// Subscribe to a new set of Broadcasts
-    fn broadcast_subscribe(
+    async fn broadcast_subscribe(
         &mut self,
-        _broadcasts: HashMap<String, String>,
+        broadcasts: HashMap<String, String>,
     ) -> Result<Option<ServerMessage>, SMError> {
         trace!("WebPushClient:broadcast_subscribe");
-        unimplemented!();
+        let broadcasts = Broadcast::from_hashmap(broadcasts);
+        let mut response: HashMap<String, BroadcastValue> = HashMap::new();
+
+        let bc = self.app_state.broadcaster.read().await;
+        if let Some(delta) = bc.subscribe_to_broadcasts(&mut self.broadcast_subs, &broadcasts) {
+            response.extend(Broadcast::vec_into_hashmap(delta));
+        };
+        let missing = bc.missing_broadcasts(&broadcasts);
+        if !missing.is_empty() {
+            response.insert(
+                "errors".to_owned(),
+                BroadcastValue::Nested(Broadcast::vec_into_hashmap(missing)),
+            );
+        }
+
+        Ok((!response.is_empty()).then_some(ServerMessage::Broadcast {
+            broadcasts: response,
+        }))
     }
 
     /// Acknowledge receipt of one or more Push Notifications
