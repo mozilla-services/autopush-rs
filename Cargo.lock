@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "a2"
 version = "0.8.0"
-source = "git+https://github.com/mozilla-services/a2#118a7793bb3edfa7f0b362bbe8d7114a161e2a12"
+source = "git+https://github.com/mozilla-services/a2?branch=master#118a7793bb3edfa7f0b362bbe8d7114a161e2a12"
 dependencies = [
  "base64 0.20.0",
  "erased-serde",
