@@ -244,6 +244,123 @@ impl ApnsRouter {
     pub fn active(&self) -> bool {
         !self.clients.is_empty()
     }
+
+    fn do_stuff<'a>(
+        &self,
+        replacement: Value,
+        holder: &'a mut ApsAlertHolder,
+    ) -> Result<DefaultNotificationBuilder<'a>, ApnsError> {
+        let mut aps = Self::default_aps();
+        // a2 does not have a way to bulk replace these values, so do them by hand.
+        // these could probably be turned into a macro, but hopefully, this is
+        // more one off and I didn't want to fight with the macro generator.
+        // This whole thing was included as a byproduct of
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=1364403 which was put
+        // in place to help debug the iOS build. It was supposed to be temporary,
+        // but apparently bit-lock set in and now no one is super sure if it's
+        // still needed or used. (I want to get rid of this.)
+        if let Some(v) = replacement.get("title") {
+            if let Some(v) = v.as_str() {
+                holder.title = v.to_owned();
+                aps = aps.set_title(&holder.title);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        if let Some(v) = replacement.get("subtitle") {
+            if let Some(v) = v.as_str() {
+                holder.subtitle = v.to_owned();
+                aps = aps.set_subtitle(&holder.subtitle);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        if let Some(v) = replacement.get("body") {
+            if let Some(v) = v.as_str() {
+                holder.body = v.to_owned();
+                aps = aps.set_body(&holder.body);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        if let Some(v) = replacement.get("title_loc_key") {
+            if let Some(v) = v.as_str() {
+                holder.title_loc_key = v.to_owned();
+                aps = aps.set_title_loc_key(&holder.title_loc_key);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        if let Some(v) = replacement.get("title_loc_args") {
+            if let Some(v) = v.as_array() {
+                let mut args: Vec<String> = Vec::new();
+                for val in v {
+                    if let Some(value) = val.as_str() {
+                        args.push(value.to_owned())
+                    } else {
+                        return Err(ApnsError::InvalidApsData.into());
+                    }
+                }
+                holder.title_loc_args = args;
+                aps = aps.set_title_loc_args(&holder.title_loc_args);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        if let Some(v) = replacement.get("action_loc_key") {
+            if let Some(v) = v.as_str() {
+                holder.action_loc_key = v.to_owned();
+                aps = aps.set_action_loc_key(&holder.action_loc_key);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        if let Some(v) = replacement.get("loc_key") {
+            if let Some(v) = v.as_str() {
+                holder.loc_key = v.to_owned();
+                aps = aps.set_loc_key(&holder.loc_key);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        if let Some(v) = replacement.get("loc_args") {
+            if let Some(v) = v.as_array() {
+                let mut args: Vec<String> = Vec::new();
+                for val in v {
+                    if let Some(value) = val.as_str() {
+                        args.push(value.to_owned())
+                    } else {
+                        return Err(ApnsError::InvalidApsData.into());
+                    }
+                }
+                holder.loc_args = args;
+                aps = aps.set_loc_args(&holder.loc_args);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        if let Some(v) = replacement.get("launch_image") {
+            if let Some(v) = v.as_str() {
+                holder.launch_image = v.to_owned();
+                aps = aps.set_launch_image(&holder.launch_image);
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        // Honestly, we should just check to see if this is present
+        // we don't really care what the value is since we'll never
+        // use
+        if let Some(v) = replacement.get("mutable-content") {
+            if let Some(v) = v.as_i64() {
+                if v != 0 {
+                    aps = aps.set_mutable_content();
+                }
+            } else {
+                return Err(ApnsError::InvalidApsData.into());
+            }
+        }
+        Ok(aps)
+    }
 }
 
 #[async_trait(?Send)]
@@ -317,119 +434,13 @@ impl Router for ApnsRouter {
             .clients
             .get(channel)
             .ok_or(ApnsError::InvalidReleaseChannel)?;
-        let mut aps = Self::default_aps();
 
         // A simple bucket variable so that I don't have to deal with fun lifetime issues.
         let mut holder = ApsAlertHolder::default();
-        if let Some(replacement) = aps_json {
-            // a2 does not have a way to bulk replace these values, so do them by hand.
-            // these could probably be turned into a macro, but hopefully, this is
-            // more one off and I didn't want to fight with the macro generator.
-            // This whole thing was included as a byproduct of
-            // https://bugzilla.mozilla.org/show_bug.cgi?id=1364403 which was put
-            // in place to help debug the iOS build. It was supposed to be temporary,
-            // but apparently bit-lock set in and now no one is super sure if it's
-            // still needed or used. (I want to get rid of this.)
-            if let Some(v) = replacement.get("title") {
-                if let Some(v) = v.as_str() {
-                    holder.title = v.to_owned();
-                    aps = aps.set_title(&holder.title);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            if let Some(v) = replacement.get("subtitle") {
-                if let Some(v) = v.as_str() {
-                    holder.subtitle = v.to_owned();
-                    aps = aps.set_subtitle(&holder.subtitle);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            if let Some(v) = replacement.get("body") {
-                if let Some(v) = v.as_str() {
-                    holder.body = v.to_owned();
-                    aps = aps.set_body(&holder.body);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            if let Some(v) = replacement.get("title_loc_key") {
-                if let Some(v) = v.as_str() {
-                    holder.title_loc_key = v.to_owned();
-                    aps = aps.set_title_loc_key(&holder.title_loc_key);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            if let Some(v) = replacement.get("title_loc_args") {
-                if let Some(v) = v.as_array() {
-                    let mut args: Vec<String> = Vec::new();
-                    for val in v {
-                        if let Some(value) = val.as_str() {
-                            args.push(value.to_owned())
-                        } else {
-                            return Err(ApnsError::InvalidApsData.into());
-                        }
-                    }
-                    holder.title_loc_args = args;
-                    aps = aps.set_title_loc_args(&holder.title_loc_args);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            if let Some(v) = replacement.get("action_loc_key") {
-                if let Some(v) = v.as_str() {
-                    holder.action_loc_key = v.to_owned();
-                    aps = aps.set_action_loc_key(&holder.action_loc_key);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            if let Some(v) = replacement.get("loc_key") {
-                if let Some(v) = v.as_str() {
-                    holder.loc_key = v.to_owned();
-                    aps = aps.set_loc_key(&holder.loc_key);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            if let Some(v) = replacement.get("loc_args") {
-                if let Some(v) = v.as_array() {
-                    let mut args: Vec<String> = Vec::new();
-                    for val in v {
-                        if let Some(value) = val.as_str() {
-                            args.push(value.to_owned())
-                        } else {
-                            return Err(ApnsError::InvalidApsData.into());
-                        }
-                    }
-                    holder.loc_args = args;
-                    aps = aps.set_loc_args(&holder.loc_args);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            if let Some(v) = replacement.get("launch_image") {
-                if let Some(v) = v.as_str() {
-                    holder.launch_image = v.to_owned();
-                    aps = aps.set_launch_image(&holder.launch_image);
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
-            // Honestly, we should just check to see if this is present
-            // we don't really care what the value is since we'll never
-            // use
-            if let Some(v) = replacement.get("mutable-content") {
-                if let Some(v) = v.as_i64() {
-                    if v != 0 {
-                        aps = aps.set_mutable_content();
-                    }
-                } else {
-                    return Err(ApnsError::InvalidApsData.into());
-                }
-            }
+        let aps = if let Some(replacement) = aps_json {
+            self.do_stuff(replacement, &mut holder)?
+        } else {
+            Self::default_aps()
         };
 
         // Finalize the APS object.
