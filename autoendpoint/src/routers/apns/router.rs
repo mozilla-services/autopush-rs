@@ -9,15 +9,17 @@ use crate::routers::common::{
     build_message_data, incr_error_metric, incr_success_metrics, message_size_check,
 };
 use crate::routers::{Router, RouterError, RouterResponse};
-use a2::request::notification::LocalizedAlert;
-use a2::request::payload::{APSAlert, Payload, APS};
-use a2::{self, Endpoint, NotificationOptions, Priority, Response};
+use a2::request::payload::Payload;
+use a2::{
+    self, DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
+    Response,
+};
 use actix_web::http::StatusCode;
 use async_trait::async_trait;
 use cadence::StatsdClient;
 use futures::{StreamExt, TryStreamExt};
-use serde::Deserialize;
-use serde_json::{Number, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
@@ -48,6 +50,60 @@ impl ApnsClient for a2::Client {
     async fn send(&self, payload: Payload<'_>) -> Result<Response, a2::Error> {
         self.send(payload).await
     }
+}
+
+/// a2 does not allow for Deserialization of the APS structure.
+/// this is copied from that library
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[serde(rename_all = "kebab-case")]
+#[allow(clippy::upper_case_acronyms)]
+pub struct ApsDeser<'a> {
+    // The notification content. Can be empty for silent notifications.
+    // Note, we overwrite this value, but it's copied and commented here
+    // so that future development notes the change.
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    //pub alert: Option<a2::request::payload::APSAlert<'a>>,
+    /// A number shown on top of the app icon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub badge: Option<u32>,
+
+    /// The name of the sound file to play when user receives the notification.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sound: Option<&'a str>,
+
+    /// Set to one for silent notifications.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_available: Option<u8>,
+
+    /// When a notification includes the category key, the system displays the
+    /// actions for that category as buttons in the banner or alert interface.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<&'a str>,
+
+    /// If set to one, the app can change the notification content before
+    /// displaying it to the user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mutable_content: Option<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    // Converted for Deserialization
+    // pub url_args: Option<&'a [&'a str]>,
+    pub url_args: Option<Vec<String>>,
+}
+
+#[derive(Default)]
+// Replicate a2::request::notification::DefaultAlert
+// for lifetime reasons.
+pub struct ApsAlertHolder {
+    title: String,
+    subtitle: String,
+    body: String,
+    title_loc_key: String,
+    title_loc_args: Vec<String>,
+    action_loc_key: String,
+    loc_key: String,
+    loc_args: Vec<String>,
+    launch_image: String,
 }
 
 impl ApnsRouter {
@@ -110,18 +166,11 @@ impl ApnsRouter {
     }
 
     /// The default APS data for a notification
-    fn default_aps<'a>() -> APS<'a> {
-        APS {
-            alert: Some(APSAlert::Localized({
-                LocalizedAlert {
-                    title_loc_key: Some("SentTab.NoTabArrivingNotification.title"),
-                    loc_key: Some("SentTab.NoTabArrivingNotification.body"),
-                    ..Default::default()
-                }
-            })),
-            mutable_content: Some(1),
-            ..Default::default()
-        }
+    fn default_aps<'a>() -> DefaultNotificationBuilder<'a> {
+        DefaultNotificationBuilder::new()
+            .set_title_loc_key("SentTab.NoTabArrivingNotification.title")
+            .set_loc_key("SentTab.NoTabArrivingNotification.body")
+            .set_mutable_content()
     }
 
     /// Handle an error by logging, updating metrics, etc
@@ -149,8 +198,8 @@ impl ApnsRouter {
                     warn!("APNS error: {:?}", response.error);
                 }
             }
-            a2::Error::ConnectionError => {
-                error!("APNS connection error");
+            a2::Error::ConnectionError(e) => {
+                error!("APNS connection error: {:?}", e);
                 incr_error_metric(
                     &self.metrics,
                     "apns",
@@ -181,7 +230,7 @@ impl ApnsRouter {
     /// it expects an integer and gets a float.
     fn convert_value_float_to_int(value: &mut Value) {
         if let Some(float) = value.as_f64() {
-            *value = Value::Number(Number::from(float as i64));
+            *value = Value::Number(serde_json::Number::from(float as i64));
         }
 
         if let Some(object) = value.as_object_mut() {
@@ -194,6 +243,127 @@ impl ApnsRouter {
     /// if we have any clients defined, this connection is "active"
     pub fn active(&self) -> bool {
         !self.clients.is_empty()
+    }
+
+    /// Derive an APS message from the replacement JSON block.
+    ///
+    /// This requires an external "holder" that contains the data that APS will refer to.
+    /// The holder should live in the same context as the `aps.build()` method.
+    fn derive_aps<'a>(
+        &self,
+        replacement: Value,
+        holder: &'a mut ApsAlertHolder,
+    ) -> Result<DefaultNotificationBuilder<'a>, ApnsError> {
+        let mut aps = Self::default_aps();
+        // a2 does not have a way to bulk replace these values, so do them by hand.
+        // these could probably be turned into a macro, but hopefully, this is
+        // more one off and I didn't want to fight with the macro generator.
+        // This whole thing was included as a byproduct of
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=1364403 which was put
+        // in place to help debug the iOS build. It was supposed to be temporary,
+        // but apparently bit-lock set in and now no one is super sure if it's
+        // still needed or used. (I want to get rid of this.)
+        if let Some(v) = replacement.get("title") {
+            if let Some(v) = v.as_str() {
+                holder.title = v.to_owned();
+                aps = aps.set_title(&holder.title);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        if let Some(v) = replacement.get("subtitle") {
+            if let Some(v) = v.as_str() {
+                holder.subtitle = v.to_owned();
+                aps = aps.set_subtitle(&holder.subtitle);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        if let Some(v) = replacement.get("body") {
+            if let Some(v) = v.as_str() {
+                holder.body = v.to_owned();
+                aps = aps.set_body(&holder.body);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        if let Some(v) = replacement.get("title_loc_key") {
+            if let Some(v) = v.as_str() {
+                holder.title_loc_key = v.to_owned();
+                aps = aps.set_title_loc_key(&holder.title_loc_key);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        if let Some(v) = replacement.get("title_loc_args") {
+            if let Some(v) = v.as_array() {
+                let mut args: Vec<String> = Vec::new();
+                for val in v {
+                    if let Some(value) = val.as_str() {
+                        args.push(value.to_owned())
+                    } else {
+                        return Err(ApnsError::InvalidApsData);
+                    }
+                }
+                holder.title_loc_args = args;
+                aps = aps.set_title_loc_args(&holder.title_loc_args);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        if let Some(v) = replacement.get("action_loc_key") {
+            if let Some(v) = v.as_str() {
+                holder.action_loc_key = v.to_owned();
+                aps = aps.set_action_loc_key(&holder.action_loc_key);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        if let Some(v) = replacement.get("loc_key") {
+            if let Some(v) = v.as_str() {
+                holder.loc_key = v.to_owned();
+                aps = aps.set_loc_key(&holder.loc_key);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        if let Some(v) = replacement.get("loc_args") {
+            if let Some(v) = v.as_array() {
+                let mut args: Vec<String> = Vec::new();
+                for val in v {
+                    if let Some(value) = val.as_str() {
+                        args.push(value.to_owned())
+                    } else {
+                        return Err(ApnsError::InvalidApsData);
+                    }
+                }
+                holder.loc_args = args;
+                aps = aps.set_loc_args(&holder.loc_args);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        if let Some(v) = replacement.get("launch_image") {
+            if let Some(v) = v.as_str() {
+                holder.launch_image = v.to_owned();
+                aps = aps.set_launch_image(&holder.launch_image);
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        // Honestly, we should just check to see if this is present
+        // we don't really care what the value is since we'll never
+        // use
+        if let Some(v) = replacement.get("mutable-content") {
+            if let Some(v) = v.as_i64() {
+                if v != 0 {
+                    aps = aps.set_mutable_content();
+                }
+            } else {
+                return Err(ApnsError::InvalidApsData);
+            }
+        }
+        Ok(aps)
     }
 }
 
@@ -219,11 +389,13 @@ impl Router for ApnsRouter {
         );
 
         if let Some(aps) = &router_input.aps {
-            if APS::deserialize(aps).is_err() {
+            if serde_json::from_str::<ApsDeser<'_>>(aps).is_err() {
                 return Err(ApnsError::InvalidApsData.into());
             }
-
-            router_data.insert("aps".to_string(), aps.clone());
+            router_data.insert(
+                "aps".to_string(),
+                serde_json::to_value(aps.clone()).unwrap(),
+            );
         }
 
         Ok(router_data)
@@ -251,15 +423,13 @@ impl Router for ApnsRouter {
             .get("rel_channel")
             .and_then(Value::as_str)
             .ok_or(ApnsError::NoReleaseChannel)?;
+        // XXX: We don't really use anything that is a numeric here, aside from
+        // mutable contant, and even there we should just check for presense.
+        // Once we're off of DynamoDB, we might want to kill the map.
         let aps_json = router_data.get("aps").cloned().map(|mut value| {
             Self::convert_value_float_to_int(&mut value);
             value
         });
-        let aps: APS<'_> = aps_json
-            .as_ref()
-            .map(|value| APS::deserialize(value).map_err(|_| ApnsError::InvalidApsData))
-            .transpose()?
-            .unwrap_or_else(Self::default_aps);
         let mut message_data = build_message_data(notification)?;
         message_data.insert("ver", notification.message_id.clone());
 
@@ -268,21 +438,34 @@ impl Router for ApnsRouter {
             .clients
             .get(channel)
             .ok_or(ApnsError::InvalidReleaseChannel)?;
-        let payload = Payload {
-            aps,
-            data: message_data
-                .into_iter()
-                .map(|(k, v)| (k, Value::String(v)))
-                .collect(),
-            device_token: token,
-            options: NotificationOptions {
+
+        // A simple bucket variable so that I don't have to deal with fun lifetime issues if we need
+        // to derive.
+        let mut holder = ApsAlertHolder::default();
+
+        // If we are provided a replacement APS block, derive an APS message from it, otherwise
+        // start with a blank APS message.
+        let aps = if let Some(replacement) = aps_json {
+            self.derive_aps(replacement, &mut holder)?
+        } else {
+            Self::default_aps()
+        };
+
+        // Finalize the APS object.
+        let mut payload = aps.build(
+            token,
+            NotificationOptions {
                 apns_id: None,
                 apns_priority: Some(Priority::High),
                 apns_topic: Some(topic),
                 apns_collapse_id: None,
                 apns_expiration: Some(notification.timestamp + notification.headers.ttl as u64),
             },
-        };
+        );
+        payload.data = message_data
+            .into_iter()
+            .map(|(k, v)| (k, Value::String(v)))
+            .collect();
 
         // Check size limit
         let payload_json = payload
@@ -408,10 +591,13 @@ mod tests {
     /// A notification with no data is packaged correctly and sent to APNS
     #[tokio::test]
     async fn successful_routing_no_data() {
+        use a2::NotificationBuilder;
+
         let client = MockApnsClient::new(|payload| {
+            let built = ApnsRouter::default_aps().build(DEVICE_TOKEN, Default::default());
             assert_eq!(
                 serde_json::to_value(payload.aps).unwrap(),
-                serde_json::to_value(ApnsRouter::default_aps()).unwrap()
+                serde_json::to_value(built.aps).unwrap()
             );
             assert_eq!(payload.device_token, DEVICE_TOKEN);
             assert_eq!(payload.options.apns_topic, Some("test-topic"));
@@ -440,11 +626,11 @@ mod tests {
     /// A notification with data is packaged correctly and sent to APNS
     #[tokio::test]
     async fn successful_routing_with_data() {
+        use a2::NotificationBuilder;
+
         let client = MockApnsClient::new(|payload| {
-            assert_eq!(
-                serde_json::to_value(payload.aps).unwrap(),
-                serde_json::to_value(ApnsRouter::default_aps()).unwrap()
-            );
+            let built = ApnsRouter::default_aps().build(DEVICE_TOKEN, Default::default());
+            assert_eq!(serde_json::json!(payload.aps), serde_json::json!(built.aps));
             assert_eq!(payload.device_token, DEVICE_TOKEN);
             assert_eq!(payload.options.apns_topic, Some("test-topic"));
             assert_eq!(
