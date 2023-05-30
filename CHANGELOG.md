@@ -1,3 +1,20 @@
+<a name="1.67.2"></a>
+## 1.67.2 (2023-05-30)
+
+
+#### Chore
+
+* **deps:**  bump requests from 2.30.0 to 2.31.0 in /tests (#380) ([cdf91df6](https://github.com/mozilla-services/autopush-rs/commit/cdf91df6df7e197a7ced3ac1310b17291541f9b0))
+
+#### Features
+
+*   switch to latest release a2 library (#362) ([728fe169](https://github.com/mozilla-services/autopush-rs/commit/728fe169f2bd1f52100b65f744c1bfff3cbdd0fe))
+*   add broadcast (megaphone) support (#381) ([97d3a3ae](https://github.com/mozilla-services/autopush-rs/commit/97d3a3aeff582de0f5cffa5affc431e6eac914c2))
+*   complete (mostly) the WebPushClient (#379) ([f7110214](https://github.com/mozilla-services/autopush-rs/commit/f7110214d60cb77824b493d54035bd3ed65488ba))
+*   move tests to python3 ([08bd46b8](https://github.com/mozilla-services/autopush-rs/commit/08bd46b896df625422f56a15fc9793295d0a084b))
+
+
+
 <a name="1.67.1"></a>
 ## 1.67.1 (2023-05-05)
 
