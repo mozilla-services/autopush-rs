@@ -10,7 +10,7 @@ dependencies = [
     "python-jose==3.3.0",
     "bottle==0.12.25",
     "psutil==5.9.5",
-    "requests==2.30.0",
+    "requests==2.31.0",
     "websocket-client==1.5.1",
     "cryptography==40.0.2",
     "twisted==22.10.0",
