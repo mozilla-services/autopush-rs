@@ -27,6 +27,7 @@ autopush_common.workspace = true
 actix-codec = "0.5"
 actix-http.workspace = true
 actix-test.workspace = true
+ctor.workspace = true
 tokio.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }

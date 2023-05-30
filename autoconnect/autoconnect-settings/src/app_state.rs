@@ -4,8 +4,12 @@ use std::{sync::Arc, time::Duration};
 use autopush_common::db::bigtable::BigTableClientImpl;
 use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};
+use tokio::sync::RwLock;
 
-use autoconnect_common::registry::ClientRegistry;
+use autoconnect_common::{
+    broadcast::BroadcastChangeTracker, megaphone::init_and_spawn_megaphone_updater,
+    registry::ClientRegistry,
+};
 use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
 use autopush_common::{
     errors::{ApcErrorKind, Result},
@@ -25,6 +29,8 @@ pub struct AppState {
     pub fernet: MultiFernet,
     /// The connected WebSocket clients
     pub clients: Arc<ClientRegistry>,
+    /// The Megaphone Broadcast change tracker
+    pub broadcaster: Arc<RwLock<BroadcastChangeTracker>>,
 
     pub settings: Settings,
     pub router_url: String,
@@ -74,6 +80,7 @@ impl AppState {
             .timeout(Duration::from_secs(1))
             .build()
             .unwrap_or_else(|e| panic!("Error while building reqwest::Client: {}", e));
+        let broadcaster = Arc::new(RwLock::new(BroadcastChangeTracker::new(Vec::new())));
 
         let router_url = settings.router_url();
         let endpoint_url = settings.endpoint_url();
@@ -84,10 +91,37 @@ impl AppState {
             http,
             fernet,
             clients: Arc::new(ClientRegistry::default()),
+            broadcaster,
             settings,
             router_url,
             endpoint_url,
         })
+    }
+
+    /// Initialize the `BroadcastChangeTracker`
+    ///
+    /// Via `autoconnect_common::megaphone::init_and_spawn_megaphone_updater`
+    pub async fn init_and_spawn_megaphone_updater(&self) -> Result<()> {
+        let Some(ref url) = self.settings.megaphone_api_url else {
+            return Ok(());
+        };
+        let Some(ref token) = self.settings.megaphone_api_token else {
+            return Err(
+                ApcErrorKind::ConfigError(config::ConfigError::Message(format!(
+                    "{ENV_PREFIX}__MEGAPHONE_API_URL requires {ENV_PREFIX}__MEGAPHONE_API_TOKEN"
+                )))
+                    .into());
+        };
+        init_and_spawn_megaphone_updater(
+            &self.broadcaster,
+            &self.http,
+            url,
+            token,
+            self.settings.megaphone_poll_interval,
+        )
+        .await
+        .map_err(|e| ApcErrorKind::GeneralError(format!("{}", e)))?;
+        Ok(())
     }
 }
 
