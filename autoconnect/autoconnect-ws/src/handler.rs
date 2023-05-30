@@ -1,11 +1,8 @@
 use std::sync::Arc;
 
 use actix_ws::{CloseReason, Message};
-use futures::{channel::mpsc, stream::StreamExt};
-use tokio::{
-    select,
-    time::{interval, timeout},
-};
+use futures::{channel::mpsc, Stream, StreamExt};
+use tokio::{select, time::timeout};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autoconnect_settings::AppState;
@@ -13,8 +10,11 @@ use autoconnect_ws_sm::{UnidentifiedClient, WebPushClient};
 
 use crate::{
     error::WSError,
+    ping::PingManager,
     session::{Session, SessionImpl},
 };
+
+type MessageStreamResult = Result<actix_ws::Message, actix_ws::ProtocolError>;
 
 /// WebPush WebSocket handler Task
 pub fn spawn_webpush_ws(
@@ -29,6 +29,7 @@ pub fn spawn_webpush_ws(
         let close_reason = webpush_ws(client, &mut session, msg_stream)
             .await
             .unwrap_or_else(|e| {
+                error!("spawn_webpush_ws: Error: {}", e);
                 Some(CloseReason {
                     code: e.close_code(),
                     description: Some(e.close_description().to_owned()),
@@ -51,53 +52,32 @@ pub fn spawn_webpush_ws(
 /// by `autoendpoint`), and in turn outgoing `ServerMessage`s written to the
 /// WebSocket connection in response to those events.
 /// - the lifecycle/cleanup of the Client
-async fn webpush_ws(
+pub(crate) async fn webpush_ws(
     client: UnidentifiedClient,
     session: &mut impl Session,
-    mut msg_stream: impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
-        + Unpin,
+    mut msg_stream: impl Stream<Item = MessageStreamResult> + Unpin,
 ) -> Result<Option<CloseReason>, WSError> {
+    // NOTE: UnidentifiedClient doesn't require shutdown/cleanup, so its
+    // Error's propagated. We don't propagate Errors afterwards to handle
+    // shutdown/cleanup of WebPushClient
     let (mut client, smsgs) = unidentified_ws(client, &mut msg_stream).await?;
 
     // Client now identified: add them to the registry to recieve ServerNotifications
-    // TODO: should return a scopeguard to ensure disconnect() always called
-    let mut snotif_stream = client
-        .app_state
-        .clients
-        .connect(client.uaid, client.uid)
-        .await;
+    let mut snotif_stream = client.registry_connect().await;
+    let result = identified_ws(&mut client, smsgs, session, msg_stream, &mut snotif_stream).await;
+    client.registry_disconnect().await;
 
-    // Then send their Hello response and any initial notifications from storage
-    for smsg in smsgs {
-        trace!(
-            "webpush_ws: New WebPushClient, ServerMessage -> session: {:#?}",
-            smsg
-        );
-        // TODO: Ensure these added to "unacked_stored_notifs"
-        session
-            .text(smsg)
-            .await
-            // TODO: try! (?) here dictates a scopeguard/other recovery to
-            // cleanup the clients entry
-            .map_err(|_| WSError::StreamClosed)?;
-    }
-
-    let result = identified_ws(&mut client, session, &mut msg_stream, &mut snotif_stream).await;
-
-    client
-        .app_state
-        .clients
-        .disconnect(&client.uaid, &client.uid)
-        .await
-        .map_err(|_| WSError::RegistryNotConnected)?;
     snotif_stream.close();
     while let Some(snotif) = snotif_stream.next().await {
         client.on_server_notif_shutdown(snotif);
     }
-    client.shutdown();
+    client.shutdown(result.as_ref().err().map(|e| e.to_string()));
 
-    // TODO: report errors to sentry
-
+    if let Err(ref e) = result {
+        if e.is_sentry_event() {
+            sentry::capture_event(e.to_sentry_event(&client));
+        }
+    }
     result
 }
 
@@ -107,11 +87,10 @@ async fn webpush_ws(
 /// an identified `WebPushClient` on success.
 async fn unidentified_ws(
     client: UnidentifiedClient,
-    msg_stream: &mut (impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
-              + Unpin),
+    msg_stream: &mut (impl Stream<Item = MessageStreamResult> + Unpin),
 ) -> Result<(WebPushClient, impl IntoIterator<Item = ServerMessage>), WSError> {
     let stream_with_timeout = timeout(
-        client.app_state.settings.open_handshake_timeout,
+        client.app_settings().open_handshake_timeout,
         msg_stream.next(),
     );
     let msg = match stream_with_timeout.await {
@@ -119,7 +98,7 @@ async fn unidentified_ws(
         Ok(None) => return Err(WSError::StreamClosed),
         Err(_) => return Err(WSError::HandshakeTimeout),
     };
-    trace!("unidentified_ws: Handshake msg: {:#?}", msg);
+    trace!("unidentified_ws: Handshake msg: {:?}", msg);
 
     let client_msg = match msg {
         Message::Text(ref bytestring) => bytestring.parse()?,
@@ -135,19 +114,27 @@ async fn unidentified_ws(
 /// TODO: docs
 async fn identified_ws(
     client: &mut WebPushClient,
+    smsgs: impl IntoIterator<Item = ServerMessage>,
     session: &mut impl Session,
-    msg_stream: &mut (impl futures::Stream<Item = Result<actix_ws::Message, actix_ws::ProtocolError>>
-              + Unpin),
+    mut msg_stream: impl Stream<Item = MessageStreamResult> + Unpin,
     snotif_stream: &mut mpsc::UnboundedReceiver<ServerNotification>,
 ) -> Result<Option<CloseReason>, WSError> {
-    let mut ping_interval = interval(client.app_state.settings.auto_ping_interval);
-    ping_interval.tick().await;
+    // Send the Hello response and any initial notifications from storage
+    for smsg in smsgs {
+        trace!(
+            "identified_ws: New WebPushClient, ServerMessage -> session: {:#?}",
+            smsg
+        );
+        session.text(smsg).await?;
+    }
+
+    let mut ping_manager = PingManager::new(client.app_settings()).await;
     let close_reason = loop {
         select! {
             maybe_result = msg_stream.next() => {
                 let Some(result) = maybe_result else {
                     trace!("identified_ws: msg_stream EOF");
-                    // End of stream
+                    // End of Client stream
                     break None;
                 };
                 let msg = result?;
@@ -161,19 +148,14 @@ async fn identified_ws(
                         continue;
                     },
                     Message::Pong(_) => {
-                        // TODO: A fully working "PingManager" should track
-                        // last pong recieved, etc
-                        ping_interval.reset();
+                        ping_manager.on_ws_pong(client.app_settings()).await;
                         continue;
                     },
                     _ => return Err(WSError::UnsupportedMessage("Expected Text, etc.".to_owned()))
                 };
                 for smsg in client.on_client_msg(client_msg).await? {
                     trace!("identified_ws: msg_stream, ServerMessage -> session {:#?}", smsg);
-                    session
-                        .text(smsg)
-                        .await
-                        .map_err(|_| WSError::StreamClosed)?;
+                    session.text(smsg).await?;
                 }
             },
 
@@ -184,108 +166,18 @@ async fn identified_ws(
                 };
                 for smsg in client.on_server_notif(snotif).await? {
                     trace!("identified_ws: snotif_stream, ServerMessage -> session {:#?}", smsg);
-                    session
-                        .text(smsg)
-                        .await
-                        .map_err(|_| WSError::StreamClosed)?;
+                    session.text(smsg).await?;
                 }
             }
 
-            _ = ping_interval.tick() => {
-                trace!("identified_ws: ping_interval tick");
-                // TODO: A fully working "PingManager"
-                session.ping(&[]).await?;
+            result = ping_manager.tick() => {
+                trace!("identified_ws: ping_manager tick is_ok: {}", result.is_ok());
+                // Propagate PongTimeout
+                result?;
+                ping_manager.ws_ping_or_broadcast(client, session).await?;
             }
         }
     };
 
     Ok(close_reason)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{sync::Arc, time::Duration};
-
-    use async_stream::stream;
-    use futures::pin_mut;
-
-    use autoconnect_common::{
-        protocol::ServerMessage,
-        test_support::{hello_db, HELLO, UA},
-    };
-    use autoconnect_settings::{AppState, Settings};
-    use autoconnect_ws_sm::UnidentifiedClient;
-
-    use crate::{error::WSError, session::MockSession};
-
-    use super::webpush_ws;
-
-    fn uclient(app_state: AppState) -> UnidentifiedClient {
-        UnidentifiedClient::new(UA.to_owned(), Arc::new(app_state))
-    }
-
-    #[actix_web::test]
-    async fn handshake_timeout() {
-        let settings = Settings {
-            open_handshake_timeout: Duration::from_secs_f32(0.25),
-            ..Default::default()
-        };
-        let client = uclient(AppState::from_settings(settings).unwrap());
-
-        let s = stream! {
-            tokio::time::sleep(Duration::from_secs_f32(0.3)).await;
-            yield Ok(actix_ws::Message::Text(HELLO.into()));
-        };
-        pin_mut!(s);
-        let err = webpush_ws(client, &mut MockSession::new(), s)
-            .await
-            .unwrap_err();
-        assert!(matches!(err, WSError::HandshakeTimeout));
-    }
-
-    #[actix_web::test]
-    async fn basic() {
-        let client = uclient(AppState {
-            db: hello_db().into_boxed_arc(),
-            ..Default::default()
-        });
-        let mut session = MockSession::new();
-        session
-            .expect_text()
-            .withf(|msg| matches!(msg, ServerMessage::Hello { .. }))
-            .times(1)
-            .return_once(|_| Ok(()));
-        session.expect_ping().never();
-
-        let s = futures::stream::iter(vec![
-            Ok(actix_ws::Message::Text(HELLO.into())),
-            Ok(actix_ws::Message::Nop),
-        ]);
-        webpush_ws(client, &mut session, s)
-            .await
-            .expect("Handler failed");
-    }
-    #[actix_web::test]
-    async fn websocket_ping() {
-        let settings = Settings {
-            auto_ping_interval: Duration::from_secs_f32(0.25),
-            ..Default::default()
-        };
-        let client = uclient(AppState {
-            db: hello_db().into_boxed_arc(),
-            ..AppState::from_settings(settings).unwrap()
-        });
-        let mut session = MockSession::new();
-        session.expect_text().times(1).return_once(|_| Ok(()));
-        session.expect_ping().times(1).return_once(|_| Ok(()));
-
-        let s = stream! {
-            yield Ok(actix_ws::Message::Text(HELLO.into()));
-            tokio::time::sleep(Duration::from_secs_f32(0.3)).await;
-        };
-        pin_mut!(s);
-        webpush_ws(client, &mut session, s)
-            .await
-            .expect("Handler failed");
-    }
 }

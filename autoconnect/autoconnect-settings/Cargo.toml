@@ -10,10 +10,12 @@ config.workspace = true
 fernet.workspace = true
 lazy_static.workspace = true
 mozsvc-common.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
 slog.workspace = true
 slog-scope.workspace = true
+tokio.workspace = true
 
 autoconnect_common.workspace = true
 autopush_common.workspace = true

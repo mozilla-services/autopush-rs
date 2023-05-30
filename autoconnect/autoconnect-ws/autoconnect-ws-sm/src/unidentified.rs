@@ -1,14 +1,21 @@
-use std::{fmt, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use cadence::CountedExt;
+use uuid::Uuid;
 
-use autoconnect_common::protocol::{ClientMessage, ServerMessage};
-use autoconnect_settings::AppState;
-use autopush_common::util::ms_since_epoch;
+use autoconnect_common::{
+    broadcast::{Broadcast, BroadcastSubs, BroadcastSubsInit},
+    protocol::{BroadcastValue, ClientMessage, ServerMessage},
+};
+use autoconnect_settings::{AppState, Settings};
+use autopush_common::{
+    db::{error::DbResult, User},
+    util::ms_since_epoch,
+};
 
 use crate::{
     error::SMError,
-    identified::{ClientFlags, WebPushClient},
+    identified::{process_existing_user, ClientFlags, WebPushClient},
 };
 
 /// Represents a Client waiting for (or yet to process) a Hello message
@@ -16,7 +23,7 @@ use crate::{
 pub struct UnidentifiedClient {
     /// Client's User-Agent header
     ua: String,
-    pub app_state: Arc<AppState>,
+    app_state: Arc<AppState>,
 }
 
 impl fmt::Debug for UnidentifiedClient {
@@ -32,6 +39,10 @@ impl UnidentifiedClient {
         UnidentifiedClient { ua, app_state }
     }
 
+    /// Handle a WebPush `ClientMessage` sent from the user agent over the
+    /// WebSocket for this user
+    ///
+    /// Anything but a Hello message is rejected as an Error
     pub async fn on_client_msg(
         self,
         msg: ClientMessage,
@@ -40,68 +51,135 @@ impl UnidentifiedClient {
         let ClientMessage::Hello {
             uaid,
             use_webpush: Some(true),
-            //broadcasts,
+            broadcasts,
             ..
         } = msg else {
             return Err(SMError::InvalidMessage(
                 r#"Expected messageType="hello", "use_webpush": true"#.to_owned()
             ));
         };
-        trace!("👋UnidentifiedClient::on_client_msg Hello {:?}", uaid);
+        debug!(
+            "👋UnidentifiedClient::on_client_msg Hello from uaid?: {:?}",
+            uaid
+        );
 
-        let connected_at = ms_since_epoch();
         let uaid = uaid
             .as_deref()
-            .map(uuid::Uuid::try_parse)
+            .map(Uuid::try_parse)
             .transpose()
             .map_err(|_| SMError::InvalidMessage("Invalid uaid".to_owned()))?;
 
-        let defer_registration = uaid.is_none();
-        let hello_response = self
-            .app_state
-            .db
-            .hello(
-                connected_at,
-                uaid.as_ref(),
-                &self.app_state.router_url,
-                defer_registration,
-            )
-            .await?;
-        trace!(
-            "💬UnidentifiedClient::on_client_msg Hello! uaid: {:?} user_is_registered: {}",
-            hello_response.uaid,
-            hello_response.deferred_user_registration.is_none()
+        let GetOrCreateUser {
+            user,
+            existing_user,
+            flags,
+        } = self.get_or_create_user(uaid).await?;
+        let uaid = user.uaid;
+        debug!(
+            "💬UnidentifiedClient::on_client_msg Hello! uaid: {} existing_user: {}",
+            uaid, existing_user,
         );
-
-        let Some(uaid) = hello_response.uaid else {
-            trace!("💬UnidentifiedClient::on_client_msg AlreadyConnected {:?}", hello_response.uaid);
-            return Err(SMError::AlreadyConnected);
-        };
-
         let _ = self.app_state.metrics.incr("ua.command.hello");
-        let flags = ClientFlags::from_hello(&hello_response);
-        // TODO: broadcasts
-        //let desired_broadcasts = Broadcast::from_hasmap(broadcasts.unwrap_or_default());
-        //let (initialized_subs, broadcasts) = app_state.broadcast_init(&desired_broadcasts);
+
+        let (broadcast_subs, broadcasts) = self
+            .broadcast_init(&Broadcast::from_hashmap(broadcasts.unwrap_or_default()))
+            .await;
         let (wpclient, check_storage_smsgs) = WebPushClient::new(
             uaid,
             self.ua,
+            broadcast_subs,
             flags,
-            connected_at,
-            hello_response.deferred_user_registration,
+            user.connected_at,
+            (!existing_user).then_some(user),
             self.app_state,
         )
         .await?;
+
         let smsg = ServerMessage::Hello {
             uaid: uaid.as_simple().to_string(),
             status: 200,
             use_webpush: Some(true),
-            // TODO:
-            broadcasts: std::collections::HashMap::new(),
+            broadcasts,
         };
         let smsgs = std::iter::once(smsg).chain(check_storage_smsgs);
         Ok((wpclient, smsgs))
     }
+
+    /// Lookup a User or return a new User record if the lookup failed
+    async fn get_or_create_user(&self, uaid: Option<Uuid>) -> DbResult<GetOrCreateUser> {
+        trace!("❓UnidentifiedClient::get_or_create_user");
+        let connected_at = ms_since_epoch();
+
+        if let Some(uaid) = uaid {
+            // NOTE: previously a user would be dropped when
+            // serde_dynamodb::from_hashmap failed (but this now occurs inside
+            // the db impl)
+            let maybe_user = self.app_state.db.get_user(&uaid).await?;
+            if let Some(mut user) = maybe_user {
+                let maybe_flags = process_existing_user(&self.app_state, &user).await?;
+                if let Some(flags) = maybe_flags {
+                    user.node_id = Some(self.app_state.router_url.to_owned());
+                    user.connected_at = connected_at;
+                    user.set_last_connect();
+                    self.app_state.db.update_user(&user).await?;
+                    return Ok(GetOrCreateUser {
+                        user,
+                        existing_user: true,
+                        flags,
+                    });
+                }
+            }
+            // NOTE: when the client's specified a uaid but get_user returns
+            // None (or process_existing_user dropped the user record due to it
+            // being invalid) we're now deferring the db.add_user call (a
+            // change from the previous state machine impl)
+        }
+
+        // TODO: NOTE: A new User doesn't get a `set_last_connect()` (matching
+        // the previous impl)
+        let user = User {
+            current_month: Some(self.app_state.db.message_table().to_owned()),
+            node_id: Some(self.app_state.router_url.to_owned()),
+            connected_at,
+            ..Default::default()
+        };
+        Ok(GetOrCreateUser {
+            user,
+            existing_user: false,
+            flags: Default::default(),
+        })
+    }
+
+    /// Initialize `Broadcast`s for a new `WebPushClient`
+    pub async fn broadcast_init(
+        &self,
+        broadcasts: &[Broadcast],
+    ) -> (BroadcastSubs, HashMap<String, BroadcastValue>) {
+        trace!("UnidentifiedClient::broadcast_init");
+        let bc = self.app_state.broadcaster.read().await;
+        let BroadcastSubsInit(broadcast_subs, delta) = bc.broadcast_delta(broadcasts);
+        let mut response = Broadcast::vec_into_hashmap(delta);
+        let missing = bc.missing_broadcasts(broadcasts);
+        if !missing.is_empty() {
+            response.insert(
+                "errors".to_owned(),
+                BroadcastValue::Nested(Broadcast::vec_into_hashmap(missing)),
+            );
+        }
+        (broadcast_subs, response)
+    }
+
+    /// Return a reference to `AppState`'s `Settings`
+    pub fn app_settings(&self) -> &Settings {
+        &self.app_state.settings
+    }
+}
+
+/// Result of a User lookup for a Hello message
+struct GetOrCreateUser {
+    user: User,
+    existing_user: bool,
+    flags: ClientFlags,
 }
 
 #[cfg(test)]
@@ -110,14 +188,18 @@ mod tests {
 
     use autoconnect_common::{
         protocol::ClientMessage,
-        test_support::{hello_again_db, DUMMY_CHID, DUMMY_UAID, UA},
+        test_support::{hello_again_db, hello_db, DUMMY_CHID, DUMMY_UAID, UA},
     };
     use autoconnect_settings::AppState;
-    use autopush_common::db::{mock::MockDbClient, HelloResponse, User};
 
     use crate::error::SMError;
 
     use super::UnidentifiedClient;
+
+    #[ctor::ctor]
+    fn init_test_logging() {
+        autopush_common::logging::init_test_logging();
+    }
 
     fn uclient(app_state: AppState) -> UnidentifiedClient {
         UnidentifiedClient::new(UA.to_owned(), Arc::new(app_state))
@@ -129,7 +211,7 @@ mod tests {
         let result = client.on_client_msg(ClientMessage::Ping).await;
         assert!(matches!(result, Err(SMError::InvalidMessage(_))));
 
-        let client = UnidentifiedClient::new(UA.to_owned(), Default::default());
+        let client = uclient(Default::default());
         let result = client
             .on_client_msg(ClientMessage::Register {
                 channel_id: DUMMY_CHID.to_string(),
@@ -156,22 +238,9 @@ mod tests {
 
     #[tokio::test]
     async fn hello_new_user() {
-        let mut db = MockDbClient::new();
-        // Ensure no write to the db
-        db.expect_hello()
-            .withf(|_, _, _, defer_registration| defer_registration == &true)
-            .return_once(move |_, _, _, _| {
-                Ok(HelloResponse {
-                    uaid: Some(DUMMY_UAID),
-                    deferred_user_registration: Some(User {
-                        uaid: DUMMY_UAID,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                })
-            });
         let client = uclient(AppState {
-            db: db.into_boxed_arc(),
+            // Simple hello_db ensures no writes to the db
+            db: hello_db().into_boxed_arc(),
             ..Default::default()
         });
         let msg = ClientMessage::Hello {

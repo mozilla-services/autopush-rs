@@ -12,13 +12,14 @@ actix-rt.workspace = true
 actix-web.workspace = true
 actix-ws.workspace = true
 futures.workspace = true
+mockall.workspace = true
 serde_json.workspace = true
+sentry.workspace = true
 slog-scope.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
 async-trait = "0.1"
-mockall = "0.11"
 strum = { version = "0.24", features = ["derive"] }
 
 autoconnect_common.workspace = true
@@ -27,5 +28,7 @@ autoconnect_ws_sm = { path = "./autoconnect-ws-sm" }
 
 [dev-dependencies]
 async-stream = "0.3"
+ctor.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
+autopush_common.workspace = true

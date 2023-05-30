@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use autopush_common::notification::Notification;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum BroadcastValue {
     Value(String),
