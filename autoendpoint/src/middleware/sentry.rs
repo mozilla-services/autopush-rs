@@ -17,16 +17,16 @@ use sentry::{protocol::Event, Hub};
 use crate::LocalError;
 use autopush_common::tags::Tags;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct SentryWrapper {
-    metrics: Option<Arc<StatsdClient>>,
+    metrics: Arc<StatsdClient>,
     metric_label: String,
 }
 
 impl SentryWrapper {
     pub fn new(metrics: Arc<StatsdClient>, metric_label: String) -> Self {
         Self {
-            metrics: Some(metrics),
+            metrics,
             metric_label,
         }
     }
@@ -55,7 +55,7 @@ where
 #[derive(Debug)]
 pub struct SentryWrapperMiddleware<S> {
     service: Rc<RefCell<S>>,
-    metrics: Option<Arc<StatsdClient>>,
+    metrics: Arc<StatsdClient>,
     metric_label: String,
 }
 
@@ -106,11 +106,9 @@ where
                             // but we may need that information to debug a production issue. We can
                             // add an info here, temporarily turn on info level debugging on a given server,
                             // capture it, and then turn it off before we run out of money.
-                            info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
-                            if let Some(metrics) = metrics {
-                                if let Some(label) = api_err.kind.metric_label() {
-                                    let _ = metrics.incr(&format!("{}.{}", metric_label, label));
-                                }
+                            if let Some(label) = api_err.kind.metric_label() {
+                                info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
+                                let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                             }
                         }
                         debug!("Sentry: Not reporting error (service error): {:?}", error);
@@ -129,6 +127,10 @@ where
             if let Some(error) = response.response().error() {
                 if let Some(api_err) = error.as_error::<LocalError>() {
                     if !api_err.kind.is_sentry_event() {
+                        if let Some(label) = api_err.kind.metric_label() {
+                            info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
+                            let _ = metrics.incr(&format!("{}.{}", metric_label, label));
+                        }
                         debug!("Not reporting error (service error): {:?}", error);
                         return Ok(response);
                     }
