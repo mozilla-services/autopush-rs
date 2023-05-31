@@ -276,7 +276,7 @@ pub fn register_user(
             },
             retryable_putitem_error,
         )
-        .map_err(|_| ApcErrorKind::DatabaseError("fail".to_string()).into()),
+        .map_err(|_| ApcErrorKind::DatabaseError("Error registering user".to_string()).into()),
     )
 }
 
