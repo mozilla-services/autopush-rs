@@ -1,3 +1,13 @@
+<a name="1.67.3"></a>
+## 1.67.3 (2023-06-01)
+
+
+#### Bug Fixes
+
+*   emit metrics also in the common Response error case (#384) ([5bd09339](https://github.com/mozilla-services/autopush-rs/commit/5bd0933997792bea824a9791e0fc91cc2fdf44be))
+
+
+
 <a name="1.67.2"></a>
 ## 1.67.2 (2023-05-30)
 
