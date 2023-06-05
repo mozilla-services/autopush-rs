@@ -1,0 +1,14 @@
+[book]
+title = "Mozilla Autopush Server"
+authors = ["JR Conlin", "Philip Jenvey"]
+description = "Detailed description and operation of the Mozilla WebPush Server named Autopush"
+language = "en"
+
+[rust]
+edition = "2021"
+
+[build]
+build-dir = "output"
+
+[output.html]
+additional-css = ["style.css"]
