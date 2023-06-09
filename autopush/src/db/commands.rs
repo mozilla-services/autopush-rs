@@ -499,7 +499,7 @@ fn handle_user_result(
     Ok(user)
 }
 
-/// Like Result::ok, convert from Result<T, E> to Option<T> but applying a
+/// Like `Result::ok`, convert from `Result<T, E>` to `Option<T>` but applying a
 /// function to the Err value
 fn ok_or_inspect<T, E, F>(result: StdResult<T, E>, op: F) -> Option<T>
 where
