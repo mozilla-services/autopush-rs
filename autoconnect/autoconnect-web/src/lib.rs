@@ -5,7 +5,6 @@
 #[macro_use]
 extern crate slog_scope;
 
-pub mod client;
 pub mod dockerflow;
 pub mod metrics;
 pub mod routes;
