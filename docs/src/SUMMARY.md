@@ -5,6 +5,7 @@
 -->
 * [Introduction](index.md)
 * [General Architecture](architecture.md)
+  * [Legacy table rotation](table_rotation.md)
 * [Install](install.md)
   * [Apple Push Notification (APNs) guide](apns.md)
   * [Google Firebase Cloud Messaging (FCM) guide](fcm.md)
@@ -19,5 +20,6 @@
 ## Reference
 
 * [HTTP Endpoints for Notifications](http.md)
+* [Error codes](errors.md)
 * [Glossary](glossary.md)
 * [Why rust?](rust.md)

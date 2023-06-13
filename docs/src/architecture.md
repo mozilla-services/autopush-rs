@@ -9,15 +9,9 @@ For Autopush, we will focus on the section in the above diagram in the
 
 Autopush consists of two types of server daemons:
 
-`autoconnect` (connection node)
+`autoconnect` (connection node) - _Run a connection node. These handle large amounts of Firefox user agents using the Websocket protocol._
 
-> Run a connection node. These handle large amounts of Firefox user agents
-> using the Websocket protocol.
-
-`autoendpoint` (endpoint node)
-
-> Run an endpoint node. These provide a `WebPush` HTTP API for
-> `Application Servers <AppServer>` to HTTP POST messages to endpoints.
+`autoendpoint` (endpoint node) - _Run an endpoint node. These provide a `WebPush` HTTP API for `Application Servers <AppServer>` to HTTP POST messages to endpoints._
 
 To have a running Push Service for Firefox, both of these server daemons
 must be running and communicating with the same Storage system and tables.
@@ -43,7 +37,7 @@ encrypted information, the `UAID` and `Subscription` to send the message
 to. This means that they both must have the same `CRYPTO_KEY` supplied
 to each.
 
-See `~autopush.settings.AutopushConfig.make_endpoint` for the endpoint
+See `autopush_common::endpoint::make_endpoint(...)` for the endpoint
 URL generator.
 
 If you are only running Autopush locally, you can skip to `running` as
@@ -105,13 +99,13 @@ The router table stores metadata for a given `UAID` as well as which
 month table should be used for clients with a `router_type` of
 `webpush`.
 
-For `Bridging`, additional bridge-specific data may be stored in the
+For "[Bridging](install.md#configuring-for-third-party-bridge-services)", additional bridge-specific data may be stored in the
 router record for a `UAID`.
 
 |              |                                                                                  |
 |--------------|----------------------------------------------------------------------------------|
 | uaid         | **partition key** - `UAID`                                                       |
-| router_type  | `Router Type`                                                                    |
+| router_type  | Router Type (See [`autoendpoint::extractors::routers::RouterType`])              |
 | node_id      | Hostname of the connection node the client is connected to.                      |
 | connected_at | Precise time (in milliseconds) the client connected to the node.                 |
 | last_connect | **global secondary index** - year-month-hour that the client has last connected. |
@@ -144,11 +138,11 @@ that are of the `router` family. These values are similar to the ones listed abo
 
 |              |                                                                                  |
 |--------------|----------------------------------------------------------------------------------|
-| Key          | `UAID`                                                       |
-| router_type  | `Router Type`                                                                    |
+| Key          | `UAID`                                                                           |
+| router_type  | Router Type (See [`autoendpoint::extractors::routers::RouterType`])              |
 | node_id      | Hostname of the connection node the client is connected to.                      |
 | connected_at | Precise time (in milliseconds) the client connected to the node.                 |
-| last_connect | year-month-hour that the client has last connected.          |
+| last_connect | year-month-hour that the client has last connected.                              |
 
 ### Message Table Schema
 
@@ -156,7 +150,6 @@ The message table stores messages for users while they're offline or
 unable to get immediate message delivery.
 
 #### DynamoDB
-
 
 |               |                                                                                                                                       |
 |---------------|---------------------------------------------------------------------------------------------------------------------------------------|
@@ -184,116 +177,7 @@ blank space set for `chidmessageid`. Before storing or delivering a
 | timestamp     | Time (in seconds) that the message was saved.                                                                                         |
 | updateid      | UUID generated when the message is stored to track if the message is updated between a client reading it and attempting to delete it. |
 
-### DynamoDB Message Table Rotation (legacy)
-
-As of version 1.45.0, message table rotation can be disabled. This is
-because DynamoDB now provides automatic entry expiration. This is
-controlled in our data by the "expiry" field. (_**Note**_, field
-expiration is only available in full DynamoDB, and is not replicated
-with the mock DynamoDB API provided for development.) The following
-feature is disabled with the `no_table_rotation` flag set in the
-`autopush_shared.ini` configuration file.
-
-If table rotation is disabled, the last message table used will become
-'frozen' and will be used for all future messages. While this may not be
-aesthetically pleasing, it's more efficient than copying data to a new,
-generic table. If it's preferred, service can be shut down, previous
-tables dropped, the current table renamed, and service brought up again.
-
-> *Message Table Rotation information*
->
-> To avoid costly table scans, autopush uses a rotating message and
-> router table. Clients that haven't connected in 30-60 days will have
-> their router and message table entries dropped and need to
-> re-register.
->
-> Tables are post-fixed with the year/month they are meant for, i.e. :
->
->     messages_2015_02
->
-> Tables must be created and have their read/write units properly
-> allocated by a separate process in advance of the month switch-over as
-> autopush nodes will assume the tables already exist. Scripts are
-> provided that can be run weekly to ensure all necessary tables are
-> present, and tables old enough are dropped.
->
-> <div class="seealso">
->
-> Table maintenance script:
-> <https://github.com/mozilla-services/autopush/blob/master/maintenance.py>
->
-> </div>
->
-> Within a few days of the new month, the load on the prior months table
-> will fall as clients transition to the new table. The read/write units
-> on the prior month may then be lowered.
-
-### DynamoDB Rotating Message Table Interaction Rules (legacy)
-
-Due to the complexity of having notifications spread across two tables,
-several rules are used to avoid losing messages during the month
-transition.
-
-The logic for connection nodes is more complex, since only the
-connection node knows when the client connects, and how many messages it
-has read through.
-
-When table rotation is allowed, the router table uses the `curmonth`
-field to indicate the last month the client has read notifications
-through. This is independent of the last_connect since it is possible
-for a client to connect, fail to read its notifications, then reconnect.
-This field is updated for a new month when the client connects **after**
-it has ack'd all the notifications out of the last month.
-
-To avoid issues with time synchronization, the node the client is
-connected to acts as the source of truth for when the month has flipped
-over. Clients are only moved to the new table on connect, and only after
-reading/acking all the notifications for the prior month.
-
-#### Rules for Endpoints
-
-1. Check the router table to see the current_month the client is on.
-
-2. Read the chan list entry from the appropriate month message table to
-    see if its a valid channel.
-
-    If its valid, move to step 3.
-
-3. Store the notification in the current months table if valid. (_**Note**_
-    that this step does not copy the blank entry of valid channels)
-
-#### Rules for Connection Nodes
-
-After Identification:
-
-1. Check to see if the current_month matches the current month, if it
-    does then proceed normally using the current months message table.
-
-    If the connection node month does not match stored current_month in
-    the clients router table entry, proceed to step 2.
-
-2. Read notifications from prior month and send to client.
-
-    Once all ACKs are received for all the notifications for that month
-    proceed to step 3.
-
-3. Copy the blank message entry of valid channels to the new month
-    message table.
-
-4. Update the router table for the current_month.
-
-During switchover, only after the router table update are new commands
-from the client accepted.
-
-Handling of Edge Cases:
-
-* Connection node gets more notifications during step 3, enough to
-    buffer, such that the endpoint starts storing them in the previous
-    current_month. In this case the connection node will check the old
-    table, then the new table to ensure it doesn't lose message during
-    the switch.
-* Connection node dies, or client disconnects during step 3/4. Not a
-    problem as the reconnect will pick it up at the right spot.
+Autopush used a [table rotation system](table_rotation.md), which is now legacy. You may see some references to this as we continue to remove it.
 
 ## Push Characteristics
 
@@ -312,17 +196,17 @@ Handling of Edge Cases:
     Endpoint will deliver the message to the client completely bypassing
     Storage. This Notification will be referred to as a Direct
     Notification vs. a Stored Notification.
-* Provisioned Write Throughput for the Router table determines how
+* (_DynamoDb_) Provisioned Write Throughput for the Router table determines how
     many connections per second can be accepted across the entire
     cluster.
-* Provisioned Read Throughput for the Router table *and* Provisioned
+* (_DynamoDb_) Provisioned Read Throughput for the Router table **and** Provisioned
     Write throughput for the Storage table determine maximum possible
     notifications per second that can be handled. In theory notification
     throughput can be higher than Provisioned Write Throughput on the
     Storage as connected clients will frequently not require using
     Storage at all. Read's to the Router table are still needed for
     every notification, whether Storage is hit or not.
-* Provisioned Read Throughput on for the Storage table is an important
+* (_DynamoDb_) Provisioned Read Throughput on for the Storage table is an important
     factor in maximum notification throughput, as many slow clients may
     require frequent Storage checks.
 * If a client is reconnecting, their Router record will be old. Router

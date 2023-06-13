@@ -53,7 +53,7 @@ have the Autopush daemons use other ports.
     > $ curl -O https://raw.githubusercontent.com/mozilla-services/autopush/master/docker-compose.yml
     > ```
 
-_**Note**_: The docker images used take approximately 1.5 GB of disk-space, make
+> _**Note**_: The docker images used take approximately 1.5 GB of disk-space, make
 sure you have appropriate free-space before proceeding.
 
 </div>
@@ -95,15 +95,14 @@ using Docker. If you are running these programs "stand-alone" or outside
 of docker-compose, you may setup a more thorough configuration using
 config files as documented below.
 
-_**Note**_: The load-tester can be run against it or you can run Firefox with the
+> _**Note**_: The load-tester can be run against it or you can run Firefox with the
 local Autopush per the `test-with-firefox` docs.
 
 ## Configuration
 
 Autopush can be configured in three ways; by option flags, by
 environment variables, and by configuration files. Autopush uses three
-configuration files. These files use standard <span
-class="title-ref">ini</span> formatting similar to the following:
+configuration files. These files use standard `ini` formatting similar to the following:
 
 ``` cfg
 # A comment description
@@ -117,8 +116,7 @@ a flag it is either True if enabled, or False if disabled. The
 configuration files are usually richly commented, and you're encouraged
 to read them to learn how to set up your installation of autopush.
 
-*Note*: any line that does not begin with a <span
-class="title-ref">\#</span> or `;` is
+*Note*: any line that does not begin with a `\#` or `;` is
 considered an option line. if an unexpected option is present in a
 configuration file, the application will fail to start.
 
@@ -170,8 +168,7 @@ Autopush automatically searches for a configuration file at this
 location so nothing else is needed.
 
 *Note*: The `docker-compose.yml` file
-provides a number of overrides as environment variables, such as <span
-class="title-ref">CRYPTO_KEY</span>. If these values are not defined,
+provides a number of overrides as environment variables, such as `CRYPTO_KEY`. If these values are not defined,
 they are submitted as `""`, which will
 prevent values from being read from the config files. In the case of
 `CRYPTO_KEY`, a new, random key is
@@ -207,10 +204,9 @@ where:
 
 **app_id**: the URL identifier to be used when registering endpoints.
 (e.g. if "reference_test" is chosen here, registration requests should
-go to <span
-class="title-ref">https://updates.push.services.mozilla.com/v1/fcm/reference_test/registration</span>
+go to `https://updates.push.services.mozilla.com/v1/fcm/reference_test/registration`
 
-**project id name**: the name of the *Project ID* as specified on the
+**project id name**: the name of the **Project ID** as specified on the
 <https://console.firebase.google.com/> Project Settings \> General page.
 
 **path to Private Key File**: path to the Private Key file provided by

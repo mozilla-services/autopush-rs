@@ -1,4 +1,4 @@
-# autopush
+# Autopush
 
 Mozilla Push server and Push Endpoint utilizing Rust, Actix, and
 a key/value data store.
@@ -11,7 +11,7 @@ For how to read and respond to **autopush error codes**, see
 
 For an overview of the Mozilla Push Service and where autopush fits in,
 see the [Mozilla Push Service architecture
-diagram](http://mozilla-push-service.readthedocs.io/en/latest/#architecture).
+diagram](architecture.md#architecture).
 This push service uses [websockets](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) to talk to Firefox, with a Push
 endpoint that implements the [`WebPush`](https://www.rfc-editor.org/rfc/rfc8030.html) standard for its `http` API.
 

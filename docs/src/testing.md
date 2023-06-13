@@ -19,7 +19,7 @@ VirtualBox or VMWare), but this is not required.
 
 In addition, it may be useful to open the Firefox Brower Console
 (Ctrl+Shift+J) as well as the Firefox Web Console (Ctrl+Shift+K). Both
-are located under the *Web Developer* sub-menu.
+are located under the **Web Developer** sub-menu.
 
 ## Running Tests
 
@@ -33,8 +33,8 @@ $ bin/pip install -r test-requirements.txt
 Once the Makefile has been run, you can run `make test` to run the test
 suite.
 
-<span class="note"><b>Note</b> Failures may occur if a `.boto` file exists in your home directory. This
-file should be moved elsewhere before running the tests.</span>
+<b>Note</b> Failures may occur if a `.boto` file exists in your home directory. This
+file should be moved elsewhere before running the tests.`
 
 ### Disabling Integration Tests
 

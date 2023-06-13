@@ -20,7 +20,7 @@ package.
 
 * openssl development
 
-* python virtualenv
+* python3 virtualenv
 
 * git
 
@@ -29,35 +29,14 @@ Amazon EC2 instance):
 
 ``` bash
 $ sudo yum install autoconf automake gcc make libffi-devel \
-openssl-devel pypy pypy-devel python-virtualenv git -y
+openssl-devel pypy pypy-devel python3-virtualenv git -y
 ```
 
 Or a Debian based system (like Ubuntu):
 
 ``` bash
 $ sudo apt-get install build-essential libffi-dev \
-libssl-dev pypy-dev python-virtualenv git --assume-yes
-```
-
-Autopush uses the [Boto3 python
-library](https://boto3.readthedocs.io/en/latest/). Be sure to [properly
-set up your boto config
-file](http://boto3.readthedocs.io/en/docs/guide/quickstart.html#configuration).
-
-### Notes on OS X
-
-autopush depends on the Python
-[cryptography](https://cryptography.io/en/latest/installation) library,
-which requires OpenSSL. If you're installing autopush on OS X with a
-custom version of OpenSSL, you'll need to set the `ARCHFLAGS`
-environment variable, and add your OpenSSL library path to `LDFLAGS` and
-`CFLAGS` before running `make`:
-
-``` bash
-export ARCHFLAGS="-arch x86_64"
-# Homebrew installs OpenSSL to `/usr/local/opt/openssl` instead of
-# `/usr/local`.
-export LDFLAGS="-L/usr/local/lib" CFLAGS="-I/usr/local/include"
+libssl-dev pypy-dev python3-virtualenv git --assume-yes
 ```
 
 ## Check-out the Autopush Repository
@@ -65,11 +44,11 @@ export LDFLAGS="-L/usr/local/lib" CFLAGS="-I/usr/local/include"
 You should now be able to check-out the autopush repository.
 
 ``` bash
-$ git clone https://github.com/mozilla-services/autopush.git
+$ git clone https://github.com/mozilla-services/autopush-rs.git
 ```
 
 Alternatively, if you're planning on submitting a patch/pull-request to
-autopush then fork the repo and follow the *Github Workflow* documented
+autopush then fork the repo and follow the **Github Workflow** documented
 in [Mozilla Push Service - Code
 Development](http://mozilla-push-service.readthedocs.io/en/latest/development/#code-development).
 

@@ -55,7 +55,7 @@ find it easily later. You may wish to secure these keys with a password.
 
 ## Converting .p12 to PEM
 
-You will need to convert the .p12 file to PEM format. *openssl* can
+You will need to convert the .p12 file to PEM format. **openssl** can
 perform these steps for you. A simple script you could use might be:
 
 ``` bash
@@ -83,7 +83,7 @@ following:
 }
 ```
 
-*aps* is reserved as a sub-dictionary. All other *key*: *value* slots
+*aps* is reserved as a sub-dictionary. All other *key*: **value** slots
 are open.
 
 In addition, you must specify the following headers:
@@ -102,7 +102,7 @@ In addition, you must specify the following headers:
 APNS returns a status code and an optional JSON block describing the
 error. A list of [these responses are provided in the APNS
 documentation](https://developer.apple.com/library/content/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/CommunicatingwithAPNs.html)
-( _**Note**_, Apple may change the document locaiton without warning. you may
+> _**Note**_, Apple may change the document locaiton without warning. you may
 be able to search using
 [DeviceTokenNotForTopic](https://developer.apple.com/search/?q=DeviceTokenNotForTopic&type=Guides)
-or similar error messages.)
+or similar error messages.
