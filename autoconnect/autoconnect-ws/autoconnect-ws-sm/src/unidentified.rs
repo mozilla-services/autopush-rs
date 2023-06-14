@@ -114,10 +114,8 @@ impl UnidentifiedClient {
             // NOTE: previously a user would be dropped when
             // serde_dynamodb::from_hashmap failed (but this now occurs inside
             // the db impl)
-            let maybe_user = self.app_state.db.get_user(&uaid).await?;
-            if let Some(mut user) = maybe_user {
-                let maybe_flags = process_existing_user(&self.app_state, &user).await?;
-                if let Some(flags) = maybe_flags {
+            if let Some(mut user) = self.app_state.db.get_user(&uaid).await? {
+                if let Some(flags) = process_existing_user(&self.app_state, &user).await? {
                     user.node_id = Some(self.app_state.router_url.to_owned());
                     user.connected_at = connected_at;
                     user.set_last_connect();
