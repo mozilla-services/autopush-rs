@@ -927,57 +927,6 @@ impl DbClient for BigTableClientImpl {
         self.rows_to_notifications(rows)
     }
 
-    /// Perform the "hello" registration process.
-    /// Each storage engine can be different, so the 'hello' function needs to be
-    /// specific to the engine, unfortunately.
-    ///
-    async fn hello(
-        &self,
-        connected_at: u64,
-        uaid: Option<&Uuid>,
-        router_url: &str,
-        defer_registration: bool,
-    ) -> DbResult<HelloResponse> {
-        let mut response = HelloResponse {
-            message_month: "INVALID".into(),
-            connected_at,
-
-            ..Default::default()
-        };
-
-        if let Some(uaid) = uaid {
-            let user = self.get_user(uaid).await;
-
-            match user {
-                Ok(None) => {
-                    debug!("🉑 user not found");
-                }
-                Ok(Some(mut user)) => {
-                    // set the user's router_url to this.
-                    user.node_id = Some(router_url.to_owned());
-                    // We will never migrate users, so don't bother with that.
-                    // instead, check if we need to defer the registration, or do it now.
-                    if !defer_registration {
-                        self.add_user(&user).await?;
-                        response.uaid = Some(user.uaid);
-                    } else {
-                        response.deferred_user_registration = Some(user);
-                    }
-                }
-                Err(e) => {
-                    warn!("🉑⚠ {:?}", &e);
-                    self.metrics
-                        .incr_with_tags("ua.expiration")
-                        .with_tag("code", "104")
-                        .send();
-                    self.remove_user(uaid).await?;
-                    return Err(e);
-                }
-            }
-        }
-        Ok(response)
-    }
-
     async fn health_check(&self) -> DbResult<bool> {
         let mut req = bigtable::ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());

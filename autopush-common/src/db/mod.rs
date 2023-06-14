@@ -12,7 +12,6 @@ use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
 
-use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::RegexSet;
 use serde::Serializer;
@@ -110,133 +109,6 @@ where
     s.serialize_str(&x.simple().to_string())
 }
 
-/// DbCommandClient trait
-/// Define a set of traits for handling the data access portions of the
-/// various commands for the endpoint
-#[async_trait]
-pub trait DbCommandClient: Send + Sync {
-    //*
-    /// `hello` registers a new UAID or records a
-    /// returning UAID.
-    async fn hello(
-        &self,
-        // when the UAID connected
-        connected_at: u64,
-        // either the returning UAID or a request for a new one.
-        uaid: Option<&Uuid>,
-        // The router that the UAID connected to
-        router_url: &str,
-        // Hold of actually registering this.
-        // (Some UAIDs only connect to rec'v broadcast messages)
-        defer_registration: bool,
-    ) -> Result<HelloResponse>;
-
-    /// register a new channel for this UAID
-    async fn register_channel(
-        &self,
-        // The requesting UAID
-        uaid: &Uuid,
-        // The incoming channelID (Note: we must maintain this ID the
-        // same way that we recv'd it. (e.g. with dashes or not, case,
-        // etc.) )
-        channel_id: &Uuid,
-        // Legacy field from table rotation
-        message_month: &str,
-        // TODO??
-        endpoint: &str,
-        // The user record associated with this UAID
-        register_user: Option<&User>,
-    ) -> Result<RegisterResponse>;
-
-    /// Delete this user and all information associated with them
-    async fn drop_uaid(&self, uaid: &Uuid) -> Result<()>;
-
-    /// Delete this Channel ID for the user
-    async fn unregister_channel(
-        &self,
-        uaid: &Uuid,
-        channel_id: &Uuid,
-        message_month: &str,
-    ) -> Result<bool>;
-
-    /// LEGACY: move this user to the most recent message table
-    async fn migrate_user(&self, uaid: &Uuid, message_month: &str) -> Result<()>;
-
-    /// store the message for this user
-    async fn store_message(
-        &self,
-        uaid: &Uuid,
-        message_month: String,
-        message: Notification,
-    ) -> Result<()>;
-
-    /// store multiple messages for this user.
-    async fn store_messages(
-        &self,
-        uaid: &Uuid,
-        message_month: &str,
-        messages: Vec<Notification>,
-    ) -> Result<()>;
-
-    /// Delete a message for this user.
-    async fn delete_message(
-        &self,
-        table_name: &str,
-        uaid: &Uuid,
-        notif: &Notification,
-    ) -> Result<()>;
-
-    /// Fetch any pending messages for this user
-    async fn check_storage(
-        &self,
-        table_name: &str,
-        uaid: &Uuid,
-        include_topic: bool,
-        timestamp: Option<u64>,
-    ) -> Result<CheckStorageResponse>;
-
-    /// Get a list of known channels for this user.
-    /// (Used by daily mobile client check-in)
-    async fn get_user_channels(&self, uaid: &Uuid, message_table: &str) -> Result<HashSet<Uuid>>;
-
-    /// Remove the node information for this user (the
-    /// user has disconnected from a node and is considered
-    /// inactive or logged out.)
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: String, connected_at: u64) -> Result<()>;
-    // */
-    fn box_clone(&self) -> Box<dyn DbCommandClient>;
-}
-
-impl Clone for Box<dyn DbCommandClient> {
-    fn clone(&self) -> Self {
-        self.box_clone()
-    }
-}
-
-/// Basic requirements for notification content to deliver to websocket client
-///  - channelID  (the subscription website intended for)
-///  - version    (only really utilized for notification acknowledgement in
-///                webpush, used to be the sole carrier of data, can now be anything)
-///  - data       (encrypted content)
-///  - headers    (hash of crypto headers: encoding, encrypption, crypto-key, encryption-key)
-#[derive(Default, Clone, Debug)]
-pub struct HelloResponse {
-    /// The UAID the client should use.
-    pub uaid: Option<Uuid>,
-    /// LEGACY the message month for this user
-    pub message_month: String,
-    /// Do you need to fetch pending messages.
-    pub check_storage: bool,
-    /// Give the UA a new ID.
-    pub reset_uaid: bool,
-    /// LEGACY move the user to a new message month
-    pub rotate_message_table: bool,
-    /// the time that the user connected.
-    pub connected_at: u64,
-    // Exists when we didn't register this user during HELLO
-    pub deferred_user_registration: Option<User>,
-}
-
 #[derive(Clone, Default, Debug)]
 pub struct CheckStorageResponse {
     /// The messages include a "topic"
@@ -247,14 +119,6 @@ pub struct CheckStorageResponse {
     pub messages: Vec<Notification>,
     /// All the messages up to this timestampl
     pub timestamp: Option<u64>,
-}
-
-/// A new endpoint has been registered. (heh, should this be a RESULT?)
-pub enum RegisterResponse {
-    /// Hooray! Things worked, here's your endpoint URL
-    Success { endpoint: String },
-    /// Crap, there was an error.
-    Error { error_msg: String, status: u32 },
 }
 
 /// A user data record.
