@@ -85,6 +85,9 @@ pub trait DbClient: Send + Sync {
     /// Check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool>;
 
+    /// Perform the health check on this data store
+    async fn health_check(&self) -> DbResult<bool>;
+
     /// Get the message table name
     fn message_table(&self) -> &str;
 

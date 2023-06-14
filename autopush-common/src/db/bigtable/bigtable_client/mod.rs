@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use cadence::{CountedExt, StatsdClient};
+use cadence::StatsdClient;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, HelloResponse, Notification, User,
+    DbSettings, Notification, User,
 };
 
 use self::row::Row;
@@ -65,7 +65,7 @@ pub struct BigTableClientImpl {
     /// The grpc client connection to BigTable (it carries no big table specific info)
     client: BigtableClient,
     /// Metrics client
-    metrics: Arc<StatsdClient>,
+    _metrics: Arc<StatsdClient>,
     /// Connection Channel
     chan: Channel,
 }
@@ -184,7 +184,7 @@ impl BigTableClientImpl {
             settings: db_settings,
             client,
             chan,
-            metrics,
+            _metrics: metrics,
         })
     }
 
@@ -1002,25 +1002,6 @@ mod tests {
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
 
         BigTableClientImpl::new(metrics, &settings)
-    }
-
-    /// Test a very simple "hello" transaction.
-    #[actix_rt::test]
-    async fn test_bigtable_transaction() {
-        debug!("🉑 Getting new client...");
-        let client = new_client().unwrap();
-
-        let test_user = Uuid::new_v4();
-        let connected_at = now();
-
-        // Register a fake user.
-        let result = client
-            .hello(connected_at, Some(&test_user), "http://localhost", false)
-            .await
-            .unwrap();
-        trace!("🉑 {:?}", &result);
-        assert_eq!(result.uaid, None);
-        assert_eq!(result.message_month, "INVALID");
     }
 
     /// run a gauntlet of testing. These are a bit linear because they need

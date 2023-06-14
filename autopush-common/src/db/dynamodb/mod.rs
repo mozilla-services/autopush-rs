@@ -17,8 +17,6 @@ use crate::db::{
 use crate::notification::Notification;
 use crate::util::sec_since_epoch;
 
-use super::util::generate_last_connect;
-use super::{HelloResponse, USER_RECORD_VERSION};
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
 use chrono::Utc;
