@@ -12,7 +12,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::client::FetchMessageResponse;
-use super::HelloResponse;
 
 // mockall currently has issues mocking async traits with #[automock], so we use
 // this workaround. See https://github.com/asomers/mockall/issues/75
@@ -56,8 +55,6 @@ mockall::mock! {
         fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()>;
 
         fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;
-
-        fn hello(&self, connected_at: u64, uaid: Option<Uuid>, router_url: &str, defer_registration: bool) -> DbResult<HelloResponse>;
 
         fn router_table_exists(&self) -> DbResult<bool>;
 
@@ -144,16 +141,6 @@ impl DbClient for Arc<MockDbClient> {
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
         Arc::as_ref(self).remove_message(uaid, sort_key)
-    }
-
-    async fn hello(
-        &self,
-        connected_at: u64,
-        uaid: Option<&Uuid>,
-        router_url: &str,
-        defer_registration: bool,
-    ) -> DbResult<HelloResponse> {
-        Arc::as_ref(self).hello(connected_at, uaid.copied(), router_url, defer_registration)
     }
 
     async fn router_table_exists(&self) -> DbResult<bool> {
