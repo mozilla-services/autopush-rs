@@ -136,7 +136,11 @@ impl UnidentifiedClient {
         // TODO: NOTE: A new User doesn't get a `set_last_connect()` (matching
         // the previous impl)
         let user = User {
-            current_month: Some(self.app_state.db.message_table().to_owned()),
+            current_month: self
+                .app_state
+                .db
+                .rotating_message_table()
+                .map(str::to_owned),
             node_id: Some(self.app_state.router_url.to_owned()),
             connected_at,
             ..Default::default()

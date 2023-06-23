@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
+use mockall::automock;
 use uuid::Uuid;
 
 use crate::db::error::DbResult;
@@ -17,6 +18,7 @@ pub struct FetchMessageResponse {
 ///
 /// This is usually manifested by _database_::DbClientImpl
 ///
+#[automock] // must appear before #[async_trait]
 #[async_trait]
 pub trait DbClient: Send + Sync {
     /// Add a new user to the database. An error will occur if the user already
@@ -36,14 +38,6 @@ pub trait DbClient: Send + Sync {
 
     /// Add a channel to a user
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()>;
-
-    /// Replace the current channel list
-    async fn save_channels(
-        &self,
-        uaid: &Uuid,
-        channel_list: HashSet<&Uuid>,
-        message_month: &str,
-    ) -> DbResult<()>;
 
     /// Get the set of channel IDs for a user
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>>;
@@ -85,8 +79,17 @@ pub trait DbClient: Send + Sync {
     /// Check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool>;
 
-    /// Get the message table name
-    fn message_table(&self) -> &str;
+    /// Return the DynamoDB current message table name
+    ///
+    /// DynamoDB tables were previously rotated to new tables on a monthly
+    /// basis. The current table name is used to validate the DynamoDB specific
+    /// legacy `User::current_month` value.
+    ///
+    /// N/A to BigTable (returns `None`).
+    // #[automock] requires an explicit 'a lifetime here which is otherwise
+    // unnecessary and rejected by clippy
+    #[allow(clippy::needless_lifetimes)]
+    fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
     fn box_clone(&self) -> Box<dyn DbClient>;
 }
