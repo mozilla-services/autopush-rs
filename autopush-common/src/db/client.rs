@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
+use mockall::automock;
 use uuid::Uuid;
 
 use crate::db::error::DbResult;
@@ -18,6 +19,7 @@ pub struct FetchMessageResponse {
 /// This is usually manifested by _database_::DbClientImpl
 ///
 #[async_trait]
+#[automock]
 pub trait DbClient: Send + Sync {
     /// Add a new user to the database. An error will occur if the user already
     /// exists.
@@ -85,8 +87,14 @@ pub trait DbClient: Send + Sync {
     /// Check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool>;
 
-    /// Get the message table name
-    fn message_table(&self) -> &str;
+    /// Return the DynamoDB current message table name
+    ///
+    /// DynamoDB tables were previously rotated to new tables on a monthly
+    /// basis. The current table name is used to validate the DynamoDB specific
+    /// legacy `User::current_month` value.
+    ///
+    /// N/A to BigTable (returns `None`).
+    fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
     fn box_clone(&self) -> Box<dyn DbClient>;
 }

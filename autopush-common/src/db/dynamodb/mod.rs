@@ -620,9 +620,9 @@ impl DbClient for DdbClientImpl {
         self.table_exists(self.settings.message_table.clone()).await
     }
 
-    fn message_table(&self) -> &str {
+    fn rotating_message_table<'a>(&'a self) -> Option<&'a str> {
         trace!("ddb message table {:?}", &self.settings.message_table);
-        &self.settings.message_table
+        Some(&self.settings.message_table)
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {

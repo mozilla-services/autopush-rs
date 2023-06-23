@@ -11,8 +11,8 @@ use crate::error::WSError;
 /// This takes `ServerMessage`s and returns `WSErrors` to ease integration and
 /// usage via mocking. `Binary` WebSocket messages aren't supported (as we
 /// don't use them).
-#[automock]
 #[async_trait]
+#[automock]
 pub trait Session {
     /// See [`actix_ws::Session::text`]
     async fn text(&mut self, msg: ServerMessage) -> Result<(), WSError>;
