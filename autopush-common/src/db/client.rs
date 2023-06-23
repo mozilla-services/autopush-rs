@@ -18,8 +18,8 @@ pub struct FetchMessageResponse {
 ///
 /// This is usually manifested by _database_::DbClientImpl
 ///
+#[automock] // must appear before #[async_trait]
 #[async_trait]
-#[automock]
 pub trait DbClient: Send + Sync {
     /// Add a new user to the database. An error will occur if the user already
     /// exists.
@@ -40,10 +40,10 @@ pub trait DbClient: Send + Sync {
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()>;
 
     /// Replace the current channel list
-    async fn save_channels(
+    async fn save_channels<'a>(
         &self,
         uaid: &Uuid,
-        channel_list: HashSet<&Uuid>,
+        channel_list: HashSet<&'a Uuid>,
         message_month: &str,
     ) -> DbResult<()>;
 
@@ -94,6 +94,9 @@ pub trait DbClient: Send + Sync {
     /// legacy `User::current_month` value.
     ///
     /// N/A to BigTable (returns `None`).
+    // #[automock] requires an explicit 'a lifetime here which is otherwise
+    // unnecessary and rejected by clippy
+    #[allow(clippy::needless_lifetimes)]
     fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
     fn box_clone(&self) -> Box<dyn DbClient>;

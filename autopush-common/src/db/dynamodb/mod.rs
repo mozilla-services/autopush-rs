@@ -281,10 +281,10 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn save_channels(
+    async fn save_channels<'a>(
         &self,
         uaid: &Uuid,
-        channel_list: HashSet<&Uuid>,
+        channel_list: HashSet<&'a Uuid>,
         _message_month: &str,
     ) -> DbResult<()> {
         let chids: Vec<String> = channel_list
@@ -620,7 +620,7 @@ impl DbClient for DdbClientImpl {
         self.table_exists(self.settings.message_table.clone()).await
     }
 
-    fn rotating_message_table<'a>(&'a self) -> Option<&'a str> {
+    fn rotating_message_table(&self) -> Option<&str> {
         trace!("ddb message table {:?}", &self.settings.message_table);
         Some(&self.settings.message_table)
     }

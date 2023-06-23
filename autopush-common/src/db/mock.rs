@@ -36,10 +36,10 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).add_channel(uaid, channel_id).await
     }
 
-    async fn save_channels(
+    async fn save_channels<'a>(
         &self,
         uaid: &Uuid,
-        channel_list: HashSet<&Uuid>,
+        channel_list: HashSet<&'a Uuid>,
         message_month: &str,
     ) -> DbResult<()> {
         Arc::as_ref(self)
@@ -100,7 +100,7 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).message_table_exists().await
     }
 
-    fn rotating_message_table<'a>(&'a self) -> Option<&'a str> {
+    fn rotating_message_table(&self) -> Option<&str> {
         Arc::as_ref(self).rotating_message_table()
     }
 
