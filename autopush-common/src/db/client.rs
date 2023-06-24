@@ -39,14 +39,6 @@ pub trait DbClient: Send + Sync {
     /// Add a channel to a user
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()>;
 
-    /// Replace the current channel list
-    async fn save_channels<'a>(
-        &self,
-        uaid: &Uuid,
-        channel_list: HashSet<&'a Uuid>,
-        message_month: &str,
-    ) -> DbResult<()>;
-
     /// Get the set of channel IDs for a user
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>>;
 

@@ -36,17 +36,6 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).add_channel(uaid, channel_id).await
     }
 
-    async fn save_channels<'a>(
-        &self,
-        uaid: &Uuid,
-        channel_list: HashSet<&'a Uuid>,
-        message_month: &str,
-    ) -> DbResult<()> {
-        Arc::as_ref(self)
-            .save_channels(uaid, channel_list, message_month)
-            .await
-    }
-
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         Arc::as_ref(self).get_channels(uaid).await
     }
