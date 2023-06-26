@@ -566,7 +566,7 @@ impl DbClient for BigTableClientImpl {
 
             if let Some(mut cells) = record.get_cells("current_month") {
                 if let Some(cell) = cells.pop() {
-                    result.node_id = Some(String::from_utf8(cell.value).map_err(|e| {
+                    result.current_month = Some(String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
                             "Could not deserialize current_month: {:?}",
                             e
@@ -928,7 +928,7 @@ impl DbClient for BigTableClientImpl {
     async fn router_table_exists(&self) -> DbResult<bool> {
         Ok(true)
     }
-
+    
     /// Returns true, because there's only one table in BigTable. We divide things up
     /// by `family`.
     async fn message_table_exists(&self) -> DbResult<bool> {
