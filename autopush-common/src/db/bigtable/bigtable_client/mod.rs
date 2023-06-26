@@ -928,7 +928,7 @@ impl DbClient for BigTableClientImpl {
     async fn router_table_exists(&self) -> DbResult<bool> {
         Ok(true)
     }
-    
+
     /// Returns true, because there's only one table in BigTable. We divide things up
     /// by `family`.
     async fn message_table_exists(&self) -> DbResult<bool> {
