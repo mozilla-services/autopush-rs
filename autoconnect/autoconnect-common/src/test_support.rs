@@ -20,9 +20,9 @@ pub const CURRENT_MONTH: &str = "message_2018_06";
 /// Return a simple MockDbClient that responds to hello (once) with a new uaid.
 pub fn hello_db() -> MockDbClient {
     let mut db = MockDbClient::new();
-    db.expect_message_table()
+    db.expect_rotating_message_table()
         .times(1)
-        .return_const(CURRENT_MONTH.to_owned());
+        .return_const(Some(CURRENT_MONTH));
     db
 }
 
@@ -37,9 +37,9 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
             ..Default::default()
         }))
     });
-    db.expect_message_table()
+    db.expect_rotating_message_table()
         .times(1)
-        .return_const(CURRENT_MONTH.to_owned());
+        .return_const(Some(CURRENT_MONTH));
     db.expect_update_user().times(1).return_once(|_| Ok(()));
     db.expect_fetch_messages()
         .times(1)

@@ -610,29 +610,6 @@ impl DbClient for BigTableClientImpl {
         self.write_row(row).await.map_err(|e| e.into())
     }
 
-    async fn save_channels(
-        &self,
-        uaid: &Uuid,
-        channel_list: HashSet<&Uuid>,
-        _message_month: &str,
-    ) -> DbResult<()> {
-        if channel_list.is_empty() {
-            trace!("No channels to save.");
-            return Ok(());
-        };
-
-        for channel in channel_list {
-            trace!(
-                "+ Saving channel {:?}: {:?}",
-                &uaid.simple().to_string(),
-                &channel.simple().to_string()
-            );
-            self.add_channel(uaid, channel).await?;
-        }
-
-        Ok(())
-    }
-
     /// Delete all the rows that start with the given prefix. NOTE: this may be metered and should
     /// be used with caution.
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
@@ -951,13 +928,16 @@ impl DbClient for BigTableClientImpl {
     async fn router_table_exists(&self) -> DbResult<bool> {
         Ok(true)
     }
+
     /// Returns true, because there's only one table in BigTable. We divide things up
     /// by `family`.
     async fn message_table_exists(&self) -> DbResult<bool> {
         Ok(true)
     }
-    fn message_table(&self) -> &str {
-        &self.settings.table_name
+
+    /// BigTable does not support message table rotation
+    fn rotating_message_table(&self) -> Option<&str> {
+        None
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {
