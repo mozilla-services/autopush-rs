@@ -281,36 +281,6 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn save_channels(
-        &self,
-        uaid: &Uuid,
-        channel_list: HashSet<&Uuid>,
-        _message_month: &str,
-    ) -> DbResult<()> {
-        let chids: Vec<String> = channel_list
-            .into_iter()
-            .map(|v| v.as_hyphenated().to_string())
-            .collect();
-        let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
-        let attr_values = hashmap! {
-            ":chids".to_string() => val!(SS => chids),
-            ":expiry".to_string() => val!(N => expiry),
-        };
-        let update_item = UpdateItemInput {
-            key: ddb_item! {
-                uaid: s => uaid.simple().to_string(),
-                chidmessageid: s => " ".to_string()
-            },
-            update_expression: Some("ADD chids :chids SET expiry=:expiry".to_string()),
-            expression_attribute_values: Some(attr_values),
-            table_name: self.settings.message_table.clone(),
-            ..Default::default()
-        };
-
-        self.db_client.update_item(update_item.clone()).await?;
-        Ok(())
-    }
-
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         // Channel IDs are stored in a special row in the message table, where
         // chidmessageid = " "
@@ -620,9 +590,9 @@ impl DbClient for DdbClientImpl {
         self.table_exists(self.settings.message_table.clone()).await
     }
 
-    fn message_table(&self) -> &str {
+    fn rotating_message_table(&self) -> Option<&str> {
         trace!("ddb message table {:?}", &self.settings.message_table);
-        &self.settings.message_table
+        Some(&self.settings.message_table)
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {
