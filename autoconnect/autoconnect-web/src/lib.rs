@@ -5,7 +5,6 @@
 #[macro_use]
 extern crate slog_scope;
 
-pub mod client;
 pub mod dockerflow;
 pub mod metrics;
 pub mod routes;
@@ -38,10 +37,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
         // Websocket Handler
         .route("/", web::get().to(autoconnect_ws::ws_handler))
-        .service(web::resource("/push/{uaid}").route(web::put().to(crate::routes::push_route)))
-        .service(
-            web::resource("/notif/{uaid}").route(web::put().to(crate::routes::check_storage_route)),
-        )
+        .service(web::resource("/push/{uaid}").route(web::put().to(routes::push_route)))
+        .service(web::resource("/notif/{uaid}").route(web::put().to(routes::check_storage_route)))
         .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
         .service(web::resource("/health").route(web::get().to(dockerflow::health_route)))
         .service(web::resource("/v1/err/crit").route(web::get().to(dockerflow::log_check)))

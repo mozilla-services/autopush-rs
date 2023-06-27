@@ -256,24 +256,40 @@ pub async fn process_existing_user(
     app_state: &Arc<AppState>,
     user: &User,
 ) -> DbResult<Option<ClientFlags>> {
-    if user.current_month.is_none() {
-        app_state
-            .metrics
-            .incr_with_tags("ua.expiration")
-            .with_tag("errno", "104")
-            .send();
-        app_state.db.remove_user(&user.uaid).await?;
-        return Ok(None);
+    // TODO: if BigTable, can we assume the user is migrated at this point (so
+    // we wouldn't need to validate `current_month` is not None?)
+    if let Some(rotating_message_table) = app_state.db.rotating_message_table() {
+        let Some(ref current_month) = user.current_month else {
+            debug!("Missing `current_month` value, dropping user"; "user" => ?user);
+            app_state
+                .metrics
+                .incr_with_tags("ua.expiration")
+                .with_tag("errno", "104")
+                .send();
+            app_state.db.remove_user(&user.uaid).await?;
+            return Ok(None);
+        };
+
+        if current_month != rotating_message_table {
+            debug!("User is inactive, dropping user";
+                   "db.message_table" => rotating_message_table,
+                   "user.current_month" => current_month,
+                   "user" => ?user);
+            app_state
+                .metrics
+                .incr_with_tags("ua.expiration")
+                .with_tag("errno", "105")
+                .send();
+            app_state.db.remove_user(&user.uaid).await?;
+            return Ok(None);
+        }
     }
-    // TODO: (but probably not) drop the user if their current_month is not in
-    // the db's list of message_tables
 
     let flags = ClientFlags {
         check_storage: true,
         reset_uaid: user
             .record_version
             .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
-        rotate_message_table: user.current_month.as_deref() != Some(app_state.db.message_table()),
         ..Default::default()
     };
     Ok(Some(flags))
@@ -289,7 +305,6 @@ pub struct ClientFlags {
     check_storage: bool,
     /// Flags the need to drop the user record
     reset_uaid: bool,
-    rotate_message_table: bool,
 }
 
 impl Default for ClientFlags {
@@ -299,7 +314,6 @@ impl Default for ClientFlags {
             increment_storage: false,
             check_storage: false,
             reset_uaid: false,
-            rotate_message_table: false,
         }
     }
 }

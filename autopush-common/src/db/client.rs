@@ -1,13 +1,12 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
+use mockall::automock;
 use uuid::Uuid;
 
 use crate::db::error::DbResult;
 use crate::db::User;
 use crate::notification::Notification;
-
-use super::HelloResponse;
 
 #[derive(Default, Debug)]
 pub struct FetchMessageResponse {
@@ -19,6 +18,7 @@ pub struct FetchMessageResponse {
 ///
 /// This is usually manifested by _database_::DbClientImpl
 ///
+#[automock] // must appear before #[async_trait]
 #[async_trait]
 pub trait DbClient: Send + Sync {
     /// Add a new user to the database. An error will occur if the user already
@@ -38,14 +38,6 @@ pub trait DbClient: Send + Sync {
 
     /// Add a channel to a user
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()>;
-
-    /// Replace the current channel list
-    async fn save_channels(
-        &self,
-        uaid: &Uuid,
-        channel_list: HashSet<&Uuid>,
-        message_month: &str,
-    ) -> DbResult<()>;
 
     /// Get the set of channel IDs for a user
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>>;
@@ -81,24 +73,23 @@ pub trait DbClient: Send + Sync {
     /// Delete a notification
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;
 
-    /// record a Hello record
-    /// Each data store can handle this differently, thus it's best to hand things off to the engine.
-    async fn hello(
-        &self,
-        connected_at: u64,
-        uaid: Option<&Uuid>,
-        router_url: &str,
-        defer_registration: bool,
-    ) -> DbResult<HelloResponse>;
-
     /// Check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool>;
 
     /// Check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool>;
 
-    /// Get the message table name
-    fn message_table(&self) -> &str;
+    /// Return the DynamoDB current message table name
+    ///
+    /// DynamoDB tables were previously rotated to new tables on a monthly
+    /// basis. The current table name is used to validate the DynamoDB specific
+    /// legacy `User::current_month` value.
+    ///
+    /// N/A to BigTable (returns `None`).
+    // #[automock] requires an explicit 'a lifetime here which is otherwise
+    // unnecessary and rejected by clippy
+    #[allow(clippy::needless_lifetimes)]
+    fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
     fn box_clone(&self) -> Box<dyn DbClient>;
 }

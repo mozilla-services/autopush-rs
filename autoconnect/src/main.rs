@@ -4,17 +4,14 @@
 #[macro_use]
 extern crate slog_scope;
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use std::{env, vec::Vec};
 
 use actix_web::HttpServer;
 use docopt::Docopt;
 use serde::Deserialize;
-use std::sync::RwLock;
 
 use autoconnect_settings::{AppState, Settings};
-use autoconnect_web::{build_app, client::ClientChannels, config};
+use autoconnect_web::{build_app, config};
 use autopush_common::{
     errors::{ApcErrorKind, Result},
     logging,
@@ -89,7 +86,6 @@ async fn main() -> Result<()> {
     let router_port = settings.router_port;
     let app_state = AppState::from_settings(settings)?;
     app_state.init_and_spawn_megaphone_updater().await?;
-    let _client_channels: ClientChannels = Arc::new(RwLock::new(HashMap::new()));
 
     info!(
         "Starting autoconnect on port {} (router_port: {})",
