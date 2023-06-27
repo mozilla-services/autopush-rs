@@ -1,0 +1,79 @@
+name: Publish docs to pages
+run-name: ${{ github.actor }} is publishing docs
+on:
+    # on a successful push
+    push:
+        # only run on pushes to these branches
+        branches:
+            - 'master'
+            - 'main'
+            - 'docs'
+        # or run if pushes to these files.
+        # paths:
+        #    - 'docs/**.md'
+    check_run:
+        types:
+            # Only run if we have a successfully completed branch
+            - completed
+    # if desired, we can also use cron like rules to trigger these
+    # schedule:
+        #   - cron: 0 0 * * *
+    # Allow for manual triggering
+    workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+# Allow only one concurrent deployment. Cancel any in-progress.
+concurrency:
+    group: "pages"
+    cancel-in-progress: true
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        env:
+            MDBOOK_ENV: 0.4.24
+            MERMAID_ENV: 0.12.6
+            DEST_DIR: ~/.cargo/bin
+        steps:
+            # these are other job descriptions to call.
+            - uses: actions/checkout@v3
+            - name: Configure rust  # TODO: can we export building rust and installing mdbook as an artifact and reuse it?
+              run: |
+                curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
+                rustup update
+            - name: Install mdBook
+              run: |
+                curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v$MDBOOK_ENV/mdbook-v$MDBOOK_ENV-x86_64-unknown-linux-gnu.tar.gz" | tar -xz --directory $DEST_DIR
+                curl -sSL "https://github.com/badboy/mdBook-mermaid/releases/download/v$MERMAID_ENV/mdbook-mermaid-v$MERMAID_ENV-x86_64-unknown-linux-gnu.tar.gz" | tar -xz --directory $DEST_DIR
+            # actually build the book
+            - name: Build the main book
+              run: cd docs && mdbook build
+            - name: Build API docs
+              run: cargo doc --all-features --workspace --no-deps
+            # bring just the built docs over into the artifact (there's a lot of build detrius)
+            - name: Copy cargo docs to API dir
+              run: mkdir -p docs/output/api && cp -r target/doc/* docs/output/api
+            - name: Upload artifact
+              uses: actions/upload-pages-artifact@v1
+              with:
+                path: ./docs/output
+
+    # write the pages
+    deploy:
+        needs: build
+        permissions:
+            pages: write
+            id-token: write
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        runs-on: ubuntu-latest
+        steps:
+            - name: Deploy to Github Pages
+              id: depolyment
+              uses: actions/deploy-pages@v2
