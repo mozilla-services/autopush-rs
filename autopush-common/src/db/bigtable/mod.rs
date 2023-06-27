@@ -13,6 +13,7 @@ use crate::db::error::DbError;
 
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
 pub struct BigTableDbSettings {
     /// The Table name matches the GRPC template for table paths.
     /// e.g. `projects/{projectid}/instances/{instanceid}/tables/{tablename}`

@@ -156,6 +156,7 @@ impl BigTableClientImpl {
             )));
         }
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
+        debug!("🉑 {:#?}", db_settings);
         let mut chan = ChannelBuilder::new(env)
             .max_send_message_len(1 << 28)
             .max_receive_message_len(1 << 28);
@@ -982,6 +983,15 @@ mod tests {
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
 
         BigTableClientImpl::new(metrics, &settings)
+    }
+
+    #[test]
+    fn row_key() {
+        let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let sort_key = "01:decafbad-0000-0000-0000-0123456789ab:Inbox";
+        let k = as_key(&uaid, Some(&chid), Some(sort_key.to_owned()));
+        assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad0000000000000123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
     }
 
     /// run a gauntlet of testing. These are a bit linear because they need
