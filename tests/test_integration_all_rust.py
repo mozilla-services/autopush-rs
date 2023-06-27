@@ -50,6 +50,8 @@ root_dir = os.path.dirname(here_dir)
 DDB_JAR = os.path.join(root_dir, "tests", "ddb", "DynamoDBLocal.jar")
 DDB_LIB_DIR = os.path.join(root_dir, "tests", "ddb", "DynamoDBLocal_lib")
 DDB_PROCESS: Optional[subprocess.Popen] = None
+BT_PROCESS: Optional[subprocess.Popen] = None
+BT_DB_SETTINGS: Optional[str] = None
 
 twisted.internet.base.DelayedCall.debug = True
 
@@ -88,6 +90,24 @@ def get_free_port() -> int:
     s.close()
     return port
 
+"""Try reading the database settings from the environment
+
+If that points to a file, read the settings from that file.
+"""
+def get_db_settings() -> Optional[dict[str, str | int | float]] :
+    env_var = os.environ.get("DB_SETTINGS")
+    if env_var:
+        if os.path.isfile(env_var):
+            with open(env_var, "r") as f:
+                return f.read()
+        return env_var
+    return json.dumps(
+        dict(
+            router_table=ROUTER_TABLE,
+            message_table=MESSAGE_TABLE,
+            current_message_month=MESSAGE_TABLE,
+        )
+    )
 
 MOCK_SERVER_PORT = get_free_port()
 MOCK_MP_SERVICES: dict = {}
@@ -116,14 +136,8 @@ CONNECTION_CONFIG: dict[str, str | int | float] = dict(
     human_logs="true",
     msg_limit=MSG_LIMIT,
     # new autoconnect
-    db_dsn="http://127.0.0.1:8000",
-    db_settings=json.dumps(
-        dict(
-            router_table=ROUTER_TABLE,
-            message_table=MESSAGE_TABLE,
-            current_message_month=MESSAGE_TABLE,
-        )
-    ),
+    db_dsn=os.environ.get("DB_DSN", "http://127.0.0.1:8000"),
+    db_settings=get_db_settings(),
 )
 
 """Connection Megaphone Config:
@@ -571,6 +585,27 @@ def capture_output_to_queue(output_stream):
     t.start()
     return log_queue
 
+def setup_bt():
+    global BT_PROCESS, BT_DB_SETTINGS
+    BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
+    os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
+    try:
+        BT_DB_SETTINGS=os.environ("BT_DB_SETTINGS", json.dumps({
+            "table_name": "projects/test/instances/test/tables/autopush",
+        }))
+        # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
+        # using a Table Name of "projects/test/instances/test/tables/autopush"
+        cmd_start = "cbt -project test -instance test "
+        assert 0 > subprocess.call(cmd_start + "createtable autopush".split(" "))
+        assert 0 > subprocess.call(cmd_start + "createfamily autopush message".split(" "))
+        assert 0 > subprocess.call(cmd_start + "createfamily autopush message_topic".split(" "))
+        assert 0 > subprocess.call(cmd_start + "createfamily autopush router".split(" "))
+        assert 0 > subprocess.call(cmd_start + "setgcpolicy autopush message maxage=1s".split(" "))
+        assert 0 > subprocess.call(cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" "))
+        assert 0 > subprocess.call(cmd_start + "setgcpolicy autopush router maxversions=1s".split(" "))
+    except Exception as e:
+        print("Bigtable Setup Error {}", e)
+
 
 def setup_dynamodb():
     global DDB_PROCESS
@@ -613,13 +648,14 @@ def setup_mock_server():
 
 
 def setup_connection_server(connection_binary):
-    global CN_SERVER
+    global CN_SERVER, BT_PROCESS, DDB_PROCESS
 
     # NOTE:
     # due to a change in Config, autopush uses a double
     # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
     # `settings.fcm.min_ttl`)
     url = os.getenv("AUTOPUSH_CN_SERVER")
+    features = []
     if url is not None:
         parsed = urlparse(url)
         CONNECTION_CONFIG["hostname"] = parsed.hostname
@@ -630,6 +666,8 @@ def setup_connection_server(connection_binary):
     else:
         write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
+    if BT_PROCESS is not None:
+        cmd.extend(["--features", "emulator"])
     CN_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -667,7 +705,7 @@ def setup_megaphone_server(connection_binary):
 
 
 def setup_endpoint_server():
-    global EP_SERVER
+    global CONNECTION_CONFIG, EP_SERVER, BT_PROCESS
 
     # Set up environment
     # NOTE:
@@ -675,6 +713,8 @@ def setup_endpoint_server():
     # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
     # `settings.fcm.min_ttl`)
     url = os.getenv("AUTOPUSH_EP_SERVER")
+    ENDPOINT_CONFIG["db_dsn"] = CONNECTION_CONFIG["db_dsn"]
+    ENDPOINT_CONFIG["db_settings"] = CONNECTION_CONFIG["db_settings"]
     if url is not None:
         parsed = urlparse(url)
         ENDPOINT_CONFIG["hostname"] = parsed.hostname
@@ -686,6 +726,9 @@ def setup_endpoint_server():
 
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
+    if BT_PROCESS is not None:
+        cmd.extend(["--features", "emulator"])
+
     EP_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -710,7 +753,13 @@ def setup_module():
     for name in ("boto", "boto3", "botocore"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
 
-    setup_dynamodb()
+    if CONNECTION_CONFIG.get("db_dsn").startswith("grpc"):
+        setup_bt()
+    elif CONNECTION_CONFIG.get("db_dsn").startswith("dual"):
+        setup_bt()
+        setup_dynamodb()
+    else:
+        setup_dynamodb()
 
     pool = reactor.getThreadPool()
     pool.adjustPoolsize(minthreads=pool.max)

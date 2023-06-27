@@ -44,7 +44,7 @@ pub const USER_RECORD_VERSION: u8 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {
     INVALID,
     #[cfg(feature = "bigtable")]
@@ -54,7 +54,19 @@ pub enum StorageType {
 }
 
 impl StorageType {
+    fn available<'a>() -> Vec<&'a str> {
+        let mut result = ["DynamoDB"].to_vec();
+        #[cfg(feature = "bigtable")]
+        result.push("Bigtable");
+        result
+    }
+}
+
+
+impl StorageType {
     pub fn from_dsn(dsn: &Option<String>) -> Self {
+        debug!("Supported data types: {:?}", StorageType::available());
+        debug!("Checking DSN: {:?}", &dsn);
         if dsn.is_none() {
             info!("No DSN specified, failing over to old default dsn");
             return Self::DynamoDb;

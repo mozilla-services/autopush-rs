@@ -68,13 +68,14 @@ impl AppState {
             dsn: settings.db_dsn.clone(),
             db_settings: settings.db_settings.clone(),
         };
-        let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
+        let storage_type = StorageType::from_dsn(&db_settings.dsn);
+        let db: Box<dyn DbClient> = match storage_type {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
-            }
-            _ => panic!("Invalid Storage type. Check {}_DB_DSN.", ENV_PREFIX),
+            },
+            _ => panic!("Invalid Storage type {:?}. Check {}__DB_DSN.", storage_type, ENV_PREFIX.to_uppercase()),
         };
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
