@@ -1,4 +1,5 @@
-FROM rust:1.68-buster as builder
+# NOTE: Ensure builder's Rust version matches CI's in .circleci/config.yml
+FROM rust:1.70-buster as builder
 ARG CRATE
 
 ADD . /app
