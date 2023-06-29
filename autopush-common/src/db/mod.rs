@@ -35,7 +35,7 @@ mod util;
 pub mod mock;
 
 use crate::errors::{ApcErrorKind, Result};
-use crate::notification::Notification;
+use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
 
@@ -61,7 +61,6 @@ impl StorageType {
         result
     }
 }
-
 
 impl StorageType {
     pub fn from_dsn(dsn: &Option<String>) -> Self {
@@ -129,7 +128,7 @@ pub struct CheckStorageResponse {
     pub include_topic: bool,
     /// The list of pending messages.
     pub messages: Vec<Notification>,
-    /// All the messages up to this timestampl
+    /// All the messages up to this timestamp
     pub timestamp: Option<u64>,
 }
 
@@ -202,9 +201,9 @@ pub struct NotificationRecord {
     // DynamoDB <Range key>
     // Format:
     //    Topic Messages:
-    //        01:{channel id}:{topic}
+    //        {TOPIC_NOTIFICATION_PREFIX}:{channel id}:{topic}
     //    New Messages:
-    //        02:{timestamp int in microseconds}:{channel id}
+    //        {STANDARD_NOTIFICATION_PREFIX}:{timestamp int in microseconds}:{channel id}
     chidmessageid: String,
     /// Magic entry stored in the first Message record that indicates the highest
     /// non-topic timestamp we've read into
@@ -239,10 +238,14 @@ pub struct NotificationRecord {
 
 impl NotificationRecord {
     /// read the custom sort_key and convert it into something the database can use.
-    fn parse_sort_key(key: &str) -> Result<RangeKey> {
+    fn parse_chid_msgid(key: &str) -> Result<RangeKey> {
         lazy_static! {
-            static ref RE: RegexSet =
-                RegexSet::new([r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
+            static ref RE: RegexSet = RegexSet::new([
+                format!("^{}:\\S+:\\S+$", TOPIC_NOTIFICATION_PREFIX).as_str(),
+                format!("^{}:\\d+:\\S+$", STANDARD_NOTIFICATION_PREFIX).as_str(),
+                "^\\S{3,}:\\S+$"
+            ])
+            .unwrap();
         }
         if !RE.is_match(key) {
             return Err(ApcErrorKind::GeneralError("Invalid chidmessageid".into()).into());
@@ -300,7 +303,7 @@ impl NotificationRecord {
     // TODO: Implement as TryFrom whenever that lands
     /// Convert the
     pub fn into_notif(self) -> Result<Notification> {
-        let key = Self::parse_sort_key(&self.chidmessageid)?;
+        let key = Self::parse_chid_msgid(&self.chidmessageid)?;
         let version = key
             .legacy_version
             .or(self.updateid)
@@ -326,7 +329,7 @@ impl NotificationRecord {
     pub fn from_notif(uaid: &Uuid, val: Notification) -> Self {
         Self {
             uaid: *uaid,
-            chidmessageid: val.sort_key(),
+            chidmessageid: val.chidmessageid(),
             timestamp: Some(val.timestamp),
             expiry: sec_since_epoch() + min(val.ttl, MAX_EXPIRY),
             ttl: Some(val.ttl),

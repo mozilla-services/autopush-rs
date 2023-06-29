@@ -74,8 +74,12 @@ impl AppState {
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
-            },
-            _ => panic!("Invalid Storage type {:?}. Check {}__DB_DSN.", storage_type, ENV_PREFIX.to_uppercase()),
+            }
+            _ => panic!(
+                "Invalid Storage type {:?}. Check {}__DB_DSN.",
+                storage_type,
+                ENV_PREFIX.to_uppercase()
+            ),
         };
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))

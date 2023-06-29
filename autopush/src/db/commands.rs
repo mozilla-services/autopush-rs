@@ -78,7 +78,7 @@ pub fn list_tables_sync(
 }
 
 /// Pull all pending messages for the user from storage
-pub fn fetch_messages(
+pub fn fetch_topic_messages(
     ddb: DynamoDbClient,
     metrics: Arc<StatsdClient>,
     table_name: &str,

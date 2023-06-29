@@ -85,16 +85,16 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
 }
 
 /// Create a normalized index key.
-fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, sort_key: Option<String>) -> String {
+fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chid_msgid: Option<&str>) -> String {
     let mut parts: Vec<String> = Vec::new();
     parts.push(uaid.simple().to_string());
     if let Some(channel_id) = channel_id {
         parts.push(channel_id.simple().to_string());
-    } else if sort_key.is_some() {
+    } else if chid_msgid.is_some() {
         parts.push("".to_string())
     }
-    if let Some(sort_key) = sort_key {
-        parts.push(sort_key)
+    if let Some(chid_msgid) = chid_msgid {
+        parts.push(chid_msgid.to_owned());
     }
     parts.join("#")
 }
@@ -683,9 +683,13 @@ impl DbClient for BigTableClientImpl {
 
     /// Write the notification to storage.
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
-        let skt = message.sortkey_timestamp.map(|v| v.to_string());
+        debug!("🗄️ Saving message {} :: {:?}", &uaid, &message);
         let mut row = Row {
-            row_key: as_key(uaid, Some(&message.channel_id), skt),
+            row_key: as_key(
+                uaid,
+                Some(&message.channel_id),
+                Some(&message.chidmessageid()),
+            ),
             ..Default::default()
         };
 
@@ -791,7 +795,7 @@ impl DbClient for BigTableClientImpl {
         Ok(())
     }
 
-    /// Set the timestamp in the meta record for this user agent.
+    /// Set the `current_timestamp` in the meta record for this user agent.
     ///
     /// This is a bit different for BigTable. Field expiration (technically cell
     /// expiration) is determined by the lifetime assigned to the cell once it hits
@@ -799,8 +803,11 @@ impl DbClient for BigTableClientImpl {
     /// single field. You'd have to adjust all the cells that are in the family.
     /// So, we're not going to do expiration that way.
     ///
-    /// That leave the meta "timestamp" field. We can adjust that, but I don't think
-    /// that we currently use it for any active queries.
+    /// That leaves the meta "currnet_timestamp" field. We do not purge ACK'd records,
+    /// instead we presume that the TTL will kill them off eventually. On reads, we use
+    /// the `current_timestamp` to determine what records to return, since we return
+    /// records with timestamps later than `current_timestamp`.
+    ///
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
         let mut row = Row {
             row_key: as_key(uaid, None, None),
@@ -811,7 +818,7 @@ impl DbClient for BigTableClientImpl {
             MESSAGE_FAMILY.to_owned(),
             vec![cell::Cell {
                 family: MESSAGE_FAMILY.to_owned(),
-                qualifier: "timestamp".to_owned(),
+                qualifier: "current_timestamp".to_owned(),
                 value: timestamp.to_be_bytes().to_vec(),
                 ..Default::default()
             }],
@@ -820,13 +827,13 @@ impl DbClient for BigTableClientImpl {
     }
 
     /// Delete the notification from storage.
-    async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
+    async fn remove_message(&self, uaid: &Uuid, chid_msgid: &str) -> DbResult<()> {
         // parse the sort_key to get the message's CHID
-        let parts: Vec<&str> = sort_key.split(':').collect();
+        let parts: Vec<&str> = chid_msgid.split(':').collect();
         if parts.len() < 3 {
             return Err(DbError::General(format!(
                 "Invalid sort_key detected: {}",
-                sort_key
+                chid_msgid
             )));
         }
         let family = match parts[0] {
@@ -837,25 +844,33 @@ impl DbClient for BigTableClientImpl {
         if family.is_empty() {
             return Err(DbError::General(format!(
                 "Invalid sort_key detected: {}",
-                sort_key
+                chid_msgid
             )));
         }
         let chid = Uuid::parse_str(parts[1])
             .map_err(|_| error::BigTableError::Admin("Invalid SortKey component".to_string()))?;
-        let row_key = as_key(uaid, Some(&chid), Some(parts[2].to_owned()));
+        let row_key = as_key(uaid, Some(&chid), Some(chid_msgid));
+        debug!("🔥 Deleting message {}", &row_key);
         self.delete_row(&row_key).await.map_err(|e| e.into())
     }
 
     /// Return `limit` pending messages from storage. `limit=0` for all messages.
-    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
+    async fn fetch_topic_messages(
+        &self,
+        uaid: &Uuid,
+        limit: usize,
+    ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
         req.set_filter({
             let mut regex_filter = data::RowFilter::default();
             // channels for a given UAID all begin with `{uaid}#`
             // this will fetch all messages for all channels and all sort_keys
-            regex_filter
-                .set_row_key_regex_filter(format!("^{}#.+", uaid.simple()).as_bytes().to_vec());
+            regex_filter.set_row_key_regex_filter(
+                format!("^{}#[^#]+#01:.+", uaid.simple())
+                    .as_bytes()
+                    .to_vec(),
+            );
             regex_filter
         });
 
@@ -890,8 +905,11 @@ impl DbClient for BigTableClientImpl {
             // only look for channelids for the given UAID.
             let mut regex_filter = data::RowFilter::default();
             // channels for a given UAID all begin with `{uaid}#`
-            regex_filter
-                .set_row_key_regex_filter(format!("^{}#.+", uaid.simple()).as_bytes().to_vec());
+            regex_filter.set_row_key_regex_filter(
+                format!("^{}#[^#]+#02:.+", uaid.simple())
+                    .as_bytes()
+                    .to_vec(),
+            );
             regex_filter
         };
         req.set_filter(filter);
@@ -989,8 +1007,8 @@ mod tests {
     fn row_key() {
         let uaid = Uuid::parse_str(TEST_USER).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
-        let sort_key = "01:decafbad-0000-0000-0000-0123456789ab:Inbox";
-        let k = as_key(&uaid, Some(&chid), Some(sort_key.to_owned()));
+        let chidmessageid = "01:decafbad-0000-0000-0000-0123456789ab:Inbox";
+        let k = as_key(&uaid, Some(&chid), Some(chidmessageid));
         assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad0000000000000123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
     }
 
@@ -1060,7 +1078,10 @@ mod tests {
             .await
             .is_ok());
 
-        let mut fetched = client.fetch_messages(&uaid, 999).await.unwrap();
+        let mut fetched = client
+            .fetch_timestamp_messages(&uaid, None, 999)
+            .await
+            .unwrap();
         assert_ne!(fetched.messages.len(), 0);
         let fm = fetched.messages.pop().unwrap();
         assert_eq!(fm.channel_id, test_notification.channel_id);
@@ -1086,18 +1107,19 @@ mod tests {
             .await
             .is_ok());
 
-        // did we remove it?
-        assert!(client
-            .fetch_messages(&uaid, 999)
-            .await
-            .unwrap()
-            .messages
-            .is_empty());
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
         assert!(client
             .remove_node_id(&uaid, &node_id, connected_at)
             .await
             .is_ok());
+        // did we remove it?
+        let msgs = client
+            .fetch_timestamp_messages(&uaid, None, 999)
+            .await
+            .unwrap()
+            .messages;
+        print!("Messages: {:?}", &msgs);
+        assert!(msgs.is_empty());
 
         assert!(client.remove_user(&uaid).await.is_ok());
 

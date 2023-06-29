@@ -376,8 +376,12 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
-        // from commands::fetch_messages()
+    async fn fetch_topic_messages(
+        &self,
+        uaid: &Uuid,
+        limit: usize,
+    ) -> DbResult<FetchMessageResponse> {
+        // from commands::fetch_topic_messages()
         let attr_values = hashmap! {
             ":uaid".to_string() => val!(S => uaid.simple().to_string()),
             ":cmi".to_string() => val!(S => "02"),

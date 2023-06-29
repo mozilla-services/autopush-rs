@@ -122,7 +122,7 @@ impl WebPushClient {
             }
             // TODO: A batch remove_messages would be nicer
             if n.sortkey_timestamp.is_none() {
-                self.spawn_remove_message(n.sort_key());
+                self.spawn_remove_message(n.chidmessageid());
             }
             false
         });
@@ -160,13 +160,20 @@ impl WebPushClient {
     /// TODO: document topic vs timestamp messages
     async fn do_check_storage(&self) -> Result<CheckStorageResponse, SMError> {
         trace!("🗄️ WebPushClient::do_check_storage");
+        // start at the latest unacked timestamp.
         let timestamp = self.ack_state.unacked_stored_highest;
+        // if we're to include topic messages, do those first.
         let topic_resp = if self.flags.include_topic {
-            trace!("🗄️ WebPushClient::do_check_storage: fetch_messages");
-            self.app_state.db.fetch_messages(&self.uaid, 11).await?
+            trace!("🗄️ WebPushClient::do_check_storage: fetch_topic_messages");
+            // Get the most recent max 11 messages.
+            self.app_state
+                .db
+                .fetch_topic_messages(&self.uaid, 11)
+                .await?
         } else {
             Default::default()
         };
+        // if we have topic messages...
         if !topic_resp.messages.is_empty() {
             trace!(
                 "🗄️ WebPushClient::do_check_storage: Topic message returns: {:#?}",
@@ -186,7 +193,7 @@ impl WebPushClient {
                 timestamp: topic_resp.timestamp,
             });
         }
-
+        // No topic messages, so carry on with normal ones, starting from the latest timestamp.
         let timestamp = if self.flags.include_topic {
             topic_resp.timestamp
         } else {

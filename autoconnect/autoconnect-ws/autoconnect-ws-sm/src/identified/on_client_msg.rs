@@ -181,13 +181,17 @@ impl WebPushClient {
         let _ = self.app_state.metrics.incr("ua.command.ack");
 
         for notif in updates {
+            // Check the list of unacked "direct" (unstored) notifications. We only want to
+            // ack messages we've not yet seen and we have the right version, otherwise we could
+            // have gotten an older, inaccurate ACK.
             let pos = self
                 .ack_state
                 .unacked_direct_notifs
                 .iter()
                 .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
+            // We found one, so delete it from our list of unacked messages
             if let Some(pos) = pos {
-                debug!("Ack (Direct)";
+                debug!("✅ Ack (Direct)";
                        "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                        "version" => &notif.version
                 );
@@ -196,6 +200,7 @@ impl WebPushClient {
                 continue;
             };
 
+            // Now, check the list of stored notifications
             let pos = self
                 .ack_state
                 .unacked_stored_notifs
@@ -203,20 +208,27 @@ impl WebPushClient {
                 .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
             if let Some(pos) = pos {
                 debug!(
-                    "Ack (Stored)";
+                    "✅ Ack (Stored)";
                     "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                     "version" => &notif.version
                 );
+                // Get the stored notification record.
                 let n = &self.ack_state.unacked_stored_notifs[pos];
+                debug!("✅ Ack notif: {:?}", &n);
+                // Only force delete Topic messages, since they don't have a timestamp.
+                // Other messages persist in the database, to be, eventually, cleaned up by their
+                // TTL. We will need to update the `CurrentTimestamp` field for the channel
+                // record. Use that field to set the baseline timestamp for when to pull messages
+                // in the future.
                 // Topic/legacy messages have no sortkey_timestamp
                 if n.sortkey_timestamp.is_none() {
                     debug!(
-                        "WebPushClient:ack removing Stored, sort_key: {}",
-                        &n.sort_key()
+                        "✅ WebPushClient:ack removing Stored, sort_key: {}",
+                        &n.chidmessageid()
                     );
                     self.app_state
                         .db
-                        .remove_message(&self.uaid, &n.sort_key())
+                        .remove_message(&self.uaid, &n.chidmessageid())
                         .await?;
                 }
                 self.ack_state.unacked_stored_notifs.remove(pos);

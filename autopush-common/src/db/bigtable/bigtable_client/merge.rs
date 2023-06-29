@@ -391,6 +391,8 @@ impl RowMerger {
         // finished collection
         let mut rows = HashMap::<RowKey, Row>::new();
 
+        debug!("🕝 timestamp_filter: {:?}", &timestamp_filter);
+
         while let (Some(row_resp_res), s) = stream.into_future().await {
             if let Some(limit) = limit {
                 if rows.len() > limit as usize {

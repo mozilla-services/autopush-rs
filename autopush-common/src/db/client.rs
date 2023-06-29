@@ -57,7 +57,11 @@ pub trait DbClient: Send + Sync {
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()>;
 
     /// Fetch stored messages for a user
-    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>;
+    async fn fetch_topic_messages(
+        &self,
+        uaid: &Uuid,
+        limit: usize,
+    ) -> DbResult<FetchMessageResponse>;
 
     /// Fetch stored messages later than a given
     async fn fetch_timestamp_messages(

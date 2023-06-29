@@ -407,7 +407,7 @@ mod tests {
         let mut seq = mockall::Sequence::new();
         let timestamp = sec_since_epoch();
         // No topic messages
-        db.expect_fetch_messages()
+        db.expect_fetch_topic_messages()
             .times(1)
             .in_sequence(&mut seq)
             .return_once(move |_, _| {

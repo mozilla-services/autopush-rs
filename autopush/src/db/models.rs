@@ -10,7 +10,9 @@ use uuid::Uuid;
 
 use crate::db::util::generate_last_connect;
 use autopush_common::errors::*;
-use autopush_common::notification::Notification;
+use autopush_common::notification::{
+    Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX,
+};
 use autopush_common::util::timing::{ms_since_epoch, sec_since_epoch};
 use autopush_common::util::InsertOpt;
 
@@ -113,9 +115,9 @@ pub struct DynamoDbNotification {
     // DynamoDB <Range key>
     // Format:
     //    Topic Messages:
-    //        01:{channel id}:{topic}
+    //        {TOPIC_NOTIFICATION_PREFIX}:{channel id}:{topic}
     //    New Messages:
-    //        02:{timestamp int in microseconds}:{channel id}
+    //        {STANDARD_NOTIFICATION_PREFIX}:{timestamp int in microseconds}:{channel id}
     chidmessageid: String,
     // Magic entry stored in the first Message record that indicates the highest
     // non-topic timestamp we've read into
@@ -175,7 +177,7 @@ impl DynamoDbNotification {
 
         let v: Vec<&str> = key.split(':').collect();
         match v[0] {
-            "01" => {
+            TOPIC_NOTIFICATION_PREFIX => {
                 if v.len() != 3 {
                     return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
                 }
@@ -188,7 +190,7 @@ impl DynamoDbNotification {
                     legacy_version: None,
                 })
             }
-            "02" => {
+            STANDARD_NOTIFICATION_PREFIX => {
                 if v.len() != 3 {
                     return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
                 }
@@ -244,7 +246,7 @@ impl DynamoDbNotification {
     pub fn from_notif(uaid: &Uuid, val: Notification) -> Self {
         Self {
             uaid: *uaid,
-            chidmessageid: val.sort_key(),
+            chidmessageid: val.chidmessageid(),
             timestamp: Some(val.timestamp),
             expiry: sec_since_epoch() + min(val.ttl, MAX_EXPIRY),
             ttl: Some(val.ttl),
