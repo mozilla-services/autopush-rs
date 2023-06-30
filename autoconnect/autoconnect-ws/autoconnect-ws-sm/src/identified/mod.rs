@@ -62,6 +62,9 @@ pub struct WebPushClient {
     connected_at: u64,
     /// Timestamp of the last WebPush Ping message
     last_ping: u64,
+    /// The last notification timestamp.
+    // TODO: RENAME THIS TO `last_notification_timestamp`
+    current_timestamp: Option<u64>,
 
     app_state: Arc<AppState>,
 }
@@ -85,12 +88,14 @@ impl fmt::Debug for WebPushClient {
 }
 
 impl WebPushClient {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         uaid: Uuid,
         ua: String,
         broadcast_subs: BroadcastSubs,
         flags: ClientFlags,
         connected_at: u64,
+        current_timestamp: Option<u64>,
         deferred_add_user: Option<User>,
         app_state: Arc<AppState>,
     ) -> Result<(Self, Vec<ServerMessage>), SMError> {
@@ -108,6 +113,7 @@ impl WebPushClient {
             ack_state: Default::default(),
             sent_from_storage: Default::default(),
             connected_at,
+            current_timestamp,
             deferred_add_user,
             last_ping: Default::default(),
             stats,
@@ -387,6 +393,7 @@ mod tests {
             Default::default(),
             Default::default(),
             ms_since_epoch(),
+            None,
             None,
             Arc::new(app_state),
         )

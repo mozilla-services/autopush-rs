@@ -160,6 +160,10 @@ pub struct User {
     /// LEGACY: Current month table in the database the user is on
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_month: Option<String>,
+    /// the timestamp of the last notification sent to the user
+    //TODO: rename this to `last_notification_timestamp`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_timestamp: Option<u64>,
 }
 
 impl Default for User {
@@ -175,6 +179,7 @@ impl Default for User {
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
             current_month: None,
+            current_timestamp: None,
         }
     }
 }

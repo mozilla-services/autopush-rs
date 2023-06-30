@@ -438,9 +438,11 @@ impl DbClient for DdbClientImpl {
         timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
+        // Specify the minimum value to look for as a channelmessageid
         let range_key = if let Some(ts) = timestamp {
             format!("02:{}:z", ts)
         } else {
+            // fun ascii tricks? because ':' comes before ';', look for any non-topic?
             "01;".to_string()
         };
         let attr_values = hashmap! {

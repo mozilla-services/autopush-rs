@@ -40,14 +40,17 @@ impl Router for WebPushRouter {
         // The notification contains the original subscription information
         let user = &notification.subscription.user;
         debug!(
-            "Routing WebPush notification to UAID {}",
+            "✉ Routing WebPush notification to UAID {}",
             notification.subscription.user.uaid
         );
-        trace!("Notification = {:?}", notification);
+        trace!("✉ Notification = {:?}", notification);
 
         // Check if there is a node connected to the client
         if let Some(node_id) = &user.node_id {
-            trace!("User has a node ID, sending notification to node");
+            trace!(
+                "✉ User has a node ID, sending notification to node: {}",
+                &node_id
+            );
 
             // Try to send the notification to the node
             match self.send_notification(notification, node_id).await {
@@ -55,12 +58,12 @@ impl Router for WebPushRouter {
                     // The node might be busy, make sure it accepted the notification
                     if response.status() == 200 {
                         // The node has received the notification
-                        trace!("Node received notification");
+                        trace!("✉ Node received notification");
                         return Ok(self.make_delivered_response(notification));
                     }
 
                     trace!(
-                        "Node did not receive the notification, response = {:?}",
+                        "✉ Node did not receive the notification, response = {:?}",
                         response
                     );
                 }
@@ -71,7 +74,7 @@ impl Router for WebPushRouter {
                     if error.is_connect() {
                         self.metrics.incr("error.node.connect")?;
                     }
-                    debug!("Error while sending webpush notification: {}", error);
+                    debug!("✉ Error while sending webpush notification: {}", error);
                     self.remove_node_id(user, node_id).await?
                 }
             }
@@ -80,7 +83,7 @@ impl Router for WebPushRouter {
         if notification.headers.ttl == 0 {
             let topic = notification.headers.topic.is_some().to_string();
             trace!(
-                "Notification has a TTL of zero and was not successfully \
+                "✉ Notification has a TTL of zero and was not successfully \
                  delivered, dropping it"
             );
             self.metrics
@@ -92,21 +95,21 @@ impl Router for WebPushRouter {
         }
 
         // Save notification, node is not present or busy
-        trace!("Node is not present or busy, storing notification");
+        trace!("✉ Node is not present or busy, storing notification");
         self.store_notification(notification).await?;
 
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
-        trace!("Re-fetching user to trigger notification check");
+        trace!("✉ Re-fetching user to trigger notification check");
         let user = match self.db.get_user(&user.uaid).await {
             Ok(Some(user)) => user,
             Ok(None) => {
-                trace!("No user found, must have been deleted");
+                trace!("✉ No user found, must have been deleted");
                 return Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into());
             }
             Err(e) => {
                 // Database error, but we already stored the message so it's ok
-                debug!("Database error while re-fetching user: {}", e);
+                debug!("✉ Database error while re-fetching user: {}", e);
                 return Ok(self.make_stored_response(notification));
             }
         };
@@ -116,18 +119,18 @@ impl Router for WebPushRouter {
             Some(id) => id,
             // The user is not connected to a node, nothing more to do
             None => {
-                trace!("User is not connected to a node, returning stored response");
+                trace!("✉ User is not connected to a node, returning stored response");
                 return Ok(self.make_stored_response(notification));
             }
         };
 
         // Notify the node to check for messages
-        trace!("Notifying node to check for messages");
+        trace!("✉ Notifying node to check for messages");
         match self.trigger_notification_check(&user.uaid, node_id).await {
             Ok(response) => {
                 trace!("Response = {:?}", response);
                 if response.status() == 200 {
-                    trace!("Node has delivered the message");
+                    trace!("✉ Node has delivered the message");
                     self.metrics
                         .time_with_tags(
                             "notification.total_request_time",
@@ -140,13 +143,13 @@ impl Router for WebPushRouter {
 
                     Ok(self.make_delivered_response(notification))
                 } else {
-                    trace!("Node has not delivered the message, returning stored response");
+                    trace!("✉ Node has not delivered the message, returning stored response");
                     Ok(self.make_stored_response(notification))
                 }
             }
             Err(error) => {
                 // Can't communicate with the node, so we should stop using it
-                debug!("Error while triggering notification check: {}", error);
+                debug!("✉ Error while triggering notification check: {}", error);
                 self.remove_node_id(&user, node_id).await?;
                 Ok(self.make_stored_response(notification))
             }

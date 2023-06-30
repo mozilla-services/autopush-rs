@@ -177,7 +177,7 @@ impl WebPushClient {
 
     /// Acknowledge receipt of one or more Push Notifications
     async fn ack(&mut self, updates: &[ClientAck]) -> Result<Vec<ServerMessage>, SMError> {
-        trace!("WebPushClient:ack");
+        trace!("✅ WebPushClient:ack");
         let _ = self.app_state.metrics.incr("ua.command.ack");
 
         for notif in updates {

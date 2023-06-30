@@ -23,6 +23,7 @@ use crate::db::{
     error::{DbError, DbResult},
     DbSettings, Notification, User,
 };
+use crate::notification::STANDARD_NOTIFICATION_PREFIX;
 
 use self::row::Row;
 use super::BigTableDbSettings;
@@ -448,6 +449,14 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             });
         };
+        if let Some(current_timestamp) = user.current_timestamp {
+            cells.push(cell::Cell {
+                family: ROUTER_FAMILY.to_owned(),
+                qualifier: "current_timestamp".to_owned(),
+                value: current_timestamp.to_be_bytes().to_vec(),
+                ..Default::default()
+            });
+        };
         if let Some(node_id) = &user.node_id {
             cells.push(cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
@@ -473,7 +482,7 @@ impl DbClient for BigTableClientImpl {
             });
         };
         row.add_cells(ROUTER_FAMILY, cells);
-        trace!("Adding user");
+        trace!("🉑 Adding user");
         self.write_row(row).await.map_err(|e| e.into())
     }
 
@@ -492,7 +501,7 @@ impl DbClient for BigTableClientImpl {
         };
 
         if let Some(record) = self.read_row(&key, None).await? {
-            trace!("Found a record for that user");
+            trace!("🉑 Found a record for that user");
             if let Some(mut cells) = record.get_cells("connected_at") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
@@ -573,6 +582,19 @@ impl DbClient for BigTableClientImpl {
                             e
                         ))
                     })?);
+                }
+            }
+
+            //TODO: rename this to `last_notification_timestamp`
+            if let Some(mut cells) = record.get_cells("current_timestamp") {
+                if let Some(cell) = cells.pop() {
+                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
+                        DbError::Serialization(format!(
+                            "Could not deserialize current_timestamp: {:?}",
+                            e
+                        ))
+                    })?;
+                    result.current_timestamp = Some(u64::from_be_bytes(v));
                 }
             }
 
@@ -663,7 +685,7 @@ impl DbClient for BigTableClientImpl {
     /// Remove the node_id. Can't really "surgically strike" this
     async fn remove_node_id(&self, uaid: &Uuid, _node_id: &str, connected_at: u64) -> DbResult<()> {
         trace!(
-            "Removing node_ids for {} up to {:?} ",
+            "🉑 Removing node_ids for {} up to {:?} ",
             &uaid.simple().to_string(),
             UNIX_EPOCH + Duration::from_secs(connected_at)
         );
@@ -779,7 +801,7 @@ impl DbClient for BigTableClientImpl {
             });
         }
         row.add_cells(family, cells);
-        trace!("Adding row");
+        trace!("🉑 Adding row");
         self.write_row(row).await.map_err(|e| e.into())
     }
 
@@ -813,6 +835,12 @@ impl DbClient for BigTableClientImpl {
             row_key: as_key(uaid, None, None),
             ..Default::default()
         };
+
+        debug!(
+            "🉑 Updating {} current_timestamp:  {:?}",
+            as_key(uaid, None, None),
+            timestamp.to_be_bytes().to_vec()
+        );
 
         row.cells.insert(
             MESSAGE_FAMILY.to_owned(),
@@ -905,11 +933,13 @@ impl DbClient for BigTableClientImpl {
             // only look for channelids for the given UAID.
             let mut regex_filter = data::RowFilter::default();
             // channels for a given UAID all begin with `{uaid}#`
-            regex_filter.set_row_key_regex_filter(
-                format!("^{}#[^#]+#02:.+", uaid.simple())
-                    .as_bytes()
-                    .to_vec(),
+            let pattern = format!(
+                "^{}#[^#]+#{}:.*",
+                uaid.simple(),
+                STANDARD_NOTIFICATION_PREFIX
             );
+            debug!("🉑🔍:fetch_timestamp_messages: {}", &pattern);
+            regex_filter.set_row_key_regex_filter(pattern.as_bytes().to_vec());
             regex_filter
         };
         req.set_filter(filter);

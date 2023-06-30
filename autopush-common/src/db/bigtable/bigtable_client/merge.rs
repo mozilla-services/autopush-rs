@@ -451,10 +451,17 @@ impl RowMerger {
                     // Check to see if we can add this row, or if it's blocked by the timestamp filter.
                     let mut finished_row = merger.row_complete(&mut chunk).await?;
                     if let Some(ts_filter) = timestamp_filter {
-                        const TS_COL: &str = "sortkey_timestamp";
+                        const TS_COL: &str = "timestamp";
                         if let Some(ts_val) = finished_row.get_cell(TS_COL) {
+                            debug!(
+                                "🟧🕰 timestamp: ts_s {:?} v filter {:?}",
+                                ts_val.value,
+                                ts_filter.to_be_bytes().to_vec()
+                            );
                             if ts_val.value > ts_filter.to_be_bytes().to_vec() {
                                 rows.insert(finished_row.row_key.clone(), finished_row);
+                            } else {
+                                debug!("🟧🕰 skipping row");
                             }
                         } else {
                             // No timestamp, so presume it's OK.
@@ -475,7 +482,7 @@ impl RowMerger {
             }
         }
         merger.finalize().await?;
-        debug!("🚣🏻‍♂️ Rows: {}", &rows.len());
+        debug!("🚣 Rows: {}", &rows.len());
         Ok(rows)
     }
 }
