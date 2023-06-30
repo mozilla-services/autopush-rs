@@ -24,7 +24,7 @@ defaults:
 jobs:
   audit:
     docker:
-      - image: rust:latest
+      - image: rust:1.70
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
