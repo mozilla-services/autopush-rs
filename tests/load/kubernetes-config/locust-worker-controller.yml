@@ -1,0 +1,30 @@
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: locust-worker
+  labels:
+    name: locust-worker
+spec:
+  replicas: [WORKER_COUNT]
+  selector:
+    matchLabels:
+      app: locust-worker
+  template:
+    metadata:
+      labels:
+        app: locust-worker
+    spec:
+      containers:
+        - name: locust-worker
+          image: gcr.io/[PROJECT_ID]/locust-autopush:[LOCUST_IMAGE_TAG]
+          env:
+            - name: LOCUST_MODE_WORKER
+              value: "true"
+            - name: LOCUST_MASTER_NODE_HOST
+              value: locust-master
+            - name: LOCUST_LOGLEVEL
+              value: [LOCUST_LOGLEVEL]
+            - name: SERVER_URL
+              value: [SERVER_URL]
+            - name: ENDPOINT_URL
+              value: [ENDPOINT_URL]                          
