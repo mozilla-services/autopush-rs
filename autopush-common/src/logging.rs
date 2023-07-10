@@ -1,21 +1,19 @@
-use std::io;
+use std::{io, sync::OnceLock, time::Duration};
 
-use mozsvc_common::{aws::get_ec2_instance_id, get_hostname};
+use gethostname::gethostname;
 use slog::{self, Drain};
 use slog_mozlog_json::MozLogJson;
 
 use crate::errors::Result;
 
+static EC2_INSTANCE_ID: OnceLock<Option<String>> = OnceLock::new();
+
 pub fn init_logging(json: bool) -> Result<()> {
     let logger = if json {
-        let hostname = match get_ec2_instance_id() {
-            Some(v) => v.to_owned(),
-            None => match get_hostname() {
-                Ok(v) => v.to_string_lossy().to_string(),
-                Err(e) => return Err(e.into()),
-            },
-        };
-
+        let ec2_instance_id = EC2_INSTANCE_ID.get_or_init(|| get_ec2_instance_id().ok());
+        let hostname = ec2_instance_id
+            .clone()
+            .unwrap_or_else(|| gethostname().to_string_lossy().to_string());
         let drain = MozLogJson::new(io::stdout())
             .logger_name(format!(
                 "{}-{}",
@@ -58,4 +56,18 @@ pub fn init_test_logging() {
     let logger = slog::Logger::root(drain, slog::o!());
     slog_scope::set_global_logger(logger).cancel_reset();
     slog_stdlog::init().ok();
+}
+
+/// Fetch the EC2 instance-id
+///
+/// NOTE: This issues a blocking web request
+fn get_ec2_instance_id() -> reqwest::Result<String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .build()?;
+    client
+        .get("http://169.254.169.254/latest/meta-data/instance-id")
+        .send()?
+        .error_for_status()?
+        .text()
 }
