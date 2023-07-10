@@ -1,0 +1,42 @@
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+skip_gitignore = true
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_calls = false
+follow_imports = "normal"
+ignore_missing_imports = true
+pretty = true
+show_error_codes = true
+strict_optional = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_ignores = true
+warn_unreachable = true
+
+[tool.poetry]
+name = "autopush-load"
+version = "0.1.0"
+description = "An autopush loadtester"
+authors = ["Mozilla"]
+license = "Mozilla Public License Version 2.0"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+locust = "^2.15.1"
+websocket-client = "1.5.2"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+isort = "^5.12.0"
+flake8 = "^6.0.0"
+mypy = "^1.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
