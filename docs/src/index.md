@@ -97,9 +97,8 @@ yet available. You are, of course, welcome to review the code located in
 
 ## Changelog
 
-[Changelog](https://github.com/mozilla-services/autopush/blob/master/CHANGELOG.md)
+[Changelog](https://github.com/mozilla-services/autopush-rs/blob/master/CHANGELOG.md)
 
-</div>
 
 ## Bugs/Support
 

@@ -1,6 +1,10 @@
 Release Process {#releasing}
 ===============
 
+<div style="color:red;border:2px solid red;padding:5px; margin:10px 5px ">
+<b><i>NOTE</i></b> This page is outdated, however the "Release Steps" are still a useful checklist.
+</div>
+
 Autopush has a regular 2-3 week release to production depending on
 developer and QA availability. The developer creating a release should
 handle all aspects of the following process as they\'re done closely in

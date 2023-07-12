@@ -70,8 +70,6 @@ CRYPTO_KEY="hkclU1V37Dnp-0DMF9HLe_40Nnr8kDTYVbo2yxuylzk="
 
 Store the key for later use (including any trailing `=`).
 
-</div>
-
 ## Start Autopush
 
 Once you've completed the setup and have a crypto key, you can run a
