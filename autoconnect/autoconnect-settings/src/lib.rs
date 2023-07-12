@@ -39,7 +39,8 @@ fn include_port(scheme: &str, port: u16) -> bool {
 }
 
 /// The Applications settings, read from CLI, Environment or settings file, for the
-/// autoconnect application. These are later converted to [crate::options::AppState].
+/// autoconnect application. These are later converted to
+/// [autoconnect::autoconnect-settings::AppState].
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -98,7 +99,7 @@ pub struct Settings {
     /// trigger a user reset because the user may have been offline way too long.
     pub msg_limit: u32,
     /// Maximum number of pending notifications for individual UserAgent handlers.
-    /// (if a given [RegisteredClient] receives more than this number, the calling
+    /// (if a given [autoconnect-common::RegisteredClient] receives more than this number, the calling
     /// thread will lock.)
     pub max_pending_notification_queue: u32,
 }

@@ -238,7 +238,7 @@ pub struct Server {
 impl Server {
     /// Creates a new server handle used by Megaphone and other services.
     ///
-    /// This will spawn a new server with the [`state`](autopush_rs::server::AppState) specified, spinning up a
+    /// This will spawn a new server with the [`state`](autoconnect-settings::AppState) specified, spinning up a
     /// separate thread for the tokio reactor. The returned ShutdownHandles can
     /// be used to interact with it (e.g. shut it down).
     fn start(app_state: &Arc<AppState>) -> Result<Vec<ShutdownHandle>> {

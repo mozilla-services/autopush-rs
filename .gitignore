@@ -33,5 +33,9 @@ requirements.txt
 test-requirements.txt
 venv
 
+# docs
+docs/output
+docs/old
+
 # Local configs
 *.local.toml

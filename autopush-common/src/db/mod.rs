@@ -75,8 +75,8 @@ pub struct DbSettings {
     /// A JSON formatted dictionary containing Database settings that
     /// are specific to the type of Data storage specified in the `dsn`
     /// See the respective settings structures for
-    /// [crate::db::bigtable::BigTableDbSettings], [crate::db::dynamodb::DynamoDbSettings],
-    /// [crate::db::postgres::PostgresDbSettings]
+    /// [crate::db::dynamodb::DynamoDbSettings]
+    /// <!-- TODO: add Bigtable when landed -->
     pub db_settings: String,
 }
 //TODO: add `From<autopush::settings::Settings> for DbSettings`?
@@ -189,7 +189,7 @@ pub struct NotificationRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<u64>,
     /// DynamoDB expiration timestamp per
-    ///    https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
+    ///    <https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html>
     expiry: u64,
     /// TTL value provided by application server for the message
     #[serde(skip_serializing_if = "Option::is_none")]
