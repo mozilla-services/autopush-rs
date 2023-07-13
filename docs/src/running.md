@@ -189,20 +189,18 @@ you have an account open the Google Developer Console:
     will need this value for your android application.
 
 * in the `.autopush_endpoint` server config file:
+    -   add `fcm_enabled` to enable FCM routing.
+    -   add `fcm_creds`. This is a json block with the following format:
 
-    > -   add `fcm_enabled` to enable FCM routing.
-    >
-    > -   add `fcm_creds`. This is a json block with the following
-    >     format:
-    >
-    >     {"**app id**": {"projectid": "**project id name**", "auth":
-    >     "**path to Private Key File**"}, ...}
+    ```{"APP ID": {"projectid": "PROJECT ID NAME", "auth":"PATH TO PRIVATE KEY FILE"}, ...}```
+
+    (_see [Configuring for the Google GCM/FCM](fcm.md) for more details_)
 
 where:
 
 **app_id**: the URL identifier to be used when registering endpoints.
 (e.g. if "reference_test" is chosen here, registration requests should
-go to `https://updates.push.services.mozilla.com/v1/fcm/reference_test/registration`
+go to `https://updates.push.services.mozilla.com/v1/fcm/reference_test/registration`)
 
 **project id name**: the name of the **Project ID** as specified on the
 <https://console.firebase.google.com/> Project Settings \> General page.
