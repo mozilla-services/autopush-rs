@@ -38,7 +38,7 @@ jobs:
         env:
             MDBOOK_ENV: 0.4.24
             MERMAID_ENV: 0.12.6
-            DEST_DIR: ~/.cargo/bin
+            DEST_DIR: /home/runner/.cargo/bin
         steps:
             # these are other job descriptions to call.
             - uses: actions/checkout@v3
@@ -46,6 +46,7 @@ jobs:
               run: |
                 curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
                 rustup update
+                export PATH=$PATH:$DEST_DIR
             - name: Install mdBook
               run: |
                 curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v$MDBOOK_ENV/mdbook-v$MDBOOK_ENV-x86_64-unknown-linux-gnu.tar.gz" | tar -xz --directory $DEST_DIR
