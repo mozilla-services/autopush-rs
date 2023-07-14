@@ -1,0 +1,23 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: locust-master
+  labels:
+    app: locust-master
+spec:
+  ports:
+    - port: 8089
+      targetPort: loc-master-web
+      protocol: TCP
+      name: loc-master-web
+    - port: 5557
+      targetPort: loc-master-p1
+      protocol: TCP
+      name: loc-master-p1
+    - port: 5558
+      targetPort: loc-master-p2
+      protocol: TCP
+      name: loc-master-p2
+  selector:
+    app: locust-master
+  type: LoadBalancer

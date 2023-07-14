@@ -107,6 +107,10 @@ def get_db_settings() -> Optional[dict[str, str | int | float]] :
             router_table=ROUTER_TABLE,
             message_table=MESSAGE_TABLE,
             current_message_month=MESSAGE_TABLE,
+            table_name="projects/test/instances/test/tables/autopush",
+            router_family="router",
+            message_family="message",
+            message_topic_family="message_topic",
         )
     )
 
@@ -591,21 +595,24 @@ def setup_bt():
     BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
-        BT_DB_SETTINGS=os.environ("BT_DB_SETTINGS", json.dumps({
+        BT_DB_SETTINGS = os.environ.get("BT_DB_SETTINGS", json.dumps({
             "table_name": "projects/test/instances/test/tables/autopush",
         }))
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/test/tables/autopush"
-        cmd_start = "cbt -project test -instance test "
-        assert 0 > subprocess.call(cmd_start + "createtable autopush".split(" "))
-        assert 0 > subprocess.call(cmd_start + "createfamily autopush message".split(" "))
-        assert 0 > subprocess.call(cmd_start + "createfamily autopush message_topic".split(" "))
-        assert 0 > subprocess.call(cmd_start + "createfamily autopush router".split(" "))
-        assert 0 > subprocess.call(cmd_start + "setgcpolicy autopush message maxage=1s".split(" "))
-        assert 0 > subprocess.call(cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" "))
-        assert 0 > subprocess.call(cmd_start + "setgcpolicy autopush router maxversions=1s".split(" "))
+        log.debug("Starting emulator")
+        cmd_start = "cbt -project test -instance test".split(" ")
+        vv = subprocess.call(cmd_start + "createtable autopush".split(" "), stderr=subprocess.STDOUT)
+        vv = subprocess.call(cmd_start + "createfamily autopush message".split(" "))
+        vv = subprocess.call(cmd_start + "createfamily autopush message_topic".split(" "))
+        vv = subprocess.call(cmd_start + "createfamily autopush router".split(" "))
+        vv = subprocess.call(cmd_start + "setgcpolicy autopush message maxage=1s".split(" "))
+        vv = subprocess.call(cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" "))
+        vv = subprocess.call(cmd_start + "setgcpolicy autopush router maxversions=1".split(" "))
+        print(vv)
     except Exception as e:
         print("Bigtable Setup Error {}", e)
+        raise
 
 
 def setup_dynamodb():
@@ -669,6 +676,7 @@ def setup_connection_server(connection_binary):
     cmd = [connection_binary]
     if BT_PROCESS is not None:
         cmd.extend(["--features", "emulator"])
+    log.debug("🟢 Starting Connection server: {}".format(' '.join(cmd)))
     CN_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -779,6 +787,9 @@ def teardown_module():
     if DDB_PROCESS:
         os.unsetenv("AWS_LOCAL_DYNAMODB")
         kill_process(DDB_PROCESS)
+    if BT_PROCESS:
+        os.unsetenv("BIGTABLE_EMULATOR_HOST")
+        kill_process(BT_PROCESS)
     kill_process(CN_SERVER)
     kill_process(CN_MP_SERVER)
     kill_process(EP_SERVER)
@@ -902,6 +913,7 @@ class TestRustWebPush(unittest.TestCase):
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
+        log.debug("get_notification result:", result)
         # the following presumes that only `salt` is padded.
         clean_header = client._crypto_key.replace('"', "").rstrip("=")
         assert result["headers"]["encryption"] == clean_header
@@ -1110,8 +1122,8 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_multiple_delivery_with_single_ack(self):
-        data = str(uuid.uuid4())
-        data2 = str(uuid.uuid4())
+        data = b'\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()
+        data2 = b':\xd8^\xac\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels

@@ -1,5 +1,5 @@
 use core::fmt;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -220,7 +220,7 @@ impl BigTableClientImpl {
         req: ReadRowsRequest,
         timestamp_filter: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<HashMap<RowKey, row::Row>, error::BigTableError> {
+    ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let resp = self
             .client
             .clone()
@@ -352,7 +352,7 @@ impl BigTableClientImpl {
 
     fn rows_to_notifications(
         &self,
-        rows: HashMap<String, Row>,
+        rows: BTreeMap<String, Row>,
     ) -> Result<FetchMessageResponse, crate::db::error::DbError> {
         let mut messages: Vec<Notification> = Vec::new();
         let mut max_timestamp: u64 = 0;
@@ -393,6 +393,14 @@ impl BigTableClientImpl {
                     if notif.timestamp > max_timestamp {
                         max_timestamp = notif.timestamp;
                     }
+                }
+                if let Some(cell) = row.get_cell("headers") {
+                    notif.headers = Some(
+                        serde_json::from_str::<HashMap<String, String>>(&to_string(
+                            cell.value, "headers",
+                        )?)
+                        .map_err(|e| DbError::Serialization(e.to_string()))?,
+                    );
                 }
                 messages.push(notif);
             }

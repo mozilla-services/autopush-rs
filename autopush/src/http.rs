@@ -27,6 +27,7 @@ impl Service for Push {
     type Future = Box<dyn Future<Item = hyper::Response<Body>, Error = hyper::Error> + Send>;
 
     fn call(&mut self, req: hyper::Request<Body>) -> Self::Future {
+        trace!("⏩ **** In notif handler...");
         let mut response = hyper::Response::builder();
         let req_path = req.uri().path().to_string();
         let path_vec: Vec<&str> = req_path.split('/').collect();
@@ -44,6 +45,7 @@ impl Service for Push {
             }
         };
         let clients = Arc::clone(&self.0);
+        debug!("⏩ trying {} => {}", req.method(), &uaid);
         // Handle incoming routed push notifications from endpoints.
         match (req.method(), method_name, uaid) {
             (&Method::PUT, "push", uaid) => {

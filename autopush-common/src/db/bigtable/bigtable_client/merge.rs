@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, SystemTime};
 
 use futures::StreamExt;
@@ -384,12 +384,12 @@ impl RowMerger {
         mut stream: ClientSStreamReceiver<ReadRowsResponse>,
         timestamp_filter: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<HashMap<RowKey, Row>, BigTableError> {
+    ) -> Result<BTreeMap<RowKey, Row>, BigTableError> {
         // Work object
         let mut merger = Self::default();
 
         // finished collection
-        let mut rows = HashMap::<RowKey, Row>::new();
+        let mut rows = BTreeMap::<RowKey, Row>::new();
 
         debug!("🕝 timestamp_filter: {:?}", &timestamp_filter);
 
