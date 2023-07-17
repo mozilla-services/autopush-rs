@@ -256,6 +256,7 @@ impl BigTableClientImpl {
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
                 // a `Timestamp granularity mismatch` error
                 set_cell.set_timestamp_micros((timestamp.as_millis() * 1000) as i64);
+                debug!("🉑 expiring in {:?}", timestamp.as_millis());
                 mutation.set_set_cell(set_cell);
                 mutations.push(mutation);
             }
@@ -730,6 +731,7 @@ impl DbClient for BigTableClientImpl {
         let mut cells: Vec<cell::Cell> = Vec::new();
 
         let family = if message.topic.is_some() {
+            debug!("🉑 Topic Message: expiry {}", ttl.elapsed().unwrap_or_default().as_millis());
             // Set the correct flag so we know how to read this row later.
             cells.push(cell::Cell {
                 family: MESSAGE_FAMILY.to_owned(),

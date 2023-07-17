@@ -99,7 +99,7 @@ impl WebPushClient {
         deferred_add_user: Option<User>,
         app_state: Arc<AppState>,
     ) -> Result<(Self, Vec<ServerMessage>), SMError> {
-        trace!("WebPushClient::new");
+        trace!("👁‍🗨WebPushClient::new");
         let stats = SessionStatistics {
             existing_uaid: deferred_add_user.is_none(),
             ..Default::default()
@@ -162,7 +162,7 @@ impl WebPushClient {
 
     /// Cleanup after the session has ended
     pub fn shutdown(&mut self, reason: Option<String>) {
-        trace!("WebPushClient::shutdown");
+        trace!("👁‍🗨WebPushClient::shutdown");
         self.save_and_notify_unacked_direct_notifs();
 
         let ua_info = &self.ua_info;
@@ -206,7 +206,7 @@ impl WebPushClient {
     fn save_and_notify_unacked_direct_notifs(&mut self) {
         let mut notifs = mem::take(&mut self.ack_state.unacked_direct_notifs);
         trace!(
-            "WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
+            "👁‍🗨WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
             notifs.len()
         );
         if notifs.is_empty() {

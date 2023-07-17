@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let settings = settings::Settings::with_env_and_config_file(&args.flag_config)?;
     let host_port = format!("{}:{}", &settings.host, &settings.port);
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
-    debug!("Starting up...");
+    debug!("Starting up autoendpoint...");
 
     let _sentry = sentry::init(sentry::ClientOptions {
         release: sentry::release_name!(),

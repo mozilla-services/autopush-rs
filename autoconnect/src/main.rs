@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
-    debug!("Starting up...");
+    debug!("Starting up autoconnect...");
 
     // Perform any app global storage initialization.
     if autopush_common::db::StorageType::DynamoDb

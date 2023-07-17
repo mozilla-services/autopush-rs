@@ -12,7 +12,7 @@ pub async fn push_route(
     state: web::Data<AppState>,
 ) -> HttpResponse {
     trace!(
-        "⏩ @@@@ push_route, uaid: {} channel_id: {}",
+        "⏩ push_route, uaid: {} channel_id: {}",
         uaid,
         notif.channel_id
     );
@@ -32,7 +32,7 @@ pub async fn check_storage_route(
     uaid: web::Path<Uuid>,
     state: web::Data<AppState>,
 ) -> HttpResponse {
-    trace!("⏩ #### check_storage_route, uaid: {}", uaid);
+    trace!("⏩ check_storage_route, uaid: {}", uaid);
     let result = state.clients.check_storage(uaid.into_inner()).await;
     if result.is_ok() {
         HttpResponse::Ok().finish()

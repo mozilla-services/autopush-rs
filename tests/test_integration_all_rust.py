@@ -81,7 +81,10 @@ MOCK_SERVER_THREAD = None
 CN_QUEUES: list = []
 EP_QUEUES: list = []
 STRICT_LOG_COUNTS = True
-RUST_LOG = "autoconnect=debug,autoendpoint=debug,autopush_rs=debug,autopush_common=debug,error"
+
+modules = ["autoconnect", "autoconnect_common", "autoconnect_web", "autoconnect_ws", "autoconnect_ws_sm", "autoendpoint", "autopush", "autopush_common"]
+log_string = [f"{x}=trace" for x in modules]
+RUST_LOG = ",".join(log_string)+",error"
 
 
 def get_free_port() -> int:
@@ -600,7 +603,7 @@ def setup_bt():
         }))
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/test/tables/autopush"
-        log.debug("Starting emulator")
+        log.debug("🐍🟢 Starting bigtable emulator")
         cmd_start = "cbt -project test -instance test".split(" ")
         vv = subprocess.call(cmd_start + "createtable autopush".split(" "), stderr=subprocess.STDOUT)
         vv = subprocess.call(cmd_start + "createfamily autopush message".split(" "))
@@ -609,15 +612,16 @@ def setup_bt():
         vv = subprocess.call(cmd_start + "setgcpolicy autopush message maxage=1s".split(" "))
         vv = subprocess.call(cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" "))
         vv = subprocess.call(cmd_start + "setgcpolicy autopush router maxversions=1".split(" "))
-        print(vv)
+        log.debug(vv)
     except Exception as e:
-        print("Bigtable Setup Error {}", e)
+        log.error("Bigtable Setup Error {}", e)
         raise
 
 
 def setup_dynamodb():
     global DDB_PROCESS
 
+    log.debug("🐍🟢 Starting dynamodb")
     if os.getenv("AWS_LOCAL_DYNAMODB") is None:
         cmd = " ".join(
             [
@@ -676,7 +680,7 @@ def setup_connection_server(connection_binary):
     cmd = [connection_binary]
     if BT_PROCESS is not None:
         cmd.extend(["--features", "emulator"])
-    log.debug("🟢 Starting Connection server: {}".format(' '.join(cmd)))
+    log.debug(f"🐍🟢 Starting Connection server: {' '.join(cmd)}")
     CN_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -710,6 +714,7 @@ def setup_megaphone_server(connection_binary):
     else:
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
+    log.debug("🐍🟢 Starting Megaphone server: {}".format(' '.join(cmd)))
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
 
 
@@ -738,6 +743,7 @@ def setup_endpoint_server():
     if BT_PROCESS is not None:
         cmd.extend(["--features", "emulator"])
 
+    log.debug("🐍🟢 Starting Endpoint server: {}".format(' '.join(cmd)))
     EP_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -775,6 +781,7 @@ def setup_module():
 
     setup_mock_server()
 
+    log.debug(f"🐍🟢 Rust Log: {RUST_LOG}")
     os.environ["RUST_LOG"] = RUST_LOG
     connection_binary = get_rust_binary_path(CONNECTION_BINARY)
     setup_connection_server(connection_binary)
@@ -786,12 +793,17 @@ def setup_module():
 def teardown_module():
     if DDB_PROCESS:
         os.unsetenv("AWS_LOCAL_DYNAMODB")
+        log.debug("🐍🔴 Stopping dynamodb")
         kill_process(DDB_PROCESS)
     if BT_PROCESS:
         os.unsetenv("BIGTABLE_EMULATOR_HOST")
+        log.debug("🐍🔴 Stopping bigtable")
         kill_process(BT_PROCESS)
+    log.debug("🐍🔴 Stopping connection server")
     kill_process(CN_SERVER)
+    log.debug("🐍🔴 Stopping megaphone server")
     kill_process(CN_MP_SERVER)
+    log.debug("🐍🔴 Stopping endpoint server")
     kill_process(EP_SERVER)
 
 
@@ -815,11 +827,12 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def quick_register(self):
-        print("#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
+        log.debug("🐍#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
         yield client.register()
+        log.debug("🐍 Connected")
         returnValue(client)
 
     @inlineCallbacks
@@ -1103,17 +1116,25 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     def test_topic_expired(self):
         data = str(uuid.uuid4())
+        log.debug("🐍 Quick Connect...")
         client = yield self.quick_register()
+        log.debug("🐍 Disconnecting...")
         yield client.disconnect()
         assert client.channels
+        log.debug("🐍 sending topic...")
         yield client.send_notification(
             data=data, ttl=1, topic="test", status=201
         )
-        yield client.sleep(2)
+        log.debug("🐍 Sleeping...")
+        yield client.sleep(3)
+        log.debug("🐍 Reconnecting...")
         yield client.connect()
+        log.debug("🐍 Sending Hello...")
         yield client.hello()
+        log.debug("🐍 Trying to fetch notifications...")
         result = yield client.get_notification(timeout=0.5)
         assert result is None
+        log.debug("🐍 Sending another topic...")
         result = yield client.send_notification(data=data, topic="test")
         assert result != {}
         assert result["data"] == base64url_encode(data)
