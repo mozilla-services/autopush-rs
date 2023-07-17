@@ -243,7 +243,7 @@ pub struct NotificationRecord {
 
 impl NotificationRecord {
     /// read the custom sort_key and convert it into something the database can use.
-    fn parse_chid_msgid(key: &str) -> Result<RangeKey> {
+    fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet = RegexSet::new([
                 format!("^{}:\\S+:\\S+$", TOPIC_NOTIFICATION_PREFIX).as_str(),
@@ -308,7 +308,7 @@ impl NotificationRecord {
     // TODO: Implement as TryFrom whenever that lands
     /// Convert the
     pub fn into_notif(self) -> Result<Notification> {
-        let key = Self::parse_chid_msgid(&self.chidmessageid)?;
+        let key = Self::parse_chidmessageid(&self.chidmessageid)?;
         let version = key
             .legacy_version
             .or(self.updateid)
