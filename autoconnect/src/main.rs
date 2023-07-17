@@ -55,18 +55,6 @@ async fn main() -> Result<()> {
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
     debug!("Starting up...");
 
-    //TODO: Eventually this will match between the various storage engines that
-    // we support. For now, it's just the one, DynamoDB.
-    // Perform any app global storage initialization.
-    match autopush_common::db::StorageType::from_dsn(&settings.db_dsn) {
-        autopush_common::db::StorageType::DynamoDb => {
-            env::set_var("AWS_LOCAL_DYNAMODB", settings.db_dsn.clone().unwrap())
-        }
-        autopush_common::db::StorageType::INVALID => {
-            panic!("Invalid Storage type. Check DB_DSN.");
-        }
-    }
-
     // Sentry requires the environment variable "SENTRY_DSN".
     if env::var("SENTRY_DSN")
         .unwrap_or_else(|_| "".to_owned())
