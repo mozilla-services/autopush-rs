@@ -86,16 +86,16 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
 }
 
 /// Create a normalized index key.
-fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chid_msgid: Option<&str>) -> String {
+fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -> String {
     let mut parts: Vec<String> = Vec::new();
     parts.push(uaid.simple().to_string());
     if let Some(channel_id) = channel_id {
         parts.push(channel_id.simple().to_string());
-    } else if chid_msgid.is_some() {
+    } else if chidmessageid.is_some() {
         parts.push("".to_string())
     }
-    if let Some(chid_msgid) = chid_msgid {
-        parts.push(chid_msgid.to_owned());
+    if let Some(chidmessageid) = chidmessageid {
+        parts.push(chidmessageid.to_owned());
     }
     parts.join("#")
 }
@@ -731,7 +731,10 @@ impl DbClient for BigTableClientImpl {
         let mut cells: Vec<cell::Cell> = Vec::new();
 
         let family = if message.topic.is_some() {
-            debug!("🉑 Topic Message: expiry {}", ttl.elapsed().unwrap_or_default().as_millis());
+            debug!(
+                "🉑 Topic Message: expiry {}",
+                ttl.elapsed().unwrap_or_default().as_millis()
+            );
             // Set the correct flag so we know how to read this row later.
             cells.push(cell::Cell {
                 family: MESSAGE_FAMILY.to_owned(),
@@ -865,13 +868,13 @@ impl DbClient for BigTableClientImpl {
     }
 
     /// Delete the notification from storage.
-    async fn remove_message(&self, uaid: &Uuid, chid_msgid: &str) -> DbResult<()> {
+    async fn remove_message(&self, uaid: &Uuid, chidmessageid: &str) -> DbResult<()> {
         // parse the sort_key to get the message's CHID
-        let parts: Vec<&str> = chid_msgid.split(':').collect();
+        let parts: Vec<&str> = chidmessageid.split(':').collect();
         if parts.len() < 3 {
             return Err(DbError::General(format!(
                 "Invalid sort_key detected: {}",
-                chid_msgid
+                chidmessageid
             )));
         }
         let family = match parts[0] {
@@ -882,12 +885,12 @@ impl DbClient for BigTableClientImpl {
         if family.is_empty() {
             return Err(DbError::General(format!(
                 "Invalid sort_key detected: {}",
-                chid_msgid
+                chidmessageid
             )));
         }
         let chid = Uuid::parse_str(parts[1])
             .map_err(|_| error::BigTableError::Admin("Invalid SortKey component".to_string()))?;
-        let row_key = as_key(uaid, Some(&chid), Some(chid_msgid));
+        let row_key = as_key(uaid, Some(&chid), Some(chidmessageid));
         debug!("🔥 Deleting message {}", &row_key);
         self.delete_row(&row_key).await.map_err(|e| e.into())
     }

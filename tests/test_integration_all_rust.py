@@ -1116,25 +1116,17 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     def test_topic_expired(self):
         data = str(uuid.uuid4())
-        log.debug("🐍 Quick Connect...")
         client = yield self.quick_register()
-        log.debug("🐍 Disconnecting...")
         yield client.disconnect()
         assert client.channels
-        log.debug("🐍 sending topic...")
         yield client.send_notification(
             data=data, ttl=1, topic="test", status=201
         )
-        log.debug("🐍 Sleeping...")
-        yield client.sleep(3)
-        log.debug("🐍 Reconnecting...")
+        yield client.sleep(2)
         yield client.connect()
-        log.debug("🐍 Sending Hello...")
         yield client.hello()
-        log.debug("🐍 Trying to fetch notifications...")
         result = yield client.get_notification(timeout=0.5)
         assert result is None
-        log.debug("🐍 Sending another topic...")
         result = yield client.send_notification(data=data, topic="test")
         assert result != {}
         assert result["data"] == base64url_encode(data)

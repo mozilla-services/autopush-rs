@@ -59,11 +59,6 @@ impl Server {
                 settings.db_settings.clone()
             },
         };
-        // NOTE: Eventually, this should use a `*_DB_DSN` setting to indicate the database storage
-        // location and method. Existing versions of Autopush do not specify this, but instead
-        // rely on either the environment variable `AWS_LOCAL_DYNAMODB` or fall back to the
-        // rusoto_core::Region::default(), which complicates things.
-        // `StorageType::from_dsn` is very preferential toward DynamoDB.
         let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
             StorageType::DynamoDb => {
                 debug!("Using Dynamodb");

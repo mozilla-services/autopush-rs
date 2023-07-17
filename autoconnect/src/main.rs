@@ -54,13 +54,6 @@ async fn main() -> Result<()> {
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
     debug!("Starting up autoconnect...");
 
-    // Perform any app global storage initialization.
-    if autopush_common::db::StorageType::DynamoDb
-        == autopush_common::db::StorageType::from_dsn(&settings.db_dsn)
-    {
-        env::set_var("AWS_LOCAL_DYNAMODB", settings.db_dsn.clone().unwrap())
-    }
-
     // Sentry requires the environment variable "SENTRY_DSN".
     if env::var("SENTRY_DSN")
         .unwrap_or_else(|_| "".to_owned())

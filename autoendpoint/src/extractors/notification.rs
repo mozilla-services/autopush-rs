@@ -93,14 +93,16 @@ impl FromRequest for Notification {
 
 impl From<Notification> for autopush_common::notification::Notification {
     fn from(notification: Notification) -> Self {
+        let topic = notification.headers.topic.clone();
+        let sortkey_timestamp = topic.is_none().then_some(notification.sort_key_timestamp);
         autopush_common::notification::Notification {
             channel_id: notification.subscription.channel_id,
             version: notification.message_id,
             ttl: notification.headers.ttl as u64,
-            topic: notification.headers.topic.clone(),
+            topic,
             timestamp: notification.timestamp,
             data: notification.data,
-            sortkey_timestamp: Some(notification.sort_key_timestamp),
+            sortkey_timestamp,
             headers: {
                 let headers: HashMap<String, String> = notification.headers.into();
                 if headers.is_empty() {
