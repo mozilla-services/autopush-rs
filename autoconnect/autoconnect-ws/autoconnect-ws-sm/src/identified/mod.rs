@@ -370,11 +370,12 @@ mod tests {
 
     use autoconnect_common::{
         protocol::{ClientMessage, ServerMessage, ServerNotification},
-        test_support::{DUMMY_UAID, UA},
+        test_support::{DUMMY_CHID, DUMMY_UAID, UA},
     };
     use autoconnect_settings::AppState;
     use autopush_common::{
         db::{client::FetchMessageResponse, mock::MockDbClient},
+        notification::Notification,
         util::{ms_since_epoch, sec_since_epoch},
     };
 
@@ -392,6 +393,17 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+
+    /// Generate a dummy timestamp `Notification`
+    fn new_timestamp_notif(channel_id: &Uuid, ttl: u64) -> Notification {
+        Notification {
+            channel_id: *channel_id,
+            ttl,
+            timestamp: sec_since_epoch(),
+            sortkey_timestamp: Some(ms_since_epoch()),
+            ..Default::default()
+        }
     }
 
     #[actix_rt::test]
@@ -424,7 +436,10 @@ mod tests {
             .return_once(move |_, _, _| {
                 Ok(FetchMessageResponse {
                     timestamp: Some(timestamp),
-                    messages: vec![Default::default(), Default::default()],
+                    messages: vec![
+                        new_timestamp_notif(&DUMMY_CHID, 0),
+                        new_timestamp_notif(&DUMMY_CHID, 0),
+                    ],
                 })
             });
         // EOF
