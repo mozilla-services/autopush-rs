@@ -41,23 +41,22 @@ async fn validate_webpush_user(
     db: &dyn DbClient,
     metrics: &StatsdClient,
 ) -> ApiResult<()> {
-    // Make sure the user is active (has a valid message table)
-    let message_table = match user.current_month.as_ref() {
-        Some(table) => table,
-        None => {
+    if let Some(rotating_message_table) = db.rotating_message_table() {
+        // DynamoDB: Make sure the user is active (has a valid message table)
+        let Some(ref current_month) = user.current_month else {
             debug!("Missing `current_month` value, dropping user"; "user" => ?user);
             drop_user(user.uaid, db, metrics).await?;
             return Err(ApiErrorKind::NoSubscription.into());
-        }
-    };
+        };
 
-    if db.message_table() != message_table {
-        debug!("User is inactive, dropping user";
-            "db.message_table" => db.message_table(),
-            "message_table" => message_table,
-            "user" => ?user);
-        drop_user(user.uaid, db, metrics).await?;
-        return Err(ApiErrorKind::NoSubscription.into());
+        if current_month != rotating_message_table {
+            debug!("User is inactive, dropping user";
+                   "db.rotating_message_table" => rotating_message_table,
+                   "user.current_month" => current_month,
+                   "user" => ?user);
+            drop_user(user.uaid, db, metrics).await?;
+            return Err(ApiErrorKind::NoSubscription.into());
+        }
     }
 
     // Make sure the subscription channel exists

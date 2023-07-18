@@ -5,7 +5,7 @@
 //! defined here. The `derive(Deserialize)` and `derive(Serialize)` annotations
 //! are used to generate the ability to serialize these structures to JSON,
 //! using the `serde` crate. More docs for serde can be found at
-//! https://serde.rs
+//! <https://serde.rs>
 use std::collections::HashMap;
 use std::str::FromStr;
 

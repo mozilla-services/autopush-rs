@@ -1,0 +1,29 @@
+version: "3"
+services:
+  locust_master:
+    image: locust
+    build: .
+    container_name: locust_master
+    ports:
+      - "8089:8089"
+    environment:
+      LOCUST_HOST: ${AUTOPUSH_HOST}
+      LOCUST_USERS: "20"
+      LOCUST_SPAWN_RATE: "1"
+      LOCUST_RUN_TIME: "10m"
+      LOCUST_LOGLEVEL: "INFO"
+      SERVER_URL: ${SERVER_URL}
+      ENDPOINT_URL: ${ENDPOINT_URL}
+    command: >
+      --master
+
+  locust_worker:
+    image: locust
+    build: .
+    environment:
+      LOCUST_MASTER_NODE_HOST: locust_master
+      LOCUST_LOGLEVEL: "INFO"
+      SERVER_URL: ${SERVER_URL}
+      ENDPOINT_URL: ${ENDPOINT_URL}
+    command: >
+      --worker

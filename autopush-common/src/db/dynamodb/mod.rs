@@ -30,9 +30,6 @@ use rusoto_dynamodb::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::util::generate_last_connect;
-use super::{HelloResponse, USER_RECORD_VERSION};
-
 #[macro_use]
 pub mod macros;
 pub mod retry;
@@ -281,36 +278,6 @@ impl DbClient for DdbClientImpl {
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
-        Ok(())
-    }
-
-    async fn save_channels(
-        &self,
-        uaid: &Uuid,
-        channel_list: HashSet<&Uuid>,
-        _message_month: &str,
-    ) -> DbResult<()> {
-        let chids: Vec<String> = channel_list
-            .into_iter()
-            .map(|v| v.as_hyphenated().to_string())
-            .collect();
-        let expiry = sec_since_epoch() + 2 * MAX_EXPIRY;
-        let attr_values = hashmap! {
-            ":chids".to_string() => val!(SS => chids),
-            ":expiry".to_string() => val!(N => expiry),
-        };
-        let update_item = UpdateItemInput {
-            key: ddb_item! {
-                uaid: s => uaid.simple().to_string(),
-                chidmessageid: s => " ".to_string()
-            },
-            update_expression: Some("ADD chids :chids SET expiry=:expiry".to_string()),
-            expression_attribute_values: Some(attr_values),
-            table_name: self.settings.message_table.clone(),
-            ..Default::default()
-        };
-
-        self.db_client.update_item(update_item.clone()).await?;
         Ok(())
     }
 
@@ -615,109 +582,6 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    /// Perform the "hello" registration process.
-    /// Each storage engine can be different, so the 'hello' function needs to be
-    /// specific to the engine, unfortunately.
-    ///
-    async fn hello(
-        &self,
-        connected_at: u64,
-        uaid: Option<&Uuid>,
-        router_url: &str,
-        mut defer_registration: bool,
-    ) -> DbResult<HelloResponse> {
-        let cur_month = self.settings.current_message_month.clone();
-        // lookup_user
-        let mut response = HelloResponse {
-            message_month: cur_month.clone(),
-            connected_at,
-            ..Default::default()
-        };
-        if let Some(uaid) = uaid {
-            // Get the user record
-            let user = self.get_user(uaid).await;
-            // command: handle_user_result
-            //  if no user (false, 104)
-            //  if unparsable user (true, 104)
-            //  no user.current_month (true, 104)
-            //  user.current_month not in message_tables (true, 105)
-            //
-            // true = `ua.expiration` && drop_user(uaid)
-            match user {
-                Ok(None) => {
-                    // No user found, so return the base response we have.
-                    // (false, 104)
-                    // bail out and return the stub response we've generated.
-                }
-                Ok(Some(mut user)) => {
-                    // We have a user record. Update it to include the latest info.
-                    if self
-                        .settings
-                        .message_table_names
-                        .contains(&self.settings.current_message_month)
-                    {
-                        if let Some(user_month) = user.current_month.clone() {
-                            response.uaid = Some(user.uaid);
-                            // the user's month is current, hopefully you don't have to migrate.
-                            if self.settings.message_table_names.contains(&user_month) {
-                                response.check_storage = true;
-                                response.rotate_message_table = user_month != cur_month;
-                                response.message_month = user_month;
-                                response.reset_uaid = user
-                                    .record_version
-                                    .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION);
-                                // update the current user record.
-                                user.last_connect = if has_connected_this_month(&user) {
-                                    None
-                                } else {
-                                    Some(generate_last_connect())
-                                };
-                                user.node_id = Some(router_url.to_owned());
-                                user.connected_at = connected_at;
-                                self.update_user(&user).await?;
-                                // The user is already registered. Make sure not to re-add by
-                                // force clearing the defer_registration flag
-                                defer_registration = false;
-                            } else {
-                                // The user's current month has aged out of our list of supported months.
-                                // (true, 105)
-                                trace!("🧑 handle_user_result {}: {:?}", &uaid, "105");
-                                self.metrics
-                                    .incr_with_tags("ua.expiration")
-                                    .with_tag("code", "105")
-                                    .send();
-                                self.remove_user(uaid).await?;
-                            }
-                        } else {
-                            // user.current_month is None
-                            // (true, 105)
-                            trace!("🧑 handle_user_result {}: {:?}", &uaid, "105");
-                            self.metrics
-                                .incr_with_tags("ua.expiration")
-                                .with_tag("code", "105")
-                                .send();
-                            self.remove_user(uaid).await?;
-                        }
-                    }
-                    if !defer_registration {
-                        self.add_user(&user).await?;
-                    } else {
-                        response.deferred_user_registration = Some(user);
-                    }
-                }
-                Err(e) => {
-                    self.metrics
-                        .incr_with_tags("ua.expiration")
-                        .with_tag("code", "104")
-                        .send();
-                    self.remove_user(uaid).await?;
-                    return Err(e);
-                }
-            }
-        }
-        Ok(response)
-    }
-
     async fn router_table_exists(&self) -> DbResult<bool> {
         self.table_exists(self.settings.router_table.clone()).await
     }
@@ -726,9 +590,9 @@ impl DbClient for DdbClientImpl {
         self.table_exists(self.settings.message_table.clone()).await
     }
 
-    fn message_table(&self) -> &str {
+    fn rotating_message_table(&self) -> Option<&str> {
         trace!("ddb message table {:?}", &self.settings.message_table);
-        &self.settings.message_table
+        Some(&self.settings.message_table)
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {

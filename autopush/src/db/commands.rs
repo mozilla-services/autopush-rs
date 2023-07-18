@@ -276,7 +276,7 @@ pub fn register_user(
             },
             retryable_putitem_error,
         )
-        .map_err(|_| ApcErrorKind::DatabaseError("fail".to_string()).into()),
+        .map_err(|_| ApcErrorKind::DatabaseError("Error registering user".to_string()).into()),
     )
 }
 
@@ -499,7 +499,7 @@ fn handle_user_result(
     Ok(user)
 }
 
-/// Like Result::ok, convert from Result<T, E> to Option<T> but applying a
+/// Like `Result::ok`, convert from `Result<T, E>` to `Option<T>` but applying a
 /// function to the Err value
 fn ok_or_inspect<T, E, F>(result: StdResult<T, E>, op: F) -> Option<T>
 where

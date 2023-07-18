@@ -24,7 +24,7 @@ defaults:
 jobs:
   audit:
     docker:
-      - image: rust:latest
+      - image: rust:1.70
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -63,7 +63,7 @@ jobs:
           key: python-v1-{{ checksum "tests/requirements.txt" }}-{{ checksum "tests/test_integration_all_rust.py"}}
       - restore_cache:
           name: Restoring Rust cache
-          key: rust-v1-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
       - run:
           name: Set up system
           command: |
@@ -112,7 +112,7 @@ jobs:
             - /home/circleci/.local/lib/
       - save_cache:
           name: Save Rust cache
-          key: rust-v1-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
           paths:
             - target
             - ~/.cargo/registry
@@ -226,6 +226,15 @@ workflows:
               only: /.*/
 
       - build:
+          name: build-autoconnect
+          image: autoconnect:build
+          crate: autoconnect
+          binary: autoconnect
+          filters:
+            tags:
+              only: /.*/
+
+      - build:
           name: build-autoendpoint
           image: autoendpoint:build
           crate: autoendpoint
@@ -241,6 +250,19 @@ workflows:
           repo: ${DOCKERHUB_REPO}
           requires:
             - build-autopush
+            - test
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
+      - deploy:
+          name: deploy-autoconnect
+          image: autoconnect:build
+          repo: ${DOCKERHUB_CONNECT_REPO}
+          requires:
+            - build-autoconnect
             - test
           filters:
             tags:
