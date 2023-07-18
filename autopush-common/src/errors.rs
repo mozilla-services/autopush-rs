@@ -185,3 +185,9 @@ impl ApcErrorKind {
 }
 
 pub type Result<T> = std::result::Result<T, ApcError>;
+
+pub trait ReportableError {
+    fn backtrace(&self) -> backtrace::Backtrace;
+    fn is_sentry_event(&self) -> bool;
+    fn metric_label(&self) -> Option<String>;
+}

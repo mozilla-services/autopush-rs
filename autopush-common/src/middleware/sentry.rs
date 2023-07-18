@@ -14,8 +14,10 @@ use futures::{future::LocalBoxFuture, FutureExt};
 use futures_util::future::{ok, Ready};
 use sentry::{protocol::Event, Hub};
 
-use crate::LocalError;
-use autopush_common::tags::Tags;
+//use crate::LocalError;
+use crate::errors::ReportableError;
+pub type LocalError = crate::errors::ApcError;
+use crate::tags::Tags;
 
 #[derive(Clone)]
 pub struct SentryWrapper {
@@ -99,14 +101,14 @@ where
             let response: Self::Response = match fut.await {
                 Ok(response) => response,
                 Err(error) => {
-                    if let Some(api_err) = error.as_error::<LocalError>() {
+                    if let Some(api_err) = error.as_error::<dyn ReportableError>() {
                         // if it's not reportable, and we have access to the metrics, record it as a metric.
-                        if !api_err.kind.is_sentry_event() {
+                        if !api_err.is_sentry_event() {
                             // The error (e.g. VapidErrorKind::InvalidKey(String)) might be too cardinal,
                             // but we may need that information to debug a production issue. We can
                             // add an info here, temporarily turn on info level debugging on a given server,
                             // capture it, and then turn it off before we run out of money.
-                            if let Some(label) = api_err.kind.metric_label() {
+                            if let Some(label) = api_err.metric_label() {
                                 info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
                                 let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                             }
@@ -125,9 +127,9 @@ where
             };
             // Check for errors inside the response
             if let Some(error) = response.response().error() {
-                if let Some(api_err) = error.as_error::<LocalError>() {
-                    if !api_err.kind.is_sentry_event() {
-                        if let Some(label) = api_err.kind.metric_label() {
+                if let Some(api_err) = error.as_error::<dyn ReportableError>() {
+                    if !api_err.is_sentry_event() {
+                        if let Some(label) = api_err.metric_label() {
                             info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
                             let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                         }
@@ -190,11 +192,11 @@ fn process_event(
 fn event_from_actix_error(error: &actix_web::Error) -> sentry::protocol::Event<'static> {
     // Actix errors don't have support source/cause, so to get more information
     // about the error we need to downcast.
-    if let Some(error) = error.as_error::<LocalError>() {
+    if let Some(error) = error.as_error::<dyn ReportableError>() {
         // Use our error and associated backtrace for the event
         let mut event = sentry::event_from_error(&error.kind);
         event.exception.last_mut().unwrap().stacktrace =
-            sentry::integrations::backtrace::backtrace_to_stacktrace(&error.backtrace);
+            sentry::integrations::backtrace::backtrace_to_stacktrace(&error.backtrace());
         event
     } else {
         // Fallback to the Actix error
