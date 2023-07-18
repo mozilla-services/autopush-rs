@@ -20,28 +20,31 @@ pub type LocalError = crate::errors::ApcError;
 use crate::tags::Tags;
 
 #[derive(Clone)]
-pub struct SentryWrapper {
+pub struct SentryWrapper<E> {
     metrics: Arc<StatsdClient>,
     metric_label: String,
+    phantom: std::marker::PhantomData<E>,
 }
 
-impl SentryWrapper {
+impl<E> SentryWrapper<E> {
     pub fn new(metrics: Arc<StatsdClient>, metric_label: String) -> Self {
         Self {
             metrics,
             metric_label,
+            phantom: std::marker::PhantomData,
         }
     }
 }
 
-impl<S, B> Transform<S, ServiceRequest> for SentryWrapper
+impl<S, B, E> Transform<S, ServiceRequest> for SentryWrapper<E>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
+    E: ReportableError + std::error::Error +  actix_web::ResponseError + 'static
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Transform = SentryWrapperMiddleware<S>;
+    type Transform = SentryWrapperMiddleware<S, E>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
@@ -50,21 +53,24 @@ where
             service: Rc::new(RefCell::new(service)),
             metrics: self.metrics.clone(),
             metric_label: self.metric_label.clone(),
+            phantom: std::marker::PhantomData,
         })
     }
 }
 
 #[derive(Debug)]
-pub struct SentryWrapperMiddleware<S> {
+pub struct SentryWrapperMiddleware<S, E> {
     service: Rc<RefCell<S>>,
     metrics: Arc<StatsdClient>,
     metric_label: String,
+    phantom: std::marker::PhantomData<E>,
 }
 
-impl<S, B> Service<ServiceRequest> for SentryWrapperMiddleware<S>
+impl<S, B, E> Service<ServiceRequest> for SentryWrapperMiddleware<S, E>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
+    E: ReportableError + std::error::Error +  actix_web::ResponseError + 'static
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
@@ -101,7 +107,7 @@ where
             let response: Self::Response = match fut.await {
                 Ok(response) => response,
                 Err(error) => {
-                    if let Some(api_err) = error.as_error::<dyn ReportableError>() {
+                    if let Some(api_err) = error.as_error::<E>() {
                         // if it's not reportable, and we have access to the metrics, record it as a metric.
                         if !api_err.is_sentry_event() {
                             // The error (e.g. VapidErrorKind::InvalidKey(String)) might be too cardinal,
@@ -127,7 +133,7 @@ where
             };
             // Check for errors inside the response
             if let Some(error) = response.response().error() {
-                if let Some(api_err) = error.as_error::<dyn ReportableError>() {
+                if let Some(api_err) = error.as_error::<E>() {
                     if !api_err.is_sentry_event() {
                         if let Some(label) = api_err.metric_label() {
                             info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
@@ -189,10 +195,13 @@ fn process_event(
 
 /// Convert Actix errors into a Sentry event. ApiError is handled explicitly so
 /// the event can include a backtrace and source error information.
-fn event_from_actix_error(error: &actix_web::Error) -> sentry::protocol::Event<'static> {
+fn event_from_actix_error<E>(error: &actix_web::Error) -> sentry::protocol::Event<'static>
+    where 
+    E: ReportableError + std::error::Error + actix_web::ResponseError
+{
     // Actix errors don't have support source/cause, so to get more information
     // about the error we need to downcast.
-    if let Some(error) = error.as_error::<dyn ReportableError>() {
+    if let Some(error) = error.as_error::<E>() {
         // Use our error and associated backtrace for the event
         let mut event = sentry::event_from_error(&error.kind);
         event.exception.last_mut().unwrap().stacktrace =
