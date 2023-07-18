@@ -238,8 +238,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         msg = json.dumps(hello_dict)
         log.debug("Send: %s", msg)
         self.ws.send(msg)
-        result = json.loads(self.ws.recv())
-        log.debug("Recv: %s", result)
+        reply = self.ws.recv()
+        log.debug(f"Recv: {reply} ({len(reply)})")
+        result = json.loads(reply)
         assert result["status"] == 200
         assert "-" not in result["uaid"]
         if self.uaid and self.uaid != result["uaid"]:  # pragma: nocover
@@ -1058,7 +1059,7 @@ class TestRustWebPush(unittest.TestCase):
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
-        assert result != {}
+        assert result is not None
         assert result["data"] == base64url_encode(data)
 
         yield client.disconnect()

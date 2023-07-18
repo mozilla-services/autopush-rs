@@ -128,6 +128,7 @@ impl WebPushClient {
         });
         // TODO: A batch remove_messages would be nicer
         for sort_key in expired_topic_sort_keys {
+            trace!("🉑 removing expired topic sort key: {sort_key}");
             self.app_state
                 .db
                 .remove_message(&self.uaid, &sort_key)

@@ -100,7 +100,6 @@ impl Router for WebPushRouter {
 
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
-        trace!("✉ Re-fetching user to trigger notification check");
         let user = match self.db.get_user(&user.uaid).await {
             Ok(Some(user)) => user,
             Ok(None) => {

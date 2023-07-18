@@ -58,7 +58,7 @@ impl FromRequest for Notification {
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
-            let timestamp = sec_since_epoch();
+            let timestamp = ms_since_epoch();
             let sort_key_timestamp = ms_since_epoch();
             let message_id = Self::generate_message_id(
                 &app_state.fernet,
@@ -111,6 +111,7 @@ impl From<Notification> for autopush_common::notification::Notification {
                     Some(headers)
                 }
             },
+            ..Default::default()
         }
     }
 }

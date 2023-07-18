@@ -132,7 +132,7 @@ pub struct DynamoDbNotification {
     timestamp: Option<u64>,
     // DynamoDB expiration timestamp per
     //    https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
-    expiry: u64,
+    expiry: u128,
     // TTL value provided by application server for the message
     #[serde(skip_serializing_if = "Option::is_none")]
     ttl: Option<u64>,
@@ -240,6 +240,7 @@ impl DynamoDbNotification {
             data: self.data,
             headers: self.headers.map(|m| m.into()),
             sortkey_timestamp: key.sortkey_timestamp,
+            expiry: self.expiry,
         })
     }
 
@@ -248,7 +249,7 @@ impl DynamoDbNotification {
             uaid: *uaid,
             chidmessageid: val.chidmessageid(),
             timestamp: Some(val.timestamp),
-            expiry: sec_since_epoch() + min(val.ttl, MAX_EXPIRY),
+            expiry: (sec_since_epoch() + min(val.ttl, MAX_EXPIRY)) as u128,
             ttl: Some(val.ttl),
             data: val.data,
             headers: val.headers.map(|h| h.into()),
