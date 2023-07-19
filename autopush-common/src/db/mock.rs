@@ -82,7 +82,11 @@ impl DbClient for Arc<MockDbClient> {
     }
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        trace!("🗄 Attempting to delete {:?} :: {:?}", uaid.as_simple().to_string(), &sort_key);
+        trace!(
+            "🗄 Attempting to delete {:?} :: {:?}",
+            uaid.as_simple().to_string(),
+            &sort_key
+        );
         Arc::as_ref(self).remove_message(uaid, sort_key).await
     }
 

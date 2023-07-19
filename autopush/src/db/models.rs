@@ -1,4 +1,3 @@
-use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
 
@@ -13,10 +12,10 @@ use autopush_common::errors::*;
 use autopush_common::notification::{
     Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX,
 };
-use autopush_common::util::timing::{ms_since_epoch, sec_since_epoch};
+use autopush_common::util::timing::ms_since_epoch;
 use autopush_common::util::InsertOpt;
 
-use super::{MAX_EXPIRY, USER_RECORD_VERSION};
+use super::USER_RECORD_VERSION;
 
 /// Custom Uuid serializer
 ///
@@ -132,7 +131,7 @@ pub struct DynamoDbNotification {
     timestamp: Option<u64>,
     // DynamoDB expiration timestamp per
     //    https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html
-    expiry: u128,
+    expiry: u64,
     // TTL value provided by application server for the message
     #[serde(skip_serializing_if = "Option::is_none")]
     ttl: Option<u64>,
@@ -240,7 +239,6 @@ impl DynamoDbNotification {
             data: self.data,
             headers: self.headers.map(|m| m.into()),
             sortkey_timestamp: key.sortkey_timestamp,
-            expiry: self.expiry,
         })
     }
 
@@ -249,7 +247,6 @@ impl DynamoDbNotification {
             uaid: *uaid,
             chidmessageid: val.chidmessageid(),
             timestamp: Some(val.timestamp),
-            expiry: (sec_since_epoch() + min(val.ttl, MAX_EXPIRY)) as u128,
             ttl: Some(val.ttl),
             data: val.data,
             headers: val.headers.map(|h| h.into()),

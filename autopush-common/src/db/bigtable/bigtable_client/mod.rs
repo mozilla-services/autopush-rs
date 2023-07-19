@@ -78,14 +78,6 @@ fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
     Ok(u64::from_be_bytes(v))
 }
 
-fn to_u128(value: Vec<u8>, name: &str) -> Result<u128, DbError> {
-    let v: [u8; 16] = value
-        .try_into()
-        .map_err(|_| DbError::DeserializeU64(name.to_owned()))?;
-    Ok(u128::from_be_bytes(v))
-}
-
-
 fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     String::from_utf8(value).map_err(|e| {
         debug!("🉑 cannot read string {}: {:?}", name, e);
@@ -403,9 +395,6 @@ impl BigTableClientImpl {
                         max_timestamp = notif.timestamp;
                     }
                 }
-                if let Some(cell) = row.get_cell("expiry") {
-                    notif.expiry = to_u128(cell.value, "expiry")?;
-                }
                 if let Some(cell) = row.get_cell("headers") {
                     notif.headers = Some(
                         serde_json::from_str::<HashMap<String, String>>(&to_string(
@@ -414,6 +403,7 @@ impl BigTableClientImpl {
                         .map_err(|e| DbError::Serialization(e.to_string()))?,
                     );
                 }
+                trace!("🚣  adding row: {:?}", &notif);
                 messages.push(notif);
             }
         }
@@ -725,13 +715,16 @@ impl DbClient for BigTableClientImpl {
 
     /// Write the notification to storage.
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
-        let row_key =as_key(
+        let row_key = as_key(
             uaid,
             Some(&message.channel_id),
             Some(&message.chidmessageid()),
         );
         debug!("🗄️ Saving message {} :: {:?}", &row_key, &message);
-        trace!("🉑 timestamp: {:?}", &message.timestamp.to_be_bytes().to_vec());
+        trace!(
+            "🉑 timestamp: {:?}",
+            &message.timestamp.to_be_bytes().to_vec()
+        );
         let mut row = Row {
             row_key,
             ..Default::default()
@@ -740,7 +733,12 @@ impl DbClient for BigTableClientImpl {
         // Remember, `timestamp` is effectively the time to kill the message, not the
         // current time.
         let ttl = SystemTime::now() + Duration::from_secs(message.ttl);
-        trace!("🉑 Message Expiry {}", ttl.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis());
+        trace!(
+            "🉑 Message Expiry {}",
+            ttl.duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        );
 
         let mut cells: Vec<cell::Cell> = Vec::new();
 
@@ -796,10 +794,15 @@ impl DbClient for BigTableClientImpl {
             cell::Cell {
                 family: family.to_owned(),
                 qualifier: "expiry".to_owned(),
-                value: ttl.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis().to_be_bytes().to_vec(),
+                value: ttl
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+                    .to_be_bytes()
+                    .to_vec(),
                 timestamp: ttl,
                 ..Default::default()
-            }
+            },
         ]);
         if let Some(headers) = message.headers {
             if !headers.is_empty() {
@@ -886,7 +889,11 @@ impl DbClient for BigTableClientImpl {
 
     /// Delete the notification from storage.
     async fn remove_message(&self, uaid: &Uuid, chidmessageid: &str) -> DbResult<()> {
-        trace!("🉑 attemping to delete {:?} :: {:?}", uaid.to_string(), chidmessageid);
+        trace!(
+            "🉑 attemping to delete {:?} :: {:?}",
+            uaid.to_string(),
+            chidmessageid
+        );
         // parse the sort_key to get the message's CHID
         let parts: Vec<&str> = chidmessageid.split(':').collect();
         if parts.len() < 3 {
@@ -936,7 +943,11 @@ impl DbClient for BigTableClientImpl {
         let rows = self
             .read_rows(req, None, if limit > 0 { Some(limit as u64) } else { None })
             .await?;
-        debug!("🉑 Fetch Topic Messages. Found {} row(s) of {}", rows.len(), limit);
+        debug!(
+            "🉑 Fetch Topic Messages. Found {} row(s) of {}",
+            rows.len(),
+            limit
+        );
         self.rows_to_notifications(rows)
     }
 
@@ -976,24 +987,27 @@ impl DbClient for BigTableClientImpl {
             // */
             //*
             // if we have a timestamp, build a chain of filters.
-            if let Some(timestamp) = timestamp
-            {
-
+            if let Some(timestamp) = timestamp {
                 let mut range_filter = data::RowFilter::default();
-                let mut filter_set:RepeatedField<data::RowFilter> = RepeatedField::default();
+                let mut filter_set: RepeatedField<data::RowFilter> = RepeatedField::default();
                 let mut filter_chain = data::RowFilter_Chain::default();
                 let mut range = data::ValueRange::default();
 
                 filter_set.push(regex_filter);
 
                 // Build the range filter
-                let start_pattern = timestamp.to_be_bytes().to_vec();
-                debug!("🉑🔍:fetch_timestamp_messages: Range: from {} :: {:?}", timestamp, &start_pattern);
+                // remember to adjust for sortkey_timestamp being in micros.
+                let start_pattern = (timestamp * 1000).to_be_bytes().to_vec();
+                debug!(
+                    "🉑🔍:fetch_timestamp_messages: Range: from {} :: {:?}",
+                    timestamp, &start_pattern
+                );
                 // "closed" means exclusive of this value.
                 // "open" is inclusive.
                 range.set_start_value_closed(start_pattern);
                 range_filter.set_value_range_filter(range);
-                range_filter.set_column_qualifier_regex_filter("timestamp".as_bytes().to_vec());
+                range_filter
+                    .set_column_qualifier_regex_filter("sortkey_timestamp".as_bytes().to_vec());
                 filter_set.push(range_filter);
 
                 // Build the chain.
@@ -1015,7 +1029,11 @@ impl DbClient for BigTableClientImpl {
                 if limit > 0 { Some(limit as u64) } else { None },
             )
             .await?;
-        debug!("🉑 Fetch Timestamp Messages ({:?}) Found {} row(s)", timestamp, rows.len());
+        debug!(
+            "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s)",
+            timestamp,
+            rows.len()
+        );
         self.rows_to_notifications(rows)
     }
 

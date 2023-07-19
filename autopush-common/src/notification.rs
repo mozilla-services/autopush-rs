@@ -21,8 +21,6 @@ pub struct Notification {
     pub data: Option<String>,
     #[serde(skip_serializing)]
     pub sortkey_timestamp: Option<u64>,
-    #[serde(skip_serializing)]
-    pub expiry: u128,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
 }

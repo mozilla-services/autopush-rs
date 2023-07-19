@@ -424,7 +424,7 @@ mod tests {
     async fn expired_increments_storage() {
         let mut db = MockDbClient::new();
         let mut seq = mockall::Sequence::new();
-        let timestamp = ms_since_epoch();
+        let timestamp = sec_since_epoch();
         // No topic messages
         db.expect_fetch_topic_messages()
             .times(1)
