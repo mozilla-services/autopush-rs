@@ -186,8 +186,10 @@ impl ApcErrorKind {
 
 pub type Result<T> = std::result::Result<T, ApcError>;
 
-pub trait ReportableError {
+/// Display would return fmt("{:?}", self.kind) ?
+pub trait ReportableError: std::fmt::Display {
     fn backtrace(&self) -> backtrace::Backtrace;
     fn is_sentry_event(&self) -> bool;
+    fn to_sentry_event(&self) -> sentry::protocol::Event<'static>;
     fn metric_label(&self) -> Option<String>;
 }

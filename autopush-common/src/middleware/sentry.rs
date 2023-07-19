@@ -115,7 +115,7 @@ where
                             // add an info here, temporarily turn on info level debugging on a given server,
                             // capture it, and then turn it off before we run out of money.
                             if let Some(label) = api_err.metric_label() {
-                                info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
+                                info!("Sentry: Sending error to metrics: {:?}", api_err);
                                 let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                             }
                         }
@@ -123,7 +123,7 @@ where
                         return Err(error);
                     };
                     debug!("Reporting error to Sentry (service error): {}", error);
-                    let mut event = event_from_actix_error(&error);
+                    let mut event = event_from_actix_error::<E>(&error);
                     event.extra.append(&mut tags.clone().extra_tree());
                     event.tags.append(&mut tags.clone().tag_tree());
                     let event_id = hub.capture_event(event);
@@ -136,7 +136,7 @@ where
                 if let Some(api_err) = error.as_error::<E>() {
                     if !api_err.is_sentry_event() {
                         if let Some(label) = api_err.metric_label() {
-                            info!("Sentry: Sending error to metrics: {:?}", api_err.kind);
+                            info!("Sentry: Sending error to metrics: {:?}", api_err);
                             let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                         }
                         debug!("Not reporting error (service error): {:?}", error);
@@ -144,7 +144,7 @@ where
                     }
                 }
                 debug!("Reporting error to Sentry (response error): {}", error);
-                let mut event = event_from_actix_error(error);
+                let mut event = event_from_actix_error::<E>(error);
                 event.extra.append(&mut tags.clone().extra_tree());
                 event.tags.append(&mut tags.clone().tag_tree());
                 let event_id = hub.capture_event(event);
@@ -197,13 +197,14 @@ fn process_event(
 /// the event can include a backtrace and source error information.
 fn event_from_actix_error<E>(error: &actix_web::Error) -> sentry::protocol::Event<'static>
     where 
-    E: ReportableError + std::error::Error + actix_web::ResponseError
+    E: ReportableError + std::error::Error + actix_web::ResponseError + 'static
 {
     // Actix errors don't have support source/cause, so to get more information
     // about the error we need to downcast.
     if let Some(error) = error.as_error::<E>() {
         // Use our error and associated backtrace for the event
-        let mut event = sentry::event_from_error(&error.kind);
+        //let mut event = sentry::event_from_error(&error.kind);
+        let mut event = error.to_sentry_event();
         event.exception.last_mut().unwrap().stacktrace =
             sentry::integrations::backtrace::backtrace_to_stacktrace(&error.backtrace());
         event
