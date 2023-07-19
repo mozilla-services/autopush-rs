@@ -126,10 +126,12 @@ impl Server {
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 // Our modified Sentry wrapper which does some blocking of non-reportable errors.
-                .wrap(crate::middleware::sentry::SentryWrapper::new(
-                    metrics.clone(),
-                    "api_error".to_owned(),
-                ))
+                .wrap(
+                    autopush_common::middleware::sentry::SentryWrapper::<ApiError>::new(
+                        metrics.clone(),
+                        "api_error".to_owned(),
+                    ),
+                )
                 .wrap(cors)
                 // Endpoints
                 .service(

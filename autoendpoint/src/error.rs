@@ -355,3 +355,18 @@ fn errno_from_validation_errors(e: &ValidationErrors) -> Option<usize> {
         })
         .next()
 }
+
+impl autopush_common::errors::ReportableError for ApiError {
+    fn backtrace(&self) -> backtrace::Backtrace {
+        todo!()
+    }
+    fn is_sentry_event(&self) -> bool {
+        todo!()
+    }
+    fn to_sentry_event(&self) -> sentry::protocol::Event<'static> {
+        todo!()
+    }
+    fn metric_label(&self) -> std::option::Option<std::string::String> {
+        todo!()
+    }
+}

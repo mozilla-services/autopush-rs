@@ -14,10 +14,7 @@ use futures::{future::LocalBoxFuture, FutureExt};
 use futures_util::future::{ok, Ready};
 use sentry::{protocol::Event, Hub};
 
-//use crate::LocalError;
-use crate::errors::ReportableError;
-pub type LocalError = crate::errors::ApcError;
-use crate::tags::Tags;
+use crate::{errors::ReportableError, tags::Tags};
 
 #[derive(Clone)]
 pub struct SentryWrapper<E> {
@@ -196,7 +193,7 @@ fn process_event(
 /// Convert Actix errors into a Sentry event. ApiError is handled explicitly so
 /// the event can include a backtrace and source error information.
 fn event_from_actix_error<E>(error: &actix_web::Error) -> sentry::protocol::Event<'static>
-    where 
+    where
     E: ReportableError + std::error::Error + actix_web::ResponseError + 'static
 {
     // Actix errors don't have support source/cause, so to get more information
