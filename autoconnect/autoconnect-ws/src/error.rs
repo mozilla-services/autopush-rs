@@ -1,11 +1,81 @@
+use std::fmt;
+
 use actix_ws::CloseCode;
+use backtrace::Backtrace;
 
-use autoconnect_ws_sm::{SMError, WebPushClient};
+use autoconnect_ws_sm::SMError;
+use autopush_common::errors::ReportableError;
 
-// TODO: WSError should likely include a backtrace
 /// WebPush WebSocket Handler Errors
+#[derive(Debug, thiserror::Error)]
+pub struct WSError {
+    pub kind: WSErrorKind,
+    backtrace: Option<Backtrace>,
+}
+
+impl fmt::Display for WSError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
+
+// Forward From impls to WSError from WSErrorKind. Because From is reflexive,
+// this impl also takes care of From<WSErrorKind>.
+impl<T> From<T> for WSError
+where
+    WSErrorKind: From<T>,
+{
+    fn from(item: T) -> Self {
+        let kind = WSErrorKind::from(item);
+        let backtrace = kind.capture_backtrace().then(Backtrace::new);
+        Self { kind, backtrace }
+    }
+}
+
+impl WSError {
+    /// Return an `actix_ws::CloseCode` for the WS session Close frame
+    pub fn close_code(&self) -> actix_ws::CloseCode {
+        match &self.kind {
+            WSErrorKind::SM(e) => e.close_code(),
+            // TODO: applicable here?
+            //WSErrorKind::Protocol(_) => CloseCode::Protocol,
+            WSErrorKind::UnsupportedMessage(_) => CloseCode::Unsupported,
+            _ => CloseCode::Error,
+        }
+    }
+
+    /// Return a description for the WS session Close frame.
+    ///
+    /// Control frames are limited to 125 bytes so returns just the enum
+    /// variant's name (via `strum::AsRefStr`)
+    pub fn close_description(&self) -> &str {
+        self.kind.as_ref()
+    }
+}
+
+impl ReportableError for WSError {
+    fn backtrace(&self) -> Option<&Backtrace> {
+        self.backtrace.as_ref()
+    }
+
+    fn is_sentry_event(&self) -> bool {
+        match &self.kind {
+            WSErrorKind::SM(e) => e.is_sentry_event(),
+            e => !matches!(e, WSErrorKind::Json(_)),
+        }
+    }
+
+    fn metric_label(&self) -> Option<&'static str> {
+        match &self.kind {
+            WSErrorKind::SM(e) => e.metric_label(),
+            // TODO:
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, strum::AsRefStr, thiserror::Error)]
-pub enum WSError {
+pub enum WSErrorKind {
     #[error("State error: {0}")]
     SM(#[from] SMError),
 
@@ -34,58 +104,15 @@ pub enum WSError {
     RegistryDisconnected,
 }
 
-impl WSError {
-    /// Return an `actix_ws::CloseCode` for the WS session Close frame
-    pub fn close_code(&self) -> actix_ws::CloseCode {
-        match self {
-            WSError::SM(e) => e.close_code(),
-            // TODO: applicable here?
-            //WSError::Protocol(_) => CloseCode::Protocol,
-            WSError::UnsupportedMessage(_) => CloseCode::Unsupported,
-            _ => CloseCode::Error,
-        }
-    }
-
-    /// Return a description for the WS session Close frame.
+impl WSErrorKind {
+    /// Whether this variant has a `Backtrace` captured
     ///
-    /// Control frames are limited to 125 bytes so returns just the enum
-    /// variant's name (via `strum::AsRefStr`)
-    pub fn close_description(&self) -> &str {
-        self.as_ref()
-    }
-
-    /// Whether this error is reported to sentry
-    pub fn is_sentry_event(&self) -> bool {
-        !matches!(self, WSError::Json(_))
-    }
-
-    /// Create a sentry Event from this Error with `WebPushClient` information
-    pub fn to_sentry_event(&self, client: &WebPushClient) -> sentry::protocol::Event<'static> {
-        let mut event = sentry::event_from_error(self);
-        // TODO:
-        //event.exception.last_mut().unwrap().stacktrace =
-        //    sentry::integrations::backtrace::backtrace_to_stacktrace(&self.backtrace);
-
-        event.user = Some(sentry::User {
-            id: Some(client.uaid.as_simple().to_string()),
-            ..Default::default()
-        });
-        let ua_info = client.ua_info.clone();
-        event
-            .tags
-            .insert("ua_name".to_owned(), ua_info.browser_name);
-        event
-            .tags
-            .insert("ua_os_family".to_owned(), ua_info.metrics_os);
-        event
-            .tags
-            .insert("ua_os_ver".to_owned(), ua_info.os_version);
-        event
-            .tags
-            .insert("ua_browser_family".to_owned(), ua_info.metrics_browser);
-        event
-            .tags
-            .insert("ua_browser_ver".to_owned(), ua_info.browser_version);
-        event
+    /// Some Error variants have obvious call sites and thus don't need a
+    /// `Backtrace`
+    fn capture_backtrace(&self) -> bool {
+        matches!(
+            self,
+            WSErrorKind::Json(_) | WSErrorKind::Protocol(_) | WSErrorKind::SessionClosed(_)
+        )
     }
 }
