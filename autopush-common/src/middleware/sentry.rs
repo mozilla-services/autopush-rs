@@ -37,7 +37,7 @@ impl<S, B, E> Transform<S, ServiceRequest> for SentryWrapper<E>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
-    E: ReportableError + std::error::Error +  actix_web::ResponseError + 'static
+    E: ReportableError + actix_web::ResponseError + 'static
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
@@ -67,7 +67,7 @@ impl<S, B, E> Service<ServiceRequest> for SentryWrapperMiddleware<S, E>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
-    E: ReportableError + std::error::Error +  actix_web::ResponseError + 'static
+    E: ReportableError + actix_web::ResponseError + 'static
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
@@ -194,7 +194,7 @@ fn process_event(
 /// the event can include a backtrace and source error information.
 fn event_from_actix_error<E>(error: &actix_web::Error) -> sentry::protocol::Event<'static>
     where
-    E: ReportableError + std::error::Error + actix_web::ResponseError + 'static
+    E: ReportableError + actix_web::ResponseError + 'static
 {
     // Actix errors don't have support source/cause, so to get more information
     // about the error we need to downcast.
