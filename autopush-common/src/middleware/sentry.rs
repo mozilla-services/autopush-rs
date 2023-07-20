@@ -1,9 +1,4 @@
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::Arc,
-    task::{Context, Poll},
-};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use actix_web::{
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
@@ -73,9 +68,7 @@ where
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-    fn poll_ready(&self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
-    }
+    actix_web::dev::forward_ready!(service);
 
     fn call(&self, sreq: ServiceRequest) -> Self::Future {
         // Set up the hub to add request data to events
