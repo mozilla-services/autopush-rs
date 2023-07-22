@@ -14,8 +14,9 @@ use futures::{future::LocalBoxFuture, FutureExt};
 use futures_util::future::{ok, Ready};
 use sentry::{protocol::Event, Hub};
 
-use crate::LocalError;
-use autopush_common::tags::Tags;
+use crate::tags::Tags;
+
+pub type LocalError = crate::errors::ApcError;
 
 #[derive(Clone)]
 pub struct SentryWrapper {
