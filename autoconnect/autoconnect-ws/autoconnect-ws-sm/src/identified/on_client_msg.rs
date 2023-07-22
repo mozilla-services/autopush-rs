@@ -272,7 +272,10 @@ impl WebPushClient {
     /// Post process the Client succesfully Ack'ing all Push Notifications it's
     /// been sent.
     ///
-    /// TODO: more docs
+    /// Notifications are read in small batches (approximately 10). We wait for
+    /// the Client to Ack every Notification in that batch (invoking this
+    /// method) before proceeding to read the next batch (or potential other
+    /// actions such as `reset_uaid`).
     async fn post_process_all_acked(&mut self) -> Result<Vec<ServerMessage>, SMError> {
         trace!("▶️ WebPushClient:post_process_all_acked");
         let flags = &self.flags;

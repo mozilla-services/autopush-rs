@@ -39,6 +39,11 @@ impl UnidentifiedClient {
         UnidentifiedClient { ua, app_state }
     }
 
+    /// Return a reference to `AppState`'s `Settings`
+    pub fn app_settings(&self) -> &Settings {
+        &self.app_state.settings
+    }
+
     /// Handle a WebPush `ClientMessage` sent from the user agent over the
     /// WebSocket for this user
     ///
@@ -153,7 +158,7 @@ impl UnidentifiedClient {
     }
 
     /// Initialize `Broadcast`s for a new `WebPushClient`
-    pub async fn broadcast_init(
+    async fn broadcast_init(
         &self,
         broadcasts: &[Broadcast],
     ) -> (BroadcastSubs, HashMap<String, BroadcastValue>) {
@@ -169,11 +174,6 @@ impl UnidentifiedClient {
             );
         }
         (broadcast_subs, response)
-    }
-
-    /// Return a reference to `AppState`'s `Settings`
-    pub fn app_settings(&self) -> &Settings {
-        &self.app_state.settings
     }
 }
 

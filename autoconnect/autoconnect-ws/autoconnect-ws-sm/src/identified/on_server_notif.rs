@@ -164,7 +164,14 @@ impl WebPushClient {
 
     /// Read a chunk (max count 10 returned) of Notifications from storage
     ///
-    /// TODO: document topic vs timestamp messages
+    /// This alternates between reading Topic Notifications and Timestamp
+    /// Notifications which are stored separately in storage.
+    ///
+    /// Topic Messages differ in that they replace pending Notifications with
+    /// new ones if they have matching Topic names. They are used when a sender
+    /// desires a scenario where multiple Messages sent to an offline device
+    /// result in the user only seeing the latest Message when the device comes
+    /// online.
     async fn do_check_storage(&self) -> Result<CheckStorageResponse, SMError> {
         trace!("🗄️ WebPushClient::do_check_storage");
         let timestamp = self.ack_state.unacked_stored_highest;
@@ -232,8 +239,11 @@ impl WebPushClient {
         })
     }
 
-    /// Update the user's last message read timestamp (for timestamp messages)
-    /// TODO: more docs
+    /// Update the user's last Message read timestamp (for timestamp Messages)
+    ///
+    /// Called when a Client's Ack'd all timestamp messages sent to it to move
+    /// the timestamp Messages' "pointer". See
+    /// `AckState::unacked_stored_highest` for further information.
     pub(super) async fn increment_storage(&mut self) -> Result<(), SMError> {
         trace!(
             "🗄️ WebPushClient::increment_storage: unacked_stored_highest: {:?}",
