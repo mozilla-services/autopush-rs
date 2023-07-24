@@ -11,7 +11,7 @@ use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
 
-use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
+use autopush_common::{middleware::sentry::SentryWrapper, db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType}};
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
@@ -126,7 +126,7 @@ impl Server {
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 // Our modified Sentry wrapper which does some blocking of non-reportable errors.
-                .wrap(crate::middleware::sentry::SentryWrapper::new(
+                .wrap(SentryWrapper::<ApiError>::new(
                     metrics.clone(),
                     "api_error".to_owned(),
                 ))
