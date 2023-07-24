@@ -11,7 +11,10 @@ use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
 
-use autopush_common::{middleware::sentry::SentryWrapper, db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType}};
+use autopush_common::{
+    db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType},
+    middleware::sentry::SentryWrapper,
+};
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;

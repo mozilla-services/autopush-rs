@@ -18,7 +18,7 @@ use std::fmt::{self, Display};
 use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
 
-use autopush_common::{errors::ReportableError, db::error::DbError};
+use autopush_common::{db::error::DbError, errors::ReportableError};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;

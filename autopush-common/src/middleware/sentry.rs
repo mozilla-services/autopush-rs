@@ -9,7 +9,7 @@ use futures::{future::LocalBoxFuture, FutureExt};
 use futures_util::future::{ok, Ready};
 use sentry::{protocol::Event, Hub};
 
-use crate::{errors::ReportableError, sentry::event_from_error, tags::Tags};
+use crate::{errors::ReportableError, tags::Tags};
 
 #[derive(Clone)]
 pub struct SentryWrapper<E> {
@@ -193,7 +193,7 @@ where
     // about the error we need to downcast.
     if let Some(error) = error.as_error::<E>() {
         // Use our error and associated backtrace for the event
-        event_from_error(error)
+        crate::sentry::event_from_error(error)
     } else {
         // Fallback to the Actix error
         sentry::event_from_error(error)
