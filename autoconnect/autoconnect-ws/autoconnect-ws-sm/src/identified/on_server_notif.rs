@@ -122,20 +122,13 @@ impl WebPushClient {
                 return true;
             }
             if msg.sortkey_timestamp.is_none() {
-<<<<<<< HEAD
                 expired_topic_sort_keys.push(msg.chidmessageid());
-=======
-                expired_topic_sort_keys.push(msg.sort_key());
->>>>>>> eeff8d71a4167a497bd52e7c96c00023f9bb59e2
             }
             false
         });
         // TODO: A batch remove_messages would be nicer
         for sort_key in expired_topic_sort_keys {
-<<<<<<< HEAD
             trace!("🉑 removing expired topic sort key: {sort_key}");
-=======
->>>>>>> eeff8d71a4167a497bd52e7c96c00023f9bb59e2
             self.app_state
                 .db
                 .remove_message(&self.uaid, &sort_key)
