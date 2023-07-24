@@ -7,9 +7,10 @@ use tokio::{select, time::timeout};
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autoconnect_settings::AppState;
 use autoconnect_ws_sm::{UnidentifiedClient, WebPushClient};
+use autopush_common::{errors::ReportableError, sentry::event_from_error};
 
 use crate::{
-    error::WSError,
+    error::{WSError, WSErrorKind},
     ping::PingManager,
     session::{Session, SessionImpl},
 };
@@ -75,7 +76,9 @@ pub(crate) async fn webpush_ws(
 
     if let Err(ref e) = result {
         if e.is_sentry_event() {
-            sentry::capture_event(e.to_sentry_event(&client));
+            let mut event = event_from_error(e);
+            client.add_sentry_info(&mut event);
+            sentry::capture_event(event);
         }
     }
     result
@@ -95,15 +98,15 @@ async fn unidentified_ws(
     );
     let msg = match stream_with_timeout.await {
         Ok(Some(msg)) => msg?,
-        Ok(None) => return Err(WSError::StreamClosed),
-        Err(_) => return Err(WSError::HandshakeTimeout),
+        Ok(None) => return Err(WSErrorKind::StreamClosed.into()),
+        Err(_) => return Err(WSErrorKind::HandshakeTimeout.into()),
     };
     trace!("unidentified_ws: Handshake msg: {:?}", msg);
 
     let client_msg = match msg {
         Message::Text(ref bytestring) => bytestring.parse()?,
         _ => {
-            return Err(WSError::UnsupportedMessage("Expected Text".to_owned()));
+            return Err(WSErrorKind::UnsupportedMessage("Expected Text".to_owned()).into());
         }
     };
 
@@ -151,7 +154,7 @@ async fn identified_ws(
                         ping_manager.on_ws_pong(client.app_settings()).await;
                         continue;
                     },
-                    _ => return Err(WSError::UnsupportedMessage("Expected Text, etc.".to_owned()))
+                    _ => return Err(WSErrorKind::UnsupportedMessage("Expected Text, etc.".to_owned()).into())
                 };
                 for smsg in client.on_client_msg(client_msg).await? {
                     trace!("identified_ws: msg_stream, ServerMessage -> session {:#?}", smsg);
@@ -162,7 +165,7 @@ async fn identified_ws(
             maybe_snotif = snotif_stream.next() => {
                 let Some(snotif) = maybe_snotif else {
                     trace!("identified_ws: snotif_stream EOF");
-                    return Err(WSError::RegistryDisconnected);
+                    return Err(WSErrorKind::RegistryDisconnected.into());
                 };
                 for smsg in client.on_server_notif(snotif).await? {
                     trace!("identified_ws: snotif_stream, ServerMessage -> session {:#?}", smsg);

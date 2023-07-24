@@ -17,7 +17,7 @@ use autopush_common::{
     util::{ms_since_epoch, user_agent::UserAgentInfo},
 };
 
-use crate::error::SMError;
+use crate::error::{SMError, SMErrorKind};
 
 mod on_client_msg;
 mod on_server_notif;
@@ -224,7 +224,7 @@ impl WebPushClient {
             app_state.db.save_messages(&uaid, notifs).await?;
             debug!("Finished saving unacked direct notifs, checking for reconnect");
             let Some(user) = app_state.db.get_user(&uaid).await? else {
-                return Err(SMError::Internal(format!("User not found for unacked direct notifs: {uaid}")));
+                return Err(SMErrorKind::Internal(format!("User not found for unacked direct notifs: {uaid}")));
             };
             if connected_at == user.connected_at {
                 return Ok(());
@@ -239,6 +239,30 @@ impl WebPushClient {
             }
             Ok(())
         });
+    }
+
+    /// Add User information and tags for this Client to a Sentry Event
+    pub fn add_sentry_info(&self, event: &mut sentry::protocol::Event) {
+        event.user = Some(sentry::User {
+            id: Some(self.uaid.as_simple().to_string()),
+            ..Default::default()
+        });
+        let ua_info = self.ua_info.clone();
+        event
+            .tags
+            .insert("ua_name".to_owned(), ua_info.browser_name);
+        event
+            .tags
+            .insert("ua_os_family".to_owned(), ua_info.metrics_os);
+        event
+            .tags
+            .insert("ua_os_ver".to_owned(), ua_info.os_version);
+        event
+            .tags
+            .insert("ua_browser_family".to_owned(), ua_info.metrics_browser);
+        event
+            .tags
+            .insert("ua_browser_ver".to_owned(), ua_info.browser_version);
     }
 
     /// Return a reference to `AppState`'s `Settings`
