@@ -6,7 +6,7 @@ use autopush_common::{
 };
 
 use super::WebPushClient;
-use crate::error::SMError;
+use crate::error::{SMError, SMErrorKind};
 
 impl WebPushClient {
     /// Handle a `ServerNotification` for this user
@@ -23,7 +23,7 @@ impl WebPushClient {
         match snotif {
             ServerNotification::Notification(notif) => Ok(vec![self.notif(notif)?]),
             ServerNotification::CheckStorage => self.check_storage().await,
-            ServerNotification::Disconnect => Err(SMError::Ghost),
+            ServerNotification::Disconnect => Err(SMErrorKind::Ghost.into()),
         }
     }
 
@@ -240,7 +240,7 @@ impl WebPushClient {
             self.ack_state.unacked_stored_highest
         );
         let Some(timestamp) = self.ack_state.unacked_stored_highest else {
-            return Err(SMError::Internal("increment_storage w/ no unacked_stored_highest".to_owned()));
+            return Err(SMErrorKind::Internal("increment_storage w/ no unacked_stored_highest".to_owned()).into());
         };
         self.app_state
             .db
@@ -253,7 +253,7 @@ impl WebPushClient {
     /// Ensure this user hasn't exceeded the maximum allowed number of messages
     /// read from storage (`Settings::msg_limit`)
     ///
-    /// Drops the user record and returns the `SMError::UaidReset` error if
+    /// Drops the user record and returns the `SMErrorKind::UaidReset` error if
     /// they have
     async fn check_msg_limit(&mut self) -> Result<(), SMError> {
         trace!(
@@ -265,7 +265,7 @@ impl WebPushClient {
             // Exceeded the max limit of stored messages: drop the user to
             // trigger a re-register
             self.app_state.db.remove_user(&self.uaid).await?;
-            return Err(SMError::UaidReset);
+            return Err(SMErrorKind::UaidReset.into());
         }
         Ok(())
     }

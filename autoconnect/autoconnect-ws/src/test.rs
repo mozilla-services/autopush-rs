@@ -10,7 +10,7 @@ use autoconnect_common::{
 use autoconnect_settings::{AppState, Settings};
 use autoconnect_ws_sm::UnidentifiedClient;
 
-use crate::{error::WSError, handler::webpush_ws, session::MockSession};
+use crate::{error::WSErrorKind, handler::webpush_ws, session::MockSession};
 
 #[ctor::ctor]
 fn init_test_logging() {
@@ -37,7 +37,7 @@ async fn handshake_timeout() {
     let err = webpush_ws(client, &mut MockSession::new(), s)
         .await
         .unwrap_err();
-    assert!(matches!(err, WSError::HandshakeTimeout));
+    assert!(matches!(err.kind, WSErrorKind::HandshakeTimeout));
 }
 
 #[actix_web::test]
@@ -108,7 +108,7 @@ async fn auto_ping_timeout() {
     };
     pin_mut!(s);
     let err = webpush_ws(client, &mut session, s).await.unwrap_err();
-    assert!(matches!(err, WSError::PongTimeout));
+    assert!(matches!(err.kind, WSErrorKind::PongTimeout));
 }
 
 #[actix_web::test]
@@ -134,5 +134,5 @@ async fn auto_ping_timeout_after_pong() {
     };
     pin_mut!(s);
     let err = webpush_ws(client, &mut session, s).await.unwrap_err();
-    assert!(matches!(err, WSError::PongTimeout));
+    assert!(matches!(err.kind, WSErrorKind::PongTimeout));
 }

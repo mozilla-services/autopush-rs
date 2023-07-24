@@ -9,9 +9,11 @@ authors.workspace = true
 [dependencies]
 actix-web.workspace = true
 actix-ws.workspace = true
+backtrace.workspace = true
 cadence.workspace = true
 futures.workspace = true
 reqwest.workspace = true
+sentry.workspace = true
 slog-scope.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
