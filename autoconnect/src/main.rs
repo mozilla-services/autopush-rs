@@ -52,7 +52,11 @@ async fn main() -> Result<()> {
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+<<<<<<< HEAD
     debug!("Starting up autoconnect...");
+=======
+    debug!("Starting up...");
+>>>>>>> eeff8d71a4167a497bd52e7c96c00023f9bb59e2
 
     // Sentry requires the environment variable "SENTRY_DSN".
     if env::var("SENTRY_DSN")
