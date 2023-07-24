@@ -97,15 +97,15 @@ where
             let response: Self::Response = match fut.await {
                 Ok(response) => response,
                 Err(error) => {
-                    if let Some(api_err) = error.as_error::<E>() {
+                    if let Some(reportable_err) = error.as_error::<E>() {
                         // if it's not reportable, and we have access to the metrics, record it as a metric.
-                        if !api_err.is_sentry_event() {
+                        if !reportable_err.is_sentry_event() {
                             // The error (e.g. VapidErrorKind::InvalidKey(String)) might be too cardinal,
                             // but we may need that information to debug a production issue. We can
                             // add an info here, temporarily turn on info level debugging on a given server,
                             // capture it, and then turn it off before we run out of money.
-                            if let Some(label) = api_err.metric_label() {
-                                info!("Sentry: Sending error to metrics: {:?}", api_err);
+                            if let Some(label) = reportable_err.metric_label() {
+                                info!("Sentry: Sending error to metrics: {:?}", reportable_err);
                                 let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                             }
                         }
@@ -123,10 +123,10 @@ where
             };
             // Check for errors inside the response
             if let Some(error) = response.response().error() {
-                if let Some(api_err) = error.as_error::<E>() {
-                    if !api_err.is_sentry_event() {
-                        if let Some(label) = api_err.metric_label() {
-                            info!("Sentry: Sending error to metrics: {:?}", api_err);
+                if let Some(reportable_err) = error.as_error::<E>() {
+                    if !reportable_err.is_sentry_event() {
+                        if let Some(label) = reportable_err.metric_label() {
+                            info!("Sentry: Sending error to metrics: {:?}", reportable_err);
                             let _ = metrics.incr(&format!("{}.{}", metric_label, label));
                         }
                         debug!("Not reporting error (service error): {:?}", error);
@@ -191,9 +191,9 @@ where
 {
     // Actix errors don't have support source/cause, so to get more information
     // about the error we need to downcast.
-    if let Some(error) = error.as_error::<E>() {
+    if let Some(reportable_err) = error.as_error::<E>() {
         // Use our error and associated backtrace for the event
-        crate::sentry::event_from_error(error)
+        crate::sentry::event_from_error(reportable_err)
     } else {
         // Fallback to the Actix error
         sentry::event_from_error(error)
