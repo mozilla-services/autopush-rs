@@ -1,5 +1,6 @@
-[![Build](https://travis-ci.org/mozilla-services/autopush-rs.svg?branch=master)](https://travis-ci.org/mozilla-services/autopush-rs)
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![License: MPL 2.0][mpl-svg]][mpl]
+[![Build Status][circleci-badge]][circleci]
+[![docs][docs-badge]][docs]
 [![Connect to Matrix via the Riot webapp][matrix-badge]][matrix]
 
 # Autopush-rs
@@ -24,9 +25,6 @@ through the source, only public structures are rendered automatically.
 For those curious about the inner workings, You may wish to read the
 code files directly.
 
-[matrix-badge]: https://img.shields.io/badge/chat%20on%20[m]-%23push%3Amozilla.org-blue
-[matrix]: https://chat.mozilla.org/#/room/#push:mozilla.org
-
 ## Debugging on Mobile
 
 Mobile devices can specify the Push Server URL via the "[secret settings](https://github.com/mozilla-mobile/fenix/wiki/%22Secret-settings%22-debug-menu-instructions)".
@@ -37,3 +35,12 @@ The secret settings can be activatedby following [these instructions](https://gi
 **Sync Debug** from the the mobile **Settings** menu, and specify the **Custom Push server** URL.
 
 **NOTE:** the default Push server url is `wss://push.services.mozilla.com/`
+
+[mpl-svg]: https://img.shields.io/badge/License-MPL%202.0-blue.svg
+[mpl]: https://opensource.org/licenses/MPL-2.0
+[circleci-badge]: https://circleci.com/gh/mozilla-services/autopush-rs.svg?style=shield
+[circleci]: https://circleci.com/gh/mozilla-services/autopush-rs
+[docs-badge]: https://github.com/mozilla-services/autopush-rs/actions/workflows/publish_docs.yml/badge.svg
+[docs]: https://mozilla-services.github.io/autopush-rs/
+[matrix-badge]: https://img.shields.io/badge/chat%20on%20[m]-%23push%3Amozilla.org-blue
+[matrix]: https://chat.mozilla.org/#/room/#push:mozilla.org
