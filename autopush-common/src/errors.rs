@@ -13,6 +13,8 @@ use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::back
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use thiserror::Error;
 
+pub type Result<T> = std::result::Result<T, ApcError>;
+
 /// Render a 404 response
 pub fn render_404<B>(
     res: ServiceResponse<B>,
@@ -171,17 +173,25 @@ impl ApcErrorKind {
 
     pub fn metric_label(&self) -> Option<String> {
         // TODO: add labels for skipped stuff
-        let resp = match self {
+        let label = match self {
             Self::PongTimeout => "pong_timeout",
             Self::ExcessivePing => "excessive_ping",
             Self::PayloadError(_) => "payload",
-            _ => "",
+            _ => return None,
         };
-        if !resp.is_empty() {
-            return Some(resp.to_owned());
-        }
-        None
+        Some(label.to_owned())
     }
 }
 
-pub type Result<T> = std::result::Result<T, ApcError>;
+/// Interface for reporting our Error types to Sentry or as metrics
+pub trait ReportableError: std::error::Error + fmt::Display {
+    /// Return a `Backtrace` for this Error if one was captured
+    fn backtrace(&self) -> Option<&Backtrace>;
+
+    /// Whether this error is reported to Sentry
+    fn is_sentry_event(&self) -> bool;
+
+    /// Errors that don't emit Sentry events (!is_sentry_event()) emit an
+    /// increment metric instead with this label
+    fn metric_label(&self) -> Option<&'static str>;
+}

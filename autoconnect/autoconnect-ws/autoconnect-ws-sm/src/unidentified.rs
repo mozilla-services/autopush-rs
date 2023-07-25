@@ -54,7 +54,7 @@ impl UnidentifiedClient {
             broadcasts,
             ..
         } = msg else {
-            return Err(SMError::InvalidMessage(
+            return Err(SMError::invalid_message(
                 r#"Expected messageType="hello", "use_webpush": true"#.to_owned()
             ));
         };
@@ -67,7 +67,7 @@ impl UnidentifiedClient {
             .as_deref()
             .map(Uuid::try_parse)
             .transpose()
-            .map_err(|_| SMError::InvalidMessage("Invalid uaid".to_owned()))?;
+            .map_err(|_| SMError::invalid_message("Invalid uaid".to_owned()))?;
 
         let GetOrCreateUser {
             user,
@@ -195,7 +195,7 @@ mod tests {
     };
     use autoconnect_settings::AppState;
 
-    use crate::error::SMError;
+    use crate::error::SMErrorKind;
 
     use super::UnidentifiedClient;
 
@@ -211,17 +211,23 @@ mod tests {
     #[tokio::test]
     async fn reject_not_hello() {
         let client = uclient(Default::default());
-        let result = client.on_client_msg(ClientMessage::Ping).await;
-        assert!(matches!(result, Err(SMError::InvalidMessage(_))));
+        let err = client
+            .on_client_msg(ClientMessage::Ping)
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(err.kind, SMErrorKind::InvalidMessage(_)));
 
         let client = uclient(Default::default());
-        let result = client
+        let err = client
             .on_client_msg(ClientMessage::Register {
                 channel_id: DUMMY_CHID.to_string(),
                 key: None,
             })
-            .await;
-        assert!(matches!(result, Err(SMError::InvalidMessage(_))));
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(err.kind, SMErrorKind::InvalidMessage(_)));
     }
 
     #[tokio::test]
