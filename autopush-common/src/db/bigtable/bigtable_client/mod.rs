@@ -219,7 +219,7 @@ impl BigTableClientImpl {
         &self,
         req: ReadRowsRequest,
         timestamp_filter: Option<u64>,
-        limit: Option<u64>,
+        limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let resp = self
             .client
@@ -354,11 +354,17 @@ impl BigTableClientImpl {
     fn rows_to_notifications(
         &self,
         rows: BTreeMap<String, Row>,
+        limit: Option<usize>,
     ) -> Result<FetchMessageResponse, crate::db::error::DbError> {
         let mut messages: Vec<Notification> = Vec::new();
         let mut max_timestamp: u64 = 0;
 
         for (_key, mut row) in rows {
+            if let Some(limit) = limit {
+                if messages.len() >= limit {
+                    break;
+                }
+            }
             // get the dominant family type for this row.
             if let Some(cell) = row.get_cell("channel_id") {
                 let mut notif = Notification {
@@ -387,13 +393,14 @@ impl BigTableClientImpl {
                     notif.data = Some(to_string(cell.value, "data")?);
                 }
                 if let Some(cell) = row.get_cell("sortkey_timestamp") {
-                    notif.sortkey_timestamp = Some(to_u64(cell.value, "sortkey_timestamp")?);
+                    let sk_ts = to_u64(cell.value, "sortkey_timestamp")?;
+                    notif.sortkey_timestamp = Some(sk_ts);
+                    if sk_ts > max_timestamp {
+                        max_timestamp = sk_ts;
+                    }
                 }
                 if let Some(cell) = row.get_cell("timestamp") {
                     notif.timestamp = to_u64(cell.value, "timestamp")?;
-                    if notif.timestamp > max_timestamp {
-                        max_timestamp = notif.timestamp;
-                    }
                 }
                 if let Some(cell) = row.get_cell("headers") {
                     notif.headers = Some(
@@ -858,7 +865,7 @@ impl DbClient for BigTableClientImpl {
     /// single field. You'd have to adjust all the cells that are in the family.
     /// So, we're not going to do expiration that way.
     ///
-    /// That leaves the meta "currnet_timestamp" field. We do not purge ACK'd records,
+    /// That leaves the meta "current_timestamp" field. We do not purge ACK'd records,
     /// instead we presume that the TTL will kill them off eventually. On reads, we use
     /// the `current_timestamp` to determine what records to return, since we return
     /// records with timestamps later than `current_timestamp`.
@@ -939,16 +946,24 @@ impl DbClient for BigTableClientImpl {
             );
             regex_filter
         });
-
+        // Note set_rows_limit(v) limits the returned results
+        // If you're doing additional filtering later, this is not what
+        // you want.
+        /*
+        if limit > 0 {
+            trace!("🉑 Setting limit to {limit}");
+            req.set_rows_limit(limit as i64);
+        }
+        // */
         let rows = self
-            .read_rows(req, None, if limit > 0 { Some(limit as u64) } else { None })
+            .read_rows(req, None, if limit > 0 { Some(limit) } else { None })
             .await?;
         debug!(
             "🉑 Fetch Topic Messages. Found {} row(s) of {}",
             rows.len(),
             limit
         );
-        self.rows_to_notifications(rows)
+        self.rows_to_notifications(rows, if limit > 0 { Some(limit) } else { None })
     }
 
     /// Return `limit` messages pending for a UAID that have a sortkey_timestamp after
@@ -967,74 +982,36 @@ impl DbClient for BigTableClientImpl {
         //
         //
         let filter = {
-            // Filters! Assemble!
-            // only look for channelids for the given UAID.
-            // start by looking for rows that roughly match what we want`
-            //*
-            // Regex
-            let regex_filter = {
-                let mut filter = data::RowFilter::default();
-                // look for anything belonging to this UAID that is also a Standard Notification
-                let pattern = format!(
-                    "^{}#[^#]+#{}:.*",
-                    uaid.simple(),
-                    STANDARD_NOTIFICATION_PREFIX,
-                );
-                trace!("🉑 regex filter {:?}", pattern);
-                filter.set_row_key_regex_filter(pattern.as_bytes().to_vec());
-                filter
-            };
-            // */
-            //*
-            // if we have a timestamp, build a chain of filters.
-            if let Some(timestamp) = timestamp {
-                let mut range_filter = data::RowFilter::default();
-                let mut filter_set: RepeatedField<data::RowFilter> = RepeatedField::default();
-                let mut filter_chain = data::RowFilter_Chain::default();
-                let mut range = data::ValueRange::default();
-
-                filter_set.push(regex_filter);
-
-                // Build the range filter
-                // remember to adjust for sortkey_timestamp being in micros.
-                let start_pattern = (timestamp * 1000).to_be_bytes().to_vec();
-                debug!(
-                    "🉑🔍:fetch_timestamp_messages: Range: from {} :: {:?}",
-                    timestamp, &start_pattern
-                );
-                // "closed" means exclusive of this value.
-                // "open" is inclusive.
-                range.set_start_value_closed(start_pattern);
-                range_filter.set_value_range_filter(range);
-                range_filter
-                    .set_column_qualifier_regex_filter("sortkey_timestamp".as_bytes().to_vec());
-                filter_set.push(range_filter);
-
-                // Build the chain.
-                filter_chain.set_filters(filter_set);
-
-                let mut filter = data::RowFilter::default();
-                filter.set_chain(filter_chain);
-                filter
-            } else {
-                regex_filter
-            }
-            // */
+            // Only look for channelids for the given UAID.
+            // start by looking for rows that roughly match what we want
+            // Note: BigTable provides a good deal of specialized filtering, but
+            // it tends to be overly specialized. (For instance, a value range retuns
+            // cells which has values within a specific range. Not rows, not families,
+            // cells. There does not appear to be a way to chain this so that it only
+            // looks for rows with ranged values within a given family or qualifier types
+            // That must be done externally.)
+            let mut filter = data::RowFilter::default();
+            // look for anything belonging to this UAID that is also a Standard Notification
+            let pattern = format!(
+                "^{}#[^#]+#{}:.*",
+                uaid.simple(),
+                STANDARD_NOTIFICATION_PREFIX,
+            );
+            trace!("🉑 regex filter {:?}", pattern);
+            filter.set_row_key_regex_filter(pattern.as_bytes().to_vec());
+            filter
         };
         req.set_filter(filter);
         let rows = self
-            .read_rows(
-                req,
-                timestamp,
-                if limit > 0 { Some(limit as u64) } else { None },
-            )
+            .read_rows(req, timestamp, if limit > 0 { Some(limit) } else { None })
             .await?;
         debug!(
-            "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s)",
+            "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s) of {}",
             timestamp,
-            rows.len()
+            rows.len(),
+            limit,
         );
-        self.rows_to_notifications(rows)
+        self.rows_to_notifications(rows, if limit > 0 { Some(limit) } else { None })
     }
 
     async fn health_check(&self) -> DbResult<bool> {

@@ -383,7 +383,7 @@ impl RowMerger {
     pub async fn process_chunks(
         mut stream: ClientSStreamReceiver<ReadRowsResponse>,
         timestamp_filter: Option<u64>,
-        limit: Option<u64>,
+        limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, Row>, BigTableError> {
         // Work object
         let mut merger = Self::default();
@@ -391,11 +391,9 @@ impl RowMerger {
         // finished collection
         let mut rows = BTreeMap::<RowKey, Row>::new();
 
-        debug!("🕝 timestamp_filter: {:?}", &timestamp_filter);
-
         while let (Some(row_resp_res), s) = stream.into_future().await {
             if let Some(limit) = limit {
-                if rows.len() > limit as usize {
+                if rows.len() > limit {
                     break;
                 }
             }
@@ -450,6 +448,26 @@ impl RowMerger {
                     debug! {"🟧 row complete"};
                     // Check to see if we can add this row, or if it's blocked by the timestamp filter.
                     let finished_row = merger.row_complete(&mut chunk).await?;
+                    if let Some(timestamp) = timestamp_filter {
+                        if let Some(sk_ts) = finished_row.clone().get_cell("sortkey_timestamp") {
+                            let ts_val = crate::db::bigtable::bigtable_client::to_u64(
+                                sk_ts.value,
+                                "sortkey_timestamp",
+                            )
+                            .map_err(|_| {
+                                BigTableError::InvalidChunk("Invalid timestamp".to_owned())
+                            })?;
+                            if ts_val <= timestamp {
+                                trace!(
+                                    "⚖ {}: Skipping {} <= {}",
+                                    &finished_row.row_key,
+                                    ts_val,
+                                    timestamp
+                                );
+                                continue;
+                            }
+                        }
+                    }
                     rows.insert(finished_row.row_key.clone(), finished_row);
                 } else if chunk.has_commit_row() {
                     return Err(BigTableError::InvalidChunk(format!(

@@ -1267,12 +1267,14 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=28)
     def test_ttl_batch_expired_and_good_one(self):
-        data = str(uuid.uuid4())
-        data2 = str(uuid.uuid4())
+        data = str(uuid.uuid4()).encode()
+        data2 = base64.urlsafe_b64decode('0012') + str(uuid.uuid4()).encode()
+        print(data2);
         client = yield self.quick_register()
         yield client.disconnect()
         for x in range(0, 12):
-            yield client.send_notification(data=data, ttl=1, status=201)
+            prefix = base64.urlsafe_b64decode("{:04d}".format(x))
+            yield client.send_notification(data=prefix+data, ttl=1, status=201)
 
         yield client.send_notification(data=data2, status=201)
         time.sleep(1)
