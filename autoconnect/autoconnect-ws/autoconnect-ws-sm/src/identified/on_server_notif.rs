@@ -1,4 +1,3 @@
-use actix_web::rt;
 use cadence::{Counted, CountedExt};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
@@ -7,7 +6,7 @@ use autopush_common::{
 };
 
 use super::WebPushClient;
-use crate::error::SMError;
+use crate::error::{SMError, SMErrorKind};
 
 impl WebPushClient {
     /// Handle a `ServerNotification` for this user
@@ -24,7 +23,7 @@ impl WebPushClient {
         match snotif {
             ServerNotification::Notification(notif) => Ok(vec![self.notif(notif)?]),
             ServerNotification::CheckStorage => self.check_storage().await,
-            ServerNotification::Disconnect => Err(SMError::Ghost),
+            ServerNotification::Disconnect => Err(SMErrorKind::Ghost.into()),
         }
     }
 
@@ -116,16 +115,24 @@ impl WebPushClient {
 
         // Filter out TTL expired messages
         let now_sec = sec_since_epoch();
-        messages.retain(|n| {
-            if !n.expired(now_sec) {
+        // Topic messages require immediate deletion from the db
+        let mut expired_topic_sort_keys = vec![];
+        messages.retain(|msg| {
+            if !msg.expired(now_sec) {
                 return true;
             }
-            // TODO: A batch remove_messages would be nicer
-            if n.sortkey_timestamp.is_none() {
-                self.spawn_remove_message(n.sort_key());
+            if msg.sortkey_timestamp.is_none() {
+                expired_topic_sort_keys.push(msg.sort_key());
             }
             false
         });
+        // TODO: A batch remove_messages would be nicer
+        for sort_key in expired_topic_sort_keys {
+            self.app_state
+                .db
+                .remove_message(&self.uaid, &sort_key)
+                .await?;
+        }
 
         self.flags.increment_storage = !include_topic && timestamp.is_some();
 
@@ -233,7 +240,7 @@ impl WebPushClient {
             self.ack_state.unacked_stored_highest
         );
         let Some(timestamp) = self.ack_state.unacked_stored_highest else {
-            return Err(SMError::Internal("increment_storage w/ no unacked_stored_highest".to_owned()));
+            return Err(SMErrorKind::Internal("increment_storage w/ no unacked_stored_highest".to_owned()).into());
         };
         self.app_state
             .db
@@ -246,7 +253,7 @@ impl WebPushClient {
     /// Ensure this user hasn't exceeded the maximum allowed number of messages
     /// read from storage (`Settings::msg_limit`)
     ///
-    /// Drops the user record and returns the `SMError::UaidReset` error if
+    /// Drops the user record and returns the `SMErrorKind::UaidReset` error if
     /// they have
     async fn check_msg_limit(&mut self) -> Result<(), SMError> {
         trace!(
@@ -258,23 +265,9 @@ impl WebPushClient {
             // Exceeded the max limit of stored messages: drop the user to
             // trigger a re-register
             self.app_state.db.remove_user(&self.uaid).await?;
-            return Err(SMError::UaidReset);
+            return Err(SMErrorKind::UaidReset.into());
         }
         Ok(())
-    }
-
-    /// Spawn a background task to remove a message from storage
-    fn spawn_remove_message(&self, sort_key: String) {
-        let db = self.app_state.db.clone();
-        let uaid = self.uaid;
-        rt::spawn(async move {
-            if db.remove_message(&uaid, &sort_key).await.is_ok() {
-                debug!(
-                    "Deleted expired message without sortkey_timestamp, sort_key: {}",
-                    sort_key
-                );
-            }
-        });
     }
 
     /// Emit metrics for a Notification to be sent to the user

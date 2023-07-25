@@ -4,7 +4,10 @@ use autoconnect_common::{broadcast::Broadcast, protocol::ServerMessage};
 use autoconnect_settings::Settings;
 use autoconnect_ws_sm::WebPushClient;
 
-use crate::{error::WSError, session::Session};
+use crate::{
+    error::{WSError, WSErrorKind},
+    session::Session,
+};
 
 #[derive(Debug)]
 enum Waiting {
@@ -54,7 +57,7 @@ impl PingManager {
         self.ping_or_timeout.tick().await;
         match self.waiting {
             Waiting::ToPing => Ok(()),
-            Waiting::ForPong => Err(WSError::PongTimeout),
+            Waiting::ForPong => Err(WSErrorKind::PongTimeout.into()),
         }
     }
 

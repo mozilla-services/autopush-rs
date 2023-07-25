@@ -10,7 +10,7 @@ use autoconnect_common::{
 use autopush_common::{endpoint::make_endpoint, util::sec_since_epoch};
 
 use super::WebPushClient;
-use crate::error::SMError;
+use crate::error::{SMError, SMErrorKind};
 
 impl WebPushClient {
     /// Handle a WebPush `ClientMessage` sent from the user agent over the
@@ -21,7 +21,7 @@ impl WebPushClient {
     ) -> Result<Vec<ServerMessage>, SMError> {
         match msg {
             ClientMessage::Hello { .. } => {
-                Err(SMError::InvalidMessage("Already Hello'd".to_owned()))
+                Err(SMError::invalid_message("Already Hello'd".to_owned()))
             }
             ClientMessage::Register { channel_id, key } => {
                 Ok(vec![self.register(channel_id, key).await?])
@@ -53,10 +53,11 @@ impl WebPushClient {
                "channel_id" => &channel_id_str,
                "key" => &key,
         );
-        let channel_id = Uuid::try_parse(&channel_id_str)
-            .map_err(|_| SMError::InvalidMessage(format!("Invalid channelID: {channel_id_str}")))?;
+        let channel_id = Uuid::try_parse(&channel_id_str).map_err(|_| {
+            SMError::invalid_message(format!("Invalid channelID: {channel_id_str}"))
+        })?;
         if channel_id.as_hyphenated().to_string() != channel_id_str {
-            return Err(SMError::InvalidMessage(format!(
+            return Err(SMError::invalid_message(format!(
                 "Invalid UUID format, not lower-case/dashed: {channel_id}",
             )));
         }
@@ -67,7 +68,7 @@ impl WebPushClient {
                 self.stats.registers += 1;
                 (200, endpoint)
             }
-            Err(SMError::MakeEndpoint(msg)) => {
+            Err(SMErrorKind::MakeEndpoint(msg)) => {
                 error!("WebPushClient::register make_endpoint failed: {}", msg);
                 (400, "Failed to generate endpoint".to_owned())
             }
@@ -87,7 +88,7 @@ impl WebPushClient {
         &mut self,
         channel_id: &Uuid,
         key: Option<String>,
-    ) -> Result<String, SMError> {
+    ) -> Result<String, SMErrorKind> {
         if let Some(user) = &self.deferred_add_user {
             debug!(
                 "💬WebPushClient::register: User not yet registered: {}",
@@ -104,7 +105,7 @@ impl WebPushClient {
             &self.app_state.endpoint_url,
             &self.app_state.fernet,
         )
-        .map_err(|e| SMError::MakeEndpoint(e.to_string()))?;
+        .map_err(|e| SMErrorKind::MakeEndpoint(e.to_string()))?;
         self.app_state
             .db
             .add_channel(&self.uaid, channel_id)
@@ -264,7 +265,7 @@ impl WebPushClient {
             self.last_ping = sec_since_epoch();
             Ok(ServerMessage::Ping)
         } else {
-            Err(SMError::ExcessivePing)
+            Err(SMErrorKind::ExcessivePing.into())
         }
     }
 
@@ -301,7 +302,7 @@ impl WebPushClient {
         if flags.reset_uaid {
             debug!("▶️ WebPushClient:post_process_all_acked reset_uaid");
             self.app_state.db.remove_user(&self.uaid).await?;
-            Err(SMError::UaidReset)
+            Err(SMErrorKind::UaidReset.into())
         } else {
             Ok(vec![])
         }
