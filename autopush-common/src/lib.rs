@@ -11,6 +11,7 @@ pub mod endpoint;
 pub mod errors;
 pub mod logging;
 pub mod metrics;
+pub mod middleware;
 pub mod notification;
 pub mod sentry;
 pub mod tags;

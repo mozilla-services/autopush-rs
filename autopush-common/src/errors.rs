@@ -171,7 +171,7 @@ impl ApcErrorKind {
         }
     }
 
-    pub fn metric_label(&self) -> Option<String> {
+    pub fn metric_label(&self) -> Option<&'static str> {
         // TODO: add labels for skipped stuff
         let label = match self {
             Self::PongTimeout => "pong_timeout",
@@ -179,7 +179,7 @@ impl ApcErrorKind {
             Self::PayloadError(_) => "payload",
             _ => return None,
         };
-        Some(label.to_owned())
+        Some(label)
     }
 }
 
@@ -194,4 +194,18 @@ pub trait ReportableError: std::error::Error + fmt::Display {
     /// Errors that don't emit Sentry events (!is_sentry_event()) emit an
     /// increment metric instead with this label
     fn metric_label(&self) -> Option<&'static str>;
+}
+
+impl ReportableError for ApcError {
+    fn backtrace(&self) -> Option<&Backtrace> {
+        Some(&self.backtrace)
+    }
+
+    fn is_sentry_event(&self) -> bool {
+        self.kind.is_sentry_event()
+    }
+
+    fn metric_label(&self) -> Option<&'static str> {
+        self.kind.metric_label()
+    }
 }
