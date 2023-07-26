@@ -17,10 +17,6 @@ use autopush_common::{
     logging,
 };
 
-mod middleware;
-
-pub type LocalError = autopush_common::errors::ApcError;
-
 const USAGE: &str = "
 Usage: autopush_rs [options]
 
@@ -78,21 +74,14 @@ async fn main() -> Result<()> {
         "Starting autoconnect on port {} (router_port: {})",
         port, router_port
     );
-    HttpServer::new(move || {
-        let app = build_app!(app_state);
-        // TODO: should live in build_app!
-        app.wrap(crate::middleware::sentry::SentryWrapper::new(
-            app_state.metrics.clone(),
-            "error".to_owned(),
-        ))
-    })
-    .bind(("0.0.0.0", port))?
-    .bind(("0.0.0.0", router_port))?
-    .run()
-    .await
-    .map_err(|e| e.into())
-    .map(|v| {
-        info!("Shutting down autoconnect");
-        v
-    })
+    HttpServer::new(move || build_app!(app_state))
+        .bind(("0.0.0.0", port))?
+        .bind(("0.0.0.0", router_port))?
+        .run()
+        .await
+        .map_err(|e| e.into())
+        .map(|v| {
+            info!("Shutting down autoconnect");
+            v
+        })
 }

@@ -23,12 +23,11 @@ macro_rules! build_app {
                 actix_http::StatusCode::NOT_FOUND,
                 autopush_common::errors::render_404,
             ))
-            /*
-            .wrap(crate::middleware::sentry::SentryWrapper::new(
-                $app_state.metrics.clone(),
-                "error".to_owned(),
+            .wrap(autopush_common::middleware::sentry::SentryWrapper::<
+                autopush_common::errors::ApcError,
+            >::new(
+                $app_state.metrics.clone(), "error".to_owned()
             ))
-                */
             .configure(config)
     };
 }
