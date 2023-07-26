@@ -127,6 +127,11 @@ impl WebPushClient {
         Ok((client, smsgs))
     }
 
+    /// Return a reference to `AppState`'s `Settings`
+    pub fn app_settings(&self) -> &Settings {
+        &self.app_state.settings
+    }
+
     /// Connect this `WebPushClient` to the `ClientRegistry`
     ///
     /// Returning a `Stream` of `ServerNotification`s from the `ClientRegistry`
@@ -264,11 +269,6 @@ impl WebPushClient {
             .tags
             .insert("ua_browser_ver".to_owned(), ua_info.browser_version);
     }
-
-    /// Return a reference to `AppState`'s `Settings`
-    pub fn app_settings(&self) -> &Settings {
-        &self.app_state.settings
-    }
 }
 
 /// Ensure an existing user's record is valid, returning its `ClientFlags`
@@ -373,8 +373,24 @@ struct AckState {
     unacked_direct_notifs: Vec<Notification>,
     /// List of unAck'd sent notifications from storage
     unacked_stored_notifs: Vec<Notification>,
-    /// Id of the last previously unAck'd, stored transmission
-    /// TODO: better docs
+    /// Either the `current_timestamp` value in storage (returned from
+    /// `fetch_messages`) or the last unAck'd timestamp Message's
+    /// `sortkey_timestamp` (returned from `fetch_timestamp_messages`).
+    ///
+    /// This represents the "pointer" to the beginning (more specifically the
+    /// record preceeding the beginning used in a Greater Than query) of the
+    /// next batch of timestamp Messages.
+    ///
+    /// Thus this value is:
+    ///
+    /// a) initially None, then
+    ///
+    /// b) retrieved from `current_timestamp` in storage then passed as the
+    /// `timestamp` to `fetch_timestamp_messages`. When all of those timestamp
+    /// Messages are Ack'd, this value's then
+    ///
+    /// c) written back to `current_timestamp` in storage via
+    /// `increment_storage`
     unacked_stored_highest: Option<u64>,
 }
 
