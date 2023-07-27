@@ -95,7 +95,7 @@ jobs:
           name: Rust tests
           environment:
             BIGTABLE_EMULATOR_HOST: localhost:8086
-          command: cargo test --features=dual
+          command: cargo test --features=emulator
       - run:
           name: Integration tests (Autopush Legacy)
           command: |
