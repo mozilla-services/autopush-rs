@@ -18,7 +18,7 @@ use std::fmt::{self, Display};
 use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
 
-use autopush_common::db::error::DbError;
+use autopush_common::{db::error::DbError, errors::ReportableError};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -328,6 +328,20 @@ impl Serialize for ApiError {
         map.serialize_entry("message", &self.kind.to_string())?;
         map.serialize_entry("more_info", ERROR_URL)?;
         map.end()
+    }
+}
+
+impl ReportableError for ApiError {
+    fn backtrace(&self) -> Option<&Backtrace> {
+        Some(&self.backtrace)
+    }
+
+    fn is_sentry_event(&self) -> bool {
+        self.kind.is_sentry_event()
+    }
+
+    fn metric_label(&self) -> Option<&'static str> {
+        self.kind.metric_label()
     }
 }
 
