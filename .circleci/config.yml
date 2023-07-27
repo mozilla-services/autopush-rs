@@ -46,7 +46,7 @@ jobs:
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
-      - image: circleci/dynamodb
+      - image: dynamodb
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
