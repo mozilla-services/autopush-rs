@@ -46,7 +46,7 @@ jobs:
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
-      - image: dynamodb
+      - image: amazon/dynamodb-local:latest
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -95,7 +95,7 @@ jobs:
           name: Rust tests
           environment:
             BIGTABLE_EMULATOR_HOST: localhost:8086
-          command: cargo test --features=emulator
+          command: cargo test --jobs=8
       - run:
           name: Integration tests (Autopush Legacy)
           command: |
