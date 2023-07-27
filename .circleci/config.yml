@@ -50,7 +50,7 @@ jobs:
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
-        command: -sharedDb -inMemory
+        command: -jar DynamoDBLocal.jar -sharedDb
     resource_class: xlarge
     environment:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
