@@ -679,8 +679,6 @@ def setup_connection_server(connection_binary):
     else:
         write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
-    if BT_PROCESS is not None:
-        cmd.extend(["--features", "emulator"])
     log.debug(f"🐍🟢 Starting Connection server: {' '.join(cmd)}")
     CN_SERVER = subprocess.Popen(
         cmd,
@@ -741,8 +739,6 @@ def setup_endpoint_server():
 
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
-    if BT_PROCESS is not None:
-        cmd.extend(["--features", "emulator"])
 
     log.debug("🐍🟢 Starting Endpoint server: {}".format(' '.join(cmd)))
     EP_SERVER = subprocess.Popen(
@@ -770,6 +766,7 @@ def setup_module():
         logging.getLogger(name).setLevel(logging.CRITICAL)
 
     if CONNECTION_CONFIG.get("db_dsn").startswith("grpc"):
+        log.debug("Setting up BigTable")
         setup_bt()
     elif CONNECTION_CONFIG.get("db_dsn").startswith("dual"):
         setup_bt()

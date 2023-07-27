@@ -42,7 +42,7 @@ jobs:
 
   test:
     docker:
-      - image: circleci/python:3.10
+      - image: python:3.10-slim-bullseye
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -67,8 +67,8 @@ jobs:
       - run:
           name: Set up system
           command: |
-            sudo apt update
-            sudo apt install libssl-dev
+            apt update
+            apt install libssl-dev -y
       - run:
           name: Set up Python
           command: |
@@ -78,8 +78,9 @@ jobs:
       - run:
           name: Set up Rust
           command: |
-            sudo apt update
-            sudo apt install cmake
+            apt update
+            apt install build-essential curl libstdc++6 libstdc++-10-dev libssl-dev pkg-config -y
+            apt install cmake -y
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
@@ -92,7 +93,9 @@ jobs:
             cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
       - run:
           name: Rust tests
-          command: cargo test --features=bigtable
+          environment:
+            BIGTABLE_EMULATOR_HOST: localhost:8086
+          command: cargo test --features=dual
       - run:
           name: Integration tests (Autopush Legacy)
           command: |

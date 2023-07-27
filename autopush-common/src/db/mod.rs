@@ -20,15 +20,12 @@ use uuid::Uuid;
 
 use crate::db::{dynamodb::has_connected_this_month, util::generate_last_connect};
 
-pub mod client;
-// #[feat(dynamodb)]
 #[cfg(feature = "bigtable")]
 pub mod bigtable;
+pub mod client;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
-// #[feat(postgres)]
-// pub mod postgres;
 mod util;
 
 // used by integration testing
