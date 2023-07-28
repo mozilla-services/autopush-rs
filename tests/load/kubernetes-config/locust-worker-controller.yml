@@ -22,9 +22,11 @@ spec:
               value: "true"
             - name: LOCUST_MASTER_NODE_HOST
               value: locust-master
+            - name: TARGET_HOST
+              value:
             - name: LOCUST_LOGLEVEL
-              value: [LOCUST_LOGLEVEL]
+              value:
             - name: SERVER_URL
-              value: [SERVER_URL]
+              value:
             - name: ENDPOINT_URL
-              value: [ENDPOINT_URL]                          
+              value:
