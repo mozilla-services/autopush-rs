@@ -359,17 +359,15 @@ impl RowMerger {
         &mut self,
         _chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<Row, BigTableError> {
-        let mut new_row = Row::default();
-
-        let row = &mut self.row_in_progress;
-        self.last_seen_row_key = Some(row.row_key.clone());
-        new_row.row_key = mem::take(&mut row.row_key);
-        new_row.cells = mem::take(&mut row.last_family_cells);
-
         // now that we're done, write a clean version.
-        self.row_in_progress = PartialRow::default();
+        let row = mem::take(&mut self.row_in_progress);
         self.state = ReadState::RowStart;
-        Ok(new_row)
+        self.last_seen_row_key = Some(row.row_key.clone());
+
+        Ok(Row {
+            row_key: row.row_key,
+            cells: row.last_family_cells,
+        })
     }
 
     /// wrap up anything, we're done reading data.
