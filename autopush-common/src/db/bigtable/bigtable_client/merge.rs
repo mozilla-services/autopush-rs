@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::mem;
 use std::time::{Duration, SystemTime};
 
 use futures::StreamExt;
@@ -80,7 +81,7 @@ pub struct RowMerger {
     /// The last cell family. This may change, indicating a new cell group.
     last_seen_cell_family: Option<FamilyId>,
     /// The row that is currently being compiled.
-    row_in_progress: RefCell<PartialRow>,
+    row_in_progress: PartialRow,
 }
 
 impl RowMerger {
@@ -124,7 +125,7 @@ impl RowMerger {
         }
 
         self.state = ReadState::RowStart;
-        self.row_in_progress = RefCell::new(PartialRow::default());
+        self.row_in_progress = PartialRow::default();
         Ok(self)
     }
 
@@ -155,7 +156,7 @@ impl RowMerger {
             }
         }
 
-        let mut row = self.row_in_progress.borrow_mut();
+        let row = &mut self.row_in_progress;
 
         row.row_key = String::from_utf8(chunk.row_key.clone()).unwrap_or_default();
         row.cell_in_progress = RefCell::new(PartialCell::default());
@@ -178,7 +179,7 @@ impl RowMerger {
         }
         let qualifier = chunk.take_qualifier().get_value().to_vec();
         // dbg!(chunk.has_qualifier(), String::from_utf8(qualifier.clone()));
-        let row = self.row_in_progress.borrow_mut();
+        let row = &self.row_in_progress;
 
         if !row.cells.is_empty()
             && !chunk.row_key.is_empty()
@@ -237,7 +238,7 @@ impl RowMerger {
         &mut self,
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
-        let row = self.row_in_progress.borrow();
+        let row = &self.row_in_progress;
         let mut cell = row.cell_in_progress.borrow_mut();
 
         // Quick gauntlet to ensure that we have a cell continuation.
@@ -287,7 +288,7 @@ impl RowMerger {
         &mut self,
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
-        let mut row_in_progress = self.row_in_progress.borrow_mut();
+        let row_in_progress = &mut self.row_in_progress;
         // Read Only version of the row in progress.
         // Needed because of mutability locks.
         let ro_row_in_progress = row_in_progress.clone();
@@ -335,11 +336,13 @@ impl RowMerger {
             row_in_progress.last_qualifier = qualifier;
         }
 
-        // reset the cell in progress
-        let mut reset_cell = row_in_progress.cell_in_progress.borrow_mut();
-        reset_cell.timestamp = SystemTime::now();
-        reset_cell.value.clear();
-        reset_cell.value_index = 0;
+        {
+            // reset the cell in progress
+            let mut reset_cell = row_in_progress.cell_in_progress.borrow_mut();
+            reset_cell.timestamp = SystemTime::now();
+            reset_cell.value.clear();
+            reset_cell.value_index = 0;
+        }
 
         // If this isn't the last item in the row, keep going.
         self.state = if !chunk.has_commit_row() {
@@ -358,13 +361,13 @@ impl RowMerger {
     ) -> Result<Row, BigTableError> {
         let mut new_row = Row::default();
 
-        let row = self.row_in_progress.take();
+        let row = &mut self.row_in_progress;
         self.last_seen_row_key = Some(row.row_key.clone());
-        new_row.row_key = row.row_key;
-        new_row.cells = row.last_family_cells;
+        new_row.row_key = mem::take(&mut row.row_key);
+        new_row.cells = mem::take(&mut row.last_family_cells);
 
         // now that we're done, write a clean version.
-        self.row_in_progress = RefCell::new(PartialRow::default());
+        self.row_in_progress = PartialRow::default();
         self.state = ReadState::RowStart;
         Ok(new_row)
     }
