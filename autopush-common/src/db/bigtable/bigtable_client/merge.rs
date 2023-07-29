@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::mem;
 use std::time::{Duration, SystemTime};
@@ -68,7 +67,7 @@ pub(crate) struct PartialRow {
     last_qualifier: Qualifier,
     /// Any cell that may be in progress (chunked
     /// across multiple portions)
-    cell_in_progress: RefCell<PartialCell>,
+    cell_in_progress: PartialCell,
 }
 
 /// workhorse struct, this is used to gather item data from the stream and build rows.
@@ -159,7 +158,7 @@ impl RowMerger {
         let row = &mut self.row_in_progress;
 
         row.row_key = String::from_utf8(chunk.row_key.clone()).unwrap_or_default();
-        row.cell_in_progress = RefCell::new(PartialCell::default());
+        row.cell_in_progress = PartialCell::default();
 
         self.state = ReadState::CellStart;
         Ok(self)
@@ -179,7 +178,7 @@ impl RowMerger {
         }
         let qualifier = chunk.take_qualifier().get_value().to_vec();
         // dbg!(chunk.has_qualifier(), String::from_utf8(qualifier.clone()));
-        let row = &self.row_in_progress;
+        let row = &mut self.row_in_progress;
 
         if !row.cells.is_empty()
             && !chunk.row_key.is_empty()
@@ -190,7 +189,7 @@ impl RowMerger {
             ));
         }
 
-        let mut cell = row.cell_in_progress.borrow_mut();
+        let cell = &mut row.cell_in_progress;
         if chunk.has_family_name() {
             cell.family = chunk.take_family_name().get_value().to_owned();
         } else {
@@ -238,8 +237,8 @@ impl RowMerger {
         &mut self,
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
-        let row = &self.row_in_progress;
-        let mut cell = row.cell_in_progress.borrow_mut();
+        let row = &mut self.row_in_progress;
+        let cell = &mut row.cell_in_progress;
 
         // Quick gauntlet to ensure that we have a cell continuation.
         if cell.value_index > 0 {
@@ -291,9 +290,9 @@ impl RowMerger {
         let row_in_progress = &mut self.row_in_progress;
         // Read Only version of the row in progress.
         // Needed because of mutability locks.
-        let ro_row_in_progress = row_in_progress.clone();
+        let mut ro_row_in_progress = row_in_progress.clone();
         // the currently completed cell in progress.
-        let cell_in_progress = ro_row_in_progress.cell_in_progress.borrow_mut();
+        let cell_in_progress = &mut ro_row_in_progress.cell_in_progress;
 
         let cell_family = cell_in_progress.family.clone();
 
@@ -338,7 +337,7 @@ impl RowMerger {
 
         {
             // reset the cell in progress
-            let mut reset_cell = row_in_progress.cell_in_progress.borrow_mut();
+            let reset_cell = &mut row_in_progress.cell_in_progress;
             reset_cell.timestamp = SystemTime::now();
             reset_cell.value.clear();
             reset_cell.value_index = 0;
