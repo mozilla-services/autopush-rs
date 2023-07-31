@@ -288,13 +288,7 @@ impl RowMerger {
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
         let row_in_progress = &mut self.row_in_progress;
-        // Read Only version of the row in progress.
-        // Needed because of mutability locks.
-        let mut ro_row_in_progress = row_in_progress.clone();
-        // the currently completed cell in progress.
-        let cell_in_progress = &mut ro_row_in_progress.cell_in_progress;
-
-        let cell_family = cell_in_progress.family.clone();
+        let cell_in_progress = &mut row_in_progress.cell_in_progress;
 
         let mut family_changed = false;
         if row_in_progress.last_family != cell_in_progress.family {
@@ -322,7 +316,7 @@ impl RowMerger {
             let qualifier = cell_in_progress.qualifier.clone();
             row_in_progress.last_qualifier = qualifier.clone();
             let qualifier_cells = vec![Cell {
-                family: cell_family,
+                family: cell_in_progress.family.clone(),
                 timestamp: cell_in_progress.timestamp,
                 labels: cell_in_progress.labels.clone(),
                 qualifier: cell_in_progress.qualifier.clone(),
