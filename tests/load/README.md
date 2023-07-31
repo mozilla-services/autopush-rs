@@ -14,42 +14,39 @@ To install the dependencies execute:
 poetry install
 ```
 
-Contributors to this project are expected to execute the following tools for import 
-sorting, linting, style guide enforcement and static type checking.
+Contributors to this project are expected to execute isort, black, flake8 and mypy for 
+import sorting, linting, style guide enforcement and static type checking respectively.
 Configurations are set in the `pyproject.toml` and `.flake8` files.
 
-**[isort][4]**
- ```shell
-poetry run isort locustfile.py
- ```
+The tools can be executed with the following command from the root directory:
 
-**[black][5]**
- ```shell
-poetry run black locustfile.py
- ```
-
-**[flake8][6]**
- ```shell
-poetry run flake8 locustfile.py
- ```
-
+```shell
+make lint
+```
 
 ## Local Execution
 
-There are 3 docker-compose files pertaining to the different environments autopush can run on:
-`docker-compose.prod.yml`
-`docker-compose.stage.yml`
-`docker-compose.dev.yml`
+Follow the steps bellow to execute the load tests locally:
 
-You can select which environment you want to run against by choosing the appropriate file. The environment will be setup for you with the correct URLs.
+### Setup Environment
 
-Ex:
+#### 1. Configure Environment Variables
+
+Environment variables, listed bellow or specified by [Locust][8], can be set in
+`tests\load\docker-compose.yml`.
+
+| Environment Variable | Node(s)          | Description                     |
+|----------------------|------------------|---------------------------------|
+| SERVER_URL           | master & worker  | The autopush web socket address |
+| ENDPOINT_URL         | master & worker  | The autopush HTTP address       |
+
+#### 2. Host Locust via Docker
+
+Execute the following from the root directory:
+
 ```shell
-docker-compose -f docker-compose.stage.yml up --build --scale locust_worker=1
+make load
 ```
-
-This will run build and start the locust session for the Stage environment.
-
 
 ### Run Test Session
 
@@ -72,10 +69,10 @@ the load test will stop automatically.
 
 #### 1. Remove Load Test Docker Containers
 
-Execute the following from the `load` directory:
+Execute the following from the root directory:
+
 ```shell
-docker-compose -f docker-compose.stage.yml down
-docker rmi locust
+make load-clean
 ```
 
 [1]: https://python-poetry.org/docs/#installation
@@ -84,3 +81,5 @@ docker rmi locust
 [4]: https://pycqa.github.io/isort/
 [5]: https://black.readthedocs.io/en/stable/
 [6]: https://flake8.pycqa.org/en/latest/
+[7]: https://mypy-lang.org/
+[8]: https://docs.locust.io/en/stable/configuration.html#environment-variables

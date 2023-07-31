@@ -40,6 +40,17 @@ jobs:
       - run:
           command: cargo audit
 
+  load-test-checks:
+    docker:
+      - image: cimg/python:3.11
+    working_directory: "~/autopush-rs"
+    steps:
+      - checkout:
+          path: ~/autopush-rs/
+      - run:
+          name: isort, black, flake8 and mypy
+          command: make lint
+
   test:
     docker:
       - image: python:3.10-slim-bullseye
@@ -219,6 +230,10 @@ workflows:
   build-test-deploy:
     jobs:
       - audit:
+          filters:
+            tags:
+              only: /.*/
+      - load-test-checks:
           filters:
             tags:
               only: /.*/
