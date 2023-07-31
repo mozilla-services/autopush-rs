@@ -38,5 +38,5 @@ flake8 = "^6.0.0"
 mypy = "^1.2.0"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=1.5.1"]
 build-backend = "poetry.core.masonry.api"
