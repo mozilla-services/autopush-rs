@@ -237,8 +237,7 @@ impl RowMerger {
         &mut self,
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
-        let row = &mut self.row_in_progress;
-        let cell = &mut row.cell_in_progress;
+        let cell = &mut self.row_in_progress.cell_in_progress;
 
         // Quick gauntlet to ensure that we have a cell continuation.
         if cell.value_index > 0 {
@@ -329,13 +328,10 @@ impl RowMerger {
             row_in_progress.last_qualifier = qualifier;
         }
 
-        {
-            // reset the cell in progress
-            let reset_cell = &mut row_in_progress.cell_in_progress;
-            reset_cell.timestamp = SystemTime::now();
-            reset_cell.value.clear();
-            reset_cell.value_index = 0;
-        }
+        // reset the cell in progress
+        cell_in_progress.timestamp = SystemTime::now();
+        cell_in_progress.value.clear();
+        cell_in_progress.value_index = 0;
 
         // If this isn't the last item in the row, keep going.
         self.state = if !chunk.has_commit_row() {
