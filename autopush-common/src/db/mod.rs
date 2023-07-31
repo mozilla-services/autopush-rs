@@ -47,11 +47,11 @@ pub enum StorageType {
     #[cfg(feature = "bigtable")]
     BigTable,
     DynamoDb,
-    // Postgres,
 }
 
 impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
+        #[allow(unused_mut)]
         let mut result = ["DynamoDB"].to_vec();
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
@@ -101,7 +101,7 @@ pub struct DbSettings {
     /// are specific to the type of Data storage specified in the `dsn`
     /// See the respective settings structures for
     /// [crate::db::dynamodb::DynamoDbSettings]
-    /// <!-- TODO: add Bigtable when landed -->
+    /// and [crate::db::bigtable::BigTableDbSettings]
     pub db_settings: String,
 }
 //TODO: add `From<autopush::settings::Settings> for DbSettings`?
@@ -158,6 +158,7 @@ pub struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_month: Option<String>,
     /// the timestamp of the last notification sent to the user
+    /// This field is exclusive to the Bigtable data scheme
     //TODO: rename this to `last_notification_timestamp`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_timestamp: Option<u64>,
@@ -191,9 +192,9 @@ impl User {
     }
 }
 
-/// TODO: Accurate? This is the record in the Db.
-/// The outbound message record.
-/// This is different that the stored `Notification`
+/// A stored Notification record. This is a notification that is to be stored
+/// until the User Agent reconnects. These are then converted to publishable
+/// [crate::db::Notification] records.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct NotificationRecord {
     /// The UserAgent Identifier (UAID)
@@ -302,8 +303,7 @@ impl NotificationRecord {
         }
     }
 
-    // TODO: Implement as TryFrom whenever that lands
-    /// Convert the
+    /// Convert the stored notifications into publishable notifications
     pub fn into_notif(self) -> Result<Notification> {
         let key = Self::parse_chidmessageid(&self.chidmessageid)?;
         let version = key
@@ -328,6 +328,7 @@ impl NotificationRecord {
         })
     }
 
+    /// Convert from a publishable Notification to a stored notification
     pub fn from_notif(uaid: &Uuid, val: Notification) -> Self {
         Self {
             uaid: *uaid,

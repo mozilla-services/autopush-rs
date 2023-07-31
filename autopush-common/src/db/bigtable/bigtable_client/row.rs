@@ -20,6 +20,7 @@ impl Row {
     }
 
     /// get only the "top" cell value. Ignore other values.
+    /// TODO: https://mozilla-hub.atlassian.net/browse/SYNC-3836
     pub fn get_cell(&mut self, column: &str) -> Option<Cell> {
         if let Some(cells) = self.cells.get(column) {
             return cells.last().cloned();

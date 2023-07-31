@@ -147,7 +147,7 @@ pub fn fetch_timestamp_messages(
     table_name: &str,
     uaid: &Uuid,
     timestamp: Option<u64>,
-    limit: u32,
+    limit: usize,
 ) -> impl Future<Item = FetchMessageResponse, Error = ApcError> {
     let range_key = if let Some(ts) = timestamp {
         format!("02:{ts}:z")

@@ -208,7 +208,7 @@ impl BigTableClientImpl {
         req.set_table_name(self.settings.table_name.clone());
         req.set_rows(row_set);
 
-        let rows = self.read_rows(req, timestamp_filter, None).await?;
+        let rows = self.read_rows(req, timestamp_filter).await?;
         Ok(rows.get(row_key).cloned())
     }
 
@@ -219,14 +219,12 @@ impl BigTableClientImpl {
         &self,
         req: ReadRowsRequest,
         timestamp_filter: Option<u64>,
-        limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let resp = self
             .client
-            .clone()
             .read_rows(&req)
             .map_err(|e| error::BigTableError::Read(e.to_string()))?;
-        merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
+        merge::RowMerger::process_chunks(resp, timestamp_filter).await
     }
 
     /// write a given row.
@@ -342,11 +340,17 @@ impl BigTableClientImpl {
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
         req.set_delete_all_data_from_table(true);
-        // TODO: Use *_async() instead?
-        admin.drop_row_range(&req).map_err(|e| {
-            error!("{:?}", e);
-            error::BigTableError::Admin("Could not delete data from table".to_string())
-        })?;
+        admin
+            .drop_row_range_async(&req)
+            .map_err(|e| {
+                error!("{:?}", e);
+                error::BigTableError::Admin("Could not delete data from table (0)".to_owned())
+            })?
+            .await
+            .map_err(|e| {
+                error!("post await: {:?}", e);
+                error::BigTableError::Admin("Could not delete data from table (1)".to_owned())
+            })?;
 
         Ok(true)
     }
@@ -683,7 +687,7 @@ impl DbClient for BigTableClientImpl {
             req
         };
 
-        let rows = self.read_rows(req, None, None).await?;
+        let rows = self.read_rows(req, None).await?;
         for key in rows.keys().map(|v| v.to_owned()).collect::<Vec<String>>() {
             if let Some(chid) = key.split('#').last() {
                 result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
@@ -946,18 +950,14 @@ impl DbClient for BigTableClientImpl {
             );
             regex_filter
         });
-        // Note set_rows_limit(v) limits the returned results
-        // If you're doing additional filtering later, this is not what
-        // you want.
-        /*
+        // Note set_rows_limit(v) limits the returned results from Bigtable.
+        // If you're doing additional filtering later, this may not be what
+        // you want and may artificially truncate possible return sets.
         if limit > 0 {
             trace!("🉑 Setting limit to {limit}");
             req.set_rows_limit(limit as i64);
         }
-        // */
-        let rows = self
-            .read_rows(req, None, if limit > 0 { Some(limit) } else { None })
-            .await?;
+        let rows = self.read_rows(req, None).await?;
         debug!(
             "🉑 Fetch Topic Messages. Found {} row(s) of {}",
             rows.len(),
@@ -1002,9 +1002,13 @@ impl DbClient for BigTableClientImpl {
             filter
         };
         req.set_filter(filter);
-        let rows = self
-            .read_rows(req, timestamp, if limit > 0 { Some(limit) } else { None })
-            .await?;
+        // Note set_rows_limit(v) limits the returned results from Bigtable.
+        // If you're doing additional filtering later, this may not be what
+        // you want and may artificially truncate possible return sets.
+        if limit > 0 {
+            req.set_rows_limit(limit as i64);
+        }
+        let rows = self.read_rows(req, timestamp).await?;
         debug!(
             "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s) of {}",
             timestamp,

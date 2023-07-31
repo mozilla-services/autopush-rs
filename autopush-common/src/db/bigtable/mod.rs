@@ -1,6 +1,23 @@
-/// TODO: Build out the BigTable integration based off of the
-/// autopush-bt::bittable_client code.
+/// This uses Google Cloud Platform (GCP) Bigtable as a storage and management
+/// system for Autopush Notifications and Routing information.
 ///
+/// Bigtable has a single index key, and uses "cell family" designators to
+/// perform garbage collection.
+///
+/// Keys for the data are
+/// `{uaid}` - the meta data record around a given UAID record
+/// `{uaid}#{channelid}` - the meta record for a channel associated with a
+///     UAID
+/// `{uaid}#{channelid}#{sortkey_timestamp}` - a message record for a UAID
+///     and channel
+///
+/// Bigtable will automatically sort by the primary key. This schema uses
+/// regular expression lookups in order to do things like return the channels
+/// associated with a given UAID, fetch the appropriate topic messages, and
+/// other common functions. Please refer to the Bigtable documentation
+/// for how to create these keys, since they must be inclusive. Partial
+/// key matches will not return data. (e.g `/foo/` will not match `foobar`,
+/// but `/foo.*/` will)
 ///
 mod bigtable_client;
 

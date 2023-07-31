@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::mem;
 use std::time::{Duration, SystemTime};
 
 use futures::StreamExt;
@@ -67,7 +67,7 @@ pub(crate) struct PartialRow {
     last_qualifier: Qualifier,
     /// Any cell that may be in progress (chunked
     /// across multiple portions)
-    cell_in_progress: RefCell<PartialCell>,
+    cell_in_progress: PartialCell,
 }
 
 /// workhorse struct, this is used to gather item data from the stream and build rows.
@@ -80,15 +80,12 @@ pub struct RowMerger {
     /// The last cell family. This may change, indicating a new cell group.
     last_seen_cell_family: Option<FamilyId>,
     /// The row that is currently being compiled.
-    row_in_progress: RefCell<PartialRow>,
+    row_in_progress: PartialRow,
 }
 
 impl RowMerger {
     /// discard data so far and return to a neutral state.
-    async fn reset_row(
-        &mut self,
-        chunk: ReadRowsResponse_CellChunk,
-    ) -> Result<&mut Self, BigTableError> {
+    fn reset_row(&mut self, chunk: ReadRowsResponse_CellChunk) -> Result<&mut Self, BigTableError> {
         if self.state == ReadState::RowStart {
             return Err(BigTableError::InvalidChunk("Bare Reset".to_owned()));
         };
@@ -124,13 +121,13 @@ impl RowMerger {
         }
 
         self.state = ReadState::RowStart;
-        self.row_in_progress = RefCell::new(PartialRow::default());
+        self.row_in_progress = PartialRow::default();
         Ok(self)
     }
 
     /// The initial row contains the first cell data. There may be additional data that we
     /// have to use later, so capture that as well.
-    async fn row_start(
+    fn row_start(
         &mut self,
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
@@ -155,10 +152,10 @@ impl RowMerger {
             }
         }
 
-        let mut row = self.row_in_progress.borrow_mut();
+        let row = &mut self.row_in_progress;
 
         row.row_key = String::from_utf8(chunk.row_key.clone()).unwrap_or_default();
-        row.cell_in_progress = RefCell::new(PartialCell::default());
+        row.cell_in_progress = PartialCell::default();
 
         self.state = ReadState::CellStart;
         Ok(self)
@@ -166,7 +163,7 @@ impl RowMerger {
 
     /// cell_start seems to be the main worker. It starts a new cell value (rows contain cells, which
     /// can have multiple versions).
-    async fn cell_start(
+    fn cell_start(
         &mut self,
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
@@ -178,7 +175,7 @@ impl RowMerger {
         }
         let qualifier = chunk.take_qualifier().get_value().to_vec();
         // dbg!(chunk.has_qualifier(), String::from_utf8(qualifier.clone()));
-        let row = self.row_in_progress.borrow_mut();
+        let row = &mut self.row_in_progress;
 
         if !row.cells.is_empty()
             && !chunk.row_key.is_empty()
@@ -189,7 +186,7 @@ impl RowMerger {
             ));
         }
 
-        let mut cell = row.cell_in_progress.borrow_mut();
+        let cell = &mut row.cell_in_progress;
         if chunk.has_family_name() {
             cell.family = chunk.take_family_name().get_value().to_owned();
         } else {
@@ -233,12 +230,12 @@ impl RowMerger {
 
     /// Continue adding data to the cell version. Cell data may exceed a chunk's max size,
     /// so we contine feeding data into it.
-    async fn cell_in_progress(
+    fn cell_in_progress(
         &mut self,
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
-        let row = self.row_in_progress.borrow();
-        let mut cell = row.cell_in_progress.borrow_mut();
+        let row = &mut self.row_in_progress;
+        let cell = &mut row.cell_in_progress;
 
         // Quick gauntlet to ensure that we have a cell continuation.
         if cell.value_index > 0 {
@@ -283,18 +280,12 @@ impl RowMerger {
     }
 
     /// Wrap up a cell that's been in progress.
-    async fn cell_complete(
+    fn cell_complete(
         &mut self,
         chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<&Self, BigTableError> {
-        let mut row_in_progress = self.row_in_progress.borrow_mut();
-        // Read Only version of the row in progress.
-        // Needed because of mutability locks.
-        let ro_row_in_progress = row_in_progress.clone();
-        // the currently completed cell in progress.
-        let cell_in_progress = ro_row_in_progress.cell_in_progress.borrow_mut();
-
-        let cell_family = cell_in_progress.family.clone();
+        let row_in_progress = &mut self.row_in_progress;
+        let cell_in_progress = &mut row_in_progress.cell_in_progress;
 
         let mut family_changed = false;
         if row_in_progress.last_family != cell_in_progress.family {
@@ -322,7 +313,7 @@ impl RowMerger {
             let qualifier = cell_in_progress.qualifier.clone();
             row_in_progress.last_qualifier = qualifier.clone();
             let qualifier_cells = vec![Cell {
-                family: cell_family,
+                family: cell_in_progress.family.clone(),
                 timestamp: cell_in_progress.timestamp,
                 labels: cell_in_progress.labels.clone(),
                 qualifier: cell_in_progress.qualifier.clone(),
@@ -336,10 +327,9 @@ impl RowMerger {
         }
 
         // reset the cell in progress
-        let mut reset_cell = row_in_progress.cell_in_progress.borrow_mut();
-        reset_cell.timestamp = SystemTime::now();
-        reset_cell.value.clear();
-        reset_cell.value_index = 0;
+        cell_in_progress.timestamp = SystemTime::now();
+        cell_in_progress.value.clear();
+        cell_in_progress.value_index = 0;
 
         // If this isn't the last item in the row, keep going.
         self.state = if !chunk.has_commit_row() {
@@ -352,21 +342,19 @@ impl RowMerger {
     }
 
     /// wrap up a row, reinitialize our state to read the next row.
-    async fn row_complete(
+    fn row_complete(
         &mut self,
         _chunk: &mut ReadRowsResponse_CellChunk,
     ) -> Result<Row, BigTableError> {
-        let mut new_row = Row::default();
-
-        let row = self.row_in_progress.take();
-        self.last_seen_row_key = Some(row.row_key.clone());
-        new_row.row_key = row.row_key;
-        new_row.cells = row.last_family_cells;
-
         // now that we're done, write a clean version.
-        self.row_in_progress = RefCell::new(PartialRow::default());
+        let row = mem::take(&mut self.row_in_progress);
         self.state = ReadState::RowStart;
-        Ok(new_row)
+        self.last_seen_row_key = Some(row.row_key.clone());
+
+        Ok(Row {
+            row_key: row.row_key,
+            cells: row.last_family_cells,
+        })
     }
 
     /// wrap up anything, we're done reading data.
@@ -383,7 +371,6 @@ impl RowMerger {
     pub async fn process_chunks(
         mut stream: ClientSStreamReceiver<ReadRowsResponse>,
         timestamp_filter: Option<u64>,
-        limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, Row>, BigTableError> {
         // Work object
         let mut merger = Self::default();
@@ -392,11 +379,6 @@ impl RowMerger {
         let mut rows = BTreeMap::<RowKey, Row>::new();
 
         while let (Some(row_resp_res), s) = stream.into_future().await {
-            if let Some(limit) = limit {
-                if rows.len() > limit {
-                    break;
-                }
-            }
             stream = s;
             let row = match row_resp_res {
                 Ok(v) => v,
@@ -424,30 +406,30 @@ impl RowMerger {
                 debug!("🧩 Chunk >> {:?}", &chunk);
                 if chunk.get_reset_row() {
                     debug!("‼ resetting row");
-                    merger.reset_row(chunk).await?;
+                    merger.reset_row(chunk)?;
                     continue;
                 }
                 // each of these states feed into the next states.
                 if merger.state == ReadState::RowStart {
                     debug!("🟧 new row");
-                    merger.row_start(&mut chunk).await?;
+                    merger.row_start(&mut chunk)?;
                 }
                 if merger.state == ReadState::CellStart {
                     debug!("🟡   cell start {:?}", chunk.get_qualifier());
-                    merger.cell_start(&mut chunk).await?;
+                    merger.cell_start(&mut chunk)?;
                 }
                 if merger.state == ReadState::CellInProgress {
                     debug!("🟡   cell in progress");
-                    merger.cell_in_progress(&mut chunk).await?;
+                    merger.cell_in_progress(&mut chunk)?;
                 }
                 if merger.state == ReadState::CellComplete {
                     debug!("🟨   cell complete");
-                    merger.cell_complete(&mut chunk).await?;
+                    merger.cell_complete(&mut chunk)?;
                 }
                 if merger.state == ReadState::RowComplete {
                     debug! {"🟧 row complete"};
                     // Check to see if we can add this row, or if it's blocked by the timestamp filter.
-                    let finished_row = merger.row_complete(&mut chunk).await?;
+                    let finished_row = merger.row_complete(&mut chunk)?;
                     if let Some(timestamp) = timestamp_filter {
                         if let Some(sk_ts) = finished_row.clone().get_cell("sortkey_timestamp") {
                             let ts_val = crate::db::bigtable::bigtable_client::to_u64(

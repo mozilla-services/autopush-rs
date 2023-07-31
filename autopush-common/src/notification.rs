@@ -7,6 +7,10 @@ use uuid::Uuid;
 use crate::util::ms_since_epoch;
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
+/// A Publishable Notification record. Thi is a notofication that is either
+/// received from a third party or is outbound to a UserAgent. If the
+/// UserAgent is not currently available, it may be stored as a
+/// [crate::db::NotificationRecord]
 pub struct Notification {
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
@@ -60,6 +64,8 @@ impl Notification {
         }
     }
 
+    /// Convenience function to determine if the notification
+    /// has aged out.
     pub fn expired(&self, at_sec: u64) -> bool {
         at_sec >= self.timestamp + self.ttl
     }
