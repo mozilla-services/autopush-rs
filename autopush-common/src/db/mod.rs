@@ -49,6 +49,7 @@ pub enum StorageType {
     DynamoDb,
 }
 
+/// The type of storage to use.
 impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
         #[allow(unused_mut)]
