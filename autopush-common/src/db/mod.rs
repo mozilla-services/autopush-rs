@@ -57,9 +57,7 @@ impl StorageType {
         result.push("Bigtable");
         result
     }
-}
 
-impl StorageType {
     pub fn from_dsn(dsn: &Option<String>) -> Self {
         debug!("Supported data types: {:?}", StorageType::available());
         debug!("Checking DSN: {:?}", &dsn);
