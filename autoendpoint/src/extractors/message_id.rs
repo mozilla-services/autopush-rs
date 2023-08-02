@@ -2,6 +2,7 @@ use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::AppState;
 use actix_web::dev::Payload;
 use actix_web::{web::Data, FromRequest, HttpRequest};
+use autopush_common::notification::{STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use fernet::MultiFernet;
 use futures::future;
 use uuid::Uuid;
@@ -50,7 +51,8 @@ impl MessageId {
                 channel_id,
                 topic,
             } => format!(
-                "01:{}:{}:{}",
+                "{}:{}:{}:{}",
+                TOPIC_NOTIFICATION_PREFIX,
                 &uaid.as_simple(),
                 &channel_id.as_simple(),
                 topic
@@ -60,7 +62,8 @@ impl MessageId {
                 channel_id,
                 timestamp,
             } => format!(
-                "02:{}:{}:{}",
+                "{}:{}:{}:{}",
+                STANDARD_NOTIFICATION_PREFIX,
                 uaid.as_simple(),
                 channel_id.as_simple(),
                 timestamp
@@ -115,12 +118,22 @@ impl MessageId {
         match self {
             MessageId::WithTopic {
                 channel_id, topic, ..
-            } => format!("01:{}:{}", channel_id.as_hyphenated(), topic),
+            } => format!(
+                "{}:{}:{}",
+                TOPIC_NOTIFICATION_PREFIX,
+                channel_id.as_hyphenated(),
+                topic
+            ),
             MessageId::WithoutTopic {
                 channel_id,
                 timestamp,
                 ..
-            } => format!("02:{}:{}", timestamp, channel_id.as_hyphenated()),
+            } => format!(
+                "{}:{}:{}",
+                STANDARD_NOTIFICATION_PREFIX,
+                timestamp,
+                channel_id.as_hyphenated()
+            ),
         }
     }
 }

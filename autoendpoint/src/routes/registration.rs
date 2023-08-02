@@ -29,7 +29,7 @@ pub async fn register_uaid_route(
         "Registering a user with the {} router",
         path_args.router_type
     );
-    trace!("token = {}", router_data_input.token);
+    trace!("🌍 token = {}", router_data_input.token);
     let router = routers.get(path_args.router_type);
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
     incr_metric("ua.command.register", &app_state.metrics, &request);
@@ -42,14 +42,14 @@ pub async fn register_uaid_route(
         ..Default::default()
     };
     let channel_id = router_data_input.channel_id.unwrap_or_else(Uuid::new_v4);
-    trace!("Creating user with UAID {}", user.uaid);
-    trace!("user = {:?}", user);
-    trace!("channel_id = {}", channel_id);
+    trace!("🌍 Creating user with UAID {}", user.uaid);
+    trace!("🌍 user = {:?}", user);
+    trace!("🌍 channel_id = {}", channel_id);
     app_state.db.add_user(&user).await?;
     app_state.db.add_channel(&user.uaid, &channel_id).await?;
 
     // Make the endpoint URL
-    trace!("Creating endpoint for user");
+    trace!("🌍 Creating endpoint for user");
     let endpoint_url = make_endpoint(
         &user.uaid,
         &channel_id,
@@ -58,10 +58,10 @@ pub async fn register_uaid_route(
         &app_state.fernet,
     )
     .map_err(ApiErrorKind::EndpointUrl)?;
-    trace!("endpoint = {}", endpoint_url);
+    trace!("🌍 endpoint = {}", endpoint_url);
 
     // Create the secret
-    trace!("Creating secret for UAID {}", user.uaid);
+    trace!("🌍 Creating secret for UAID {}", user.uaid);
     let auth_keys = app_state.settings.auth_keys();
     let auth_key = auth_keys
         .get(0)
@@ -69,7 +69,7 @@ pub async fn register_uaid_route(
     let secret = AuthorizationCheck::generate_token(auth_key, &user.uaid)
         .map_err(ApiErrorKind::RegistrationSecretHash)?;
 
-    trace!("Finished registering UAID {}", user.uaid);
+    trace!("🌍 Finished registering UAID {}", user.uaid);
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uaid": user.uaid,
         "channelID": channel_id,
@@ -84,7 +84,7 @@ pub async fn unregister_user_route(
     path_args: RegistrationPathArgsWithUaid,
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
-    debug!("Unregistering UAID {}", path_args.uaid);
+    debug!("🌍 Unregistering UAID {}", path_args.uaid);
     app_state.db.remove_user(&path_args.uaid).await?;
     Ok(HttpResponse::Ok().finish())
 }
@@ -99,7 +99,7 @@ pub async fn update_token_route(
 ) -> ApiResult<HttpResponse> {
     // Re-register with router
     debug!(
-        "Updating the token of UAID {} with the {} router",
+        "🌍 Updating the token of UAID {} with the {} router",
         path_args.uaid, path_args.router_type
     );
     trace!("token = {}", router_data_input.token);
@@ -113,11 +113,11 @@ pub async fn update_token_route(
         router_data: Some(router_data),
         ..Default::default()
     };
-    trace!("Updating user with UAID {}", user.uaid);
-    trace!("user = {:?}", user);
+    trace!("🌍 Updating user with UAID {}", user.uaid);
+    trace!("🌍 user = {:?}", user);
     app_state.db.update_user(&user).await?;
 
-    trace!("Finished updating token for UAID {}", user.uaid);
+    trace!("🌍 Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -129,17 +129,17 @@ pub async fn new_channel_route(
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     // Add the channel
-    debug!("Adding a channel to UAID {}", path_args.uaid);
+    debug!("🌍 Adding a channel to UAID {}", path_args.uaid);
     let channel_data = channel_data.map(Json::into_inner).unwrap_or_default();
     let channel_id = channel_data.channel_id.unwrap_or_else(Uuid::new_v4);
-    trace!("channel_id = {}", channel_id);
+    trace!("🌍 channel_id = {}", channel_id);
     app_state
         .db
         .add_channel(&path_args.uaid, &channel_id)
         .await?;
 
     // Make the endpoint URL
-    trace!("Creating endpoint for the new channel");
+    trace!("🌍 Creating endpoint for the new channel");
     let endpoint_url = make_endpoint(
         &path_args.uaid,
         &channel_id,
@@ -162,7 +162,7 @@ pub async fn get_channels_route(
     path_args: RegistrationPathArgsWithUaid,
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
-    debug!("Getting channel IDs for UAID {}", path_args.uaid);
+    debug!("🌍 Getting channel IDs for UAID {}", path_args.uaid);
     let channel_ids = app_state.db.get_channels(&path_args.uaid).await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -186,7 +186,7 @@ pub async fn unregister_channel_route(
         .map_err(|_| ApiErrorKind::NoSubscription)?;
 
     debug!(
-        "Unregistering CHID {} for UAID {}",
+        "🌍 Unregistering CHID {} for UAID {}",
         channel_id, path_args.uaid
     );
 

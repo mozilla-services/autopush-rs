@@ -21,6 +21,7 @@ pub async fn ws_handler(
     body: web::Payload,
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, Error> {
+    debug!("🔌 Got connection");
     let (response, session, msg_stream) = actix_ws::handle(&req, body)?;
     let ua = req
         .headers()

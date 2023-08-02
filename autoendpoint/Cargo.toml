@@ -63,3 +63,7 @@ mockall.workspace = true
 mockito = "0.31"
 tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
+
+[features]
+emulator = ["bigtable"]
+bigtable = ["autopush_common/bigtable"]
