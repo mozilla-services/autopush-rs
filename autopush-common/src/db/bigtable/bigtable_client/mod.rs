@@ -208,7 +208,7 @@ impl BigTableClientImpl {
         req.set_table_name(self.settings.table_name.clone());
         req.set_rows(row_set);
 
-        let rows = self.read_rows(req, timestamp_filter).await?;
+        let rows = self.read_rows(req, timestamp_filter, None).await?;
         Ok(rows.get(row_key).cloned())
     }
 
@@ -219,12 +219,13 @@ impl BigTableClientImpl {
         &self,
         req: ReadRowsRequest,
         timestamp_filter: Option<u64>,
+        limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let resp = self
             .client
             .read_rows(&req)
             .map_err(|e| error::BigTableError::Read(e.to_string()))?;
-        merge::RowMerger::process_chunks(resp, timestamp_filter).await
+        merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
     /// write a given row.
@@ -687,7 +688,7 @@ impl DbClient for BigTableClientImpl {
             req
         };
 
-        let rows = self.read_rows(req, None).await?;
+        let rows = self.read_rows(req, None, None).await?;
         for key in rows.keys().map(|v| v.to_owned()).collect::<Vec<String>>() {
             if let Some(chid) = key.split('#').last() {
                 result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
@@ -953,11 +954,13 @@ impl DbClient for BigTableClientImpl {
         // Note set_rows_limit(v) limits the returned results from Bigtable.
         // If you're doing additional filtering later, this may not be what
         // you want and may artificially truncate possible return sets.
+        /*
         if limit > 0 {
             trace!("🉑 Setting limit to {limit}");
             req.set_rows_limit(limit as i64);
         }
-        let rows = self.read_rows(req, None).await?;
+        // */
+        let rows = self.read_rows(req, None, Some(limit)).await?;
         debug!(
             "🉑 Fetch Topic Messages. Found {} row(s) of {}",
             rows.len(),
@@ -1005,10 +1008,12 @@ impl DbClient for BigTableClientImpl {
         // Note set_rows_limit(v) limits the returned results from Bigtable.
         // If you're doing additional filtering later, this may not be what
         // you want and may artificially truncate possible return sets.
+        /*
         if limit > 0 {
             req.set_rows_limit(limit as i64);
         }
-        let rows = self.read_rows(req, timestamp).await?;
+        // */
+        let rows = self.read_rows(req, timestamp, Some(limit)).await?;
         debug!(
             "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s) of {}",
             timestamp,
