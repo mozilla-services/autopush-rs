@@ -20,19 +20,19 @@ use uuid::Uuid;
 
 use crate::db::{dynamodb::has_connected_this_month, util::generate_last_connect};
 
+#[cfg(feature = "bigtable")]
+pub mod bigtable;
 pub mod client;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
-//pub mod bigtable;
-//pub mod postgres;
 mod util;
 
 // used by integration testing
 pub mod mock;
 
 use crate::errors::{ApcErrorKind, Result};
-use crate::notification::Notification;
+use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
 
@@ -41,16 +41,27 @@ pub const USER_RECORD_VERSION: u8 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {
     INVALID,
+    #[cfg(feature = "bigtable")]
+    BigTable,
     DynamoDb,
 }
 
+/// The type of storage to use.
 impl StorageType {
-    /// currently, there is only one.
-    /// Check the `db_dsn` setting or `AWS_LOCAL_DYNAMODB` environment variable.
+    fn available<'a>() -> Vec<&'a str> {
+        #[allow(unused_mut)]
+        let mut result = ["DynamoDB"].to_vec();
+        #[cfg(feature = "bigtable")]
+        result.push("Bigtable");
+        result
+    }
+
     pub fn from_dsn(dsn: &Option<String>) -> Self {
+        debug!("Supported data types: {:?}", StorageType::available());
+        debug!("Checking DSN: {:?}", &dsn);
         if dsn.is_none() {
             info!("No DSN specified, failing over to old default dsn");
             return Self::DynamoDb;
@@ -59,8 +70,21 @@ impl StorageType {
             .clone()
             .unwrap_or(std::env::var("AWS_LOCAL_DYNAMODB").unwrap_or_default());
         if dsn.starts_with("http") {
-            trace!("Using DynamoDb");
+            trace!("Found http");
             return Self::DynamoDb;
+        }
+        #[cfg(feature = "bigtable")]
+        if dsn.starts_with("grpc") {
+            trace!("Found grpc");
+            // Credentials can be stored in either a path provided in an environment
+            // variable, or $HOME/.config/gcloud/applicaion_default_credentals.json
+            //
+            // NOTE: if no credentials are found, application will panic
+            //
+            if let Ok(cred) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+                trace!("Env: {:?}", cred);
+            }
+            return Self::BigTable;
         }
         Self::INVALID
     }
@@ -76,7 +100,7 @@ pub struct DbSettings {
     /// are specific to the type of Data storage specified in the `dsn`
     /// See the respective settings structures for
     /// [crate::db::dynamodb::DynamoDbSettings]
-    /// <!-- TODO: add Bigtable when landed -->
+    /// and [crate::db::bigtable::BigTableDbSettings]
     pub db_settings: String,
 }
 //TODO: add `From<autopush::settings::Settings> for DbSettings`?
@@ -100,7 +124,7 @@ pub struct CheckStorageResponse {
     pub include_topic: bool,
     /// The list of pending messages.
     pub messages: Vec<Notification>,
-    /// All the messages up to this timestampl
+    /// All the messages up to this timestamp
     pub timestamp: Option<u64>,
 }
 
@@ -132,6 +156,11 @@ pub struct User {
     /// LEGACY: Current month table in the database the user is on
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_month: Option<String>,
+    /// the timestamp of the last notification sent to the user
+    /// This field is exclusive to the Bigtable data scheme
+    //TODO: rename this to `last_notification_timestamp`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_timestamp: Option<u64>,
 }
 
 impl Default for User {
@@ -147,6 +176,7 @@ impl Default for User {
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
             current_month: None,
+            current_timestamp: None,
         }
     }
 }
@@ -161,9 +191,9 @@ impl User {
     }
 }
 
-/// TODO: Accurate? This is the record in the Db.
-/// The outbound message record.
-/// This is different that the stored `Notification`
+/// A stored Notification record. This is a notification that is to be stored
+/// until the User Agent reconnects. These are then converted to publishable
+/// [crate::db::Notification] records.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct NotificationRecord {
     /// The UserAgent Identifier (UAID)
@@ -173,9 +203,9 @@ pub struct NotificationRecord {
     // DynamoDB <Range key>
     // Format:
     //    Topic Messages:
-    //        01:{channel id}:{topic}
+    //        {TOPIC_NOTIFICATION_PREFIX}:{channel id}:{topic}
     //    New Messages:
-    //        02:{timestamp int in microseconds}:{channel id}
+    //        {STANDARD_NOTIFICATION_PREFIX}:{timestamp int in microseconds}:{channel id}
     chidmessageid: String,
     /// Magic entry stored in the first Message record that indicates the highest
     /// non-topic timestamp we've read into
@@ -210,10 +240,14 @@ pub struct NotificationRecord {
 
 impl NotificationRecord {
     /// read the custom sort_key and convert it into something the database can use.
-    fn parse_sort_key(key: &str) -> Result<RangeKey> {
+    fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
         lazy_static! {
-            static ref RE: RegexSet =
-                RegexSet::new([r"^01:\S+:\S+$", r"^02:\d+:\S+$", r"^\S{3,}:\S+$",]).unwrap();
+            static ref RE: RegexSet = RegexSet::new([
+                format!("^{}:\\S+:\\S+$", TOPIC_NOTIFICATION_PREFIX).as_str(),
+                format!("^{}:\\d+:\\S+$", STANDARD_NOTIFICATION_PREFIX).as_str(),
+                "^\\S{3,}:\\S+$"
+            ])
+            .unwrap();
         }
         if !RE.is_match(key) {
             return Err(ApcErrorKind::GeneralError("Invalid chidmessageid".into()).into());
@@ -268,10 +302,9 @@ impl NotificationRecord {
         }
     }
 
-    // TODO: Implement as TryFrom whenever that lands
-    /// Convert the
+    /// Convert the stored notifications into publishable notifications
     pub fn into_notif(self) -> Result<Notification> {
-        let key = Self::parse_sort_key(&self.chidmessageid)?;
+        let key = Self::parse_chidmessageid(&self.chidmessageid)?;
         let version = key
             .legacy_version
             .or(self.updateid)
@@ -294,10 +327,11 @@ impl NotificationRecord {
         })
     }
 
+    /// Convert from a publishable Notification to a stored notification
     pub fn from_notif(uaid: &Uuid, val: Notification) -> Self {
         Self {
             uaid: *uaid,
-            chidmessageid: val.sort_key(),
+            chidmessageid: val.chidmessageid(),
             timestamp: Some(val.timestamp),
             expiry: sec_since_epoch() + min(val.ttl, MAX_EXPIRY),
             ttl: Some(val.ttl),

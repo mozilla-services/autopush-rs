@@ -19,3 +19,7 @@ tokio.workspace = true
 
 autoconnect_common.workspace = true
 autopush_common.workspace = true
+
+[features]
+bigtable = ["autopush_common/bigtable"]
+emulator = ["bigtable"]

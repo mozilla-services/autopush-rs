@@ -1,8 +1,8 @@
 import base64
 import json
 import random
-import time
 import string
+import time
 import uuid
 from contextlib import closing
 from urllib.parse import urljoin, urlparse
@@ -23,6 +23,7 @@ may simply connect up to the push server to receive Broadcast updates (passive).
 
 """
 
+
 @events.init_command_line_parser.add_listener
 def _(parser):
     parser.add_argument(
@@ -42,7 +43,7 @@ def _(parser):
 
 
 class ConnectionTaskSet(TaskSet):
-    """ Create a fake "encrypted" message.
+    """Create a fake "encrypted" message.
 
     The server doesn't care about encryption. It does, however, apply a
     base64 encoding to the data (this is because it's possible to send pure
@@ -51,6 +52,7 @@ class ConnectionTaskSet(TaskSet):
     padding. The max size we allow for a push message is 4K.
 
     """
+
     encrypted_data = base64.urlsafe_b64decode(
         "TestData"
         + "".join(
@@ -65,11 +67,12 @@ class ConnectionTaskSet(TaskSet):
 
     @task
     def test_basic(self):
-        """ Perform a "basic" transaction test.
+        """Perform a "basic" transaction test.
 
         Desktop Autopush clients use a websocket connection to exchange
         JSON command and response messages. (See
-        [Autopush HTTP Endpoints for Notifications](https://mozilla-services.github.io/autopush-rs/http.html#push-service-http-api)
+        [Autopush HTTP Endpoints for Notifications]
+        (https://mozilla-services.github.io/autopush-rs/http.html#push-service-http-api)
         for details).
 
         This tests an "active" style connection
@@ -83,12 +86,11 @@ class ConnectionTaskSet(TaskSet):
         # Create a connection to the Autoconnect server
         with closing(
             create_connection(
-            self.user.environment.parsed_options.websocket_url,
-            header={"Origin": "http://localhost:1337"},
-            ssl=False,
+                self.user.environment.parsed_options.websocket_url,
+                header={"Origin": "http://localhost:1337"},
+                ssl=False,
             )
         ) as ws:
-
             # Connections must say hello after connecting to the server, otherwise
             # the connection is quickly dropped.
             body = json.dumps(dict(messageType="hello", use_webpush=True))
@@ -138,7 +140,9 @@ class ConnectionTaskSet(TaskSet):
 
             # Send an "ack" message to make the server delete the message
             # Otherwise we would get the message re-sent to us on reconnect
-            ws.send(json.dumps(dict(messageType="ack", updates=dict(channelID=channel_id))))
+            ws.send(
+                json.dumps(dict(messageType="ack", updates=dict(channelID=channel_id)))
+            )
 
         self.user.environment.events.request.fire(
             request_type="WSS",
@@ -151,7 +155,7 @@ class ConnectionTaskSet(TaskSet):
 
     @task
     def test_basic_topic(self):
-        """ Test a basic message transaction using a "topic".
+        """Test a basic message transaction using a "topic".
 
         "Topic" messages will replace prior, queued instances. A topic can be
         any UA defined, URL Safe base64 compliant string. Upon reconnection,
@@ -167,11 +171,11 @@ class ConnectionTaskSet(TaskSet):
         channel_id = str(uuid.uuid4())
 
         # Create a connection to the Autoconnect server.
-        with closing (
+        with closing(
             create_connection(
-            self.user.environment.parsed_options.websocket_url,
-            header={"Origin": "http://localhost:1337"},
-            ssl=False,
+                self.user.environment.parsed_options.websocket_url,
+                header={"Origin": "http://localhost:1337"},
+                ssl=False,
             )
         ) as ws:
             # Connections must say hello after connecting to the server, otherwise
@@ -241,7 +245,6 @@ class ConnectionTaskSet(TaskSet):
                 timeout=60,
             )
         ) as ws:
-
             start_time = time.time()
             # After we reconnect and say "Hello", we should start getting
             # any pending messages.
@@ -351,12 +354,11 @@ class ConnectionTaskSet(TaskSet):
         # Connect and register to get a unique endpoint.
         with closing(
             create_connection(
-            self.user.environment.parsed_options.websocket_url,
-            header={"Origin": "http://localhost:1337"},
-            ssl=False,
+                self.user.environment.parsed_options.websocket_url,
+                header={"Origin": "http://localhost:1337"},
+                ssl=False,
             )
         ) as ws:
-
             body = json.dumps(dict(messageType="hello", use_webpush=True))
             ws.send(body)
             res = json.loads(ws.recv())
@@ -411,10 +413,10 @@ class ConnectionTaskSet(TaskSet):
             try:
                 with closing(
                     create_connection(
-                    self.user.environment.parsed_options.websocket_url,
-                    header={"Origin": "http://localhost:1337"},
-                    ssl=False,
-                    timeout=30,
+                        self.user.environment.parsed_options.websocket_url,
+                        header={"Origin": "http://localhost:1337"},
+                        ssl=False,
+                        timeout=30,
                     )
                 ) as ws:
                     start_time = time.time()
@@ -439,7 +441,7 @@ class ConnectionTaskSet(TaskSet):
             finally:
                 self.user.environment.events.request.fire(
                     request_type="WSS",
-                    name=f"WEBSOCKET test_connect_stored",
+                    name="WEBSOCKET test_connect_stored",
                     response_time=int((end_time - start_time) * 1000),
                     response_length=len(res),
                     exception=exception,
@@ -504,7 +506,6 @@ class ConnectionTaskSet(TaskSet):
         # NOTE: Not sure why we're specifying a Topic here, but sure...?
         self.headers.update({"Topic": "zyxw"})
         while True:
-
             # NOTE: This feels odd.
             # We send a notification to the client, but then immediately
             # drop the websocket connection. There's a small chance
@@ -544,12 +545,12 @@ class ConnectionTaskSet(TaskSet):
             ws.close()
             break
 
-    ## Hold a notification
+    # Hold a notification
     @task
     def test_notification_forever_unsubscribed(self):
         """
-        Create an "active" connection, that we immediately turn "passive", then hold open for a period of time.
-
+        Create an "active" connection, that we immediately turn "passive", then hold
+        open for a period of time.
         """
 
         # A Channel ID is how the client User Agent differentiates between various
@@ -564,7 +565,6 @@ class ConnectionTaskSet(TaskSet):
                 ssl=False,
             )
         ) as ws:
-
             # Connections must say hello after connecting to the server, otherwise
             # the connection is quickly dropped.
             body = json.dumps(dict(messageType="hello", use_webpush=True))
@@ -582,7 +582,6 @@ class ConnectionTaskSet(TaskSet):
             body = json.dumps(dict(messageType="unregister", channelID=channel_id))
             ws.send(body)
             while True:
-
                 # Send a Ping message with arbitrary text. This should result
                 # in a Broadcast message response.
                 ws.ping("hello")

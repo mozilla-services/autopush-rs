@@ -40,17 +40,28 @@ jobs:
       - run:
           command: cargo audit
 
+  load-test-checks:
+    docker:
+      - image: cimg/python:3.11
+    working_directory: "~/autopush-rs"
+    steps:
+      - checkout:
+          path: ~/autopush-rs/
+      - run:
+          name: isort, black, flake8 and mypy
+          command: make lint
+
   test:
     docker:
-      - image: circleci/python:3.10
+      - image: python:3.10-slim-bullseye
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
-      - image: circleci/dynamodb
+      - image: amazon/dynamodb-local:latest
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
-        command: -sharedDb -inMemory
+        command: -jar DynamoDBLocal.jar -sharedDb
     resource_class: xlarge
     environment:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
@@ -67,8 +78,8 @@ jobs:
       - run:
           name: Set up system
           command: |
-            sudo apt update
-            sudo apt install libssl-dev
+            apt update
+            apt install libssl-dev -y
       - run:
           name: Set up Python
           command: |
@@ -78,11 +89,14 @@ jobs:
       - run:
           name: Set up Rust
           command: |
+            apt update
+            apt install build-essential curl libstdc++6 libstdc++-10-dev libssl-dev pkg-config -y
+            apt install cmake -y
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build
+            cargo build --features=bigtable
       - run:
           name: Check formatting
           command: |
@@ -90,7 +104,14 @@ jobs:
             cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
       - run:
           name: Rust tests
-          command: cargo test
+          environment:
+            BIGTABLE_EMULATOR_HOST: localhost:8086
+          # Note: This build can potentially exceed the amount of memory availble to the CircleCI instance.
+          # We've seen that limiting the number of jobs helps reduce the frequency of this. (Note that
+          # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
+          # the machine level memory and CPU which are far higher than the memory allocated to the docker
+          # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
+          command: cargo test --features=bigtable --jobs=8
       - run:
           name: Integration tests (Autopush Legacy)
           command: |
@@ -209,6 +230,10 @@ workflows:
   build-test-deploy:
     jobs:
       - audit:
+          filters:
+            tags:
+              only: /.*/
+      - load-test-checks:
           filters:
             tags:
               only: /.*/

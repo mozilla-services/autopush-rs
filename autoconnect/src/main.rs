@@ -35,7 +35,6 @@ struct Args {
 #[actix_web::main]
 async fn main() -> Result<()> {
     env_logger::init();
-
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
@@ -49,7 +48,7 @@ async fn main() -> Result<()> {
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
-    debug!("Starting up...");
+    debug!("Starting up autoconnect...");
 
     // Sentry requires the environment variable "SENTRY_DSN".
     if env::var("SENTRY_DSN")

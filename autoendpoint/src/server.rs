@@ -7,6 +7,8 @@ use actix_cors::Cors;
 use actix_web::{
     dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data, App, HttpServer,
 };
+#[cfg(feature = "bigtable")]
+use autopush_common::db::bigtable::BigTableClientImpl;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
@@ -61,9 +63,21 @@ impl Server {
             },
         };
         let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
-            StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
-            StorageType::INVALID => {
-                return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())
+            StorageType::DynamoDb => {
+                debug!("Using Dynamodb");
+                Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?)
+            }
+            #[cfg(feature = "bigtable")]
+            StorageType::BigTable => {
+                debug!("Using BigTable");
+                Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
+            }
+            _ => {
+                debug!("No idea what {:?} is", &db_settings.dsn);
+                return Err(ApiErrorKind::General(
+                    "Invalid or Unsupported DSN specified".to_owned(),
+                )
+                .into());
             }
         };
         let http = reqwest::ClientBuilder::new()

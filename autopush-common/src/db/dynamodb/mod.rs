@@ -24,8 +24,8 @@ use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemInput, DeleteItemInput, DescribeTableError, DescribeTableInput,
-    DynamoDb, DynamoDbClient, GetItemInput, PutItemInput, PutRequest, QueryInput, UpdateItemInput,
-    WriteRequest,
+    DynamoDb, DynamoDbClient, GetItemInput, ListTablesInput, PutItemInput, PutRequest, QueryInput,
+    UpdateItemInput, WriteRequest,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -376,8 +376,12 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
-        // from commands::fetch_messages()
+    async fn fetch_topic_messages(
+        &self,
+        uaid: &Uuid,
+        limit: usize,
+    ) -> DbResult<FetchMessageResponse> {
+        // from commands::fetch_topic_messages()
         let attr_values = hashmap! {
             ":uaid".to_string() => val!(S => uaid.simple().to_string()),
             ":cmi".to_string() => val!(S => "02"),
@@ -434,9 +438,11 @@ impl DbClient for DdbClientImpl {
         timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
+        // Specify the minimum value to look for as a channelmessageid
         let range_key = if let Some(ts) = timestamp {
             format!("02:{}:z", ts)
         } else {
+            // fun ascii tricks? because ':' comes before ';', look for any non-topic?
             "01;".to_string()
         };
         let attr_values = hashmap! {
@@ -593,6 +599,29 @@ impl DbClient for DdbClientImpl {
     fn rotating_message_table(&self) -> Option<&str> {
         trace!("ddb message table {:?}", &self.settings.message_table);
         Some(&self.settings.message_table)
+    }
+
+    /// Perform a simple health check to make sure that the database is there.
+    /// This is called by __health__, so it should be reasonably light weight.
+    async fn health_check(&self) -> DbResult<bool> {
+        let input = ListTablesInput {
+            exclusive_start_table_name: Some(self.settings.message_table.clone()),
+            ..Default::default()
+        };
+        // if we can't connect, that's a fail.
+        let result = self
+            .db_client
+            .list_tables(input)
+            .await
+            .map_err(|e| DbError::General(format!("DynamoDB health check failure: {:?}", e)))?;
+        if let Some(names) = result.table_names {
+            // We found at least one table that matches the message_table
+            return Ok(!names.is_empty());
+        }
+        // Huh, we couldn't find a message table? That's a failure.
+        return Err(DbError::General(
+            "DynamoDB health check failure: No message table found".to_owned(),
+        ));
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {
