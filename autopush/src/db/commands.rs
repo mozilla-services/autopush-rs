@@ -78,7 +78,7 @@ pub fn list_tables_sync(
 }
 
 /// Pull all pending messages for the user from storage
-pub fn fetch_messages(
+pub fn fetch_topic_messages(
     ddb: DynamoDbClient,
     metrics: Arc<StatsdClient>,
     table_name: &str,
@@ -147,7 +147,7 @@ pub fn fetch_timestamp_messages(
     table_name: &str,
     uaid: &Uuid,
     timestamp: Option<u64>,
-    limit: u32,
+    limit: usize,
 ) -> impl Future<Item = FetchMessageResponse, Error = ApcError> {
     let range_key = if let Some(ts) = timestamp {
         format!("02:{ts}:z")

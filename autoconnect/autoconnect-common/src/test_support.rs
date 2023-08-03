@@ -41,7 +41,7 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
         .times(1)
         .return_const(Some(CURRENT_MONTH));
     db.expect_update_user().times(1).return_once(|_| Ok(()));
-    db.expect_fetch_messages()
+    db.expect_fetch_topic_messages()
         .times(1)
         .return_once(|_, _| Ok(Default::default()));
     db.expect_fetch_timestamp_messages()

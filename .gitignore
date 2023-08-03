@@ -39,3 +39,5 @@ docs/old
 
 # Local configs
 *.local.toml
+.cargo/config
+.vscode/*

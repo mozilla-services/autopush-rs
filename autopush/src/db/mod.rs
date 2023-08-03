@@ -411,7 +411,7 @@ impl DynamoStorage {
             table_name: table_name.to_string(),
             key: ddb_item! {
                uaid: s => uaid.as_simple().to_string(),
-               chidmessageid: s => notif.sort_key()
+               chidmessageid: s => notif.chidmessageid()
             },
             ..Default::default()
         };
@@ -439,7 +439,7 @@ impl DynamoStorage {
         timestamp: Option<u64>,
     ) -> impl Future<Item = CheckStorageResponse, Error = ApcError> {
         let response: MyFuture<FetchMessageResponse> = if include_topic {
-            Box::new(commands::fetch_messages(
+            Box::new(commands::fetch_topic_messages(
                 self.ddb.clone(),
                 self.metrics.clone(),
                 table_name,

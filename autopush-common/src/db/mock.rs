@@ -58,8 +58,12 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).save_messages(uaid, messages).await
     }
 
-    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
-        Arc::as_ref(self).fetch_messages(uaid, limit).await
+    async fn fetch_topic_messages(
+        &self,
+        uaid: &Uuid,
+        limit: usize,
+    ) -> DbResult<FetchMessageResponse> {
+        Arc::as_ref(self).fetch_topic_messages(uaid, limit).await
     }
 
     async fn fetch_timestamp_messages(
@@ -91,6 +95,10 @@ impl DbClient for Arc<MockDbClient> {
 
     fn rotating_message_table(&self) -> Option<&str> {
         Arc::as_ref(self).rotating_message_table()
+    }
+
+    async fn health_check(&self) -> DbResult<bool> {
+        Arc::as_ref(self).health_check().await
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {

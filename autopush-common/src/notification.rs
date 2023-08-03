@@ -7,6 +7,10 @@ use uuid::Uuid;
 use crate::util::ms_since_epoch;
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
+/// A Publishable Notification record. Thi is a notofication that is either
+/// received from a third party or is outbound to a UserAgent. If the
+/// UserAgent is not currently available, it may be stored as a
+/// [crate::db::NotificationRecord]
 pub struct Notification {
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
@@ -25,24 +29,27 @@ pub struct Notification {
     pub headers: Option<HashMap<String, String>>,
 }
 
+pub const TOPIC_NOTIFICATION_PREFIX: &str = "01";
+pub const STANDARD_NOTIFICATION_PREFIX: &str = "02";
+
 impl Notification {
-    /// Return an appropriate sort_key to use for the chidmessageid
+    /// Return an appropriate chidmessageid
     ///
-    /// For new messages:
-    ///     02:{sortkey_timestamp}:{chid}
+    /// For standard messages:
+    ///     {STANDARD_NOTIFICATION_PREFIX}:{sortkey_timestamp}:{chid}
     ///
     /// For topic messages:
-    ///     01:{chid}:{topic}
+    ///     {TOPIC_NOTIFICATION_PREFIX}:{chid}:{topic}
     ///
     /// Old format for non-topic messages that is no longer returned:
     ///     {chid}:{message_id}
-    pub fn sort_key(&self) -> String {
+    pub fn chidmessageid(&self) -> String {
         let chid = self.channel_id.as_hyphenated();
         if let Some(ref topic) = self.topic {
-            format!("01:{chid}:{topic}")
+            format!("{TOPIC_NOTIFICATION_PREFIX}:{chid}:{topic}")
         } else if let Some(sortkey_timestamp) = self.sortkey_timestamp {
             format!(
-                "02:{}:{}",
+                "{STANDARD_NOTIFICATION_PREFIX}:{}:{}",
                 if sortkey_timestamp == 0 {
                     ms_since_epoch()
                 } else {
@@ -51,11 +58,14 @@ impl Notification {
                 chid
             )
         } else {
+            warn!("🚨 LEGACY MESSAGE!? {:?} ", self);
             // Legacy messages which we should never get anymore
             format!("{}:{}", chid, self.version)
         }
     }
 
+    /// Convenience function to determine if the notification
+    /// has aged out.
     pub fn expired(&self, at_sec: u64) -> bool {
         at_sec >= self.timestamp + self.ttl
     }

@@ -20,20 +20,22 @@ spec:
           env:
             - name: LOCUST_MODE_MASTER
               value: "true"
+            - name: TARGET_HOST
+              value:
             - name: LOCUST_CSV
-              value: [LOCUST_CSV]
+              value:
             - name: LOCUST_USERS
-              value: "[LOCUST_USERS]"
+              value:
             - name: LOCUST_SPAWN_RATE
-              value: "[LOCUST_SPAWN_RATE]"
+              value:
             - name: LOCUST_RUN_TIME
-              value: "[LOCUST_RUN_TIME]"
+              value:
             - name: LOCUST_LOGLEVEL
-              value: [LOCUST_LOGLEVEL]
+              value:
             - name: SERVER_URL
-              value: [SERVER_URL]
+              value:
             - name: ENDPOINT_URL
-              value: [ENDPOINT_URL]
+              value:
           ports:
             - name: loc-master-web
               containerPort: 8089

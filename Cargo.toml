@@ -54,7 +54,7 @@ lazy_static = "1.4"
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
 mockall = "0.11"
 mozsvc-common = "0.2"
-openssl = "0.10"
+openssl = {version="0.10" }
 rand = "0.8"
 regex = "1.4"
 reqwest = {version="0.11", features = ["json"] }
@@ -93,7 +93,7 @@ autoconnect_settings = { path = "./autoconnect/autoconnect-settings" }
 autoconnect_web = { path = "./autoconnect/autoconnect-web" }
 autoconnect_ws = { path = "./autoconnect/autoconnect-ws" }
 autoconnect_ws_clientsm = { path ="./autoconnect/autoconnect-ws/autoconnect-ws-clientsm" }
-autopush_common = { path = "./autopush-common" }
+autopush_common = { path = "./autopush-common", features=["bigtable"]}
 
 [profile.release]
 debug = 1

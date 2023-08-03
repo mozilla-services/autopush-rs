@@ -6,6 +6,11 @@ ADD . /app
 WORKDIR /app
 ENV PATH=$PATH:/root/.cargo/bin
 
+# cmake is required for grpcio & google-cloud-rust
+RUN \
+    apt-get -qq update && \
+    apt-get -qq install --no-install-recommends -y cmake
+
 RUN \
     cargo --version && \
     rustc --version && \

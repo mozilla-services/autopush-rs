@@ -95,6 +95,7 @@ impl UnidentifiedClient {
             broadcast_subs,
             flags,
             user.connected_at,
+            user.current_timestamp,
             (!existing_user).then_some(user),
             self.app_state,
         )

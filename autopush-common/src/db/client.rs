@@ -57,7 +57,11 @@ pub trait DbClient: Send + Sync {
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()>;
 
     /// Fetch stored messages for a user
-    async fn fetch_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse>;
+    async fn fetch_topic_messages(
+        &self,
+        uaid: &Uuid,
+        limit: usize,
+    ) -> DbResult<FetchMessageResponse>;
 
     /// Fetch stored messages later than a given
     async fn fetch_timestamp_messages(
@@ -78,6 +82,9 @@ pub trait DbClient: Send + Sync {
 
     /// Check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool>;
+
+    /// Perform the health check on this data store
+    async fn health_check(&self) -> DbResult<bool>;
 
     /// Return the DynamoDB current message table name
     ///
