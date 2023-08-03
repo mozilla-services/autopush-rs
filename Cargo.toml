@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.67.3"
+version = "1.67.4"
 authors = [
   "Ben Bangert <ben@groovie.org>",
   "JR Conlin <jrconlin@mozilla.com>",
@@ -40,7 +40,7 @@ bytestring = "1.2"
 cadence = "0.29"
 chrono = "0.4"
 config = "0.13"
-ctor = "0.1"
+ctor = "0.2"
 docopt = "1.1"
 env_logger = "0.10"
 fernet = "0.2.0"
@@ -61,10 +61,10 @@ reqwest = {version="0.11", features = ["json"] }
 rusoto_core = { version="0.47", default-features=false, features=["rustls"] } # locked by serde_dynamodb 0.9
 rusoto_credential = { version="0.47"} # locked by serde_dynamodb 0.9
 rusoto_dynamodb = { version="0.47", default-features=false, features=["rustls"]} # locked by serde_dynamodb 0.9
-sentry = { version = "0.30", features = ["debug-logs"] } # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
-sentry-core = {version = "0.30"}
-sentry-actix = "0.30"
-sentry-backtrace = "0.30"
+sentry = { version = "0.31", features = ["debug-logs"] } # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
+sentry-core = {version = "0.31", default-features = false, features=["client"] }
+sentry-actix = "0.31"
+sentry-backtrace = "0.31"
 serde = "1.0"
 serde_derive = "1.0"
 serde_dynamodb = "0.9"
@@ -93,7 +93,7 @@ autoconnect_settings = { path = "./autoconnect/autoconnect-settings" }
 autoconnect_web = { path = "./autoconnect/autoconnect-web" }
 autoconnect_ws = { path = "./autoconnect/autoconnect-ws" }
 autoconnect_ws_clientsm = { path ="./autoconnect/autoconnect-ws/autoconnect-ws-clientsm" }
-autopush_common = { path = "./autopush-common", features=["bigtable"]}
+autopush_common = { path = "./autopush-common", features=["dynamodb", "bigtable"]}
 
 [profile.release]
 debug = 1
