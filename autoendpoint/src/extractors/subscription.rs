@@ -317,11 +317,10 @@ fn validate_vapid_jwt(
             }
             _ => {
                 let mut tags = Tags::default();
-                tags.tags.insert(
-                    "error".to_owned(),
-                    e.to_string()
-                );
-                metrics.clone().incr_with_tags("notification.auth.bad_vapid.other", Some(tags));
+                tags.tags.insert("error".to_owned(), e.to_string());
+                metrics
+                    .clone()
+                    .incr_with_tags("notification.auth.bad_vapid.other", Some(tags));
                 error!("Bad Aud: Unexpected VAPID error: {:?}", &e);
                 return Err(e.into());
             }
