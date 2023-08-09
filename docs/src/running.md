@@ -29,7 +29,10 @@ can be run on separate hosts as well, or with AWS DynamoDB instead.
   - [ ]
 - [] define steps here
 
-<div style="text-decoration:line-through">
+<!-- The following block needs to be updated. The docker instructions are no
+     longer correct. Please ignore.
+
+<div style="text-decoration:line-through;display:none">
 These instructions will yield a locally running Autopush setup with the
 connection node listening on localhost port `8080`, with the endpoint
 node listening on localhost port `8082`. Make sure these ports are
@@ -57,6 +60,7 @@ have the Autopush daemons use other ports.
 sure you have appropriate free-space before proceeding.
 
 </div>
+-->
 
 ### Generate a Crypto-Key
 
@@ -189,8 +193,13 @@ you have an account open the Google Developer Console:
     will need this value for your android application.
 
 * in the `.autopush_endpoint` server config file:
+<<<<<<< HEAD
     -   add `fcm_enabled` to enable FCM routing.
     -   add `fcm_creds`. This is a json block with the following format:
+=======
+    - add `fcm_enabled` to enable FCM routing.
+    - add `fcm_creds`. This is a json block with the following format:
+>>>>>>> 483aa37012670fbaf9f52bd25a3abfc9f3ffdd6d
 
     ```{"APP ID": {"projectid": "PROJECT ID NAME", "auth":"PATH TO PRIVATE KEY FILE"}, ...}```
 

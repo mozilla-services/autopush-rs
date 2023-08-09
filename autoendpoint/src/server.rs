@@ -7,11 +7,16 @@ use actix_cors::Cors;
 use actix_web::{
     dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data, App, HttpServer,
 };
+#[cfg(feature = "bigtable")]
+use autopush_common::db::bigtable::BigTableClientImpl;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
 
-use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
+use autopush_common::{
+    db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType},
+    middleware::sentry::SentryWrapper,
+};
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
@@ -58,9 +63,21 @@ impl Server {
             },
         };
         let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
-            StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
-            StorageType::INVALID => {
-                return Err(ApiErrorKind::General("Invalid DSN specified".to_owned()).into())
+            StorageType::DynamoDb => {
+                debug!("Using Dynamodb");
+                Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?)
+            }
+            #[cfg(feature = "bigtable")]
+            StorageType::BigTable => {
+                debug!("Using BigTable");
+                Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
+            }
+            _ => {
+                debug!("No idea what {:?} is", &db_settings.dsn);
+                return Err(ApiErrorKind::General(
+                    "Invalid or Unsupported DSN specified".to_owned(),
+                )
+                .into());
             }
         };
         let http = reqwest::ClientBuilder::new()
@@ -126,7 +143,7 @@ impl Server {
                 // Middleware
                 .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
                 // Our modified Sentry wrapper which does some blocking of non-reportable errors.
-                .wrap(crate::middleware::sentry::SentryWrapper::new(
+                .wrap(SentryWrapper::<ApiError>::new(
                     metrics.clone(),
                     "api_error".to_owned(),
                 ))

@@ -62,6 +62,9 @@ pub struct WebPushClient {
     connected_at: u64,
     /// Timestamp of the last WebPush Ping message
     last_ping: u64,
+    /// The last notification timestamp.
+    // TODO: RENAME THIS TO `last_notification_timestamp`
+    current_timestamp: Option<u64>,
 
     app_state: Arc<AppState>,
 }
@@ -85,16 +88,18 @@ impl fmt::Debug for WebPushClient {
 }
 
 impl WebPushClient {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         uaid: Uuid,
         ua: String,
         broadcast_subs: BroadcastSubs,
         flags: ClientFlags,
         connected_at: u64,
+        current_timestamp: Option<u64>,
         deferred_add_user: Option<User>,
         app_state: Arc<AppState>,
     ) -> Result<(Self, Vec<ServerMessage>), SMError> {
-        trace!("WebPushClient::new");
+        trace!("👁‍🗨WebPushClient::new");
         let stats = SessionStatistics {
             existing_uaid: deferred_add_user.is_none(),
             ..Default::default()
@@ -108,6 +113,7 @@ impl WebPushClient {
             ack_state: Default::default(),
             sent_from_storage: Default::default(),
             connected_at,
+            current_timestamp,
             deferred_add_user,
             last_ping: Default::default(),
             stats,
@@ -125,6 +131,11 @@ impl WebPushClient {
             vec![]
         };
         Ok((client, smsgs))
+    }
+
+    /// Return a reference to `AppState`'s `Settings`
+    pub fn app_settings(&self) -> &Settings {
+        &self.app_state.settings
     }
 
     /// Connect this `WebPushClient` to the `ClientRegistry`
@@ -156,7 +167,7 @@ impl WebPushClient {
 
     /// Cleanup after the session has ended
     pub fn shutdown(&mut self, reason: Option<String>) {
-        trace!("WebPushClient::shutdown");
+        trace!("👁‍🗨WebPushClient::shutdown");
         self.save_and_notify_unacked_direct_notifs();
 
         let ua_info = &self.ua_info;
@@ -200,7 +211,7 @@ impl WebPushClient {
     fn save_and_notify_unacked_direct_notifs(&mut self) {
         let mut notifs = mem::take(&mut self.ack_state.unacked_direct_notifs);
         trace!(
-            "WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
+            "👁‍🗨WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
             notifs.len()
         );
         if notifs.is_empty() {
@@ -263,11 +274,6 @@ impl WebPushClient {
         event
             .tags
             .insert("ua_browser_ver".to_owned(), ua_info.browser_version);
-    }
-
-    /// Return a reference to `AppState`'s `Settings`
-    pub fn app_settings(&self) -> &Settings {
-        &self.app_state.settings
     }
 }
 
@@ -373,8 +379,24 @@ struct AckState {
     unacked_direct_notifs: Vec<Notification>,
     /// List of unAck'd sent notifications from storage
     unacked_stored_notifs: Vec<Notification>,
-    /// Id of the last previously unAck'd, stored transmission
-    /// TODO: better docs
+    /// Either the `current_timestamp` value in storage (returned from
+    /// `fetch_messages`) or the last unAck'd timestamp Message's
+    /// `sortkey_timestamp` (returned from `fetch_timestamp_messages`).
+    ///
+    /// This represents the "pointer" to the beginning (more specifically the
+    /// record preceeding the beginning used in a Greater Than query) of the
+    /// next batch of timestamp Messages.
+    ///
+    /// Thus this value is:
+    ///
+    /// a) initially None, then
+    ///
+    /// b) retrieved from `current_timestamp` in storage then passed as the
+    /// `timestamp` to `fetch_timestamp_messages`. When all of those timestamp
+    /// Messages are Ack'd, this value's then
+    ///
+    /// c) written back to `current_timestamp` in storage via
+    /// `increment_storage`
     unacked_stored_highest: Option<u64>,
 }
 
@@ -413,6 +435,7 @@ mod tests {
             Default::default(),
             ms_since_epoch(),
             None,
+            None,
             Arc::new(app_state),
         )
         .await
@@ -443,7 +466,7 @@ mod tests {
         let mut seq = mockall::Sequence::new();
         let timestamp = sec_since_epoch();
         // No topic messages
-        db.expect_fetch_messages()
+        db.expect_fetch_topic_messages()
             .times(1)
             .in_sequence(&mut seq)
             .return_once(move |_, _| {

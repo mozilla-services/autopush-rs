@@ -9,7 +9,6 @@ mod error;
 mod extractors;
 mod headers;
 mod metrics;
-mod middleware;
 mod routers;
 mod routes;
 mod server;
@@ -20,8 +19,6 @@ use serde::Deserialize;
 use std::error::Error;
 
 use autopush_common::logging;
-
-pub type LocalError = crate::error::ApiError;
 
 const USAGE: &str = "
 Usage: autoendpoint [options]
@@ -44,7 +41,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let settings = settings::Settings::with_env_and_config_file(&args.flag_config)?;
     let host_port = format!("{}:{}", &settings.host, &settings.port);
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
-    debug!("Starting up...");
+    debug!("Starting up autoendpoint...");
 
     let _sentry = sentry::init(sentry::ClientOptions {
         release: sentry::release_name!(),

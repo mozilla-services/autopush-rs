@@ -17,10 +17,6 @@ use autopush_common::{
     logging,
 };
 
-mod middleware;
-
-pub type LocalError = autopush_common::errors::ApcError;
-
 const USAGE: &str = "
 Usage: autopush_rs [options]
 
@@ -39,7 +35,6 @@ struct Args {
 #[actix_web::main]
 async fn main() -> Result<()> {
     env_logger::init();
-
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
@@ -53,7 +48,7 @@ async fn main() -> Result<()> {
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
     logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
-    debug!("Starting up...");
+    debug!("Starting up autoconnect...");
 
     // Sentry requires the environment variable "SENTRY_DSN".
     if env::var("SENTRY_DSN")
@@ -79,21 +74,14 @@ async fn main() -> Result<()> {
         "Starting autoconnect on port {} (router_port: {})",
         port, router_port
     );
-    HttpServer::new(move || {
-        let app = build_app!(app_state);
-        // TODO: should live in build_app!
-        app.wrap(crate::middleware::sentry::SentryWrapper::new(
-            app_state.metrics.clone(),
-            "error".to_owned(),
-        ))
-    })
-    .bind(("0.0.0.0", port))?
-    .bind(("0.0.0.0", router_port))?
-    .run()
-    .await
-    .map_err(|e| e.into())
-    .map(|v| {
-        info!("Shutting down autoconnect");
-        v
-    })
+    HttpServer::new(move || build_app!(app_state))
+        .bind(("0.0.0.0", port))?
+        .bind(("0.0.0.0", router_port))?
+        .run()
+        .await
+        .map_err(|e| e.into())
+        .map(|v| {
+            info!("Shutting down autoconnect");
+            v
+        })
 }
