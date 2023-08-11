@@ -102,9 +102,9 @@ fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -
 
 fn now() -> DbResult<u128> {
     Ok(std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| DbError::General(e.to_string()))?
-            .as_millis())
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| DbError::General(e.to_string()))?
+        .as_millis())
 }
 
 /// Connect to a BigTable storage model.
@@ -1264,7 +1264,6 @@ mod tests {
         let _ = client.get_channels(&test_user.uaid).await;
         let user_diff = client.get_user(&test_user.uaid).await.unwrap().unwrap();
         assert!(user_diff.connected_at > test_user.connected_at);
-
     }
 
     // #[actix_rt::test]
