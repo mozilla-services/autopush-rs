@@ -655,8 +655,10 @@ impl DbClient for BigTableClientImpl {
         self.write_row(row).await.map_err(|e| e.into())
     }
 
-    /// Delete all the rows that start with the given prefix. NOTE: this may be metered and should
-    /// be used with caution.
+    /// Fetch the list of known channels for the given UAID. This call is made at
+    /// least once a day by mobile clients, so we can use it as a proxy for
+    /// those clients "liveliness".
+    ///
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let mut result = HashSet::new();
 

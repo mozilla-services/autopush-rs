@@ -157,11 +157,27 @@ pub async fn new_channel_route(
 }
 
 /// Handle the `GET /v1/{router_type}/{app_id}/registration/{uaid}` route
+/// Return a list of the ChannelIDs for this UAID to the Client.
+/// The client will check these against it's own list and drop the UAID if
+/// those lists don't match. Mobile devices will perform this test at least
+/// once a day.
+///
+/// In addition, we'll use this call as a proxy for a mobile device check-in
+/// and refresh the last_connect time. This will indicate how "lively" this
+/// device happens to be.
 pub async fn get_channels_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
+    // this function should only called from mobile devices.
+    if let Some(user) = app_state.db.get_user(&path_args.uaid).await? {
+        app_state.db.update_user(&user).await?;
+    } else {
+        warn!("🌍 An orphan is still checking in {}", path_args.uaid);
+        return Err(ApiErrorKind::NoUser.into());
+    }
+
     debug!("🌍 Getting channel IDs for UAID {}", path_args.uaid);
     let channel_ids = app_state.db.get_channels(&path_args.uaid).await?;
 
