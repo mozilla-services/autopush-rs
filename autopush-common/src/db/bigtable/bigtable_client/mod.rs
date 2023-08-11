@@ -100,6 +100,13 @@ fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -
     parts.join("#")
 }
 
+fn now() -> DbResult<u128> {
+    Ok(std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| DbError::General(e.to_string()))?
+            .as_millis())
+}
+
 /// Connect to a BigTable storage model.
 ///
 /// BigTable is available via the Google Console, and is a schema less storage system.
@@ -639,10 +646,7 @@ impl DbClient for BigTableClientImpl {
             row_key: key,
             ..Default::default()
         };
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| DbError::General(e.to_string()))?
-            .as_millis();
+        let now = now()?;
         row.cells.insert(
             ROUTER_FAMILY.to_owned(),
             vec![cell::Cell {
@@ -661,6 +665,13 @@ impl DbClient for BigTableClientImpl {
     ///
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let mut result = HashSet::new();
+
+        // Since only mobile clients currently get the list of channels,
+        // update the `connected_at` time.
+        if let Some(mut user) = self.get_user(uaid).await? {
+            user.connected_at = now()? as u64;
+            let _ = self.update_user(&user).await?;
+        }
 
         let req = {
             let filter = {
@@ -1084,7 +1095,7 @@ mod tests {
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
 
-    fn now() -> u64 {
+    fn now_secs() -> u64 {
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
@@ -1120,10 +1131,7 @@ mod tests {
     async fn run_gauntlet() {
         let client = new_client().unwrap();
 
-        let connected_at = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let connected_at = now().unwrap() as u64;
 
         let uaid = Uuid::parse_str(TEST_USER).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
@@ -1153,7 +1161,7 @@ mod tests {
 
         // can we modify the user record?
         let updated = User {
-            connected_at: now() + 3,
+            connected_at: (now().unwrap() + 3) as u64,
             ..test_user
         };
         assert!(client.update_user(&updated).await.is_ok());
@@ -1163,8 +1171,8 @@ mod tests {
         );
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
-        let timestamp = now();
-        let sort_key = now();
+        let timestamp = now().unwrap() as u64;
+        let sort_key = now_secs();
         // Can we store a message?
         let test_notification = crate::db::Notification {
             channel_id: chid,
@@ -1226,6 +1234,37 @@ mod tests {
         assert!(client.remove_user(&uaid).await.is_ok());
 
         assert!(client.get_user(&uaid).await.unwrap().is_none());
+    }
+
+    /// Test to ensure that after calling `get_channels` the `connected_at` field
+    /// has been updated. This ensures that when a mobile device "checks in"
+    /// the associated timestamp is updated.
+    #[actix_rt::test]
+    async fn check_connected_at() {
+        let client = new_client().unwrap();
+
+        let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        let node_id = "test_node".to_owned();
+        let connected_at = now().unwrap() as u64;
+
+        let test_user = User {
+            uaid,
+            router_type: "webpush".to_owned(),
+            connected_at,
+            router_data: None,
+            last_connect: Some(connected_at),
+            node_id: Some(node_id.clone()),
+            ..Default::default()
+        };
+
+        let user = client.add_user(&test_user).await;
+        assert!(user.is_ok());
+        // Sleep for a bit to make sure the connected_at is different.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let _ = client.get_channels(&test_user.uaid).await;
+        let user_diff = client.get_user(&test_user.uaid).await.unwrap().unwrap();
+        assert!(user_diff.connected_at > test_user.connected_at);
+
     }
 
     // #[actix_rt::test]
