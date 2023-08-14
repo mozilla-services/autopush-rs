@@ -71,7 +71,7 @@ impl Default for Settings {
             statsd_host: None,
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
-            server_platform: "aws".to_string(),
+            server_platform: "gcp".to_string(),
             fcm: FcmSettings::default(),
             apns: ApnsSettings::default(),
             adm: AdmSettings::default(),
