@@ -47,7 +47,19 @@ async fn main() -> Result<()> {
     }
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
-    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+
+    // GCP offers [a metadata lookup](https://cloud.google.com/compute/docs/metadata/overview)
+    // similar to AWS, but does not require services to use it.
+    let hostname = if autopush_common::logging::Platform::from(settings.server_platform.as_str())
+        == autopush_common::logging::Platform::AWS
+    {
+        autopush_common::logging::get_ec2_instance_id()?.unwrap_or_else(|| {
+            autopush_common::logging::get_default_hostname(autoconnect_settings::ENV_PREFIX)
+        })
+    } else {
+        autopush_common::logging::get_default_hostname(autoconnect_settings::ENV_PREFIX)
+    };
+    logging::init_logging(!settings.human_logs, hostname).expect("Logging failed to initialize");
     debug!("Starting up autoconnect...");
 
     // Sentry requires the environment variable "SENTRY_DSN".

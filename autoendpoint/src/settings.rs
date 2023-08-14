@@ -40,6 +40,8 @@ pub struct Settings {
     pub statsd_port: u16,
     pub statsd_label: String,
 
+    pub server_platform: String,
+
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
     pub adm: AdmSettings,
@@ -69,6 +71,7 @@ impl Default for Settings {
             statsd_host: None,
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
+            server_platform: "aws".to_string(),
             fcm: FcmSettings::default(),
             apns: ApnsSettings::default(),
             adm: AdmSettings::default(),

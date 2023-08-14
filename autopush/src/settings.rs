@@ -6,7 +6,7 @@ use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 
-const ENV_PREFIX: &str = "autopush";
+pub const ENV_PREFIX: &str = "autopush";
 
 lazy_static! {
     static ref HOSTNAME: String = mozsvc_common::get_hostname()
@@ -59,6 +59,7 @@ pub struct Settings {
     pub megaphone_poll_interval: u32,
     pub human_logs: bool,
     pub msg_limit: u32,
+    pub server_platform: String,
 }
 
 impl Default for Settings {
@@ -90,6 +91,7 @@ impl Default for Settings {
             megaphone_poll_interval: 30,
             human_logs: false,
             msg_limit: 100,
+            server_platform: "aws".to_owned(),
         }
     }
 }

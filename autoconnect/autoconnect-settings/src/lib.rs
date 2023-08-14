@@ -102,6 +102,8 @@ pub struct Settings {
     /// (if a given [autoconnect-common::RegisteredClient] receives more than this number, the calling
     /// thread will lock.)
     pub max_pending_notification_queue: u32,
+    /// The type of system that this application is hosted on. (defaults to "gcp")
+    pub server_platform: String,
 }
 
 impl Default for Settings {
@@ -132,6 +134,7 @@ impl Default for Settings {
             human_logs: false,
             msg_limit: 100,
             max_pending_notification_queue: 10,
+            server_platform: "gcp".to_owned(),
         }
     }
 }

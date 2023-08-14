@@ -108,7 +108,18 @@ impl AutopushServer {
     }
 
     pub fn start(&self) {
-        logging::init_logging(!self.app_state.human_logs).expect("init_logging failed");
+        let hostname = if self.app_state.server_platform == autopush_common::logging::Platform::AWS
+        {
+            autopush_common::logging::get_ec2_instance_id()
+                .expect("Could not get AWS instance id")
+                .unwrap_or_else(|| {
+                    autopush_common::logging::get_default_hostname(crate::settings::ENV_PREFIX)
+                })
+        } else {
+            autopush_common::logging::get_default_hostname(crate::settings::ENV_PREFIX)
+        };
+        logging::init_logging(!self.app_state.human_logs, hostname)
+            .expect("Logging failed to initialize");
         let handles = Server::start(&self.app_state).expect("failed to start server");
         self.shutdown_handles.set(Some(handles));
     }
@@ -153,6 +164,7 @@ pub struct AppState {
     pub megaphone_poll_interval: Duration,
     pub human_logs: bool,
     pub msg_limit: u32,
+    pub server_platform: autopush_common::logging::Platform,
 }
 
 impl AppState {
@@ -211,6 +223,9 @@ impl AppState {
                 .expect("megaphone poll interval cannot be 0"),
             human_logs: settings.human_logs,
             msg_limit: settings.msg_limit,
+            server_platform: autopush_common::logging::Platform::from(
+                settings.server_platform.as_str(),
+            ),
         })
     }
 }

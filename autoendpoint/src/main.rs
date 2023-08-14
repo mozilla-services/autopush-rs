@@ -40,7 +40,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or_else(|e| e.exit());
     let settings = settings::Settings::with_env_and_config_file(&args.flag_config)?;
     let host_port = format!("{}:{}", &settings.host, &settings.port);
-    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+    // GCP offers [a metadata lookup](https://cloud.google.com/compute/docs/metadata/overview)
+    // similar to AWS, but does not require services to use it.
+    let hostname = if autopush_common::logging::Platform::from(settings.server_platform.as_str())
+        == autopush_common::logging::Platform::AWS
+    {
+        autopush_common::logging::get_ec2_instance_id()?
+            .unwrap_or_else(|| autopush_common::logging::get_default_hostname(settings::ENV_PREFIX))
+    } else {
+        autopush_common::logging::get_default_hostname(settings::ENV_PREFIX)
+    };
+    logging::init_logging(!settings.human_logs, hostname).expect("Logging failed to initialize");
     debug!("Starting up autoendpoint...");
 
     let _sentry = sentry::init(sentry::ClientOptions {
