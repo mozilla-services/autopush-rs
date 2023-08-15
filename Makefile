@@ -29,7 +29,7 @@ lint:
 
 load:
 	SERVER_URL=$(STAGE_SERVER_URL) ENDPOINT_URL=$(STAGE_ENDPOINT_URL) \
-	  docker-compose \
+	  docker compose \
       -f $(LOAD_TEST_DIR)/docker-compose.yml \
       -p autopush-rs-load-tests \
       up --scale locust_worker=1
