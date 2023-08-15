@@ -2,4 +2,4 @@
 exclude =
     .git,
     __pycache__,
-max-line-length = 88
+max-line-length = 99
