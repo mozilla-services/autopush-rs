@@ -2,6 +2,7 @@ SHELL := /bin/sh
 CARGO = cargo
 LOAD_TEST_DIR := tests/load
 POETRY := poetry --directory $(LOAD_TEST_DIR)
+DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(LOAD_TEST_DIR)/pyproject.toml
 FLAKE8_CONFIG := $(LOAD_TEST_DIR)/.flake8
 STAGE_SERVER_URL := "wss://autopush.stage.mozaws.net"
@@ -29,13 +30,13 @@ lint:
 
 load:
 	SERVER_URL=$(STAGE_SERVER_URL) ENDPOINT_URL=$(STAGE_ENDPOINT_URL) \
-	  docker compose \
+	  $(DOCKER_COMPOSE) \
       -f $(LOAD_TEST_DIR)/docker-compose.yml \
       -p autopush-rs-load-tests \
       up --scale locust_worker=1
 
 load-clean:
-	docker-compose \
+	$(DOCKER_COMPOSE) \
       -f $(LOAD_TEST_DIR)/docker-compose.yml \
       -p autopush-rs-load-tests \
       down
