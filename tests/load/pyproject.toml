@@ -1,5 +1,5 @@
 [tool.black]
-line-length = 88
+line-length = 99
 
 [tool.isort]
 profile = "black"
@@ -7,6 +7,7 @@ skip_gitignore = true
 
 [tool.mypy]
 python_version = "3.11"
+disable_error_code = "attr-defined"
 disallow_untyped_calls = false
 follow_imports = "normal"
 ignore_missing_imports = true
