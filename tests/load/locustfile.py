@@ -31,22 +31,31 @@ class TimeEvent:
         self.start_time: float
         self.name: str = name
 
-    def __enter__(self) -> None:
+    def __enter__(self) -> object:
         self.start_time = time.perf_counter()
+        self.response_length: int = 0
+        return self
 
     def __exit__(self, *args) -> None:
         end_time: float = time.perf_counter()
-        exception: Any = None if not args[0] else args[0], args[1]
+        exception: Any = None
 
         if args[0] is None:
             exception = None
         else:
             exception = args[0], args[1]
+
+        if not isinstance(args[1], (AssertionError, type(None))):
+            print("hello")
+            self.user.environment.events.user_error.fire(
+                user_instance=self.user.context(), exception=args[1], tb=args[2]
+            )
+            exception = None
         self.user.environment.events.request.fire(
             request_type="WSS",
             name=self.name,
             response_time=(end_time - float(str(self.start_time))) * 1000,
-            response_length=0,  # TODO can we calculate this? aka Access rev
+            response_length=self.response_length,
             exception=exception,
             context=self.user.context(),
         )
@@ -86,25 +95,29 @@ class AutopushUser(FastHttpUser):
         self.ws.close()
 
     def hello(self) -> None:
-        with self._time_event(name="hello"):
+        with self._time_event(name="hello") as timer:
             body = json.dumps(dict(messageType="hello", use_webpush=True))
             self.ws.send(body)
-            res = json.loads(self.ws.recv())
+            data = self.ws.recv()
+            res = json.loads(data)
             assert (
                 res["messageType"] == "hello"
             ), f"Unexpected messageType. Expected: hello Actual: {res['messageType']}"
             assert (
                 res["status"] == 200
             ), f"Unexpected status. Expected: 200 Actual: {res['status']}"
+            timer.response_length = len(data.encode("utf-8"))
         self.uaid = res["uaid"]
 
     def register(self) -> None:
         chid: str = str(uuid.uuid4())
 
-        with self._time_event(name="register"):
+        with self._time_event(name="register") as timer:
             body = json.dumps(dict(messageType="register", channelID=chid))
             self.ws.send(body)
             res = json.loads(self.ws.recv())
+            data = self.ws.recv()
+            res = json.loads(data)
             assert (
                 res["messageType"] == "register"
             ), f"Unexpected messageType. Expected: register Actual: {res['messageType']}"
@@ -115,6 +128,7 @@ class AutopushUser(FastHttpUser):
                 res["channelID"] == chid
             ), f"Channel ID did not match, received {res['channelID']}"
             assert res["pushEndpoint"]
+            timer.response_length = len(data.encode("utf-8"))
         self.channels[chid] = res["pushEndpoint"]
 
     @task
