@@ -4,13 +4,13 @@
 
 """Load test shape module."""
 import math
-from typing import Callable, Type
+from typing import Type
 
 import numpy
 from locust import LoadTestShape, User
 from locustfile import AutopushUser
 
-TickTuple = tuple[int, float, list[Type[User]] | None]
+TickTuple = tuple[int, float, list[Type[User]]]
 
 
 class QuadraticTrend:
@@ -35,7 +35,7 @@ class QuadraticTrend:
 
 
 class AutopushLoadTestShape(LoadTestShape):
-    """A load test shape class for Autopush (Duration: 10 minutes, Users: 55500).
+    """A load test shape class for Autopush (Duration: 10 minutes, Users: 83300).
     Note: The Shape class assumes that the workers can support the generated spawn rates.
     """
 
@@ -46,18 +46,7 @@ class AutopushLoadTestShape(LoadTestShape):
 
     def __init__(self):
         super(LoadTestShape, self).__init__()
-
         self.trend = QuadraticTrend(self.MAX_RUN_TIME, self.MAX_USERS)
-
-    def _get_calculate_users_function(self) -> Callable[[int], int]:
-        a, b, c = numpy.polyfit(
-            [0, (self.MAX_RUN_TIME / 2), self.MAX_RUN_TIME], [0, self.MAX_USERS, 0], 2
-        )
-
-        def calculation(x: int) -> int:
-            return int(round((a * math.pow(x, 2)) + (b * x) + c))
-
-        return calculation
 
     def tick(self) -> TickTuple | None:
         """Override defining the desired distribution for Autopush load testing.
@@ -76,6 +65,6 @@ class AutopushLoadTestShape(LoadTestShape):
 
         users: int = self.trend.calculate_users(run_time)
         # The spawn_rate minimum value is 1
-        spawn_rate: int = max(abs(users - self.get_current_user_count()), 1)
+        spawn_rate: float = max(abs(users - self.get_current_user_count()), 1)
 
         return users, spawn_rate, self.user_classes
