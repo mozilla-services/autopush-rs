@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 
 from locust import FastHttpUser, between, events, task
+from locust.exception import StopUser
 from websocket import create_connection
 
 
@@ -39,10 +40,7 @@ class TimeEvent:
     def __exit__(self, *args) -> None:
         end_time: float = time.perf_counter()
         exception: Any = None
-
-        if args[0] is None:
-            exception = None
-        else:
+        if args[0] is not None:
             exception = args[0], args[1]
 
         if not isinstance(args[1], (AssertionError, type(None))):
@@ -72,10 +70,14 @@ class AutopushUser(FastHttpUser):
 
     def on_start(self) -> Any:
         self.connect()
+        if not self.ws:
+            raise StopUser()
         self.hello()
         if not self.uaid:
-            self.interrupt()
+            raise StopUser()
         self.register()
+        if not self.channels:
+            raise StopUser()
 
     def on_stop(self) -> Any:
         if self.ws:
@@ -98,15 +100,16 @@ class AutopushUser(FastHttpUser):
         with self._time_event(name="hello") as timer:
             body = json.dumps(dict(messageType="hello", use_webpush=True))
             self.ws.send(body)
-            data = self.ws.recv()
-            res = json.loads(data)
+            reply = self.ws.recv()
+            assert reply, "No 'hello' response"
+            res = json.loads(reply)
             assert (
                 res["messageType"] == "hello"
             ), f"Unexpected messageType. Expected: hello Actual: {res['messageType']}"
             assert (
                 res["status"] == 200
             ), f"Unexpected status. Expected: 200 Actual: {res['status']}"
-            timer.response_length = len(data.encode("utf-8"))
+            timer.response_length = len(reply.encode("utf-8"))
         self.uaid = res["uaid"]
 
     def register(self) -> None:
@@ -115,9 +118,9 @@ class AutopushUser(FastHttpUser):
         with self._time_event(name="register") as timer:
             body = json.dumps(dict(messageType="register", channelID=chid))
             self.ws.send(body)
-            res = json.loads(self.ws.recv())
-            data = self.ws.recv()
-            res = json.loads(data)
+            reply = self.ws.recv()
+            assert reply, f"No 'register' response CHID: {chid}"
+            res = json.loads(reply)
             assert (
                 res["messageType"] == "register"
             ), f"Unexpected messageType. Expected: register Actual: {res['messageType']}"
@@ -128,7 +131,7 @@ class AutopushUser(FastHttpUser):
                 res["channelID"] == chid
             ), f"Channel ID did not match, received {res['channelID']}"
             assert res["pushEndpoint"]
-            timer.response_length = len(data.encode("utf-8"))
+            timer.response_length = len(reply.encode("utf-8"))
         self.channels[chid] = res["pushEndpoint"]
 
     @task

@@ -10,8 +10,8 @@ CLUSTER='autopush-locust-load-test'
 TARGET='https://updates-autopush.stage.mozaws.net'
 SCOPE='https://www.googleapis.com/auth/cloud-platform'
 REGION='us-central1'
-WORKER_COUNT=5
-MACHINE_TYPE='n1-standard-2'
+WORKER_COUNT=111
+MACHINE_TYPE='n1-standard-4'
 BOLD=$(tput bold)
 NORM=$(tput sgr0)
 DIRECTORY=$(pwd)
@@ -28,10 +28,11 @@ echo "Image tag for locust is set to: ${LOCUST_IMAGE_TAG}"
 ENVIRONMENT_VARIABLES=(
   "TARGET_HOST,$TARGET"
   'LOCUST_CSV,autopush'
-  'LOCUST_USERS,"20"'
-  'LOCUST_SPAWN_RATE,"1"'
+  'LOCUST_USERS,"55500"'
+  'LOCUST_SPAWN_RATE,"232"'
   'LOCUST_RUN_TIME,"1800"' # 30 minutes
   'LOCUST_LOGLEVEL,INFO'
+  'LOCUST_LOGFILE,autopush.log'
   'SERVER_URL,wss://autopush.stage.mozaws.net'
   "ENDPOINT_URL,$TARGET"
 )
@@ -101,7 +102,7 @@ do
     case $response in
         create) #Setup Kubernetes Cluster
             echo -e "==================== Creating the GKE cluster "
-            $GCLOUD container clusters create $CLUSTER --region $REGION --scopes $SCOPE --enable-autoscaling --min-nodes "5" --max-nodes "10" --scopes=logging-write,storage-ro --addons HorizontalPodAutoscaling,HttpLoadBalancing  --machine-type $MACHINE_TYPE
+            $GCLOUD container clusters create $CLUSTER --region $REGION --scopes $SCOPE --enable-autoscaling --min-nodes "5" --max-nodes "30" --scopes=logging-write,storage-ro --addons HorizontalPodAutoscaling,HttpLoadBalancing  --machine-type $MACHINE_TYPE
             SetupGksCluster
             break
             ;;

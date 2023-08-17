@@ -32,6 +32,8 @@ spec:
               value:
             - name: LOCUST_LOGLEVEL
               value:
+            - name: LOCUST_LOGFILE
+              value:
             - name: SERVER_URL
               value:
             - name: ENDPOINT_URL
@@ -46,3 +48,10 @@ spec:
             - name: loc-master-p2
               containerPort: 5558
               protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 2Gi
+            requests:
+              cpu: 1
+              memory: 1Gi
