@@ -44,7 +44,6 @@ class TimeEvent:
             exception = args[0], args[1]
 
         if not isinstance(args[1], (AssertionError, type(None))):
-            print("hello")
             self.user.environment.events.user_error.fire(
                 user_instance=self.user.context(), exception=args[1], tb=args[2]
             )
