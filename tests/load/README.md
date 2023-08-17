@@ -148,10 +148,10 @@ The load tests can be executed from the [contextual-services-test-eng cloud shel
   ```
 
 * Set up the load test parameters:
-    * Number of users: 55500
-    * Spawn rate: 232
+    * Number of users: 83300
+    * Spawn rate: 694
     * Host: 'https://updates-autopush.stage.mozaws.net'
-    * Duration (Optional): 30m
+    * Duration (Optional): 10m
     * Websocket URL: 'wss://autopush.stage.mozaws.net'
     * Endpoint URL: 'https://updates-autopush.stage.mozaws.net'
 * Select "Start Swarming"
