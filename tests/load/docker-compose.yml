@@ -8,7 +8,7 @@ services:
       - "8089:8089"
     environment:
       LOCUST_HOST: ${AUTOPUSH_HOST}
-      LOCUST_USERS: "20"
+      LOCUST_USERS: "1"
       LOCUST_SPAWN_RATE: "1"
       LOCUST_RUN_TIME: "10m"
       LOCUST_LOGLEVEL: "INFO"

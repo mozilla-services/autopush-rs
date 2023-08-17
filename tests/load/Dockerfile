@@ -8,9 +8,7 @@ LABEL org.opencontainers.image.authors="contextual-services-team@mozilla.com"
 # Add gcc since there are no wheels for some packages for arm64/aarch64
 # (g++/make for gevent on pypy)
 RUN apt-get update && apt-get install -y git && \
-  if [ -n "$(arch | grep 'arm64\|aarch64')" ]; then \
-    apt install -y --no-install-recommends gcc g++ make python3-dev; \
-  fi
+  apt install -y --no-install-recommends gcc g++ make python3-dev
 
 ENV LANG=C.UTF-8
 ENV PYTHONUNBUFFERED=1
