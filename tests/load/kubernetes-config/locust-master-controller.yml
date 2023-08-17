@@ -24,12 +24,6 @@ spec:
               value:
             - name: LOCUST_CSV
               value:
-            - name: LOCUST_USERS
-              value:
-            - name: LOCUST_SPAWN_RATE
-              value:
-            - name: LOCUST_RUN_TIME
-              value:
             - name: LOCUST_LOGLEVEL
               value:
             - name: LOCUST_LOGFILE

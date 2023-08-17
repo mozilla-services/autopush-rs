@@ -28,9 +28,6 @@ echo "Image tag for locust is set to: ${LOCUST_IMAGE_TAG}"
 ENVIRONMENT_VARIABLES=(
   "TARGET_HOST,$TARGET"
   'LOCUST_CSV,autopush'
-  'LOCUST_USERS,"83300"'
-  'LOCUST_SPAWN_RATE,"694"'
-  'LOCUST_RUN_TIME,"600"' # 10 minutes
   'LOCUST_LOGLEVEL,INFO'
   'LOCUST_LOGFILE,autopush.log'
   'SERVER_URL,wss://autopush.stage.mozaws.net'
