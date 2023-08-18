@@ -20,6 +20,8 @@ spec:
           env:
             - name: LOCUST_MODE_MASTER
               value: "true"
+            - name: LOCUST_USERCLASS_PICKER
+              value: "true"
             - name: TARGET_HOST
               value:
             - name: LOCUST_CSV
