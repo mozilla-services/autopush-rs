@@ -16,6 +16,7 @@ TickTuple = tuple[int, float, list[Type[User]]]
 class QuadraticTrend:
     """A class that defines a quadratic LoadTestShape trend."""
 
+    # variables correspond to the quadratic function: f(x) = ax^2 + bx + c
     a: float
     b: float
     c: float
@@ -36,11 +37,14 @@ class QuadraticTrend:
 
 class AutopushLoadTestShape(LoadTestShape):
     """A load test shape class for Autopush (Duration: 10 minutes, Users: 83300).
-    Note: The Shape class assumes that the workers can support the generated spawn rates.
+
+    Note: The Shape class assumes that the workers can support the generated spawn rates. Should
+    the number of available Locust workers change or should the Locust worker capacity change,
+    the MAX_USERS should also be changed.
     """
 
     MAX_RUN_TIME: int = 600  # 10 minutes
-    MAX_USERS: int = 83300
+    MAX_USERS: int = 83300  # Calculation: 700 users * 119 locust workers (defined in setup_k8s.sh)
     trend: QuadraticTrend
     user_classes: list[Type[User]] = [AutopushUser]
 
