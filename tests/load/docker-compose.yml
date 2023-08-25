@@ -7,10 +7,8 @@ services:
     ports:
       - "8089:8089"
     environment:
+      LOCUST_USERCLASS_PICKER: true
       LOCUST_HOST: ${AUTOPUSH_HOST}
-      LOCUST_USERS: "1"
-      LOCUST_SPAWN_RATE: "1"
-      LOCUST_RUN_TIME: "10m"
       LOCUST_LOGLEVEL: "INFO"
       SERVER_URL: ${SERVER_URL}
       ENDPOINT_URL: ${ENDPOINT_URL}

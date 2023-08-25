@@ -29,10 +29,10 @@ RUN poetry install --without dev --no-interaction --no-ansi
 RUN useradd --create-home locust
 WORKDIR /home/locust
 
-COPY ./locustfile.py locustfile.py
+COPY ./locustfiles ./locustfiles
 
 # Expose ports for the web UI and the locust master
 EXPOSE 8089 5557
 
 USER locust
-ENTRYPOINT locust -f locustfile.py --websocket_url ${SERVER_URL} --endpoint_url ${ENDPOINT_URL}
+ENTRYPOINT locust -f "locustfiles/locustfile.py,locustfiles/load.py" --websocket_url ${SERVER_URL} --endpoint_url ${ENDPOINT_URL}

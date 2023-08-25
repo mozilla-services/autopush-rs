@@ -20,15 +20,11 @@ spec:
           env:
             - name: LOCUST_MODE_MASTER
               value: "true"
+            - name: LOCUST_USERCLASS_PICKER
+              value: "true"
             - name: TARGET_HOST
               value:
             - name: LOCUST_CSV
-              value:
-            - name: LOCUST_USERS
-              value:
-            - name: LOCUST_SPAWN_RATE
-              value:
-            - name: LOCUST_RUN_TIME
               value:
             - name: LOCUST_LOGLEVEL
               value:

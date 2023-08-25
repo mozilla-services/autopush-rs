@@ -62,6 +62,7 @@ make load
 
 * In a browser navigate to `http://localhost:8089/`
 * Set up the load test parameters:
+    * ShapeClass: Default
     * Number of users: 1
     * Spawn rate: 1
     * Host: 'https://updates-autopush.stage.mozaws.net'
@@ -148,10 +149,8 @@ The load tests can be executed from the [contextual-services-test-eng cloud shel
   ```
 
 * Set up the load test parameters:
-    * Number of users: 83300
-    * Spawn rate: 694
+    * ShapeClass: 'AutopushLoadTestShape'
     * Host: 'https://updates-autopush.stage.mozaws.net'
-    * Duration (Optional): 10m
     * Websocket URL: 'wss://autopush.stage.mozaws.net'
     * Endpoint URL: 'https://updates-autopush.stage.mozaws.net'
 * Select "Start Swarming"
