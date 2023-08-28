@@ -115,7 +115,8 @@ impl AppState {
                 ApcErrorKind::ConfigError(config::ConfigError::Message(format!(
                     "{ENV_PREFIX}__MEGAPHONE_API_URL requires {ENV_PREFIX}__MEGAPHONE_API_TOKEN"
                 )))
-                    .into());
+                .into(),
+            );
         };
         init_and_spawn_megaphone_updater(
             &self.broadcaster,

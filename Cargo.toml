@@ -10,6 +10,7 @@ members = [
     "autoconnect/autoconnect-ws",
     "autoconnect/autoconnect-ws/autoconnect-ws-sm",
 ]
+resolver = "2"
 
 [workspace.package]
 version = "1.67.4"
