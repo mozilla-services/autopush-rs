@@ -22,6 +22,7 @@ env_logger.workspace = true
 fernet.workspace = true
 futures.workspace = true
 futures-locks.workspace = true
+futures-util.workspace = true
 hex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
@@ -29,6 +30,7 @@ mozsvc-common.workspace = true
 reqwest.workspace = true
 sentry.workspace = true
 sentry-actix.workspace = true
+sentry-core.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
 serde_json.workspace = true
@@ -48,10 +50,6 @@ autoconnect_ws.workspace = true
 autopush_common.workspace = true
 
 docopt = "1.1"
-# for sentry middleware
-
-futures-util = { version = "0.3.5", default-features = false }
-sentry-core = { version = "0.29.1", default-features = false, features = ["client"] }
 
 [features]
 emulator = ["bigtable"]
