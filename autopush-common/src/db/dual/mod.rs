@@ -30,6 +30,7 @@ use crate::db::dynamodb::DdbClientImpl;
 pub struct DualClientImpl {
     primary: BigTableClientImpl,
     secondary: DdbClientImpl,
+    write_to_secondary: bool,
     _metrics: Arc<StatsdClient>,
 }
 
@@ -39,6 +40,12 @@ pub struct DualDbSettings {
     primary: DbSettings,
     #[serde(default)]
     secondary: DbSettings,
+    #[serde(default = "set_true")]
+    write_to_secondary: bool,
+}
+
+fn set_true() -> bool {
+    true
 }
 
 impl DualClientImpl {
@@ -63,6 +70,7 @@ impl DualClientImpl {
             primary,
             secondary,
             _metrics: metrics,
+            write_to_secondary: db_settings.write_to_secondary,
         })
     }
 }
@@ -70,10 +78,16 @@ impl DualClientImpl {
 #[async_trait]
 impl DbClient for DualClientImpl {
     async fn add_user(&self, user: &User) -> DbResult<()> {
+        if self.write_to_secondary {
+            let _ = self.secondary.add_user(user).await?;
+        }
         self.primary.add_user(user).await
     }
 
     async fn update_user(&self, user: &User) -> DbResult<()> {
+        if self.write_to_secondary {
+            let _ = self.secondary.update_user(user).await?;
+        }
         self.primary.update_user(user).await
     }
 
@@ -101,6 +115,9 @@ impl DbClient for DualClientImpl {
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
+        if self.write_to_secondary {
+            let _ = self.secondary.add_channel(uaid, channel_id).await?;
+        }
         self.primary.add_channel(uaid, channel_id).await
     }
 
@@ -130,6 +147,9 @@ impl DbClient for DualClientImpl {
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
+        if self.write_to_secondary {
+            let _ = self.secondary.save_message(uaid, message.clone()).await?;
+        }
         self.primary.save_message(uaid, message).await
     }
 
@@ -170,10 +190,16 @@ impl DbClient for DualClientImpl {
     }
 
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
+        if self.write_to_secondary {
+            let _ = self.secondary.save_messages(uaid, messages.clone()).await?;
+        }
         self.primary.save_messages(uaid, messages).await
     }
 
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
+        if self.write_to_secondary {
+            let _ = self.secondary.increment_storage(uaid, timestamp).await?;
+        }
         self.primary.increment_storage(uaid, timestamp).await
     }
 
@@ -224,6 +250,7 @@ mod test {
                     "message_table": "test_message",
                 }).to_string(),
             },
+            "write_to_secondary": true
         })
         .to_string();
 
