@@ -235,7 +235,9 @@ impl WebPushClient {
             app_state.db.save_messages(&uaid, notifs).await?;
             debug!("Finished saving unacked direct notifs, checking for reconnect");
             let Some(user) = app_state.db.get_user(&uaid).await? else {
-                return Err(SMErrorKind::Internal(format!("User not found for unacked direct notifs: {uaid}")));
+                return Err(SMErrorKind::Internal(format!(
+                    "User not found for unacked direct notifs: {uaid}"
+                )));
             };
             if connected_at == user.connected_at {
                 return Ok(());

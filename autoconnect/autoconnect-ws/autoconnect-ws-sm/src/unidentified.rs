@@ -58,9 +58,10 @@ impl UnidentifiedClient {
             use_webpush: Some(true),
             broadcasts,
             ..
-        } = msg else {
+        } = msg
+        else {
             return Err(SMError::invalid_message(
-                r#"Expected messageType="hello", "use_webpush": true"#.to_owned()
+                r#"Expected messageType="hello", "use_webpush": true"#.to_owned(),
             ));
         };
         debug!(
