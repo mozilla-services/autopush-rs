@@ -78,3 +78,12 @@ via `adb logcat`.
 For desktop use, you can set `dom.push.loglevel` to `"debug"`. This will
 log all push messages to the Browser Console (Tools \> Web Developer \>
 Browser Console).
+
+### Performance Testing
+
+Performance load tests can be found under the `tests/load` directory. These tests spawn
+multiple clients that connect to Autopush in order to simulate real-world load on the
+infrastructure. These tests use the Locust framework and are triggered manually at the
+discretion of the Autopush Engineering Team.
+
+For more details see the README.md file in the `tests/load` directory.
