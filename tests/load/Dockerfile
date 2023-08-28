@@ -1,15 +1,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-FROM python:3.11-slim
+FROM pypy:3.10-slim-bookworm
 
 LABEL org.opencontainers.image.authors="contextual-services-team@mozilla.com"
 
 # Add gcc since there are no wheels for some packages for arm64/aarch64
+# (g++/make for gevent on pypy)
 RUN apt-get update && apt-get install -y git && \
-  if [ -n "$(arch | grep 'arm64\|aarch64')" ]; then \
-    apt install -y --no-install-recommends gcc python3-dev; \
-  fi
+  apt install -y --no-install-recommends gcc g++ make python3-dev
 
 ENV LANG=C.UTF-8
 ENV PYTHONUNBUFFERED=1
@@ -30,10 +29,10 @@ RUN poetry install --without dev --no-interaction --no-ansi
 RUN useradd --create-home locust
 WORKDIR /home/locust
 
-COPY ./locustfile.py locustfile.py
+COPY ./locustfiles ./locustfiles
 
 # Expose ports for the web UI and the locust master
 EXPOSE 8089 5557
 
 USER locust
-ENTRYPOINT locust -f locustfile.py --websocket_url ${SERVER_URL} --endpoint_url ${ENDPOINT_URL}
+ENTRYPOINT locust -f "locustfiles/locustfile.py,locustfiles/load.py" --websocket_url ${SERVER_URL} --endpoint_url ${ENDPOINT_URL}

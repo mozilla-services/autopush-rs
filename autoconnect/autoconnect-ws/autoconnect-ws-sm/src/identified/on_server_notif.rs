@@ -267,7 +267,10 @@ impl WebPushClient {
             self.ack_state.unacked_stored_highest
         );
         let Some(timestamp) = self.ack_state.unacked_stored_highest else {
-            return Err(SMErrorKind::Internal("increment_storage w/ no unacked_stored_highest".to_owned()).into());
+            return Err(SMErrorKind::Internal(
+                "increment_storage w/ no unacked_stored_highest".to_owned(),
+            )
+            .into());
         };
         self.current_timestamp = Some(timestamp);
         self.app_state

@@ -386,7 +386,7 @@ pub fn unregister_channel_id(
 ) -> impl Future<Item = UpdateItemOutput, Error = ApcError> {
     let chid = channel_id.as_hyphenated().to_string();
     let attr_values = hashmap! {
-        ":channel_id".to_string() => val!(SS => vec![chid]),
+        ":channel_id".to_string() => val!(SS => [chid]),
     };
     let update_item = UpdateItemInput {
         key: ddb_item! {
