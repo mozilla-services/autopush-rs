@@ -10,6 +10,7 @@ members = [
     "autoconnect/autoconnect-ws",
     "autoconnect/autoconnect-ws/autoconnect-ws-sm",
 ]
+resolver = "2"
 
 [workspace.package]
 version = "1.67.3"
@@ -40,7 +41,7 @@ bytestring = "1.2"
 cadence = "0.29"
 chrono = "0.4"
 config = "0.13"
-ctor = "0.1"
+ctor = "0.2"
 docopt = "1.1"
 env_logger = "0.10"
 fernet = "0.2.0"
@@ -61,10 +62,10 @@ reqwest = {version="0.11", features = ["json"] }
 rusoto_core = { version="0.47", default-features=false, features=["rustls"] } # locked by serde_dynamodb 0.9
 rusoto_credential = { version="0.47"} # locked by serde_dynamodb 0.9
 rusoto_dynamodb = { version="0.47", default-features=false, features=["rustls"]} # locked by serde_dynamodb 0.9
-sentry = { version = "0.30", features = ["debug-logs"] } # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
-sentry-core = {version = "0.30"}
-sentry-actix = "0.30"
-sentry-backtrace = "0.30"
+sentry = { version = "0.31", features = ["debug-logs"] } # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
+sentry-core = {version = "0.31"}
+sentry-actix = "0.31"
+sentry-backtrace = "0.31"
 serde = "1.0"
 serde_derive = "1.0"
 serde_dynamodb = "0.9"
