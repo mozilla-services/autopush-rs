@@ -869,6 +869,22 @@ class TestRustWebPush(unittest.TestCase):
             # This may resolve by updating tests to python3 (see #334)
         assert data["exception"]["values"][0]["value"] == "LogCheck"
 
+    @max_logs(conn=4)
+    def test_no_sentry_output(self):
+        if os.getenv("SKIP_SENTRY"):
+            SkipTest("Skipping sentry test")
+            return
+        ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
+        try:
+            requests.get(ws_url)
+        except requests.exceptions.ConnectionError:
+            pass
+        try:
+            data = MOCK_SENTRY_QUEUE.get(timeout=1)
+            assert not data
+        except Empty:
+            pass
+
     @inlineCallbacks
     def test_hello_echo(self):
         client = Client(self._ws_url)
