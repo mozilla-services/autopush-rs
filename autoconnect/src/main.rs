@@ -11,7 +11,7 @@ use docopt::Docopt;
 use serde::Deserialize;
 
 use autoconnect_settings::{AppState, Settings};
-use autoconnect_web::{build_app, config};
+use autoconnect_web::build_app;
 use autopush_common::{
     errors::{ApcErrorKind, Result},
     logging,

@@ -1,3 +1,9 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+"""Performance test module."""
+
 import json
 import time
 import uuid
@@ -5,6 +11,7 @@ from typing import Any
 
 from locust import FastHttpUser, between, events, task
 from locust.exception import StopUser
+from models import HelloMessage, RegisterMessage
 from websocket import create_connection
 
 
@@ -96,22 +103,34 @@ class AutopushUser(FastHttpUser):
         self.ws.close()
 
     def hello(self) -> None:
+        """
+        Send a 'hello' message to Autopush.
+
+        Connections must say hello after connecting to the server, otherwise the connection is
+        quickly dropped.
+
+        Raises:
+            AssertionError: If the user fails to send the hello
+            ValidationError: If the hello message schema is not as expected
+        """
         with self._time_event(name="hello") as timer:
             body = json.dumps(dict(messageType="hello", use_webpush=True))
             self.ws.send(body)
             reply = self.ws.recv()
             assert reply, "No 'hello' response"
-            res = json.loads(reply)
-            assert (
-                res["messageType"] == "hello"
-            ), f"Unexpected messageType. Expected: hello Actual: {res['messageType']}"
-            assert (
-                res["status"] == 200
-            ), f"Unexpected status. Expected: 200 Actual: {res['status']}"
+            res: HelloMessage = HelloMessage(**json.loads(reply))
+            assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
             timer.response_length = len(reply.encode("utf-8"))
-        self.uaid = res["uaid"]
+        self.uaid = res.uaid
 
     def register(self) -> None:
+        """
+        Send a 'register' message to Autopush. Subscribes to an Autopush channel.
+
+        Raises:
+            AssertionError: If the user fails to register a channel
+            ValidationError: If the register message schema is not as expected
+        """
         chid: str = str(uuid.uuid4())
 
         with self._time_event(name="register") as timer:
@@ -119,19 +138,11 @@ class AutopushUser(FastHttpUser):
             self.ws.send(body)
             reply = self.ws.recv()
             assert reply, f"No 'register' response CHID: {chid}"
-            res = json.loads(reply)
-            assert (
-                res["messageType"] == "register"
-            ), f"Unexpected messageType. Expected: register Actual: {res['messageType']}"
-            assert (
-                res["status"] == 200
-            ), f"Unexpected status. Expected: 200 Actual: {res['status']}"
-            assert (
-                res["channelID"] == chid
-            ), f"Channel ID did not match, received {res['channelID']}"
-            assert res["pushEndpoint"]
+            res: RegisterMessage = RegisterMessage(**json.loads(reply))
+            assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
+            assert res.channelID == chid, f"Channel ID did not match, received {res.channelID}"
             timer.response_length = len(reply.encode("utf-8"))
-        self.channels[chid] = res["pushEndpoint"]
+        self.channels[chid] = res.pushEndpoint
 
     @task
     def do_nothing(self) -> None:
