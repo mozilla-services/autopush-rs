@@ -1,9 +1,19 @@
-/// Handle incoming notifications from autoendpoint
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use uuid::Uuid;
 
 use autoconnect_settings::AppState;
 use autopush_common::notification::Notification;
+
+use crate::error::ApiError;
+
+/// Handle WebSocket WebPush clients
+pub async fn ws_route(
+    req: HttpRequest,
+    body: web::Payload,
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, ApiError> {
+    Ok(autoconnect_ws::ws_handler(req, body, app_state).await?)
+}
 
 /// Deliver a Push notification directly to a connected client
 pub async fn push_route(
