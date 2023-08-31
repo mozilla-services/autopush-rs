@@ -10,7 +10,7 @@ use autoconnect_common::test_support::{hello_again_db, hello_db, DUMMY_UAID, HEL
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::notification::Notification;
 
-use crate::{build_app, config};
+use crate::build_app;
 
 #[ctor::ctor]
 fn init_test_logging() {
