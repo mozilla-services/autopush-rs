@@ -26,3 +26,12 @@ class RegisterMessage(BaseModel):
     channelID: str
     status: int
     pushEndpoint: str
+
+class NotificationMessage(BaseModel):
+    """Autopush 'ack' response message."""
+    
+    data: str
+    headers: dict[str, str]
+    messageType: Literal["notification"]
+    channelID: str
+    version: str

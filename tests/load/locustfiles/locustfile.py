@@ -15,7 +15,7 @@ from typing import Any
 
 from locust import FastHttpUser, between, events, task
 from locust.exception import RescheduleTask, StopUser
-from models import HelloMessage, RegisterMessage
+from models import HelloMessage, RegisterMessage, NotificationMessage
 from websocket import create_connection
 
 
@@ -54,7 +54,7 @@ class TimeEvent:
         if args[0] is not None:
             exception = args[0], args[1]
 
-        if not isinstance(args[1], (AssertionError, type(None))):
+        if not isinstance(args[1], (AssertionError, ssl.SSLEOFError, type(None))):
             self.user.environment.events.user_error.fire(
                 user_instance=self.user.context(), exception=args[1], tb=args[2]
             )
@@ -88,6 +88,7 @@ class AutopushUser(FastHttpUser):
             )
             + "=="
         )
+        self.notifications: int = 0
 
     def on_start(self) -> Any:
         self.connect()
@@ -110,8 +111,7 @@ class AutopushUser(FastHttpUser):
     def connect(self) -> None:
         self.ws = create_connection(
             self.environment.parsed_options.websocket_url,
-            header={"Origin": "http://localhost:1337"},
-            ssl=False,
+            header={"Origin": "http://localhost:1337"}
         )
 
     def disconnect(self) -> None:
@@ -130,7 +130,7 @@ class AutopushUser(FastHttpUser):
             ValidationError: If the hello message schema is not as expected
         """
         with self._time_event(name="hello") as timer:
-            body = json.dumps(dict(messageType="hello", use_webpush=True))
+            body = json.dumps(dict(messageType="hello", use_webpush=True, uaid=self.uaid, channelIDs=list(self.channels.keys())))
             self.ws.send(body)
             reply = self.ws.recv()
             assert reply, "No 'hello' response"
@@ -147,21 +147,21 @@ class AutopushUser(FastHttpUser):
         confirm receipt. If there is a pending notification, this will try and receive it
         before sending an acknowledgement.
         """
-        with self._time_event(name="acknowledge"):
-            channel_id = list(self.channels.keys())[-1]
+        print(f"notification")
+        with self._time_event(name="acknowledge") as timer:
+            reply = self.ws.recv()
+            notification = NotificationMessage(**json.loads(reply))
             body = json.dumps(
-                dict(messageType="ack", use_webpush=True, updates=dict(channelID=channel_id))
+                dict(
+                    messageType="ack",
+                    use_webpush=True,
+                    updates=dict(channelID=notification.channelID, version=notification.version)
+                    )
             )
-
-            self.connect()
-            self.hello()
-
-            try:
-                self.ws.send(body)
-                self.ws.recv()
-            except ssl.SSLError:
-                self.ws.recv()
-                self.ws.send(body)
+            self.ws.send(body)
+            timer.response_length = len(reply.encode("utf-8"))
+        time.sleep(1)
+        print("acknowledged")
 
     @task(weight=3)
     def register(self) -> None:
@@ -172,34 +172,23 @@ class AutopushUser(FastHttpUser):
             AssertionError: If the user fails to register a channel
             ValidationError: If the register message schema is not as expected
         """
-        if not self.uaid:
-            raise RescheduleTask()
 
         chid: str = str(uuid.uuid4())
-        control: bool = True
 
-        with self._time_event(name="send_notification") as timer:
-            while control:
-                try:
-                    body = json.dumps(dict(messageType="register", channelID=chid))
-                    self.ws.send(body)
-                    reply = self.ws.recv()
-                except ssl.SSLError:
-                    # if there is an error, disconnect and retry
-                    self.disconnect()
-                    self.connect()
-                    self.hello()
-                else:
-                    res: RegisterMessage = RegisterMessage(**json.loads(reply))
-                    assert (
-                        res.status == 200
-                    ), f"Unexpected status. Expected: 200 Actual: {res.status}"
-                    assert (
-                        res.channelID == chid
-                    ), f"Channel ID did not match, received {res.channelID}"
-                    timer.response_length = len(reply.encode("utf-8"))
-                    self.channels[chid] = res.pushEndpoint
-                    control = False
+        with self._time_event(name="register") as timer:
+            body = json.dumps(dict(messageType="register", channelID=chid))
+            self.ws.send(body)
+            reply = self.ws.recv()
+            res: RegisterMessage = RegisterMessage(**json.loads(reply))
+            assert (
+                res.status == 200
+            ), f"Unexpected status. Expected: 200 Actual: {res.status}"
+            assert (
+                res.channelID == chid
+            ), f"Channel ID did not match, received {res.channelID}"
+            timer.response_length = len(reply.encode("utf-8"))
+            self.channels[chid] = res.pushEndpoint
+            print(len(self.channels))
 
     @task(weight=95)
     def send_notification(self):
@@ -209,13 +198,12 @@ class AutopushUser(FastHttpUser):
         Raises:
             AssertionError: If the server does not respond correctly (400, 500, etc)
         """
-        if not self.channels:
-            raise RescheduleTask()
 
         self.disconnect()
+        channel_id = random.choice(list(self.channels.keys()))
 
         with self._time_event(name="send_notification") as timer:
-            endpoint_url = random.choice(list(self.channels.items()))[-1]
+            endpoint_url = self.channels[channel_id ]
             endpoint_res = self.client.post(
                 url=endpoint_url,
                 name="Endpoint Notification",
@@ -223,5 +211,8 @@ class AutopushUser(FastHttpUser):
                 headers=self.headers,
             )
             assert endpoint_res.status_code == 201, f"status code was {endpoint_res.status_code}"
+            self.notifications += 1
             timer.response_length = len(endpoint_res.text.encode("utf-8"))
+        self.connect()
+        self.hello()
         self.ack()
