@@ -14,8 +14,8 @@ import uuid
 from typing import Any
 
 from locust import FastHttpUser, between, events, task
-from locust.exception import RescheduleTask, StopUser
-from models import HelloMessage, RegisterMessage, NotificationMessage
+from locust.exception import StopUser
+from models import HelloMessage, NotificationMessage, RegisterMessage
 from websocket import create_connection
 
 
@@ -111,7 +111,7 @@ class AutopushUser(FastHttpUser):
     def connect(self) -> None:
         self.ws = create_connection(
             self.environment.parsed_options.websocket_url,
-            header={"Origin": "http://localhost:1337"}
+            header={"Origin": "http://localhost:1337"},
         )
 
     def disconnect(self) -> None:
@@ -130,7 +130,14 @@ class AutopushUser(FastHttpUser):
             ValidationError: If the hello message schema is not as expected
         """
         with self._time_event(name="hello") as timer:
-            body = json.dumps(dict(messageType="hello", use_webpush=True, uaid=self.uaid, channelIDs=list(self.channels.keys())))
+            body = json.dumps(
+                dict(
+                    messageType="hello",
+                    use_webpush=True,
+                    uaid=self.uaid,
+                    channelIDs=list(self.channels.keys()),
+                )
+            )
             self.ws.send(body)
             reply = self.ws.recv()
             assert reply, "No 'hello' response"
@@ -147,21 +154,19 @@ class AutopushUser(FastHttpUser):
         confirm receipt. If there is a pending notification, this will try and receive it
         before sending an acknowledgement.
         """
-        print(f"notification")
+
         with self._time_event(name="acknowledge") as timer:
             reply = self.ws.recv()
             notification = NotificationMessage(**json.loads(reply))
             body = json.dumps(
                 dict(
                     messageType="ack",
-                    use_webpush=True,
-                    updates=dict(channelID=notification.channelID, version=notification.version)
-                    )
+                    updates=[dict(channelID=notification.channelID, version=notification.version)],
+                )
             )
             self.ws.send(body)
             timer.response_length = len(reply.encode("utf-8"))
         time.sleep(1)
-        print("acknowledged")
 
     @task(weight=3)
     def register(self) -> None:
@@ -180,15 +185,10 @@ class AutopushUser(FastHttpUser):
             self.ws.send(body)
             reply = self.ws.recv()
             res: RegisterMessage = RegisterMessage(**json.loads(reply))
-            assert (
-                res.status == 200
-            ), f"Unexpected status. Expected: 200 Actual: {res.status}"
-            assert (
-                res.channelID == chid
-            ), f"Channel ID did not match, received {res.channelID}"
+            assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
+            assert res.channelID == chid, f"Channel ID did not match, received {res.channelID}"
             timer.response_length = len(reply.encode("utf-8"))
             self.channels[chid] = res.pushEndpoint
-            print(len(self.channels))
 
     @task(weight=95)
     def send_notification(self):
@@ -203,7 +203,7 @@ class AutopushUser(FastHttpUser):
         channel_id = random.choice(list(self.channels.keys()))
 
         with self._time_event(name="send_notification") as timer:
-            endpoint_url = self.channels[channel_id ]
+            endpoint_url = self.channels[channel_id]
             endpoint_res = self.client.post(
                 url=endpoint_url,
                 name="Endpoint Notification",

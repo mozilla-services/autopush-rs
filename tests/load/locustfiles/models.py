@@ -27,9 +27,10 @@ class RegisterMessage(BaseModel):
     status: int
     pushEndpoint: str
 
+
 class NotificationMessage(BaseModel):
     """Autopush 'ack' response message."""
-    
+
     data: str
     headers: dict[str, str]
     messageType: Literal["notification"]
