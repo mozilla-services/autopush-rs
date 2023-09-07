@@ -102,6 +102,12 @@ pub struct Settings {
     /// (if a given [autoconnect-common::RegisteredClient] receives more than this number, the calling
     /// thread will lock.)
     pub max_pending_notification_queue: u32,
+    /// Sentry's DSN. Read from the generic SENTRY_DSN env var when not specified
+    pub sentry_dsn: Option<String>,
+    /// Sentry's Environment. Read from the generic SENTRY_ENVIRONMENT env var when not specified
+    pub sentry_environment: Option<String>,
+    /// Sentry's debug flag, defaults to false
+    pub sentry_debug: bool,
 }
 
 impl Default for Settings {
@@ -132,6 +138,9 @@ impl Default for Settings {
             human_logs: false,
             msg_limit: 100,
             max_pending_notification_queue: 10,
+            sentry_dsn: None,
+            sentry_environment: None,
+            sentry_debug: false,
         }
     }
 }

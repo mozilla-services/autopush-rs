@@ -51,19 +51,28 @@ async fn main() -> Result<()> {
     debug!("Starting up autoconnect...");
 
     // Sentry requires the environment variable "SENTRY_DSN".
-    if env::var("SENTRY_DSN")
-        .unwrap_or_else(|_| "".to_owned())
-        .is_empty()
+    if settings.sentry_dsn.is_none()
+        && env::var("SENTRY_DSN")
+            .unwrap_or_else(|_| "".to_owned())
+            .is_empty()
     {
-        print!("SENTRY_DSN not set. Logging disabled.");
+        print!("SENTRY_DSN not set. Sentry disabled.");
     }
 
-    let _guard = sentry::init(sentry::ClientOptions {
+    let mut opts = sentry::ClientOptions {
+        debug: settings.sentry_debug,
         release: sentry::release_name!(),
         session_mode: sentry::SessionMode::Request, // new session per request
         auto_session_tracking: true,
         ..autopush_common::sentry::client_options()
-    });
+    };
+    if let Some(ref sentry_dsn) = settings.sentry_dsn {
+        opts.dsn = sentry_dsn.parse().ok()
+    }
+    if let Some(ref sentry_environment) = settings.sentry_environment {
+        opts.environment = Some(sentry_environment.to_owned().into());
+    }
+    let _guard = sentry::init(opts);
 
     let port = settings.port;
     let router_port = settings.router_port;
