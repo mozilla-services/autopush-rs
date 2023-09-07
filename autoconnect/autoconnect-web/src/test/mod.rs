@@ -12,6 +12,8 @@ use autopush_common::notification::Notification;
 
 use crate::build_app;
 
+mod sentry;
+
 #[ctor::ctor]
 fn init_test_logging() {
     autopush_common::logging::init_test_logging();
@@ -226,4 +228,19 @@ pub async fn broadcast_after_ping() {
         .as_object()
         .expect("!broadcasts.is_object()");
     assert_eq!(broadcasts["foo/bar"].as_str(), Some("v2"));
+}
+
+#[actix_rt::test]
+async fn sentry() {
+    let mut sentry = sentry::MockSentry::new();
+    let mut app_state = AppState {
+        db: hello_again_db(DUMMY_UAID).into_boxed_arc(),
+        ..Default::default()
+    };
+    app_state.settings.db_dsn = Some(sentry.endpoint_url.clone());
+    let srv = test_server(app_state);
+    let res = srv.get("/").send().await.unwrap();
+    eprintln!("{:#?}", res);
+    assert!(false);
+    assert!(sentry.envelope().await.is_none());
 }
