@@ -11,6 +11,7 @@ import ssl
 import string
 import time
 import uuid
+from enum import Enum, unique
 from typing import Any
 
 from locust import FastHttpUser, between, events, task
@@ -35,6 +36,23 @@ def _(parser: Any):
         required=True,
         help="Endpoint URL",
     )
+    parser.add_argument(
+        "--notification_type",
+        type=NotificationType,
+        env_var="AUTOPUSH_NOTIFICATION_TYPE",
+        help="Type of notification to send (direct or stored)",
+        choices=list(NotificationType),
+        default=NotificationType.STORED,
+    )
+
+
+@unique
+class NotificationType(str, Enum):
+    DIRECT = "direct"
+    STORED = "stored"
+
+    def __str__(self):
+        return self.value
 
 
 class TimeEvent:
@@ -166,7 +184,6 @@ class AutopushUser(FastHttpUser):
             )
             self.ws.send(body)
             timer.response_length = len(reply.encode("utf-8"))
-        time.sleep(1)
 
     @task(weight=3)
     def register(self) -> None:
@@ -198,8 +215,10 @@ class AutopushUser(FastHttpUser):
         Raises:
             AssertionError: If the server does not respond correctly (400, 500, etc)
         """
+        stored = self.environment.parsed_options.notification_type == NotificationType.STORED
+        if stored:
+            self.disconnect()
 
-        self.disconnect()
         channel_id = random.choice(list(self.channels.keys()))
 
         with self._time_event(name="send_notification") as timer:
@@ -213,6 +232,9 @@ class AutopushUser(FastHttpUser):
             assert endpoint_res.status_code == 201, f"status code was {endpoint_res.status_code}"
             self.notifications += 1
             timer.response_length = len(endpoint_res.text.encode("utf-8"))
-        self.connect()
-        self.hello()
+
+        if stored:
+            self.connect()
+            self.hello()
+
         self.ack()
