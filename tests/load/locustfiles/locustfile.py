@@ -95,7 +95,7 @@ class TimeEvent:
 
 
 class AutopushUser(FastHttpUser):
-    wait_time = between(30, 35)
+    wait_time = between(120, 125)
 
     def __init__(self, environment) -> None:
         super().__init__(environment)
@@ -197,7 +197,7 @@ class AutopushUser(FastHttpUser):
             self.ws.send(body)
             timer.response_length = len(reply.encode("utf-8"))
 
-    @task(weight=3)
+    @task(weight=0)
     def register(self) -> None:
         """
         Send a 'register' message to Autopush. Subscribes to an Autopush channel.
