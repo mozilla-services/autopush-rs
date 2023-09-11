@@ -44,6 +44,13 @@ def _(parser: Any):
         choices=list(NotificationType),
         default=NotificationType.STORED,
     )
+    parser.add_argument(
+        "--ack_sleep",
+        type=int,
+        env_var="AUTOPUSH_ACK_SLEEP",
+        help="Sleep on ACK",
+        default=1,
+    )
 
 
 @unique
@@ -162,6 +169,11 @@ class AutopushUser(FastHttpUser):
             res: HelloMessage = HelloMessage(**json.loads(reply))
             assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
             timer.response_length = len(reply.encode("utf-8"))
+
+            ack_sleep = self.environment.parsed_options.ack_sleep
+            if ack_sleep:
+                time.sleep(ack_sleep)
+
         self.uaid = res.uaid
 
     def ack(self) -> None:
