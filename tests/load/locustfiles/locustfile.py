@@ -14,7 +14,8 @@ import uuid
 from enum import Enum, unique
 from typing import Any
 
-from locust import FastHttpUser, between, events, task
+from args import parse_wait_time
+from locust import FastHttpUser, events, task
 from locust.exception import StopUser
 from models import HelloMessage, NotificationMessage, RegisterMessage
 from websocket import create_connection
@@ -51,6 +52,18 @@ def _(parser: Any):
         help="Sleep on ACK",
         default=1,
     )
+    parser.add_argument(
+        "--wait_time",
+        type=str,
+        env_var="AUTOPUSH_WAIT_TIME",
+        help="AutopushUser wait time between tasks",
+        default="120, 125",
+    )
+
+
+@events.test_start.add_listener
+def _(environment, **kwargs):
+    environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
 
 
 @unique
@@ -95,8 +108,6 @@ class TimeEvent:
 
 
 class AutopushUser(FastHttpUser):
-    wait_time = between(120, 125)
-
     def __init__(self, environment) -> None:
         super().__init__(environment)
         self.uaid: str = ""
@@ -114,6 +125,9 @@ class AutopushUser(FastHttpUser):
             + "=="
         )
         self.notifications: int = 0
+
+    def wait_time(self):
+        return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
         self.connect()
@@ -137,6 +151,8 @@ class AutopushUser(FastHttpUser):
         self.ws = create_connection(
             self.environment.parsed_options.websocket_url,
             header={"Origin": "http://localhost:1337"},
+            # TODO: we probably want some form of timeout as it defaults to None
+            #timeout=1,
         )
 
     def disconnect(self) -> None:
