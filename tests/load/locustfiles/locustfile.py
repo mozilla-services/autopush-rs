@@ -88,7 +88,6 @@ class AutopushUser(FastHttpUser):
             )
             + "=="
         )
-        self.notifications: int = 0
 
     def on_start(self) -> Any:
         self.connect()
@@ -199,20 +198,21 @@ class AutopushUser(FastHttpUser):
             AssertionError: If the server does not respond correctly (400, 500, etc)
         """
 
-        self.disconnect()
         channel_id = random.choice(list(self.channels.keys()))
+        endpoint_url = self.channels[channel_id]
 
-        with self._time_event(name="send_notification") as timer:
-            endpoint_url = self.channels[channel_id]
-            endpoint_res = self.client.post(
+        self.disconnect()
+
+        with self.client.post(
                 url=endpoint_url,
                 name="Endpoint Notification",
                 data=self.encrypted_data,
                 headers=self.headers,
-            )
-            assert endpoint_res.status_code == 201, f"status code was {endpoint_res.status_code}"
-            self.notifications += 1
-            timer.response_length = len(endpoint_res.text.encode("utf-8"))
+            ) as response:
+                if response.status_code != 201:
+                    response.failure(f"{response.status_code=}, expected 201, {response.text=}")
+                    return
+
         self.connect()
         self.hello()
         self.ack()
