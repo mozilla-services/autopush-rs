@@ -11,9 +11,11 @@ import ssl
 import string
 import time
 import uuid
+from enum import Enum, unique
 from typing import Any
 
-from locust import FastHttpUser, between, events, task
+from args import parse_wait_time
+from locust import FastHttpUser, events, task
 from locust.exception import StopUser
 from models import HelloMessage, NotificationMessage, RegisterMessage
 from websocket import create_connection
@@ -35,6 +37,42 @@ def _(parser: Any):
         required=True,
         help="Endpoint URL",
     )
+    parser.add_argument(
+        "--notification_type",
+        type=NotificationType,
+        env_var="AUTOPUSH_NOTIFICATION_TYPE",
+        help="Type of notification to send (direct or stored)",
+        choices=list(NotificationType),
+        default=NotificationType.STORED,
+    )
+    parser.add_argument(
+        "--ack_sleep",
+        type=int,
+        env_var="AUTOPUSH_ACK_SLEEP",
+        help="Sleep on ACK",
+        default=1,
+    )
+    parser.add_argument(
+        "--wait_time",
+        type=str,
+        env_var="AUTOPUSH_WAIT_TIME",
+        help="AutopushUser wait time between tasks",
+        default="120, 125",
+    )
+
+
+@events.test_start.add_listener
+def _(environment, **kwargs):
+    environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
+
+
+@unique
+class NotificationType(str, Enum):
+    DIRECT = "direct"
+    STORED = "stored"
+
+    def __str__(self):
+        return self.value
 
 
 class TimeEvent:
@@ -70,8 +108,6 @@ class TimeEvent:
 
 
 class AutopushUser(FastHttpUser):
-    wait_time = between(30, 35)
-
     def __init__(self, environment) -> None:
         super().__init__(environment)
         self.uaid: str = ""
@@ -88,6 +124,9 @@ class AutopushUser(FastHttpUser):
             )
             + "=="
         )
+
+    def wait_time(self):
+        return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
         self.connect()
@@ -111,6 +150,8 @@ class AutopushUser(FastHttpUser):
         self.ws = create_connection(
             self.environment.parsed_options.websocket_url,
             header={"Origin": "http://localhost:1337"},
+            # TODO: we probably want some form of timeout as it defaults to None
+            #timeout=1,
         )
 
     def disconnect(self) -> None:
@@ -143,6 +184,11 @@ class AutopushUser(FastHttpUser):
             res: HelloMessage = HelloMessage(**json.loads(reply))
             assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
             timer.response_length = len(reply.encode("utf-8"))
+
+            ack_sleep = self.environment.parsed_options.ack_sleep
+            if ack_sleep:
+                time.sleep(ack_sleep)
+
         self.uaid = res.uaid
 
     def ack(self) -> None:
@@ -165,9 +211,8 @@ class AutopushUser(FastHttpUser):
             )
             self.ws.send(body)
             timer.response_length = len(reply.encode("utf-8"))
-        time.sleep(1)
 
-    @task(weight=3)
+    @task(weight=0)
     def register(self) -> None:
         """
         Send a 'register' message to Autopush. Subscribes to an Autopush channel.
@@ -197,6 +242,9 @@ class AutopushUser(FastHttpUser):
         Raises:
             AssertionError: If the server does not respond correctly (400, 500, etc)
         """
+        stored = self.environment.parsed_options.notification_type == NotificationType.STORED
+        if stored:
+            self.disconnect()
 
         channel_id = random.choice(list(self.channels.keys()))
         endpoint_url = self.channels[channel_id]
@@ -213,6 +261,7 @@ class AutopushUser(FastHttpUser):
                     response.failure(f"{response.status_code=}, expected 201, {response.text=}")
                     return
 
-        self.connect()
-        self.hello()
+        if stored:
+            self.connect()
+            self.hello()
         self.ack()
