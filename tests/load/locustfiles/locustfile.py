@@ -150,8 +150,7 @@ class AutopushUser(FastHttpUser):
         self.ws = create_connection(
             self.environment.parsed_options.websocket_url,
             header={"Origin": "http://localhost:1337"},
-            # TODO: we probably want some form of timeout as it defaults to None
-            #timeout=1,
+            timeout=1,
         )
 
     def disconnect(self) -> None:
@@ -252,14 +251,14 @@ class AutopushUser(FastHttpUser):
         self.disconnect()
 
         with self.client.post(
-                url=endpoint_url,
-                name="Endpoint Notification",
-                data=self.encrypted_data,
-                headers=self.headers,
-            ) as response:
-                if response.status_code != 201:
-                    response.failure(f"{response.status_code=}, expected 201, {response.text=}")
-                    return
+            url=endpoint_url,
+            name="Endpoint Notification",
+            data=self.encrypted_data,
+            headers=self.headers,
+        ) as response:
+            if response.status_code != 201:
+                response.failure(f"{response.status_code=}, expected 201, {response.text=}")
+                return
 
         if stored:
             self.connect()
