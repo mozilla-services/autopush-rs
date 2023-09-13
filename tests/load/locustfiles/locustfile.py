@@ -232,7 +232,7 @@ class AutopushUser(FastHttpUser):
             assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
             assert res.channelID == chid, f"Channel ID did not match, received {res.channelID}"
             timer.response_length = len(reply.encode("utf-8"))
-            self.channels[chid] = res.pushEndpoint
+        self.channels[chid] = res.pushEndpoint
 
     @task(weight=95)
     def send_notification(self):
