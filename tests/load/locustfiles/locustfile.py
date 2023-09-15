@@ -117,6 +117,9 @@ class AutopushUser(FastHttpUser):
             + "=="
         )
 
+    def wait_time(self):
+        return self.environment.autopush_wait_time(self)
+
     def on_start(self) -> Any:
         self.connect()
         if not self.ws:
@@ -141,7 +144,7 @@ class AutopushUser(FastHttpUser):
         self.ws = create_connection(
             self.environment.parsed_options.websocket_url,
             header={"Origin": "http://localhost:1337"},
-            timeout=1,
+            timeout=30,  # timeout defaults to None
         )
 
     def disconnect(self) -> None:
