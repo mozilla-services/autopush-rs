@@ -75,13 +75,10 @@ class TimeEvent:
         if args[0] is not None:
             exception_type = args[0]
             exception_value = args[1]
-            traceback = args[2]
+            # traceback = args[2]
 
             if not isinstance(exception_value, (AssertionError, ValidationError)):
-                # An unexpected exception occurred log an exception and stop the user.
-                self.user.environment.events.user_error.fire(
-                    user_instance=self.user.context(), exception=exception_value, tb=traceback
-                )
+                # An unexpected exception occurred stop the user.
                 self.user.stop()
                 return None
 
