@@ -48,7 +48,7 @@ def _(parser: Any):
         type=str,
         env_var="AUTOPUSH_WAIT_TIME",
         help="AutopushUser wait time between tasks",
-        default="120, 125",
+        default="60, 65",
     )
 
 
