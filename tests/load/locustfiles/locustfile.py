@@ -150,55 +150,62 @@ class AutopushUser(FastHttpUser):
         self.ws = None
 
     def hello(self) -> None:
-        """
-        Send a 'hello' message to Autopush.
+        """Send a 'hello' message to Autopush.
 
         Connections must say hello after connecting to the server, otherwise the connection is
         quickly dropped.
 
         Raises:
-            AssertionError: If the user fails to send the hello
+            AssertionError: If the hello message response is empty or has an invalid status
             ValidationError: If the hello message schema is not as expected
         """
-        with self._time_event(name="hello") as timer:
-            body = json.dumps(
-                dict(
-                    messageType="hello",
-                    use_webpush=True,
-                    uaid=self.uaid,
-                    channelIDs=list(self.channels.keys()),
-                )
+        body: str = json.dumps(
+            dict(
+                messageType="hello",
+                use_webpush=True,
+                uaid=self.uaid,
+                channelIDs=list(self.channels.keys()),
             )
+        )
+        with self._time_event(name="hello - send") as timer:
             self.ws.send(body)
-            reply = self.ws.recv()
-            assert reply, "No 'hello' response"
-            res: HelloMessage = HelloMessage(**json.loads(reply))
-            assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
-            timer.response_length = len(reply.encode("utf-8"))
+
+        with self._time_event(name="hello - recv") as timer:
+            response: str = self.ws.recv()
+            assert response, "No 'hello' response"
+            message: HelloMessage = HelloMessage(**json.loads(response))
+            assert message.status == 200, f"Status Error. Expected: 200 Actual: {message.status}"
+            timer.response_length = len(response.encode("utf-8"))
 
         if not self.uaid:
-            self.uaid = res.uaid
+            self.uaid = message.uaid
 
     def ack(self) -> None:
-        """
-        Send an 'ack' message to push.
+        """Send an 'ack' message to push.
 
         After sending a notification, the client must also send an 'ack' to the server to
         confirm receipt. If there is a pending notification, this will try and receive it
         before sending an acknowledgement.
+
+        Raises:
+            AssertionError: If the notification message response is empty
+            ValidationError: If the notification message schema is not as expected
         """
 
-        with self._time_event(name="acknowledge") as timer:
-            reply = self.ws.recv()
-            notification = NotificationMessage(**json.loads(reply))
-            body = json.dumps(
-                dict(
-                    messageType="ack",
-                    updates=[dict(channelID=notification.channelID, version=notification.version)],
-                )
+        with self._time_event(name="notification - recv") as timer:
+            response = self.ws.recv()
+            assert response, "No 'notification' response"
+            message: NotificationMessage = NotificationMessage(**json.loads(response))
+            timer.response_length = len(response.encode("utf-8"))
+
+        body: str = json.dumps(
+            dict(
+                messageType="ack",
+                updates=[dict(channelID=message.channelID, version=message.version)],
             )
+        )
+        with self._time_event(name="ack - send"):
             self.ws.send(body)
-            timer.response_length = len(reply.encode("utf-8"))
 
     def post_notification(self, endpoint_url) -> bool:
         """Send a notification to Autopush.
@@ -227,19 +234,31 @@ class AutopushUser(FastHttpUser):
 
     @task(weight=0)
     def register(self) -> None:
-        """Send a 'register' message to Autopush. Subscribes to an Autopush channel."""
+        """Send a 'register' message to Autopush. Subscribes to an Autopush channel.
+
+        Raises:
+            AssertionError: If the register message response is empty or has an invalid status or
+                            channel ID.
+            ValidationError: If the register message schema is not as expected
+        """
 
         chid: str = str(uuid.uuid4())
+        body = json.dumps(dict(messageType="register", channelID=chid))
 
-        with self._time_event(name="register") as timer:
-            body = json.dumps(dict(messageType="register", channelID=chid))
+        with self._time_event(name="register - send"):
             self.ws.send(body)
-            reply = self.ws.recv()
-            res: RegisterMessage = RegisterMessage(**json.loads(reply))
-            assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
-            assert res.channelID == chid, f"Channel ID did not match, received {res.channelID}"
-            timer.response_length = len(reply.encode("utf-8"))
-        self.channels[chid] = res.pushEndpoint
+
+        with self._time_event(name="register - recv") as timer:
+            response: str = self.ws.recv()
+            assert response, "No 'notification' response"
+            message: RegisterMessage = RegisterMessage(**json.loads(response))
+            assert message.status == 200, f"Status Error. Expected: 200 Actual: {message.status}"
+            assert (
+                message.channelID == chid
+            ), f"Channel ID Error. Expected: {chid} Actual: {message.channelID}"
+            timer.response_length = len(response.encode("utf-8"))
+
+        self.channels[chid] = message.pushEndpoint
 
     @task(weight=95)
     def send_direct_notification(self):
