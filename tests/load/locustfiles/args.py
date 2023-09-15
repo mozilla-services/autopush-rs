@@ -19,4 +19,4 @@ def parse_wait_time(val: str):
 
 def float_or_int(val: str):
     val = str(float(val))
-    return int(val) if val.is_integer() else val
+    return val

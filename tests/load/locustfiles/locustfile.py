@@ -125,9 +125,6 @@ class AutopushUser(FastHttpUser):
             + "=="
         )
 
-    def wait_time(self):
-        return self.environment.autopush_wait_time(self)
-
     def on_start(self) -> Any:
         self.connect()
         if not self.ws:
@@ -156,6 +153,7 @@ class AutopushUser(FastHttpUser):
     def disconnect(self) -> None:
         if self.ws:
             self.ws.close()
+        self.ws = None
 
     def hello(self) -> None:
         """
@@ -235,7 +233,7 @@ class AutopushUser(FastHttpUser):
     @task(weight=95)
     def send_notification(self):
         """
-        Sends a notification to a registered enpoint
+        Sends a notification to a registered endpoint
 
         Raises:
             AssertionError: If the server does not respond correctly (400, 500, etc)
@@ -244,10 +242,7 @@ class AutopushUser(FastHttpUser):
         if stored:
             self.disconnect()
 
-        channel_id = random.choice(list(self.channels.keys()))
-        endpoint_url = self.channels[channel_id]
-
-        self.disconnect()
+        endpoint_url = self.channels[random.choice(list(self.channels.keys()))]
 
         with self.client.post(
             url=endpoint_url,
@@ -255,11 +250,10 @@ class AutopushUser(FastHttpUser):
             data=self.encrypted_data,
             headers=self.headers,
         ) as response:
+            if stored:
+                self.connect()
+                self.hello()
             if response.status_code != 201:
                 response.failure(f"{response.status_code=}, expected 201, {response.text=}")
-                return
-
-        if stored:
-            self.connect()
-            self.hello()
-        self.ack()
+            else:
+                self.ack()

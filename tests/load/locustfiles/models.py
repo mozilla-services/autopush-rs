@@ -24,7 +24,7 @@ class RegisterMessage(BaseModel):
 
     messageType: Literal["register"]
     channelID: str
-    status: int = 200
+    status: int
     pushEndpoint: str
 
 
