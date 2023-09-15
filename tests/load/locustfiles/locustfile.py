@@ -13,6 +13,7 @@ import uuid
 from typing import Any
 
 from args import parse_wait_time
+from exceptions import ZeroStatusRequestError
 from locust import FastHttpUser, events, task
 from models import HelloMessage, NotificationMessage, RegisterMessage
 from pydantic import ValidationError
@@ -206,6 +207,9 @@ class AutopushUser(FastHttpUser):
             endpoint_url: A channel destination endpoint url
         Returns:
             bool: Flag indicating if the post notification request was successful
+        Raises:
+            ZeroStatusRequestError: In the event that Locust experiences a network issue while
+                                    sending a notification.
         """
         with self.client.post(
             url=endpoint_url,
@@ -214,6 +218,8 @@ class AutopushUser(FastHttpUser):
             headers=self.headers,
             catch_response=True,
         ) as response:
+            if response.status_code == 0:
+                raise ZeroStatusRequestError()
             if response.status_code != 201:
                 response.failure(f"{response.status_code=}, expected 201, {response.text=}")
                 return False
