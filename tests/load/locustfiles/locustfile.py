@@ -11,7 +11,6 @@ import ssl
 import string
 import time
 import uuid
-from enum import Enum, unique
 from typing import Any
 
 from args import parse_wait_time
@@ -38,14 +37,6 @@ def _(parser: Any):
         help="Endpoint URL",
     )
     parser.add_argument(
-        "--notification_type",
-        type=NotificationType,
-        env_var="AUTOPUSH_NOTIFICATION_TYPE",
-        help="Type of notification to send (direct or stored)",
-        choices=list(NotificationType),
-        default=NotificationType.STORED,
-    )
-    parser.add_argument(
         "--ack_sleep",
         type=int,
         env_var="AUTOPUSH_ACK_SLEEP",
@@ -64,15 +55,6 @@ def _(parser: Any):
 @events.test_start.add_listener
 def _(environment, **kwargs):
     environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
-
-
-@unique
-class NotificationType(str, Enum):
-    DIRECT = "direct"
-    STORED = "stored"
-
-    def __str__(self):
-        return self.value
 
 
 class TimeEvent:
@@ -182,10 +164,8 @@ class AutopushUser(FastHttpUser):
             assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
             timer.response_length = len(reply.encode("utf-8"))
 
-        ack_sleep = self.environment.parsed_options.ack_sleep
-        if ack_sleep:
-            time.sleep(ack_sleep)
-        self.uaid = res.uaid
+        if not self.uaid:
+            self.uaid = res.uaid
 
     def ack(self) -> None:
         """
@@ -207,6 +187,26 @@ class AutopushUser(FastHttpUser):
             )
             self.ws.send(body)
             timer.response_length = len(reply.encode("utf-8"))
+
+    def post_notification(self, endpoint_url) -> bool:
+        """Send a notification to Autopush.
+
+        Args:
+            endpoint_url: A channel destination endpoint url
+        Returns:
+            bool: Flag indicating if the post notification request was successful
+        """
+        with self.client.post(
+            url=endpoint_url,
+            name="notification",
+            data=self.encrypted_data,
+            headers=self.headers,
+            catch_response=True,
+        ) as response:
+            if response.status_code != 201:
+                response.failure(f"{response.status_code=}, expected 201, {response.text=}")
+                return False
+        return True
 
     @task(weight=0)
     def register(self) -> None:
@@ -231,29 +231,33 @@ class AutopushUser(FastHttpUser):
         self.channels[chid] = res.pushEndpoint
 
     @task(weight=95)
-    def send_notification(self):
-        """
-        Sends a notification to a registered endpoint
+    def send_direct_notification(self):
+        """Sends a notification to a registered endpoint while disconnected to Autopush."""
+        channel_id, endpoint_url = random.choice(list(self.channels.items()))
 
-        Raises:
-            AssertionError: If the server does not respond correctly (400, 500, etc)
-        """
-        stored = self.environment.parsed_options.notification_type == NotificationType.STORED
-        if stored:
-            self.disconnect()
+        notification_success: bool = self.post_notification(endpoint_url)
+        if not notification_success:
+            self.stop()
 
-        endpoint_url = self.channels[random.choice(list(self.channels.keys()))]
+        self.ack()
 
-        with self.client.post(
-            url=endpoint_url,
-            name="Endpoint Notification",
-            data=self.encrypted_data,
-            headers=self.headers,
-        ) as response:
-            if stored:
-                self.connect()
-                self.hello()
-            if response.status_code != 201:
-                response.failure(f"{response.status_code=}, expected 201, {response.text=}")
-            else:
-                self.ack()
+    @task(weight=0)
+    def send_stored_notification(self):
+        """Sends a notification to a registered endpoint while connected to Autopush."""
+        channel_id, endpoint_url = random.choice(list(self.channels.items()))
+
+        self.disconnect()
+
+        notification_success: bool = self.post_notification(endpoint_url)
+        if not notification_success:
+            self.stop()
+
+        self.connect()
+
+        self.hello()
+
+        ack_sleep: int = self.environment.parsed_options.ack_sleep
+        if ack_sleep:
+            time.sleep(ack_sleep)
+
+        self.ack()
