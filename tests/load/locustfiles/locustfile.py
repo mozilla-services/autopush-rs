@@ -7,7 +7,6 @@
 import base64
 import json
 import random
-import ssl
 import string
 import time
 import uuid
@@ -15,8 +14,8 @@ from typing import Any
 
 from args import parse_wait_time
 from locust import FastHttpUser, events, task
-from locust.exception import StopUser
 from models import HelloMessage, NotificationMessage, RegisterMessage
+from pydantic import ValidationError
 from websocket import create_connection
 
 
@@ -71,14 +70,24 @@ class TimeEvent:
     def __exit__(self, *args) -> None:
         end_time: float = time.perf_counter()
         exception: Any = None
-        if args[0] is not None:
-            exception = args[0], args[1]
 
-        if not isinstance(args[1], (AssertionError, ssl.SSLEOFError, type(None))):
-            self.user.environment.events.user_error.fire(
-                user_instance=self.user.context(), exception=args[1], tb=args[2]
-            )
-            exception = None
+        if args[0] is not None:
+            exception_type = args[0]
+            exception_value = args[1]
+            traceback = args[2]
+
+            if not isinstance(exception_value, (AssertionError, ValidationError)):
+                # An unexpected exception occurred log an exception and stop the user.
+                self.user.environment.events.user_error.fire(
+                    user_instance=self.user.context(), exception=exception_value, tb=traceback
+                )
+                self.user.stop()
+                return None
+
+            # Assertion and Validation errors are expected exceptional outcomes should
+            # a message received from Autopush be invalid.
+            exception = exception_type, exception_value
+
         self.user.environment.events.request.fire(
             request_type="WSS",
             name=self.name,
@@ -110,13 +119,15 @@ class AutopushUser(FastHttpUser):
     def on_start(self) -> Any:
         self.connect()
         if not self.ws:
-            raise StopUser()
+            self.stop()
+
         self.hello()
         if not self.uaid:
-            raise StopUser()
+            self.stop()
+
         self.register()
         if not self.channels:
-            raise StopUser()
+            self.stop()
 
     def on_stop(self) -> Any:
         if self.ws:
@@ -210,13 +221,7 @@ class AutopushUser(FastHttpUser):
 
     @task(weight=0)
     def register(self) -> None:
-        """
-        Send a 'register' message to Autopush. Subscribes to an Autopush channel.
-
-        Raises:
-            AssertionError: If the user fails to register a channel
-            ValidationError: If the register message schema is not as expected
-        """
+        """Send a 'register' message to Autopush. Subscribes to an Autopush channel."""
 
         chid: str = str(uuid.uuid4())
 
