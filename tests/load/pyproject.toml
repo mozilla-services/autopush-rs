@@ -29,7 +29,7 @@ license = "Mozilla Public License Version 2.0"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-locust = "^2.15.1"
+locust = "^2.16.1"
 numpy = "^1.25.2"
 pydantic = "^2.3.0"
 websocket-client = "1.5.2"

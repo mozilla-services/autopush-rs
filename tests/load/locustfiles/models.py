@@ -14,7 +14,7 @@ class HelloMessage(BaseModel):
 
     messageType: Literal["hello"]
     uaid: str
-    status: int
+    status: Literal[200]
     use_webpush: bool
     broadcasts: dict[str, Any]
 
@@ -24,5 +24,15 @@ class RegisterMessage(BaseModel):
 
     messageType: Literal["register"]
     channelID: str
-    status: int
+    status: Literal[200]
     pushEndpoint: str
+
+
+class NotificationMessage(BaseModel):
+    """Autopush 'ack' response message."""
+
+    data: str
+    headers: dict[str, str]
+    messageType: Literal["notification"]
+    channelID: str
+    version: str

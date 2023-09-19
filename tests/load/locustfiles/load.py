@@ -44,7 +44,9 @@ class AutopushLoadTestShape(LoadTestShape):
     """
 
     MAX_RUN_TIME: int = 600  # 10 minutes
-    MAX_USERS: int = 83300  # Calculation: 700 users * 119 locust workers (defined in setup_k8s.sh)
+    WORKER_COUNT: int = 119  # Must match value defined in setup_k8s.sh
+    USERS_PER_WORKER: int = 350  # Number of users supported on a worker running on a n1-standard-4
+    MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
     user_classes: list[Type[User]] = [AutopushUser]
 
