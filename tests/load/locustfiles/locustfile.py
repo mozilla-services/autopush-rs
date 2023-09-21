@@ -134,7 +134,7 @@ class AutopushUser(FastHttpUser):
         self.ws = create_connection(
             self.environment.parsed_options.websocket_url,
             header={"Origin": "http://localhost:1337"},
-            timeout=30,  # timeout defaults to None
+            timeout=5,  # timeout defaults to None
         )
 
     def disconnect(self) -> None:
@@ -240,7 +240,7 @@ class AutopushUser(FastHttpUser):
 
         with self._time_event(name="register - recv") as timer:
             response: str = self.ws.recv()
-            assert response, "No 'notification' response"
+            assert response, "No 'register' response"
             message: RegisterMessage = RegisterMessage(**json.loads(response))
             assert (
                 message.channelID == chid
