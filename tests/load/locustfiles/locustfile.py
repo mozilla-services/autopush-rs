@@ -4,14 +4,19 @@
 
 """Performance test module."""
 
+import base64
 import json
+import random
+import string
 import time
 import uuid
 from typing import Any
 
-from locust import FastHttpUser, between, events, task
-from locust.exception import StopUser
-from models import HelloMessage, RegisterMessage
+from args import parse_wait_time
+from exceptions import ZeroStatusRequestError
+from locust import FastHttpUser, events, task
+from models import HelloMessage, NotificationMessage, RegisterMessage
+from pydantic import ValidationError
 from websocket import create_connection
 
 
@@ -31,6 +36,18 @@ def _(parser: Any):
         required=True,
         help="Endpoint URL",
     )
+    parser.add_argument(
+        "--wait_time",
+        type=str,
+        env_var="AUTOPUSH_WAIT_TIME",
+        help="AutopushUser wait time between tasks",
+        default="20, 25",
+    )
+
+
+@events.test_start.add_listener
+def _(environment, **kwargs):
+    environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
 
 
 class TimeEvent:
@@ -47,14 +64,21 @@ class TimeEvent:
     def __exit__(self, *args) -> None:
         end_time: float = time.perf_counter()
         exception: Any = None
-        if args[0] is not None:
-            exception = args[0], args[1]
 
-        if not isinstance(args[1], (AssertionError, type(None))):
-            self.user.environment.events.user_error.fire(
-                user_instance=self.user.context(), exception=args[1], tb=args[2]
-            )
-            exception = None
+        if args[0] is not None:
+            exception_type = args[0]
+            exception_value = args[1]
+            traceback = args[2]
+
+            if not isinstance(exception_value, (AssertionError, ValidationError)):
+                # An unexpected exception occurred stop the user.
+                self.user.stop()
+                return None
+
+            # Assertion and Validation errors are expected exceptional outcomes should
+            # a message received from Autopush be invalid.
+            exception = exception_type, exception_value, traceback
+
         self.user.environment.events.request.fire(
             request_type="WSS",
             name=self.name,
@@ -66,24 +90,38 @@ class TimeEvent:
 
 
 class AutopushUser(FastHttpUser):
-    wait_time = between(30, 35)
-
     def __init__(self, environment) -> None:
         super().__init__(environment)
         self.uaid: str = ""
         self.channels: dict[str, str] = {}
         self.ws: Any = None
+        self.headers = {"TTL": "60", "Content-Encoding": "aes128gcm", "Topic": "aaaa"}
+        self.encrypted_data = base64.urlsafe_b64decode(
+            "TestData"
+            + "".join(
+                [
+                    random.choice(string.ascii_letters + string.digits)
+                    for i in range(0, random.randrange(1024, 4096, 2) - 8)
+                ]
+            )
+            + "=="
+        )
+
+    def wait_time(self):
+        return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
         self.connect()
         if not self.ws:
-            raise StopUser()
+            self.stop()
+
         self.hello()
         if not self.uaid:
-            raise StopUser()
+            self.stop()
+
         self.register()
         if not self.channels:
-            raise StopUser()
+            self.stop()
 
     def on_stop(self) -> Any:
         if self.ws:
@@ -96,54 +134,127 @@ class AutopushUser(FastHttpUser):
         self.ws = create_connection(
             self.environment.parsed_options.websocket_url,
             header={"Origin": "http://localhost:1337"},
-            ssl=False,
+            timeout=5,  # timeout defaults to None
         )
 
     def disconnect(self) -> None:
-        self.ws.close()
+        if self.ws:
+            self.ws.close()
+        self.ws = None
 
     def hello(self) -> None:
-        """
-        Send a 'hello' message to Autopush.
+        """Send a 'hello' message to Autopush.
 
         Connections must say hello after connecting to the server, otherwise the connection is
         quickly dropped.
 
         Raises:
-            AssertionError: If the user fails to send the hello
+            AssertionError: If the hello message response is empty or has an invalid status
             ValidationError: If the hello message schema is not as expected
         """
-        with self._time_event(name="hello") as timer:
-            body = json.dumps(dict(messageType="hello", use_webpush=True))
+        body: str = json.dumps(
+            dict(
+                messageType="hello",
+                use_webpush=True,
+                uaid=self.uaid,
+                channelIDs=list(self.channels.keys()),
+            )
+        )
+        with self._time_event(name="hello - send") as timer:
             self.ws.send(body)
-            reply = self.ws.recv()
-            assert reply, "No 'hello' response"
-            res: HelloMessage = HelloMessage(**json.loads(reply))
-            assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
-            timer.response_length = len(reply.encode("utf-8"))
-        self.uaid = res.uaid
 
-    def register(self) -> None:
-        """
-        Send a 'register' message to Autopush. Subscribes to an Autopush channel.
+        with self._time_event(name="hello - recv") as timer:
+            response: str = self.ws.recv()
+            assert response, "No 'hello' response"
+            message: HelloMessage = HelloMessage(**json.loads(response))
+            timer.response_length = len(response.encode("utf-8"))
+
+        if not self.uaid:
+            self.uaid = message.uaid
+
+    def ack(self) -> None:
+        """Send an 'ack' message to push.
+
+        After sending a notification, the client must also send an 'ack' to the server to
+        confirm receipt. If there is a pending notification, this will try and receive it
+        before sending an acknowledgement.
 
         Raises:
-            AssertionError: If the user fails to register a channel
+            AssertionError: If the notification message response is empty
+            ValidationError: If the notification message schema is not as expected
+        """
+        with self._time_event(name="notification - recv") as timer:
+            response = self.ws.recv()
+            assert response, "No 'notification' response"
+            message: NotificationMessage = NotificationMessage(**json.loads(response))
+            timer.response_length = len(response.encode("utf-8"))
+
+        body: str = json.dumps(
+            dict(
+                messageType="ack",
+                updates=[dict(channelID=message.channelID, version=message.version)],
+            )
+        )
+        with self._time_event(name="ack - send"):
+            self.ws.send(body)
+
+    def post_notification(self, endpoint_url) -> bool:
+        """Send a notification to Autopush.
+
+        Args:
+            endpoint_url: A channel destination endpoint url
+        Returns:
+            bool: Flag indicating if the post notification request was successful
+        Raises:
+            ZeroStatusRequestError: In the event that Locust experiences a network issue while
+                                    sending a notification.
+        """
+        with self.client.post(
+            url=endpoint_url,
+            name="notification",
+            data=self.encrypted_data,
+            headers=self.headers,
+            catch_response=True,
+        ) as response:
+            if response.status_code == 0:
+                raise ZeroStatusRequestError()
+            if response.status_code != 201:
+                response.failure(f"{response.status_code=}, expected 201, {response.text=}")
+                return False
+        return True
+
+    def register(self) -> None:
+        """Send a 'register' message to Autopush. Subscribes to an Autopush channel.
+
+        Raises:
+            AssertionError: If the register message response is empty or has an invalid status or
+                            channel ID.
             ValidationError: If the register message schema is not as expected
         """
+
         chid: str = str(uuid.uuid4())
+        body = json.dumps(dict(messageType="register", channelID=chid))
 
-        with self._time_event(name="register") as timer:
-            body = json.dumps(dict(messageType="register", channelID=chid))
+        with self._time_event(name="register - send"):
             self.ws.send(body)
-            reply = self.ws.recv()
-            assert reply, f"No 'register' response CHID: {chid}"
-            res: RegisterMessage = RegisterMessage(**json.loads(reply))
-            assert res.status == 200, f"Unexpected status. Expected: 200 Actual: {res.status}"
-            assert res.channelID == chid, f"Channel ID did not match, received {res.channelID}"
-            timer.response_length = len(reply.encode("utf-8"))
-        self.channels[chid] = res.pushEndpoint
 
-    @task
-    def do_nothing(self) -> None:
-        pass
+        with self._time_event(name="register - recv") as timer:
+            response: str = self.ws.recv()
+            assert response, "No 'register' response"
+            message: RegisterMessage = RegisterMessage(**json.loads(response))
+            assert (
+                message.channelID == chid
+            ), f"Channel ID Error. Expected: {chid} Actual: {message.channelID}"
+            timer.response_length = len(response.encode("utf-8"))
+
+        self.channels[chid] = message.pushEndpoint
+
+    @task(weight=95)
+    def send_direct_notification(self):
+        """Sends a notification to a registered endpoint while connected to Autopush."""
+        endpoint_url = self.channels[random.choice(list(self.channels.keys()))]
+
+        if not self.post_notification(endpoint_url):
+            self.stop()
+
+        self.ack()
