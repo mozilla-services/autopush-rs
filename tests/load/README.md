@@ -43,10 +43,11 @@ Follow the steps bellow to execute the load tests locally:
 Environment variables, listed bellow or specified by [Locust][11], can be set in
 `tests\load\docker-compose.yml`.
 
-| Environment Variable | Node(s)          | Description                     |
-|----------------------|------------------|---------------------------------|
-| SERVER_URL           | master & worker  | The autopush web socket address |
-| ENDPOINT_URL         | master & worker  | The autopush HTTP address       |
+| Environment Variable | Node(s)         | Description                          |
+|----------------------|-----------------|--------------------------------------|
+| SERVER_URL           | master & worker | The autopush web socket address      |
+| ENDPOINT_URL         | master & worker | The autopush HTTP address            |
+| AUTOPUSH_WAIT_TIME   | master & worker | The wait time between task execution |
 
 #### 2. Host Locust via Docker
 
@@ -173,7 +174,11 @@ the load test will stop automatically.
 
 **Exceptions**
 
-* The number of exceptions raised by the test framework should be `0`
+* Exceptions indicate errors that occur during Locust's execution of the load tests and
+  should be minimal.
+* The following exceptions are known to happen, but make sure their occurrence isn't 
+  trending positively:
+    * ZeroStatusRequestError
 * Locust reports Exceptions via the "autopush_exceptions.csv" file and the UI
   (under the "Exceptions" tab)
 
