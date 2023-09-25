@@ -1,21 +1,12 @@
-// TODO: Consolidate with autopush_common::metrics
+use std::{sync::Arc, time::Instant};
 
-use std::net::UdpSocket;
-use std::sync::Arc;
-use std::time::Instant;
-
-use actix_web::{web::Data, FromRequest, HttpMessage, HttpRequest};
-use cadence::{
-    BufferedUdpMetricSink, CountedExt, Metric, MetricError, NopMetricSink, QueuingMetricSink,
-    StatsdClient, Timed,
-};
-
-use crate::error::ApiError;
-use crate::server::AppState;
-use crate::settings::Settings;
-use actix_web::dev::Payload;
-use autopush_common::tags::Tags;
+use actix_web::{dev::Payload, web::Data, FromRequest, HttpMessage, HttpRequest};
+use cadence::{CountedExt, Metric, MetricError, NopMetricSink, StatsdClient, Timed};
 use futures::future;
+
+use autopush_common::tags::Tags;
+
+use crate::{error::ApiError, server::AppState, settings::Settings};
 
 #[derive(Debug, Clone)]
 pub struct MetricTimer {
@@ -175,20 +166,11 @@ pub fn metrics_from_req(req: &HttpRequest) -> Arc<StatsdClient> {
 
 /// Create a cadence StatsdClient from the given options
 pub fn metrics_from_settings(settings: &Settings) -> Result<StatsdClient, MetricError> {
-    let builder = if let Some(statsd_host) = settings.statsd_host.as_ref() {
-        let socket = UdpSocket::bind("0.0.0.0:0")?;
-        socket.set_nonblocking(true)?;
-
-        let host = (statsd_host.as_str(), settings.statsd_port);
-        let udp_sink = BufferedUdpMetricSink::from(host, socket)?;
-        let sink = QueuingMetricSink::from(udp_sink);
-        StatsdClient::builder(settings.statsd_label.as_ref(), sink)
-    } else {
-        StatsdClient::builder(settings.statsd_label.as_ref(), NopMetricSink)
-    };
-    Ok(builder
-        .with_error_handler(|err| {
-            warn!("⚠️ Metric send error:  {:?}", err);
-        })
-        .build())
+    let client = autopush_common::metrics::builder(
+        &settings.statsd_label,
+        &settings.statsd_host,
+        settings.statsd_port,
+    )?
+    .build();
+    Ok(client)
 }

@@ -11,10 +11,7 @@ use autoconnect_common::{
     registry::ClientRegistry,
 };
 use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
-use autopush_common::{
-    errors::{ApcErrorKind, Result},
-    metrics::new_metrics,
-};
+use autopush_common::errors::{ApcErrorKind, Result};
 
 use crate::{Settings, ENV_PREFIX};
 
@@ -59,10 +56,15 @@ impl AppState {
             })
             .collect();
         let fernet = MultiFernet::new(fernets);
-        let metrics = Arc::new(new_metrics(
-            settings.statsd_host.clone(),
+        let metrics = autopush_common::metrics::builder(
+            &settings.statsd_label,
+            &settings.statsd_host,
             settings.statsd_port,
-        )?);
+        )?
+        // Temporary tag to distinguish from the legacy autopush(connect)
+        .with_tag("autoconnect", "true")
+        .build();
+        let metrics = Arc::new(metrics);
 
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
