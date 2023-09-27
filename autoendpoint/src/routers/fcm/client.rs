@@ -159,7 +159,7 @@ impl FcmClient {
             .await
             .map_err(FcmError::DeserializeResponse)?;
         if raw_data.is_empty() {
-            return Err(FcmError::EmptyResponse.into());
+            return Err(FcmError::EmptyResponse(status).into());
         }
         let data: GcmResponse = serde_json::from_slice(&raw_data).map_err(|e| {
             let s = String::from_utf8(raw_data.to_vec()).unwrap_or_else(|e| e.to_string());
@@ -252,7 +252,7 @@ impl FcmClient {
                 .await
                 .map_err(FcmError::DeserializeResponse)?;
             if raw_data.is_empty() {
-                return Err(FcmError::EmptyResponse.into());
+                return Err(FcmError::EmptyResponse(status).into());
             }
             let data: FcmResponse = serde_json::from_slice(&raw_data).map_err(|e| {
                 let s = String::from_utf8(raw_data.to_vec()).unwrap_or_else(|e| e.to_string());
