@@ -343,6 +343,14 @@ impl ReportableError for ApiError {
     fn metric_label(&self) -> Option<&'static str> {
         self.kind.metric_label()
     }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        match &self.kind {
+            ApiErrorKind::Router(e) => e.extras(),
+            ApiErrorKind::LogCheck => vec![("coffee", "Unsupported".to_owned())],
+            _ => vec![],
+        }
+    }
 }
 
 /// Get the error number from validation errors. If multiple errors are present,

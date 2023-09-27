@@ -203,4 +203,11 @@ impl RouterError {
             _ => true,
         }
     }
+
+    pub fn extras(&self) -> Vec<(&str, String)> {
+        match self {
+            RouterError::Fcm(e) => e.extras(),
+            _ => vec![],
+        }
+    }
 }

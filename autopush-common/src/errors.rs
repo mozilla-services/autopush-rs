@@ -194,6 +194,17 @@ pub trait ReportableError: std::error::Error + fmt::Display {
     /// Errors that don't emit Sentry events (!is_sentry_event()) emit an
     /// increment metric instead with this label
     fn metric_label(&self) -> Option<&'static str>;
+
+    /// Experimental: return tag key value pairs for metrics and Sentry
+    fn tags(&self) -> Vec<(&str, String)> {
+        vec![]
+    }
+
+    /// Experimental: return key value pairs for Sentry Event's extra data
+    /// TODO: should probably return Vec<(&str, Value)> or Vec<(String, Value)>
+    fn extras(&self) -> Vec<(&str, String)> {
+        vec![]
+    }
 }
 
 impl ReportableError for ApcError {
