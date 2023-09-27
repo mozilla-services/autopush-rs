@@ -1,3 +1,17 @@
+<a name="1.68.1"></a>
+## 1.68.1 (2023-09-27)
+
+
+#### Bug Fixes
+
+*   don't emit backtraces in Display (#447) ([392f4e1e](https://github.com/mozilla-services/autopush-rs/commit/392f4e1e5c24cbb4d43fffaca5eb5697815f896c))
+
+#### Chore
+
+*   tag 1.68.0 (#446) ([00d19b1a](https://github.com/mozilla-services/autopush-rs/commit/00d19b1abb723fd47aa2d2fe9ab013fd153900f9))
+
+
+
 <a name="1.68.0"></a>
 ## 1.68.0 (2023-09-27)
 
