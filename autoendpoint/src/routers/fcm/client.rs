@@ -163,6 +163,7 @@ impl FcmClient {
         }
         let data: GcmResponse = serde_json::from_slice(&raw_data).map_err(|e| {
             let s = String::from_utf8(raw_data.to_vec()).unwrap_or_else(|e| e.to_string());
+            warn!("gcm response error: [{:?}] ({:?})", &status, &s);
             FcmError::InvalidResponse(e, s, status)
         })?;
 
@@ -255,6 +256,7 @@ impl FcmClient {
             }
             let data: FcmResponse = serde_json::from_slice(&raw_data).map_err(|e| {
                 let s = String::from_utf8(raw_data.to_vec()).unwrap_or_else(|e| e.to_string());
+                warn!("fcm response error: [{:?}] ({:?})", &status, &s);
                 FcmError::InvalidResponse(e, s, status)
             })?;
 
