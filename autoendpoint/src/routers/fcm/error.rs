@@ -18,7 +18,7 @@ pub enum FcmError {
     DeserializeResponse(#[source] reqwest::Error),
 
     #[error("Invalid JSON response from FCM")]
-    InvalidResponse(#[source] serde_json::Error, String),
+    InvalidResponse(#[source] serde_json::Error, String, StatusCode),
 
     #[error("Empty response from FCM")]
     EmptyResponse,
@@ -51,7 +51,7 @@ impl FcmError {
 
             FcmError::DeserializeResponse(_)
             | FcmError::EmptyResponse
-            | FcmError::InvalidResponse(_, _) => StatusCode::BAD_GATEWAY,
+            | FcmError::InvalidResponse(_, _, _) => StatusCode::BAD_GATEWAY,
         }
     }
 
@@ -67,7 +67,7 @@ impl FcmError {
             | FcmError::OAuthToken(_)
             | FcmError::DeserializeResponse(_)
             | FcmError::EmptyResponse
-            | FcmError::InvalidResponse(_, _)
+            | FcmError::InvalidResponse(_, _, _)
             | FcmError::NoOAuthToken => None,
         }
     }
