@@ -36,7 +36,6 @@ serde_derive.workspace = true
 serde_json.workspace = true
 slog.workspace = true
 slog-async.workspace = true
-slog-envlogger.workspace = true
 slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
