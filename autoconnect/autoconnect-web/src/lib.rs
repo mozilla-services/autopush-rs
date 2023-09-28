@@ -6,6 +6,7 @@
 extern crate slog_scope;
 
 pub mod dockerflow;
+pub mod error;
 pub mod metrics;
 pub mod routes;
 #[cfg(test)]
@@ -13,7 +14,6 @@ mod test;
 
 use actix_web::web;
 
-/// Requires import of the `config` function also in this module to use.
 #[macro_export]
 macro_rules! build_app {
     ($app_state: expr) => {
@@ -24,18 +24,18 @@ macro_rules! build_app {
                 autopush_common::errors::render_404,
             ))
             .wrap(autopush_common::middleware::sentry::SentryWrapper::<
-                autopush_common::errors::ApcError,
+                $crate::error::ApiError,
             >::new(
                 $app_state.metrics.clone(), "error".to_owned()
             ))
-            .configure(config)
+            .configure($crate::config)
     };
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
         // Websocket Handler
-        .route("/", web::get().to(autoconnect_ws::ws_handler))
+        .route("/", web::get().to(routes::ws_route))
         .service(web::resource("/push/{uaid}").route(web::put().to(routes::push_route)))
         .service(web::resource("/notif/{uaid}").route(web::put().to(routes::check_storage_route)))
         .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))

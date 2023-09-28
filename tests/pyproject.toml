@@ -12,7 +12,7 @@ dependencies = [
     "psutil==5.9.5",
     "requests==2.31.0",
     "websocket-client==1.5.1",
-    "cryptography==40.0.2",
+    "cryptography==41.0.4",
     "twisted==22.10.0",
     "txstatsd",
     "pytest"

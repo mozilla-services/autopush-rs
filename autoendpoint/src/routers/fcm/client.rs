@@ -154,10 +154,20 @@ impl FcmClient {
 
         // Handle error
         let status = response.status();
-        let data: GcmResponse = response
-            .json()
+        let raw_data = response
+            .bytes()
             .await
             .map_err(FcmError::DeserializeResponse)?;
+        if raw_data.is_empty() {
+            warn!("Empty GCM response [{status}]");
+            return Err(FcmError::EmptyResponse(status).into());
+        }
+        let data: GcmResponse = serde_json::from_slice(&raw_data).map_err(|e| {
+            let s = String::from_utf8(raw_data.to_vec()).unwrap_or_else(|e| e.to_string());
+            warn!("Invalid GCM response [{status}], \"{s}\"");
+            FcmError::InvalidResponse(e, s, status)
+        })?;
+
         if status.is_client_error() || status.is_server_error() || data.failure > 0 {
             let invalid = GcmResult::invalid();
             return Err(
@@ -238,10 +248,19 @@ impl FcmClient {
         // Handle error
         let status = response.status();
         if status.is_client_error() || status.is_server_error() {
-            let data: FcmResponse = response
-                .json()
+            let raw_data = response
+                .bytes()
                 .await
                 .map_err(FcmError::DeserializeResponse)?;
+            if raw_data.is_empty() {
+                warn!("Empty FCM response [{status}]");
+                return Err(FcmError::EmptyResponse(status).into());
+            }
+            let data: FcmResponse = serde_json::from_slice(&raw_data).map_err(|e| {
+                let s = String::from_utf8(raw_data.to_vec()).unwrap_or_else(|e| e.to_string());
+                warn!("Invalid FCM response [{status}] \"{s}\"");
+                FcmError::InvalidResponse(e, s, status)
+            })?;
 
             // we only ever send one.
             return Err(match (status, data.error) {

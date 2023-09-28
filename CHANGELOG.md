@@ -1,3 +1,70 @@
+<a name="1.68.1"></a>
+## 1.68.1 (2023-09-27)
+
+
+#### Bug Fixes
+
+*   don't emit backtraces in Display (#447) ([392f4e1e](https://github.com/mozilla-services/autopush-rs/commit/392f4e1e5c24cbb4d43fffaca5eb5697815f896c))
+
+#### Chore
+
+*   tag 1.68.0 (#446) ([00d19b1a](https://github.com/mozilla-services/autopush-rs/commit/00d19b1abb723fd47aa2d2fe9ab013fd153900f9))
+
+
+
+<a name="1.68.0"></a>
+## 1.68.0 (2023-09-27)
+
+
+#### Features
+
+*   emit a tag in autoconnect's metrics (#435) ([67186854](https://github.com/mozilla-services/autopush-rs/commit/67186854025a93c8868c202910431d1d645bbe82))
+*   Add send notification task to locust load test file ([453ba8d4](https://github.com/mozilla-services/autopush-rs/commit/453ba8d4abf98bdf627c0b561ec6bf07ae68c5e8))
+*   add an autoconnect-web Error type (#432) ([58086e77](https://github.com/mozilla-services/autopush-rs/commit/58086e77a7f0ae6d84a6a7bbce246b90cfadbad4))
+*   switch the load tester to pypy-3.10 (#426) ([5b4d6d71](https://github.com/mozilla-services/autopush-rs/commit/5b4d6d71085480169a7f90202bb9295ad8b21f42))
+*   Update loadtests user and tests ([d4af1bfe](https://github.com/mozilla-services/autopush-rs/commit/d4af1bfe22ccbc5df54812324553cc54b2c4f84a))
+*   Add GCP BigTable support  (#364) ([608c52fe](https://github.com/mozilla-services/autopush-rs/commit/608c52fe6f905184ef0e0336b38812636295ab94))
+*   consolidate the sentry middlwares into autopush_common ([e65486b9](https://github.com/mozilla-services/autopush-rs/commit/e65486b94ae6b381ee784b4caaebc9713fc78405))
+*   add stacktraces to some sentry events (#406) ([0ded4de1](https://github.com/mozilla-services/autopush-rs/commit/0ded4de18458bbdeb3668cbaebc2582d9a4c942a))
+*   Topic messages shouldn't have sortkey_timestamps (#402) ([eeff8d71](https://github.com/mozilla-services/autopush-rs/commit/eeff8d71a4167a497bd52e7c96c00023f9bb59e2))
+*   build/deploy an autoconnect docker (#396) ([9ed4e6f0](https://github.com/mozilla-services/autopush-rs/commit/9ed4e6f01cfa0d7071bc78dbf62b8946e2ea55b8))
+*   make DbClient's message table month optional (#393) ([ab3614b7](https://github.com/mozilla-services/autopush-rs/commit/ab3614b79854dbabeeef7d58e501aca36554c295))
+*   remove legacy table rotation (#389) ([6aa107f5](https://github.com/mozilla-services/autopush-rs/commit/6aa107f522a08affc6d6dc8ad3753d03c313f48b))
+
+#### Doc
+
+*   fill in some autoconnect TODO docs (#410) ([74ffdb05](https://github.com/mozilla-services/autopush-rs/commit/74ffdb05d7b7943f0306eb821690a16d22df39fa))
+*   Update docs for modern version of autopush (#388) ([d36fb527](https://github.com/mozilla-services/autopush-rs/commit/d36fb5275c1f5e2fb431da5d890e68f0698ab298))
+
+#### Bug Fixes
+
+*   Add better error messaging for GCM/FCM processing (#445) ([2e48f504](https://github.com/mozilla-services/autopush-rs/commit/2e48f504748211a0259b4049934dde7a99efdda6))
+*   missing class-picker option in Kubernetes config ([9d0faf7c](https://github.com/mozilla-services/autopush-rs/commit/9d0faf7c2ddc3bbe7ef588987c3f526b5ed20e04))
+*   apply fixes from code review 2 ([7ea158d2](https://github.com/mozilla-services/autopush-rs/commit/7ea158d26016f3835e989a42ba903c6aadb2ba46))
+*   apply fixes from code review ([142c4d2c](https://github.com/mozilla-services/autopush-rs/commit/142c4d2c8cf10130eae6a7774743295bb28da66b))
+*   load test docker build error in GCP ([e7e7539e](https://github.com/mozilla-services/autopush-rs/commit/e7e7539e97ec475b3c9c9ff59eb9be640d16f332))
+*   remove print statement ([2134d050](https://github.com/mozilla-services/autopush-rs/commit/2134d050ac8b95ec516d1c580e926f96203aeb69))
+*   load test script modifies kubernetes config on first run only ([89dc80bc](https://github.com/mozilla-services/autopush-rs/commit/89dc80bc5dce70c3e4ff67f4718672c0cc6eb325))
+*   use explicit path ([a51fca5c](https://github.com/mozilla-services/autopush-rs/commit/a51fca5c90c20cf46887825ec23b537db1a7e35d))
+*   remove mozsvc-common (#394) ([814ff49e](https://github.com/mozilla-services/autopush-rs/commit/814ff49eeae2c1d69cf30cd30789b157a6bcd784))
+*   remove mozsvc-common (#394) ([66bb74f9](https://github.com/mozilla-services/autopush-rs/commit/66bb74f93f87d75433078a51158b1462997e3707))
+
+#### Test
+
+*   validate message schema in load tests with models ([0d8c1c2f](https://github.com/mozilla-services/autopush-rs/commit/0d8c1c2f707b1c34006abc43d41c79bc82e65c13))
+*   add a load test shape ([f84e2665](https://github.com/mozilla-services/autopush-rs/commit/f84e2665003b894101a118a0b87ed0ac49ef770b))
+*   calibrate load tests ([7a6c099f](https://github.com/mozilla-services/autopush-rs/commit/7a6c099f48d436a900495899c717b319a1d72523))
+
+#### Chore
+
+*   update user, spawn rate and time in load tests ([b9a88e5a](https://github.com/mozilla-services/autopush-rs/commit/b9a88e5ac907a879497521c03ba6800b7280e126))
+*   add python linters and formatters to CI ([615b93ad](https://github.com/mozilla-services/autopush-rs/commit/615b93adf303d160ec5660600b8a703c1a15c421))
+* **deps:**
+  *  bump gevent from 23.9.0.post1 to 23.9.1 in /tests/load ([34eb330e](https://github.com/mozilla-services/autopush-rs/commit/34eb330e130288ce436b2e714140fac60a8627f8))
+  *  bump cryptography from 40.0.2 to 41.0.4 in /tests ([acd35f27](https://github.com/mozilla-services/autopush-rs/commit/acd35f271e7c5fd3d5d9d7b6c85f121151f837e1))
+
+
+
 <a name="1.67.3"></a>
 ## 1.67.3 (2023-06-01)
 
