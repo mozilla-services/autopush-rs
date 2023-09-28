@@ -6,18 +6,40 @@
 
 import base64
 import json
+import logging
 import random
 import string
 import time
 import uuid
-from typing import Any
+from json import JSONDecodeError
+from logging import Logger
+from typing import Any, TypeAlias
 
+import gevent
+import websocket
 from args import parse_wait_time
 from exceptions import ZeroStatusRequestError
+from gevent import Greenlet
 from locust import FastHttpUser, events, task
-from models import HelloMessage, NotificationMessage, RegisterMessage
+from models import (
+    HelloMessage,
+    HelloRecord,
+    NotificationMessage,
+    NotificationRecord,
+    RegisterMessage,
+    RegisterRecord,
+)
 from pydantic import ValidationError
-from websocket import create_connection
+from websocket import WebSocketApp, WebSocketConnectionClosedException
+
+Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage
+Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
+
+# Set to 'True' to view the verbose connection information for the web socket
+websocket.enableTrace(False)
+websocket.setdefaulttimeout(5)
+
+logger: Logger = logging.getLogger("AutopushUser")
 
 
 @events.init_command_line_parser.add_listener
@@ -50,211 +72,289 @@ def _(environment, **kwargs):
     environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
 
 
-class TimeEvent:
-    def __init__(self, user: FastHttpUser, name: str) -> None:
-        self.user: FastHttpUser = user
-        self.start_time: float
-        self.name: str = name
-
-    def __enter__(self) -> object:
-        self.start_time = time.perf_counter()
-        self.response_length: int = 0
-        return self
-
-    def __exit__(self, *args) -> None:
-        end_time: float = time.perf_counter()
-        exception: Any = None
-
-        if args[0] is not None:
-            exception_type = args[0]
-            exception_value = args[1]
-            traceback = args[2]
-
-            if not isinstance(exception_value, (AssertionError, ValidationError)):
-                # An unexpected exception occurred stop the user.
-                self.user.stop()
-                return None
-
-            # Assertion and Validation errors are expected exceptional outcomes should
-            # a message received from Autopush be invalid.
-            exception = exception_type, exception_value, traceback
-
-        self.user.environment.events.request.fire(
-            request_type="WSS",
-            name=self.name,
-            response_time=(end_time - float(str(self.start_time))) * 1000,
-            response_length=self.response_length,
-            exception=exception,
-            context=self.user.context(),
-        )
-
-
 class AutopushUser(FastHttpUser):
+    REST_HEADERS: dict[str, str] = {"TTL": "60", "Content-Encoding": "aes128gcm"}
+    WEBSOCKET_HEADERS: dict[str, str] = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) "
+        "Gecko/20100101 Firefox/61.0"
+    }
+
     def __init__(self, environment) -> None:
         super().__init__(environment)
-        self.uaid: str = ""
         self.channels: dict[str, str] = {}
-        self.ws: Any = None
-        self.headers = {"TTL": "60", "Content-Encoding": "aes128gcm", "Topic": "aaaa"}
-        self.encrypted_data = base64.urlsafe_b64decode(
-            "TestData"
-            + "".join(
-                [
-                    random.choice(string.ascii_letters + string.digits)
-                    for i in range(0, random.randrange(1024, 4096, 2) - 8)
-                ]
-            )
-            + "=="
-        )
+        self.hello_record: HelloRecord | None = None
+        self.notification_records: list[NotificationRecord] = []
+        self.register_records: list[RegisterRecord] = []
+        self.uaid: str = ""
+        self.ws: WebSocketApp | None = None
+        self.ws_greenlet: Greenlet | None = None
 
     def wait_time(self):
         return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
-        self.connect()
-        if not self.ws:
-            self.stop()
-
-        self.hello()
-        if not self.uaid:
-            self.stop()
-
-        self.register()
-        if not self.channels:
-            self.stop()
+        """Called when a User starts running."""
+        self.ws_greenlet = gevent.spawn(self.connect)
 
     def on_stop(self) -> Any:
-        if self.ws:
-            self.disconnect()
-
-    def _time_event(self, name: str) -> TimeEvent:
-        return TimeEvent(self, name)
-
-    def connect(self) -> None:
-        self.ws = create_connection(
-            self.environment.parsed_options.websocket_url,
-            header={"Origin": "http://localhost:1337"},
-            timeout=5,  # timeout defaults to None
-        )
-
-    def disconnect(self) -> None:
+        """Called when a User stops running."""
         if self.ws:
             self.ws.close()
-        self.ws = None
+            self.ws = None
+        if self.ws_greenlet:
+            gevent.kill(self.ws_greenlet)
 
-    def hello(self) -> None:
-        """Send a 'hello' message to Autopush.
+    def on_ws_open(self, ws: WebSocketApp) -> None:
+        """Called when opening a WebSocket.
 
-        Connections must say hello after connecting to the server, otherwise the connection is
-        quickly dropped.
-
-        Raises:
-            AssertionError: If the hello message response is empty or has an invalid status
-            ValidationError: If the hello message schema is not as expected
+        Args:
+            ws: WebSocket class object
         """
-        body: str = json.dumps(
-            dict(
-                messageType="hello",
-                use_webpush=True,
-                uaid=self.uaid,
-                channelIDs=list(self.channels.keys()),
-            )
-        )
-        with self._time_event(name="hello - send") as timer:
-            self.ws.send(body)
+        self.send_hello(ws)
 
-        with self._time_event(name="hello - recv") as timer:
-            response: str = self.ws.recv()
-            assert response, "No 'hello' response"
-            message: HelloMessage = HelloMessage(**json.loads(response))
-            timer.response_length = len(response.encode("utf-8"))
+    def on_ws_message(self, ws: WebSocketApp, data: str) -> None:
+        """Called when received data from a WebSocket.
 
-        if not self.uaid:
+        Args:
+            ws: WebSocket class object
+            data: utf-8 data received from the server
+        """
+        message: Message | None = self.recv(data)
+        if isinstance(message, HelloMessage):
             self.uaid = message.uaid
+            # In order to assure notifications are sent on startup, users are
+            # required to be subscribed to a channel
+            if not self.channels:
+                self.send_register(ws)
+        elif isinstance(message, NotificationMessage):
+            self.send_ack(ws, message.channelID, message.version)
+        elif isinstance(message, RegisterMessage):
+            self.channels[message.channelID] = message.pushEndpoint
 
-    def ack(self) -> None:
-        """Send an 'ack' message to push.
+    def on_ws_error(self, ws: WebSocketApp, error: Exception) -> None:
+        """Called when there is a WebSocketApp error or if an exception is raised in a WebSocket
+        callback function.
 
-        After sending a notification, the client must also send an 'ack' to the server to
-        confirm receipt. If there is a pending notification, this will try and receive it
-        before sending an acknowledgement.
-
-        Raises:
-            AssertionError: If the notification message response is empty
-            ValidationError: If the notification message schema is not as expected
+        Args:
+            ws: WebSocket class object
+            error: Exception object
         """
-        with self._time_event(name="notification - recv") as timer:
-            response = self.ws.recv()
-            assert response, "No 'notification' response"
-            message: NotificationMessage = NotificationMessage(**json.loads(response))
-            timer.response_length = len(response.encode("utf-8"))
+        logger.error(str(error))
 
-        body: str = json.dumps(
-            dict(
-                messageType="ack",
-                updates=[dict(channelID=message.channelID, version=message.version)],
-            )
+        # WebSocket closures are expected
+        if isinstance(error, WebSocketConnectionClosedException):
+            return  # Don't send the exception to the UI it creates too much clutter
+
+        self.environment.events.user_error.fire(
+            user_instance=self.context(), exception=error, tb=error.__traceback__
         )
-        with self._time_event(name="ack - send"):
-            self.ws.send(body)
 
-    def post_notification(self, endpoint_url) -> bool:
+    def on_ws_close(
+        self, ws: WebSocketApp, close_status_code: int | None, close_msg: str | None
+    ) -> None:
+        """Called when closing a WebSocket.
+
+        Args:
+            ws: WebSocket class object
+            close_status_code: WebSocket close status
+            close_msg: WebSocket close message
+        """
+        if close_status_code or close_msg:
+            logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
+
+    @task(weight=95)
+    def send_notification(self):
+        """Sends a notification to a registered endpoint while connected to Autopush."""
+        if not self.ws or not self.channels:
+            logger.debug("Task 'send_notification' skipped.")
+            return
+
+        endpoint_url: str = random.choice(list(self.channels.values()))
+        self.post_notification(endpoint_url)
+
+    def connect(self) -> None:
+        """Creates the WebSocketApp that will run indefinitely."""
+        self.ws = websocket.WebSocketApp(
+            self.environment.parsed_options.websocket_url,
+            header=self.WEBSOCKET_HEADERS,
+            on_message=self.on_ws_message,
+            on_error=self.on_ws_error,
+            on_close=self.on_ws_close,
+            on_open=self.on_ws_open,
+        )
+
+        # If reconnect is set to 0 (default) the WebSocket will not reconnect.
+        self.ws.run_forever(reconnect=1)
+
+    def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
 
         Args:
             endpoint_url: A channel destination endpoint url
-        Returns:
-            bool: Flag indicating if the post notification request was successful
         Raises:
             ZeroStatusRequestError: In the event that Locust experiences a network issue while
                                     sending a notification.
         """
+        message_type: str = "notification"
+        # Prefix random message with 'TestData' to more easily differentiate the payload
+        data: str = "TestData" + "".join(
+            [
+                random.choice(string.ascii_letters + string.digits)
+                for i in range(0, random.randrange(1024, 4096, 2) - 8)
+            ]
+        )
+
+        record = NotificationRecord(send_time=time.perf_counter(), data=data)
+        self.notification_records.append(record)
+
         with self.client.post(
             url=endpoint_url,
-            name="notification",
-            data=self.encrypted_data,
-            headers=self.headers,
+            name=message_type,
+            data=data,
+            headers=self.REST_HEADERS,
             catch_response=True,
         ) as response:
             if response.status_code == 0:
                 raise ZeroStatusRequestError()
             if response.status_code != 201:
                 response.failure(f"{response.status_code=}, expected 201, {response.text=}")
-                return False
-        return True
 
-    def register(self) -> None:
-        """Send a 'register' message to Autopush. Subscribes to an Autopush channel.
+    def recv(self, data: str) -> Message | None:
+        """Verify the contents of an Autopush message and report response statistics to Locust.
 
-        Raises:
-            AssertionError: If the register message response is empty or has an invalid status or
-                            channel ID.
-            ValidationError: If the register message schema is not as expected
+        Args:
+            data: utf-8 data received from the server
         """
+        recv_time: float = time.perf_counter()
+        exception: str | None = None
+        message: Message | None = None
+        message_type: str = "unknown"
+        record: Record | None = None
+        response_time: float = 0
 
-        chid: str = str(uuid.uuid4())
-        body = json.dumps(dict(messageType="register", channelID=chid))
+        try:
+            message_dict: dict[str, Any] = json.loads(data)
+            message_type = message_dict.get("messageType", "unknown")
+            match message_type:
+                case "hello":
+                    message = HelloMessage(**message_dict)
+                    record = self.hello_record
+                case "notification":
+                    message = NotificationMessage(**message_dict)
+                    message_data: str = message.data  # type: ignore[union-attr]
+                    decode_data: str = base64.urlsafe_b64decode(message_data + "===").decode(
+                        "utf8"
+                    )
+                    record = next(
+                        (r for r in self.notification_records if r.data == decode_data), None
+                    )
+                case "register":
+                    message = RegisterMessage(**message_dict)
+                    message_channel_id: str = message.channelID  # type: ignore[union-attr]
+                    record = next(
+                        (r for r in self.register_records if r.channel_id == message_channel_id),
+                        None,
+                    )
+                case _:
+                    exception = f"Unexpected data was received. Data: {data}"
 
-        with self._time_event(name="register - send"):
-            self.ws.send(body)
+            if record:
+                response_time = (recv_time - record.send_time) * 1000
+            else:
+                exception = f"There is no record of the '{message_type}' message"
+                logger.error(f"{exception}. Contents: {message}")
+        except (ValidationError, JSONDecodeError) as error:
+            exception = str(error)
 
-        with self._time_event(name="register - recv") as timer:
-            response: str = self.ws.recv()
-            assert response, "No 'register' response"
-            message: RegisterMessage = RegisterMessage(**json.loads(response))
-            assert (
-                message.channelID == chid
-            ), f"Channel ID Error. Expected: {chid} Actual: {message.channelID}"
-            timer.response_length = len(response.encode("utf-8"))
+        self.environment.events.request.fire(
+            request_type="WSS",
+            name=f"{message_type} - recv",
+            response_time=response_time,
+            response_length=len(data.encode("utf-8")),
+            exception=exception,
+            context=self.context(),
+        )
 
-        self.channels[chid] = message.pushEndpoint
+        return message
 
-    @task(weight=95)
-    def send_direct_notification(self):
-        """Sends a notification to a registered endpoint while connected to Autopush."""
-        endpoint_url = self.channels[random.choice(list(self.channels.keys()))]
+    def send_ack(self, ws: WebSocketApp, channel_id: str, version: str) -> None:
+        """Send an 'ack' message to Autopush.
 
-        if not self.post_notification(endpoint_url):
-            self.stop()
+        After sending a notification, the client must also send an 'ack' to the server
+        to confirm receipt.
 
-        self.ack()
+        Args:
+            ws: WebSocket class object
+            channel_id: Notification message channel ID
+            version: Notification message version
+        Raises:
+            WebSocketException: Error raised by the WebSocket client
+        """
+        message_type: str = "ack"
+        data: dict[str, Any] = dict(
+            messageType=message_type,
+            updates=[dict(channelID=channel_id, version=version)],
+        )
+        self.send(ws, message_type, data)
+
+    def send_hello(self, ws: WebSocketApp) -> None:
+        """Send a 'hello' message to Autopush.
+
+        Connections must say hello after connecting to the server, otherwise the connection is
+        quickly dropped.
+
+        Args:
+            ws: WebSocket class object
+        Raises:
+            WebSocketException: Error raised by the WebSocket client
+        """
+        message_type: str = "hello"
+        data: dict[str, Any] = dict(
+            messageType=message_type,
+            use_webpush=True,
+            uaid=self.uaid,
+            channelIDs=list(self.channels.keys()),
+        )
+        self.hello_record = HelloRecord(send_time=time.perf_counter())
+        self.send(ws, message_type, data)
+
+    def send_register(self, ws: WebSocketApp) -> None:
+        """Send a 'register' message to Autopush.
+
+        Args:
+            ws: WebSocket class object
+        Raises:
+            WebSocketException: Error raised by the WebSocket client
+        """
+        message_type: str = "register"
+        channel_id: str = str(uuid.uuid4())
+        data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
+        record = RegisterRecord(send_time=time.perf_counter(), channel_id=channel_id)
+        self.register_records.append(record)
+        self.send(ws, message_type, data)
+
+    def send(self, ws: WebSocketApp, message_type: str, data: dict[str, Any]) -> None:
+        """Send a message to Autopush.
+
+        Args:
+            ws: WebSocket class object
+            message_type: Message type. Examples: 'ack', 'hello' or 'register'
+            data: Message data
+        Raises:
+            WebSocketException: Error raised by the WebSocket client
+        """
+        try:
+            ws.send(json.dumps(data))
+        except WebSocketConnectionClosedException as error:
+            # WebSocket closures are expected
+            # Don't send the exception to the UI it creates too much clutter
+            logger.error(str(error))
+
+        self.environment.events.request.fire(
+            request_type="WSS",
+            name=f"{message_type} - send",
+            response_time=0,
+            response_length=0,
+            exception=None,
+            context=self.context(),
+        )

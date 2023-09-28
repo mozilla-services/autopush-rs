@@ -224,4 +224,4 @@ Execute the `setup_k8s.sh` file and select the **delete** option
 [12]: https://console.cloud.google.com/home/dashboard?q=search&referrer=search&project=spheric-keel-331521&cloudshell=false
 [13]: https://console.cloud.google.com/compute/instances?project=spheric-keel-331521
 [14]: https://earthangel-b40313e5.influxcloud.net/d/do4mmwcVz/autopush-gcp?orgId=1&refresh=1m
-[15]: https://drive.google.com/file/d/1dETF1LhW3Msw54cp7iJ4pMPeZWEv3sUg/view?usp=drive_link
+[15]: https://drive.google.com/drive/folders/13a-9DZXmeoJw4sLlo56tLwtnRXoKauHO
