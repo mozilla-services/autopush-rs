@@ -56,3 +56,11 @@ class RegisterRecord(BaseModel):
 
     send_time: float
     channel_id: str
+
+
+class UnregisterMessage(BaseModel):
+    """Autopush 'unregister' response message."""
+
+    messageType: Literal["unregister"]
+    channelID: str
+    status: Literal[200]

@@ -28,11 +28,12 @@ from models import (
     NotificationRecord,
     RegisterMessage,
     RegisterRecord,
+    UnregisterMessage,
 )
 from pydantic import ValidationError
 from websocket import WebSocketApp, WebSocketConnectionClosedException
 
-Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage
+Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | UnregisterMessage
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
 
 # Set to 'True' to view the verbose connection information for the web socket
@@ -63,7 +64,7 @@ def _(parser: Any):
         type=str,
         env_var="AUTOPUSH_WAIT_TIME",
         help="AutopushUser wait time between tasks",
-        default="20, 25",
+        default="25, 30",
     )
 
 
@@ -85,6 +86,7 @@ class AutopushUser(FastHttpUser):
         self.hello_record: HelloRecord | None = None
         self.notification_records: list[NotificationRecord] = []
         self.register_records: list[RegisterRecord] = []
+        self.unregister_records: list[RegisterRecord] = []
         self.uaid: str = ""
         self.ws: WebSocketApp | None = None
         self.ws_greenlet: Greenlet | None = None
@@ -99,6 +101,8 @@ class AutopushUser(FastHttpUser):
     def on_stop(self) -> Any:
         """Called when a User stops running."""
         if self.ws:
+            for channel_id in self.channels.keys():
+                self.send_unregister(self.ws, channel_id)
             self.ws.close()
             self.ws = None
         if self.ws_greenlet:
@@ -122,14 +126,12 @@ class AutopushUser(FastHttpUser):
         message: Message | None = self.recv(data)
         if isinstance(message, HelloMessage):
             self.uaid = message.uaid
-            # In order to assure notifications are sent on startup, users are
-            # required to be subscribed to a channel
-            if not self.channels:
-                self.send_register(ws)
         elif isinstance(message, NotificationMessage):
             self.send_ack(ws, message.channelID, message.version)
         elif isinstance(message, RegisterMessage):
             self.channels[message.channelID] = message.pushEndpoint
+        elif isinstance(message, UnregisterMessage):
+            del self.channels[message.channelID]
 
     def on_ws_error(self, ws: WebSocketApp, error: Exception) -> None:
         """Called when there is a WebSocketApp error or if an exception is raised in a WebSocket
@@ -162,7 +164,7 @@ class AutopushUser(FastHttpUser):
         if close_status_code or close_msg:
             logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
 
-    @task(weight=95)
+    @task(weight=98)
     def send_notification(self):
         """Sends a notification to a registered endpoint while connected to Autopush."""
         if not self.ws or not self.channels:
@@ -171,6 +173,26 @@ class AutopushUser(FastHttpUser):
 
         endpoint_url: str = random.choice(list(self.channels.values()))
         self.post_notification(endpoint_url)
+
+    @task(weight=1)
+    def subscribe(self):
+        """Subscribes a user to an Autopush channel."""
+        if not self.ws:
+            logger.debug("Task 'subscribe' skipped.")
+            return
+
+        channel_id: str = str(uuid.uuid4())
+        self.send_register(self.ws, channel_id)
+
+    @task(weight=1)
+    def unsubscribe(self):
+        """Unsubscribes a user from an Autopush channel."""
+        if not self.ws or not self.channels:
+            logger.debug("Task 'unsubscribe' skipped.")
+            return
+
+        channel_id: str = random.choice(list(self.channels.keys()))
+        self.send_unregister(self.ws, channel_id)
 
     def connect(self) -> None:
         """Creates the WebSocketApp that will run indefinitely."""
@@ -250,9 +272,16 @@ class AutopushUser(FastHttpUser):
                     )
                 case "register":
                     message = RegisterMessage(**message_dict)
-                    message_channel_id: str = message.channelID  # type: ignore[union-attr]
+                    register_chid: str = message.channelID  # type: ignore[union-attr]
                     record = next(
-                        (r for r in self.register_records if r.channel_id == message_channel_id),
+                        (r for r in self.register_records if r.channel_id == register_chid),
+                        None,
+                    )
+                case "unregister":
+                    message = UnregisterMessage(**message_dict)
+                    unregister_chid: str = message.channelID  # type: ignore[union-attr]
+                    record = next(
+                        (r for r in self.unregister_records if r.channel_id == unregister_chid),
                         None,
                     )
                 case _:
@@ -318,19 +347,34 @@ class AutopushUser(FastHttpUser):
         self.hello_record = HelloRecord(send_time=time.perf_counter())
         self.send(ws, message_type, data)
 
-    def send_register(self, ws: WebSocketApp) -> None:
+    def send_register(self, ws: WebSocketApp, channel_id: str) -> None:
         """Send a 'register' message to Autopush.
 
         Args:
             ws: WebSocket class object
+            channel_id: Notification message channel ID
         Raises:
             WebSocketException: Error raised by the WebSocket client
         """
         message_type: str = "register"
-        channel_id: str = str(uuid.uuid4())
         data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
         record = RegisterRecord(send_time=time.perf_counter(), channel_id=channel_id)
         self.register_records.append(record)
+        self.send(ws, message_type, data)
+
+    def send_unregister(self, ws: WebSocketApp, channel_id: str) -> None:
+        """Send an 'unregister' message to Autopush.
+
+        Args:
+            ws: WebSocket class object
+            channel_id: Notification message channel ID
+        Raises:
+            WebSocketException: Error raised by the WebSocket client
+        """
+        message_type: str = "unregister"
+        data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
+        record = RegisterRecord(send_time=time.perf_counter(), channel_id=channel_id)
+        self.unregister_records.append(record)
         self.send(ws, message_type, data)
 
     def send(self, ws: WebSocketApp, message_type: str, data: dict[str, Any]) -> None:
@@ -338,7 +382,7 @@ class AutopushUser(FastHttpUser):
 
         Args:
             ws: WebSocket class object
-            message_type: Message type. Examples: 'ack', 'hello' or 'register'
+            message_type: Message type. Examples: 'ack', 'hello', 'register' or 'unregister'
             data: Message data
         Raises:
             WebSocketException: Error raised by the WebSocket client
