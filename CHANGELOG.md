@@ -1,3 +1,17 @@
+<a name="1.68.2"></a>
+## 1.68.2 (2023-09-27)
+
+
+#### Bug Fixes
+
+*   Use `warn!()` to supplement sentry errors, since they don't show up regularly. (#449) ([4eaa9a06](https://github.com/mozilla-services/autopush-rs/commit/4eaa9a06a8197e31f103d9e0ce18f6aa550526b7))
+
+#### Chore
+
+*   tag 1.68.1 (#448) ([b55bbe76](https://github.com/mozilla-services/autopush-rs/commit/b55bbe7680be5e0601353321653fbefa9a9e737b))
+
+
+
 <a name="1.68.1"></a>
 ## 1.68.1 (2023-09-27)
 
