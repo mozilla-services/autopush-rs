@@ -10,8 +10,8 @@ CLUSTER='autopush-locust-load-test'
 TARGET='https://updates-autopush.stage.mozaws.net'
 SCOPE='https://www.googleapis.com/auth/cloud-platform'
 REGION='us-central1'
-WORKER_COUNT=119
-MACHINE_TYPE='n1-standard-4'
+WORKER_COUNT=150
+MACHINE_TYPE='n1-standard-2' # 2 CPUs + 7.50GB Memory
 BOLD=$(tput bold)
 NORM=$(tput sgr0)
 DIRECTORY=$(pwd)
@@ -99,7 +99,8 @@ do
     case $response in
         create) #Setup Kubernetes Cluster
             echo -e "==================== Creating the GKE cluster "
-            $GCLOUD container clusters create $CLUSTER --region $REGION --scopes $SCOPE --enable-autoscaling --min-nodes "5" --max-nodes "30" --scopes=logging-write,storage-ro --addons HorizontalPodAutoscaling,HttpLoadBalancing  --machine-type $MACHINE_TYPE
+            # The total-max-nodes = WORKER_COUNT + 1 (MASTER)
+            $GCLOUD container clusters create $CLUSTER --region $REGION --scopes $SCOPE --enable-autoscaling --total-min-nodes "1" --total-max-nodes "151" --scopes=logging-write,storage-ro --addons HorizontalPodAutoscaling,HttpLoadBalancing  --machine-type $MACHINE_TYPE
             SetupGksCluster
             break
             ;;

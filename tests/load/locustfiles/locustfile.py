@@ -64,7 +64,7 @@ def _(parser: Any):
         type=str,
         env_var="AUTOPUSH_WAIT_TIME",
         help="AutopushUser wait time between tasks",
-        default="20, 25",
+        default="25, 30",
     )
 
 
@@ -164,7 +164,7 @@ class AutopushUser(FastHttpUser):
         if close_status_code or close_msg:
             logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
 
-    @task(weight=95)
+    @task(weight=98)
     def send_notification(self):
         """Sends a notification to a registered endpoint while connected to Autopush."""
         if not self.ws or not self.channels:
