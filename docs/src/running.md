@@ -193,13 +193,8 @@ you have an account open the Google Developer Console:
     will need this value for your android application.
 
 * in the `.autopush_endpoint` server config file:
-<<<<<<< HEAD
-    -   add `fcm_enabled` to enable FCM routing.
-    -   add `fcm_creds`. This is a json block with the following format:
-=======
     - add `fcm_enabled` to enable FCM routing.
     - add `fcm_creds`. This is a json block with the following format:
->>>>>>> 483aa37012670fbaf9f52bd25a3abfc9f3ffdd6d
 
     ```{"APP ID": {"projectid": "PROJECT ID NAME", "auth":"PATH TO PRIVATE KEY FILE"}, ...}```
 
