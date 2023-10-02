@@ -48,6 +48,7 @@ pub struct FcmSettings {
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct FcmServerCredential {
     pub project_id: String,
+    pub is_gcm: Option<bool>,
     #[serde(rename = "credential")]
     pub server_access_token: String,
 }
