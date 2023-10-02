@@ -522,7 +522,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "autoconnect"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "actix",
  "actix-cors",
@@ -549,7 +549,7 @@ dependencies = [
  "lazy_static",
  "log",
  "mozsvc-common",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
  "sentry",
  "sentry-actix",
  "sentry-core",
@@ -567,13 +567,13 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_common"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "actix-web",
  "autopush_common",
  "futures 0.3.28",
  "futures-locks 0.7.1",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
  "sentry",
  "serde",
  "serde_derive",
@@ -586,7 +586,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_settings"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "autoconnect_common",
  "autopush_common",
@@ -595,7 +595,7 @@ dependencies = [
  "fernet",
  "lazy_static",
  "mozsvc-common",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
  "serde",
  "serde_derive",
  "slog",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_web"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "actix-codec",
  "actix-http",
@@ -623,7 +623,7 @@ dependencies = [
  "cadence",
  "ctor",
  "futures-util",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
  "serde_json",
  "slog-scope",
  "thiserror",
@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_ws"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "actix-http",
  "actix-rt",
@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_ws_sm"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -672,7 +672,7 @@ dependencies = [
  "ctor",
  "futures 0.3.28",
  "mockall",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
  "sentry",
  "slog-scope",
  "thiserror",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "autoendpoint"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "a2",
  "actix-cors",
@@ -710,7 +710,7 @@ dependencies = [
  "openssl",
  "rand 0.8.5",
  "regex",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
  "rusoto_core 0.47.0",
  "rusoto_dynamodb 0.47.0",
  "sentry",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "autopush"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "autopush_common",
  "base64 0.21.4",
@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "autopush_common"
-version = "1.68.2"
+version = "1.68.3"
 dependencies = [
  "actix-http",
  "actix-rt",
@@ -821,7 +821,7 @@ dependencies = [
  "protobuf",
  "rand 0.8.5",
  "regex",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
  "rusoto_core 0.47.0",
  "rusoto_credential 0.47.0",
  "rusoto_dynamodb 0.47.0",
@@ -2918,7 +2918,7 @@ checksum = "51fba38c7ded23ca88a409f72277d177170b3eadb5e283741182fd3cae60ecdf"
 dependencies = [
  "hostname",
  "lazy_static",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
 ]
 
 [[package]]
@@ -3733,9 +3733,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.11.20"
+version = "0.11.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e9ad3fe7488d7e34558a2033d45a0c90b72d97b4f80705666fea71472e2e6a1"
+checksum = "78fdbab6a7e1d7b13cc8ff10197f47986b41c639300cc3c8158cac7847c9bbef"
 dependencies = [
  "base64 0.21.4",
  "bytes 1.5.0",
@@ -3758,6 +3758,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded 0.7.1",
+ "system-configuration",
  "tokio 1.32.0",
  "tokio-native-tls",
  "tower-service",
@@ -4227,7 +4228,7 @@ dependencies = [
  "httpdate",
  "log",
  "native-tls",
- "reqwest 0.11.20",
+ "reqwest 0.11.21",
  "sentry-backtrace",
  "sentry-contexts",
  "sentry-core",
@@ -4765,6 +4766,27 @@ dependencies = [
  "quote 1.0.33",
  "syn 1.0.109",
  "unicode-xid 0.2.4",
+]
+
+[[package]]
+name = "system-configuration"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba3a3adc5c275d719af8cb4272ea1c4a6d668a777f37e115f6d11ddbc1c8e0e7"
+dependencies = [
+ "bitflags 1.3.2",
+ "core-foundation",
+ "system-configuration-sys",
+]
+
+[[package]]
+name = "system-configuration-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
 ]
 
 [[package]]
