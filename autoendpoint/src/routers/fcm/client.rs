@@ -367,7 +367,7 @@ pub mod tests {
     async fn unknown_fcm_error() {
         let client = make_client(FcmServerCredential {
             project_id: PROJECT_ID.to_owned(),
-            is_gcm: Some(false),
+            is_gcm: Some(true),
             server_access_token: make_service_key(),
         })
         .await;

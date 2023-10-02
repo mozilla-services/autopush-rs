@@ -188,28 +188,24 @@ impl Router for FcmRouter {
         // that this is a fragile relationship and so GCM errors do not immediately drop the
         // remote user's endpoint (potentially causing a UA reset.)
         //
-        trace!(
-            "Sending message to {platform}: [{:?}]",
-            &app_id,
-            platform = if client.is_gcm { "GCM as FCM" } else { "FCM" }
-        );
+        let platform = if client.is_gcm {
+            "gcm_as_fcmv1"
+        } else {
+            "fcmv1"
+        };
+        trace!("Sending message to {platform}: [{:?}]", &app_id);
         if let Err(e) = client.send(message_data, routing_token, ttl).await {
             return Err(handle_error(
                 e,
                 &self.metrics,
                 self.db.as_ref(),
-                if client.is_gcm { "gcm_as_fcm" } else { "fcm" },
+                platform,
                 &app_id,
                 notification.subscription.user.uaid,
             )
             .await);
         };
-        incr_success_metrics(
-            &self.metrics,
-            if client.is_gcm { "gcm_as_fcm" } else { "fcm" },
-            &app_id,
-            notification,
-        );
+        incr_success_metrics(&self.metrics, platform, &app_id, notification);
         // Sent successfully, update metrics and make response
         trace!("Send request was successful");
 
