@@ -163,10 +163,10 @@ impl Router for FcmRouter {
         // that is sent by the client at registration.
         //
         // Try reading as FCM and fall back to GCM.
+
         let (routing_token, app_id) =
             self.routing_info(router_data, &notification.subscription.user.uaid)?;
         let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
-        let message_data = build_message_data(notification)?;
 
         // Send the notification to FCM
         // (Sigh, errors do not have tags support. )
@@ -175,24 +175,30 @@ impl Router for FcmRouter {
             .get(&app_id)
             .ok_or_else(|| FcmError::InvalidAppId(app_id.clone()))?;
 
-        // GCM is the older message format for android, and it's not possible to generate
-        // new test keys. As of 2023-09, GCM should use FCM OAuth2 in order to authenticate.
-        // FCM operates by using the more complex token as part of an OAuth2
-        // transaction. According to the documentation, GCM and FCM are interoperable,
-        // meaning that the client provided tokens should match up, and that the structure
-        // of the data should also not make a huge difference.
-        //
-        // In Oct of 2023, "legacy" GCM support was deprecated. After some
-        // research, it was hypothesised that the current FCM project may be able
-        // to accept GCM routing identifiers as FCM message tokens. The current code presumes
-        // that this is a fragile relationship and so GCM errors do not immediately drop the
-        // remote user's endpoint (potentially causing a UA reset.)
-        //
-        let platform = if client.is_gcm {
-            "gcm_as_fcmv1"
-        } else {
-            "fcmv1"
-        };
+        if client.is_gcm {
+            // GCM is the older message format for android, and it's not possible to generate
+            // new test keys.
+            // As of 2023-09-22 Legacy GCM messages are no longer supported.
+            // Due to a very unfortunate set of decisions made at the beginning of the WebPush
+            // project, we do not have access to the original GCM credential set and therefore
+            // can not move these GCM users to FCM. We have no choice but to treat this as
+            // a bridge server rejection, disable the subscription, and hope that
+            // the remote UA is running Fenix+, which will perform a daily check-in
+            // note the discrepancy and recreate the subscriptions, this time as
+            // proper FCM.
+            return Err(handle_error(
+                RouterError::NotFound,
+                &self.metrics,
+                self.db.as_ref(),
+                "gcm_as_fcmv1",
+                &app_id,
+                notification.subscription.user.uaid,
+            )
+            .await);
+        }
+
+        let message_data = build_message_data(notification)?;
+        let platform = "fcmv1";
         trace!("Sending message to {platform}: [{:?}]", &app_id);
         if let Err(e) = client.send(message_data, routing_token, ttl).await {
             return Err(handle_error(
@@ -261,7 +267,8 @@ mod tests {
                     },
                     GCM_PROJECT_ID: {
                         "project_id": GCM_PROJECT_ID,
-                        "credential": gcm_credential
+                        "credential": gcm_credential,
+                        "is_gcm": true,
                     }
                 })
                 .to_string(),
@@ -322,51 +329,37 @@ mod tests {
         fcm_mock.assert();
     }
 
-    /// A notification with no data is sent to GCM if the subscription specifies it.
-    /*
-        #[tokio::test]
-        async fn successful_gcm_fallback() {
-            let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
-            let registration_id = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-            // let project_id = GCM_PROJECT_ID;
-            let db = MockDbClient::new().into_boxed_arc();
-            let router = make_router(make_service_key(), auth_key.to_owned(), db).await;
-            assert!(router.active());
-            // body must match the composed body in `gcm_send` exactly (order, values, etc.)
-            let body = serde_json::json!({
-                "registration_ids": [registration_id],
-                "time_to_live": 60_i32,
-                "delay_while_idle": false,
-                "data": {
-                    "chid": CHANNEL_ID
-                },
-            })
-            .to_string();
-            let _token_mock = mock_token_endpoint();
-            let fcm_mock = mock_gcm_endpoint_builder()
-                .match_header("Authorization", format!("key={}", &auth_key).as_str())
-                .match_header("Content-Type", "application/json")
-                .with_body(
-                    r#"{ "multicast_id": 216,"success":1,"failure":0,"canonical_ids":0,"results":[{"message_id":"1:02"}]}"#,
-                )
-                .match_body(body.as_str())
-                .create();
-            let notification = make_notification(
-                gcm_router_data(registration_id.to_owned()),
-                None,
-                RouterType::GCM,
-            );
+    /// A notification sent to GCM is always rejected.
+    //*
+    #[tokio::test]
+    async fn reject_gcm() {
+        let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
+        let project_id = GCM_PROJECT_ID;
+        let mut db = MockDbClient::new();
+        db.expect_remove_user().times(1).return_once(|_| Ok(()));
+        let router =
+            make_router(make_service_key(), auth_key.to_owned(), db.into_boxed_arc()).await;
+        assert!(router.active());
+        let mut router_data = HashMap::new();
+        let mut creds = HashMap::new();
+        creds.insert("senderID", serde_json::to_value(project_id).unwrap());
+        router_data.insert(
+            "senderID".to_string(),
+            serde_json::to_value(project_id).unwrap(),
+        );
+        router_data.insert("creds".to_string(), serde_json::to_value(creds).unwrap());
+        router_data.insert("token".to_string(), serde_json::to_value("reject").unwrap());
+        let _token_mock = mock_token_endpoint();
+        let notification = make_notification(router_data, None, RouterType::GCM);
 
-            let result = router.route_notification(&notification).await;
-            assert!(result.is_ok(), "result = {result:?}");
-            assert_eq!(
-                result.unwrap(),
-                RouterResponse::success("http://localhost:8080/m/test-message-id".to_string(), 0)
-            );
-            fcm_mock.assert();
-        }
-    */
-
+        let result = router.route_notification(&notification).await;
+        assert!(result.is_err(), "result = {result:?}");
+        assert!(matches!(
+            result.unwrap_err().kind,
+            ApiErrorKind::Router(RouterError::NotFound)
+        ))
+    }
+    // */
     /// A notification with data is sent to FCM
     #[tokio::test]
     async fn successful_routing_with_data() {
