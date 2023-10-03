@@ -3,6 +3,7 @@ use autopush_common::db::client::DbClient;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
+use crate::extractors::routers::RouterType;
 use crate::routers::common::{build_message_data, handle_error, incr_success_metrics};
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
@@ -12,6 +13,7 @@ use async_trait::async_trait;
 use cadence::StatsdClient;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
@@ -169,13 +171,14 @@ impl Router for FcmRouter {
         let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
 
         // Send the notification to FCM
-        // (Sigh, errors do not have tags support. )
         let client = self
             .clients
             .get(&app_id)
             .ok_or_else(|| FcmError::InvalidAppId(app_id.clone()))?;
 
-        if client.is_gcm {
+        let router_type = RouterType::from_str(&notification.subscription.user.router_type)
+            .unwrap_or(RouterType::FCM);
+        if matches!(router_type, RouterType::GCM) {
             // GCM is the older message format for android, and it's not possible to generate
             // new test keys.
             // As of 2023-09-22 Legacy GCM messages are no longer supported.
@@ -190,7 +193,7 @@ impl Router for FcmRouter {
                 RouterError::NotFound,
                 &self.metrics,
                 self.db.as_ref(),
-                "gcm_as_fcmv1",
+                "gcm",
                 &app_id,
                 notification.subscription.user.uaid,
             )
@@ -330,7 +333,6 @@ mod tests {
     }
 
     /// A notification sent to GCM is always rejected.
-    //*
     #[tokio::test]
     async fn reject_gcm() {
         let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
@@ -359,7 +361,7 @@ mod tests {
             ApiErrorKind::Router(RouterError::NotFound)
         ))
     }
-    // */
+
     /// A notification with data is sent to FCM
     #[tokio::test]
     async fn successful_routing_with_data() {
