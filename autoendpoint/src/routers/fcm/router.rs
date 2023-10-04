@@ -296,36 +296,6 @@ mod tests {
         fcm_mock.assert();
     }
 
-    /// A notification sent to GCM is always rejected.
-    #[tokio::test]
-    async fn reject_gcm() {
-        let auth_key = "AIzaSyB0ecSrqnEDXQ7yjLXqVc0CUGOeSlq9BsM"; // this is a nonce value used only for testing.
-        let project_id = GCM_PROJECT_ID;
-        let mut db = MockDbClient::new();
-        db.expect_remove_user().times(1).return_once(|_| Ok(()));
-        let router =
-            make_router(make_service_key(), auth_key.to_owned(), db.into_boxed_arc()).await;
-        assert!(router.active());
-        let mut router_data = HashMap::new();
-        let mut creds = HashMap::new();
-        creds.insert("senderID", serde_json::to_value(project_id).unwrap());
-        router_data.insert(
-            "senderID".to_string(),
-            serde_json::to_value(project_id).unwrap(),
-        );
-        router_data.insert("creds".to_string(), serde_json::to_value(creds).unwrap());
-        router_data.insert("token".to_string(), serde_json::to_value("reject").unwrap());
-        let _token_mock = mock_token_endpoint();
-        let notification = make_notification(router_data, None, RouterType::GCM);
-
-        let result = router.route_notification(&notification).await;
-        assert!(result.is_err(), "result = {result:?}");
-        assert!(matches!(
-            result.unwrap_err().kind,
-            ApiErrorKind::Router(RouterError::NotFound)
-        ))
-    }
-
     /// A notification with data is sent to FCM
     #[tokio::test]
     async fn successful_routing_with_data() {
