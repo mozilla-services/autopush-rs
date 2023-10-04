@@ -140,7 +140,7 @@ impl FcmClient {
                 .map_err(FcmError::DeserializeResponse)?;
             if raw_data.is_empty() {
                 warn!("Empty FCM response [{status}]");
-                return Err(FcmError::EmptyResponse(status, self.is_gcm).into());
+                return Err(FcmError::EmptyResponse(status).into());
             }
             let data: FcmResponse = serde_json::from_slice(&raw_data).map_err(|e| {
                 let s = String::from_utf8(raw_data.to_vec()).unwrap_or_else(|e| e.to_string());
@@ -150,25 +150,8 @@ impl FcmClient {
 
             // we only ever send one.
             return Err(match (status, data.error) {
-                (StatusCode::UNAUTHORIZED, _) => {
-                    if self.is_gcm {
-                        RouterError::GCMAuthentication
-                    } else {
-                        RouterError::Authentication
-                    }
-                }
-                (StatusCode::NOT_FOUND, _) => {
-                    // GCM ERROR
-                    if self.is_gcm {
-                        warn!("Converting GCM NOT FOUND to FCM SERVICE_UNAVAILABLE");
-                        RouterError::Upstream {
-                            status: StatusCode::SERVICE_UNAVAILABLE.to_string(),
-                            message: "FCM did not find GCM user".to_owned(),
-                        }
-                    } else {
-                        RouterError::NotFound
-                    }
-                }
+                (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
+                (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
                 (_, Some(error)) => RouterError::Upstream {
                     status: error.status,
                     message: error.message,
