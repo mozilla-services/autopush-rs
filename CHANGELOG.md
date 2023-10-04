@@ -1,3 +1,18 @@
+<a name="1.69.0"></a>
+## 1.69.0 (2023-10-04)
+
+
+#### Chore
+
+*   tag 1.68.3 (#456) ([2a97e678](https://github.com/mozilla-services/autopush-rs/commit/2a97e6781999df67fd8c0086586924ef2463d4a0))
+
+#### Features
+
+*   Use the calling crate's name and version for init_logging() (#461) ([d3bd4c07](https://github.com/mozilla-services/autopush-rs/commit/d3bd4c072a031e00ac5d08cb15d8e84512881295))
+*   Reject Legacy GCM endpoints (#459) ([aaa47139](https://github.com/mozilla-services/autopush-rs/commit/aaa47139aae3a6dc42c063a6b59cc21202dfe5dd))
+
+
+
 <a name="1.68.3"></a>
 ## 1.68.3 (2023-10-02)
 
