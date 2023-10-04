@@ -3,7 +3,6 @@ use autopush_common::db::client::DbClient;
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
-use crate::extractors::routers::RouterType;
 use crate::routers::common::{build_message_data, handle_error, incr_success_metrics};
 use crate::routers::fcm::client::FcmClient;
 use crate::routers::fcm::error::FcmError;
@@ -13,7 +12,6 @@ use async_trait::async_trait;
 use cadence::StatsdClient;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
@@ -156,16 +154,6 @@ impl Router for FcmRouter {
             .as_ref()
             .ok_or(FcmError::NoRegistrationToken)?;
 
-        // Older "GCM" set the router data as "senderID" : "auth"
-        // Newer "FCM" set the router data as "app_id": "token"
-        // The first element is the project identifier, which is
-        // matched against the values specified in the settings to
-        // get the authentication method. The second is the client
-        // provided routing token. This is a proprietary identifier
-        // that is sent by the client at registration.
-        //
-        // Try reading as FCM and fall back to GCM.
-
         let (routing_token, app_id) =
             self.routing_info(router_data, &notification.subscription.user.uaid)?;
         let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
@@ -175,30 +163,6 @@ impl Router for FcmRouter {
             .clients
             .get(&app_id)
             .ok_or_else(|| FcmError::InvalidAppId(app_id.clone()))?;
-
-        let router_type = RouterType::from_str(&notification.subscription.user.router_type)
-            .unwrap_or(RouterType::FCM);
-        if matches!(router_type, RouterType::GCM) {
-            // GCM is the older message format for android, and it's not possible to generate
-            // new test keys.
-            // As of 2023-09-22 Legacy GCM messages are no longer supported.
-            // Due to a very unfortunate set of decisions made at the beginning of the WebPush
-            // project, we do not have access to the original GCM credential set and therefore
-            // can not move these GCM users to FCM. We have no choice but to treat this as
-            // a bridge server rejection, disable the subscription, and hope that
-            // the remote UA is running Fenix+, which will perform a daily check-in
-            // note the discrepancy and recreate the subscriptions, this time as
-            // proper FCM.
-            return Err(handle_error(
-                RouterError::NotFound,
-                &self.metrics,
-                self.db.as_ref(),
-                "gcm",
-                &app_id,
-                notification.subscription.user.uaid,
-            )
-            .await);
-        }
 
         let message_data = build_message_data(notification)?;
         let platform = "fcmv1";
