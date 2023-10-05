@@ -167,13 +167,13 @@ impl RouterError {
         // callbacks, whereas some are emitted via this method. These 2 should
         // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
         let err = match self {
-            RouterError::Adm(e) if matches!(e, AdmError::InvalidProfile | AdmError::NoProfile) => {
+            RouterError::Adm(AdmError::InvalidProfile | AdmError::NoProfile) => {
                 "notification.bridge.error.adm.profile"
             }
             RouterError::Apns(ApnsError::SizeLimit(_)) => {
                 "notification.bridge.error.apns.oversized"
             }
-            RouterError::Fcm(e) if matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId) => {
+            RouterError::Fcm(FcmError::InvalidAppId(_) | FcmError::NoAppId) => {
                 "notification.bridge.error.fcm.badappid"
             }
             RouterError::TooMuchData(_) => "notification.bridge.error.too_much_data",

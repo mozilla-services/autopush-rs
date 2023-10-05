@@ -146,7 +146,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e01ed3140b2f8d422c68afa1ed2e85d996ea619c988ac834d255db32138655cb"
 dependencies = [
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -303,7 +303,7 @@ dependencies = [
  "actix-router",
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -327,7 +327,7 @@ checksum = "7c7db3d5a9718568e4cf4a537cfd7070e6e6ff7481510d0237fb529ac850f6d3"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -480,7 +480,7 @@ checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -491,7 +491,7 @@ checksum = "bc00ceb34980c03614e35a3a4e218276a0a824e911d07651cd0d858a51e8c0f0"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -549,7 +549,7 @@ dependencies = [
  "lazy_static",
  "log",
  "mozsvc-common",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
  "sentry",
  "sentry-actix",
  "sentry-core",
@@ -573,7 +573,7 @@ dependencies = [
  "autopush_common",
  "futures 0.3.28",
  "futures-locks 0.7.1",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
  "sentry",
  "serde",
  "serde_derive",
@@ -595,7 +595,7 @@ dependencies = [
  "fernet",
  "lazy_static",
  "mozsvc-common",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
  "serde",
  "serde_derive",
  "slog",
@@ -623,7 +623,7 @@ dependencies = [
  "cadence",
  "ctor",
  "futures-util",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
  "serde_json",
  "slog-scope",
  "thiserror",
@@ -672,7 +672,7 @@ dependencies = [
  "ctor",
  "futures 0.3.28",
  "mockall",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
  "sentry",
  "slog-scope",
  "thiserror",
@@ -710,7 +710,7 @@ dependencies = [
  "openssl",
  "rand 0.8.5",
  "regex",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
  "rusoto_core 0.47.0",
  "rusoto_dynamodb 0.47.0",
  "sentry",
@@ -821,7 +821,7 @@ dependencies = [
  "protobuf",
  "rand 0.8.5",
  "regex",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
  "rusoto_core 0.47.0",
  "rusoto_credential 0.47.0",
  "rusoto_dynamodb 0.47.0",
@@ -1451,7 +1451,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37e366bff8cd32dd8754b0991fb66b279dc48f598c3a18914852a6673deef583"
 dependencies = [
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -1948,7 +1948,7 @@ checksum = "89ca545a94061b6365f2c7355b4b32bd20df3ff95f02da9329b34ccc3bd6ee72"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -2918,7 +2918,7 @@ checksum = "51fba38c7ded23ca88a409f72277d177170b3eadb5e283741182fd3cae60ecdf"
 dependencies = [
  "hostname",
  "lazy_static",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
 ]
 
 [[package]]
@@ -3065,7 +3065,7 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -3257,7 +3257,7 @@ dependencies = [
  "pest_meta",
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -3733,9 +3733,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.11.21"
+version = "0.11.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78fdbab6a7e1d7b13cc8ff10197f47986b41c639300cc3c8158cac7847c9bbef"
+checksum = "046cd98826c46c2ac8ddecae268eb5c2e58628688a5fc7a2643704a73faba95b"
 dependencies = [
  "base64 0.21.4",
  "bytes 1.5.0",
@@ -4016,9 +4016,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.38.15"
+version = "0.38.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2f9da0cbd88f9f09e7814e388301c8414c51c62aa6ce1e4b5c551d49d96e531"
+checksum = "f25469e9ae0f3d0047ca8b93fc56843f38e6774f0914a107ff8b41be8be8e0b7"
 dependencies = [
  "bitflags 2.4.0",
  "errno",
@@ -4228,7 +4228,7 @@ dependencies = [
  "httpdate",
  "log",
  "native-tls",
- "reqwest 0.11.21",
+ "reqwest 0.11.22",
  "sentry-backtrace",
  "sentry-contexts",
  "sentry-core",
@@ -4357,7 +4357,7 @@ checksum = "4eca7ac642d82aa35b60049a6eccb4be6be75e599bd2e9adb5f875a737654af2"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -4747,9 +4747,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.37"
+version = "2.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7303ef2c05cd654186cb250d29049a24840ca25d2747c25c0381c8d9e2f582e8"
+checksum = "e96b79aaa137db8f61e26363a0c9b47d8b4ec75da28b7d1d614c2303e232408b"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
@@ -4860,7 +4860,7 @@ checksum = "10712f02019e9288794769fba95cd6847df9874d49d871d062172f9dd41bc4cc"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -5085,7 +5085,7 @@ checksum = "630bdcf245f78637c13ec01ffae6187cca34625e8c63150d424b59e55af2675e"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -5663,7 +5663,7 @@ dependencies = [
  "once_cell",
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
  "wasm-bindgen-shared",
 ]
 
@@ -5697,7 +5697,7 @@ checksum = "54681b18a46765f095758388f2d0cf16eb8d4169b639ab575a8f5693af210c7b"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -5990,7 +5990,7 @@ checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
 dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
- "syn 2.0.37",
+ "syn 2.0.38",
 ]
 
 [[package]]
