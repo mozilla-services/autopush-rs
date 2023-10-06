@@ -183,7 +183,6 @@ impl DynamoStorage {
         let ddb = self.ddb.clone();
         let router_url = router_url.to_string();
         let router_table_name = self.router_table_name.clone();
-        let connected_at = connected_at;
 
         response.and_then(move |(mut hello_response, user_opt)| {
             trace!(
