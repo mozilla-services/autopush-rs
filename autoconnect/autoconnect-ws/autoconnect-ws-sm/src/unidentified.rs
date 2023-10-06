@@ -69,11 +69,8 @@ impl UnidentifiedClient {
             uaid
         );
 
-        let uaid = uaid
-            .as_deref()
-            .map(Uuid::try_parse)
-            .transpose()
-            .map_err(|_| SMError::invalid_message("Invalid uaid".to_owned()))?;
+        // Ignore invalid uaids (treat as None) so they'll be issued a new one
+        let uaid = uaid.as_deref().and_then(|uaid| Uuid::try_parse(uaid).ok());
 
         let GetOrCreateUser {
             user,
@@ -255,6 +252,30 @@ mod tests {
         });
         let msg = ClientMessage::Hello {
             uaid: None,
+            channel_ids: None,
+            use_webpush: Some(true),
+            broadcasts: None,
+        };
+        client.on_client_msg(msg).await.expect("Hello failed");
+    }
+
+    #[tokio::test]
+    async fn hello_empty_uaid() {
+        let client = uclient(Default::default());
+        let msg = ClientMessage::Hello {
+            uaid: Some("".to_owned()),
+            channel_ids: None,
+            use_webpush: Some(true),
+            broadcasts: None,
+        };
+        client.on_client_msg(msg).await.expect("Hello failed");
+    }
+
+    #[tokio::test]
+    async fn hello_invalid_uaid() {
+        let client = uclient(Default::default());
+        let msg = ClientMessage::Hello {
+            uaid: Some("invalid".to_owned()),
             channel_ids: None,
             use_webpush: Some(true),
             broadcasts: None,
