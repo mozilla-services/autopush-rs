@@ -122,7 +122,8 @@ impl Default for Settings {
             endpoint_port: 8082,
             crypto_key: format!("[{}]", Fernet::generate_key()),
             statsd_host: Some("localhost".to_owned()),
-            statsd_label: ENV_PREFIX.to_owned(),
+            // Matches the legacy value
+            statsd_label: "autopush".to_owned(),
             statsd_port: 8125,
             db_dsn: None,
             db_settings: "".to_owned(),

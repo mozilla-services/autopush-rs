@@ -17,6 +17,12 @@ pub enum FcmError {
     #[error("Unable to deserialize FCM response")]
     DeserializeResponse(#[source] reqwest::Error),
 
+    #[error("Invalid JSON response from FCM")]
+    InvalidResponse(#[source] serde_json::Error, String, StatusCode),
+
+    #[error("Empty response from FCM")]
+    EmptyResponse(StatusCode),
+
     #[error("No OAuth token was present")]
     NoOAuthToken,
 
@@ -43,7 +49,9 @@ impl FcmError {
             | FcmError::OAuthToken(_)
             | FcmError::NoOAuthToken => StatusCode::INTERNAL_SERVER_ERROR,
 
-            FcmError::DeserializeResponse(_) => StatusCode::BAD_GATEWAY,
+            FcmError::DeserializeResponse(_)
+            | FcmError::EmptyResponse(_)
+            | FcmError::InvalidResponse(_, _, _) => StatusCode::BAD_GATEWAY,
         }
     }
 
@@ -58,7 +66,21 @@ impl FcmError {
             | FcmError::OAuthClientBuild(_)
             | FcmError::OAuthToken(_)
             | FcmError::DeserializeResponse(_)
+            | FcmError::EmptyResponse(_)
+            | FcmError::InvalidResponse(_, _, _)
             | FcmError::NoOAuthToken => None,
+        }
+    }
+
+    pub fn extras(&self) -> Vec<(&str, String)> {
+        match self {
+            FcmError::EmptyResponse(status) => {
+                vec![("status", status.to_string())]
+            }
+            FcmError::InvalidResponse(_, body, status) => {
+                vec![("status", status.to_string()), ("body", body.to_owned())]
+            }
+            _ => vec![],
         }
     }
 }

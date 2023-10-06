@@ -821,7 +821,7 @@ class TestRustWebPush(unittest.TestCase):
 
     def host_endpoint(self, client):
         parsed = urlparse(list(client.channels.values())[0])
-        "{}://{}".format(parsed.scheme, parsed.netloc)
+        return "{}://{}".format(parsed.scheme, parsed.netloc)
 
     @inlineCallbacks
     def quick_register(self):
@@ -844,7 +844,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     @max_logs(conn=4)
-    def test_sentry_output(self):
+    def test_sentry_output_autoconnect(self):
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
@@ -859,15 +859,50 @@ class TestRustWebPush(unittest.TestCase):
         requests.get(
             "http://localhost:{}/v1/err/crit".format(CONNECTION_PORT)
         )
+        event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
+        # new autoconnect emits 2 events
         try:
-            data = MOCK_SENTRY_QUEUE.get(timeout=5)
-        except ValueError as ex:
-            if not ex.contains("I/O operation on closed file"):
-                raise ex
-            # python2 on circleci will fail this test due to an IO error.
-            # Local testing shows that this test works.
-            # This may resolve by updating tests to python3 (see #334)
-        assert data["exception"]["values"][0]["value"] == "LogCheck"
+            maybe_event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
+        except Empty:
+            pass
+        assert event1["exception"]["values"][0]["value"] == "LogCheck"
+
+    @inlineCallbacks
+    @max_logs(endpoint=1)
+    def test_sentry_output_autoendpoint(self):
+        if os.getenv("SKIP_SENTRY"):
+            SkipTest("Skipping sentry test")
+            return
+
+        client = yield self.quick_register()
+        endpoint = self.host_endpoint(client)
+        yield self.shut_down(client)
+
+        requests.get("{}/__error__".format(endpoint))
+        # 2 events excpted: 1 from a panic and 1 from a returned Error
+        event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
+        event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
+        values = (
+            event1["exception"]["values"][0]["value"],
+            event2["exception"]["values"][0]["value"],
+        )
+        assert sorted(values) == ["ERROR:Success", "LogCheck"]
+
+    @max_logs(conn=4)
+    def test_no_sentry_output(self):
+        if os.getenv("SKIP_SENTRY"):
+            SkipTest("Skipping sentry test")
+            return
+        ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
+        try:
+            requests.get(ws_url)
+        except requests.exceptions.ConnectionError:
+            pass
+        try:
+            data = MOCK_SENTRY_QUEUE.get(timeout=1)
+            assert not data
+        except Empty:
+            pass
 
     @inlineCallbacks
     def test_hello_echo(self):

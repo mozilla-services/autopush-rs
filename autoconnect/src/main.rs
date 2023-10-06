@@ -11,7 +11,7 @@ use docopt::Docopt;
 use serde::Deserialize;
 
 use autoconnect_settings::{AppState, Settings};
-use autoconnect_web::{build_app, config};
+use autoconnect_web::build_app;
 use autopush_common::{
     errors::{ApcErrorKind, Result},
     logging,
@@ -47,7 +47,12 @@ async fn main() -> Result<()> {
     }
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
-    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+    logging::init_logging(
+        !settings.human_logs,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )
+    .expect("Logging failed to initialize");
     debug!("Starting up autoconnect...");
 
     // Sentry requires the environment variable "SENTRY_DSN".

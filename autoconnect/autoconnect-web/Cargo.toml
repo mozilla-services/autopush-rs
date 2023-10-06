@@ -6,8 +6,10 @@ version.workspace = true
 
 [dependencies]
 actix-web.workspace = true
+actix-http.workspace = true
 actix-rt.workspace = true
 actix-ws.workspace = true
+backtrace.workspace = true
 bytes.workspace = true
 bytestring.workspace = true
 cadence.workspace = true
@@ -15,6 +17,7 @@ futures-util.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 slog-scope.workspace = true
+thiserror.workspace = true
 uuid.workspace = true
 
 

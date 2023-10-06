@@ -262,19 +262,9 @@ impl ApiErrorKind {
     }
 }
 
-// Print out the error and backtrace, including source errors
 impl Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}\nBacktrace: \n{:?}", self.kind, self.backtrace)?;
-
-        // Go down the chain of errors
-        let mut error: &dyn Error = &self.kind;
-        while let Some(source) = error.source() {
-            write!(f, "\n\nCaused by: {source}")?;
-            error = source;
-        }
-
-        Ok(())
+        self.kind.fmt(f)
     }
 }
 
@@ -342,6 +332,14 @@ impl ReportableError for ApiError {
 
     fn metric_label(&self) -> Option<&'static str> {
         self.kind.metric_label()
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        match &self.kind {
+            ApiErrorKind::Router(e) => e.extras(),
+            ApiErrorKind::LogCheck => vec![("coffee", "Unsupported".to_owned())],
+            _ => vec![],
+        }
     }
 }
 
