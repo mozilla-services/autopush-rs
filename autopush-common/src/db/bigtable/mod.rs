@@ -20,6 +20,7 @@
 /// but `/foo.*/` will)
 ///
 mod bigtable_client;
+mod pool;
 
 pub use bigtable_client::error::BigTableError;
 pub use bigtable_client::BigTableClientImpl;
@@ -46,6 +47,10 @@ pub struct BigTableDbSettings {
     pub message_family: String,
     #[serde(default)]
     pub message_topic_family: String,
+    #[serde(default)]
+    pub database_pool_max_size: Option<u32>,
+    #[serde(default)]
+    pub database_pool_connection_timeout: Option<u32>,
 }
 
 /// NOTE: autopush will not autogenerate these families. They should
@@ -63,6 +68,8 @@ impl Default for BigTableDbSettings {
             router_family: "router".to_owned(),
             message_family: "message".to_owned(),
             message_topic_family: "message_topic".to_owned(),
+            database_pool_max_size: None,
+            database_pool_connection_timeout: None,
         }
     }
 }

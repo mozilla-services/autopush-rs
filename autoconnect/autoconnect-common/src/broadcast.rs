@@ -312,12 +312,12 @@ impl BroadcastChangeTracker {
     pub fn missing_broadcasts(&self, broadcasts: &[Broadcast]) -> Vec<Broadcast> {
         broadcasts
             .iter()
-            .filter_map(|b| {
+            .filter(|&b| {
                 self.broadcast_registry
                     .lookup_key(&b.broadcast_id)
                     .is_none()
-                    .then(|| b.clone().error())
             })
+            .map(|b| b.clone().error())
             .collect()
     }
 }

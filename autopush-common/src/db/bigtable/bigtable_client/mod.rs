@@ -9,11 +9,8 @@ use async_trait::async_trait;
 use cadence::StatsdClient;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
+use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use google_cloud_rust_raw::bigtable::v2::{
-    bigtable::ReadRowsRequest, bigtable_grpc::BigtableClient,
-};
-use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -26,6 +23,7 @@ use crate::db::{
 use crate::notification::STANDARD_NOTIFICATION_PREFIX;
 
 use self::row::Row;
+use super::pool::BigTablePool;
 use super::BigTableDbSettings;
 
 pub mod cell;
@@ -63,12 +61,12 @@ impl From<Uaid> for String {
 /// Wrapper for the BigTable connection
 pub struct BigTableClientImpl {
     pub(crate) settings: BigTableDbSettings,
-    /// The grpc client connection to BigTable (it carries no big table specific info)
-    client: BigtableClient,
     /// Metrics client
     _metrics: Arc<StatsdClient>,
-    /// Connection Channel
-    chan: Channel,
+    /// Connection Channel (used for alternate calls)
+    pool: BigTablePool,
+    // Handle to a core channel (for Admin calls)
+    // chan: Channel,
 }
 
 fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
@@ -126,68 +124,21 @@ fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -
 ///
 impl BigTableClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
-        let env = Arc::new(EnvBuilder::new().build());
-        let endpoint = match &settings.dsn {
-            Some(v) => v,
-            None => {
-                return Err(DbError::ConnectionError(
-                    "No DSN specified in settings".to_owned(),
-                ))
-            }
-        };
-        debug!("🉑 DSN: {}", &endpoint);
-        let parsed = url::Url::parse(endpoint).map_err(|e| {
-            DbError::ConnectionError(format!("Invalid DSN: {:?} : {:?}", endpoint, e))
-        })?;
-        // Url::parsed() doesn't know how to handle `grpc:` schema, so it returns "null".
-        let origin = format!(
-            "{}:{}",
-            parsed
-                .host_str()
-                .ok_or_else(|| DbError::ConnectionError(format!(
-                    "Invalid DSN: Unparsable host {:?}",
-                    endpoint
-                )))?,
-            parsed.port().unwrap_or(8086)
-        );
-        if !parsed.path().is_empty() {
-            return Err(DbError::ConnectionError(format!(
-                "Invalid DSN: Table paths belong in settings : {:?}",
-                endpoint
-            )));
-        }
+        // let env = Arc::new(EnvBuilder::new().build());
+        debug!("🏊 BT Pool new");
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         debug!("🉑 {:#?}", db_settings);
-        let mut chan = ChannelBuilder::new(env)
-            .max_send_message_len(1 << 28)
-            .max_receive_message_len(1 << 28);
-        // Don't get the credentials if we are running in the emulator
-        if settings
-            .dsn
-            .clone()
-            .map(|v| v.contains("localhost"))
-            .unwrap_or(false)
-            || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
-        {
-            debug!("🉑 Using emulator");
-        } else {
-            chan = chan.set_credentials(
-                ChannelCredentials::google_default_credentials()
-                    .map_err(|e| DbError::ConnectionError(e.to_string()))?,
-            );
-            debug!("🉑 Using real");
-        }
-
-        let con_str = format!("{}{}", origin, parsed.path());
-        debug!("🉑 connection string {}", &con_str);
-        let chan = chan.connect(&con_str);
-        let client = BigtableClient::new(chan.clone());
+        let pool = BigTablePool::new(&settings)?;
         Ok(Self {
             settings: db_settings,
-            client,
-            chan,
             _metrics: metrics,
+            pool,
         })
+    }
+
+    pub fn reconnect(&mut self) -> Result<(), DbError> {
+        debug!("🏊 BT Pool reconnect");
+        Ok(())
     }
 
     /// Read a given row from the row key.
@@ -222,7 +173,9 @@ impl BigTableClientImpl {
         limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let resp = self
-            .client
+            .pool
+            .get()
+            .await?
             .read_rows(&req)
             .map_err(|e| error::BigTableError::Read(e.to_string()))?;
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
@@ -265,7 +218,9 @@ impl BigTableClientImpl {
         // Do the actual commit.
         // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
         let _resp = self
-            .client
+            .pool
+            .get()
+            .await?
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
@@ -303,7 +258,9 @@ impl BigTableClientImpl {
         req.set_mutations(mutations);
 
         let _resp = self
-            .client
+            .pool
+            .get()
+            .await?
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
@@ -323,7 +280,9 @@ impl BigTableClientImpl {
         req.set_mutations(mutations);
 
         let _resp = self
-            .client
+            .pool
+            .get()
+            .await?
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
@@ -336,7 +295,8 @@ impl BigTableClientImpl {
     /// Note that deletion may take up to a week to occur.
     /// see https://cloud.google.com/php/docs/reference/cloud-bigtable/latest/Admin.V2.DropRowRangeRequest
     async fn delete_rows(&self, row_key: &str) -> Result<bool, error::BigTableError> {
-        let admin = BigtableTableAdminClient::new(self.chan.clone());
+        let chan = self.pool.manager().get_channel()?;
+        let admin = BigtableTableAdminClient::new(chan);
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
@@ -1035,7 +995,9 @@ impl DbClient for BigTableClientImpl {
         req.set_filter(filter);
         // we don't care about the return (it's going to be empty) but we DO care if it fails.
         let _ = self
-            .client
+            .pool
+            .get()
+            .await?
             .read_rows(&req)
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
