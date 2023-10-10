@@ -1,11 +1,11 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use deadpool::managed::Manager;
+use deadpool::managed::{Manager, PoolConfig, Timeouts};
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 
-use crate::db::bigtable::BigTableError;
+use crate::db::bigtable::{BigTableDbSettings, BigTableError};
 use crate::db::error::{DbError, DbResult};
 use crate::db::DbSettings;
 
@@ -124,45 +124,6 @@ impl BtClientManager {
     }
 }
 
-/*
-/// A threadpool on which callers can spawn non-CPU-bound tasks that block their thread (this is
-/// mostly useful for running I/O tasks). `BlockingThreadpool` intentionally does not implement
-/// `Clone`: `Arc`s are not used internally, so a `BlockingThreadpool` should be instantiated once
-/// and shared by passing around `Arc<BlockingThreadpool>`s.
-#[derive(Debug, Default)]
-pub struct BlockingThreadpool {
-    spawned_tasks: AtomicU64,
-}
-
-impl BlockingThreadpool {
-    /// Runs a function as a task on the blocking threadpool.
-    ///
-    /// WARNING: Spawning a blocking task through means other than calling this method will
-    /// result in inaccurate threadpool metrics being reported. If you want to spawn a task on
-    /// the blocking threadpool, you **must** use this function.
-    pub async fn spawn<F, T, E>(&self, f: F) -> Result<T, E>
-    where
-        F: FnOnce() -> Result<T, E> + Send + 'static,
-        T: Send + 'static,
-        E: fmt::Debug + Send + GeneralError + 'static,
-    {
-        self.spawned_tasks.fetch_add(1, Ordering::Relaxed);
-
-        let result = web::block(f)
-            .await
-            .map_err(|_| E::general_error("Blocking threadpool operation canceled".to_owned()))?;
-
-        self.spawned_tasks.fetch_sub(1, Ordering::Relaxed);
-
-        result
-    }
-
-    pub fn active_threads(&self) -> u64 {
-        self.spawned_tasks.load(Ordering::Relaxed)
-    }
-}
-*/
-
 impl BigTablePool {
     /// Creates a new pool of BigTable db connections.
     pub fn new(settings: &DbSettings) -> DbResult<Self> {
@@ -174,6 +135,7 @@ impl BigTablePool {
                 ))
             }
         };
+        let bt_settings = BigTableDbSettings::try_from(settings.db_settings.as_str())?;
         debug!("🉑 DSN: {}", &endpoint);
         // Url::parsed() doesn't know how to handle `grpc:` schema, so it returns "null".
         let parsed = url::Url::parse(endpoint).map_err(|e| {
@@ -199,7 +161,21 @@ impl BigTablePool {
         debug!("🉑 connection string {}", &connection);
 
         let manager = BtClientManager::new(settings, settings.dsn.clone(), connection.clone())?;
+        let mut config = PoolConfig::default();
+        if let Some(size) = bt_settings.database_pool_max_size {
+            debug!("🏊 Setting pool max size {}", &size);
+            config.max_size = size as usize;
+        };
+        if let Some(timeout) = bt_settings.database_pool_connection_timeout {
+            debug!("🏊 Setting connection timeout to {} milliseconds", &timeout);
+            let timeouts = Timeouts {
+                create: Some(Duration::from_millis(timeout as u64)),
+                ..Default::default()
+            };
+            config.timeouts = timeouts;
+        }
         let pool = deadpool::managed::Pool::builder(manager)
+            .config(config)
             .build()
             .map_err(|e| {
                 DbError::BTError(super::BigTableError::Admin(format!("Pool Error: {:?}", e)))

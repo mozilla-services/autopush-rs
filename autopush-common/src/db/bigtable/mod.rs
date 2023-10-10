@@ -49,6 +49,7 @@ pub struct BigTableDbSettings {
     pub message_topic_family: String,
     #[serde(default)]
     pub database_pool_max_size: Option<u32>,
+    /// Max time (in milliseconds) to wait for a database connection
     #[serde(default)]
     pub database_pool_connection_timeout: Option<u32>,
 }
