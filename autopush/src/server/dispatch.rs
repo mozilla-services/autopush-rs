@@ -80,12 +80,12 @@ impl Future for Dispatch {
                         Some(path) if path.starts_with("/status") || path == "/__heartbeat__" => {
                             RequestType::Status
                         }
-                        Some(path) if path == "/__lbheartbeat__" => RequestType::LBHeartBeat,
-                        Some(path) if path == "/__version__" => RequestType::Version,
+                        Some("/__lbheartbeat__") => RequestType::LBHeartBeat,
+                        Some("/__version__") => RequestType::Version,
                         // legacy:
                         Some(path) if path.starts_with("/v1/err/crit") => RequestType::LogCheck,
                         // standardized:
-                        Some(path) if path == ("/__error__") => RequestType::LogCheck,
+                        Some("/_error") => RequestType::LogCheck,
                         _ => {
                             debug!("unknown http request {:?}", req);
                             return Err(
