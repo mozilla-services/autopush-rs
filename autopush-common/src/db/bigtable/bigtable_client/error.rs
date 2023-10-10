@@ -17,6 +17,7 @@ pub enum BigTableError {
     #[error("BigTable Admin Error {0}")]
     Admin(String),
 
+    /// General Pool builder errors.
     #[error("Pool Error {0}")]
     Pool(String),
 }

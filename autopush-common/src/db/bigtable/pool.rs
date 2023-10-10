@@ -11,10 +11,16 @@ use crate::db::DbSettings;
 
 use super::bigtable_client::error;
 
+/// The pool of BigTable Clients.
+/// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
+/// that we have control over is the "channel". For now, we're using the ClientManager to
+/// create new Bigtable clients, which have channels associated with them.
+/// The Manager also has the ability to return a channel, which is useful for
+/// Bigtable administrative calls, which use their own channel.
 #[derive(Clone)]
 pub struct BigTablePool {
     /// Pool of db connections
-    pub pool: deadpool::managed::Pool<BtClientManager>,
+    pub pool: deadpool::managed::Pool<BigtableClientManager>,
 }
 
 impl fmt::Debug for BigTablePool {
@@ -28,7 +34,7 @@ impl BigTablePool {
     /// Get a new managed object from the pool.
     pub async fn get(
         &self,
-    ) -> Result<deadpool::managed::Object<BtClientManager>, error::BigTableError> {
+    ) -> Result<deadpool::managed::Object<BigtableClientManager>, error::BigTableError> {
         self.pool
             .get()
             .await
@@ -36,19 +42,19 @@ impl BigTablePool {
     }
 
     /// Get the pools manager, because we would like to talk to them.
-    pub fn manager(&self) -> &BtClientManager {
+    pub fn manager(&self) -> &BigtableClientManager {
         self.pool.manager()
     }
 }
 
 /// BigTable Pool Manager. This contains everything needed to create a new connection.
-pub struct BtClientManager {
+pub struct BigtableClientManager {
     settings: DbSettings,
     dsn: Option<String>,
     connection: String,
 }
 
-impl BtClientManager {
+impl BigtableClientManager {
     fn new(
         settings: &DbSettings,
         dsn: Option<String>,
@@ -62,7 +68,7 @@ impl BtClientManager {
     }
 }
 
-impl fmt::Debug for BtClientManager {
+impl fmt::Debug for BigtableClientManager {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("deadpool::BtClientManager")
             .field("settings", &self.settings.clone())
@@ -71,10 +77,11 @@ impl fmt::Debug for BtClientManager {
 }
 
 #[async_trait]
-impl Manager for BtClientManager {
+impl Manager for BigtableClientManager {
     type Error = DbError;
     type Type = BigtableClient;
 
+    /// Create a new Bigtable Client with it's own channel.
     async fn create(&self) -> Result<BigtableClient, DbError> {
         debug!("🏊 Create a new pool entry.");
         let chan = Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str());
@@ -89,18 +96,19 @@ impl Manager for BtClientManager {
         _metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
         debug!("🏊 Recycle requested.");
-        Err(DbError::BTError(BigTableError::Pool("Recycle".to_owned())).into())
+        Err(DbError::BTError(BigTableError::Admin("Recycle".to_owned())).into())
     }
 }
 
-impl BtClientManager {
+impl BigtableClientManager {
+    /// Get a new Channel, based on the application settings.
     pub fn get_channel(&self) -> Result<Channel, BigTableError> {
         Ok(Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str()))
     }
     /// Channels are GRPCIO constructs that contain the actual command data paths.
-    /// Channels seem to be fairly light weight, but calling channel.status on
-    /// an existing
+    /// Channels seem to be fairly light weight.
     pub fn create_channel(dsn: Option<String>) -> Result<ChannelBuilder, BigTableError> {
+        debug!("🏊 Creating new channel...");
         let env = Arc::new(EnvBuilder::new().build());
         let mut chan = ChannelBuilder::new(env)
             .max_send_message_len(1 << 28)
@@ -116,7 +124,7 @@ impl BtClientManager {
         } else {
             chan = chan.set_credentials(
                 ChannelCredentials::google_default_credentials()
-                    .map_err(|e| BigTableError::Pool(e.to_string()))?,
+                    .map_err(|e| BigTableError::Admin(e.to_string()))?,
             );
             debug!("🉑 Using real");
         }
@@ -160,7 +168,9 @@ impl BigTablePool {
         let connection = format!("{}{}", origin, parsed.path());
         debug!("🉑 connection string {}", &connection);
 
-        let manager = BtClientManager::new(settings, settings.dsn.clone(), connection.clone())?;
+        // Construct a new manager and put them in a pool for handling future requests.
+        let manager =
+            BigtableClientManager::new(settings, settings.dsn.clone(), connection.clone())?;
         let mut config = PoolConfig::default();
         if let Some(size) = bt_settings.database_pool_max_size {
             debug!("🏊 Setting pool max size {}", &size);
@@ -177,9 +187,7 @@ impl BigTablePool {
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
             .build()
-            .map_err(|e| {
-                DbError::BTError(super::BigTableError::Admin(format!("Pool Error: {:?}", e)))
-            })?;
+            .map_err(|e| DbError::BTError(BigTableError::Pool(e.to_string())))?;
 
         Ok(Self { pool })
     }

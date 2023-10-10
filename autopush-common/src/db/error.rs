@@ -51,9 +51,6 @@ pub enum DbError {
     #[cfg(feature = "bigtable")]
     #[error("BigTable error {0}")]
     BTError(#[from] BigTableError),
-    #[cfg(feature = "bigtable")]
-    #[error("Pool error {0}")]
-    BTPoolError(String),
 
     /*
     #[error("Postgres error")]
@@ -64,9 +61,4 @@ pub enum DbError {
 
     #[error("Unknown Database Error {0}")]
     General(String),
-}
-
-pub trait GeneralError {
-    /// Constructs a general error with the given error message.
-    fn general_error(message: String) -> Self;
 }
