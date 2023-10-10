@@ -128,7 +128,7 @@ impl BigTableClientImpl {
         debug!("🏊 BT Pool new");
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         debug!("🉑 {:#?}", db_settings);
-        let pool = BigTablePool::new(&settings)?;
+        let pool = BigTablePool::new(settings)?;
         Ok(Self {
             settings: db_settings,
             _metrics: metrics,
