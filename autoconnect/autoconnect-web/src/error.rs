@@ -3,7 +3,7 @@ use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
 use backtrace::Backtrace;
 use serde_json::json;
 
-use autopush_common::{db::bigtable::BigTableError, errors::ReportableError};
+use autopush_common::errors::ReportableError;
 
 /// The main error type
 #[derive(thiserror::Error, Debug)]
