@@ -45,94 +45,7 @@ impl BigTablePool {
     pub fn manager(&self) -> &BigtableClientManager {
         self.pool.manager()
     }
-}
 
-/// BigTable Pool Manager. This contains everything needed to create a new connection.
-pub struct BigtableClientManager {
-    settings: DbSettings,
-    dsn: Option<String>,
-    connection: String,
-}
-
-impl BigtableClientManager {
-    fn new(
-        settings: &DbSettings,
-        dsn: Option<String>,
-        connection: String,
-    ) -> Result<Self, DbError> {
-        Ok(Self {
-            settings: settings.clone(),
-            dsn,
-            connection,
-        })
-    }
-}
-
-impl fmt::Debug for BigtableClientManager {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("deadpool::BtClientManager")
-            .field("settings", &self.settings.clone())
-            .finish()
-    }
-}
-
-#[async_trait]
-impl Manager for BigtableClientManager {
-    type Error = DbError;
-    type Type = BigtableClient;
-
-    /// Create a new Bigtable Client with it's own channel.
-    async fn create(&self) -> Result<BigtableClient, DbError> {
-        debug!("🏊 Create a new pool entry.");
-        let chan = Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str());
-        let client = BigtableClient::new(chan);
-        Ok(client)
-    }
-
-    /// We can't really recycle a given client, so fail and the client should be dropped.
-    async fn recycle(
-        &self,
-        _client: &mut Self::Type,
-        _metrics: &deadpool::managed::Metrics,
-    ) -> deadpool::managed::RecycleResult<Self::Error> {
-        debug!("🏊 Recycle requested.");
-        Err(DbError::BTError(BigTableError::Admin("Recycle".to_owned())).into())
-    }
-}
-
-impl BigtableClientManager {
-    /// Get a new Channel, based on the application settings.
-    pub fn get_channel(&self) -> Result<Channel, BigTableError> {
-        Ok(Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str()))
-    }
-    /// Channels are GRPCIO constructs that contain the actual command data paths.
-    /// Channels seem to be fairly light weight.
-    pub fn create_channel(dsn: Option<String>) -> Result<ChannelBuilder, BigTableError> {
-        debug!("🏊 Creating new channel...");
-        let env = Arc::new(EnvBuilder::new().build());
-        let mut chan = ChannelBuilder::new(env)
-            .max_send_message_len(1 << 28)
-            .max_receive_message_len(1 << 28);
-        // Don't get the credentials if we are running in the emulator
-        if dsn
-            .clone()
-            .map(|v| v.contains("localhost"))
-            .unwrap_or(false)
-            || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
-        {
-            debug!("🉑 Using emulator");
-        } else {
-            chan = chan.set_credentials(
-                ChannelCredentials::google_default_credentials()
-                    .map_err(|e| BigTableError::Admin(e.to_string()))?,
-            );
-            debug!("🉑 Using real");
-        }
-        Ok(chan)
-    }
-}
-
-impl BigTablePool {
     /// Creates a new pool of BigTable db connections.
     pub fn new(settings: &DbSettings) -> DbResult<Self> {
         let endpoint = match &settings.dsn {
@@ -190,5 +103,91 @@ impl BigTablePool {
             .map_err(|e| DbError::BTError(BigTableError::Pool(e.to_string())))?;
 
         Ok(Self { pool })
+    }
+}
+
+/// BigTable Pool Manager. This contains everything needed to create a new connection.
+pub struct BigtableClientManager {
+    settings: DbSettings,
+    dsn: Option<String>,
+    connection: String,
+}
+
+impl BigtableClientManager {
+    fn new(
+        settings: &DbSettings,
+        dsn: Option<String>,
+        connection: String,
+    ) -> Result<Self, DbError> {
+        Ok(Self {
+            settings: settings.clone(),
+            dsn,
+            connection,
+        })
+    }
+}
+
+impl fmt::Debug for BigtableClientManager {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_struct("deadpool::BtClientManager")
+            .field("settings", &self.settings.clone())
+            .finish()
+    }
+}
+
+#[async_trait]
+impl Manager for BigtableClientManager {
+    type Error = DbError;
+    type Type = BigtableClient;
+
+    /// Create a new Bigtable Client with it's own channel.
+    /// `BigtableClient` is the most atomic we can go.
+    async fn create(&self) -> Result<BigtableClient, DbError> {
+        debug!("🏊 Create a new pool entry.");
+        let chan = Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str());
+        let client = BigtableClient::new(chan);
+        Ok(client)
+    }
+
+    /// We can't really recycle a given client, so fail and the client should be dropped.
+    async fn recycle(
+        &self,
+        _client: &mut Self::Type,
+        _metrics: &deadpool::managed::Metrics,
+    ) -> deadpool::managed::RecycleResult<Self::Error> {
+        debug!("🏊 Recycle requested.");
+        Err(DbError::BTError(BigTableError::Recycle).into())
+    }
+}
+
+impl BigtableClientManager {
+    /// Get a new Channel, based on the application settings.
+    pub fn get_channel(&self) -> Result<Channel, BigTableError> {
+        Ok(Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str()))
+    }
+    /// Channels are GRPCIO constructs that contain the actual command data paths.
+    /// Channels seem to be fairly light weight.
+    pub fn create_channel(dsn: Option<String>) -> Result<ChannelBuilder, BigTableError> {
+        debug!("🏊 Creating new channel...");
+        let env = Arc::new(EnvBuilder::new().build());
+        let mut chan = ChannelBuilder::new(env)
+            .max_send_message_len(1 << 28)
+            .max_receive_message_len(1 << 28);
+        // Don't get the credentials if we are running in the emulator
+        if dsn
+            .clone()
+            .map(|v| v.contains("localhost"))
+            .unwrap_or(false)
+            || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
+        {
+            debug!("🉑 Using emulator");
+        } else {
+            chan = chan.set_credentials(
+                ChannelCredentials::google_default_credentials()
+                    .map_err(|e| BigTableError::Admin(e.to_string()))?,
+            );
+            debug!("🉑 Using real");
+        }
+        Ok(chan)
     }
 }

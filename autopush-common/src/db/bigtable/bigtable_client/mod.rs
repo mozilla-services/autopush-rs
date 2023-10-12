@@ -65,8 +65,6 @@ pub struct BigTableClientImpl {
     _metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
-    // Handle to a core channel (for Admin calls)
-    // chan: Channel,
 }
 
 fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
