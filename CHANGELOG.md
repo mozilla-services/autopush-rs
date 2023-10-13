@@ -1,3 +1,18 @@
+<a name="1.69.1"></a>
+## 1.69.1 (2023-10-06)
+
+
+#### Chore
+
+*   Updates for rust 1.73.0 (#465) ([bd8a428b](https://github.com/mozilla-services/autopush-rs/commit/bd8a428b095e98977697d4705e23e3d1d5afcc49))
+*   tag 1.69.0 (#462) ([92f98630](https://github.com/mozilla-services/autopush-rs/commit/92f98630eccedcb2dd9c7dd073147633422b7bb6))
+
+#### Bug Fixes
+
+*   allow invalid uaids in autoconnect (#464) ([6da8c45e](https://github.com/mozilla-services/autopush-rs/commit/6da8c45eed2f89a91633d5e7ca66b93545e152ad))
+
+
+
 <a name="1.69.0"></a>
 ## 1.69.0 (2023-10-04)
 
