@@ -104,6 +104,10 @@ impl DbClient for Arc<MockDbClient> {
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(Arc::clone(self))
     }
+
+    fn name(&self) -> String {
+        Arc::as_ref(self).name()
+    }
 }
 
 impl MockDbClient {

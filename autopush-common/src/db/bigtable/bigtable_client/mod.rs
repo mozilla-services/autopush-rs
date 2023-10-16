@@ -1,5 +1,5 @@
-use core::fmt;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -21,6 +21,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
+    routing::{DbRouting, StorageType},
     DbSettings, Notification, User,
 };
 use crate::notification::STANDARD_NOTIFICATION_PREFIX;
@@ -42,6 +43,7 @@ pub type FamilyId = String;
 const ROUTER_FAMILY: &str = "router";
 const MESSAGE_FAMILY: &str = "message"; // The default family for messages
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
+const DBROUTER_FAMILY: &str = "dbrouter";
 
 /// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
 // TODO:Should we create something similar for ChannelID?
@@ -195,6 +197,7 @@ impl BigTableClientImpl {
         &self,
         row_key: &str,
         timestamp_filter: Option<u64>,
+        table_name: Option<String>,
     ) -> Result<Option<row::Row>, error::BigTableError> {
         debug!("🉑 Row key: {}", row_key);
 
@@ -205,7 +208,7 @@ impl BigTableClientImpl {
         row_set.set_row_keys(row_keys);
 
         let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
+        req.set_table_name(table_name.unwrap_or_else(|| self.settings.table_name.clone()));
         req.set_rows(row_set);
 
         let rows = self.read_rows(req, timestamp_filter, None).await?;
@@ -231,7 +234,11 @@ impl BigTableClientImpl {
     /// write a given row.
     ///
     /// there's also `.mutate_rows` which I presume allows multiple.
-    async fn write_row(&self, row: row::Row) -> Result<(), error::BigTableError> {
+    async fn write_row(
+        &self,
+        row: row::Row,
+        table_name: Option<String>,
+    ) -> Result<(), error::BigTableError> {
         let mut req = bigtable::MutateRowRequest::default();
 
         // compile the mutations.
@@ -239,7 +246,7 @@ impl BigTableClientImpl {
         // mutations, clearing them, etc. It's all up for grabs until we commit
         // below. For now, let's just presume a write and be done.
         let mut mutations = protobuf::RepeatedField::default();
-        req.set_table_name(self.settings.table_name.clone());
+        req.set_table_name(table_name.unwrap_or_else(|| self.settings.table_name.clone()));
         req.set_row_key(row.row_key.into_bytes());
         for (_family, cells) in row.cells {
             for cell in cells {
@@ -505,7 +512,7 @@ impl DbClient for BigTableClientImpl {
         };
         row.add_cells(ROUTER_FAMILY, cells);
         trace!("🉑 Adding user");
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row, None).await.map_err(|e| e.into())
     }
 
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
@@ -522,7 +529,7 @@ impl DbClient for BigTableClientImpl {
             ..Default::default()
         };
 
-        if let Some(record) = self.read_row(&key, None).await? {
+        if let Some(record) = self.read_row(&key, None, None).await? {
             trace!("🉑 Found a record for that user");
             if let Some(mut cells) = record.get_cells("connected_at") {
                 if let Some(cell) = cells.pop() {
@@ -652,7 +659,7 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             }],
         );
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row, None).await.map_err(|e| e.into())
     }
 
     /// Delete all the rows that start with the given prefix. NOTE: this may be metered and should
@@ -847,7 +854,7 @@ impl DbClient for BigTableClientImpl {
         }
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row, None).await.map_err(|e| e.into())
     }
 
     /// Save a batch of messages to the database.
@@ -896,7 +903,7 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             }],
         );
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row, None).await.map_err(|e| e.into())
     }
 
     /// Delete the notification from storage.
@@ -1060,6 +1067,78 @@ impl DbClient for BigTableClientImpl {
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> String {
+        "Bigtable".to_owned()
+    }
+}
+
+#[async_trait]
+impl DbRouting for BigTableClientImpl {
+    async fn connect(&self) -> DbResult<()> {
+        // check to see if the routing table exists
+        if self.settings.db_routing_table.is_none() {
+            info!("No Routing table specified, cannot route");
+        }
+        // if not, error out (presume that this table is created externally)
+        Ok(())
+    }
+
+    async fn select(&self, uaid: &Uuid) -> DbResult<Option<StorageType>> {
+        // Check to see if the routing table name has been defined.
+        if self.settings.db_routing_table.is_none() {
+            info!("No db routing table specified");
+            return Ok(Some(StorageType::default()));
+        }
+        let table_name = self.settings.db_routing_table.clone().unwrap();
+        if let Some(record) = self
+            .read_row(&uaid.simple().to_string(), None, Some(table_name))
+            .await?
+        {
+            if let Some(mut cells) = record.get_cells("storage") {
+                if let Some(cell) = cells.pop() {
+                    let storage: String = to_string(cell.value, "storage").map_err(|e| {
+                        DbError::DbRouting(format!(
+                            "Could not deserialize storage for DbRouting {:?}",
+                            e
+                        ))
+                    })?;
+                    return Ok(Some(StorageType::from(storage.as_str())));
+                };
+            };
+        };
+        Ok(None)
+    }
+
+    async fn assign(&self, uaid: &Uuid, storage_type: StorageType) -> DbResult<()> {
+        if self.settings.db_routing_table.is_none() {
+            info!("No db routing table specified");
+            return Ok(());
+        }
+        let mut row = row::Row {
+            row_key: uaid.simple().to_string(),
+            ..Default::default()
+        };
+        let cells: Vec<cell::Cell> = vec![cell::Cell {
+            family: DBROUTER_FAMILY.to_owned(),
+            qualifier: "storage".to_owned(),
+            value: storage_type.clone().as_str().as_bytes().to_vec(),
+            ..Default::default()
+        }];
+        row.add_cells(DBROUTER_FAMILY, cells);
+        trace!(
+            "🉑 Routing user {:?} to {:?}",
+            uaid.simple().to_string(),
+            storage_type.as_str(),
+        );
+        self.write_row(row, self.settings.db_routing_table.clone())
+            .await
+            .map_err(|e| e.into())
+    }
+
+    fn box_clone(&self) -> Box<dyn DbRouting> {
         Box::new(self.clone())
     }
 }

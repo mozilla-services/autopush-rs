@@ -61,4 +61,7 @@ pub enum DbError {
 
     #[error("Unknown Database Error {0}")]
     General(String),
+
+    #[error("Database Routing Error {0}")]
+    DbRouting(String),
 }

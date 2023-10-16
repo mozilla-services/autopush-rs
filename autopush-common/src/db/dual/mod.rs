@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cadence::StatsdClient;
+use cadence::{CountedExt, StatsdClient};
 use serde::Deserialize;
 use serde_json::from_str;
 use uuid::Uuid;
@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
+    routing::DbRouting,
     DbSettings, Notification, User,
 };
 
@@ -30,7 +31,10 @@ use crate::db::dynamodb::DdbClientImpl;
 pub struct DualClientImpl {
     primary: BigTableClientImpl,
     secondary: DdbClientImpl,
-    write_to_secondary: bool,
+    // ideally, there should be a "router" here that is `dyn DbRouter`, but that introduces
+    // a lot of lifetime complexities that aren't really worth dealing with. For now,
+    // hardcode that we're going to use the secondary in DualClientImpl's `target()` & `assign()`
+    allowance: Option<u8>,
     _metrics: Arc<StatsdClient>,
 }
 
@@ -40,12 +44,10 @@ pub struct DualDbSettings {
     primary: DbSettings,
     #[serde(default)]
     secondary: DbSettings,
-    #[serde(default = "set_true")]
-    write_to_secondary: bool,
-}
-
-fn set_true() -> bool {
-    true
+    /// Percentage of UAIDs to allow to migrate to new data storage.
+    /// This works off of the UAID (which should be a randomly generated UUID4 value)
+    #[serde(default)]
+    allowance: Option<u8>,
 }
 
 impl DualClientImpl {
@@ -54,6 +56,7 @@ impl DualClientImpl {
         let db_settings: DualDbSettings = from_str(&settings.db_settings).map_err(|e| {
             DbError::General(format!("Could not parse DualDBSettings string {:?}", e))
         })?;
+        debug!("settings: {:?}", &db_settings.allowance);
         if StorageType::from_dsn(&db_settings.primary.dsn) != StorageType::BigTable {
             return Err(DbError::General(
                 "Invalid primary DSN specified (must be BigTable type)".to_owned(),
@@ -64,41 +67,103 @@ impl DualClientImpl {
                 "Invalid secondary DSN specified (must be DynamoDB type)".to_owned(),
             ));
         }
+        // determine which uaids to move based on the first byte of their UAID, which (hopefully)
+        // should be sufficiently random based on it being a UUID4.
+        let allowance = if let Some(allowance) = db_settings.allowance {
+            let allow_max = ((std::cmp::min(allowance, 100) as f32 * 0.01) * 255.0) as u8;
+            debug!(
+                "⚖Setting max allowance to {}: [{}] <0x{}",
+                std::cmp::min(allowance, 100),
+                allowance,
+                hex::encode([allow_max]),
+            );
+            Some(allow_max)
+        } else {
+            None
+        };
         let primary = BigTableClientImpl::new(metrics.clone(), &db_settings.primary)?;
         let secondary = DdbClientImpl::new(metrics.clone(), &db_settings.secondary)?;
         Ok(Self {
             primary,
-            secondary,
+            secondary: secondary.clone(),
+            allowance,
             _metrics: metrics,
-            write_to_secondary: db_settings.write_to_secondary,
         })
+    }
+}
+
+/// Wrapper functions to allow us to change which data store system actually manages the
+/// user allocation routing table.
+impl DualClientImpl {
+    /// Route and assign a user to the appropriate back end based on the defined
+    /// allowance
+    async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<Box<&'a dyn DbClient>> {
+        if let Some(allowance) = self.allowance {
+            if uaid.as_bytes()[0] < allowance {
+                info!("⚖ Routing user to Bigtable");
+                self.assign(uaid).await?;
+                // TODO: Better label for this? It's migration so it would appear as
+                // `auto[endpoint|connect].migrate` Maybe that's enough? Do we need
+                // tags?
+                let _ = self
+                    ._metrics
+                    .incr("migrate.assign")
+                    .map_err(|e| DbError::General(format!("Metrics error {:?}", e)))?;
+                Ok(Box::new(&self.primary))
+            } else {
+                Ok(Box::new(&self.secondary))
+            }
+        } else {
+            Ok(self.target(uaid).await?.0)
+        }
+    }
+
+    /// Return DynamoDB as the default target storage system, otherwise use BigTable.
+    async fn target<'a>(&'a self, uaid: &Uuid) -> DbResult<(Box<&'a dyn DbClient>, bool)> {
+        if self.secondary.select(uaid).await? == Some(crate::db::routing::StorageType::BigTable) {
+            return Ok((Box::new(&self.primary), true));
+        };
+        Ok((Box::new(&self.secondary), false))
+    }
+
+    /// Assign the user to the new BigTable storage system.
+    async fn assign(&self, uaid: &Uuid) -> DbResult<()> {
+        self.secondary
+            .assign(uaid, super::routing::StorageType::BigTable)
+            .await
     }
 }
 
 #[async_trait]
 impl DbClient for DualClientImpl {
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        if self.write_to_secondary {
-            let _ = self.secondary.add_user(user).await?;
-        }
-        self.primary.add_user(user).await
+        let target: Box<&dyn DbClient> = self.allot(&user.uaid).await?;
+        target.add_user(user).await
     }
 
     async fn update_user(&self, user: &User) -> DbResult<()> {
-        if self.write_to_secondary {
-            let _ = self.secondary.update_user(user).await?;
-        }
-        self.primary.update_user(user).await
+        //  If the UAID is in the allowance, move them to the new data store
+        let target: Box<&dyn DbClient> = self.allot(&user.uaid).await?;
+        target.update_user(user).await
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
-        match self.primary.get_user(uaid).await {
+        let (target, is_primary) = self.target(uaid).await?;
+        match target.get_user(uaid).await {
             Ok(Some(user)) => Ok(Some(user)),
             Ok(None) => {
-                if let Ok(Some(user)) = self.secondary.get_user(uaid).await {
-                    // copy the user record over to the new data store.
-                    self.primary.add_user(&user).await?;
-                    return Ok(Some(user));
+                if is_primary {
+                    // The user wasn't in the current primary, so fetch them from the secondary.
+                    if let Ok(Some(user)) = self.secondary.get_user(uaid).await {
+                        // copy the user record over to the new data store.
+                        info!("⚖ Found user record in secondary, moving to primary");
+                        self.primary.add_user(&user).await?;
+                        let _ = self
+                            ._metrics
+                            .incr("migrate.moved")
+                            .map_err(|e| DbError::General(format!("Metrics error {:?}", e)));
+                        return Ok(Some(user));
+                    }
                 }
                 Ok(None)
             }
@@ -107,55 +172,64 @@ impl DbClient for DualClientImpl {
     }
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        let result = self.primary.remove_user(uaid).await?;
-        // try removing the user from the old store, just in case.
-        // leaving them could cause false reporting later.
-        let _ = self.secondary.remove_user(uaid).await;
+        let (target, is_primary) = self.target(uaid).await?;
+        let result = target.remove_user(uaid).await?;
+        if is_primary {
+            // try removing the user from the old store, just in case.
+            // leaving them could cause false reporting later.
+            let _ = self.secondary.remove_user(uaid).await;
+        }
         Ok(result)
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        if self.write_to_secondary {
-            let _ = self.secondary.add_channel(uaid, channel_id).await?;
-        }
-        self.primary.add_channel(uaid, channel_id).await
+        let (target, _) = self.target(uaid).await?;
+        target.add_channel(uaid, channel_id).await
     }
 
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
-        let mut channels = self.primary.get_channels(uaid).await?;
+        let (target, is_primary) = self.target(uaid).await?;
+        let mut channels = target.get_channels(uaid).await?;
         // check to see if we need to copy over channels from the secondary
-        if channels.is_empty() {
+        if channels.is_empty() && is_primary {
             channels = self.secondary.get_channels(uaid).await?;
         }
         Ok(channels)
     }
 
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
-        let presult = self.primary.remove_channel(uaid, channel_id).await?;
-        let sresult = self.secondary.remove_channel(uaid, channel_id).await?;
-        Ok(presult | sresult)
+        let (target, is_primary) = self.target(uaid).await?;
+        let result = target.remove_channel(uaid, channel_id).await?;
+        if is_primary {
+            let _ = self.secondary.remove_channel(uaid, channel_id).await?;
+        }
+        Ok(result)
     }
 
     async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
-        let _ = self
-            .secondary
-            .remove_node_id(uaid, node_id, connected_at)
-            .await;
-        self.primary
-            .remove_node_id(uaid, node_id, connected_at)
-            .await
+        let (target, is_primary) = self.target(uaid).await?;
+        let result = target.remove_node_id(uaid, node_id, connected_at).await?;
+        if is_primary {
+            let _ = self
+                .secondary
+                .remove_node_id(uaid, node_id, connected_at)
+                .await?;
+        }
+        Ok(result)
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
-        if self.write_to_secondary {
-            let _ = self.secondary.save_message(uaid, message.clone()).await?;
-        }
-        self.primary.save_message(uaid, message).await
+        let target: Box<&dyn DbClient> = self.allot(uaid).await?;
+        target.save_message(uaid, message).await
     }
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        let _ = self.secondary.remove_message(uaid, sort_key).await;
-        self.primary.remove_message(uaid, sort_key).await
+        let (target, is_primary) = self.target(uaid).await?;
+        let result = target.remove_message(uaid, sort_key).await?;
+        if is_primary {
+            let _ = self.primary.remove_message(uaid, sort_key).await?;
+        }
+        Ok(result)
     }
 
     async fn fetch_topic_messages(
@@ -163,8 +237,9 @@ impl DbClient for DualClientImpl {
         uaid: &Uuid,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        let result = self.primary.fetch_topic_messages(uaid, limit).await?;
-        if result.messages.is_empty() {
+        let (target, is_primary) = self.target(uaid).await?;
+        let result = target.fetch_topic_messages(uaid, limit).await?;
+        if result.messages.is_empty() && is_primary {
             return self.secondary.fetch_topic_messages(uaid, limit).await;
         }
         return Ok(result);
@@ -176,11 +251,11 @@ impl DbClient for DualClientImpl {
         timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        let result = self
-            .primary
+        let (target, is_primary) = self.target(uaid).await?;
+        let result = target
             .fetch_timestamp_messages(uaid, timestamp, limit)
             .await?;
-        if result.messages.is_empty() {
+        if result.messages.is_empty() && is_primary {
             return self
                 .secondary
                 .fetch_timestamp_messages(uaid, timestamp, limit)
@@ -190,17 +265,13 @@ impl DbClient for DualClientImpl {
     }
 
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
-        if self.write_to_secondary {
-            let _ = self.secondary.save_messages(uaid, messages.clone()).await?;
-        }
-        self.primary.save_messages(uaid, messages).await
+        let (target, _) = self.target(uaid).await?;
+        target.save_messages(uaid, messages).await
     }
 
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
-        if self.write_to_secondary {
-            let _ = self.secondary.increment_storage(uaid, timestamp).await?;
-        }
-        self.primary.increment_storage(uaid, timestamp).await
+        let (target, _) = self.target(uaid).await?;
+        target.increment_storage(uaid, timestamp).await
     }
 
     async fn health_check(&self) -> DbResult<bool> {
@@ -222,6 +293,10 @@ impl DbClient for DualClientImpl {
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
     }
+
+    fn name(&self) -> String {
+        "Dual".to_owned()
+    }
 }
 
 #[cfg(all(test, feature = "bigtable", feature = "dynamodb"))]
@@ -229,12 +304,10 @@ mod test {
     use super::*;
     use cadence::{NopMetricSink, StatsdClient};
     use serde_json::json;
+    use std::str::FromStr;
 
-    /// This test checks the dual parser, but also serves as a bit of
-    /// documentation for how the db_settings argument should be structured
-    #[test]
-    fn test_args() -> DbResult<()> {
-        let arg_str = json!({
+    fn test_args(allowance: Option<u8>) -> String {
+        json!({
             "primary": {
                 "dsn": "grpc://bigtable.googleapis.com",  // Note that this is the general endpoint.
                 "db_settings": json!({
@@ -250,10 +323,16 @@ mod test {
                     "message_table": "test_message",
                 }).to_string(),
             },
-            "write_to_secondary": true
+            "allowance": allowance,
         })
-        .to_string();
+        .to_string()
+    }
 
+    /// This test checks the dual parser, but also serves as a bit of
+    /// documentation for how the db_settings argument should be structured
+    #[test]
+    fn arg_parsing() -> DbResult<()> {
+        let arg_str = test_args(None);
         // the output string looks like:
         /*
         "{\"primary\":{\"db_settings\":\"{\\\"message_family\\\":\\\"message\\\",\\\"router_family\\\":\\\"router\\\",\\\"table_name\\\":\\\"projects/some-project/instances/some-instance/tables/some-table\\\"}\",\"dsn\":\"grpc://bigtable.googleapis.com\"},\"secondary\":{\"db_settings\":\"{\\\"message_table\\\":\\\"test_message\\\",\\\"router_table\\\":\\\"test_router\\\"}\",\"dsn\":\"http://localhost:8000/\"}}"
@@ -276,6 +355,25 @@ mod test {
         // for sanity sake, make sure the passed message_family isn't the default value.
         assert_eq!(&dual.primary.settings.message_family, "messageFamily");
 
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn allocation() -> DbResult<()> {
+        let arg_str = test_args(Some(10));
+        let metrics = Arc::new(StatsdClient::builder("", NopMetricSink).build());
+        let dual_settings = DbSettings {
+            dsn: Some("dual".to_owned()),
+            db_settings: arg_str,
+        };
+        let dual = DualClientImpl::new(metrics, &dual_settings)?;
+
+        let low_uaid = Uuid::from_str("04DDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
+        let hi_uaid = Uuid::from_str("1ADDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
+        let result = dual.allot(&low_uaid).await?;
+        assert_eq!(result.name(), dual.primary.name());
+        let result = dual.allot(&hi_uaid).await?;
+        assert_eq!(result.name(), dual.secondary.name());
         Ok(())
     }
 }

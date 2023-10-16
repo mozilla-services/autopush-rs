@@ -46,6 +46,8 @@ pub struct BigTableDbSettings {
     pub message_family: String,
     #[serde(default)]
     pub message_topic_family: String,
+    #[serde(default)]
+    pub db_routing_table: Option<String>,
 }
 
 /// NOTE: autopush will not autogenerate these families. They should
@@ -63,6 +65,7 @@ impl Default for BigTableDbSettings {
             router_family: "router".to_owned(),
             message_family: "message".to_owned(),
             message_topic_family: "message_topic".to_owned(),
+            db_routing_table: None,
         }
     }
 }
