@@ -1,3 +1,69 @@
+<a name="1.69.1"></a>
+## 1.69.1 (2023-10-06)
+
+
+#### Chore
+
+*   Updates for rust 1.73.0 (#465) ([bd8a428b](https://github.com/mozilla-services/autopush-rs/commit/bd8a428b095e98977697d4705e23e3d1d5afcc49))
+*   tag 1.69.0 (#462) ([92f98630](https://github.com/mozilla-services/autopush-rs/commit/92f98630eccedcb2dd9c7dd073147633422b7bb6))
+
+#### Bug Fixes
+
+*   allow invalid uaids in autoconnect (#464) ([6da8c45e](https://github.com/mozilla-services/autopush-rs/commit/6da8c45eed2f89a91633d5e7ca66b93545e152ad))
+
+
+
+<a name="1.69.0"></a>
+## 1.69.0 (2023-10-04)
+
+
+#### Chore
+
+*   tag 1.68.3 (#456) ([2a97e678](https://github.com/mozilla-services/autopush-rs/commit/2a97e6781999df67fd8c0086586924ef2463d4a0))
+
+#### Features
+
+*   Use the calling crate's name and version for init_logging() (#461) ([d3bd4c07](https://github.com/mozilla-services/autopush-rs/commit/d3bd4c072a031e00ac5d08cb15d8e84512881295))
+*   Reject Legacy GCM endpoints (#459) ([aaa47139](https://github.com/mozilla-services/autopush-rs/commit/aaa47139aae3a6dc42c063a6b59cc21202dfe5dd))
+
+
+
+<a name="1.68.3"></a>
+## 1.68.3 (2023-10-02)
+
+#### Breaking Changes
+
+*   Run GCM through FCMv1 HTTP API (#455) ([b2282277](https://github.com/mozilla-services/autopush-rs/commit/b2282277e7e751f5e513d65dda1ab2d2635e7299), breaks [#](https://github.com/mozilla-services/autopush-rs/issues/))
+
+#### Features
+
+*   Run GCM through FCMv1 HTTP API (#455) ([b2282277](https://github.com/mozilla-services/autopush-rs/commit/b2282277e7e751f5e513d65dda1ab2d2635e7299), breaks [#](https://github.com/mozilla-services/autopush-rs/issues/))
+
+#### Bug Fixes
+
+*   re-enable slog's envlogger (#452) ([e76b1198](https://github.com/mozilla-services/autopush-rs/commit/e76b11987400888bae17fdf61e7dff3edaa7743d))
+*   AutopushUser fails with WebSocketConnectionClosedException ([5f8efb2d](https://github.com/mozilla-services/autopush-rs/commit/5f8efb2db9550b8960c6052c69e1103ab8681041))
+
+#### Test
+
+*   calibrate load tests ([1b5c5f99](https://github.com/mozilla-services/autopush-rs/commit/1b5c5f99a503ff5a70f009651ad4c47d39c6468e))
+*   add subscribe and unsubscribe tasks to AutopushUser ([07d988dd](https://github.com/mozilla-services/autopush-rs/commit/07d988dd11a79d053eb93237f8de977490c5c510))
+
+
+<a name="1.68.2"></a>
+## 1.68.2 (2023-09-27)
+
+
+#### Bug Fixes
+
+*   Use `warn!()` to supplement sentry errors, since they don't show up regularly. (#449) ([4eaa9a06](https://github.com/mozilla-services/autopush-rs/commit/4eaa9a06a8197e31f103d9e0ce18f6aa550526b7))
+
+#### Chore
+
+*   tag 1.68.1 (#448) ([b55bbe76](https://github.com/mozilla-services/autopush-rs/commit/b55bbe7680be5e0601353321653fbefa9a9e737b))
+
+
+
 <a name="1.68.1"></a>
 ## 1.68.1 (2023-09-27)
 

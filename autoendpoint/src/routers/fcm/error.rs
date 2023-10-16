@@ -74,7 +74,9 @@ impl FcmError {
 
     pub fn extras(&self) -> Vec<(&str, String)> {
         match self {
-            FcmError::EmptyResponse(status) => vec![("status", status.to_string())],
+            FcmError::EmptyResponse(status) => {
+                vec![("status", status.to_string())]
+            }
             FcmError::InvalidResponse(_, body, status) => {
                 vec![("status", status.to_string()), ("body", body.to_owned())]
             }

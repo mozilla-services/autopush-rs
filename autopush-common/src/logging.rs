@@ -8,27 +8,25 @@ use crate::errors::Result;
 
 static EC2_INSTANCE_ID: OnceLock<Option<String>> = OnceLock::new();
 
-pub fn init_logging(json: bool) -> Result<()> {
+pub fn init_logging(json: bool, name: &str, version: &str) -> Result<()> {
     let logger = if json {
         let ec2_instance_id = EC2_INSTANCE_ID.get_or_init(|| get_ec2_instance_id().ok());
         let hostname = ec2_instance_id
             .clone()
             .unwrap_or_else(|| gethostname().to_string_lossy().to_string());
         let drain = MozLogJson::new(io::stdout())
-            .logger_name(format!(
-                "{}-{}",
-                env!("CARGO_PKG_NAME"),
-                env!("CARGO_PKG_VERSION")
-            ))
-            .msg_type(format!("{}:log", env!("CARGO_PKG_NAME")))
+            .logger_name(format!("{}-{}", name, version))
+            .msg_type(format!("{}:log", name))
             .hostname(hostname)
             .build()
             .fuse();
+        let drain = slog_envlogger::new(drain);
         let drain = slog_async::Async::new(drain).build().fuse();
         slog::Logger::root(drain, slog_o!())
     } else {
         let decorator = slog_term::TermDecorator::new().build();
         let drain = slog_term::FullFormat::new(decorator).build().fuse();
+        let drain = slog_envlogger::new(drain);
         let drain = slog_async::Async::new(drain).build().fuse();
         slog::Logger::root(drain, slog_o!())
     };
