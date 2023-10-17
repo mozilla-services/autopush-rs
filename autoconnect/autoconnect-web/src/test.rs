@@ -175,7 +175,7 @@ pub async fn broadcast_after_ping() {
     let settings = Settings {
         auto_ping_interval: Duration::from_secs_f32(0.15),
         auto_ping_timeout: Duration::from_secs_f32(0.15),
-        ..Default::default()
+        ..Settings::test_settings()
     };
     let app_state = AppState {
         db: hello_db().into_boxed_arc(),
