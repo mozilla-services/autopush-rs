@@ -80,7 +80,7 @@ pub struct DdbClientImpl {
 
 impl DdbClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
-        let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
+        let db_client = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
@@ -93,14 +93,9 @@ impl DdbClientImpl {
             DynamoDbClient::new(Region::default())
         };
 
-        let settings =
-            DynamoDbSettings::try_from(db_settings.db_settings.as_ref()).unwrap_or_else(|e| {
-                warn!("err: {:?}", e);
-                DynamoDbSettings::default()
-            });
-
+        let settings = DynamoDbSettings::try_from(db_settings.db_settings.as_ref())?;
         Ok(Self {
-            db_client: ddb,
+            db_client,
             metrics,
             settings,
         })
