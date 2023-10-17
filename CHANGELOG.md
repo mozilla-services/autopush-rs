@@ -1,3 +1,17 @@
+<a name="1.69.2"></a>
+## 1.69.2 (2023-10-17)
+
+
+#### Features
+
+*   hide common SessionClosed errors from sentry (#470) ([f069c2c9](https://github.com/mozilla-services/autopush-rs/commit/f069c2c90f06afe082450a4aed0453e8562b5e28))
+
+#### Chore
+
+*   tag 1.69.1 (#466) ([c8192503](https://github.com/mozilla-services/autopush-rs/commit/c8192503023cec998db7b78148a8b3827b646391))
+
+
+
 <a name="1.69.1"></a>
 ## 1.69.1 (2023-10-06)
 
