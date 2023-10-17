@@ -11,6 +11,7 @@ use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
+use serde_json::json;
 
 pub use app_state::AppState;
 
@@ -210,6 +211,18 @@ impl Settings {
         non_zero(self.auto_ping_interval, "AUTO_PING_INTERVAL")?;
         non_zero(self.auto_ping_timeout, "AUTO_PING_TIMEOUT")?;
         Ok(())
+    }
+
+    pub fn test_settings() -> Self {
+        let db_settings = json!({
+            "message_table": "message_test",
+            "router_table": "router_test"
+        })
+        .to_string();
+        Self {
+            db_settings,
+            ..Default::default()
+        }
     }
 }
 
