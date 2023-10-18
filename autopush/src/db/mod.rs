@@ -1,3 +1,4 @@
+use hyper::StatusCode;
 use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
@@ -254,7 +255,7 @@ impl DynamoStorage {
                         .or_else(move |r| {
                             trace!("--- failed to register channel. {:?}", r);
                             future::ok(RegisterResponse::Error {
-                                status: 503,
+                                status: StatusCode::SERVICE_UNAVAILABLE.as_u16() as u32,
                                 error_msg: "Failed to register channel".to_string(),
                             })
                         })
@@ -266,7 +267,7 @@ impl DynamoStorage {
             .and_then(move |_| future::ok(RegisterResponse::Success { endpoint }))
             .or_else(move |_| {
                 future::ok(RegisterResponse::Error {
-                    status: 503,
+                    status: StatusCode::SERVICE_UNAVAILABLE.as_u16() as u32,
                     error_msg: "Failed to register channel".to_string(),
                 })
             });
