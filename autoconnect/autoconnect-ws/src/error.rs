@@ -61,7 +61,7 @@ impl ReportableError for WSError {
     fn is_sentry_event(&self) -> bool {
         match &self.kind {
             WSErrorKind::SM(e) => e.is_sentry_event(),
-            e => !matches!(e, WSErrorKind::Json(_)),
+            e => !matches!(e, WSErrorKind::Json(_) | WSErrorKind::SessionClosed(_)),
         }
     }
 

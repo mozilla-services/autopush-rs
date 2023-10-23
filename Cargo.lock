@@ -598,6 +598,7 @@ dependencies = [
  "reqwest 0.11.22",
  "serde",
  "serde_derive",
+ "serde_json",
  "slog",
  "slog-scope",
  "tokio 1.32.0",
