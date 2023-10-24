@@ -294,12 +294,8 @@ impl ResponseError for ApiError {
     }
 
     fn error_response(&self) -> HttpResponse {
-        let mut builder = HttpResponse::build(self.kind.status());
-
-        if self.status_code() == 410 {
-            builder.insert_header(("Cache-Control", "max-age=86400"));
-        }
-
+        let code = self.status_code();
+        let mut builder = autopush_common::errors::build_error(code);
         builder.json(self)
     }
 }

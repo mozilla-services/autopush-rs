@@ -1,13 +1,9 @@
 use actix_http::ws::HandshakeError;
-use actix_web::{
-    error::ResponseError, http::header, http::StatusCode, HttpResponse, HttpResponseBuilder,
-};
+use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
 use backtrace::Backtrace;
 use serde_json::json;
 
 use autopush_common::errors::ReportableError;
-
-const RETRY_AFTER_PERIOD: &str = "120"; // retry after 2 minutes
 
 /// The main error type
 #[derive(thiserror::Error, Debug)]
@@ -29,11 +25,8 @@ impl ResponseError for ApiError {
 
     fn error_response(&self) -> HttpResponse {
         let code = self.status_code();
-        let mut resp = HttpResponseBuilder::new(code);
-        if code == StatusCode::SERVICE_UNAVAILABLE {
-            resp.append_header((header::RETRY_AFTER, RETRY_AFTER_PERIOD));
-        };
-        resp.json(json!({
+        let mut builder = autopush_common::errors::build_error(code);
+        builder.json(json!({
             "code": code.as_u16(),
             "errno": self.errno(),
             "error": self.to_string(),
