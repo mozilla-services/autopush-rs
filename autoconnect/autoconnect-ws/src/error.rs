@@ -61,7 +61,10 @@ impl ReportableError for WSError {
     fn is_sentry_event(&self) -> bool {
         match &self.kind {
             WSErrorKind::SM(e) => e.is_sentry_event(),
-            e => !matches!(e, WSErrorKind::Json(_) | WSErrorKind::SessionClosed(_)),
+            e => !matches!(
+                e,
+                WSErrorKind::PongTimeout | WSErrorKind::Json(_) | WSErrorKind::SessionClosed(_)
+            ),
         }
     }
 
@@ -69,6 +72,7 @@ impl ReportableError for WSError {
         match &self.kind {
             WSErrorKind::SM(e) => e.metric_label(),
             // TODO:
+            WSErrorKind::PongTimeout => Some("pong_timeout"),
             _ => None,
         }
     }
