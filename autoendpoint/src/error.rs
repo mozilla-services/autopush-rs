@@ -6,13 +6,14 @@ use crate::routers::RouterError;
 use actix_web::{
     dev::ServiceResponse,
     error::{JsonPayloadError, PayloadError, ResponseError},
+    http::header::{CacheControl, CacheDirective},
     http::StatusCode,
     middleware::ErrorHandlerResponse,
     HttpResponse, Result,
 };
+// Sentry uses the backtrace crate, not std::backtrace.
 use backtrace::Backtrace;
 use reqwest::header;
-// Sentry uses the backtrace crate, not std::backtrace.
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
@@ -301,7 +302,7 @@ impl ResponseError for ApiError {
 
         match self.status_code() {
             StatusCode::GONE => {
-                builder.insert_header((header::CACHE_CONTROL, "max-age=86400"));
+                builder.insert_header(CacheControl(vec![CacheDirective::MaxAge(86400)]));
             }
             StatusCode::SERVICE_UNAVAILABLE => {
                 builder.insert_header((header::RETRY_AFTER, RETRY_AFTER_PERIOD));
