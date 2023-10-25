@@ -82,18 +82,9 @@ CN_QUEUES: list = []
 EP_QUEUES: list = []
 STRICT_LOG_COUNTS = True
 
-modules = [
-    "autoconnect",
-    "autoconnect_common",
-    "autoconnect_web",
-    "autoconnect_ws",
-    "autoconnect_ws_sm",
-    "autoendpoint",
-    "autopush",
-    "autopush_common",
-]
+modules = ["autoconnect", "autoconnect_common", "autoconnect_web", "autoconnect_ws", "autoconnect_ws_sm", "autoendpoint", "autopush", "autopush_common"]
 log_string = [f"{x}=trace" for x in modules]
-RUST_LOG = ",".join(log_string) + ",error"
+RUST_LOG = ",".join(log_string)+",error"
 
 
 def get_free_port() -> int:
@@ -103,14 +94,11 @@ def get_free_port() -> int:
     s.close()
     return port
 
-
 """Try reading the database settings from the environment
 
 If that points to a file, read the settings from that file.
 """
-
-
-def get_db_settings() -> Optional[dict[str, str | int | float]]:
+def get_db_settings() -> Optional[dict[str, str | int | float]] :
     env_var = os.environ.get("DB_SETTINGS")
     if env_var:
         if os.path.isfile(env_var):
@@ -128,7 +116,6 @@ def get_db_settings() -> Optional[dict[str, str | int | float]]:
             message_topic_family="message_topic",
         )
     )
-
 
 MOCK_SERVER_PORT = get_free_port()
 MOCK_MP_SERVICES: dict = {}
@@ -607,49 +594,25 @@ def capture_output_to_queue(output_stream):
     t.start()
     return log_queue
 
-
 def setup_bt():
     global BT_PROCESS, BT_DB_SETTINGS
-    BT_PROCESS = subprocess.Popen(
-        "gcloud beta emulators bigtable start".split(" ")
-    )
+    BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
-        BT_DB_SETTINGS = os.environ.get(
-            "BT_DB_SETTINGS",
-            json.dumps(
-                {
-                    "table_name": "projects/test/instances/test/tables/autopush",
-                }
-            ),
-        )
+        BT_DB_SETTINGS = os.environ.get("BT_DB_SETTINGS", json.dumps({
+            "table_name": "projects/test/instances/test/tables/autopush",
+        }))
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/test/tables/autopush"
         log.debug("🐍🟢 Starting bigtable emulator")
         cmd_start = "cbt -project test -instance test".split(" ")
-        vv = subprocess.call(
-            cmd_start + "createtable autopush".split(" "),
-            stderr=subprocess.STDOUT,
-        )
-        vv = subprocess.call(
-            cmd_start + "createfamily autopush message".split(" ")
-        )
-        vv = subprocess.call(
-            cmd_start + "createfamily autopush message_topic".split(" ")
-        )
-        vv = subprocess.call(
-            cmd_start + "createfamily autopush router".split(" ")
-        )
-        vv = subprocess.call(
-            cmd_start + "setgcpolicy autopush message maxage=1s".split(" ")
-        )
-        vv = subprocess.call(
-            cmd_start
-            + "setgcpolicy autopush message_topic maxversions=1".split(" ")
-        )
-        vv = subprocess.call(
-            cmd_start + "setgcpolicy autopush router maxversions=1".split(" ")
-        )
+        vv = subprocess.call(cmd_start + "createtable autopush".split(" "), stderr=subprocess.STDOUT)
+        vv = subprocess.call(cmd_start + "createfamily autopush message".split(" "))
+        vv = subprocess.call(cmd_start + "createfamily autopush message_topic".split(" "))
+        vv = subprocess.call(cmd_start + "createfamily autopush router".split(" "))
+        vv = subprocess.call(cmd_start + "setgcpolicy autopush message maxage=1s".split(" "))
+        vv = subprocess.call(cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" "))
+        vv = subprocess.call(cmd_start + "setgcpolicy autopush router maxversions=1".split(" "))
         log.debug(vv)
     except Exception as e:
         log.error("Bigtable Setup Error {}", e)
@@ -750,7 +713,7 @@ def setup_megaphone_server(connection_binary):
     else:
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
-    log.debug("🐍🟢 Starting Megaphone server: {}".format(" ".join(cmd)))
+    log.debug("🐍🟢 Starting Megaphone server: {}".format(' '.join(cmd)))
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
 
 
@@ -777,7 +740,7 @@ def setup_endpoint_server():
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
 
-    log.debug("🐍🟢 Starting Endpoint server: {}".format(" ".join(cmd)))
+    log.debug("🐍🟢 Starting Endpoint server: {}".format(' '.join(cmd)))
     EP_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -862,9 +825,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def quick_register(self):
-        log.debug(
-            "🐍#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT)
-        )
+        log.debug("🐍#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
@@ -1207,10 +1168,8 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_multiple_delivery_with_single_ack(self):
-        data = (
-            b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
-        )
-        data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
+        data = b'\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()
+        data2 = b':\xd8^\xac\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
@@ -1249,12 +1208,8 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_multiple_delivery_with_multiple_ack(self):
-        data = (
-            b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
-        )  # "FirstMessage"
-        data2 = (
-            b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
-        )  # "OtherMessage"
+        data = b'\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()  # "FirstMessage"
+        data2 = b':\xd8^\xac\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()    # "OtherMessage"
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
@@ -1345,15 +1300,13 @@ class TestRustWebPush(unittest.TestCase):
     @max_logs(endpoint=28)
     def test_ttl_batch_expired_and_good_one(self):
         data = str(uuid.uuid4()).encode()
-        data2 = base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode()
-        print(data2)
+        data2 = base64.urlsafe_b64decode('0012') + str(uuid.uuid4()).encode()
+        print(data2);
         client = yield self.quick_register()
         yield client.disconnect()
         for x in range(0, 12):
             prefix = base64.urlsafe_b64decode("{:04d}".format(x))
-            yield client.send_notification(
-                data=prefix + data, ttl=1, status=201
-            )
+            yield client.send_notification(data=prefix+data, ttl=1, status=201)
 
         yield client.send_notification(data=data2, status=201)
         time.sleep(1)
