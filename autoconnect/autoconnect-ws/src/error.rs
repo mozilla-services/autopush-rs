@@ -61,6 +61,7 @@ impl ReportableError for WSError {
     fn is_sentry_event(&self) -> bool {
         match &self.kind {
             WSErrorKind::SM(e) => e.is_sentry_event(),
+            WSErrorKind::Protocol(_) | WSErrorKind::RegistryDisconnected => true,
             _ => false,
         }
     }

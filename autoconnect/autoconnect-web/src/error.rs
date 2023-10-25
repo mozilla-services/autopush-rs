@@ -25,8 +25,7 @@ impl ResponseError for ApiError {
 
     fn error_response(&self) -> HttpResponse {
         let code = self.status_code();
-        let mut builder = autopush_common::errors::build_error(code);
-        builder.json(json!({
+        HttpResponse::build(code).json(json!({
             "code": code.as_u16(),
             "errno": self.errno(),
             "error": self.to_string(),

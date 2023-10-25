@@ -10,7 +10,9 @@ use actix_web::{
     middleware::ErrorHandlerResponse,
     HttpResponse, Result,
 };
-use backtrace::Backtrace; // Sentry uses the backtrace crate, not std::backtrace.
+use backtrace::Backtrace;
+use reqwest::header;
+// Sentry uses the backtrace crate, not std::backtrace.
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
@@ -25,6 +27,7 @@ pub type ApiResult<T> = Result<T, ApiError>;
 
 /// A link for more info on the returned error
 const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#error-codes";
+const RETRY_AFTER_PERIOD: &str = "120"; // retry after 2 minutes;
 
 /// The main error type.
 #[derive(Debug)]
@@ -296,8 +299,14 @@ impl ResponseError for ApiError {
     fn error_response(&self) -> HttpResponse {
         let mut builder = HttpResponse::build(self.kind.status());
 
-        if self.status_code() == 410 {
-            builder.insert_header(("Cache-Control", "max-age=86400"));
+        match self.status_code() {
+            StatusCode::GONE => {
+                builder.insert_header((header::CACHE_CONTROL, "max-age=86400"));
+            }
+            StatusCode::SERVICE_UNAVAILABLE => {
+                builder.insert_header((header::RETRY_AFTER, RETRY_AFTER_PERIOD));
+            }
+            _ => {}
         }
 
         builder.json(self)
