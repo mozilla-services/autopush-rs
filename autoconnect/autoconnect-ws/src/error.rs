@@ -72,7 +72,6 @@ impl ReportableError for WSError {
         match &self.kind {
             WSErrorKind::SM(e) => e.metric_label(),
             // TODO:
-            WSErrorKind::PongTimeout => Some("pong_timeout"),
             _ => None,
         }
     }
