@@ -59,6 +59,7 @@ impl ReportableError for WSError {
     }
 
     fn is_sentry_event(&self) -> bool {
+        dbg!("###################### In WSError.is_sentry_event");
         match &self.kind {
             WSErrorKind::SM(e) => e.is_sentry_event(),
             _ => false,
