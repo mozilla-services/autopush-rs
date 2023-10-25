@@ -25,7 +25,8 @@ impl ResponseError for ApiError {
 
     fn error_response(&self) -> HttpResponse {
         let code = self.status_code();
-        HttpResponse::build(code).json(json!({
+        let mut builder = autopush_common::errors::build_error(code);
+        builder.json(json!({
             "code": code.as_u16(),
             "errno": self.errno(),
             "error": self.to_string(),
@@ -41,7 +42,7 @@ impl ReportableError for ApiError {
     fn is_sentry_event(&self) -> bool {
         match self {
             // Ignore failing upgrade to WebSocket
-            ApiError::Actix(e) => e.as_error() != Some(&HandshakeError::NoWebsocketUpgrade),
+            ApiError::Actix(e) => e.as_error::<HandshakeError>().is_some(),
             _ => true,
         }
     }
