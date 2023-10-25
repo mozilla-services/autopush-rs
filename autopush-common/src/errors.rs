@@ -6,10 +6,8 @@ use std::io;
 use std::num;
 
 use actix_web::{
-    dev::ServiceResponse,
-    http::{header, StatusCode},
-    middleware::ErrorHandlerResponse,
-    HttpResponse, HttpResponseBuilder, ResponseError,
+    dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponse,
+    HttpResponseBuilder, ResponseError,
 };
 use backtrace::Backtrace;
 // Sentry 0.29 uses the backtrace crate, not std::backtrace
@@ -17,7 +15,6 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, ApcError>;
-const RETRY_AFTER_PERIOD: &str = "120"; // retry after 2 minutes
 
 /// Render a 404 response
 pub fn render_404<B>(
@@ -28,22 +25,6 @@ pub fn render_404<B>(
     Ok(ErrorHandlerResponse::Response(
         res.into_response(resp).map_into_right_body(),
     ))
-}
-
-/// Create a Response and set common headers for return codes.
-/// This function is shared between ApiError and ApcError
-pub fn build_error(code: StatusCode) -> HttpResponseBuilder {
-    let mut builder = HttpResponse::build(code);
-    match code {
-        StatusCode::GONE => {
-            builder.insert_header(("Cache-Control", "max-age=86400"));
-        }
-        StatusCode::SERVICE_UNAVAILABLE => {
-            builder.insert_header((header::RETRY_AFTER, RETRY_AFTER_PERIOD));
-        }
-        _ => {}
-    };
-    builder
 }
 
 /// AutoPush Common error (To distinguish from endpoint's ApiError)
