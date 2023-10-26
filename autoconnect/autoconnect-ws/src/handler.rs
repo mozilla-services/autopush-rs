@@ -7,7 +7,6 @@ use tokio::{select, time::timeout};
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autoconnect_settings::AppState;
 use autoconnect_ws_sm::{UnidentifiedClient, WebPushClient};
-use autopush_common::{errors::ReportableError, sentry::event_from_error};
 
 use crate::{
     error::{WSError, WSErrorKind},
@@ -61,7 +60,13 @@ pub(crate) async fn webpush_ws(
     // NOTE: UnidentifiedClient doesn't require shutdown/cleanup, so its
     // Error's propagated. We don't propagate Errors afterwards to handle
     // shutdown/cleanup of WebPushClient
-    let (mut client, smsgs) = unidentified_ws(client, &mut msg_stream).await?;
+    let (mut client, smsgs) = match unidentified_ws(client, &mut msg_stream).await {
+        Ok(t) => t,
+        Err(e) => {
+            e.capture_sentry_event(None);
+            return Err(e);
+        }
+    };
 
     // Client now identified: add them to the registry to recieve ServerNotifications
     let mut snotif_stream = client.registry_connect().await;
@@ -75,11 +80,7 @@ pub(crate) async fn webpush_ws(
     client.shutdown(result.as_ref().err().map(|e| e.to_string()));
 
     if let Err(ref e) = result {
-        if e.is_sentry_event() {
-            let mut event = event_from_error(e);
-            client.add_sentry_info(&mut event);
-            sentry::capture_event(event);
-        }
+        e.capture_sentry_event(Some(client));
     }
     result
 }

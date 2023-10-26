@@ -3,8 +3,8 @@ use std::fmt;
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
 
-use autoconnect_ws_sm::SMError;
-use autopush_common::errors::ReportableError;
+use autoconnect_ws_sm::{SMError, WebPushClient};
+use autopush_common::{errors::ReportableError, sentry::event_from_error};
 
 /// WebPush WebSocket Handler Errors
 #[derive(Debug, thiserror::Error)]
@@ -50,6 +50,18 @@ impl WSError {
     /// variant's name (via `strum::AsRefStr`)
     pub fn close_description(&self) -> &str {
         self.kind.as_ref()
+    }
+
+    /// Emit an event for this Error to Sentry if set to
+    pub fn capture_sentry_event(&self, client: Option<WebPushClient>) {
+        if !self.is_sentry_event() {
+            return;
+        }
+        let mut event = event_from_error(self);
+        if let Some(client) = client {
+            client.add_sentry_info(&mut event);
+        }
+        sentry::capture_event(event);
     }
 }
 
