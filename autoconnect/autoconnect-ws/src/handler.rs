@@ -29,7 +29,7 @@ pub fn spawn_webpush_ws(
         let close_reason = webpush_ws(client, &mut session, msg_stream)
             .await
             .unwrap_or_else(|e| {
-                error!("spawn_webpush_ws: Error: {}", e);
+                trace!("spawn_webpush_ws: Error: {}", e);
                 Some(CloseReason {
                     code: e.close_code(),
                     description: Some(e.close_description().to_owned()),

@@ -52,7 +52,7 @@ impl WSError {
         self.kind.as_ref()
     }
 
-    /// Emit an event for this Error to Sentry if set to
+    /// Emit an event for this Error to Sentry
     pub fn capture_sentry_event(&self, client: Option<WebPushClient>) {
         if !self.is_sentry_event() {
             return;
