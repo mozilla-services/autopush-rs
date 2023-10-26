@@ -136,6 +136,6 @@ impl AppState {
 /// For tests
 impl Default for AppState {
     fn default() -> Self {
-        Self::from_settings(Default::default()).unwrap()
+        Self::from_settings(Settings::test_settings()).unwrap()
     }
 }

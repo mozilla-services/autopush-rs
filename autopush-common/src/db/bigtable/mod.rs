@@ -31,7 +31,6 @@ use crate::db::error::DbError;
 
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
 pub struct BigTableDbSettings {
     /// The Table name matches the GRPC template for table paths.
     /// e.g. `projects/{projectid}/instances/{instanceid}/tables/{tablename}`
@@ -54,6 +53,7 @@ pub struct BigTableDbSettings {
     pub database_pool_connection_timeout: Option<u32>,
 }
 
+<<<<<<< HEAD
 /// NOTE: autopush will not autogenerate these families. They should
 /// be created when the table is first provisioned. See
 /// [BigTable schema](https://cloud.google.com/bigtable/docs/schema-design)
@@ -75,6 +75,8 @@ impl Default for BigTableDbSettings {
     }
 }
 
+=======
+>>>>>>> 09db55f2542a6029b33f90649bbd1f4eaa5f88bb
 impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {

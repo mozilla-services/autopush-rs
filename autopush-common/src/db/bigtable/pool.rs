@@ -48,13 +48,10 @@ impl BigTablePool {
 
     /// Creates a new pool of BigTable db connections.
     pub fn new(settings: &DbSettings) -> DbResult<Self> {
-        let endpoint = match &settings.dsn {
-            Some(v) => v,
-            None => {
-                return Err(DbError::ConnectionError(
-                    "No DSN specified in settings".to_owned(),
-                ))
-            }
+        let Some(endpoint) = &settings.dsn else {
+            return Err(DbError::ConnectionError(
+                "No DSN specified in settings".to_owned(),
+            ));
         };
         let bt_settings = BigTableDbSettings::try_from(settings.db_settings.as_str())?;
         debug!("🉑 DSN: {}", &endpoint);
@@ -150,6 +147,8 @@ impl Manager for BigtableClientManager {
     }
 
     /// We can't really recycle a given client, so fail and the client should be dropped.
+    /// The grpcio channnel declaration is currently a private variable inside of BigtableClient,
+    /// and I'd rather not poke too deeply into code that we don't own.
     async fn recycle(
         &self,
         _client: &mut Self::Type,
