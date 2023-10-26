@@ -42,15 +42,6 @@ pub struct DynamoDbSettings {
     pub message_table: String,
 }
 
-impl Default for DynamoDbSettings {
-    fn default() -> Self {
-        Self {
-            router_table: "router".to_string(),
-            message_table: "message".to_string(),
-        }
-    }
-}
-
 impl TryFrom<&str> for DynamoDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {

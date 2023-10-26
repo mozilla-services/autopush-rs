@@ -30,7 +30,6 @@ use crate::db::error::DbError;
 
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
 pub struct BigTableDbSettings {
     /// The Table name matches the GRPC template for table paths.
     /// e.g. `projects/{projectid}/instances/{instanceid}/tables/{tablename}`
@@ -46,25 +45,6 @@ pub struct BigTableDbSettings {
     pub message_family: String,
     #[serde(default)]
     pub message_topic_family: String,
-}
-
-/// NOTE: autopush will not autogenerate these families. They should
-/// be created when the table is first provisioned. See
-/// [BigTable schema](https://cloud.google.com/bigtable/docs/schema-design)
-///
-/// BE SURE TO CONFIRM the names of the families. These are not checked on
-/// initialization, but will throw errors if not present or incorrectly
-/// spelled.
-///
-impl Default for BigTableDbSettings {
-    fn default() -> Self {
-        Self {
-            table_name: "autopush".to_owned(),
-            router_family: "router".to_owned(),
-            message_family: "message".to_owned(),
-            message_topic_family: "message_topic".to_owned(),
-        }
-    }
 }
 
 impl TryFrom<&str> for BigTableDbSettings {
