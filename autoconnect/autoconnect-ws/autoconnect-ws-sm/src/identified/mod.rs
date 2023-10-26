@@ -255,12 +255,12 @@ impl WebPushClient {
     }
 
     /// Add User information and tags for this Client to a Sentry Event
-    pub fn add_sentry_info(&self, event: &mut sentry::protocol::Event) {
+    pub fn add_sentry_info(self, event: &mut sentry::protocol::Event) {
         event.user = Some(sentry::User {
             id: Some(self.uaid.as_simple().to_string()),
             ..Default::default()
         });
-        let ua_info = self.ua_info.clone();
+        let ua_info = self.ua_info;
         event
             .tags
             .insert("ua_name".to_owned(), ua_info.browser_name);
