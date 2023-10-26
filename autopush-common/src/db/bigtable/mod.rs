@@ -53,30 +53,6 @@ pub struct BigTableDbSettings {
     pub database_pool_connection_timeout: Option<u32>,
 }
 
-<<<<<<< HEAD
-/// NOTE: autopush will not autogenerate these families. They should
-/// be created when the table is first provisioned. See
-/// [BigTable schema](https://cloud.google.com/bigtable/docs/schema-design)
-///
-/// BE SURE TO CONFIRM the names of the families. These are not checked on
-/// initialization, but will throw errors if not present or incorrectly
-/// spelled.
-///
-impl Default for BigTableDbSettings {
-    fn default() -> Self {
-        Self {
-            table_name: "autopush".to_owned(),
-            router_family: "router".to_owned(),
-            message_family: "message".to_owned(),
-            message_topic_family: "message_topic".to_owned(),
-            database_pool_max_size: None,
-            database_pool_connection_timeout: None,
-        }
-    }
-}
-
-=======
->>>>>>> 09db55f2542a6029b33f90649bbd1f4eaa5f88bb
 impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
