@@ -11,8 +11,8 @@ use actix_web::{
     middleware::ErrorHandlerResponse,
     HttpResponse, HttpResponseBuilder, ResponseError,
 };
-use backtrace::Backtrace;
 // Sentry 0.29 uses the backtrace crate, not std::backtrace
+use backtrace::Backtrace;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use thiserror::Error;
 

@@ -42,7 +42,7 @@ impl ReportableError for ApiError {
     fn is_sentry_event(&self) -> bool {
         match self {
             // Ignore failing upgrade to WebSocket
-            ApiError::Actix(e) => e.as_error() != Some(&HandshakeError::NoWebsocketUpgrade),
+            ApiError::Actix(e) => e.as_error::<HandshakeError>().is_none(),
             _ => true,
         }
     }
