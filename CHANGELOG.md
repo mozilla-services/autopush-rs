@@ -1,3 +1,18 @@
+<a name="1.69.3"></a>
+## 1.69.3 (2023-10-26)
+
+
+#### Doc
+
+*   further clean up (#399) ([61d784f8](https://github.com/mozilla-services/autopush-rs/commit/61d784f8bf380531fecde116d2183f498756ca38))
+
+#### Bug Fixes
+
+*   capture sentry events for the unidentified state (#484) ([09db55f2](https://github.com/mozilla-services/autopush-rs/commit/09db55f2542a6029b33f90649bbd1f4eaa5f88bb))
+*   Convert WSError(Timeout for Pong) to metric (#478) ([cd597d39](https://github.com/mozilla-services/autopush-rs/commit/cd597d3961bdd4a35521a99fca2a94ebc39506bc))
+
+
+
 <a name="1.69.2"></a>
 ## 1.69.2 (2023-10-17)
 
