@@ -51,6 +51,12 @@ pub struct BigTableDbSettings {
     /// Max time (in milliseconds) to wait for a database connection
     #[serde(default)]
     pub database_pool_connection_timeout: Option<u32>,
+    /// Max time (in milliseconds) a connection should live
+    #[serde(default)]
+    pub database_pool_connection_ttl: Option<u32>,
+    /// Max idle time(in milliseconds) for a connection
+    #[serde(default)]
+    pub database_pool_max_idle: Option<u32>,
 }
 
 impl TryFrom<&str> for BigTableDbSettings {

@@ -1,11 +1,12 @@
+use std::time::Instant;
 use std::{fmt, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use cadence::StatsdClient;
 use deadpool::managed::{Manager, PoolConfig, Timeouts};
-use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 
-use crate::db::bigtable::{BigTableDbSettings, BigTableError};
+use crate::db::bigtable::{bigtable_client::BigtableDb, BigTableDbSettings, BigTableError};
 use crate::db::error::{DbError, DbResult};
 use crate::db::DbSettings;
 
@@ -21,6 +22,7 @@ use super::bigtable_client::error;
 pub struct BigTablePool {
     /// Pool of db connections
     pub pool: deadpool::managed::Pool<BigtableClientManager>,
+    _metrics: Arc<StatsdClient>,
 }
 
 impl fmt::Debug for BigTablePool {
@@ -42,12 +44,12 @@ impl BigTablePool {
     }
 
     /// Get the pools manager, because we would like to talk to them.
-    pub fn manager(&self) -> &BigtableClientManager {
-        self.pool.manager()
+    pub fn get_channel(&self) -> Result<Channel, BigTableError> {
+        self.pool.manager().get_channel()
     }
 
     /// Creates a new pool of BigTable db connections.
-    pub fn new(settings: &DbSettings) -> DbResult<Self> {
+    pub fn new(settings: &DbSettings, metrics: &Arc<StatsdClient>) -> DbResult<Self> {
         let Some(endpoint) = &settings.dsn else {
             return Err(DbError::ConnectionError(
                 "No DSN specified in settings".to_owned(),
@@ -80,7 +82,7 @@ impl BigTablePool {
 
         // Construct a new manager and put them in a pool for handling future requests.
         let manager =
-            BigtableClientManager::new(settings, settings.dsn.clone(), connection.clone())?;
+            BigtableClientManager::new(&bt_settings, settings.dsn.clone(), connection.clone())?;
         let mut config = PoolConfig::default();
         if let Some(size) = bt_settings.database_pool_max_size {
             debug!("🏊 Setting pool max size {}", &size);
@@ -99,20 +101,23 @@ impl BigTablePool {
             .build()
             .map_err(|e| DbError::BTError(BigTableError::Pool(e.to_string())))?;
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            _metrics: metrics.clone(),
+        })
     }
 }
 
 /// BigTable Pool Manager. This contains everything needed to create a new connection.
 pub struct BigtableClientManager {
-    settings: DbSettings,
+    settings: BigTableDbSettings,
     dsn: Option<String>,
     connection: String,
 }
 
 impl BigtableClientManager {
     fn new(
-        settings: &DbSettings,
+        settings: &BigTableDbSettings,
         dsn: Option<String>,
         connection: String,
     ) -> Result<Self, DbError> {
@@ -135,27 +140,39 @@ impl fmt::Debug for BigtableClientManager {
 #[async_trait]
 impl Manager for BigtableClientManager {
     type Error = DbError;
-    type Type = BigtableClient;
+    type Type = BigtableDb;
 
     /// Create a new Bigtable Client with it's own channel.
     /// `BigtableClient` is the most atomic we can go.
-    async fn create(&self) -> Result<BigtableClient, DbError> {
+    async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        let chan = Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str());
-        let client = BigtableClient::new(chan);
-        Ok(client)
+        let channel = Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str());
+        Ok(BigtableDb::new(channel))
     }
 
-    /// We can't really recycle a given client, so fail and the client should be dropped.
-    /// The grpcio channnel declaration is currently a private variable inside of BigtableClient,
-    /// and I'd rather not poke too deeply into code that we don't own.
+    /// Recycle if the connection has outlived it's lifespan.
     async fn recycle(
         &self,
-        _client: &mut Self::Type,
+        client: &mut Self::Type,
         _metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        debug!("🏊 Recycle requested.");
-        Err(DbError::BTError(BigTableError::Recycle).into())
+        if let Some(ttl) = self.settings.database_pool_connection_ttl {
+            if Instant::now() - client.create > Duration::from_millis(ttl as u64) {
+                debug!("🏊 Recycle requested (old).");
+                return Err(DbError::BTError(BigTableError::Recycle).into());
+            }
+        }
+        if let Some(ttl) = self.settings.database_pool_max_idle {
+            if Instant::now() - client.used > Duration::from_millis(ttl as u64) {
+                debug!("🏊 Recycle requested (idle).");
+                return Err(DbError::BTError(BigTableError::Recycle).into());
+            }
+        }
+
+        // Bigtable does not offer a simple health check. A read or write operation would
+        // need to be performed.
+
+        Ok(())
     }
 }
 

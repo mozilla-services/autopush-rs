@@ -3,14 +3,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
+use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
+use grpcio::Channel;
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -126,7 +128,7 @@ impl BigTableClientImpl {
         debug!("🏊 BT Pool new");
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         debug!("🉑 {:#?}", db_settings);
-        let pool = BigTablePool::new(settings)?;
+        let pool = BigTablePool::new(settings, &metrics)?;
         Ok(Self {
             settings: db_settings,
             _metrics: metrics,
@@ -170,12 +172,12 @@ impl BigTableClientImpl {
         timestamp_filter: Option<u64>,
         limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
-        let resp = self
-            .pool
-            .get()
-            .await?
+        let mut bigtable = self.pool.get().await?;
+        let resp = bigtable
+            .conn
             .read_rows(&req)
             .map_err(|e| error::BigTableError::Read(e.to_string()))?;
+        bigtable.used = Instant::now();
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
@@ -215,14 +217,14 @@ impl BigTableClientImpl {
 
         // Do the actual commit.
         // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
-        let _resp = self
-            .pool
-            .get()
-            .await?
+        let mut bigtable = self.pool.get().await?;
+        let _resp = bigtable
+            .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
             .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+        bigtable.used = Instant::now();
         Ok(())
     }
 
@@ -255,14 +257,14 @@ impl BigTableClientImpl {
 
         req.set_mutations(mutations);
 
-        let _resp = self
-            .pool
-            .get()
-            .await?
+        let mut bigtable = self.pool.get().await?;
+        let _resp = bigtable
+            .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
             .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+        bigtable.used = Instant::now();
         Ok(())
     }
 
@@ -277,14 +279,14 @@ impl BigTableClientImpl {
         mutations.push(mutation);
         req.set_mutations(mutations);
 
-        let _resp = self
-            .pool
-            .get()
-            .await?
+        let mut bigtable = self.pool.get().await?;
+        let _resp = bigtable
+            .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
             .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+        bigtable.used = Instant::now();
         Ok(())
     }
 
@@ -293,7 +295,7 @@ impl BigTableClientImpl {
     /// Note that deletion may take up to a week to occur.
     /// see https://cloud.google.com/php/docs/reference/cloud-bigtable/latest/Admin.V2.DropRowRangeRequest
     async fn delete_rows(&self, row_key: &str) -> Result<bool, error::BigTableError> {
-        let chan = self.pool.manager().get_channel()?;
+        let chan = self.pool.get_channel()?;
         let admin = BigtableTableAdminClient::new(chan);
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
@@ -386,6 +388,23 @@ impl BigTableClientImpl {
                 None
             },
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct BigtableDb {
+    pub(super) conn: BigtableClient,
+    pub(super) create: Instant,
+    pub(super) used: Instant,
+}
+
+impl BigtableDb {
+    pub fn new(channel: Channel) -> Self {
+        Self {
+            conn: BigtableClient::new(channel),
+            create: Instant::now(),
+            used: Instant::now(),
+        }
     }
 }
 
@@ -991,13 +1010,14 @@ impl DbClient for BigTableClientImpl {
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
+
+        let mut bigtable = self.pool.get().await?;
         // we don't care about the return (it's going to be empty) but we DO care if it fails.
-        let _ = self
-            .pool
-            .get()
-            .await?
+        let _ = bigtable
+            .conn
             .read_rows(&req)
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
+        bigtable.used = Instant::now();
 
         Ok(true)
     }
