@@ -17,6 +17,9 @@ use actix_web::web;
 #[macro_export]
 macro_rules! build_app {
     ($app_state: expr) => {
+        build_app!($app_state, $crate::config)
+    };
+    ($app_state: expr, $config: expr) => {
         actix_web::App::new()
             .app_data(actix_web::web::Data::new($app_state.clone()))
             .wrap(actix_web::middleware::ErrorHandlers::new().handler(
@@ -28,25 +31,21 @@ macro_rules! build_app {
             >::new(
                 $app_state.metrics.clone(), "error".to_owned()
             ))
-            .configure($crate::config)
+            .configure($config)
     };
 }
 
+/// The publicly exposed app config
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
         // Websocket Handler
         .route("/", web::get().to(routes::ws_route))
-        .service(web::resource("/push/{uaid}").route(web::put().to(routes::push_route)))
+        .service(web::scope("").configure(dockerflow::service));
+}
+
+/// The internal router app config
+pub fn config_router(cfg: &mut web::ServiceConfig) {
+    cfg.service(web::resource("/push/{uaid}").route(web::put().to(routes::push_route)))
         .service(web::resource("/notif/{uaid}").route(web::put().to(routes::check_storage_route)))
-        .service(web::resource("/status").route(web::get().to(dockerflow::status_route)))
-        .service(web::resource("/health").route(web::get().to(dockerflow::health_route)))
-        .service(web::resource("/v1/err/crit").route(web::get().to(dockerflow::log_check)))
-        // standardized
-        .service(web::resource("/__error__").route(web::get().to(dockerflow::log_check)))
-        // Dockerflow
-        .service(web::resource("/__heartbeat__").route(web::get().to(dockerflow::health_route)))
-        .service(
-            web::resource("/__lbheartbeat__").route(web::get().to(dockerflow::lb_heartbeat_route)),
-        )
-        .service(web::resource("/__version__").route(web::get().to(dockerflow::version_route)));
+        .service(web::scope("").configure(dockerflow::service));
 }
