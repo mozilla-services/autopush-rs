@@ -9,7 +9,8 @@ use actix_web::{
     dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponse,
     HttpResponseBuilder, ResponseError,
 };
-use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::backtrace
+// Sentry 0.29 uses the backtrace crate, not std::backtrace
+use backtrace::Backtrace;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use thiserror::Error;
 
@@ -66,12 +67,7 @@ impl ResponseError for ApcError {
     }
 
     fn error_response(&self) -> HttpResponse {
-        let mut builder = HttpResponse::build(self.kind.status());
-
-        if self.status_code() == 410 {
-            builder.insert_header(("Cache-Control", "max-age=86400"));
-        }
-
+        let mut builder = HttpResponse::build(self.status_code());
         builder.json(self)
     }
 }
@@ -184,7 +180,7 @@ impl ApcErrorKind {
 }
 
 /// Interface for reporting our Error types to Sentry or as metrics
-pub trait ReportableError: std::error::Error + fmt::Display {
+pub trait ReportableError: std::error::Error {
     /// Return a `Backtrace` for this Error if one was captured
     fn backtrace(&self) -> Option<&Backtrace>;
 

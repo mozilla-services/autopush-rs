@@ -57,7 +57,7 @@ or to deploy autopush to a production environment for Firefox.
 
 For developers wishing to work with the latest autopush source code,
 it's recommended that you first familiarize yourself with
-`running Autopush <running-autopush>` before proceeding.
+[running Autopush](running.md) before proceeding.
 
 <div class="toctree" maxdepth="2">
 
@@ -87,18 +87,24 @@ All source code is available on [github under
 autopush](https://github.com/mozilla-services/autopush-rs).
 
 <!-- TODO -->
-* Code Documentation
+* [autoconnect](api/autoconnect) - WebSocket server for desktop UAs
+  * [autoconnect_common](api/autoconnect_common) - Common functions for autoconnect
+  * [autoconnect_settings](api/autoconnect_settings) - Settings and configuration
+  * [autoconnect_web](api/autoconnect_web) - HTTP functions
+  * [autoconnect_ws](api/autoconnect_ws) - WebSocket functions
+  * [autoconnect_ws_sm](api/autoconnect_ws_sm) - WebSocket state machine
+* [autoendpoint](api/autoendpoint) - HTTP server for publication and mobile
+* [autopush_common](api/autopush_common) - Common functions for autoconnect and autoendpoint
 
 We are using [rust](https://rust-lang.org) for a number of optimizations
 and speed improvements. These efforts are ongoing and may be subject to
 change. Unfortunately, this also means that formal documentation is not
 yet available. You are, of course, welcome to review the code located in
-`./autopush-rs`.
+[`autopush-rs`](https://github.com/mozilla-services/autopush-rs).
 
 ## Changelog
 
 [Changelog](https://github.com/mozilla-services/autopush-rs/blob/master/CHANGELOG.md)
-
 
 ## Bugs/Support
 
