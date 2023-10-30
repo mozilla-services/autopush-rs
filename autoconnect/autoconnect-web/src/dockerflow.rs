@@ -2,7 +2,7 @@
 use std::thread;
 
 use actix_web::{
-    web::{Data, Json},
+    web::{self, Data, Json},
     HttpResponse, ResponseError,
 };
 use serde_json::json;
@@ -10,6 +10,20 @@ use serde_json::json;
 use autoconnect_settings::AppState;
 
 use crate::error::ApiError;
+
+/// Configure the Dockerflow (and legacy monitoring) routes
+pub fn config(config: &mut web::ServiceConfig) {
+    config
+        .service(web::resource("/status").route(web::get().to(status_route)))
+        .service(web::resource("/health").route(web::get().to(health_route)))
+        .service(web::resource("/v1/err/crit").route(web::get().to(log_check)))
+        // standardized
+        .service(web::resource("/__error__").route(web::get().to(log_check)))
+        // Dockerflow
+        .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
+        .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
+        .service(web::resource("/__version__").route(web::get().to(version_route)));
+}
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {

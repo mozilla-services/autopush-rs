@@ -528,6 +528,8 @@ dependencies = [
  "actix-cors",
  "actix-http",
  "actix-rt",
+ "actix-server",
+ "actix-service",
  "actix-test",
  "actix-web",
  "actix-ws",
