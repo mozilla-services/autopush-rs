@@ -12,7 +12,7 @@ use autoconnect_settings::AppState;
 use crate::error::ApiError;
 
 /// Configure the Dockerflow (and legacy monitoring) routes
-pub fn service(config: &mut web::ServiceConfig) {
+pub fn config(config: &mut web::ServiceConfig) {
     config
         .service(web::resource("/status").route(web::get().to(status_route)))
         .service(web::resource("/health").route(web::get().to(health_route)))

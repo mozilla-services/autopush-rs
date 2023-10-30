@@ -37,12 +37,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg
         // Websocket Handler
         .route("/", web::get().to(routes::ws_route))
-        .service(web::scope("").configure(dockerflow::service));
+        .service(web::scope("").configure(dockerflow::config));
 }
 
 /// The internal router app config
 pub fn config_router(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/push/{uaid}").route(web::put().to(routes::push_route)))
         .service(web::resource("/notif/{uaid}").route(web::put().to(routes::check_storage_route)))
-        .service(web::scope("").configure(dockerflow::service));
+        .service(web::scope("").configure(dockerflow::config));
 }
