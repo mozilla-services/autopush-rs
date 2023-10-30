@@ -123,6 +123,7 @@ impl AppState {
         init_and_spawn_megaphone_updater(
             &self.broadcaster,
             &self.http,
+            &self.metrics,
             url,
             token,
             self.settings.megaphone_poll_interval,

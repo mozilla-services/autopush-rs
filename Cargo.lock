@@ -528,6 +528,8 @@ dependencies = [
  "actix-cors",
  "actix-http",
  "actix-rt",
+ "actix-server",
+ "actix-service",
  "actix-test",
  "actix-web",
  "actix-ws",
@@ -571,6 +573,7 @@ version = "1.69.3"
 dependencies = [
  "actix-web",
  "autopush_common",
+ "cadence",
  "futures 0.3.28",
  "futures-locks 0.7.1",
  "reqwest 0.11.22",

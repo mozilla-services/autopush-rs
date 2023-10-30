@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{error::Error, fmt};
 
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
@@ -7,7 +7,7 @@ use autoconnect_ws_sm::{SMError, WebPushClient};
 use autopush_common::{errors::ReportableError, sentry::event_from_error};
 
 /// WebPush WebSocket Handler Errors
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub struct WSError {
     pub kind: WSErrorKind,
     backtrace: Option<Backtrace>,
@@ -19,6 +19,12 @@ impl fmt::Display for WSError {
     }
 }
 
+impl Error for WSError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.kind.source()
+    }
+}
+
 // Forward From impls to WSError from WSErrorKind. Because From is reflexive,
 // this impl also takes care of From<WSErrorKind>.
 impl<T> From<T> for WSError
@@ -27,7 +33,7 @@ where
 {
     fn from(item: T) -> Self {
         let kind = WSErrorKind::from(item);
-        let backtrace = kind.capture_backtrace().then(Backtrace::new);
+        let backtrace = (kind.is_sentry_event() && kind.capture_backtrace()).then(Backtrace::new);
         Self { kind, backtrace }
     }
 }
@@ -71,16 +77,14 @@ impl ReportableError for WSError {
     }
 
     fn is_sentry_event(&self) -> bool {
-        match &self.kind {
-            WSErrorKind::SM(e) => e.is_sentry_event(),
-            WSErrorKind::Protocol(_) | WSErrorKind::RegistryDisconnected => true,
-            _ => false,
-        }
+        self.kind.is_sentry_event()
     }
 
     fn metric_label(&self) -> Option<&'static str> {
         match &self.kind {
             WSErrorKind::SM(e) => e.metric_label(),
+            // Legacy autoconnect ignored these: possibly not worth tracking
+            WSErrorKind::Protocol(_) => Some("ua.ws_protocol_error"),
             _ => None,
         }
     }
@@ -117,14 +121,24 @@ pub enum WSErrorKind {
 }
 
 impl WSErrorKind {
+    /// Whether this error is reported to Sentry
+    fn is_sentry_event(&self) -> bool {
+        match self {
+            WSErrorKind::SM(e) => e.is_sentry_event(),
+            WSErrorKind::RegistryDisconnected => true,
+            _ => false,
+        }
+    }
+
     /// Whether this variant has a `Backtrace` captured
     ///
-    /// Some Error variants have obvious call sites and thus don't need a
-    /// `Backtrace`
+    /// Some Error variants have obvious call sites or more relevant backtraces
+    /// in their sources and thus don't need a `Backtrace`. Furthermore
+    /// backtraces are only captured for variants returning true from
+    /// [Self::is_sentry_event].
     fn capture_backtrace(&self) -> bool {
-        matches!(
-            self,
-            WSErrorKind::Json(_) | WSErrorKind::Protocol(_) | WSErrorKind::SessionClosed(_)
-        )
+        // Nothing currently (RegistryDisconnected has a unique call site) but
+        // we may want to capture other variants in the future
+        false
     }
 }

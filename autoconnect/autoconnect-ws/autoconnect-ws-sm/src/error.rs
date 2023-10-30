@@ -1,26 +1,26 @@
-use std::fmt;
+use std::{error::Error, fmt};
 
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
 
 use autopush_common::{db::error::DbError, errors::ReportableError};
 
-pub type NonStdBacktrace = backtrace::Backtrace;
-
 /// WebSocket state machine errors
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub struct SMError {
     pub kind: SMErrorKind,
-    /// Avoid thiserror's automatic `std::backtrace::Backtrace` integration by
-    /// not using the type name "Backtrace". The older `backtrace::Backtrace`
-    /// is still preferred for Sentry integration:
-    /// https://github.com/getsentry/sentry-rust/issues/600
-    backtrace: NonStdBacktrace,
+    backtrace: Backtrace,
 }
 
 impl fmt::Display for SMError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)
+    }
+}
+
+impl Error for SMError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.kind.source()
     }
 }
 
@@ -90,9 +90,6 @@ pub enum SMErrorKind {
 
     #[error("UAID dropped")]
     UaidReset,
-
-    #[error("Already connected to another node")]
-    AlreadyConnected,
 
     #[error("New Client with the same UAID has connected to this node")]
     Ghost,

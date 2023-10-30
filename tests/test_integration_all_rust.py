@@ -1548,6 +1548,28 @@ class TestRustWebPush(unittest.TestCase):
         assert not client.ws.connected
         yield self.shut_down(client)
 
+    @inlineCallbacks
+    def test_internal_endpoints(self):
+        """Ensure an internal router endpoint isn't exposed on the public CONNECTION_PORT"""
+        client = yield self.quick_register()
+        parsed = urlparse(self._ws_url)._replace(scheme="http")._replace(path=f"/notif/{client.uaid}")
+
+        # We can't determine an AUTOPUSH_CN_SERVER's ROUTER_PORT
+        if not os.getenv("AUTOPUSH_CN_SERVER"):
+            url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
+            # First ensure the endpoint we're testing for on the public port exists where
+            # we expect it on the internal ROUTER_PORT
+            requests.put(url).raise_for_status()
+
+        try:
+            requests.put(parsed.geturl()).raise_for_status()
+        except requests.exceptions.ConnectionError:
+            pass
+        except requests.exceptions.HTTPError as e:
+            assert e.response.status_code == 404
+        else:
+            assert False
+
 
 class TestRustWebPushBroadcast(unittest.TestCase):
     max_endpoint_logs = 4

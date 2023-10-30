@@ -48,6 +48,8 @@ autoconnect_web.workspace = true
 autoconnect_ws.workspace = true
 autopush_common.workspace = true
 
+actix-server = "2.3"
+actix-service = "2.0"
 docopt = "1.1"
 
 [features]
