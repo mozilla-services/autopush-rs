@@ -14,7 +14,7 @@ use docopt::Docopt;
 use serde::Deserialize;
 
 use autoconnect_settings::{AppState, Settings};
-use autoconnect_web::{build_app, config_router};
+use autoconnect_web::{build_app, config, config_router};
 use autopush_common::{
     errors::{ApcErrorKind, Result},
     logging,
@@ -83,10 +83,10 @@ async fn main() -> Result<()> {
         port, router_port
     );
 
-    let app_state2 = app_state.clone();
+    let router_app_state = app_state.clone();
     Server::build()
         .bind("autoconnect", ("0.0.0.0", port), move || {
-            let app = build_app!(app_state);
+            let app = build_app!(app_state, config);
             HttpService::build()
                 // XXX: AppConfig::default() does *not* have correct values
                 // https://github.com/actix/actix-web/issues/3180
@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
                 .tcp()
         })?
         .bind("autoconnect-router", ("0.0.0.0", router_port), move || {
-            let app = build_app!(app_state2, config_router);
+            let app = build_app!(router_app_state, config_router);
             HttpService::build()
                 // XXX:
                 .finish(map_config(app, |_| AppConfig::default()))

@@ -16,9 +16,6 @@ use actix_web::web;
 
 #[macro_export]
 macro_rules! build_app {
-    ($app_state: expr) => {
-        build_app!($app_state, $crate::config)
-    };
     ($app_state: expr, $config: expr) => {
         actix_web::App::new()
             .app_data(actix_web::web::Data::new($app_state.clone()))
