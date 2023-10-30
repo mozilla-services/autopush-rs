@@ -188,7 +188,7 @@ impl ApcErrorKind {
 }
 
 /// Interface for reporting our Error types to Sentry or as metrics
-pub trait ReportableError: std::error::Error + fmt::Display {
+pub trait ReportableError: std::error::Error {
     /// Return a `Backtrace` for this Error if one was captured
     fn backtrace(&self) -> Option<&Backtrace>;
 
