@@ -51,21 +51,6 @@ pub struct DynamoDbSettings {
     pub db_routing_table: Option<String>,
 }
 
-<<<<<<< HEAD
-impl Default for DynamoDbSettings {
-    fn default() -> Self {
-        Self {
-            router_table: "router".to_string(),
-            message_table: "message".to_string(),
-            message_table_names: Vec::new(),
-            current_message_month: String::default(),
-            db_routing_table: None,
-        }
-    }
-}
-
-=======
->>>>>>> ea30222840c4ef6bdbcebda8d5a45d79934f6071
 impl TryFrom<&str> for DynamoDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {

@@ -49,29 +49,6 @@ pub struct BigTableDbSettings {
     pub db_routing_table: Option<String>,
 }
 
-<<<<<<< HEAD
-/// NOTE: autopush will not autogenerate these families. They should
-/// be created when the table is first provisioned. See
-/// [BigTable schema](https://cloud.google.com/bigtable/docs/schema-design)
-///
-/// BE SURE TO CONFIRM the names of the families. These are not checked on
-/// initialization, but will throw errors if not present or incorrectly
-/// spelled.
-///
-impl Default for BigTableDbSettings {
-    fn default() -> Self {
-        Self {
-            table_name: "autopush".to_owned(),
-            router_family: "router".to_owned(),
-            message_family: "message".to_owned(),
-            message_topic_family: "message_topic".to_owned(),
-            db_routing_table: None,
-        }
-    }
-}
-
-=======
->>>>>>> ea30222840c4ef6bdbcebda8d5a45d79934f6071
 impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {

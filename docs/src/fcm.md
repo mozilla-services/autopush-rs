@@ -1,8 +1,5 @@
 # Configuring for Google GCM/FCM
 
-<<<<<<< HEAD
-<!-- TODO: finish this doc -->
-=======
 <!-- TODO: finish this doc -->
 
 Google's [Firebase Cloud
@@ -47,4 +44,3 @@ AUTOEND__FCM__CREDENTIALS='{"default":{"project_id":"random-example-123","creden
 ```
 
 Only `autoendpoint` uses the bridge interface, so you do not need to specify this configuration for `autoconnect`.
->>>>>>> ea30222840c4ef6bdbcebda8d5a45d79934f6071
