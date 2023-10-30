@@ -1,3 +1,18 @@
+<a name="1.69.4"></a>
+## 1.69.4 (2023-10-30)
+
+
+#### Bug Fixes
+
+*   split router endpoints into their own app (#491) ([bbde5823](https://github.com/mozilla-services/autopush-rs/commit/bbde582368848dc404416e3a2581a81aac366666))
+*   defer Error::source methods to inner kind's (#486) ([a9a17963](https://github.com/mozilla-services/autopush-rs/commit/a9a1796316b22c3d349b49e855624168c95aef1c))
+
+#### Features
+
+*   emit metrics for megaphone polling (#488) ([ea302228](https://github.com/mozilla-services/autopush-rs/commit/ea30222840c4ef6bdbcebda8d5a45d79934f6071))
+
+
+
 <a name="1.69.3"></a>
 ## 1.69.3 (2023-10-26)
 
