@@ -571,6 +571,7 @@ version = "1.69.1"
 dependencies = [
  "actix-web",
  "autopush_common",
+ "cadence",
  "futures 0.3.28",
  "futures-locks 0.7.1",
  "reqwest 0.11.22",
