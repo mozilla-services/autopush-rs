@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{error::Error, fmt};
 
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
@@ -7,7 +7,7 @@ use autoconnect_ws_sm::{SMError, WebPushClient};
 use autopush_common::{errors::ReportableError, sentry::event_from_error};
 
 /// WebPush WebSocket Handler Errors
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub struct WSError {
     pub kind: WSErrorKind,
     backtrace: Option<Backtrace>,
@@ -16,6 +16,12 @@ pub struct WSError {
 impl fmt::Display for WSError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)
+    }
+}
+
+impl Error for WSError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.kind.source()
     }
 }
 
