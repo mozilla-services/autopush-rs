@@ -406,6 +406,25 @@ impl BigtableDb {
             used: Instant::now(),
         }
     }
+
+    /// Perform a simple connectivity check.
+    pub fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
+        let mut req = bigtable::ReadRowsRequest::default();
+        req.set_table_name(table_name.to_owned());
+        let mut row = data::Row::default();
+        row.set_key("NOT FOUND".to_owned().as_bytes().to_vec());
+        let mut filter = data::RowFilter::default();
+        filter.set_block_all_filter(true);
+        req.set_filter(filter);
+
+        let _ = self
+            .conn
+            .read_rows(&req)
+            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
+        self.used = Instant::now();
+
+        Ok(true)
+    }
 }
 
 #[async_trait]
@@ -1001,25 +1020,10 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        let mut row = data::Row::default();
-        // Pick an non-existant key.
-        row.set_key("NOT_FOUND".to_owned().as_bytes().to_vec());
-        // Block any possible results.
-        let mut filter = data::RowFilter::default();
-        filter.set_block_all_filter(true);
-        req.set_filter(filter);
-
-        let mut bigtable = self.pool.get().await?;
-        // we don't care about the return (it's going to be empty) but we DO care if it fails.
-        let _ = bigtable
-            .conn
-            .read_rows(&req)
-            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
-        bigtable.used = Instant::now();
-
-        Ok(true)
+        self.pool
+            .get()
+            .await?
+            .health_check(&self.settings.table_name)
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up

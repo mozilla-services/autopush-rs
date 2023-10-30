@@ -169,6 +169,18 @@ impl Manager for BigtableClientManager {
             }
         }
 
+        // Clippy 0.1.73 complains about the `.map_err` being hard to read.
+        #[allow(clippy::blocks_in_if_conditions)]
+        if !client
+            .health_check(&self.settings.table_name)
+            .map_err(|e| {
+                debug!("🏊 Recycle requested (health). {:?}", e);
+                DbError::BTError(BigTableError::Recycle)
+            })?
+        {
+            return Err(DbError::BTError(BigTableError::Recycle).into());
+        }
+
         // Bigtable does not offer a simple health check. A read or write operation would
         // need to be performed.
 
