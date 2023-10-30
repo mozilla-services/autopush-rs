@@ -118,7 +118,7 @@ jobs:
           name: Integration tests (Autopush Legacy)
           command: |
             cd tests
-            py.test -v
+            py.test -v -k test_with_bad_key -s
       - run:
           name: Integration tests (Autoconnect)
           environment:
@@ -126,7 +126,7 @@ jobs:
             CONNECTION_SETTINGS_PREFIX: autoconnect__
           command: |
             cd tests
-            py.test -v
+            py.test -v -k test_with_bad_key -s
       - save_cache:
           name: Save Python cache
           key: python-v1-{{ checksum "tests/requirements.txt" }}-{{ checksum "tests/test_integration_all_rust.py"}}

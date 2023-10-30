@@ -82,8 +82,8 @@ CN_QUEUES: list = []
 EP_QUEUES: list = []
 STRICT_LOG_COUNTS = True
 
-modules = ["autoconnect", "autoconnect_common", "autoconnect_web", "autoconnect_ws", "autoconnect_ws_sm", "autoendpoint", "autopush", "autopush_common"]
-log_string = [f"{x}=trace" for x in modules]
+modules = ["autoconnect", "autoconnect_common", "autoconnect_web", "autoconnect_ws", "autoconnect_ws_sm", "autoendpoint", "autopush", "autopush_common", "autopush_rs"]
+log_string = [f"{x}=error" for x in modules]
 RUST_LOG = ",".join(log_string)+",error"
 
 
@@ -869,6 +869,11 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     @max_logs(endpoint=1)
+#    @max_logs(endpoint=4)
+    # AUTOENDPOINT: Oct 29 08:17:48.400 ERRO Test Critical Message, errno: 999, status_code: 418
+    # AUTOENDPOINT: thread '<unnamed>' panicked at autoendpoint/src/routes/health.rs:83:9:
+    # AUTOENDPOINT: LogCheck
+    # AUTOENDPOINT: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
     def test_sentry_output_autoendpoint(self):
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
