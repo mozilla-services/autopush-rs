@@ -172,6 +172,7 @@ impl DbClient for DdbClientImpl {
             )),
             expression_attribute_values: Some(
                 user_map
+                    .clone()
                     .into_iter()
                     .map(|(key, value)| (format!(":{}", key), value))
                     .collect(),
@@ -194,7 +195,15 @@ impl DbClient for DdbClientImpl {
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                // I would love to pull these from the `user_map`, but that's proving too onerous.
+                error!(
+                    "update_user failed for router_type: {} connected at: {:?}",
+                    user.router_type, user.connected_at
+                );
+                e
+            })?;
         Ok(())
     }
 
@@ -257,7 +266,14 @@ impl DbClient for DdbClientImpl {
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                error!(
+                    "add_channel failed; uaid: {:?}, channel_id: {:?}",
+                    uaid, channel_id
+                );
+                e
+            })?;
         Ok(())
     }
 
@@ -321,7 +337,14 @@ impl DbClient for DdbClientImpl {
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                error!(
+                    "remove_channel failed: uaid:{:?}, chid:{:?}",
+                    uaid, channel_id
+                );
+                e
+            })?;
 
         // Check if the old channel IDs contain the removed channel
         Ok(output
@@ -351,7 +374,14 @@ impl DbClient for DdbClientImpl {
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                error!(
+                    "remove_node_id failed. node_id:{:?}, connected_at:{:?}",
+                    node_id, connected_at
+                );
+                e
+            })?;
 
         Ok(())
     }
