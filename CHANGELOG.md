@@ -1,3 +1,13 @@
+<a name="1.69.6"></a>
+## 1.69.6 (2023-10-31)
+
+
+#### Features
+
+*   handle already connected users (#495) ([eb53beca](https://github.com/mozilla-services/autopush-rs/commit/eb53beca715c30a1ad47904512f4ae3baa8d4603))
+
+
+
 <a name="1.69.5"></a>
 ## 1.69.5 (2023-10-31)
 
