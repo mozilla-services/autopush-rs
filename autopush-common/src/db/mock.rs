@@ -20,7 +20,7 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).add_user(user).await
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<()> {
+    async fn update_user(&self, user: &User) -> DbResult<bool> {
         Arc::as_ref(self).update_user(user).await
     }
 
