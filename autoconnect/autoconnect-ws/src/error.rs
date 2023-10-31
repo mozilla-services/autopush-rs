@@ -73,7 +73,12 @@ impl WSError {
 
 impl ReportableError for WSError {
     fn backtrace(&self) -> Option<&Backtrace> {
-        self.backtrace.as_ref()
+        // XXX: dumb hack: return SMError's backtrace for now as our
+        // sentry::event_from_error doesn't capture it
+        match &self.kind {
+            WSErrorKind::SM(e) => e.backtrace(),
+            _ => self.backtrace.as_ref(),
+        }
     }
 
     fn is_sentry_event(&self) -> bool {
