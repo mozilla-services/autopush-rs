@@ -576,6 +576,7 @@ dependencies = [
  "cadence",
  "futures 0.3.28",
  "futures-locks 0.7.1",
+ "hyper 0.14.27",
  "reqwest 0.11.22",
  "sentry",
  "serde",
