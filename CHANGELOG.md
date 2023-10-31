@@ -1,3 +1,13 @@
+<a name="1.69.5"></a>
+## 1.69.5 (2023-10-31)
+
+
+#### Features
+
+*   further detect common io errors in megaphone's updater (#492) ([5421f581](https://github.com/mozilla-services/autopush-rs/commit/5421f58182b9061afaec0d5265dc3d1045d44633))
+
+
+
 <a name="1.69.4"></a>
 ## 1.69.4 (2023-10-30)
 
