@@ -91,6 +91,9 @@ pub enum SMErrorKind {
     #[error("UAID dropped")]
     UaidReset,
 
+    #[error("Already connected to another node")]
+    AlreadyConnected,
+
     #[error("New Client with the same UAID has connected to this node")]
     Ghost,
 

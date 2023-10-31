@@ -40,7 +40,7 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     db.expect_rotating_message_table()
         .times(1)
         .return_const(Some(CURRENT_MONTH));
-    db.expect_update_user().times(1).return_once(|_| Ok(()));
+    db.expect_update_user().times(1).return_once(|_| Ok(true));
     db.expect_fetch_topic_messages()
         .times(1)
         .return_once(|_, _| Ok(Default::default()));

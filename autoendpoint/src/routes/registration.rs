@@ -115,7 +115,10 @@ pub async fn update_token_route(
     };
     trace!("🌍 Updating user with UAID {}", user.uaid);
     trace!("🌍 user = {:?}", user);
-    app_state.db.update_user(&user).await?;
+    if !app_state.db.update_user(&user).await? {
+        // Unlikely to occur on mobile records
+        return Err(ApiErrorKind::General("Conditional update failed".to_owned()).into());
+    }
 
     trace!("🌍 Finished updating token for UAID {}", user.uaid);
     Ok(HttpResponse::Ok().finish())
