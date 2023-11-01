@@ -17,21 +17,25 @@ pub fn client_options() -> sentry::ClientOptions {
 ///
 /// `std::error::Error` doesn't support backtraces, thus `sentry::event_from_error`
 /// doesn't either. This function works against `ReportableError` instead to
-/// access its backtrace.
-pub fn event_from_error<E>(err: &E) -> sentry::protocol::Event<'static>
-where
-    E: ReportableError + 'static,
-{
-    let mut exceptions = vec![exception_from_error_with_backtrace(err)];
+/// access it and its `reportable_source's` backtraces.
+pub fn event_from_error(
+    mut reportable_err: &dyn ReportableError,
+) -> sentry::protocol::Event<'static> {
+    let mut exceptions = vec![];
 
-    let mut source = err.source();
-    while let Some(err) = source {
-        let exception = if let Some(err) = err.downcast_ref::<E>() {
-            exception_from_error_with_backtrace(err)
-        } else {
-            exception_from_error(err)
+    // Gather reportable_source()'s for their backtraces
+    loop {
+        exceptions.push(exception_from_reportable_error(reportable_err));
+        reportable_err = match reportable_err.reportable_source() {
+            Some(reportable_err) => reportable_err,
+            None => break,
         };
-        exceptions.push(exception);
+    }
+
+    // Then fallback to source() for remaining Errors
+    let mut source = reportable_err.source();
+    while let Some(err) = source {
+        exceptions.push(exception_from_error(err));
         source = err.source();
     }
 
@@ -45,8 +49,9 @@ where
 
 /// Custom `exception_from_error` support function for `ReportableError`
 ///
-/// Based moreso on sentry_failure's `exception_from_single_fail`.
-fn exception_from_error_with_backtrace(err: &dyn ReportableError) -> sentry::protocol::Exception {
+/// Based moreso on sentry_failure's `exception_from_single_fail`. Includes a
+/// stacktrace if available.
+fn exception_from_reportable_error(err: &dyn ReportableError) -> sentry::protocol::Exception {
     let mut exception = exception_from_error(err);
     if let Some(backtrace) = err.backtrace() {
         exception.stacktrace = sentry_backtrace::backtrace_to_stacktrace(backtrace)

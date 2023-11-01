@@ -103,3 +103,18 @@ pub enum SMErrorKind {
     #[error("Client sent too many pings too often")]
     ExcessivePing,
 }
+
+#[cfg(debug_assertions)]
+/// Return a [SMErrorKind::Reqwest] [SMError] for tests
+pub async fn __test_sm_reqwest_error() -> SMError {
+    // An easily constructed reqwest::Error
+    let e = reqwest::Client::builder()
+        .https_only(true)
+        .build()
+        .unwrap()
+        .get("http://foo.com")
+        .send()
+        .await
+        .unwrap_err();
+    SMErrorKind::Reqwest(e).into()
+}
