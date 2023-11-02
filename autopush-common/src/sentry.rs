@@ -17,7 +17,12 @@ pub fn client_options() -> sentry::ClientOptions {
 ///
 /// `std::error::Error` doesn't support backtraces, thus `sentry::event_from_error`
 /// doesn't either. This function works against `ReportableError` instead to
-/// access it and its `reportable_source's` backtraces.
+/// extract backtraces from it and its chain of `reportable_source's.
+///
+/// A caveat of this function is that it cannot extract
+/// `ReportableError`s/backtraces that occur in a chain after a
+/// `std::error::Error` occurs: as `std::error::Error::source` only allows
+/// downcasting to a concrete type, not `dyn ReportableError`.
 pub fn event_from_error(
     mut reportable_err: &dyn ReportableError,
 ) -> sentry::protocol::Event<'static> {

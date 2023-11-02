@@ -112,7 +112,7 @@ pub async fn __test_sm_reqwest_error() -> SMError {
         .https_only(true)
         .build()
         .unwrap()
-        .get("http://foo.com")
+        .get("http://example.com")
         .send()
         .await
         .unwrap_err();

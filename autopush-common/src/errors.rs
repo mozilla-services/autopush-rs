@@ -181,8 +181,10 @@ impl ApcErrorKind {
 
 /// Interface for reporting our Error types to Sentry or as metrics
 pub trait ReportableError: std::error::Error {
-    /// Like [Error::source] but the lower-level [ReportableError] source of
-    /// this error, if any
+    /// Like [Error::source] but returns the source (if any) of this error as a
+    /// [ReportableError] if it implements the trait. Otherwise callers of this
+    /// method will likely subsequently call [Error::source] to return the
+    /// source (if any) as the parent [Error] trait.
     fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
         None
     }
