@@ -1,6 +1,7 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, error::Error, io, sync::Arc, time::Duration};
 
 use actix_web::rt;
+use cadence::{CountedExt, StatsdClient};
 use serde_derive::Deserialize;
 use tokio::sync::RwLock;
 
@@ -20,22 +21,25 @@ pub struct MegaphoneResponse {
 pub async fn init_and_spawn_megaphone_updater(
     broadcaster: &Arc<RwLock<BroadcastChangeTracker>>,
     http: &reqwest::Client,
+    metrics: &Arc<StatsdClient>,
     url: &str,
     token: &str,
     poll_interval: Duration,
 ) -> reqwest::Result<()> {
-    megaphone_updater(broadcaster, http, url, token).await?;
+    updater(broadcaster, http, url, token).await?;
 
     let broadcaster = Arc::clone(broadcaster);
     let http = http.clone();
+    let metrics = Arc::clone(metrics);
     let url = url.to_owned();
     let token = token.to_owned();
     rt::spawn(async move {
         loop {
             rt::time::sleep(poll_interval).await;
-            if let Err(e) = megaphone_updater(&broadcaster, &http, &url, &token).await {
-                error!("📢megaphone_updater failed: {}", e);
-                sentry::capture_event(sentry::event_from_error(&e));
+            if let Err(e) = updater(&broadcaster, &http, &url, &token).await {
+                report_updater_error(&metrics, e);
+            } else {
+                metrics.incr_with_tags("megaphone.updater.ok").send();
             }
         }
     });
@@ -43,14 +47,37 @@ pub async fn init_and_spawn_megaphone_updater(
     Ok(())
 }
 
+/// Emits a log, metric and Sentry event depending on the type of Error
+fn report_updater_error(metrics: &Arc<StatsdClient>, err: reqwest::Error) {
+    let reason = if err.is_timeout() {
+        "timeout"
+    } else if err.is_connect() {
+        "connect"
+    } else if is_io(&err) {
+        "io"
+    } else {
+        "unknown"
+    };
+    metrics
+        .incr_with_tags("megaphone.updater.error")
+        .with_tag("reason", reason)
+        .send();
+    if reason == "unknown" {
+        error!("📢megaphone::updater failed: {}", err);
+        sentry::capture_event(sentry::event_from_error(&err));
+    } else {
+        trace!("📢megaphone::updater failed (reason: {}): {}", reason, err);
+    }
+}
+
 /// Refresh the `BroadcastChangeTracker`'s Broadcasts from the Megaphone service
-async fn megaphone_updater(
+async fn updater(
     broadcaster: &Arc<RwLock<BroadcastChangeTracker>>,
     http: &reqwest::Client,
     url: &str,
     token: &str,
 ) -> reqwest::Result<()> {
-    trace!("📢BroadcastChangeTracker::megaphone_updater");
+    trace!("📢megaphone::updater");
     let MegaphoneResponse { broadcasts } = http
         .get(url)
         .header("Authorization", token)
@@ -65,4 +92,30 @@ async fn megaphone_updater(
         trace!("📢 add_broadcast change_count: {:?}", change_count);
     }
     Ok(())
+}
+
+/// Determine if a source of [reqwest::Error] was a [hyper::Error] Io Error
+fn is_io(err: &reqwest::Error) -> bool {
+    let mut source = err.source();
+    while let Some(err) = source {
+        if let Some(hyper_err) = err.downcast_ref::<hyper::Error>() {
+            if is_hyper_io(hyper_err) {
+                return true;
+            }
+        }
+        source = err.source();
+    }
+    false
+}
+
+/// Determine if a source of [hyper::Error] was an [io::Error]
+fn is_hyper_io(err: &hyper::Error) -> bool {
+    let mut source = err.source();
+    while let Some(err) = source {
+        if err.downcast_ref::<io::Error>().is_some() {
+            return true;
+        }
+        source = err.source();
+    }
+    false
 }

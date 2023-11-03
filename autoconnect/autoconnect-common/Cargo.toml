@@ -8,8 +8,10 @@ version.workspace = true
 
 [dependencies]
 actix-web.workspace = true
+cadence.workspace = true
 futures.workspace = true
 futures-locks.workspace = true
+hyper.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 sentry.workspace = true
