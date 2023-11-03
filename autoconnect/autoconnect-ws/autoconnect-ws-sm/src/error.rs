@@ -9,7 +9,7 @@ use autopush_common::{db::error::DbError, errors::ReportableError};
 #[derive(Debug)]
 pub struct SMError {
     pub kind: SMErrorKind,
-    backtrace: Backtrace,
+    backtrace: Option<Backtrace>,
 }
 
 impl fmt::Display for SMError {
@@ -31,10 +31,9 @@ where
     SMErrorKind: From<T>,
 {
     fn from(item: T) -> Self {
-        Self {
-            kind: SMErrorKind::from(item),
-            backtrace: Backtrace::new(),
-        }
+        let kind = SMErrorKind::from(item);
+        let backtrace = kind.is_sentry_event().then(Backtrace::new);
+        Self { kind, backtrace }
     }
 }
 
@@ -55,17 +54,11 @@ impl SMError {
 
 impl ReportableError for SMError {
     fn backtrace(&self) -> Option<&Backtrace> {
-        Some(&self.backtrace)
+        self.backtrace.as_ref()
     }
 
     fn is_sentry_event(&self) -> bool {
-        matches!(
-            self.kind,
-            SMErrorKind::Database(_)
-                | SMErrorKind::Internal(_)
-                | SMErrorKind::Reqwest(_)
-                | SMErrorKind::MakeEndpoint(_)
-        )
+        self.kind.is_sentry_event()
     }
 
     fn metric_label(&self) -> Option<&'static str> {
@@ -102,6 +95,19 @@ pub enum SMErrorKind {
 
     #[error("Client sent too many pings too often")]
     ExcessivePing,
+}
+
+impl SMErrorKind {
+    /// Whether this error is reported to Sentry
+    fn is_sentry_event(&self) -> bool {
+        matches!(
+            self,
+            SMErrorKind::Database(_)
+                | SMErrorKind::Internal(_)
+                | SMErrorKind::Reqwest(_)
+                | SMErrorKind::MakeEndpoint(_)
+        )
+    }
 }
 
 #[cfg(debug_assertions)]
