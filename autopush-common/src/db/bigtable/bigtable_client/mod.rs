@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use cadence::StatsdClient;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
+use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain, ValueRange};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
 use google_cloud_rust_raw::bigtable::v2::{
     bigtable::ReadRowsRequest, bigtable_grpc::BigtableClient,
@@ -228,20 +229,13 @@ impl BigTableClientImpl {
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
-    /// write a given row.
-    ///
-    /// there's also `.mutate_rows` which I presume allows multiple.
-    async fn write_row(&self, row: row::Row) -> Result<(), error::BigTableError> {
-        let mut req = bigtable::MutateRowRequest::default();
-
-        // compile the mutations.
-        // It's possible to do a lot here, including altering in process
-        // mutations, clearing them, etc. It's all up for grabs until we commit
-        // below. For now, let's just presume a write and be done.
+    /// Compile the list of mutations for this row.
+    fn get_mutations(
+        &self,
+        cells: HashMap<String, Vec<crate::db::bigtable::bigtable_client::cell::Cell>>,
+    ) -> Result<protobuf::RepeatedField<data::Mutation>, error::BigTableError> {
         let mut mutations = protobuf::RepeatedField::default();
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_row_key(row.row_key.into_bytes());
-        for (_family, cells) in row.cells {
+        for (_family, cells) in cells {
             for cell in cells {
                 let mut mutation = data::Mutation::default();
                 let mut set_cell = data::Mutation_SetCell::default();
@@ -260,6 +254,47 @@ impl BigTableClientImpl {
                 mutations.push(mutation);
             }
         }
+        Ok(mutations)
+    }
+
+    /// Check and write rows that match the associated filter, returning if the filter
+    /// matched records (and the update was successful)
+    async fn check_and_mutate_row(
+        &self,
+        row: row::Row,
+        filter: RowFilter,
+    ) -> Result<bool, error::BigTableError> {
+        let mut req = bigtable::CheckAndMutateRowRequest::default();
+        req.set_table_name(self.settings.table_name.clone());
+        req.set_row_key(row.row_key.into_bytes());
+        let mutations = self.get_mutations(row.cells)?;
+        req.set_predicate_filter(filter);
+        req.set_true_mutations(mutations);
+
+        // Do the actual update.
+        let resp = self
+            .client
+            .check_and_mutate_row_async(&req)
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .await
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+        debug!("🉑 Predicate Matched: {}", resp.get_predicate_matched());
+        Ok(resp.get_predicate_matched())
+    }
+
+    /// write a given row.
+    ///
+    /// there's also `.mutate_rows` which I presume allows multiple.
+    async fn write_row(&self, row: row::Row) -> Result<(), error::BigTableError> {
+        let mut req = bigtable::MutateRowRequest::default();
+
+        // compile the mutations.
+        // It's possible to do a lot here, including altering in process
+        // mutations, clearing them, etc. It's all up for grabs until we commit
+        // below. For now, let's just presume a write and be done.
+        req.set_table_name(self.settings.table_name.clone());
+        req.set_row_key(row.row_key.into_bytes());
+        let mutations = self.get_mutations(row.cells)?;
         req.set_mutations(mutations);
 
         // Do the actual commit.
@@ -429,12 +464,8 @@ impl BigTableClientImpl {
             },
         })
     }
-}
 
-#[async_trait]
-impl DbClient for BigTableClientImpl {
-    /// add user to the database
-    async fn add_user(&self, user: &User) -> DbResult<()> {
+    fn user_to_row(&self, user: &User) -> Row {
         let mut row = Row {
             row_key: user.uaid.simple().to_string(),
             ..Default::default()
@@ -504,6 +535,15 @@ impl DbClient for BigTableClientImpl {
             });
         };
         row.add_cells(ROUTER_FAMILY, cells);
+        row
+    }
+}
+
+#[async_trait]
+impl DbClient for BigTableClientImpl {
+    /// add user to the database
+    async fn add_user(&self, user: &User) -> DbResult<()> {
+        let row = self.user_to_row(user);
         trace!("🉑 Adding user");
         self.write_row(row).await.map_err(|e| e.into())
     }
@@ -512,9 +552,50 @@ impl DbClient for BigTableClientImpl {
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
     async fn update_user(&self, user: &User) -> DbResult<bool> {
-        self.add_user(user).await?;
-        // TODO: is a conditional check possible?
-        Ok(true)
+        // `update_user` supposes the following logic:
+        //   check to see if the user is in the router table AND
+        //   (either does not have a router_type or the router type is the same as what they're currently using) AND
+        //   (either there's no node_id assigned or the `connected_at` is earlier than the current connected_at)
+        // Bigtable can't really do a few of those (e.g. detect non-existing values) so we have to simplify
+        // things down a bit. We presume the record exists and that the `router_type` was specified when the
+        // record was created.
+        // We then use a ChainFilter (essentially an AND operation) to make sure that the router_type
+        // matches and the new `connected_at` time is later than the existing `connected_at`
+
+        let row = self.user_to_row(user);
+        let mut filter_chain = RowFilter_Chain::default();
+        let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
+        // filters are not very sophisticated on BigTable.
+        // You can create RowFilterChains, where each filter acts as an "AND".
+        // A RowFilterUnion which acts as an "OR",
+        // There do not appear to be negative checks (e.g. check if not set)
+        // According to [the docs](https://cloud.google.com/bigtable/docs/using-filters#chain)
+        // ConditionalRowFilter is not atomic and changes can occur between predicate
+        // and execution.
+
+        // first check to see if the router type is either empty or matches exactly.
+        let mut type_filter = RowFilter::default();
+        type_filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
+        type_filter.set_column_qualifier_regex_filter("router_type".to_owned().as_bytes().to_vec());
+        type_filter.set_value_regex_filter(user.router_type.as_bytes().to_vec());
+        filter_set.push(type_filter);
+
+        // then check to make sure that the last connected_at time is before this one.
+        let mut connected_filter = RowFilter::default();
+        connected_filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
+        connected_filter
+            .set_column_qualifier_regex_filter("connected_at".to_owned().as_bytes().to_vec());
+        let mut val_range = ValueRange::default();
+        val_range.set_start_value_closed(user.connected_at.to_be_bytes().to_vec());
+        connected_filter.set_value_range_filter(val_range);
+        filter_set.push(connected_filter);
+
+        // Gather the collections and try to update the row.
+        filter_chain.set_filters(filter_set);
+        let mut filter = RowFilter::default();
+        filter.set_chain(filter_chain);
+
+        Ok(self.check_and_mutate_row(row, filter).await?)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -1156,7 +1237,10 @@ mod tests {
             connected_at: now() + 3,
             ..test_user
         };
-        assert!(client.update_user(&updated).await.is_ok());
+        // Wait a tick so we don't fail.
+        let result = client.update_user(&updated).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), true);
         assert_ne!(
             test_user.connected_at,
             client.get_user(&uaid).await.unwrap().unwrap().connected_at
