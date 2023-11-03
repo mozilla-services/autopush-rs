@@ -3,7 +3,7 @@ use std::{error::Error, fmt};
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
 
-use autopush_common::{db::error::DbError, errors::ReportableError};
+use autopush_common::{db::error::DbError, errors::ApcError, errors::ReportableError};
 
 /// WebSocket state machine errors
 #[derive(Debug)]
@@ -32,7 +32,7 @@ where
 {
     fn from(item: T) -> Self {
         let kind = SMErrorKind::from(item);
-        let backtrace = kind.is_sentry_event().then(Backtrace::new);
+        let backtrace = (kind.is_sentry_event() && kind.capture_backtrace()).then(Backtrace::new);
         Self { kind, backtrace }
     }
 }
@@ -53,6 +53,13 @@ impl SMError {
 }
 
 impl ReportableError for SMError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self.kind {
+            SMErrorKind::MakeEndpoint(e) => Some(e),
+            _ => None,
+        }
+    }
+
     fn backtrace(&self) -> Option<&Backtrace> {
         self.backtrace.as_ref()
     }
@@ -91,7 +98,7 @@ pub enum SMErrorKind {
     Ghost,
 
     #[error("Failed to generate endpoint: {0}")]
-    MakeEndpoint(String),
+    MakeEndpoint(#[source] ApcError),
 
     #[error("Client sent too many pings too often")]
     ExcessivePing,
@@ -107,6 +114,16 @@ impl SMErrorKind {
                 | SMErrorKind::Reqwest(_)
                 | SMErrorKind::MakeEndpoint(_)
         )
+    }
+
+    /// Whether this variant has a `Backtrace` captured
+    ///
+    /// Some Error variants have obvious call sites or more relevant backtraces
+    /// in their sources and thus don't need a `Backtrace`. Furthermore
+    /// backtraces are only captured for variants returning true from
+    /// [Self::is_sentry_event].
+    fn capture_backtrace(&self) -> bool {
+        !matches!(self, SMErrorKind::MakeEndpoint(_))
     }
 }
 
