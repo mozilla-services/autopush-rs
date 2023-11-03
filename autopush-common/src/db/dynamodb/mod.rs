@@ -25,7 +25,7 @@ use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemInput, DeleteItemInput, DescribeTableError, DescribeTableInput,
     DynamoDb, DynamoDbClient, GetItemInput, ListTablesInput, PutItemInput, PutRequest, QueryInput,
-    UpdateItemInput, WriteRequest,
+    UpdateItemError, UpdateItemInput, WriteRequest,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -156,7 +156,7 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<()> {
+    async fn update_user(&self, user: &User) -> DbResult<bool> {
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {
@@ -190,21 +190,17 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        retry_policy()
+        let result = retry_policy()
             .retry_if(
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await
-            .map_err(|e| {
-                // I would love to pull these from the `user_map`, but that's proving too onerous.
-                error!(
-                    "update_user failed for router_type: {} connected at: {:?}",
-                    user.router_type, user.connected_at
-                );
-                e
-            })?;
-        Ok(())
+            .await;
+        match result {
+            Ok(_) => Ok(true),
+            Err(RusotoError::Service(UpdateItemError::ConditionalCheckFailed(_))) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {

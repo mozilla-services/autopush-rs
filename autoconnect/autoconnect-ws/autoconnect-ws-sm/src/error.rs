@@ -91,6 +91,9 @@ pub enum SMErrorKind {
     #[error("UAID dropped")]
     UaidReset,
 
+    #[error("Already connected to another node")]
+    AlreadyConnected,
+
     #[error("New Client with the same UAID has connected to this node")]
     Ghost,
 
@@ -99,4 +102,19 @@ pub enum SMErrorKind {
 
     #[error("Client sent too many pings too often")]
     ExcessivePing,
+}
+
+#[cfg(debug_assertions)]
+/// Return a [SMErrorKind::Reqwest] [SMError] for tests
+pub async fn __test_sm_reqwest_error() -> SMError {
+    // An easily constructed reqwest::Error
+    let e = reqwest::Client::builder()
+        .https_only(true)
+        .build()
+        .unwrap()
+        .get("http://example.com")
+        .send()
+        .await
+        .unwrap_err();
+    SMErrorKind::Reqwest(e).into()
 }

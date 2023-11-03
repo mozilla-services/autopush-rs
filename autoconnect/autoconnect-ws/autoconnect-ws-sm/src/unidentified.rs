@@ -8,13 +8,10 @@ use autoconnect_common::{
     protocol::{BroadcastValue, ClientMessage, ServerMessage},
 };
 use autoconnect_settings::{AppState, Settings};
-use autopush_common::{
-    db::{error::DbResult, User},
-    util::ms_since_epoch,
-};
+use autopush_common::{db::User, util::ms_since_epoch};
 
 use crate::{
-    error::SMError,
+    error::{SMError, SMErrorKind},
     identified::{process_existing_user, ClientFlags, WebPushClient},
 };
 
@@ -110,7 +107,7 @@ impl UnidentifiedClient {
     }
 
     /// Lookup a User or return a new User record if the lookup failed
-    async fn get_or_create_user(&self, uaid: Option<Uuid>) -> DbResult<GetOrCreateUser> {
+    async fn get_or_create_user(&self, uaid: Option<Uuid>) -> Result<GetOrCreateUser, SMError> {
         trace!("❓UnidentifiedClient::get_or_create_user");
         let connected_at = ms_since_epoch();
 
@@ -123,7 +120,10 @@ impl UnidentifiedClient {
                     user.node_id = Some(self.app_state.router_url.to_owned());
                     user.connected_at = connected_at;
                     user.set_last_connect();
-                    self.app_state.db.update_user(&user).await?;
+                    if !self.app_state.db.update_user(&user).await? {
+                        let _ = self.app_state.metrics.incr("ua.already_connected");
+                        return Err(SMErrorKind::AlreadyConnected.into());
+                    }
                     return Ok(GetOrCreateUser {
                         user,
                         existing_user: true,
