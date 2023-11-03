@@ -559,21 +559,24 @@ impl DbClient for BigTableClientImpl {
         // Bigtable can't really do a few of those (e.g. detect non-existing values) so we have to simplify
         // things down a bit. We presume the record exists and that the `router_type` was specified when the
         // record was created.
+        //
+        // Filters are not very sophisticated on BigTable.
+        // You can create RowFilterChains, where each filter acts as an "AND".
+        // A RowFilterUnion which acts as an "OR".
+        //
+        // There do not appear to be negative checks (e.g. check if not set)
+        // According to [the docs](https://cloud.google.com/bigtable/docs/using-filters#chain)
+        // ConditionalRowFilter is not atomic and changes can occur between predicate
+        // and execution.
+        //
         // We then use a ChainFilter (essentially an AND operation) to make sure that the router_type
         // matches and the new `connected_at` time is later than the existing `connected_at`
 
         let row = self.user_to_row(user);
         let mut filter_chain = RowFilter_Chain::default();
         let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
-        // filters are not very sophisticated on BigTable.
-        // You can create RowFilterChains, where each filter acts as an "AND".
-        // A RowFilterUnion which acts as an "OR",
-        // There do not appear to be negative checks (e.g. check if not set)
-        // According to [the docs](https://cloud.google.com/bigtable/docs/using-filters#chain)
-        // ConditionalRowFilter is not atomic and changes can occur between predicate
-        // and execution.
 
-        // first check to see if the router type is either empty or matches exactly.
+        // First check to see if the router type is either empty or matches exactly.
         let mut type_filter = RowFilter::default();
         type_filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
         type_filter.set_column_qualifier_regex_filter("router_type".to_owned().as_bytes().to_vec());
@@ -1240,7 +1243,7 @@ mod tests {
         // Wait a tick so we don't fail.
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
         assert_ne!(
             test_user.connected_at,
             client.get_user(&uaid).await.unwrap().unwrap().connected_at
