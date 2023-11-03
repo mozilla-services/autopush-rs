@@ -141,7 +141,7 @@ impl DbClient for DualClientImpl {
         target.add_user(user).await
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<()> {
+    async fn update_user(&self, user: &User) -> DbResult<bool> {
         //  If the UAID is in the allowance, move them to the new data store
         let target: Box<&dyn DbClient> = self.allot(&user.uaid).await?;
         target.update_user(user).await
