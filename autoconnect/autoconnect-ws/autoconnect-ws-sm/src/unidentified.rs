@@ -67,19 +67,27 @@ impl UnidentifiedClient {
         );
 
         // Ignore invalid uaids (treat as None) so they'll be issued a new one
-        let uaid = uaid.as_deref().and_then(|uaid| Uuid::try_parse(uaid).ok());
+        let original_uaid = uaid.as_deref().and_then(|uaid| Uuid::try_parse(uaid).ok());
 
         let GetOrCreateUser {
             user,
             existing_user,
             flags,
-        } = self.get_or_create_user(uaid).await?;
+        } = self.get_or_create_user(original_uaid).await?;
         let uaid = user.uaid;
         debug!(
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {} existing_user: {}",
             uaid, existing_user,
         );
-        let _ = self.app_state.metrics.incr("ua.command.hello");
+        self.app_state
+            .metrics
+            .incr_with_tags("ua.command.hello")
+            .with_tag("existing_user", &original_uaid.is_some().to_string())
+            .with_tag(
+                "reassigned",
+                &(original_uaid.unwrap_or(uaid) != uaid).to_string(),
+            )
+            .send();
 
         let (broadcast_subs, broadcasts) = self
             .broadcast_init(&Broadcast::from_hashmap(broadcasts.unwrap_or_default()))
@@ -124,11 +132,6 @@ impl UnidentifiedClient {
                         let _ = self.app_state.metrics.incr("ua.already_connected");
                         return Err(SMErrorKind::AlreadyConnected.into());
                     }
-                    self.app_state
-                        .metrics
-                        .incr_with_tags("ua.existing_user")
-                        .with_tag("autoconnect", "true")
-                        .send();
                     return Ok(GetOrCreateUser {
                         user,
                         existing_user: true,
@@ -154,12 +157,6 @@ impl UnidentifiedClient {
             connected_at,
             ..Default::default()
         };
-        self.app_state
-            .metrics
-            .incr_with_tags("ua.new_user")
-            .with_tag("autoconnect", "true")
-            .with_tag("reassigned", &uaid.is_some().to_string())
-            .send();
         Ok(GetOrCreateUser {
             user,
             existing_user: false,

@@ -298,7 +298,7 @@ pub async fn process_existing_user(
                 .incr_with_tags("ua.expiration")
                 .with_tag("errno", "104")
                 .with_tag("autoconnect", "true")
-                .with_tag("reason", "no_current_mo")
+                .with_tag("reason", "no_current_month")
                 .send();
             app_state.db.remove_user(&user.uaid).await?;
             return Ok(None);
@@ -314,7 +314,7 @@ pub async fn process_existing_user(
                 .incr_with_tags("ua.expiration")
                 .with_tag("errno", "105")
                 .with_tag("autoconnect", "true")
-                .with_tag("reason", "invalid_current_mo")
+                .with_tag("reason", "invalid_current_month")
                 .send();
             app_state.db.remove_user(&user.uaid).await?;
             return Ok(None);
