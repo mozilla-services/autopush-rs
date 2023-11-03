@@ -296,7 +296,7 @@ pub async fn process_existing_user(
             app_state
                 .metrics
                 .incr_with_tags("ua.expiration")
-                .with_tag("errno", "104")
+                .with_tag("code", "104")
                 .send();
             app_state.db.remove_user(&user.uaid).await?;
             return Ok(None);
@@ -310,7 +310,7 @@ pub async fn process_existing_user(
             app_state
                 .metrics
                 .incr_with_tags("ua.expiration")
-                .with_tag("errno", "105")
+                .with_tag("code", "105")
                 .send();
             app_state.db.remove_user(&user.uaid).await?;
             return Ok(None);
