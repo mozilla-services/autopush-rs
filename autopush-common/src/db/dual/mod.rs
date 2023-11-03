@@ -84,7 +84,7 @@ impl DbClient for DualClientImpl {
         self.primary.add_user(user).await
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<()> {
+    async fn update_user(&self, user: &User) -> DbResult<bool> {
         if self.write_to_secondary {
             let _ = self.secondary.update_user(user).await?;
         }
