@@ -10,7 +10,7 @@ use autoconnect_common::test_support::{hello_again_db, hello_db, DUMMY_UAID, HEL
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::notification::Notification;
 
-use crate::build_app;
+use crate::{build_app, config};
 
 #[ctor::ctor]
 fn init_test_logging() {
@@ -18,7 +18,7 @@ fn init_test_logging() {
 }
 
 fn test_server(app_state: AppState) -> TestServer {
-    actix_test::start(move || build_app!(app_state))
+    actix_test::start(move || build_app!(app_state, config))
 }
 
 /// Extract the next message from the pending message queue and attempt to

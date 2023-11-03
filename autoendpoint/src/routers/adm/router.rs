@@ -1,6 +1,6 @@
 use autopush_common::db::client::DbClient;
 
-use crate::error::ApiResult;
+use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::adm::client::AdmClient;
@@ -148,7 +148,10 @@ impl Router for AdmRouter {
             );
             user.router_data = Some(router_data);
 
-            self.db.update_user(&user).await?;
+            if !self.db.update_user(&user).await? {
+                // Unlikely to occur on mobile records
+                return Err(ApiErrorKind::General("Conditional update failed".to_owned()).into());
+            }
         }
 
         Ok(RouterResponse::success(
@@ -345,7 +348,7 @@ mod tests {
                     == Some("test-registration-id2")
             })
             .times(1)
-            .return_once(|_| Ok(()));
+            .return_once(|_| Ok(true));
 
         let router = make_router(db.into_boxed_arc());
         let _token_mock = mock_token_endpoint();

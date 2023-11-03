@@ -95,7 +95,7 @@ impl PingManager {
             self.waiting,
             Waiting::ToPing
         );
-        if matches!(self.waiting, Waiting::ForPong) {
+        if let Waiting::ForPong = self.waiting {
             self.set_waiting(Waiting::ToPing, settings).await;
         }
     }
