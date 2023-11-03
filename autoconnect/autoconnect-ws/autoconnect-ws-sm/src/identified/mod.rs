@@ -296,7 +296,7 @@ pub async fn process_existing_user(
             app_state
                 .metrics
                 .incr_with_tags("ua.expiration")
-                .with_tag("errno", "104")
+                .with_tag("code", "104")
                 .with_tag("autoconnect", "true")
                 .with_tag("reason", "no_current_month")
                 .send();
@@ -312,7 +312,7 @@ pub async fn process_existing_user(
             app_state
                 .metrics
                 .incr_with_tags("ua.expiration")
-                .with_tag("errno", "105")
+                .with_tag("code", "105")
                 .with_tag("autoconnect", "true")
                 .with_tag("reason", "invalid_current_month")
                 .send();
