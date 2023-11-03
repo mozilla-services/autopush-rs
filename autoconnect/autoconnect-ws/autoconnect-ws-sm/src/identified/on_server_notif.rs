@@ -295,6 +295,12 @@ impl WebPushClient {
         if self.sent_from_storage > self.app_state.settings.msg_limit {
             // Exceeded the max limit of stored messages: drop the user to
             // trigger a re-register
+            self.app_state
+                .metrics
+                .incr_with_tags("ua.expiration")
+                .with_tag("autoconnect", "true")
+                .with_tag("reason", "too_many_messages")
+                .send();
             self.app_state.db.remove_user(&self.uaid).await?;
             return Err(SMErrorKind::UaidReset.into());
         }

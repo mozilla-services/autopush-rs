@@ -316,6 +316,12 @@ impl WebPushClient {
         let flags = &self.flags;
         if flags.reset_uaid {
             debug!("▶️ WebPushClient:post_process_all_acked reset_uaid");
+            self.app_state
+                .metrics
+                .incr_with_tags("ua.expiration")
+                .with_tag("autoconnect", "true")
+                .with_tag("reason", "reset_uaid")
+                .send();
             self.app_state.db.remove_user(&self.uaid).await?;
             Err(SMErrorKind::UaidReset.into())
         } else {

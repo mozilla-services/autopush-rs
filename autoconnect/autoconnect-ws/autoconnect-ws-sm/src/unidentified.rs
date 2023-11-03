@@ -124,6 +124,11 @@ impl UnidentifiedClient {
                         let _ = self.app_state.metrics.incr("ua.already_connected");
                         return Err(SMErrorKind::AlreadyConnected.into());
                     }
+                    self.app_state
+                        .metrics
+                        .incr_with_tags("ua.existing_user")
+                        .with_tag("autoconnect", "true")
+                        .send();
                     return Ok(GetOrCreateUser {
                         user,
                         existing_user: true,
@@ -149,6 +154,12 @@ impl UnidentifiedClient {
             connected_at,
             ..Default::default()
         };
+        self.app_state
+            .metrics
+            .incr_with_tags("ua.new_user")
+            .with_tag("autoconnect", "true")
+            .with_tag("reassigned", &uaid.is_some().to_string())
+            .send();
         Ok(GetOrCreateUser {
             user,
             existing_user: false,
