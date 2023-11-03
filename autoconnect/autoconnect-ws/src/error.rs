@@ -72,13 +72,15 @@ impl WSError {
 }
 
 impl ReportableError for WSError {
-    fn backtrace(&self) -> Option<&Backtrace> {
-        // XXX: dumb hack: return SMError's backtrace for now as our
-        // sentry::event_from_error doesn't capture it
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
         match &self.kind {
-            WSErrorKind::SM(e) => e.backtrace(),
-            _ => self.backtrace.as_ref(),
+            WSErrorKind::SM(e) => Some(e),
+            _ => None,
         }
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        self.backtrace.as_ref()
     }
 
     fn is_sentry_event(&self) -> bool {
@@ -145,5 +147,33 @@ impl WSErrorKind {
         // Nothing currently (RegistryDisconnected has a unique call site) but
         // we may want to capture other variants in the future
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use autoconnect_ws_sm::__test_sm_reqwest_error;
+    use autopush_common::sentry::event_from_error;
+
+    use super::{WSError, WSErrorKind};
+
+    #[actix_web::test]
+    async fn sentry_event() {
+        // A chain of errors: SMError -> WSError -> reqwest::Error -> BadScheme
+        let e: WSError = WSErrorKind::SM(__test_sm_reqwest_error().await).into();
+        let event = event_from_error(&e);
+        assert_eq!(event.exception.len(), 4);
+
+        // Source of the reqwest::Error (BadScheme)
+        assert_eq!(event.exception[0].stacktrace, None);
+        // reqwest::Error
+        assert_eq!(event.exception[1].ty, "reqwest::Error");
+        assert_eq!(event.exception[1].stacktrace, None);
+        // SMError w/ ReportableError::backtrace
+        assert_eq!(event.exception[2].ty, "SMError");
+        assert!(event.exception[2].stacktrace.is_some());
+        // WSError
+        assert_eq!(event.exception[3].ty, "WSError");
+        assert_eq!(event.exception[3].stacktrace, None);
     }
 }
