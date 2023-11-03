@@ -518,8 +518,10 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
-    async fn update_user(&self, user: &User) -> DbResult<()> {
-        self.add_user(user).await
+    async fn update_user(&self, user: &User) -> DbResult<bool> {
+        self.add_user(user).await?;
+        // TODO: is a conditional check possible?
+        Ok(true)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {

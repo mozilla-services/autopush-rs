@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, error::Error, io, sync::Arc, time::Duration};
 
 use actix_web::rt;
 use cadence::{CountedExt, StatsdClient};
@@ -53,6 +53,8 @@ fn report_updater_error(metrics: &Arc<StatsdClient>, err: reqwest::Error) {
         "timeout"
     } else if err.is_connect() {
         "connect"
+    } else if is_io(&err) {
+        "io"
     } else {
         "unknown"
     };
@@ -90,4 +92,30 @@ async fn updater(
         trace!("📢 add_broadcast change_count: {:?}", change_count);
     }
     Ok(())
+}
+
+/// Determine if a source of [reqwest::Error] was a [hyper::Error] Io Error
+fn is_io(err: &reqwest::Error) -> bool {
+    let mut source = err.source();
+    while let Some(err) = source {
+        if let Some(hyper_err) = err.downcast_ref::<hyper::Error>() {
+            if is_hyper_io(hyper_err) {
+                return true;
+            }
+        }
+        source = err.source();
+    }
+    false
+}
+
+/// Determine if a source of [hyper::Error] was an [io::Error]
+fn is_hyper_io(err: &hyper::Error) -> bool {
+    let mut source = err.source();
+    while let Some(err) = source {
+        if err.downcast_ref::<io::Error>().is_some() {
+            return true;
+        }
+        source = err.source();
+    }
+    false
 }
