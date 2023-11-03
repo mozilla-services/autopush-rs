@@ -312,7 +312,6 @@ pub async fn process_existing_user(
                 .metrics
                 .incr_with_tags("ua.expiration")
                 .with_tag("code", "105")
-                .with_tag("autoconnect", "true")
                 .with_tag("reason", "invalid_current_month")
                 .send();
             app_state.db.remove_user(&user.uaid).await?;
