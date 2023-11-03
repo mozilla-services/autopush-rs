@@ -340,7 +340,7 @@ pub struct ClientFlags {
     /// Whether this client needs to check storage for messages
     check_storage: bool,
     /// Flags the need to drop the user record
-    reset_uaid: bool,
+    pub(crate) reset_uaid: bool,
 }
 
 impl Default for ClientFlags {
