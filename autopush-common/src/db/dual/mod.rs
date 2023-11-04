@@ -31,10 +31,10 @@ use crate::db::dynamodb::DdbClientImpl;
 pub struct DualClientImpl {
     primary: BigTableClientImpl,
     secondary: DdbClientImpl,
-    // ideally, there should be a "router" here that is `dyn DbRouter`, but that introduces
-    // a lot of lifetime complexities that aren't really worth dealing with. For now,
-    // hardcode that we're going to use the secondary in DualClientImpl's `target()` & `assign()`
-    allowance: Option<u8>,
+    /// This contains the "top limit" for the accounts to send to "Primary".
+    /// The first byte of the UAID is taken and compared to this value. All values below
+    /// this top byte are sent to primary, with the rest going to "Secondary"
+    median: Option<u8>,
     _metrics: Arc<StatsdClient>,
 }
 
@@ -44,10 +44,12 @@ pub struct DualDbSettings {
     primary: DbSettings,
     #[serde(default)]
     secondary: DbSettings,
-    /// Percentage of UAIDs to allow to migrate to new data storage.
-    /// This works off of the UAID (which should be a randomly generated UUID4 value)
+    /// This contains the "top limit" for the accounts to send to "Primary".
+    /// The first byte of the UAID is taken and compared to this value. All values below
+    /// this top byte are sent to primary, with the rest going to "Secondary"
+    /// NOTE: specify as RAW hex string (e.g. `0A` not `0x0A`)
     #[serde(default)]
-    allowance: Option<u8>,
+    median: Option<String>,
 }
 
 impl DualClientImpl {
@@ -56,7 +58,7 @@ impl DualClientImpl {
         let db_settings: DualDbSettings = from_str(&settings.db_settings).map_err(|e| {
             DbError::General(format!("Could not parse DualDBSettings string {:?}", e))
         })?;
-        debug!("settings: {:?}", &db_settings.allowance);
+        debug!("settings: {:?}", &db_settings.median);
         if StorageType::from_dsn(&db_settings.primary.dsn) != StorageType::BigTable {
             return Err(DbError::General(
                 "Invalid primary DSN specified (must be BigTable type)".to_owned(),
@@ -69,15 +71,19 @@ impl DualClientImpl {
         }
         // determine which uaids to move based on the first byte of their UAID, which (hopefully)
         // should be sufficiently random based on it being a UUID4.
-        let allowance = if let Some(allowance) = db_settings.allowance {
-            let allow_max = ((std::cmp::min(allowance, 100) as f32 * 0.01) * 255.0) as u8;
+        let median = if let Some(median) = db_settings.median {
+            let median = hex::decode(median).map_err(|e| {
+                DbError::General(format!(
+                    "Could not parse median string. Please use a valid Hex identifier: {:?}",
+                    e,
+                ))
+            })?[0];
             debug!(
-                "⚖Setting max allowance to {}: [{}] <0x{}",
-                std::cmp::min(allowance, 100),
-                allowance,
-                hex::encode([allow_max]),
+                "⚖ Setting median to {:02} ({})",
+                hex::encode(&[median]),
+                &median
             );
-            Some(allow_max)
+            Some(median)
         } else {
             None
         };
@@ -86,7 +92,7 @@ impl DualClientImpl {
         Ok(Self {
             primary,
             secondary: secondary.clone(),
-            allowance,
+            median,
             _metrics: metrics,
         })
     }
@@ -98,8 +104,8 @@ impl DualClientImpl {
     /// Route and assign a user to the appropriate back end based on the defined
     /// allowance
     async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<Box<&'a dyn DbClient>> {
-        if let Some(allowance) = self.allowance {
-            if uaid.as_bytes()[0] < allowance {
+        if let Some(median) = self.median {
+            if uaid.as_bytes()[0] < median {
                 info!("⚖ Routing user to Bigtable");
                 self.assign(uaid).await?;
                 // TODO: Better label for this? It's migration so it would appear as
@@ -306,7 +312,7 @@ mod test {
     use serde_json::json;
     use std::str::FromStr;
 
-    fn test_args(allowance: Option<u8>) -> String {
+    fn test_args(median: Option<&str>) -> String {
         json!({
             "primary": {
                 "dsn": "grpc://bigtable.googleapis.com",  // Note that this is the general endpoint.
@@ -323,7 +329,7 @@ mod test {
                     "message_table": "test_message",
                 }).to_string(),
             },
-            "allowance": allowance,
+            "median": median.to_owned(),
         })
         .to_string()
     }
@@ -360,7 +366,7 @@ mod test {
 
     #[actix_rt::test]
     async fn allocation() -> DbResult<()> {
-        let arg_str = test_args(Some(10));
+        let arg_str = test_args(Some("0A"));
         let metrics = Arc::new(StatsdClient::builder("", NopMetricSink).build());
         let dual_settings = DbSettings {
             dsn: Some("dual".to_owned()),
@@ -368,8 +374,10 @@ mod test {
         };
         let dual = DualClientImpl::new(metrics, &dual_settings)?;
 
+        // Should be included.
         let low_uaid = Uuid::from_str("04DDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
-        let hi_uaid = Uuid::from_str("1ADDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
+        // Should be excluded.
+        let hi_uaid = Uuid::from_str("0ADDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
         let result = dual.allot(&low_uaid).await?;
         assert_eq!(result.name(), dual.primary.name());
         let result = dual.allot(&hi_uaid).await?;
