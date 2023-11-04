@@ -80,7 +80,7 @@ impl DualClientImpl {
             })?[0];
             debug!(
                 "⚖ Setting median to {:02} ({})",
-                hex::encode(&[median]),
+                hex::encode([median]),
                 &median
             );
             Some(median)
