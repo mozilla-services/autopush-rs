@@ -32,8 +32,8 @@ pub struct DualClientImpl {
     primary: BigTableClientImpl,
     secondary: DdbClientImpl,
     /// This contains the "top limit" for the accounts to send to "Primary".
-    /// The first byte of the UAID is taken and compared to this value. All values below
-    /// this top byte are sent to primary, with the rest going to "Secondary"
+    /// The first byte of the UAID is taken and compared to this value. All values equal
+    /// to or below this top byte are sent to primary, with the rest going to "Secondary"
     median: Option<u8>,
     _metrics: Arc<StatsdClient>,
 }
@@ -45,8 +45,8 @@ pub struct DualDbSettings {
     #[serde(default)]
     secondary: DbSettings,
     /// This contains the "top limit" for the accounts to send to "Primary".
-    /// The first byte of the UAID is taken and compared to this value. All values below
-    /// this top byte are sent to primary, with the rest going to "Secondary"
+    /// The first byte of the UAID is taken and compared to this value. All values equal
+    /// to or below this top byte are sent to primary, with the rest going to "Secondary"
     /// NOTE: specify as RAW hex string (e.g. `0A` not `0x0A`)
     #[serde(default)]
     median: Option<String>,
@@ -105,7 +105,7 @@ impl DualClientImpl {
     /// allowance
     async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<Box<&'a dyn DbClient>> {
         if let Some(median) = self.median {
-            if uaid.as_bytes()[0] < median {
+            if uaid.as_bytes()[0] <= median {
                 info!("⚖ Routing user to Bigtable");
                 self.assign(uaid).await?;
                 // TODO: Better label for this? It's migration so it would appear as
