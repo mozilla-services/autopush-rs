@@ -215,7 +215,9 @@ pub struct ClientFlags {
     increment_storage: bool,
     /// Whether this client needs to check storage for messages
     check: bool,
-    /// Flags the need to drop the user record
+    /// Flags the need to drop the user record if the User record_version is less
+    /// than the USER_RECORD_VERSION constant. The reset is done after all existing
+    /// message traffic is sent over.
     reset_uaid: bool,
     rotate_message_table: bool,
 }

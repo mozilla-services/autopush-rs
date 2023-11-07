@@ -67,13 +67,13 @@ impl UnidentifiedClient {
         );
 
         // Ignore invalid uaids (treat as None) so they'll be issued a new one
-        let uaid = uaid.as_deref().and_then(|uaid| Uuid::try_parse(uaid).ok());
+        let original_uaid = uaid.as_deref().and_then(|uaid| Uuid::try_parse(uaid).ok());
 
         let GetOrCreateUser {
             user,
             existing_user,
             flags,
-        } = self.get_or_create_user(uaid).await?;
+        } = self.get_or_create_user(original_uaid).await?;
         let uaid = user.uaid;
         debug!(
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {} existing_user: {}",
@@ -85,7 +85,7 @@ impl UnidentifiedClient {
             .with_tag("uaid", {
                 if existing_user {
                     "existing"
-                } else if flags.reset_uaid {
+                } else if original_uaid.unwrap_or(uaid) != uaid {
                     "reassigned"
                 } else {
                     "new"
