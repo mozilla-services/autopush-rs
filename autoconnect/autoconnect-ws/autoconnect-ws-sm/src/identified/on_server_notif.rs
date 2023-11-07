@@ -298,7 +298,6 @@ impl WebPushClient {
             self.app_state
                 .metrics
                 .incr_with_tags("ua.expiration")
-                .with_tag("autoconnect", "true")
                 .with_tag("reason", "too_many_messages")
                 .send();
             self.app_state.db.remove_user(&self.uaid).await?;
