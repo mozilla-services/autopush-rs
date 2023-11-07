@@ -105,7 +105,7 @@ impl WebPushClient {
             &self.app_state.endpoint_url,
             &self.app_state.fernet,
         )
-        .map_err(|e| SMErrorKind::MakeEndpoint(e.to_string()))?;
+        .map_err(SMErrorKind::MakeEndpoint)?;
         self.app_state
             .db
             .add_channel(&self.uaid, channel_id)

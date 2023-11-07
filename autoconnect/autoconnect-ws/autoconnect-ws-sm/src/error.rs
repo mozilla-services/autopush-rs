@@ -3,13 +3,13 @@ use std::{error::Error, fmt};
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
 
-use autopush_common::{db::error::DbError, errors::ReportableError};
+use autopush_common::{db::error::DbError, errors::ApcError, errors::ReportableError};
 
 /// WebSocket state machine errors
 #[derive(Debug)]
 pub struct SMError {
     pub kind: SMErrorKind,
-    backtrace: Backtrace,
+    backtrace: Option<Backtrace>,
 }
 
 impl fmt::Display for SMError {
@@ -31,10 +31,9 @@ where
     SMErrorKind: From<T>,
 {
     fn from(item: T) -> Self {
-        Self {
-            kind: SMErrorKind::from(item),
-            backtrace: Backtrace::new(),
-        }
+        let kind = SMErrorKind::from(item);
+        let backtrace = (kind.is_sentry_event() && kind.capture_backtrace()).then(Backtrace::new);
+        Self { kind, backtrace }
     }
 }
 
@@ -54,18 +53,19 @@ impl SMError {
 }
 
 impl ReportableError for SMError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self.kind {
+            SMErrorKind::MakeEndpoint(e) => Some(e),
+            _ => None,
+        }
+    }
+
     fn backtrace(&self) -> Option<&Backtrace> {
-        Some(&self.backtrace)
+        self.backtrace.as_ref()
     }
 
     fn is_sentry_event(&self) -> bool {
-        matches!(
-            self.kind,
-            SMErrorKind::Database(_)
-                | SMErrorKind::Internal(_)
-                | SMErrorKind::Reqwest(_)
-                | SMErrorKind::MakeEndpoint(_)
-        )
+        self.kind.is_sentry_event()
     }
 
     fn metric_label(&self) -> Option<&'static str> {
@@ -98,10 +98,33 @@ pub enum SMErrorKind {
     Ghost,
 
     #[error("Failed to generate endpoint: {0}")]
-    MakeEndpoint(String),
+    MakeEndpoint(#[source] ApcError),
 
     #[error("Client sent too many pings too often")]
     ExcessivePing,
+}
+
+impl SMErrorKind {
+    /// Whether this error is reported to Sentry
+    fn is_sentry_event(&self) -> bool {
+        matches!(
+            self,
+            SMErrorKind::Database(_)
+                | SMErrorKind::Internal(_)
+                | SMErrorKind::Reqwest(_)
+                | SMErrorKind::MakeEndpoint(_)
+        )
+    }
+
+    /// Whether this variant has a `Backtrace` captured
+    ///
+    /// Some Error variants have obvious call sites or more relevant backtraces
+    /// in their sources and thus don't need a `Backtrace`. Furthermore
+    /// backtraces are only captured for variants returning true from
+    /// [Self::is_sentry_event].
+    fn capture_backtrace(&self) -> bool {
+        !matches!(self, SMErrorKind::MakeEndpoint(_))
+    }
 }
 
 #[cfg(debug_assertions)]
