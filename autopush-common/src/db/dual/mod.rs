@@ -377,7 +377,7 @@ mod test {
         // Should be included.
         let low_uaid = Uuid::from_str("04DDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
         // Should be excluded.
-        let hi_uaid = Uuid::from_str("0ADDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
+        let hi_uaid = Uuid::from_str("0BDDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
         let result = dual.allot(&low_uaid).await?;
         assert_eq!(result.name(), dual.primary.name());
         let result = dual.allot(&hi_uaid).await?;
