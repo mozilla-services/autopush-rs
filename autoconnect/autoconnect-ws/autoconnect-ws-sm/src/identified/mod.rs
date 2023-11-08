@@ -183,7 +183,7 @@ impl WebPushClient {
         // Log out the final stats message
         info!("Session";
             "uaid_hash" => self.uaid.as_simple().to_string(),
-            "uaid_reset" => self.flags.reset_uaid,
+            "uaid_reset" => self.flags.old_record_version,
             "existing_uaid" => stats.existing_uaid,
             "connection_type" => "webpush",
             "ua_name" => &ua_info.browser_name,
@@ -321,7 +321,7 @@ pub async fn process_existing_user(
 
     let flags = ClientFlags {
         check_storage: true,
-        reset_uaid: user
+        old_record_version: user
             .record_version
             .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
         ..Default::default()
@@ -338,7 +338,7 @@ pub struct ClientFlags {
     /// Whether this client needs to check storage for messages
     check_storage: bool,
     /// Flags the need to drop the user record
-    pub(crate) reset_uaid: bool,
+    old_record_version: bool,
 }
 
 impl Default for ClientFlags {
@@ -347,7 +347,7 @@ impl Default for ClientFlags {
             include_topic: true,
             increment_storage: false,
             check_storage: false,
-            reset_uaid: false,
+            old_record_version: false,
         }
     }
 }
