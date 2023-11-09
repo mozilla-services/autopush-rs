@@ -61,8 +61,6 @@ pub struct Settings {
     /// How long to wait for a response Pong before being timed out and connection drop
     #[serde(deserialize_with = "deserialize_f64_to_duration")]
     pub auto_ping_timeout: Duration,
-    /// Max number of websocket connections to allow
-    pub max_connections: u32,
     /// How long to wait for the initial connection handshake.
     #[serde(deserialize_with = "deserialize_u32_to_duration")]
     pub open_handshake_timeout: Duration,
@@ -104,6 +102,10 @@ pub struct Settings {
     /// All socket listeners will stop accepting connections when this limit is
     /// reached for each worker.
     pub actix_max_connections: Option<usize>,
+    /// Sets number of actix-web workers to start (per bind address).
+    ///
+    /// By default, the number of available physical CPUs is used as the worker count.
+    pub actix_workers: Option<usize>,
 }
 
 impl Default for Settings {
@@ -116,7 +118,6 @@ impl Default for Settings {
             router_hostname: None,
             auto_ping_interval: Duration::from_secs(300),
             auto_ping_timeout: Duration::from_secs(4),
-            max_connections: 0,
             open_handshake_timeout: Duration::from_secs(5),
             close_handshake_timeout: Duration::from_secs(0),
             endpoint_scheme: "http".to_owned(),
@@ -135,6 +136,7 @@ impl Default for Settings {
             human_logs: false,
             msg_limit: 100,
             actix_max_connections: None,
+            actix_workers: None,
         }
     }
 }

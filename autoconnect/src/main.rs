@@ -76,6 +76,7 @@ async fn main() -> Result<()> {
     let port = settings.port;
     let router_port = settings.router_port;
     let actix_max_connections = settings.actix_max_connections;
+    let actix_workers = settings.actix_workers;
     let app_state = AppState::from_settings(settings)?;
     app_state.init_and_spawn_megaphone_updater().await?;
 
@@ -105,6 +106,9 @@ async fn main() -> Result<()> {
         })?;
     if let Some(max_connections) = actix_max_connections {
         builder = builder.max_concurrent_connections(max_connections);
+    }
+    if let Some(workers) = actix_workers {
+        builder = builder.workers(workers);
     }
     builder.run().await?;
 
