@@ -83,8 +83,6 @@ async fn main() -> Result<()> {
         port, router_port
     );
 
-    actix_web::App::new();
-
     let router_app_state = app_state.clone();
     Server::build()
         .bind("autoconnect", ("0.0.0.0", port), move || {
