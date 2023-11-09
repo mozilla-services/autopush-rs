@@ -484,7 +484,7 @@ fn handle_user_result(
     hello_response.check_storage = true;
     hello_response.rotate_message_table = user_month != *cur_month;
     hello_response.message_month = user_month;
-    hello_response.reset_uaid = user
+    hello_response.old_record_version = user
         .record_version
         .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION);
 
