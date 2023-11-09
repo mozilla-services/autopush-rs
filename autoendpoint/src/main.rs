@@ -58,11 +58,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let server = server::Server::with_settings(settings)
         .await
         .expect("Could not start server");
-    info!("Server started: {}", host_port);
+    info!(
+        "Starting autoendpoint on port: {} (available_parallelism: {:?})",
+        host_port,
+        std::thread::available_parallelism()
+    );
     server.await?;
 
     // Shutdown
-    info!("Server closing");
+    info!("Shutting down autoendpoint");
     logging::reset_logging();
     Ok(())
 }
