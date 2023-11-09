@@ -8,6 +8,7 @@ use autopush_common::{
     tags::Tags,
     util::{b64_decode_std, b64_decode_url, sec_since_epoch},
 };
+use base64::Engine;
 use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
@@ -305,9 +306,7 @@ fn validate_vapid_jwt(
     };
 
     // Dump the claims.
-    let claims = vapid.token.split('.').collect::<Vec<&str>>();
-    if let Some(claims_str) = claims.get(1) {
-        use base64::Engine;
+    if let Some(claims_str) = vapid.token.split('.').next() {
         info!(
             "Vapid";
             "sub" => &token_data.claims.sub,
