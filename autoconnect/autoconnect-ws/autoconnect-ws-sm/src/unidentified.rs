@@ -67,19 +67,31 @@ impl UnidentifiedClient {
         );
 
         // Ignore invalid uaids (treat as None) so they'll be issued a new one
-        let uaid = uaid.as_deref().and_then(|uaid| Uuid::try_parse(uaid).ok());
+        let original_uaid = uaid.as_deref().and_then(|uaid| Uuid::try_parse(uaid).ok());
 
         let GetOrCreateUser {
             user,
             existing_user,
             flags,
-        } = self.get_or_create_user(uaid).await?;
+        } = self.get_or_create_user(original_uaid).await?;
         let uaid = user.uaid;
         debug!(
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {} existing_user: {}",
             uaid, existing_user,
         );
-        let _ = self.app_state.metrics.incr("ua.command.hello");
+        self.app_state
+            .metrics
+            .incr_with_tags("ua.command.hello")
+            .with_tag("uaid", {
+                if existing_user {
+                    "existing"
+                } else if original_uaid.unwrap_or(uaid) != uaid {
+                    "reassigned"
+                } else {
+                    "new"
+                }
+            })
+            .send();
 
         let (broadcast_subs, broadcasts) = self
             .broadcast_init(&Broadcast::from_hashmap(broadcasts.unwrap_or_default()))

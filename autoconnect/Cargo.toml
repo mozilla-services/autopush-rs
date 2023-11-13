@@ -11,7 +11,7 @@ actix.workspace = true
 actix-cors.workspace = true
 actix-http.workspace = true
 actix-rt.workspace = true
-actix-test.workspace =  true
+actix-test.workspace = true
 actix-web.workspace = true
 #actix-web-actors.workspace = true
 actix-ws.workspace = true
@@ -55,3 +55,4 @@ docopt = "1.1"
 [features]
 emulator = ["bigtable"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
+log_vapid = []

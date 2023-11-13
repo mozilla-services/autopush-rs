@@ -75,16 +75,20 @@ async fn main() -> Result<()> {
 
     let port = settings.port;
     let router_port = settings.router_port;
+    let actix_max_connections = settings.actix_max_connections;
+    let actix_workers = settings.actix_workers;
     let app_state = AppState::from_settings(settings)?;
     app_state.init_and_spawn_megaphone_updater().await?;
 
     info!(
-        "Starting autoconnect on port {} (router_port: {})",
-        port, router_port
+        "Starting autoconnect on port: {} router_port: {} (available_parallelism: {:?})",
+        port,
+        router_port,
+        std::thread::available_parallelism()
     );
 
     let router_app_state = app_state.clone();
-    Server::build()
+    let mut builder = Server::build()
         .bind("autoconnect", ("0.0.0.0", port), move || {
             let app = build_app!(app_state, config);
             HttpService::build()
@@ -99,12 +103,15 @@ async fn main() -> Result<()> {
                 // XXX:
                 .finish(map_config(app, |_| AppConfig::default()))
                 .tcp()
-        })?
-        .run()
-        .await
-        .map_err(|e| e.into())
-        .map(|v| {
-            info!("Shutting down autoconnect");
-            v
-        })
+        })?;
+    if let Some(max_connections) = actix_max_connections {
+        builder = builder.max_concurrent_connections(max_connections);
+    }
+    if let Some(workers) = actix_workers {
+        builder = builder.workers(workers);
+    }
+    builder.run().await?;
+
+    info!("Shutting down autoconnect");
+    Ok(())
 }
