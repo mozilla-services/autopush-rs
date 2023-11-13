@@ -1,3 +1,21 @@
+<a name="1.69.7"></a>
+## 1.69.7 (2023-11-13)
+
+
+#### Features
+
+*   demote `retry` message, dump vapid claims. (#510) ([cc4048c7](https://github.com/mozilla-services/autopush-rs/commit/cc4048c7312f49cd2b57bab13c715d54052a9732))
+*   add actix_max_connections/workers settings (#515) ([6f6289c3](https://github.com/mozilla-services/autopush-rs/commit/6f6289c3dddd6ea5fe25ec4080ac90355cb40d0d))
+*   Add metrics for user creation/deletion. (#506) ([bd2e0117](https://github.com/mozilla-services/autopush-rs/commit/bd2e0117550bf4c82bcbefc5217902c2dbfe7bcf))
+*   only capture some SMError backtraces (#508) ([8f6e03e3](https://github.com/mozilla-services/autopush-rs/commit/8f6e03e33a1f80e87ecfe027b9b7069baf139200))
+
+#### Bug Fixes
+
+*   correct the ua.expiration metric's tag (#502) ([ca002ec8](https://github.com/mozilla-services/autopush-rs/commit/ca002ec887d88dda32fa98a2b6521795ee206a9a))
+*   add ReportableError::reportable_source (#500) ([40487b76](https://github.com/mozilla-services/autopush-rs/commit/40487b76da2c3cd58dccfbea24ba0290f1211cc0))
+
+
+
 <a name="1.69.6"></a>
 ## 1.69.6 (2023-10-31)
 
