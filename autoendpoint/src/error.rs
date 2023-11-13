@@ -332,6 +332,13 @@ impl Serialize for ApiError {
 }
 
 impl ReportableError for ApiError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self.kind {
+            ApiErrorKind::EndpointUrl(e) => Some(e),
+            _ => None,
+        }
+    }
+
     fn backtrace(&self) -> Option<&Backtrace> {
         Some(&self.backtrace)
     }

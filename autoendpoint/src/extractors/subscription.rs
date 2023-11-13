@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt;
 use std::str::FromStr;
 
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
@@ -54,6 +55,15 @@ impl Default for VapidClaims {
     }
 }
 
+impl fmt::Display for VapidClaims {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VapidClaims")
+            .field("exp", &self.exp)
+            .field("aud", &self.aud)
+            .field("sub", &self.sub)
+            .finish()
+    }
+}
 impl FromRequest for Subscription {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
@@ -292,6 +302,23 @@ fn validate_vapid_jwt(
                 return Err(e.into());
             }
         },
+    };
+
+    // Dump the claims.
+    // Note, this can produce a LOT of log messages if this feature is enabled.
+    #[cfg(log_vapid)]
+    if let Some(claims_str) = vapid.token.split('.').next() {
+        use base64::Engine;
+        info!(
+            "Vapid";
+            "sub" => &token_data.claims.sub,
+            "claims" => String::from_utf8(
+                base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(claims_str)
+                    .unwrap_or_default()
+            )
+            .unwrap_or("UNKNOWN".to_owned())
+        );
     };
 
     if token_data.claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {

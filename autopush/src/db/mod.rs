@@ -44,7 +44,7 @@ pub struct HelloResponse {
     pub uaid: Option<Uuid>,
     pub message_month: String,
     pub check_storage: bool,
-    pub reset_uaid: bool,
+    pub old_record_version: bool,
     pub rotate_message_table: bool,
     pub connected_at: u64,
     // Exists when we didn't register this user during HELLO
