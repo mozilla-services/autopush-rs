@@ -263,7 +263,7 @@ class AutopushUser(FastHttpUser):
                     record = self.hello_record
                 case "notification":
                     message = NotificationMessage(**message_dict)
-                    message_data: str = message.data  # type: ignore[union-attr]
+                    message_data: str = message.data
                     decode_data: str = base64.urlsafe_b64decode(message_data + "===").decode(
                         "utf8"
                     )
@@ -272,14 +272,14 @@ class AutopushUser(FastHttpUser):
                     )
                 case "register":
                     message = RegisterMessage(**message_dict)
-                    register_chid: str = message.channelID  # type: ignore[union-attr]
+                    register_chid: str = message.channelID
                     record = next(
                         (r for r in self.register_records if r.channel_id == register_chid),
                         None,
                     )
                 case "unregister":
                     message = UnregisterMessage(**message_dict)
-                    unregister_chid: str = message.channelID  # type: ignore[union-attr]
+                    unregister_chid: str = message.channelID
                     record = next(
                         (r for r in self.unregister_records if r.channel_id == unregister_chid),
                         None,
