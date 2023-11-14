@@ -113,7 +113,7 @@ jobs:
           # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
           # the machine level memory and CPU which are far higher than the memory allocated to the docker
           # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=bigtable --jobs=8
+          command: cargo test --features=bigtable --jobs=2
       - run:
           name: Integration tests (Autopush Legacy)
           command: |
