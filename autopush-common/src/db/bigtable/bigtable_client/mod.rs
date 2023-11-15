@@ -707,7 +707,12 @@ impl DbClient for BigTableClientImpl {
     }
 
     /// Remove the node_id. Can't really "surgically strike" this
-    async fn remove_node_id(&self, uaid: &Uuid, _node_id: &str, connected_at: u64) -> DbResult<()> {
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        _node_id: &str,
+        connected_at: u64,
+    ) -> DbResult<bool> {
         trace!(
             "🉑 Removing node_ids for {} up to {:?} ",
             &uaid.simple().to_string(),
@@ -723,8 +728,9 @@ impl DbClient for BigTableClientImpl {
             &["node_id"].to_vec(),
             Some(&time_range),
         )
-        .await
-        .map_err(|e| e.into())
+        .await?;
+        // TODO: is a conditional check possible?
+        Ok(true)
     }
 
     /// Write the notification to storage.

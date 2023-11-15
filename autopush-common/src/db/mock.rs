@@ -44,7 +44,12 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).remove_channel(uaid, channel_id).await
     }
 
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: &str,
+        connected_at: u64,
+    ) -> DbResult<bool> {
         Arc::as_ref(self)
             .remove_node_id(uaid, node_id, connected_at)
             .await
