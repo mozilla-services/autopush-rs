@@ -105,7 +105,7 @@ impl WebPushClient {
             &self.app_state.endpoint_url,
             &self.app_state.fernet,
         )
-        .map_err(|e| SMErrorKind::MakeEndpoint(e.to_string()))?;
+        .map_err(SMErrorKind::MakeEndpoint)?;
         self.app_state
             .db
             .add_channel(&self.uaid, channel_id)
@@ -314,8 +314,13 @@ impl WebPushClient {
         // All Ack'd and finished checking/incrementing storage
         debug_assert!(!self.ack_state.unacked_notifs());
         let flags = &self.flags;
-        if flags.reset_uaid {
-            debug!("▶️ WebPushClient:post_process_all_acked reset_uaid");
+        if flags.old_record_version {
+            debug!("▶️ WebPushClient:post_process_all_acked; resetting uaid");
+            self.app_state
+                .metrics
+                .incr_with_tags("ua.expiration")
+                .with_tag("reason", "old_record_version")
+                .send();
             self.app_state.db.remove_user(&self.uaid).await?;
             Err(SMErrorKind::UaidReset.into())
         } else {

@@ -147,7 +147,7 @@ impl Router for WebPushRouter {
                 }
             }
             Err(error) => {
-                // Can't communicate with the node, so we should stop using it
+                // Can't communicate with the node, attempt to stop using it
                 debug!("✉ Error while triggering notification check: {}", error);
                 self.remove_node_id(&user, node_id).await?;
                 Ok(self.make_stored_response(notification))
@@ -195,9 +195,13 @@ impl WebPushRouter {
     /// connected to the node.
     async fn remove_node_id(&self, user: &User, node_id: &str) -> ApiResult<()> {
         self.metrics.incr("updates.client.host_gone").ok();
-        self.db
+        let removed = self
+            .db
             .remove_node_id(&user.uaid, node_id, user.connected_at)
             .await?;
+        if !removed {
+            debug!("✉ The node id was not removed");
+        }
         Ok(())
     }
 
