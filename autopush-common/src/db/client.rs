@@ -47,10 +47,11 @@ pub trait DbClient: Send + Sync {
     /// Remove a channel from a user. Returns if the removed channel did exist.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool>;
 
-    /// Remove the node ID from a user in the router table.
-    /// The node ID will only be cleared if `connected_at` matches up with the
-    /// item's `connected_at`.
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()>;
+    /// Remove the node ID from a user in the router table. Returns whether the
+    /// removal occurred. The node ID will only be removed if `connected_at`
+    /// matches up with the item's `connected_at`.
+    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64)
+        -> DbResult<bool>;
 
     /// Save a message to the message table
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()>;

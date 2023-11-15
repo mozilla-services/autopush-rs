@@ -215,8 +215,10 @@ pub struct ClientFlags {
     increment_storage: bool,
     /// Whether this client needs to check storage for messages
     check: bool,
-    /// Flags the need to drop the user record
-    reset_uaid: bool,
+    /// Flags the need to drop the user record if the User record_version is less
+    /// than the USER_RECORD_VERSION constant. The reset is done after all existing
+    /// message traffic is sent over.
+    old_record_version: bool,
     rotate_message_table: bool,
 }
 
@@ -226,7 +228,7 @@ impl ClientFlags {
             include_topic: true,
             increment_storage: false,
             check: false,
-            reset_uaid: false,
+            old_record_version: false,
             rotate_message_table: false,
         }
     }
@@ -421,7 +423,7 @@ where
             uaid,
             message_month,
             check_storage,
-            reset_uaid,
+            old_record_version,
             rotate_message_table,
             connected_at,
             deferred_user_registration,
@@ -432,7 +434,7 @@ where
                     uaid: Some(uaid),
                     message_month,
                     check_storage,
-                    reset_uaid,
+                    old_record_version,
                     rotate_message_table,
                     connected_at,
                     deferred_user_registration,
@@ -442,7 +444,7 @@ where
                         uaid,
                         message_month,
                         check_storage,
-                        reset_uaid,
+                        old_record_version,
                         rotate_message_table,
                         connected_at,
                         deferred_user_registration,
@@ -484,7 +486,7 @@ where
         // Setup the objects and such needed for a WebPushClient
         let mut flags = ClientFlags::new();
         flags.check = check_storage;
-        flags.reset_uaid = reset_uaid;
+        flags.old_record_version = old_record_version;
         flags.rotate_message_table = rotate_message_table;
         let (initialized_subs, broadcasts) = srv.broadcast_init(&desired_broadcasts);
         broadcast_subs.replace(initialized_subs);
@@ -498,7 +500,7 @@ where
             connected_at,
             stats: SessionStatistics {
                 uaid: uaid.as_simple().to_string(),
-                uaid_reset: reset_uaid,
+                uaid_reset: old_record_version,
                 existing_uaid: check_storage,
                 connection_type: String::from("webpush"),
                 ..Default::default()
@@ -949,8 +951,8 @@ where
                     .migrate_user(&webpush.uaid, &webpush.message_month),
             );
             transition!(AwaitMigrateUser { response, data });
-        } else if all_acked && webpush.flags.reset_uaid {
-            debug!("Dropping user: flagged reset_uaid");
+        } else if all_acked && webpush.flags.old_record_version {
+            debug!("Dropping user: flagged old_record_version");
             let response = Box::new(data.srv.ddb.drop_uaid(&webpush.uaid));
             transition!(AwaitDropUser { response, data });
         }
