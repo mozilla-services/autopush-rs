@@ -136,14 +136,21 @@ impl DbClient for DualClientImpl {
         Ok(presult | sresult)
     }
 
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
-        let _ = self
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: &str,
+        connected_at: u64,
+    ) -> DbResult<bool> {
+        let p_resp = self
             .secondary
             .remove_node_id(uaid, node_id, connected_at)
-            .await;
-        self.primary
+            .await?;
+        let s_resp = self
+            .primary
             .remove_node_id(uaid, node_id, connected_at)
-            .await
+            .await?;
+        return Ok(p_resp || s_resp);
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
