@@ -229,6 +229,32 @@ impl BigTableClientImpl {
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
+    /// write a given row.
+    ///
+    /// there's also `.mutate_rows` which I presume allows multiple.
+    async fn write_row(&self, row: row::Row) -> Result<(), error::BigTableError> {
+        let mut req = bigtable::MutateRowRequest::default();
+
+        // compile the mutations.
+        // It's possible to do a lot here, including altering in process
+        // mutations, clearing them, etc. It's all up for grabs until we commit
+        // below. For now, let's just presume a write and be done.
+        req.set_table_name(self.settings.table_name.clone());
+        req.set_row_key(row.row_key.into_bytes());
+        let mutations = self.get_mutations(row.cells)?;
+        req.set_mutations(mutations);
+
+        // Do the actual commit.
+        // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
+        let _resp = self
+            .client
+            .mutate_row_async(&req)
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .await
+            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+        Ok(())
+    }
+
     /// Compile the list of mutations for this row.
     fn get_mutations(
         &self,
@@ -280,32 +306,6 @@ impl BigTableClientImpl {
             .map_err(|e| error::BigTableError::Write(e.to_string()))?;
         debug!("🉑 Predicate Matched: {}", resp.get_predicate_matched());
         Ok(resp.get_predicate_matched())
-    }
-
-    /// write a given row.
-    ///
-    /// there's also `.mutate_rows` which I presume allows multiple.
-    async fn write_row(&self, row: row::Row) -> Result<(), error::BigTableError> {
-        let mut req = bigtable::MutateRowRequest::default();
-
-        // compile the mutations.
-        // It's possible to do a lot here, including altering in process
-        // mutations, clearing them, etc. It's all up for grabs until we commit
-        // below. For now, let's just presume a write and be done.
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_row_key(row.row_key.into_bytes());
-        let mutations = self.get_mutations(row.cells)?;
-        req.set_mutations(mutations);
-
-        // Do the actual commit.
-        // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
-        let _resp = self
-            .client
-            .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
-            .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
-        Ok(())
     }
 
     /// Delete all cell data from the specified columns with the optional time range.
