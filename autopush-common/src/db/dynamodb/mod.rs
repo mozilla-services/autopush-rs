@@ -352,7 +352,12 @@ impl DbClient for DdbClientImpl {
             .unwrap_or(false))
     }
 
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: &str,
+        connected_at: u64,
+    ) -> DbResult<bool> {
         let input = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),
@@ -365,21 +370,23 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        retry_policy()
+        let result = retry_policy()
             .retry_if(
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await
-            .map_err(|e| {
+            .await;
+        match result {
+            Ok(_) => Ok(true),
+            Err(RusotoError::Service(UpdateItemError::ConditionalCheckFailed(_))) => Ok(false),
+            Err(e) => {
                 error!(
                     "remove_node_id failed. node_id:{:?}, connected_at:{:?}",
                     node_id, connected_at
                 );
-                e
-            })?;
-
-        Ok(())
+                Err(e.into())
+            }
+        }
     }
 
     async fn fetch_topic_messages(

@@ -1,3 +1,85 @@
+<a name="1.69.7"></a>
+## 1.69.7 (2023-11-13)
+
+
+#### Features
+
+*   demote `retry` message, dump vapid claims. (#510) ([cc4048c7](https://github.com/mozilla-services/autopush-rs/commit/cc4048c7312f49cd2b57bab13c715d54052a9732))
+*   add actix_max_connections/workers settings (#515) ([6f6289c3](https://github.com/mozilla-services/autopush-rs/commit/6f6289c3dddd6ea5fe25ec4080ac90355cb40d0d))
+*   Add metrics for user creation/deletion. (#506) ([bd2e0117](https://github.com/mozilla-services/autopush-rs/commit/bd2e0117550bf4c82bcbefc5217902c2dbfe7bcf))
+*   only capture some SMError backtraces (#508) ([8f6e03e3](https://github.com/mozilla-services/autopush-rs/commit/8f6e03e33a1f80e87ecfe027b9b7069baf139200))
+
+#### Bug Fixes
+
+*   correct the ua.expiration metric's tag (#502) ([ca002ec8](https://github.com/mozilla-services/autopush-rs/commit/ca002ec887d88dda32fa98a2b6521795ee206a9a))
+*   add ReportableError::reportable_source (#500) ([40487b76](https://github.com/mozilla-services/autopush-rs/commit/40487b76da2c3cd58dccfbea24ba0290f1211cc0))
+
+
+
+<a name="1.69.6"></a>
+## 1.69.6 (2023-10-31)
+
+
+#### Features
+
+*   handle already connected users (#495) ([eb53beca](https://github.com/mozilla-services/autopush-rs/commit/eb53beca715c30a1ad47904512f4ae3baa8d4603))
+
+
+
+<a name="1.69.5"></a>
+## 1.69.5 (2023-10-31)
+
+
+#### Features
+
+*   further detect common io errors in megaphone's updater (#492) ([5421f581](https://github.com/mozilla-services/autopush-rs/commit/5421f58182b9061afaec0d5265dc3d1045d44633))
+
+
+
+<a name="1.69.4"></a>
+## 1.69.4 (2023-10-30)
+
+
+#### Bug Fixes
+
+*   split router endpoints into their own app (#491) ([bbde5823](https://github.com/mozilla-services/autopush-rs/commit/bbde582368848dc404416e3a2581a81aac366666))
+*   defer Error::source methods to inner kind's (#486) ([a9a17963](https://github.com/mozilla-services/autopush-rs/commit/a9a1796316b22c3d349b49e855624168c95aef1c))
+
+#### Features
+
+*   emit metrics for megaphone polling (#488) ([ea302228](https://github.com/mozilla-services/autopush-rs/commit/ea30222840c4ef6bdbcebda8d5a45d79934f6071))
+
+
+
+<a name="1.69.3"></a>
+## 1.69.3 (2023-10-26)
+
+
+#### Doc
+
+*   further clean up (#399) ([61d784f8](https://github.com/mozilla-services/autopush-rs/commit/61d784f8bf380531fecde116d2183f498756ca38))
+
+#### Bug Fixes
+
+*   capture sentry events for the unidentified state (#484) ([09db55f2](https://github.com/mozilla-services/autopush-rs/commit/09db55f2542a6029b33f90649bbd1f4eaa5f88bb))
+*   Convert WSError(Timeout for Pong) to metric (#478) ([cd597d39](https://github.com/mozilla-services/autopush-rs/commit/cd597d3961bdd4a35521a99fca2a94ebc39506bc))
+
+
+
+<a name="1.69.2"></a>
+## 1.69.2 (2023-10-17)
+
+
+#### Features
+
+*   hide common SessionClosed errors from sentry (#470) ([f069c2c9](https://github.com/mozilla-services/autopush-rs/commit/f069c2c90f06afe082450a4aed0453e8562b5e28))
+
+#### Chore
+
+*   tag 1.69.1 (#466) ([c8192503](https://github.com/mozilla-services/autopush-rs/commit/c8192503023cec998db7b78148a8b3827b646391))
+
+
+
 <a name="1.69.1"></a>
 ## 1.69.1 (2023-10-06)
 
