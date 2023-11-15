@@ -93,7 +93,8 @@ log_string = [f"{x}=trace" for x in modules]
 RUST_LOG = ",".join(log_string) + ",error"
 
 
-def get_free_port() -> Any:
+def get_free_port() -> int:
+    port: int
     s = socket.socket(socket.AF_INET, type=socket.SOCK_STREAM)
     s.bind(("localhost", 0))
     address, port = s.getsockname()
