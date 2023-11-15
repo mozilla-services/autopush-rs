@@ -135,6 +135,7 @@ impl AppState {
 }
 
 /// For tests
+#[cfg(debug_assertions)]
 impl Default for AppState {
     fn default() -> Self {
         Self::from_settings(Settings::test_settings()).unwrap()
