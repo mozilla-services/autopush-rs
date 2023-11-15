@@ -61,10 +61,12 @@ woothee = "0.13"
 
 # #[cfg(bigtable)] for this section.
 # the following three crates must match what is specifed in google-cloud-rust-raw's dependencies
-google-cloud-rust-raw = {version="0.15", default-features=false, features=["bigtable"]}
+google-cloud-rust-raw = { version = "0.16", default-features = false, features = [
+    "bigtable",
+] }
 #google-cloud-rust-raw = {path = "../../google-cloud-rust/googleapis-raw", version="0.15", default-features=false, features=["bigtable"]}
-grpcio = {version="=0.12.1", features=["openssl"]}
-protobuf = "=2.28.0"  # grpcio does not support protobuf 3+
+grpcio = { version = "=0.13", features = ["openssl"] }
+protobuf = "=2.28.0"                                   # grpcio does not support protobuf 3+
 
 [dev-dependencies]
 mockito = "0.31"
@@ -78,5 +80,6 @@ actix-rt = "2.8"
 default = ["dynamodb"]
 dynamodb = []
 bigtable = []
-emulator = ["bigtable"]  # used for testing big table, requires an external bigtable emulator running.
-
+emulator = [
+    "bigtable",
+] # used for testing big table, requires an external bigtable emulator running.

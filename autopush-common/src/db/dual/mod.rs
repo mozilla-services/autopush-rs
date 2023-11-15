@@ -212,14 +212,20 @@ impl DbClient for DualClientImpl {
         Ok(result)
     }
 
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: &str,
+        connected_at: u64,
+    ) -> DbResult<bool> {
         let (target, is_primary) = self.target(uaid).await?;
-        let result = target.remove_node_id(uaid, node_id, connected_at).await?;
+        let mut result = target.remove_node_id(uaid, node_id, connected_at).await?;
         if is_primary {
-            let _ = self
+            result = self
                 .secondary
                 .remove_node_id(uaid, node_id, connected_at)
-                .await?;
+                .await?
+                || result;
         }
         Ok(result)
     }
