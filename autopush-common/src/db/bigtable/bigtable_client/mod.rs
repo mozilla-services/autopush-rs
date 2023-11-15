@@ -245,7 +245,6 @@ impl BigTableClientImpl {
         req.set_mutations(mutations);
 
         // Do the actual commit.
-        // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
         let _resp = self
             .client
             .mutate_row_async(&req)
@@ -1246,7 +1245,7 @@ mod tests {
             connected_at: now() + 3,
             ..test_user
         };
-        // Wait a tick so we don't fail.
+
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
