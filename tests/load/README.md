@@ -16,7 +16,7 @@ recommended to use [pyenv][6] and [pyenv-virtualenv][7], as they work nicely wit
 Poetry.
 
 Project dependencies are listed in the `pyproject.toml` file.
-To install the dependencies execute:
+To install the dependencies execute from the `tests` directory:
 
 ```shell
 poetry install
@@ -121,18 +121,18 @@ The load tests can be executed from the [contextual-services-test-eng cloud shel
 * The `setup_k8s.sh` file, located in the `tests\load` directory, contains
   shell commands to **create** a GKE cluster, **setup** an existing GKE cluster or
   **delete** a GKE cluster
-    * Execute the following from the `load` directory, to make the file executable:
+    * Execute the following from the root directory, to make the file executable:
       ```shell
-      chmod +x setup_k8s.sh
+      chmod +x tests/load/setup_k8s.sh
       ```
 
 #### 3. Create the GCP Cluster
 
-* Execute the `setup_k8s.sh` file and select the **create** option, in order to
-  initiate the process of creating a cluster, setting up the env variables and
-  building the docker image
+* Execute the `setup_k8s.sh` file from the root directory and select the **create** 
+  option, in order to initiate the process of creating a cluster, setting up the env 
+  variables and building the docker image
   ```shell
-  ./setup_k8s.sh
+  ./tests/load/setup_k8s.sh
   ```
 * The cluster creation process will take some time. It is considered complete, once
   an external IP is assigned to the `locust_master` node. Monitor the assignment via
@@ -217,7 +217,7 @@ the load test will stop automatically.
 
 #### 1. Delete the GCP Cluster
 
-Execute the `setup_k8s.sh` file and select the **delete** option
+Execute the `setup_k8s.sh` file from the root directory and select the **delete** option
 
 ```shell
 ./tests/load/setup_k8s.sh
