@@ -295,8 +295,7 @@ impl BigTableClientImpl {
     /// Note that deletion may take up to a week to occur.
     /// see https://cloud.google.com/php/docs/reference/cloud-bigtable/latest/Admin.V2.DropRowRangeRequest
     async fn delete_rows(&self, row_key: &str) -> Result<bool, error::BigTableError> {
-        let chan = self.pool.get_channel()?;
-        let admin = BigtableTableAdminClient::new(chan);
+        let admin = BigtableTableAdminClient::new(self.pool.get_channel()?);
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());

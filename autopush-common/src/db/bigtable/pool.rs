@@ -12,6 +12,9 @@ use crate::db::DbSettings;
 
 use super::bigtable_client::error;
 
+const MAX_MESSAGE_LEN: i32 = 1 << 28; // 268,435,456 bytes
+const DEFAULT_GRPC_PORT: u16 = 8086;
+
 /// The pool of BigTable Clients.
 /// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
 /// that we have control over is the "channel". For now, we're using the ClientManager to
@@ -61,7 +64,7 @@ impl BigTablePool {
         let parsed = url::Url::parse(endpoint).map_err(|e| {
             DbError::ConnectionError(format!("Invalid DSN: {:?} : {:?}", endpoint, e))
         })?;
-        let origin = format!(
+        let connection = format!(
             "{}:{}",
             parsed
                 .host_str()
@@ -69,15 +72,15 @@ impl BigTablePool {
                     "Invalid DSN: Unparsable host {:?}",
                     endpoint
                 )))?,
-            parsed.port().unwrap_or(8086)
+            parsed.port().unwrap_or(DEFAULT_GRPC_PORT)
         );
+        // Make sure the path is empty.
         if !parsed.path().is_empty() {
             return Err(DbError::ConnectionError(format!(
-                "Invalid DSN: Table paths belong in settings : {:?}",
+                "Invalid DSN: Table paths belong in AUTO*_DB_SETTINGS `tab: {:?}",
                 endpoint
             )));
         }
-        let connection = format!("{}{}", origin, parsed.path());
         debug!("🉑 connection string {}", &connection);
 
         // Construct a new manager and put them in a pool for handling future requests.
@@ -90,11 +93,10 @@ impl BigTablePool {
         };
         if let Some(timeout) = bt_settings.database_pool_connection_timeout {
             debug!("🏊 Setting connection timeout to {} milliseconds", &timeout);
-            let timeouts = Timeouts {
+            config.timeouts = Timeouts {
                 create: Some(Duration::from_millis(timeout as u64)),
                 ..Default::default()
             };
-            config.timeouts = timeouts;
         }
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
@@ -146,8 +148,9 @@ impl Manager for BigtableClientManager {
     /// `BigtableClient` is the most atomic we can go.
     async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        let channel = Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str());
-        Ok(BigtableDb::new(channel))
+        Ok(BigtableDb::new(
+            Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str()),
+        ))
     }
 
     /// Recycle if the connection has outlived it's lifespan.
@@ -197,10 +200,9 @@ impl BigtableClientManager {
     /// Channels seem to be fairly light weight.
     pub fn create_channel(dsn: Option<String>) -> Result<ChannelBuilder, BigTableError> {
         debug!("🏊 Creating new channel...");
-        let env = Arc::new(EnvBuilder::new().build());
-        let mut chan = ChannelBuilder::new(env)
-            .max_send_message_len(1 << 28)
-            .max_receive_message_len(1 << 28);
+        let mut chan = ChannelBuilder::new(Arc::new(EnvBuilder::new().build()))
+            .max_send_message_len(MAX_MESSAGE_LEN)
+            .max_receive_message_len(MAX_MESSAGE_LEN);
         // Don't get the credentials if we are running in the emulator
         if dsn
             .clone()
