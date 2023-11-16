@@ -160,11 +160,11 @@ impl Manager for BigtableClientManager {
         client: &mut Self::Type,
         metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        if !self.settings.database_pool_connection_ttl.is_zero() {
-            if Instant::now() - metrics.created > self.settings.database_pool_connection_ttl {
-                debug!("🏊 Recycle requested (old).");
-                return Err(DbError::BTError(BigTableError::Recycle).into());
-            }
+        if !self.settings.database_pool_connection_ttl.is_zero()
+            && Instant::now() - metrics.created > self.settings.database_pool_connection_ttl
+        {
+            debug!("🏊 Recycle requested (old).");
+            return Err(DbError::BTError(BigTableError::Recycle).into());
         }
         if !self.settings.database_pool_max_idle.is_zero() {
             if let Some(recycled) = metrics.recycled {
