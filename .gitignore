@@ -32,6 +32,7 @@ target
 requirements.txt
 test-requirements.txt
 venv
+.python-version
 
 # docs
 docs/output
