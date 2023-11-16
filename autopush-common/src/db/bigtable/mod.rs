@@ -26,8 +26,10 @@ pub use bigtable_client::error::BigTableError;
 pub use bigtable_client::BigTableClientImpl;
 
 use serde::Deserialize;
+use std::time::Duration;
 
 use crate::db::error::DbError;
+use crate::util::deserialize_u32_to_duration;
 
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
@@ -48,15 +50,18 @@ pub struct BigTableDbSettings {
     pub message_topic_family: String,
     #[serde(default)]
     pub database_pool_max_size: Option<u32>,
-    /// Max time (in milliseconds) to wait for a database connection
+    /// Max time (in seconds) to wait for a database connection
     #[serde(default)]
-    pub database_pool_connection_timeout: Option<u32>,
-    /// Max time (in milliseconds) a connection should live
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub database_pool_connection_timeout: Duration,
+    /// Max time (in seconds) a connection should live
     #[serde(default)]
-    pub database_pool_connection_ttl: Option<u32>,
-    /// Max idle time(in milliseconds) for a connection
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub database_pool_connection_ttl: Duration,
+    /// Max idle time(in seconds) for a connection
     #[serde(default)]
-    pub database_pool_max_idle: Option<u32>,
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub database_pool_max_idle: Duration,
 }
 
 impl TryFrom<&str> for BigTableDbSettings {

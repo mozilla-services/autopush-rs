@@ -1,5 +1,5 @@
 use std::time::Instant;
-use std::{fmt, sync::Arc, time::Duration};
+use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
@@ -91,10 +91,13 @@ impl BigTablePool {
             debug!("🏊 Setting pool max size {}", &size);
             config.max_size = size as usize;
         };
-        if let Some(timeout) = bt_settings.database_pool_connection_timeout {
-            debug!("🏊 Setting connection timeout to {} milliseconds", &timeout);
+        if !bt_settings.database_pool_connection_timeout.is_zero() {
+            debug!(
+                "🏊 Setting connection timeout to {} seconds",
+                &bt_settings.database_pool_connection_timeout.as_secs()
+            );
             config.timeouts = Timeouts {
-                create: Some(Duration::from_millis(timeout as u64)),
+                create: Some(bt_settings.database_pool_connection_timeout),
                 ..Default::default()
             };
         }
@@ -148,27 +151,27 @@ impl Manager for BigtableClientManager {
     /// `BigtableClient` is the most atomic we can go.
     async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        Ok(BigtableDb::new(
-            Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str()),
-        ))
+        Ok(BigtableDb::new(self.get_channel()?))
     }
 
     /// Recycle if the connection has outlived it's lifespan.
     async fn recycle(
         &self,
         client: &mut Self::Type,
-        _metrics: &deadpool::managed::Metrics,
+        metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        if let Some(ttl) = self.settings.database_pool_connection_ttl {
-            if Instant::now() - client.create > Duration::from_millis(ttl as u64) {
+        if !self.settings.database_pool_connection_ttl.is_zero() {
+            if Instant::now() - metrics.created > self.settings.database_pool_connection_ttl {
                 debug!("🏊 Recycle requested (old).");
                 return Err(DbError::BTError(BigTableError::Recycle).into());
             }
         }
-        if let Some(ttl) = self.settings.database_pool_max_idle {
-            if Instant::now() - client.used > Duration::from_millis(ttl as u64) {
-                debug!("🏊 Recycle requested (idle).");
-                return Err(DbError::BTError(BigTableError::Recycle).into());
+        if !self.settings.database_pool_max_idle.is_zero() {
+            if let Some(recycled) = metrics.recycled {
+                if Instant::now() - recycled > self.settings.database_pool_max_idle {
+                    debug!("🏊 Recycle requested (idle).");
+                    return Err(DbError::BTError(BigTableError::Recycle).into());
+                }
             }
         }
 
@@ -204,10 +207,7 @@ impl BigtableClientManager {
             .max_send_message_len(MAX_MESSAGE_LEN)
             .max_receive_message_len(MAX_MESSAGE_LEN);
         // Don't get the credentials if we are running in the emulator
-        if dsn
-            .clone()
-            .map(|v| v.contains("localhost"))
-            .unwrap_or(false)
+        if dsn.map(|v| v.contains("localhost")).unwrap_or(false)
             || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
         {
             debug!("🉑 Using emulator");

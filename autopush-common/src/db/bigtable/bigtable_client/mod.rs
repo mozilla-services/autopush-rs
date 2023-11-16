@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
@@ -136,11 +136,6 @@ impl BigTableClientImpl {
         })
     }
 
-    pub fn reconnect(&mut self) -> Result<(), DbError> {
-        debug!("🏊 BT Pool reconnect");
-        Ok(())
-    }
-
     /// Read a given row from the row key.
     async fn read_row(
         &self,
@@ -172,12 +167,11 @@ impl BigTableClientImpl {
         timestamp_filter: Option<u64>,
         limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
-        let mut bigtable = self.pool.get().await?;
+        let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
             .read_rows(&req)
             .map_err(|e| error::BigTableError::Read(e.to_string()))?;
-        bigtable.used = Instant::now();
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
@@ -217,14 +211,13 @@ impl BigTableClientImpl {
 
         // Do the actual commit.
         // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
-        let mut bigtable = self.pool.get().await?;
+        let bigtable = self.pool.get().await?;
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
             .map_err(|e| error::BigTableError::Write(e.to_string()))?;
-        bigtable.used = Instant::now();
         Ok(())
     }
 
@@ -257,14 +250,13 @@ impl BigTableClientImpl {
 
         req.set_mutations(mutations);
 
-        let mut bigtable = self.pool.get().await?;
+        let bigtable = self.pool.get().await?;
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
             .map_err(|e| error::BigTableError::Write(e.to_string()))?;
-        bigtable.used = Instant::now();
         Ok(())
     }
 
@@ -279,14 +271,13 @@ impl BigTableClientImpl {
         mutations.push(mutation);
         req.set_mutations(mutations);
 
-        let mut bigtable = self.pool.get().await?;
+        let bigtable = self.pool.get().await?;
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
             .map_err(|e| error::BigTableError::Write(e.to_string()))?;
-        bigtable.used = Instant::now();
         Ok(())
     }
 
@@ -393,16 +384,12 @@ impl BigTableClientImpl {
 #[derive(Clone)]
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
-    pub(super) create: Instant,
-    pub(super) used: Instant,
 }
 
 impl BigtableDb {
     pub fn new(channel: Channel) -> Self {
         Self {
             conn: BigtableClient::new(channel),
-            create: Instant::now(),
-            used: Instant::now(),
         }
     }
 
@@ -420,7 +407,6 @@ impl BigtableDb {
             .conn
             .read_rows(&req)
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
-        self.used = Instant::now();
 
         Ok(true)
     }
