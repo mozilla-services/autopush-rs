@@ -1,6 +1,7 @@
 SHELL := /bin/sh
 CARGO = cargo
 TESTS_DIR := tests
+TEST_RESULTS_DIR ?= workspace/test-results
 INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
 LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
@@ -25,14 +26,18 @@ upgrade:
 integration-test-legacy:
 	$(POETRY) -V
 	$(POETRY) install --without dev,load
-	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) -v
+	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
+		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
+		-v
 
 integration-test:
 	$(POETRY) -V
 	$(POETRY) install --without dev,load
 	CONNECTION_BINARY=autoconnect \
 		CONNECTION_SETTINGS_PREFIX=autoconnect__ \
-		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) -v
+		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
+		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
+		-v
 
 lint:
 	$(POETRY) -V
