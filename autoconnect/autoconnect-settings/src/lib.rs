@@ -13,6 +13,8 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
 use serde_json::json;
 
+use autopush_common::util::deserialize_u32_to_duration;
+
 pub use app_state::AppState;
 
 pub const ENV_PREFIX: &str = "autoconnect";
@@ -227,14 +229,6 @@ impl Settings {
             ..Default::default()
         }
     }
-}
-
-fn deserialize_u32_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let seconds: u32 = Deserialize::deserialize(deserializer)?;
-    Ok(Duration::from_secs(seconds.into()))
 }
 
 fn deserialize_f64_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
