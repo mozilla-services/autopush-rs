@@ -68,7 +68,7 @@ tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
 default = ["dynamodb"]
-dynamodb = []
+dynamodb = ["autopush_common/dynamodb"]
 emulator = ["bigtable"]
 dual = ["bigtable", "dynamodb"]
 bigtable = ["autopush_common/bigtable"]
