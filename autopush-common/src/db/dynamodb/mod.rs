@@ -11,7 +11,6 @@ use crate::db::dynamodb::retry::{
     retryable_updateitem_error,
 };
 use crate::db::error::{DbError, DbResult};
-use crate::db::routing::StorageType;
 use crate::db::{
     client::FetchMessageResponse, DbSettings, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_EXPIRY,
 };

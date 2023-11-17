@@ -1,9 +1,3 @@
-use async_trait::async_trait;
-use mockall::automock;
-use uuid::Uuid;
-
-use crate::db::error::DbResult;
-
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) enum StorageType {
     DynamoDB,
@@ -19,16 +13,6 @@ impl Default for StorageType {
             StorageType::BigTable
         } else {
             StorageType::None
-        }
-    }
-}
-
-impl StorageType {
-    pub fn as_str(&self) -> &'static str {
-        match &self {
-            StorageType::DynamoDB => "dynamodb",
-            StorageType::BigTable => "bigtable",
-            StorageType::None => "None",
         }
     }
 }
