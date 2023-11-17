@@ -16,7 +16,7 @@ BOLD=$(tput bold)
 NORM=$(tput sgr0)
 DIRECTORY=$(pwd)
 
-AUTOPUSH_DIRECTORY=$DIRECTORY/kubernetes-config
+AUTOPUSH_DIRECTORY=$DIRECTORY/tests/load/kubernetes-config
 MASTER_FILE=locust-master-controller.yml
 WORKER_FILE=locust-worker-controller.yml
 SERVICE_FILE=locust-master-service.yml
@@ -65,7 +65,7 @@ SetupGksCluster()
 
     # Build Docker Images
     echo -e "==================== Build the Docker image and store it in your project's container registry. Tag with the latest commit hash "
-    $GCLOUD builds submit --tag gcr.io/$GOOGLE_CLOUD_PROJECT/locust-autopush:$LOCUST_IMAGE_TAG
+    $GCLOUD builds submit --config=./tests/load/cloudbuild.yaml --substitutions=TAG_NAME=$LOCUST_IMAGE_TAG
     echo -e "==================== Verify that the Docker image is in your project's container repository"
     $GCLOUD container images list | grep locust-autopush
 
