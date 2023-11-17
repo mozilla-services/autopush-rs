@@ -44,9 +44,12 @@ tokio.workspace = true
 url.workspace = true
 uuid.workspace = true
 
-a2 = {version = "0.8", git = "https://github.com/mozilla-services/a2", branch="master"}
+a2 = { version = "0.8", git = "https://github.com/mozilla-services/a2", branch = "master" }
 bytebuffer = "2.1"
-again = { version = "0.1.2", default-features = false, features = ["log", "rand"] }
+again = { version = "0.1.2", default-features = false, features = [
+    "log",
+    "rand",
+] }
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
 jsonwebtoken = "8.0"
@@ -67,5 +70,5 @@ tokio = { workspace = true, features = ["fs", "macros"] }
 default = ["dynamodb"]
 dynamodb = []
 emulator = ["bigtable"]
-dual = ["bigtable"]
+dual = ["bigtable", "dynamodb"]
 bigtable = ["autopush_common/bigtable"]

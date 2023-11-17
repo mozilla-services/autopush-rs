@@ -64,7 +64,7 @@ woothee = "0.13"
 # the following three crates must match what is specifed in google-cloud-rust-raw's dependencies
 google-cloud-rust-raw = { version = "0.16", features = [
     "bigtable",
-], optional = true } # features=["bigtable"]}
+], optional = true }
 grpcio = { version = "=0.13.0", features = ["openssl"], optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 
@@ -78,6 +78,7 @@ actix-rt = "2.8"
 # for testing:
 # default = ["emulator"]
 bigtable = ["dep:google-cloud-rust-raw", "dep:grpcio", "dep:protobuf"]
+dynamodb = []
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.
