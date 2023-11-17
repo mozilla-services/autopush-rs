@@ -55,21 +55,18 @@ url.workspace = true
 
 again = "0.1"
 async-trait = "0.1"
+deadpool = "0.10"
 gethostname = "0.4"
 futures-backoff = "0.1.0"
 woothee = "0.13"
 
 # #[cfg(bigtable)] for this section.
 # the following three crates must match what is specifed in google-cloud-rust-raw's dependencies
-google-cloud-rust-raw = { version = "0.16", default-features = false, features = [
+google-cloud-rust-raw = { version = "0.16", features = [
     "bigtable",
-] }
-# google-cloud-rust-raw = { path = "../../google-cloud-rust/googleapis-raw", version = "0.16", default-features = false, features = ["bigtable"] }
-
-grpcio = { version = "=0.13", features = [
-    "openssl",
-] } # required by google-cloud-rust-raw
-protobuf = "=2.28.0" # grpcio does not support protobuf 3+
+], optional = true } # features=["bigtable"]}
+grpcio = { version = "=0.13.0", features = ["openssl"], optional = true }
+protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 
 [dev-dependencies]
 mockito = "0.31"
@@ -80,9 +77,7 @@ actix-rt = "2.8"
 [features]
 # for testing:
 # default = ["emulator"]
-default = ["dynamodb"]
-dynamodb = []
-bigtable = []
+bigtable = ["dep:google-cloud-rust-raw", "dep:grpcio", "dep:protobuf"]
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.

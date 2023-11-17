@@ -21,18 +21,18 @@ RUN python -m pip install --upgrade pip
 
 # Setup poetry and install requirements
 ENV POETRY_VIRTUALENVS_CREATE=false \
-    POETRY_VERSION=1.5.1
+    POETRY_VERSION=1.7.0
 RUN python -m pip install --no-cache-dir --quiet poetry
-COPY pyproject.toml poetry.lock ./
-RUN poetry install --without dev --no-interaction --no-ansi
+COPY ./tests/pyproject.toml ./tests/poetry.lock ./
+RUN poetry install --without dev,integration --no-interaction --no-ansi
 
 RUN useradd --create-home locust
 WORKDIR /home/locust
 
-COPY ./locustfiles ./locustfiles
+COPY ./tests/load/locustfiles ./tests/load/locustfiles
 
 # Expose ports for the web UI and the locust master
 EXPOSE 8089 5557
 
 USER locust
-ENTRYPOINT locust -f "locustfiles/locustfile.py,locustfiles/load.py" --websocket_url ${SERVER_URL} --endpoint_url ${ENDPOINT_URL}
+ENTRYPOINT locust -f "tests/load/locustfiles/locustfile.py,tests/load/locustfiles/load.py" --websocket_url ${SERVER_URL} --endpoint_url ${ENDPOINT_URL}
