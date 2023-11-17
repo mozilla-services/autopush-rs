@@ -163,6 +163,10 @@ impl ApcErrorKind {
             Self::PongTimeout | Self::ExcessivePing => false,
             // Non-actionable Endpoint errors
             Self::PayloadError(_) => false,
+            #[cfg(feature = "bigtable")]
+            Self::DbError(crate::db::error::DbError::BTError(
+                crate::db::bigtable::BigTableError::Recycle,
+            )) => false,
             _ => true,
         }
     }
@@ -173,6 +177,10 @@ impl ApcErrorKind {
             Self::PongTimeout => "pong_timeout",
             Self::ExcessivePing => "excessive_ping",
             Self::PayloadError(_) => "payload",
+            #[cfg(feature = "bigtable")]
+            Self::DbError(crate::db::error::DbError::BTError(
+                crate::db::bigtable::BigTableError::Recycle,
+            )) => "bt_recycle",
             _ => return None,
         };
         Some(label)
