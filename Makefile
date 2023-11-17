@@ -25,14 +25,14 @@ upgrade:
 
 integration-test-legacy:
 	$(POETRY) -V
-	$(POETRY) install --without dev,load
+	$(POETRY) install --without dev,load --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
 		-v
 
 integration-test:
 	$(POETRY) -V
-	$(POETRY) install --without dev,load
+	$(POETRY) install --without dev,load --no-root
 	CONNECTION_BINARY=autoconnect \
 		CONNECTION_SETTINGS_PREFIX=autoconnect__ \
 		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
@@ -41,7 +41,7 @@ integration-test:
 
 lint:
 	$(POETRY) -V
-	$(POETRY) install
+	$(POETRY) install --no-root
 	$(POETRY) run isort --sp $(PYPROJECT_TOML) -c $(TESTS_DIR)
 	$(POETRY) run black --quiet --diff --config $(PYPROJECT_TOML) --check $(TESTS_DIR)
 	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)
