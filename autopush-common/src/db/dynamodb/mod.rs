@@ -31,8 +31,6 @@ use rusoto_dynamodb::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::routing::DbRouting;
-
 #[macro_use]
 pub mod macros;
 pub mod retry;
@@ -640,75 +638,4 @@ pub(crate) fn has_connected_this_month(user: &User) -> bool {
         let pat = Utc::now().format("%Y%m").to_string();
         v.to_string().starts_with(&pat)
     })
-}
-
-#[async_trait]
-impl DbRouting for DdbClientImpl {
-    async fn connect(&self) -> DbResult<()> {
-        if self.settings.db_routing_table.is_none() {
-            info!("No Routing table specified, cannot route");
-        }
-        Ok(())
-    }
-
-    async fn select(&self, uaid: &Uuid) -> DbResult<Option<StorageType>> {
-        if self.settings.db_routing_table.is_none() {
-            info!("No Routing table specified");
-            return Ok(Some(StorageType::default()));
-        }
-        let input = GetItemInput {
-            table_name: self.settings.db_routing_table.clone().unwrap(),
-            consistent_read: Some(true),
-            key: ddb_item! {
-                uaid: s => uaid.simple().to_string()
-            },
-            ..Default::default()
-        };
-
-        let output = retry_policy()
-            .retry_if(
-                || self.db_client.get_item(input.clone()),
-                retryable_getitem_error(self.metrics.clone()),
-            )
-            .await?;
-
-        if let Some(entry) = output
-            .item
-            .map(serde_dynamodb::from_hashmap::<std::collections::HashMap<String, String>, _>)
-            .transpose()?
-        {
-            if let Some(storage) = entry.get("storage") {
-                return Ok(Some(StorageType::from(storage.as_str())));
-            }
-        }
-        Ok(None)
-    }
-
-    async fn assign(&self, uaid: &Uuid, storage_type: StorageType) -> DbResult<()> {
-        if self.settings.db_routing_table.is_none() {
-            info!("No Routing table specified");
-            return Ok(());
-        }
-        let input = UpdateItemInput {
-            table_name: self.settings.db_routing_table.clone().unwrap(),
-            key: ddb_item! {uaid: s=> uaid.simple().to_string()},
-            update_expression: Some("SET storage=:storage".to_string()),
-            expression_attribute_values: Some(hashmap! {
-                ":storage".to_string() => val!(S => storage_type.as_str().to_string())
-            }),
-            ..Default::default()
-        };
-
-        retry_policy()
-            .retry_if(
-                || self.db_client.update_item(input.clone()),
-                retryable_updateitem_error(self.metrics.clone()),
-            )
-            .await?;
-        Ok(())
-    }
-
-    fn box_clone(&self) -> Box<dyn DbRouting> {
-        Box::new(self.clone())
-    }
 }

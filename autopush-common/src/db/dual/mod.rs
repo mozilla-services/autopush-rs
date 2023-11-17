@@ -18,7 +18,6 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    routing::DbRouting,
     DbSettings, Notification, User,
 };
 
@@ -103,11 +102,10 @@ impl DualClientImpl {
 impl DualClientImpl {
     /// Route and assign a user to the appropriate back end based on the defined
     /// allowance
-    async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<Box<&'a dyn DbClient>> {
+    async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<(Box<&'a dyn DbClient>, bool)> {
         if let Some(median) = self.median {
             if uaid.as_bytes()[0] <= median {
                 info!("⚖ Routing user to Bigtable");
-                self.assign(uaid).await?;
                 // TODO: Better label for this? It's migration so it would appear as
                 // `auto[endpoint|connect].migrate` Maybe that's enough? Do we need
                 // tags?
@@ -115,46 +113,31 @@ impl DualClientImpl {
                     ._metrics
                     .incr("migrate.assign")
                     .map_err(|e| DbError::General(format!("Metrics error {:?}", e)))?;
-                Ok(Box::new(&self.primary))
+                Ok((Box::new(&self.primary), true))
             } else {
-                Ok(Box::new(&self.secondary))
+                Ok((Box::new(&self.secondary), false))
             }
         } else {
-            Ok(self.target(uaid).await?.0)
+            Ok((Box::new(&self.primary), true))
         }
-    }
-
-    /// Return DynamoDB as the default target storage system, otherwise use BigTable.
-    async fn target<'a>(&'a self, uaid: &Uuid) -> DbResult<(Box<&'a dyn DbClient>, bool)> {
-        if self.secondary.select(uaid).await? == Some(crate::db::routing::StorageType::BigTable) {
-            return Ok((Box::new(&self.primary), true));
-        };
-        Ok((Box::new(&self.secondary), false))
-    }
-
-    /// Assign the user to the new BigTable storage system.
-    async fn assign(&self, uaid: &Uuid) -> DbResult<()> {
-        self.secondary
-            .assign(uaid, super::routing::StorageType::BigTable)
-            .await
     }
 }
 
 #[async_trait]
 impl DbClient for DualClientImpl {
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        let target: Box<&dyn DbClient> = self.allot(&user.uaid).await?;
+        let (target, _) = self.allot(&user.uaid).await?;
         target.add_user(user).await
     }
 
     async fn update_user(&self, user: &User) -> DbResult<bool> {
         //  If the UAID is in the allowance, move them to the new data store
-        let target: Box<&dyn DbClient> = self.allot(&user.uaid).await?;
+        let (target, _) = self.allot(&user.uaid).await?;
         target.update_user(user).await
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
-        let (target, is_primary) = self.target(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         match target.get_user(uaid).await {
             Ok(Some(user)) => Ok(Some(user)),
             Ok(None) => {
@@ -178,7 +161,7 @@ impl DbClient for DualClientImpl {
     }
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        let (target, is_primary) = self.target(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         let result = target.remove_user(uaid).await?;
         if is_primary {
             // try removing the user from the old store, just in case.
@@ -189,12 +172,12 @@ impl DbClient for DualClientImpl {
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let (target, _) = self.target(uaid).await?;
+        let (target, _) = self.allot(uaid).await?;
         target.add_channel(uaid, channel_id).await
     }
 
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
-        let (target, is_primary) = self.target(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         let mut channels = target.get_channels(uaid).await?;
         // check to see if we need to copy over channels from the secondary
         if channels.is_empty() && is_primary {
@@ -204,7 +187,7 @@ impl DbClient for DualClientImpl {
     }
 
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
-        let (target, is_primary) = self.target(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         let result = target.remove_channel(uaid, channel_id).await?;
         if is_primary {
             let _ = self.secondary.remove_channel(uaid, channel_id).await?;
@@ -218,7 +201,7 @@ impl DbClient for DualClientImpl {
         node_id: &str,
         connected_at: u64,
     ) -> DbResult<bool> {
-        let (target, is_primary) = self.target(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         let mut result = target.remove_node_id(uaid, node_id, connected_at).await?;
         if is_primary {
             result = self
@@ -231,12 +214,12 @@ impl DbClient for DualClientImpl {
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
-        let target: Box<&dyn DbClient> = self.allot(uaid).await?;
+        let (target, _) = self.allot(uaid).await?;
         target.save_message(uaid, message).await
     }
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        let (target, is_primary) = self.target(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         let result = target.remove_message(uaid, sort_key).await?;
         if is_primary {
             let _ = self.primary.remove_message(uaid, sort_key).await?;
@@ -249,7 +232,7 @@ impl DbClient for DualClientImpl {
         uaid: &Uuid,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        let (target, is_primary) = self.target(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         let result = target.fetch_topic_messages(uaid, limit).await?;
         if result.messages.is_empty() && is_primary {
             return self.secondary.fetch_topic_messages(uaid, limit).await;
@@ -263,7 +246,7 @@ impl DbClient for DualClientImpl {
         timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        let (target, is_primary) = self.target(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         let result = target
             .fetch_timestamp_messages(uaid, timestamp, limit)
             .await?;
@@ -277,12 +260,12 @@ impl DbClient for DualClientImpl {
     }
 
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
-        let (target, _) = self.target(uaid).await?;
+        let (target, _) = self.allot(uaid).await?;
         target.save_messages(uaid, messages).await
     }
 
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
-        let (target, _) = self.target(uaid).await?;
+        let (target, _) = self.allot(uaid).await?;
         target.increment_storage(uaid, timestamp).await
     }
 
@@ -384,10 +367,12 @@ mod test {
         let low_uaid = Uuid::from_str("04DDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
         // Should be excluded.
         let hi_uaid = Uuid::from_str("0BDDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
-        let result = dual.allot(&low_uaid).await?;
+        let (result, is_primary) = dual.allot(&low_uaid).await?;
         assert_eq!(result.name(), dual.primary.name());
-        let result = dual.allot(&hi_uaid).await?;
+        assert!(is_primary);
+        let (result, is_primary) = dual.allot(&hi_uaid).await?;
         assert_eq!(result.name(), dual.secondary.name());
+        assert!(!is_primary);
         Ok(())
     }
 }

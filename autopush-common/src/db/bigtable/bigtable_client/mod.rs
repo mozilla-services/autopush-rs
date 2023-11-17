@@ -21,7 +21,6 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    routing::{DbRouting, StorageType},
     DbSettings, Notification, User,
 };
 use crate::notification::STANDARD_NOTIFICATION_PREFIX;
@@ -1080,74 +1079,6 @@ impl DbClient for BigTableClientImpl {
 
     fn name(&self) -> String {
         "Bigtable".to_owned()
-    }
-}
-
-#[async_trait]
-impl DbRouting for BigTableClientImpl {
-    async fn connect(&self) -> DbResult<()> {
-        // check to see if the routing table exists
-        if self.settings.db_routing_table.is_none() {
-            info!("No Routing table specified, cannot route");
-        }
-        // if not, error out (presume that this table is created externally)
-        Ok(())
-    }
-
-    async fn select(&self, uaid: &Uuid) -> DbResult<Option<StorageType>> {
-        // Check to see if the routing table name has been defined.
-        if self.settings.db_routing_table.is_none() {
-            info!("No db routing table specified");
-            return Ok(Some(StorageType::default()));
-        }
-        let table_name = self.settings.db_routing_table.clone().unwrap();
-        if let Some(record) = self
-            .read_row(&uaid.simple().to_string(), None, Some(table_name))
-            .await?
-        {
-            if let Some(mut cells) = record.get_cells("storage") {
-                if let Some(cell) = cells.pop() {
-                    let storage: String = to_string(cell.value, "storage").map_err(|e| {
-                        DbError::DbRouting(format!(
-                            "Could not deserialize storage for DbRouting {:?}",
-                            e
-                        ))
-                    })?;
-                    return Ok(Some(StorageType::from(storage.as_str())));
-                };
-            };
-        };
-        Ok(None)
-    }
-
-    async fn assign(&self, uaid: &Uuid, storage_type: StorageType) -> DbResult<()> {
-        if self.settings.db_routing_table.is_none() {
-            info!("No db routing table specified");
-            return Ok(());
-        }
-        let mut row = row::Row {
-            row_key: uaid.simple().to_string(),
-            ..Default::default()
-        };
-        let cells: Vec<cell::Cell> = vec![cell::Cell {
-            family: DBROUTER_FAMILY.to_owned(),
-            qualifier: "storage".to_owned(),
-            value: storage_type.clone().as_str().as_bytes().to_vec(),
-            ..Default::default()
-        }];
-        row.add_cells(DBROUTER_FAMILY, cells);
-        trace!(
-            "🉑 Routing user {:?} to {:?}",
-            uaid.simple().to_string(),
-            storage_type.as_str(),
-        );
-        self.write_row(row, self.settings.db_routing_table.clone())
-            .await
-            .map_err(|e| e.into())
-    }
-
-    fn box_clone(&self) -> Box<dyn DbRouting> {
-        Box::new(self.clone())
     }
 }
 
