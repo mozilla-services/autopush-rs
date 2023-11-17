@@ -172,7 +172,6 @@ impl DbClient for DdbClientImpl {
             )),
             expression_attribute_values: Some(
                 user_map
-                    .clone()
                     .into_iter()
                     .map(|(key, value)| (format!(":{}", key), value))
                     .collect(),
