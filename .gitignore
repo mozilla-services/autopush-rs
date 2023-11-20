@@ -42,3 +42,6 @@ docs/old
 *.local.toml
 .cargo/config
 .vscode/*
+
+# circleCI
+workspace
