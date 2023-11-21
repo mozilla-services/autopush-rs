@@ -505,7 +505,7 @@ impl DbClient for BigTableClientImpl {
             ..Default::default()
         };
 
-        if let Some(record) = self.read_row(&key, None).await? {
+        if let Some(mut record) = self.read_row(&key, None).await? {
             trace!("🉑 Found a record for that user");
             if let Some(mut cells) = record.get_cells("connected_at") {
                 if let Some(cell) = cells.pop() {
