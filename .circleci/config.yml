@@ -83,11 +83,11 @@ jobs:
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
       - restore_cache:
-          name: Restoring Python cache
-          key: python-v1-{{ checksum "tests/poetry.lock" }}-{{ checksum "tests/integration/test_integration_all_rust.py"}}
-      - restore_cache:
           name: Restoring Rust cache
           key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Create Workspace
+          command: mkdir -p workspace
       - run:
           name: Set up system
           command: |
@@ -128,15 +128,15 @@ jobs:
       - run:
           name: Integration tests (Autopush Legacy)
           command: make integration-test-legacy
+          environment:
+            TEST_RESULTS_DIR: workspace/test-results
       - run:
           name: Integration tests (Autoconnect)
           command: make integration-test
-      - save_cache:
-          name: Save Python cache
-          key: python-v1-{{ checksum "tests/poetry.lock" }}-{{ checksum "tests/integration/test_integration_all_rust.py"}}
-          paths:
-            - /home/circleci/.local/bin/
-            - /home/circleci/.local/lib/
+          environment:
+            TEST_RESULTS_DIR: workspace/test-results
+      - store_test_results:
+          path: workspace/test-results
       - save_cache:
           name: Save Rust cache
           key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
