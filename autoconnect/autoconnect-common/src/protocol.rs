@@ -38,8 +38,6 @@ pub enum ClientMessage {
         #[serde(rename = "channelIDs", skip_serializing_if = "Option::is_none")]
         channel_ids: Option<Vec<Uuid>>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        use_webpush: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         broadcasts: Option<HashMap<String, String>>,
     },
 
@@ -95,8 +93,6 @@ pub enum ServerMessage {
     Hello {
         uaid: String,
         status: u32,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        use_webpush: Option<bool>,
         broadcasts: HashMap<String, BroadcastValue>,
     },
 

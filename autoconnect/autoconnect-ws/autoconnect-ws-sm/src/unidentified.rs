@@ -51,14 +51,11 @@ impl UnidentifiedClient {
     ) -> Result<(WebPushClient, impl IntoIterator<Item = ServerMessage>), SMError> {
         trace!("❓UnidentifiedClient::on_client_msg");
         let ClientMessage::Hello {
-            uaid,
-            use_webpush: Some(true),
-            broadcasts,
-            ..
+            uaid, broadcasts, ..
         } = msg
         else {
             return Err(SMError::invalid_message(
-                r#"Expected messageType="hello", "use_webpush": true"#.to_owned(),
+                r#"Expected messageType="hello""#.to_owned(),
             ));
         };
         debug!(
@@ -111,7 +108,6 @@ impl UnidentifiedClient {
         let smsg = ServerMessage::Hello {
             uaid: uaid.as_simple().to_string(),
             status: 200,
-            use_webpush: Some(true),
             broadcasts,
         };
         let smsgs = std::iter::once(smsg).chain(check_storage_smsgs);
@@ -197,7 +193,7 @@ struct GetOrCreateUser {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{str::FromStr, sync::Arc};
 
     use autoconnect_common::{
         protocol::ClientMessage,
@@ -249,7 +245,6 @@ mod tests {
         let msg = ClientMessage::Hello {
             uaid: Some(DUMMY_UAID.to_string()),
             channel_ids: None,
-            use_webpush: Some(true),
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");
@@ -262,12 +257,12 @@ mod tests {
             db: hello_db().into_boxed_arc(),
             ..Default::default()
         });
-        let msg = ClientMessage::Hello {
-            uaid: None,
-            channel_ids: None,
-            use_webpush: Some(true),
-            broadcasts: None,
-        };
+        // Ensure that we do not need to pass the "use_webpush" flag.
+        // (yes, this could just be passing the string, but I want to be
+        // very explicit here.)
+        let json = serde_json::json!({"messageType":"hello"});
+        let raw = json.to_string();
+        let msg = ClientMessage::from_str(&raw).unwrap();
         client.on_client_msg(msg).await.expect("Hello failed");
     }
 
@@ -277,7 +272,6 @@ mod tests {
         let msg = ClientMessage::Hello {
             uaid: Some("".to_owned()),
             channel_ids: None,
-            use_webpush: Some(true),
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");
@@ -289,7 +283,6 @@ mod tests {
         let msg = ClientMessage::Hello {
             uaid: Some("invalid".to_owned()),
             channel_ids: None,
-            use_webpush: Some(true),
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");

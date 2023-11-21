@@ -46,10 +46,9 @@ pub async fn hello_new_user() {
     let msg = json_msg(&mut framed).await;
     assert_eq!(msg["messageType"], "hello");
     assert_eq!(msg["status"], 200);
-    assert_eq!(msg["use_webpush"], true);
     assert!(msg["uaid"].is_string());
     assert!(msg["broadcasts"].is_object());
-    assert_eq!(msg.as_object().map_or(0, |o| o.len()), 5);
+    assert_eq!(msg.as_object().map_or(0, |o| o.len()), 4);
 }
 
 #[actix_rt::test]

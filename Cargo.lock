@@ -679,6 +679,7 @@ dependencies = [
  "mockall",
  "reqwest 0.11.22",
  "sentry",
+ "serde_json",
  "slog-scope",
  "thiserror",
  "tokio 1.32.0",

@@ -374,10 +374,7 @@ where
             } = **hello;
             match try_ready!(data.input_with_timeout(timeout)) {
                 ClientMessage::Hello {
-                    uaid,
-                    use_webpush: Some(true),
-                    broadcasts,
-                    ..
+                    uaid, broadcasts, ..
                 } => (
                     uaid.and_then(|uaid| Uuid::parse_str(uaid.as_str()).ok()),
                     Broadcast::from_hashmap(broadcasts.unwrap_or_default()),
@@ -518,7 +515,6 @@ where
                     Ok(ServerMessage::Hello {
                         uaid: uaid.as_simple().to_string(),
                         status: 200,
-                        use_webpush: Some(true),
                         broadcasts,
                     })
                 }),
