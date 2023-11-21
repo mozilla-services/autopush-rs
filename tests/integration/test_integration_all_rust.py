@@ -909,7 +909,7 @@ class TestRustWebPush(unittest.TestCase):
         yield client.connect()
         result = yield client.hello()
         assert result != {}
-        if result["use_webpush"]:
+        if result.get("use_webpush"):
             assert result["use_webpush"] is True
         yield self.shut_down(client)
 
