@@ -8,7 +8,7 @@ POETRY := poetry --directory $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(TESTS_DIR)/pyproject.toml
 FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
-STAGE_SERVER_URL := "wss://autopush.stage.mozaws.net"
+STAGE_SERVER_URL := "wss://autoconnect.stage.mozaws.net"
 STAGE_ENDPOINT_URL := "https://updates-autopush.stage.mozaws.net"
 
 .PHONY: ddb
