@@ -34,18 +34,11 @@ pub struct DualClientImpl {
     _metrics: Arc<StatsdClient>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DualDbSettings {
-    #[serde(default)]
     primary: DbSettings,
-    #[serde(default)]
     secondary: DbSettings,
-    #[serde(default = "set_true")]
     write_to_secondary: bool,
-}
-
-fn set_true() -> bool {
-    true
 }
 
 impl DualClientImpl {
