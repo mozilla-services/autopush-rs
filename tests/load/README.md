@@ -47,7 +47,6 @@ Environment variables, listed bellow or specified by [Locust][12], can be set in
 | Environment Variable | Node(s)         | Description                          |
 |----------------------|-----------------|--------------------------------------|
 | SERVER_URL           | master & worker | The autopush web socket address      |
-| ENDPOINT_URL         | master & worker | The autopush HTTP address            |
 | AUTOPUSH_WAIT_TIME   | master & worker | The wait time between task execution |
 
 #### 2. Host Locust via Docker
@@ -67,10 +66,9 @@ make load
     * ShapeClass: Default
     * Number of users: 1
     * Spawn rate: 1
-    * Host: 'https://updates-autopush.stage.mozaws.net'
+    * Host (Endpoint URL): 'https://updates-autopush.stage.mozaws.net'
     * Duration (Optional): 10m
     * Websocket URL: 'wss://autopush.stage.mozaws.net'
-    * Endpoint URL: 'https://updates-autopush.stage.mozaws.net'
 * Select "Start Swarming"
 
 #### 2. Stop Load Test
@@ -164,9 +162,8 @@ The load tests can be executed from the [contextual-services-test-eng cloud shel
 
 * Set up the load test parameters:
     * ShapeClass: 'AutopushLoadTestShape'
-    * Host: 'https://updates-autopush.stage.mozaws.net'
+    * Host (Endpoint URL): 'https://updates-autopush.stage.mozaws.net'
     * Websocket URL: 'wss://autopush.stage.mozaws.net'
-    * Endpoint URL: 'https://updates-autopush.stage.mozaws.net'
 * Select "Start Swarming"
 
 #### 2. Stop Load Test

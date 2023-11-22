@@ -48,7 +48,7 @@ lint:
 	$(POETRY) run mypy $(TESTS_DIR) --config-file=$(PYPROJECT_TOML)
 
 load:
-	SERVER_URL=$(STAGE_SERVER_URL) ENDPOINT_URL=$(STAGE_ENDPOINT_URL) \
+	SERVER_URL=$(STAGE_SERVER_URL) LOCUST_HOST=$(STAGE_ENDPOINT_URL) \
 	  $(DOCKER_COMPOSE) \
       -f $(LOAD_TEST_DIR)/docker-compose.yml \
       -p autopush-rs-load-tests \

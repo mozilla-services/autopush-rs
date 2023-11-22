@@ -35,4 +35,4 @@ COPY ./tests/load/locustfiles ./tests/load/locustfiles
 EXPOSE 8089 5557
 
 USER locust
-ENTRYPOINT locust -f "tests/load/locustfiles/locustfile.py,tests/load/locustfiles/load.py" --websocket_url ${SERVER_URL} --endpoint_url ${ENDPOINT_URL}
+ENTRYPOINT locust -f "tests/load/locustfiles/locustfile.py,tests/load/locustfiles/load.py" --websocket_url ${SERVER_URL}

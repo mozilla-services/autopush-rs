@@ -53,13 +53,6 @@ def _(parser: Any):
         help="Server URL",
     )
     parser.add_argument(
-        "--endpoint_url",
-        type=str,
-        env_var="AUTOPUSH_ENDPOINT_URL",
-        required=True,
-        help="Endpoint URL",
-    )
-    parser.add_argument(
         "--wait_time",
         type=str,
         env_var="AUTOPUSH_WAIT_TIME",

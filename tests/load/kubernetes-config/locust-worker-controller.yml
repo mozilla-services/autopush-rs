@@ -30,8 +30,6 @@ spec:
               value:
             - name: SERVER_URL
               value:
-            - name: ENDPOINT_URL
-              value:
           resources:
             limits:
               cpu: 1

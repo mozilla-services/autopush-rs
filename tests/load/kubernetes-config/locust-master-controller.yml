@@ -26,13 +26,13 @@ spec:
               value:
             - name: LOCUST_CSV
               value:
+            - name: LOCUST_HOST
+              value:
             - name: LOCUST_LOGLEVEL
               value:
             - name: LOCUST_LOGFILE
               value:
             - name: SERVER_URL
-              value:
-            - name: ENDPOINT_URL
               value:
           ports:
             - name: loc-master-web
