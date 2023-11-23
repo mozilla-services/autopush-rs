@@ -132,6 +132,8 @@ The load tests can be executed from the [contextual-services-test-eng cloud shel
   ```shell
   ./tests/load/setup_k8s.sh
   ```
+  **Note:** Locust requires CPU affinity to execute most efficiently and can only make 
+  use of a single core at a time. Warnings will be logged if CPU usage exceeds 90%.
 * The cluster creation process will take some time. It is considered complete, once
   an external IP is assigned to the `locust_master` node. Monitor the assignment via
   a watch loop:
