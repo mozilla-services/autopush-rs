@@ -93,6 +93,8 @@ pub enum ServerMessage {
     Hello {
         uaid: String,
         status: u32,
+        // This is required for output, but will always be "true"
+        use_webpush: bool,
         broadcasts: HashMap<String, BroadcastValue>,
     },
 

@@ -48,7 +48,7 @@ pub async fn hello_new_user() {
     assert_eq!(msg["status"], 200);
     assert!(msg["uaid"].is_string());
     assert!(msg["broadcasts"].is_object());
-    assert_eq!(msg.as_object().map_or(0, |o| o.len()), 4);
+    assert_eq!(msg.as_object().map_or(0, |o| o.len()), 5);
 }
 
 #[actix_rt::test]

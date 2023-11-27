@@ -107,6 +107,7 @@ impl UnidentifiedClient {
 
         let smsg = ServerMessage::Hello {
             uaid: uaid.as_simple().to_string(),
+            use_webpush: true,
             status: 200,
             broadcasts,
         };
