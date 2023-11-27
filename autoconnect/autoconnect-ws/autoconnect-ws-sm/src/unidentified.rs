@@ -243,11 +243,17 @@ mod tests {
             db: hello_again_db(DUMMY_UAID).into_boxed_arc(),
             ..Default::default()
         });
-        let msg = ClientMessage::Hello {
-            uaid: Some(DUMMY_UAID.to_string()),
-            channel_ids: None,
-            broadcasts: None,
-        };
+        // Use a constructed JSON structure here to capture the sort of input we expect,
+        // which may not match what we derive into.
+        let js = serde_json::json!({
+            "messageType": "hello",
+            "uaid": DUMMY_UAID,
+            "use_webpush": true,
+            "channelIDs": [],
+            "broadcasts": {}
+        })
+        .to_string();
+        let msg: ClientMessage = serde_json::from_str(&js).unwrap();
         client.on_client_msg(msg).await.expect("Hello failed");
     }
 
