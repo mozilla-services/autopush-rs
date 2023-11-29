@@ -515,6 +515,7 @@ where
                     Ok(ServerMessage::Hello {
                         uaid: uaid.as_simple().to_string(),
                         status: 200,
+                        use_webpush: true,
                         broadcasts,
                     })
                 }),

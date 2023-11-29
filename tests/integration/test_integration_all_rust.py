@@ -909,8 +909,7 @@ class TestRustWebPush(unittest.TestCase):
         yield client.connect()
         result = yield client.hello()
         assert result != {}
-        if result.get("use_webpush"):
-            assert result["use_webpush"] is True
+        assert result["use_webpush"] is True
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -921,6 +920,7 @@ class TestRustWebPush(unittest.TestCase):
         result = yield client.hello(uaid=non_uaid)
         assert result != {}
         assert result["uaid"] != non_uaid
+        assert result["use_webpush"] is True
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -1584,6 +1584,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         yield client.connect()
         result = yield client.hello(services=old_ver)
         assert result != {}
+        assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
 
         MOCK_MP_SERVICES = {"kinto:123": "ver2"}
@@ -1607,6 +1608,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         yield client.connect()
         result = yield client.hello(services=old_ver)
         assert result != {}
+        assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
         yield self.shut_down(client)
@@ -1623,6 +1625,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         yield client.connect()
         result = yield client.hello()
         assert result != {}
+        assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
         client.broadcast_subscribe(old_ver)
@@ -1650,6 +1653,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         yield client.connect()
         result = yield client.hello()
         assert result != {}
+        assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
         client.broadcast_subscribe(old_ver)
@@ -1671,6 +1675,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         yield client.connect()
         result = yield client.hello(services=old_ver)
         assert result != {}
+        assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
         yield self.shut_down(client)
