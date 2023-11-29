@@ -16,22 +16,20 @@ use serde_json::from_str;
 use uuid::Uuid;
 
 use crate::db::{
+    bigtable::BigTableClientImpl,
     client::{DbClient, FetchMessageResponse},
+    dynamodb::DdbClientImpl,
     error::{DbError, DbResult},
     DbSettings, Notification, User,
 };
 
 use super::StorageType;
 
-use crate::db::bigtable::BigTableClientImpl;
-use crate::db::dynamodb::DdbClientImpl;
-
 #[derive(Clone)]
 pub struct DualClientImpl {
     primary: BigTableClientImpl,
     secondary: DdbClientImpl,
     write_to_secondary: bool,
-    _metrics: Arc<StatsdClient>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -43,7 +41,6 @@ pub struct DualDbSettings {
 
 impl DualClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
-        // Not really sure we need the dsn here.
         let db_settings: DualDbSettings = from_str(&settings.db_settings).map_err(|e| {
             DbError::General(format!("Could not parse DualDBSettings string {:?}", e))
         })?;
@@ -62,7 +59,6 @@ impl DualClientImpl {
         Ok(Self {
             primary,
             secondary,
-            _metrics: metrics,
             write_to_secondary: db_settings.write_to_secondary,
         })
     }
@@ -135,15 +131,15 @@ impl DbClient for DualClientImpl {
         node_id: &str,
         connected_at: u64,
     ) -> DbResult<bool> {
-        let p_resp = self
+        let presult = self
             .secondary
             .remove_node_id(uaid, node_id, connected_at)
             .await?;
-        let s_resp = self
+        let sresult = self
             .primary
             .remove_node_id(uaid, node_id, connected_at)
             .await?;
-        return Ok(p_resp || s_resp);
+        Ok(presult || sresult)
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
@@ -167,7 +163,7 @@ impl DbClient for DualClientImpl {
         if result.messages.is_empty() {
             return self.secondary.fetch_topic_messages(uaid, limit).await;
         }
-        return Ok(result);
+        Ok(result)
     }
 
     async fn fetch_timestamp_messages(
@@ -186,7 +182,7 @@ impl DbClient for DualClientImpl {
                 .fetch_timestamp_messages(uaid, timestamp, limit)
                 .await;
         }
-        return Ok(result);
+        Ok(result)
     }
 
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
