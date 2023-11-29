@@ -357,7 +357,7 @@ impl BigTableClientImpl {
                 }
             }
             // get the dominant family type for this row.
-            if let Some(cell) = row.get_cell("channel_id") {
+            if let Some(cell) = row.take_cell("channel_id") {
                 let mut notif = Notification {
                     channel_id: Uuid::from_str(&to_string(cell.value, "channel_id")?).map_err(
                         |e| {
@@ -369,31 +369,31 @@ impl BigTableClientImpl {
                     )?,
                     ..Default::default()
                 };
-                if let Some(cell) = row.get_cell("version") {
+                if let Some(cell) = row.take_cell("version") {
                     notif.version = to_string(cell.value, "version")?;
                 }
-                if let Some(cell) = row.get_cell("topic") {
+                if let Some(cell) = row.take_cell("topic") {
                     notif.topic = Some(to_string(cell.value, "topic")?);
                 }
 
-                if let Some(cell) = row.get_cell("ttl") {
+                if let Some(cell) = row.take_cell("ttl") {
                     notif.ttl = to_u64(cell.value, "ttl")?;
                 }
 
-                if let Some(cell) = row.get_cell("data") {
+                if let Some(cell) = row.take_cell("data") {
                     notif.data = Some(to_string(cell.value, "data")?);
                 }
-                if let Some(cell) = row.get_cell("sortkey_timestamp") {
+                if let Some(cell) = row.take_cell("sortkey_timestamp") {
                     let sk_ts = to_u64(cell.value, "sortkey_timestamp")?;
                     notif.sortkey_timestamp = Some(sk_ts);
                     if sk_ts > max_timestamp {
                         max_timestamp = sk_ts;
                     }
                 }
-                if let Some(cell) = row.get_cell("timestamp") {
+                if let Some(cell) = row.take_cell("timestamp") {
                     notif.timestamp = to_u64(cell.value, "timestamp")?;
                 }
-                if let Some(cell) = row.get_cell("headers") {
+                if let Some(cell) = row.take_cell("headers") {
                     notif.headers = Some(
                         serde_json::from_str::<HashMap<String, String>>(&to_string(
                             cell.value, "headers",
@@ -590,9 +590,9 @@ impl DbClient for BigTableClientImpl {
             ..Default::default()
         };
 
-        if let Some(record) = self.read_row(&key, None).await? {
+        if let Some(mut record) = self.read_row(&key, None).await? {
             trace!("🉑 Found a record for that user");
-            if let Some(mut cells) = record.get_cells("connected_at") {
+            if let Some(mut cells) = record.take_cells("connected_at") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
@@ -604,7 +604,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("router_type") {
+            if let Some(mut cells) = record.take_cells("router_type") {
                 if let Some(cell) = cells.pop() {
                     result.router_type = String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -615,7 +615,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("router_data") {
+            if let Some(mut cells) = record.take_cells("router_data") {
                 if let Some(cell) = cells.pop() {
                     result.router_data = from_str(&String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -632,7 +632,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("last_connect") {
+            if let Some(mut cells) = record.take_cells("last_connect") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
@@ -644,7 +644,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("node_id") {
+            if let Some(mut cells) = record.take_cells("node_id") {
                 if let Some(cell) = cells.pop() {
                     result.node_id = Some(String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -655,7 +655,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("record_version") {
+            if let Some(mut cells) = record.take_cells("record_version") {
                 if let Some(mut cell) = cells.pop() {
                     // there's only one byte, so pop it off and use it.
                     if let Some(b) = cell.value.pop() {
@@ -664,7 +664,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("current_month") {
+            if let Some(mut cells) = record.take_cells("current_month") {
                 if let Some(cell) = cells.pop() {
                     result.current_month = Some(String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -676,7 +676,7 @@ impl DbClient for BigTableClientImpl {
             }
 
             //TODO: rename this to `last_notification_timestamp`
-            if let Some(mut cells) = record.get_cells("current_timestamp") {
+            if let Some(mut cells) = record.take_cells("current_timestamp") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
