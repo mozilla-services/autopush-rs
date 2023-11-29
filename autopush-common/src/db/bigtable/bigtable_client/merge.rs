@@ -437,7 +437,7 @@ impl RowMerger {
                     // Check to see if we can add this row, or if it's blocked by the timestamp filter.
                     let finished_row = merger.row_complete(&mut chunk)?;
                     if let Some(timestamp) = timestamp_filter {
-                        if let Some(sk_ts) = finished_row.clone().get_cell("sortkey_timestamp") {
+                        if let Some(sk_ts) = finished_row.clone().take_cell("sortkey_timestamp") {
                             let ts_val = crate::db::bigtable::bigtable_client::to_u64(
                                 sk_ts.value,
                                 "sortkey_timestamp",
