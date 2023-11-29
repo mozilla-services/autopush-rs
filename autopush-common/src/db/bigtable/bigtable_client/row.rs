@@ -16,12 +16,12 @@ pub struct Row {
 impl Row {
     /// Return all cells for a given column
     pub fn take_cells(&mut self, column: &str) -> Option<Vec<Cell>> {
-        self.cells.remove_entry(column).map(|(_, cell)| cell)
+        self.cells.remove(column)
     }
 
     /// get only the "top" cell value. Ignore other values.
     pub fn take_cell(&mut self, column: &str) -> Option<Cell> {
-        if let Some((_, mut cells)) = self.cells.remove_entry(column) {
+        if let Some(mut cells) = self.cells.remove(column) {
             return cells.pop();
         }
         None
