@@ -11,7 +11,7 @@ actix.workspace = true
 actix-cors.workspace = true
 actix-http.workspace = true
 actix-rt.workspace = true
-actix-test.workspace =  true
+actix-test.workspace = true
 actix-web.workspace = true
 #actix-web-actors.workspace = true
 actix-ws.workspace = true
@@ -36,7 +36,6 @@ serde_derive.workspace = true
 serde_json.workspace = true
 slog.workspace = true
 slog-async.workspace = true
-slog-envlogger.workspace = true
 slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
@@ -49,8 +48,11 @@ autoconnect_web.workspace = true
 autoconnect_ws.workspace = true
 autopush_common.workspace = true
 
+actix-server = "2.3"
+actix-service = "2.0"
 docopt = "1.1"
 
 [features]
 emulator = ["bigtable"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
+log_vapid = []

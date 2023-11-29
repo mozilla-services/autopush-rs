@@ -11,6 +11,9 @@ use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
+use serde_json::json;
+
+use autopush_common::util::deserialize_u32_to_duration;
 
 pub use app_state::AppState;
 
@@ -60,8 +63,6 @@ pub struct Settings {
     /// How long to wait for a response Pong before being timed out and connection drop
     #[serde(deserialize_with = "deserialize_f64_to_duration")]
     pub auto_ping_timeout: Duration,
-    /// Max number of websocket connections to allow
-    pub max_connections: u32,
     /// How long to wait for the initial connection handshake.
     #[serde(deserialize_with = "deserialize_u32_to_duration")]
     pub open_handshake_timeout: Duration,
@@ -98,10 +99,15 @@ pub struct Settings {
     /// Maximum allowed number of backlogged messages. Exceeding this number will
     /// trigger a user reset because the user may have been offline way too long.
     pub msg_limit: u32,
-    /// Maximum number of pending notifications for individual UserAgent handlers.
-    /// (if a given [autoconnect-common::RegisteredClient] receives more than this number, the calling
-    /// thread will lock.)
-    pub max_pending_notification_queue: u32,
+    /// Sets the maximum number of concurrent connections per actix-web worker.
+    ///
+    /// All socket listeners will stop accepting connections when this limit is
+    /// reached for each worker.
+    pub actix_max_connections: Option<usize>,
+    /// Sets number of actix-web workers to start (per bind address).
+    ///
+    /// By default, the number of available physical CPUs is used as the worker count.
+    pub actix_workers: Option<usize>,
 }
 
 impl Default for Settings {
@@ -114,7 +120,6 @@ impl Default for Settings {
             router_hostname: None,
             auto_ping_interval: Duration::from_secs(300),
             auto_ping_timeout: Duration::from_secs(4),
-            max_connections: 0,
             open_handshake_timeout: Duration::from_secs(5),
             close_handshake_timeout: Duration::from_secs(0),
             endpoint_scheme: "http".to_owned(),
@@ -122,7 +127,8 @@ impl Default for Settings {
             endpoint_port: 8082,
             crypto_key: format!("[{}]", Fernet::generate_key()),
             statsd_host: Some("localhost".to_owned()),
-            statsd_label: ENV_PREFIX.to_owned(),
+            // Matches the legacy value
+            statsd_label: "autopush".to_owned(),
             statsd_port: 8125,
             db_dsn: None,
             db_settings: "".to_owned(),
@@ -131,7 +137,8 @@ impl Default for Settings {
             megaphone_poll_interval: Duration::from_secs(30),
             human_logs: false,
             msg_limit: 100,
-            max_pending_notification_queue: 10,
+            actix_max_connections: None,
+            actix_workers: None,
         }
     }
 }
@@ -210,14 +217,18 @@ impl Settings {
         non_zero(self.auto_ping_timeout, "AUTO_PING_TIMEOUT")?;
         Ok(())
     }
-}
 
-fn deserialize_u32_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let seconds: u32 = Deserialize::deserialize(deserializer)?;
-    Ok(Duration::from_secs(seconds.into()))
+    pub fn test_settings() -> Self {
+        let db_settings = json!({
+            "message_table": "message_test",
+            "router_table": "router_test"
+        })
+        .to_string();
+        Self {
+            db_settings,
+            ..Default::default()
+        }
+    }
 }
 
 fn deserialize_f64_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>

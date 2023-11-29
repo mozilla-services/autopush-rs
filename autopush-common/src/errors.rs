@@ -9,7 +9,8 @@ use actix_web::{
     dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponse,
     HttpResponseBuilder, ResponseError,
 };
-use backtrace::Backtrace; // Sentry 0.29 uses the backtrace crate, not std::backtrace
+// Sentry 0.29 uses the backtrace crate, not std::backtrace
+use backtrace::Backtrace;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use thiserror::Error;
 
@@ -66,12 +67,7 @@ impl ResponseError for ApcError {
     }
 
     fn error_response(&self) -> HttpResponse {
-        let mut builder = HttpResponse::build(self.kind.status());
-
-        if self.status_code() == 410 {
-            builder.insert_header(("Cache-Control", "max-age=86400"));
-        }
-
+        let mut builder = HttpResponse::build(self.status_code());
         builder.json(self)
     }
 }
@@ -167,6 +163,10 @@ impl ApcErrorKind {
             Self::PongTimeout | Self::ExcessivePing => false,
             // Non-actionable Endpoint errors
             Self::PayloadError(_) => false,
+            #[cfg(feature = "bigtable")]
+            Self::DbError(crate::db::error::DbError::BTError(
+                crate::db::bigtable::BigTableError::Recycle,
+            )) => false,
             _ => true,
         }
     }
@@ -177,6 +177,10 @@ impl ApcErrorKind {
             Self::PongTimeout => "pong_timeout",
             Self::ExcessivePing => "excessive_ping",
             Self::PayloadError(_) => "payload",
+            #[cfg(feature = "bigtable")]
+            Self::DbError(crate::db::error::DbError::BTError(
+                crate::db::bigtable::BigTableError::Recycle,
+            )) => "bt_recycle",
             _ => return None,
         };
         Some(label)
@@ -184,7 +188,15 @@ impl ApcErrorKind {
 }
 
 /// Interface for reporting our Error types to Sentry or as metrics
-pub trait ReportableError: std::error::Error + fmt::Display {
+pub trait ReportableError: std::error::Error {
+    /// Like [Error::source] but returns the source (if any) of this error as a
+    /// [ReportableError] if it implements the trait. Otherwise callers of this
+    /// method will likely subsequently call [Error::source] to return the
+    /// source (if any) as the parent [Error] trait.
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        None
+    }
+
     /// Return a `Backtrace` for this Error if one was captured
     fn backtrace(&self) -> Option<&Backtrace>;
 
@@ -194,6 +206,17 @@ pub trait ReportableError: std::error::Error + fmt::Display {
     /// Errors that don't emit Sentry events (!is_sentry_event()) emit an
     /// increment metric instead with this label
     fn metric_label(&self) -> Option<&'static str>;
+
+    /// Experimental: return tag key value pairs for metrics and Sentry
+    fn tags(&self) -> Vec<(&str, String)> {
+        vec![]
+    }
+
+    /// Experimental: return key value pairs for Sentry Event's extra data
+    /// TODO: should probably return Vec<(&str, Value)> or Vec<(String, Value)>
+    fn extras(&self) -> Vec<(&str, String)> {
+        vec![]
+    }
 }
 
 impl ReportableError for ApcError {

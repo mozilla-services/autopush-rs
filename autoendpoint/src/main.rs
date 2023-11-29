@@ -40,7 +40,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or_else(|e| e.exit());
     let settings = settings::Settings::with_env_and_config_file(&args.flag_config)?;
     let host_port = format!("{}:{}", &settings.host, &settings.port);
-    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+    logging::init_logging(
+        !settings.human_logs,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )
+    .expect("Logging failed to initialize");
     debug!("Starting up autoendpoint...");
 
     let _sentry = sentry::init(sentry::ClientOptions {
@@ -53,11 +58,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let server = server::Server::with_settings(settings)
         .await
         .expect("Could not start server");
-    info!("Server started: {}", host_port);
+    info!(
+        "Starting autoendpoint on port: {} (available_parallelism: {:?})",
+        host_port,
+        std::thread::available_parallelism()
+    );
     server.await?;
 
     // Shutdown
-    info!("Server closing");
+    info!("Shutting down autoendpoint");
     logging::reset_logging();
     Ok(())
 }

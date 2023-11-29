@@ -1,26 +1,26 @@
-use std::fmt;
+use std::{error::Error, fmt};
 
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
 
-use autopush_common::{db::error::DbError, errors::ReportableError};
-
-pub type NonStdBacktrace = backtrace::Backtrace;
+use autopush_common::{db::error::DbError, errors::ApcError, errors::ReportableError};
 
 /// WebSocket state machine errors
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub struct SMError {
     pub kind: SMErrorKind,
-    /// Avoid thiserror's automatic `std::backtrace::Backtrace` integration by
-    /// not using the type name "Backtrace". The older `backtrace::Backtrace`
-    /// is still preferred for Sentry integration:
-    /// https://github.com/getsentry/sentry-rust/issues/600
-    backtrace: NonStdBacktrace,
+    backtrace: Option<Backtrace>,
 }
 
 impl fmt::Display for SMError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)
+    }
+}
+
+impl Error for SMError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.kind.source()
     }
 }
 
@@ -31,10 +31,9 @@ where
     SMErrorKind: From<T>,
 {
     fn from(item: T) -> Self {
-        Self {
-            kind: SMErrorKind::from(item),
-            backtrace: Backtrace::new(),
-        }
+        let kind = SMErrorKind::from(item);
+        let backtrace = (kind.is_sentry_event() && kind.capture_backtrace()).then(Backtrace::new);
+        Self { kind, backtrace }
     }
 }
 
@@ -54,18 +53,19 @@ impl SMError {
 }
 
 impl ReportableError for SMError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self.kind {
+            SMErrorKind::MakeEndpoint(e) => Some(e),
+            _ => None,
+        }
+    }
+
     fn backtrace(&self) -> Option<&Backtrace> {
-        Some(&self.backtrace)
+        self.backtrace.as_ref()
     }
 
     fn is_sentry_event(&self) -> bool {
-        matches!(
-            self.kind,
-            SMErrorKind::Database(_)
-                | SMErrorKind::Internal(_)
-                | SMErrorKind::Reqwest(_)
-                | SMErrorKind::MakeEndpoint(_)
-        )
+        self.kind.is_sentry_event()
     }
 
     fn metric_label(&self) -> Option<&'static str> {
@@ -98,8 +98,46 @@ pub enum SMErrorKind {
     Ghost,
 
     #[error("Failed to generate endpoint: {0}")]
-    MakeEndpoint(String),
+    MakeEndpoint(#[source] ApcError),
 
     #[error("Client sent too many pings too often")]
     ExcessivePing,
+}
+
+impl SMErrorKind {
+    /// Whether this error is reported to Sentry
+    fn is_sentry_event(&self) -> bool {
+        matches!(
+            self,
+            SMErrorKind::Database(_)
+                | SMErrorKind::Internal(_)
+                | SMErrorKind::Reqwest(_)
+                | SMErrorKind::MakeEndpoint(_)
+        )
+    }
+
+    /// Whether this variant has a `Backtrace` captured
+    ///
+    /// Some Error variants have obvious call sites or more relevant backtraces
+    /// in their sources and thus don't need a `Backtrace`. Furthermore
+    /// backtraces are only captured for variants returning true from
+    /// [Self::is_sentry_event].
+    fn capture_backtrace(&self) -> bool {
+        !matches!(self, SMErrorKind::MakeEndpoint(_))
+    }
+}
+
+#[cfg(debug_assertions)]
+/// Return a [SMErrorKind::Reqwest] [SMError] for tests
+pub async fn __test_sm_reqwest_error() -> SMError {
+    // An easily constructed reqwest::Error
+    let e = reqwest::Client::builder()
+        .https_only(true)
+        .build()
+        .unwrap()
+        .get("http://example.com")
+        .send()
+        .await
+        .unwrap_err();
+    SMErrorKind::Reqwest(e).into()
 }

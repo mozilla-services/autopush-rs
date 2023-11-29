@@ -1,3 +1,218 @@
+<a name="1.69.7"></a>
+## 1.69.7 (2023-11-13)
+
+
+#### Features
+
+*   demote `retry` message, dump vapid claims. (#510) ([cc4048c7](https://github.com/mozilla-services/autopush-rs/commit/cc4048c7312f49cd2b57bab13c715d54052a9732))
+*   add actix_max_connections/workers settings (#515) ([6f6289c3](https://github.com/mozilla-services/autopush-rs/commit/6f6289c3dddd6ea5fe25ec4080ac90355cb40d0d))
+*   Add metrics for user creation/deletion. (#506) ([bd2e0117](https://github.com/mozilla-services/autopush-rs/commit/bd2e0117550bf4c82bcbefc5217902c2dbfe7bcf))
+*   only capture some SMError backtraces (#508) ([8f6e03e3](https://github.com/mozilla-services/autopush-rs/commit/8f6e03e33a1f80e87ecfe027b9b7069baf139200))
+
+#### Bug Fixes
+
+*   correct the ua.expiration metric's tag (#502) ([ca002ec8](https://github.com/mozilla-services/autopush-rs/commit/ca002ec887d88dda32fa98a2b6521795ee206a9a))
+*   add ReportableError::reportable_source (#500) ([40487b76](https://github.com/mozilla-services/autopush-rs/commit/40487b76da2c3cd58dccfbea24ba0290f1211cc0))
+
+
+
+<a name="1.69.6"></a>
+## 1.69.6 (2023-10-31)
+
+
+#### Features
+
+*   handle already connected users (#495) ([eb53beca](https://github.com/mozilla-services/autopush-rs/commit/eb53beca715c30a1ad47904512f4ae3baa8d4603))
+
+
+
+<a name="1.69.5"></a>
+## 1.69.5 (2023-10-31)
+
+
+#### Features
+
+*   further detect common io errors in megaphone's updater (#492) ([5421f581](https://github.com/mozilla-services/autopush-rs/commit/5421f58182b9061afaec0d5265dc3d1045d44633))
+
+
+
+<a name="1.69.4"></a>
+## 1.69.4 (2023-10-30)
+
+
+#### Bug Fixes
+
+*   split router endpoints into their own app (#491) ([bbde5823](https://github.com/mozilla-services/autopush-rs/commit/bbde582368848dc404416e3a2581a81aac366666))
+*   defer Error::source methods to inner kind's (#486) ([a9a17963](https://github.com/mozilla-services/autopush-rs/commit/a9a1796316b22c3d349b49e855624168c95aef1c))
+
+#### Features
+
+*   emit metrics for megaphone polling (#488) ([ea302228](https://github.com/mozilla-services/autopush-rs/commit/ea30222840c4ef6bdbcebda8d5a45d79934f6071))
+
+
+
+<a name="1.69.3"></a>
+## 1.69.3 (2023-10-26)
+
+
+#### Doc
+
+*   further clean up (#399) ([61d784f8](https://github.com/mozilla-services/autopush-rs/commit/61d784f8bf380531fecde116d2183f498756ca38))
+
+#### Bug Fixes
+
+*   capture sentry events for the unidentified state (#484) ([09db55f2](https://github.com/mozilla-services/autopush-rs/commit/09db55f2542a6029b33f90649bbd1f4eaa5f88bb))
+*   Convert WSError(Timeout for Pong) to metric (#478) ([cd597d39](https://github.com/mozilla-services/autopush-rs/commit/cd597d3961bdd4a35521a99fca2a94ebc39506bc))
+
+
+
+<a name="1.69.2"></a>
+## 1.69.2 (2023-10-17)
+
+
+#### Features
+
+*   hide common SessionClosed errors from sentry (#470) ([f069c2c9](https://github.com/mozilla-services/autopush-rs/commit/f069c2c90f06afe082450a4aed0453e8562b5e28))
+
+#### Chore
+
+*   tag 1.69.1 (#466) ([c8192503](https://github.com/mozilla-services/autopush-rs/commit/c8192503023cec998db7b78148a8b3827b646391))
+
+
+
+<a name="1.69.1"></a>
+## 1.69.1 (2023-10-06)
+
+
+#### Chore
+
+*   Updates for rust 1.73.0 (#465) ([bd8a428b](https://github.com/mozilla-services/autopush-rs/commit/bd8a428b095e98977697d4705e23e3d1d5afcc49))
+*   tag 1.69.0 (#462) ([92f98630](https://github.com/mozilla-services/autopush-rs/commit/92f98630eccedcb2dd9c7dd073147633422b7bb6))
+
+#### Bug Fixes
+
+*   allow invalid uaids in autoconnect (#464) ([6da8c45e](https://github.com/mozilla-services/autopush-rs/commit/6da8c45eed2f89a91633d5e7ca66b93545e152ad))
+
+
+
+<a name="1.69.0"></a>
+## 1.69.0 (2023-10-04)
+
+
+#### Chore
+
+*   tag 1.68.3 (#456) ([2a97e678](https://github.com/mozilla-services/autopush-rs/commit/2a97e6781999df67fd8c0086586924ef2463d4a0))
+
+#### Features
+
+*   Use the calling crate's name and version for init_logging() (#461) ([d3bd4c07](https://github.com/mozilla-services/autopush-rs/commit/d3bd4c072a031e00ac5d08cb15d8e84512881295))
+*   Reject Legacy GCM endpoints (#459) ([aaa47139](https://github.com/mozilla-services/autopush-rs/commit/aaa47139aae3a6dc42c063a6b59cc21202dfe5dd))
+
+
+
+<a name="1.68.3"></a>
+## 1.68.3 (2023-10-02)
+
+#### Breaking Changes
+
+*   Run GCM through FCMv1 HTTP API (#455) ([b2282277](https://github.com/mozilla-services/autopush-rs/commit/b2282277e7e751f5e513d65dda1ab2d2635e7299), breaks [#](https://github.com/mozilla-services/autopush-rs/issues/))
+
+#### Features
+
+*   Run GCM through FCMv1 HTTP API (#455) ([b2282277](https://github.com/mozilla-services/autopush-rs/commit/b2282277e7e751f5e513d65dda1ab2d2635e7299), breaks [#](https://github.com/mozilla-services/autopush-rs/issues/))
+
+#### Bug Fixes
+
+*   re-enable slog's envlogger (#452) ([e76b1198](https://github.com/mozilla-services/autopush-rs/commit/e76b11987400888bae17fdf61e7dff3edaa7743d))
+*   AutopushUser fails with WebSocketConnectionClosedException ([5f8efb2d](https://github.com/mozilla-services/autopush-rs/commit/5f8efb2db9550b8960c6052c69e1103ab8681041))
+
+#### Test
+
+*   calibrate load tests ([1b5c5f99](https://github.com/mozilla-services/autopush-rs/commit/1b5c5f99a503ff5a70f009651ad4c47d39c6468e))
+*   add subscribe and unsubscribe tasks to AutopushUser ([07d988dd](https://github.com/mozilla-services/autopush-rs/commit/07d988dd11a79d053eb93237f8de977490c5c510))
+
+
+<a name="1.68.2"></a>
+## 1.68.2 (2023-09-27)
+
+
+#### Bug Fixes
+
+*   Use `warn!()` to supplement sentry errors, since they don't show up regularly. (#449) ([4eaa9a06](https://github.com/mozilla-services/autopush-rs/commit/4eaa9a06a8197e31f103d9e0ce18f6aa550526b7))
+
+#### Chore
+
+*   tag 1.68.1 (#448) ([b55bbe76](https://github.com/mozilla-services/autopush-rs/commit/b55bbe7680be5e0601353321653fbefa9a9e737b))
+
+
+
+<a name="1.68.1"></a>
+## 1.68.1 (2023-09-27)
+
+
+#### Bug Fixes
+
+*   don't emit backtraces in Display (#447) ([392f4e1e](https://github.com/mozilla-services/autopush-rs/commit/392f4e1e5c24cbb4d43fffaca5eb5697815f896c))
+
+#### Chore
+
+*   tag 1.68.0 (#446) ([00d19b1a](https://github.com/mozilla-services/autopush-rs/commit/00d19b1abb723fd47aa2d2fe9ab013fd153900f9))
+
+
+
+<a name="1.68.0"></a>
+## 1.68.0 (2023-09-27)
+
+
+#### Features
+
+*   emit a tag in autoconnect's metrics (#435) ([67186854](https://github.com/mozilla-services/autopush-rs/commit/67186854025a93c8868c202910431d1d645bbe82))
+*   Add send notification task to locust load test file ([453ba8d4](https://github.com/mozilla-services/autopush-rs/commit/453ba8d4abf98bdf627c0b561ec6bf07ae68c5e8))
+*   add an autoconnect-web Error type (#432) ([58086e77](https://github.com/mozilla-services/autopush-rs/commit/58086e77a7f0ae6d84a6a7bbce246b90cfadbad4))
+*   switch the load tester to pypy-3.10 (#426) ([5b4d6d71](https://github.com/mozilla-services/autopush-rs/commit/5b4d6d71085480169a7f90202bb9295ad8b21f42))
+*   Update loadtests user and tests ([d4af1bfe](https://github.com/mozilla-services/autopush-rs/commit/d4af1bfe22ccbc5df54812324553cc54b2c4f84a))
+*   Add GCP BigTable support  (#364) ([608c52fe](https://github.com/mozilla-services/autopush-rs/commit/608c52fe6f905184ef0e0336b38812636295ab94))
+*   consolidate the sentry middlwares into autopush_common ([e65486b9](https://github.com/mozilla-services/autopush-rs/commit/e65486b94ae6b381ee784b4caaebc9713fc78405))
+*   add stacktraces to some sentry events (#406) ([0ded4de1](https://github.com/mozilla-services/autopush-rs/commit/0ded4de18458bbdeb3668cbaebc2582d9a4c942a))
+*   Topic messages shouldn't have sortkey_timestamps (#402) ([eeff8d71](https://github.com/mozilla-services/autopush-rs/commit/eeff8d71a4167a497bd52e7c96c00023f9bb59e2))
+*   build/deploy an autoconnect docker (#396) ([9ed4e6f0](https://github.com/mozilla-services/autopush-rs/commit/9ed4e6f01cfa0d7071bc78dbf62b8946e2ea55b8))
+*   make DbClient's message table month optional (#393) ([ab3614b7](https://github.com/mozilla-services/autopush-rs/commit/ab3614b79854dbabeeef7d58e501aca36554c295))
+*   remove legacy table rotation (#389) ([6aa107f5](https://github.com/mozilla-services/autopush-rs/commit/6aa107f522a08affc6d6dc8ad3753d03c313f48b))
+
+#### Doc
+
+*   fill in some autoconnect TODO docs (#410) ([74ffdb05](https://github.com/mozilla-services/autopush-rs/commit/74ffdb05d7b7943f0306eb821690a16d22df39fa))
+*   Update docs for modern version of autopush (#388) ([d36fb527](https://github.com/mozilla-services/autopush-rs/commit/d36fb5275c1f5e2fb431da5d890e68f0698ab298))
+
+#### Bug Fixes
+
+*   Add better error messaging for GCM/FCM processing (#445) ([2e48f504](https://github.com/mozilla-services/autopush-rs/commit/2e48f504748211a0259b4049934dde7a99efdda6))
+*   missing class-picker option in Kubernetes config ([9d0faf7c](https://github.com/mozilla-services/autopush-rs/commit/9d0faf7c2ddc3bbe7ef588987c3f526b5ed20e04))
+*   apply fixes from code review 2 ([7ea158d2](https://github.com/mozilla-services/autopush-rs/commit/7ea158d26016f3835e989a42ba903c6aadb2ba46))
+*   apply fixes from code review ([142c4d2c](https://github.com/mozilla-services/autopush-rs/commit/142c4d2c8cf10130eae6a7774743295bb28da66b))
+*   load test docker build error in GCP ([e7e7539e](https://github.com/mozilla-services/autopush-rs/commit/e7e7539e97ec475b3c9c9ff59eb9be640d16f332))
+*   remove print statement ([2134d050](https://github.com/mozilla-services/autopush-rs/commit/2134d050ac8b95ec516d1c580e926f96203aeb69))
+*   load test script modifies kubernetes config on first run only ([89dc80bc](https://github.com/mozilla-services/autopush-rs/commit/89dc80bc5dce70c3e4ff67f4718672c0cc6eb325))
+*   use explicit path ([a51fca5c](https://github.com/mozilla-services/autopush-rs/commit/a51fca5c90c20cf46887825ec23b537db1a7e35d))
+*   remove mozsvc-common (#394) ([814ff49e](https://github.com/mozilla-services/autopush-rs/commit/814ff49eeae2c1d69cf30cd30789b157a6bcd784))
+*   remove mozsvc-common (#394) ([66bb74f9](https://github.com/mozilla-services/autopush-rs/commit/66bb74f93f87d75433078a51158b1462997e3707))
+
+#### Test
+
+*   validate message schema in load tests with models ([0d8c1c2f](https://github.com/mozilla-services/autopush-rs/commit/0d8c1c2f707b1c34006abc43d41c79bc82e65c13))
+*   add a load test shape ([f84e2665](https://github.com/mozilla-services/autopush-rs/commit/f84e2665003b894101a118a0b87ed0ac49ef770b))
+*   calibrate load tests ([7a6c099f](https://github.com/mozilla-services/autopush-rs/commit/7a6c099f48d436a900495899c717b319a1d72523))
+
+#### Chore
+
+*   update user, spawn rate and time in load tests ([b9a88e5a](https://github.com/mozilla-services/autopush-rs/commit/b9a88e5ac907a879497521c03ba6800b7280e126))
+*   add python linters and formatters to CI ([615b93ad](https://github.com/mozilla-services/autopush-rs/commit/615b93adf303d160ec5660600b8a703c1a15c421))
+* **deps:**
+  *  bump gevent from 23.9.0.post1 to 23.9.1 in /tests/load ([34eb330e](https://github.com/mozilla-services/autopush-rs/commit/34eb330e130288ce436b2e714140fac60a8627f8))
+  *  bump cryptography from 40.0.2 to 41.0.4 in /tests ([acd35f27](https://github.com/mozilla-services/autopush-rs/commit/acd35f271e7c5fd3d5d9d7b6c85f121151f837e1))
+
+
+
 <a name="1.67.3"></a>
 ## 1.67.3 (2023-06-01)
 

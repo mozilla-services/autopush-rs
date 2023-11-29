@@ -41,13 +41,25 @@ jobs:
       - run:
           command: cargo audit
 
-  load-test-checks:
+  python-checks:
     docker:
-      - image: cimg/python:3.11
-    working_directory: "~/autopush-rs"
+      - image: python:3.10-slim-bullseye
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
     steps:
-      - checkout:
-          path: ~/autopush-rs/
+      - checkout
+      - run:
+          name: Set up system
+          command: |
+            apt update
+            apt install git -y
+            apt install cmake -y
+      - run:
+          name: Set up Python
+          command: |
+            pip install --upgrade pip
+            pip install poetry
       - run:
           name: isort, black, flake8 and mypy
           command: make lint
@@ -68,14 +80,14 @@ jobs:
       AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
       - checkout
-      # Need to download the requirements.txt files so we can use their
+      # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
-      - restore_cache:
-          name: Restoring Python cache
-          key: python-v1-{{ checksum "tests/requirements.txt" }}-{{ checksum "tests/test_integration_all_rust.py"}}
       - restore_cache:
           name: Restoring Rust cache
           key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Create Workspace
+          command: mkdir -p workspace
       - run:
           name: Set up system
           command: |
@@ -85,8 +97,7 @@ jobs:
           name: Set up Python
           command: |
             pip install --upgrade pip
-            pip install bottle
-            pip install -r tests/requirements.txt
+            pip install poetry
       - run:
           name: Set up Rust
           command: |
@@ -113,26 +124,19 @@ jobs:
           # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
           # the machine level memory and CPU which are far higher than the memory allocated to the docker
           # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=bigtable --jobs=8
+          command: cargo test --features=bigtable --jobs=2
       - run:
           name: Integration tests (Autopush Legacy)
-          command: |
-            cd tests
-            py.test -v
+          command: make integration-test-legacy
+          environment:
+            TEST_RESULTS_DIR: workspace/test-results
       - run:
           name: Integration tests (Autoconnect)
+          command: make integration-test
           environment:
-            CONNECTION_BINARY: autoconnect
-            CONNECTION_SETTINGS_PREFIX: autoconnect__
-          command: |
-            cd tests
-            py.test -v
-      - save_cache:
-          name: Save Python cache
-          key: python-v1-{{ checksum "tests/requirements.txt" }}-{{ checksum "tests/test_integration_all_rust.py"}}
-          paths:
-            - /home/circleci/.local/bin/
-            - /home/circleci/.local/lib/
+            TEST_RESULTS_DIR: workspace/test-results
+      - store_test_results:
+          path: workspace/test-results
       - save_cache:
           name: Save Rust cache
           key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
@@ -235,7 +239,7 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - load-test-checks:
+      - python-checks:
           filters:
             tags:
               only: /.*/

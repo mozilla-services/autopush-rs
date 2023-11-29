@@ -1,13 +1,13 @@
-use std::fmt;
+use std::{error::Error, fmt};
 
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
 
-use autoconnect_ws_sm::SMError;
-use autopush_common::errors::ReportableError;
+use autoconnect_ws_sm::{SMError, WebPushClient};
+use autopush_common::{errors::ReportableError, sentry::event_from_error};
 
 /// WebPush WebSocket Handler Errors
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub struct WSError {
     pub kind: WSErrorKind,
     backtrace: Option<Backtrace>,
@@ -19,6 +19,12 @@ impl fmt::Display for WSError {
     }
 }
 
+impl Error for WSError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.kind.source()
+    }
+}
+
 // Forward From impls to WSError from WSErrorKind. Because From is reflexive,
 // this impl also takes care of From<WSErrorKind>.
 impl<T> From<T> for WSError
@@ -27,7 +33,7 @@ where
 {
     fn from(item: T) -> Self {
         let kind = WSErrorKind::from(item);
-        let backtrace = kind.capture_backtrace().then(Backtrace::new);
+        let backtrace = (kind.is_sentry_event() && kind.capture_backtrace()).then(Backtrace::new);
         Self { kind, backtrace }
     }
 }
@@ -51,24 +57,41 @@ impl WSError {
     pub fn close_description(&self) -> &str {
         self.kind.as_ref()
     }
+
+    /// Emit an event for this Error to Sentry
+    pub fn capture_sentry_event(&self, client: Option<WebPushClient>) {
+        if !self.is_sentry_event() {
+            return;
+        }
+        let mut event = event_from_error(self);
+        if let Some(client) = client {
+            client.add_sentry_info(&mut event);
+        }
+        sentry::capture_event(event);
+    }
 }
 
 impl ReportableError for WSError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self.kind {
+            WSErrorKind::SM(e) => Some(e),
+            _ => None,
+        }
+    }
+
     fn backtrace(&self) -> Option<&Backtrace> {
         self.backtrace.as_ref()
     }
 
     fn is_sentry_event(&self) -> bool {
-        match &self.kind {
-            WSErrorKind::SM(e) => e.is_sentry_event(),
-            e => !matches!(e, WSErrorKind::Json(_)),
-        }
+        self.kind.is_sentry_event()
     }
 
     fn metric_label(&self) -> Option<&'static str> {
         match &self.kind {
             WSErrorKind::SM(e) => e.metric_label(),
-            // TODO:
+            // Legacy autoconnect ignored these: possibly not worth tracking
+            WSErrorKind::Protocol(_) => Some("ua.ws_protocol_error"),
             _ => None,
         }
     }
@@ -105,14 +128,52 @@ pub enum WSErrorKind {
 }
 
 impl WSErrorKind {
+    /// Whether this error is reported to Sentry
+    fn is_sentry_event(&self) -> bool {
+        match self {
+            WSErrorKind::SM(e) => e.is_sentry_event(),
+            WSErrorKind::RegistryDisconnected => true,
+            _ => false,
+        }
+    }
+
     /// Whether this variant has a `Backtrace` captured
     ///
-    /// Some Error variants have obvious call sites and thus don't need a
-    /// `Backtrace`
+    /// Some Error variants have obvious call sites or more relevant backtraces
+    /// in their sources and thus don't need a `Backtrace`. Furthermore
+    /// backtraces are only captured for variants returning true from
+    /// [Self::is_sentry_event].
     fn capture_backtrace(&self) -> bool {
-        matches!(
-            self,
-            WSErrorKind::Json(_) | WSErrorKind::Protocol(_) | WSErrorKind::SessionClosed(_)
-        )
+        // Nothing currently (RegistryDisconnected has a unique call site) but
+        // we may want to capture other variants in the future
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use autoconnect_ws_sm::__test_sm_reqwest_error;
+    use autopush_common::sentry::event_from_error;
+
+    use super::{WSError, WSErrorKind};
+
+    #[actix_web::test]
+    async fn sentry_event() {
+        // A chain of errors: SMError -> WSError -> reqwest::Error -> BadScheme
+        let e: WSError = WSErrorKind::SM(__test_sm_reqwest_error().await).into();
+        let event = event_from_error(&e);
+        assert_eq!(event.exception.len(), 4);
+
+        // Source of the reqwest::Error (BadScheme)
+        assert_eq!(event.exception[0].stacktrace, None);
+        // reqwest::Error
+        assert_eq!(event.exception[1].ty, "reqwest::Error");
+        assert_eq!(event.exception[1].stacktrace, None);
+        // SMError w/ ReportableError::backtrace
+        assert_eq!(event.exception[2].ty, "SMError");
+        assert!(event.exception[2].stacktrace.is_some());
+        // WSError
+        assert_eq!(event.exception[3].ty, "WSError");
+        assert_eq!(event.exception[3].stacktrace, None);
     }
 }

@@ -44,7 +44,7 @@ pub struct HelloResponse {
     pub uaid: Option<Uuid>,
     pub message_month: String,
     pub check_storage: bool,
-    pub reset_uaid: bool,
+    pub old_record_version: bool,
     pub rotate_message_table: bool,
     pub connected_at: u64,
     // Exists when we didn't register this user during HELLO
@@ -183,7 +183,6 @@ impl DynamoStorage {
         let ddb = self.ddb.clone();
         let router_url = router_url.to_string();
         let router_table_name = self.router_table_name.clone();
-        let connected_at = connected_at;
 
         response.and_then(move |(mut hello_response, user_opt)| {
             trace!(

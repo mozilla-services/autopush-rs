@@ -9,50 +9,51 @@ import logging
 import os
 import random
 import signal
-import string
 import socket
+import string
 import subprocess
-from typing import Any, Optional
-
 import sys
 import time
 import uuid
-from jose import jws
+from queue import Empty, Queue
 from threading import Event, Thread
+from typing import Any
 from unittest import SkipTest
+from urllib.parse import urlparse
 
 import bottle
 import ecdsa
 import psutil
 import requests
-import websocket
 import twisted.internet.base
-from .db import (
-    DynamoDBResource,
-    create_message_table_ddb,
-    get_router_table,
-    base64url_encode,
-)
+import websocket
 from cryptography.fernet import Fernet
-from queue import Empty, Queue
+from jose import jws
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.threads import deferToThread
 from twisted.trial import unittest
-from urllib.parse import urlparse
+
+from .db import (
+    DynamoDBResource,
+    base64url_encode,
+    create_message_table_ddb,
+    get_router_table,
+)
 
 app = bottle.Bottle()
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 here_dir = os.path.abspath(os.path.dirname(__file__))
-root_dir = os.path.dirname(here_dir)
+tests_dir = os.path.dirname(here_dir)
+root_dir = os.path.dirname(tests_dir)
 
-DDB_JAR = os.path.join(root_dir, "tests", "ddb", "DynamoDBLocal.jar")
-DDB_LIB_DIR = os.path.join(root_dir, "tests", "ddb", "DynamoDBLocal_lib")
-DDB_PROCESS: Optional[subprocess.Popen] = None
-BT_PROCESS: Optional[subprocess.Popen] = None
-BT_DB_SETTINGS: Optional[str] = None
+DDB_JAR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal.jar")
+DDB_LIB_DIR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal_lib")
+DDB_PROCESS: subprocess.Popen | None = None
+BT_PROCESS: subprocess.Popen | None = None
+BT_DB_SETTINGS: str | None = None
 
 twisted.internet.base.DelayedCall.debug = True
 
@@ -60,9 +61,7 @@ ROUTER_TABLE = os.environ.get("ROUTER_TABLE", "router_int_test")
 MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
 MSG_LIMIT = 20
 
-CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode(
-    "utf-8"
-)
+CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode("utf-8")
 CONNECTION_PORT = 9150
 ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
@@ -70,35 +69,46 @@ MP_CONNECTION_PORT = 9052
 MP_ROUTER_PORT = 9072
 
 CONNECTION_BINARY = os.environ.get("CONNECTION_BINARY", "autopush_rs")
-CONNECTION_SETTINGS_PREFIX = os.environ.get(
-    "CONNECTION_SETTINGS_PREFIX", "autopush__"
-)
+CONNECTION_SETTINGS_PREFIX = os.environ.get("CONNECTION_SETTINGS_PREFIX", "autopush__")
 
-CN_SERVER: Optional[subprocess.Popen] = None
-CN_MP_SERVER: Optional[subprocess.Popen] = None
-EP_SERVER: Optional[subprocess.Popen] = None
+CN_SERVER: subprocess.Popen | None = None
+CN_MP_SERVER: subprocess.Popen | None = None
+EP_SERVER: subprocess.Popen | None = None
 MOCK_SERVER_THREAD = None
 CN_QUEUES: list = []
 EP_QUEUES: list = []
 STRICT_LOG_COUNTS = True
 
-modules = ["autoconnect", "autoconnect_common", "autoconnect_web", "autoconnect_ws", "autoconnect_ws_sm", "autoendpoint", "autopush", "autopush_common"]
+modules = [
+    "autoconnect",
+    "autoconnect_common",
+    "autoconnect_web",
+    "autoconnect_ws",
+    "autoconnect_ws_sm",
+    "autoendpoint",
+    "autopush",
+    "autopush_common",
+]
 log_string = [f"{x}=trace" for x in modules]
-RUST_LOG = ",".join(log_string)+",error"
+RUST_LOG = ",".join(log_string) + ",error"
 
 
 def get_free_port() -> int:
+    port: int
     s = socket.socket(socket.AF_INET, type=socket.SOCK_STREAM)
     s.bind(("localhost", 0))
     address, port = s.getsockname()
     s.close()
     return port
 
+
 """Try reading the database settings from the environment
 
 If that points to a file, read the settings from that file.
 """
-def get_db_settings() -> Optional[dict[str, str | int | float]] :
+
+
+def get_db_settings() -> str | dict[str, str | int | float] | None:
     env_var = os.environ.get("DB_SETTINGS")
     if env_var:
         if os.path.isfile(env_var):
@@ -117,17 +127,18 @@ def get_db_settings() -> Optional[dict[str, str | int | float]] :
         )
     )
 
-MOCK_SERVER_PORT = get_free_port()
+
+MOCK_SERVER_PORT: Any = get_free_port()
 MOCK_MP_SERVICES: dict = {}
 MOCK_MP_TOKEN: str = "Bearer {}".format(uuid.uuid4().hex)
-MOCK_MP_POLLED = Event()
-MOCK_SENTRY_QUEUE = Queue()
+MOCK_MP_POLLED: Event = Event()
+MOCK_SENTRY_QUEUE: Queue = Queue()
 
 """Connection Server Config:
 For local test debugging, set `AUTOPUSH_CN_CONFIG=_url_` to override
 creation of the local server.
 """
-CONNECTION_CONFIG: dict[str, str | int | float] = dict(
+CONNECTION_CONFIG: dict[str, Any] = dict(
     hostname="localhost",
     port=CONNECTION_PORT,
     endpoint_hostname="localhost",
@@ -152,9 +163,7 @@ CONNECTION_CONFIG: dict[str, str | int | float] = dict(
 For local test debugging, set `AUTOPUSH_MP_CONFIG=_url_` to override
 creation of the local server.
 """
-MEGAPHONE_CONFIG: dict[str, str | int | float | None] = copy.deepcopy(
-    CONNECTION_CONFIG
-)
+MEGAPHONE_CONFIG: dict[str, str | int | float | None] = copy.deepcopy(CONNECTION_CONFIG)
 MEGAPHONE_CONFIG.update(
     port=MP_CONNECTION_PORT,
     endpoint_port=ENDPOINT_PORT,
@@ -163,9 +172,7 @@ MEGAPHONE_CONFIG.update(
     auto_ping_timeout=10.0,
     close_handshake_timeout=5,
     max_connections=5000,
-    megaphone_api_url="http://localhost:{port}/v1/broadcasts".format(
-        port=MOCK_SERVER_PORT
-    ),
+    megaphone_api_url="http://localhost:{port}/v1/broadcasts".format(port=MOCK_SERVER_PORT),
     megaphone_api_token=MOCK_MP_TOKEN,
     megaphone_poll_interval=1,
 )
@@ -189,12 +196,12 @@ class Client(object):
 
     def __init__(self, url) -> None:
         self.url: str = url
-        self.uaid: Optional[uuid.UUID] = None
-        self.ws: Optional[websocket.WebSocket] = None
+        self.uaid: uuid.UUID | None = None
+        self.ws: websocket.WebSocket | None = None
         self.use_webpush: bool = True
-        self.channels = {}
-        self.messages = {}
-        self.notif_response: Optional[requests.Response] = None
+        self.channels: dict[str, str] = {}
+        self.messages: dict[str, str] = {}
+        self.notif_response: requests.Response | None = None
         self._crypto_key: str = """\
 keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 """
@@ -214,23 +221,22 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         else:
             return f
 
-    def connect(self, connection_port: Optional[int] = None):
+    def connect(self, connection_port: int | None = None):
         url = self.url
         if connection_port:  # pragma: nocover
             url = "ws://localhost:{}/".format(connection_port)
         self.ws = websocket.create_connection(url, header=self.headers)
         return self.ws.connected
 
-    def hello(
-        self, uaid: Optional[str] = None, services: Optional[list[str]] = None
-    ):
+    def hello(self, uaid: str | None = None, services: list[str] | None = None):
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected")
+
         if self.channels:
             chans = list(self.channels.keys())
         else:
             chans = []
-        hello_dict: dict[str, Any] = dict(
-            messageType="hello", use_webpush=True, channelIDs=chans
-        )
+        hello_dict: dict[str, Any] = dict(messageType="hello", use_webpush=True, channelIDs=chans)
         if uaid or self.uaid:
             hello_dict["uaid"] = uaid or self.uaid
         if services:  # pragma: nocover
@@ -253,18 +259,20 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.uaid = result["uaid"]
         return result
 
-    def broadcast_subscribe(self, services: list[str]):  # pragma: nocover
-        msg = json.dumps(
-            dict(messageType="broadcast_subscribe", broadcasts=services)
-        )
+    def broadcast_subscribe(self, services: list[str]):
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected")
+
+        msg = json.dumps(dict(messageType="broadcast_subscribe", broadcasts=services))
         log.debug("Send: %s", msg)
         self.ws.send(msg)
 
-    def register(self, chid: Optional[str] = None, key=None, status=200):
+    def register(self, chid: str | None = None, key=None, status=200):
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected")
+
         chid = chid or str(uuid.uuid4())
-        msg = json.dumps(
-            dict(messageType="register", channelID=chid, key=key)
-        )
+        msg = json.dumps(dict(messageType="register", channelID=chid, key=key))
         log.debug("Send: %s", msg)
         self.ws.send(msg)
         rcv = self.ws.recv()
@@ -329,9 +337,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         if vapid:
             headers.update({"Authorization": "Bearer " + vapid.get("auth")})
             ckey = 'p256ecdsa="' + vapid.get("crypto-key") + '"'
-            headers.update(
-                {"Crypto-Key": headers.get("Crypto-Key", "") + ";" + ckey}
-            )
+            headers.update({"Crypto-Key": headers.get("Crypto-Key", "") + ";" + ckey})
         if topic:
             headers["Topic"] = topic
         body = data or ""
@@ -341,9 +347,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         log.debug("%s body: %s", method, body)
         log.debug("  headers: %s", headers)
-        resp = requests.request(
-            method=method, url=url.geturl(), data=body, headers=headers
-        )
+        resp = requests.request(method=method, url=url.geturl(), data=body, headers=headers)
         log.debug("%s Response (%s): %s", method, resp.status_code, resp.text)
         assert resp.status_code == status, "Expected %d, got %d" % (
             status,
@@ -432,8 +436,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
 def _get_vapid(
     key: ecdsa.SigningKey | None = None,
-    payload: Optional[dict[str, str | int]] = None,
-    endpoint: Optional[str] = None,
+    payload: dict[str, str | int] | None = None,
+    endpoint: str | None = None,
 ) -> dict[str, str | bytes]:
     global CONNECTION_CONFIG
 
@@ -452,9 +456,7 @@ def _get_vapid(
     if not payload.get("aud"):
         payload["aud"] = endpoint
     if not key:
-        key: ecdsa.SigningKey = ecdsa.SigningKey.generate(
-            curve=ecdsa.NIST256p
-        )
+        key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
     vk: ecdsa.VerifyingKey = key.get_verifying_key()
     auth: str = jws.sign(payload, key, algorithm="ES256").strip("=")
     crypto_key: str = base64url_encode((b"\4" + vk.to_string()))
@@ -495,20 +497,14 @@ def process_logs(testcase):
     if not STRICT_LOG_COUNTS:
         return
 
-    msg = (
-        "endpoint node emitted excessive log statements, count: {} > max: {}"
-    )
+    msg = "endpoint node emitted excessive log statements, count: {} > max: {}"
     # Give an extra to endpoint for potential startup log messages
     # (e.g. when running tests individually)
     max_endpoint_logs = testcase.max_endpoint_logs + 1
-    assert endpoint_count <= max_endpoint_logs, msg.format(
-        endpoint_count, max_endpoint_logs
-    )
+    assert endpoint_count <= max_endpoint_logs, msg.format(endpoint_count, max_endpoint_logs)
 
     msg = "conn node emitted excessive log statements, count: {} > max: {}"
-    assert conn_count <= testcase.max_conn_logs, msg.format(
-        conn_count, testcase.max_conn_logs
-    )
+    assert conn_count <= testcase.max_conn_logs, msg.format(conn_count, testcase.max_conn_logs)
 
 
 def max_logs(endpoint=None, conn=None):
@@ -594,24 +590,34 @@ def capture_output_to_queue(output_stream):
     t.start()
     return log_queue
 
+
 def setup_bt():
     global BT_PROCESS, BT_DB_SETTINGS
     BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
-        BT_DB_SETTINGS = os.environ.get("BT_DB_SETTINGS", json.dumps({
-            "table_name": "projects/test/instances/test/tables/autopush",
-        }))
+        BT_DB_SETTINGS = os.environ.get(
+            "BT_DB_SETTINGS",
+            json.dumps(
+                {
+                    "table_name": "projects/test/instances/test/tables/autopush",
+                }
+            ),
+        )
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/test/tables/autopush"
         log.debug("🐍🟢 Starting bigtable emulator")
         cmd_start = "cbt -project test -instance test".split(" ")
-        vv = subprocess.call(cmd_start + "createtable autopush".split(" "), stderr=subprocess.STDOUT)
+        vv = subprocess.call(
+            cmd_start + "createtable autopush".split(" "), stderr=subprocess.STDOUT
+        )
         vv = subprocess.call(cmd_start + "createfamily autopush message".split(" "))
         vv = subprocess.call(cmd_start + "createfamily autopush message_topic".split(" "))
         vv = subprocess.call(cmd_start + "createfamily autopush router".split(" "))
         vv = subprocess.call(cmd_start + "setgcpolicy autopush message maxage=1s".split(" "))
-        vv = subprocess.call(cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" "))
+        vv = subprocess.call(
+            cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" ")
+        )
         vv = subprocess.call(cmd_start + "setgcpolicy autopush router maxversions=1".split(" "))
         log.debug(vv)
     except Exception as e:
@@ -641,23 +647,19 @@ def setup_dynamodb():
 
     # Setup the necessary tables
     boto_resource = DynamoDBResource()
-    create_message_table_ddb(MESSAGE_TABLE, boto_resource=boto_resource)
-    get_router_table(ROUTER_TABLE, boto_resource=boto_resource)
+    create_message_table_ddb(boto_resource, MESSAGE_TABLE)
+    get_router_table(boto_resource, ROUTER_TABLE)
 
 
 def setup_mock_server():
     global MOCK_SERVER_THREAD
 
-    MOCK_SERVER_THREAD = Thread(
-        target=app.run, kwargs=dict(port=MOCK_SERVER_PORT, debug=True)
-    )
+    MOCK_SERVER_THREAD = Thread(target=app.run, kwargs=dict(port=MOCK_SERVER_PORT, debug=True))
     MOCK_SERVER_THREAD.daemon = True
     MOCK_SERVER_THREAD.start()
 
     # Sentry API mock
-    os.environ["SENTRY_DSN"] = "http://foo:bar@localhost:{}/1".format(
-        MOCK_SERVER_PORT
-    )
+    os.environ["SENTRY_DSN"] = "http://foo:bar@localhost:{}/1".format(MOCK_SERVER_PORT)
 
 
 def setup_connection_server(connection_binary):
@@ -668,7 +670,6 @@ def setup_connection_server(connection_binary):
     # underscore as a separator (e.g. "AUTOEND__FCM__MIN_TTL" ==
     # `settings.fcm.min_ttl`)
     url = os.getenv("AUTOPUSH_CN_SERVER")
-    features = []
     if url is not None:
         parsed = urlparse(url)
         CONNECTION_CONFIG["hostname"] = parsed.hostname
@@ -713,7 +714,7 @@ def setup_megaphone_server(connection_binary):
     else:
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
-    log.debug("🐍🟢 Starting Megaphone server: {}".format(' '.join(cmd)))
+    log.debug("🐍🟢 Starting Megaphone server: {}".format(" ".join(cmd)))
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
 
 
@@ -740,7 +741,7 @@ def setup_endpoint_server():
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
 
-    log.debug("🐍🟢 Starting Endpoint server: {}".format(' '.join(cmd)))
+    log.debug("🐍🟢 Starting Endpoint server: {}".format(" ".join(cmd)))
     EP_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -821,7 +822,7 @@ class TestRustWebPush(unittest.TestCase):
 
     def host_endpoint(self, client):
         parsed = urlparse(list(client.channels.values())[0])
-        "{}://{}".format(parsed.scheme, parsed.netloc)
+        return "{}://{}".format(parsed.scheme, parsed.netloc)
 
     @inlineCallbacks
     def quick_register(self):
@@ -844,7 +845,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     @max_logs(conn=4)
-    def test_sentry_output(self):
+    def test_sentry_output_autoconnect(self):
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
@@ -856,18 +857,35 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
         # LogCheck does throw an error every time
-        requests.get(
-            "http://localhost:{}/v1/err/crit".format(CONNECTION_PORT)
-        )
+        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT))
+        event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
+        # new autoconnect emits 2 events
         try:
-            data = MOCK_SENTRY_QUEUE.get(timeout=5)
-        except ValueError as ex:
-            if not ex.contains("I/O operation on closed file"):
-                raise ex
-            # python2 on circleci will fail this test due to an IO error.
-            # Local testing shows that this test works.
-            # This may resolve by updating tests to python3 (see #334)
-        assert data["exception"]["values"][0]["value"] == "LogCheck"
+            MOCK_SENTRY_QUEUE.get(timeout=1)
+        except Empty:
+            pass
+        assert event1["exception"]["values"][0]["value"] == "LogCheck"
+
+    @inlineCallbacks
+    @max_logs(endpoint=1)
+    def test_sentry_output_autoendpoint(self):
+        if os.getenv("SKIP_SENTRY"):
+            SkipTest("Skipping sentry test")
+            return
+
+        client = yield self.quick_register()
+        endpoint = self.host_endpoint(client)
+        yield self.shut_down(client)
+
+        requests.get("{}/__error__".format(endpoint))
+        # 2 events excpted: 1 from a panic and 1 from a returned Error
+        event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
+        event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
+        values = (
+            event1["exception"]["values"][0]["value"],
+            event2["exception"]["values"][0]["value"],
+        )
+        assert sorted(values) == ["ERROR:Success", "LogCheck"]
 
     @max_logs(conn=4)
     def test_no_sentry_output(self):
@@ -993,13 +1011,9 @@ class TestRustWebPush(unittest.TestCase):
     def test_basic_delivery_with_invalid_vapid(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
-        vapid_info = _get_vapid(
-            payload=self.vapid_payload, endpoint=self.host_endpoint(client)
-        )
+        vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
         vapid_info["crypto-key"] = "invalid"
-        yield client.send_notification(
-            data=data, vapid=vapid_info, status=401
-        )
+        yield client.send_notification(data=data, vapid=vapid_info, status=401)
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -1014,9 +1028,7 @@ class TestRustWebPush(unittest.TestCase):
             }
         )
         vapid_info["crypto-key"] = "invalid"
-        yield client.send_notification(
-            data=data, vapid=vapid_info, status=401
-        )
+        yield client.send_notification(data=data, vapid=vapid_info, status=401)
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -1028,9 +1040,7 @@ class TestRustWebPush(unittest.TestCase):
             endpoint=self.host_endpoint(client),
         )
         vapid_info["auth"] = ""
-        yield client.send_notification(
-            data=data, vapid=vapid_info, status=401
-        )
+        yield client.send_notification(data=data, vapid=vapid_info, status=401)
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -1044,22 +1054,16 @@ class TestRustWebPush(unittest.TestCase):
             }
         )
         vapid_info["auth"] = vapid_info["auth"][:-3] + "bad"
-        yield client.send_notification(
-            data=data, vapid=vapid_info, status=401
-        )
+        yield client.send_notification(data=data, vapid=vapid_info, status=401)
         yield self.shut_down(client)
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_ckey(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
-        vapid_info = _get_vapid(
-            payload=self.vapid_payload, endpoint=self.host_endpoint(client)
-        )
+        vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
         vapid_info["crypto-key"] = "invalid|"
-        yield client.send_notification(
-            data=data, vapid=vapid_info, status=401
-        )
+        yield client.send_notification(data=data, vapid=vapid_info, status=401)
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -1133,9 +1137,7 @@ class TestRustWebPush(unittest.TestCase):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        yield client.send_notification(
-            data=data, ttl=1, topic="test", status=201
-        )
+        yield client.send_notification(data=data, ttl=1, topic="test", status=201)
         yield client.sleep(2)
         yield client.connect()
         yield client.hello()
@@ -1149,8 +1151,8 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_multiple_delivery_with_single_ack(self):
-        data = b'\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()
-        data2 = b':\xd8^\xac\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()
+        data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
+        data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
@@ -1189,8 +1191,8 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_multiple_delivery_with_multiple_ack(self):
-        data = b'\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()  # "FirstMessage"
-        data2 = b':\xd8^\xac\xc7\xac\xb1\xa8\x1e' + str(uuid.uuid4()).encode()    # "OtherMessage"
+        data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "FirstMessage"
+        data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "OtherMessage"
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
@@ -1218,7 +1220,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     def test_no_delivery_to_unregistered(self):
         data = str(uuid.uuid4())
-        client = yield self.quick_register()  # type: Client
+        client: Client = yield self.quick_register()
         assert client.channels
         chan = list(client.channels.keys())[0]
 
@@ -1231,10 +1233,7 @@ class TestRustWebPush(unittest.TestCase):
         result = yield client.send_notification(data=data, status=410)
 
         # Verify cache-control
-        assert (
-            client.notif_response.headers.get("Cache-Control")
-            == "max-age=86400"
-        )
+        assert client.notif_response.headers.get("Cache-Control") == "max-age=86400"
 
         assert result is None
         yield self.shut_down(client)
@@ -1281,13 +1280,13 @@ class TestRustWebPush(unittest.TestCase):
     @max_logs(endpoint=28)
     def test_ttl_batch_expired_and_good_one(self):
         data = str(uuid.uuid4()).encode()
-        data2 = base64.urlsafe_b64decode('0012') + str(uuid.uuid4()).encode()
-        print(data2);
+        data2 = base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode()
+        print(data2)
         client = yield self.quick_register()
         yield client.disconnect()
         for x in range(0, 12):
             prefix = base64.urlsafe_b64decode("{:04d}".format(x))
-            yield client.send_notification(data=prefix+data, ttl=1, status=201)
+            yield client.send_notification(data=prefix + data, ttl=1, status=201)
 
         yield client.send_notification(data=data2, status=201)
         time.sleep(1)
@@ -1345,9 +1344,7 @@ class TestRustWebPush(unittest.TestCase):
     def test_message_without_crypto_headers(self):
         data = str(uuid.uuid4())
         client = yield self.quick_register()
-        result = yield client.send_notification(
-            data=data, use_header=False, status=400
-        )
+        result = yield client.send_notification(data=data, use_header=False, status=400)
         assert result is None
         yield self.shut_down(client)
 
@@ -1417,9 +1414,7 @@ class TestRustWebPush(unittest.TestCase):
 
         client = yield self.quick_register()
         bulk = "".join(
-            random.choice(
-                string.ascii_letters + string.digits + string.punctuation
-            )
+            random.choice(string.ascii_letters + string.digits + string.punctuation)
             for _ in range(0, 4216)
         )
         data = base64.urlsafe_b64encode(bytes(bulk, "utf-8"))
@@ -1486,9 +1481,7 @@ class TestRustWebPush(unittest.TestCase):
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
-        result = yield client.register(
-            chid=chid, key="af1883%&!@#*(", status=400
-        )
+        result = yield client.register(chid=chid, key="af1883%&!@#*(", status=400)
         assert result["status"] == 400
 
         yield self.shut_down(client)
@@ -1528,6 +1521,30 @@ class TestRustWebPush(unittest.TestCase):
             pass
         assert not client.ws.connected
         yield self.shut_down(client)
+
+    @inlineCallbacks
+    def test_internal_endpoints(self):
+        """Ensure an internal router endpoint isn't exposed on the public CONNECTION_PORT"""
+        client = yield self.quick_register()
+        parsed = (
+            urlparse(self._ws_url)._replace(scheme="http")._replace(path=f"/notif/{client.uaid}")
+        )
+
+        # We can't determine an AUTOPUSH_CN_SERVER's ROUTER_PORT
+        if not os.getenv("AUTOPUSH_CN_SERVER"):
+            url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
+            # First ensure the endpoint we're testing for on the public port exists where
+            # we expect it on the internal ROUTER_PORT
+            requests.put(url).raise_for_status()
+
+        try:
+            requests.put(parsed.geturl()).raise_for_status()
+        except requests.exceptions.ConnectionError:
+            pass
+        except requests.exceptions.HTTPError as e:
+            assert e.response.status_code == 404
+        else:
+            assert False
 
 
 class TestRustWebPushBroadcast(unittest.TestCase):
@@ -1593,10 +1610,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
-        assert (
-            result["broadcasts"]["errors"]["kinto:456"]
-            == "Broadcast not found"
-        )
+        assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
         yield self.shut_down(client)
 
     @inlineCallbacks
@@ -1645,10 +1659,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         client.broadcast_subscribe(old_ver)
         result = yield client.get_broadcast()
         assert result["broadcasts"]["kinto:123"] == "ver1"
-        assert (
-            result["broadcasts"]["errors"]["kinto:456"]
-            == "Broadcast not found"
-        )
+        assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
 
         yield self.shut_down(client)
 

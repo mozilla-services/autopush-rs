@@ -6,19 +6,22 @@ extern crate slog_scope;
 
 use std::{env, vec::Vec};
 
-use actix_web::HttpServer;
+use actix_http::HttpService;
+use actix_server::Server;
+use actix_service::map_config;
+use actix_web::dev::AppConfig;
 use docopt::Docopt;
 use serde::Deserialize;
 
 use autoconnect_settings::{AppState, Settings};
-use autoconnect_web::build_app;
+use autoconnect_web::{build_app, config, config_router};
 use autopush_common::{
     errors::{ApcErrorKind, Result},
     logging,
 };
 
 const USAGE: &str = "
-Usage: autopush_rs [options]
+Usage: autoconnect [options]
 
 Options:
     -h, --help                          Show this message.
@@ -47,7 +50,12 @@ async fn main() -> Result<()> {
     }
     let settings =
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
-    logging::init_logging(!settings.human_logs).expect("Logging failed to initialize");
+    logging::init_logging(
+        !settings.human_logs,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )
+    .expect("Logging failed to initialize");
     debug!("Starting up autoconnect...");
 
     // Sentry requires the environment variable "SENTRY_DSN".
@@ -67,21 +75,43 @@ async fn main() -> Result<()> {
 
     let port = settings.port;
     let router_port = settings.router_port;
+    let actix_max_connections = settings.actix_max_connections;
+    let actix_workers = settings.actix_workers;
     let app_state = AppState::from_settings(settings)?;
     app_state.init_and_spawn_megaphone_updater().await?;
 
     info!(
-        "Starting autoconnect on port {} (router_port: {})",
-        port, router_port
+        "Starting autoconnect on port: {} router_port: {} (available_parallelism: {:?})",
+        port,
+        router_port,
+        std::thread::available_parallelism()
     );
-    HttpServer::new(move || build_app!(app_state))
-        .bind(("0.0.0.0", port))?
-        .bind(("0.0.0.0", router_port))?
-        .run()
-        .await
-        .map_err(|e| e.into())
-        .map(|v| {
-            info!("Shutting down autoconnect");
-            v
-        })
+
+    let router_app_state = app_state.clone();
+    let mut builder = Server::build()
+        .bind("autoconnect", ("0.0.0.0", port), move || {
+            let app = build_app!(app_state, config);
+            HttpService::build()
+                // XXX: AppConfig::default() does *not* have correct values
+                // https://github.com/actix/actix-web/issues/3180
+                .finish(map_config(app, |_| AppConfig::default()))
+                .tcp()
+        })?
+        .bind("autoconnect-router", ("0.0.0.0", router_port), move || {
+            let app = build_app!(router_app_state, config_router);
+            HttpService::build()
+                // XXX:
+                .finish(map_config(app, |_| AppConfig::default()))
+                .tcp()
+        })?;
+    if let Some(max_connections) = actix_max_connections {
+        builder = builder.max_concurrent_connections(max_connections);
+    }
+    if let Some(workers) = actix_workers {
+        builder = builder.workers(workers);
+    }
+    builder.run().await?;
+
+    info!("Shutting down autoconnect");
+    Ok(())
 }

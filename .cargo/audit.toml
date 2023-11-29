@@ -6,4 +6,5 @@ ignore = [
     "RUSTSEC-2021-0124", # Bound by tokio restrictions, rusoto, reqwest, hyper...
     "RUSTSEC-2023-0034", # Bound by Rusoto 0.42, Reqwest 0.9, a2 0.5 requiring Hyper 0.12
     "RUSTSEC-2023-0052", # Bound by Rusoto 0.47, Rustls 0.20, hyper-rustls 0.22, a2 0.8
+    "RUSTSEC-2023-0065", # Bound by tokio-tungstenite
 ]

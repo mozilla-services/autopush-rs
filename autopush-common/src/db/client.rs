@@ -25,10 +25,11 @@ pub trait DbClient: Send + Sync {
     /// exists.
     async fn add_user(&self, user: &User) -> DbResult<()>;
 
-    /// Update a user in the database. An error will occur if the user does not
-    /// already exist, has a different router type, or has a newer
-    /// `connected_at` timestamp.
-    async fn update_user(&self, user: &User) -> DbResult<()>;
+    /// Update a user in the database. Returns whether the update occurred. The
+    /// update will not occur if the user does not already exist, has a
+    /// different router type, or has a newer `connected_at` timestamp.
+    // TODO: make the bool a #[must_use]
+    async fn update_user(&self, user: &User) -> DbResult<bool>;
 
     /// Read a user from the database
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>>;
@@ -45,10 +46,11 @@ pub trait DbClient: Send + Sync {
     /// Remove a channel from a user. Returns if the removed channel did exist.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool>;
 
-    /// Remove the node ID from a user in the router table.
-    /// The node ID will only be cleared if `connected_at` matches up with the
-    /// item's `connected_at`.
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()>;
+    /// Remove the node ID from a user in the router table. Returns whether the
+    /// removal occurred. The node ID will only be removed if `connected_at`
+    /// matches up with the item's `connected_at`.
+    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64)
+        -> DbResult<bool>;
 
     /// Save a message to the message table
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()>;

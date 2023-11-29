@@ -108,7 +108,12 @@ impl AutopushServer {
     }
 
     pub fn start(&self) {
-        logging::init_logging(!self.app_state.human_logs).expect("init_logging failed");
+        logging::init_logging(
+            !self.app_state.human_logs,
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("init_logging failed");
         let handles = Server::start(&self.app_state).expect("failed to start server");
         self.shutdown_handles.set(Some(handles));
     }

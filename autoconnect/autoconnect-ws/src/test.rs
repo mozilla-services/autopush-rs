@@ -25,7 +25,7 @@ fn uclient(app_state: AppState) -> UnidentifiedClient {
 async fn handshake_timeout() {
     let settings = Settings {
         open_handshake_timeout: Duration::from_secs_f32(0.15),
-        ..Default::default()
+        ..Settings::test_settings()
     };
     let client = uclient(AppState::from_settings(settings).unwrap());
 
@@ -67,7 +67,7 @@ async fn basic() {
 async fn websocket_ping() {
     let settings = Settings {
         auto_ping_interval: Duration::from_secs_f32(0.15),
-        ..Default::default()
+        ..Settings::test_settings()
     };
     let client = uclient(AppState {
         db: hello_db().into_boxed_arc(),
@@ -92,7 +92,7 @@ async fn auto_ping_timeout() {
     let settings = Settings {
         auto_ping_interval: Duration::from_secs_f32(0.15),
         auto_ping_timeout: Duration::from_secs_f32(0.15),
-        ..Default::default()
+        ..Settings::test_settings()
     };
     let client = uclient(AppState {
         db: hello_db().into_boxed_arc(),
@@ -116,7 +116,7 @@ async fn auto_ping_timeout_after_pong() {
     let settings = Settings {
         auto_ping_interval: Duration::from_secs_f32(0.15),
         auto_ping_timeout: Duration::from_secs_f32(0.15),
-        ..Default::default()
+        ..Settings::test_settings()
     };
     let client = uclient(AppState {
         db: hello_db().into_boxed_arc(),

@@ -6,11 +6,14 @@ use crate::routers::RouterError;
 use actix_web::{
     dev::ServiceResponse,
     error::{JsonPayloadError, PayloadError, ResponseError},
+    http::header::{CacheControl, CacheDirective},
     http::StatusCode,
     middleware::ErrorHandlerResponse,
     HttpResponse, Result,
 };
-use backtrace::Backtrace; // Sentry uses the backtrace crate, not std::backtrace.
+// Sentry uses the backtrace crate, not std::backtrace.
+use backtrace::Backtrace;
+use reqwest::header;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
@@ -25,6 +28,7 @@ pub type ApiResult<T> = Result<T, ApiError>;
 
 /// A link for more info on the returned error
 const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#error-codes";
+const RETRY_AFTER_PERIOD: &str = "120"; // retry after 2 minutes;
 
 /// The main error type.
 #[derive(Debug)]
@@ -262,19 +266,9 @@ impl ApiErrorKind {
     }
 }
 
-// Print out the error and backtrace, including source errors
 impl Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}\nBacktrace: \n{:?}", self.kind, self.backtrace)?;
-
-        // Go down the chain of errors
-        let mut error: &dyn Error = &self.kind;
-        while let Some(source) = error.source() {
-            write!(f, "\n\nCaused by: {source}")?;
-            error = source;
-        }
-
-        Ok(())
+        self.kind.fmt(f)
     }
 }
 
@@ -306,8 +300,14 @@ impl ResponseError for ApiError {
     fn error_response(&self) -> HttpResponse {
         let mut builder = HttpResponse::build(self.kind.status());
 
-        if self.status_code() == 410 {
-            builder.insert_header(("Cache-Control", "max-age=86400"));
+        match self.status_code() {
+            StatusCode::GONE => {
+                builder.insert_header(CacheControl(vec![CacheDirective::MaxAge(86400)]));
+            }
+            StatusCode::SERVICE_UNAVAILABLE => {
+                builder.insert_header((header::RETRY_AFTER, RETRY_AFTER_PERIOD));
+            }
+            _ => {}
         }
 
         builder.json(self)
@@ -332,6 +332,13 @@ impl Serialize for ApiError {
 }
 
 impl ReportableError for ApiError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self.kind {
+            ApiErrorKind::EndpointUrl(e) => Some(e),
+            _ => None,
+        }
+    }
+
     fn backtrace(&self) -> Option<&Backtrace> {
         Some(&self.backtrace)
     }
@@ -342,6 +349,14 @@ impl ReportableError for ApiError {
 
     fn metric_label(&self) -> Option<&'static str> {
         self.kind.metric_label()
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        match &self.kind {
+            ApiErrorKind::Router(e) => e.extras(),
+            ApiErrorKind::LogCheck => vec![("coffee", "Unsupported".to_owned())],
+            _ => vec![],
+        }
     }
 }
 

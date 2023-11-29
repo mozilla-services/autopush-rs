@@ -1,8 +1,10 @@
 //! Various small utilities accumulated over time for the WebPush server
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::time::Duration;
 
 use base64::Engine;
+use serde::{Deserialize, Deserializer};
 
 pub mod timing;
 pub mod user_agent;
@@ -39,4 +41,12 @@ pub fn b64_decode_std(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
 
 pub fn b64_encode_std(input: &Vec<u8>) -> String {
     base64::engine::general_purpose::STANDARD_NO_PAD.encode(input)
+}
+
+pub fn deserialize_u32_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let seconds: u32 = Deserialize::deserialize(deserializer)?;
+    Ok(Duration::from_secs(seconds.into()))
 }

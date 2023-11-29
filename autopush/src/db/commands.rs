@@ -424,7 +424,6 @@ pub fn lookup_user(
     let uaid2 = *uaid;
     let router_table = router_table_name.to_string();
     let messages_tables = message_table_names.to_vec();
-    let connected_at = connected_at;
     let router_url = router_url.to_string();
     let response = response.and_then(move |data| -> MyFuture<_> {
         let mut hello_response = HelloResponse {
@@ -485,7 +484,7 @@ fn handle_user_result(
     hello_response.check_storage = true;
     hello_response.rotate_message_table = user_month != *cur_month;
     hello_response.message_month = user_month;
-    hello_response.reset_uaid = user
+    hello_response.old_record_version = user
         .record_version
         .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION);
 

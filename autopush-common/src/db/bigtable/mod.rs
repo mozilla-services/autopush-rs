@@ -20,17 +20,19 @@
 /// but `/foo.*/` will)
 ///
 mod bigtable_client;
+mod pool;
 
 pub use bigtable_client::error::BigTableError;
 pub use bigtable_client::BigTableClientImpl;
 
 use serde::Deserialize;
+use std::time::Duration;
 
 use crate::db::error::DbError;
+use crate::util::deserialize_u32_to_duration;
 
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
 pub struct BigTableDbSettings {
     /// The Table name matches the GRPC template for table paths.
     /// e.g. `projects/{projectid}/instances/{instanceid}/tables/{tablename}`
@@ -46,25 +48,20 @@ pub struct BigTableDbSettings {
     pub message_family: String,
     #[serde(default)]
     pub message_topic_family: String,
-}
-
-/// NOTE: autopush will not autogenerate these families. They should
-/// be created when the table is first provisioned. See
-/// [BigTable schema](https://cloud.google.com/bigtable/docs/schema-design)
-///
-/// BE SURE TO CONFIRM the names of the families. These are not checked on
-/// initialization, but will throw errors if not present or incorrectly
-/// spelled.
-///
-impl Default for BigTableDbSettings {
-    fn default() -> Self {
-        Self {
-            table_name: "autopush".to_owned(),
-            router_family: "router".to_owned(),
-            message_family: "message".to_owned(),
-            message_topic_family: "message_topic".to_owned(),
-        }
-    }
+    #[serde(default)]
+    pub database_pool_max_size: Option<u32>,
+    /// Max time (in seconds) to wait for a database connection
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub database_pool_connection_timeout: Duration,
+    /// Max time (in seconds) a connection should live
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub database_pool_connection_ttl: Duration,
+    /// Max idle time(in seconds) for a connection
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub database_pool_max_idle: Duration,
 }
 
 impl TryFrom<&str> for BigTableDbSettings {

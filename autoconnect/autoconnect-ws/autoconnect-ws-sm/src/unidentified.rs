@@ -8,13 +8,10 @@ use autoconnect_common::{
     protocol::{BroadcastValue, ClientMessage, ServerMessage},
 };
 use autoconnect_settings::{AppState, Settings};
-use autopush_common::{
-    db::{error::DbResult, User},
-    util::ms_since_epoch,
-};
+use autopush_common::{db::User, util::ms_since_epoch};
 
 use crate::{
-    error::SMError,
+    error::{SMError, SMErrorKind},
     identified::{process_existing_user, ClientFlags, WebPushClient},
 };
 
@@ -69,23 +66,32 @@ impl UnidentifiedClient {
             uaid
         );
 
-        let uaid = uaid
-            .as_deref()
-            .map(Uuid::try_parse)
-            .transpose()
-            .map_err(|_| SMError::invalid_message("Invalid uaid".to_owned()))?;
+        // Ignore invalid uaids (treat as None) so they'll be issued a new one
+        let original_uaid = uaid.as_deref().and_then(|uaid| Uuid::try_parse(uaid).ok());
 
         let GetOrCreateUser {
             user,
             existing_user,
             flags,
-        } = self.get_or_create_user(uaid).await?;
+        } = self.get_or_create_user(original_uaid).await?;
         let uaid = user.uaid;
         debug!(
             "💬UnidentifiedClient::on_client_msg Hello! uaid: {} existing_user: {}",
             uaid, existing_user,
         );
-        let _ = self.app_state.metrics.incr("ua.command.hello");
+        self.app_state
+            .metrics
+            .incr_with_tags("ua.command.hello")
+            .with_tag("uaid", {
+                if existing_user {
+                    "existing"
+                } else if original_uaid.unwrap_or(uaid) != uaid {
+                    "reassigned"
+                } else {
+                    "new"
+                }
+            })
+            .send();
 
         let (broadcast_subs, broadcasts) = self
             .broadcast_init(&Broadcast::from_hashmap(broadcasts.unwrap_or_default()))
@@ -113,7 +119,7 @@ impl UnidentifiedClient {
     }
 
     /// Lookup a User or return a new User record if the lookup failed
-    async fn get_or_create_user(&self, uaid: Option<Uuid>) -> DbResult<GetOrCreateUser> {
+    async fn get_or_create_user(&self, uaid: Option<Uuid>) -> Result<GetOrCreateUser, SMError> {
         trace!("❓UnidentifiedClient::get_or_create_user");
         let connected_at = ms_since_epoch();
 
@@ -126,7 +132,10 @@ impl UnidentifiedClient {
                     user.node_id = Some(self.app_state.router_url.to_owned());
                     user.connected_at = connected_at;
                     user.set_last_connect();
-                    self.app_state.db.update_user(&user).await?;
+                    if !self.app_state.db.update_user(&user).await? {
+                        let _ = self.app_state.metrics.incr("ua.already_connected");
+                        return Err(SMErrorKind::AlreadyConnected.into());
+                    }
                     return Ok(GetOrCreateUser {
                         user,
                         existing_user: true,
@@ -255,6 +264,30 @@ mod tests {
         });
         let msg = ClientMessage::Hello {
             uaid: None,
+            channel_ids: None,
+            use_webpush: Some(true),
+            broadcasts: None,
+        };
+        client.on_client_msg(msg).await.expect("Hello failed");
+    }
+
+    #[tokio::test]
+    async fn hello_empty_uaid() {
+        let client = uclient(Default::default());
+        let msg = ClientMessage::Hello {
+            uaid: Some("".to_owned()),
+            channel_ids: None,
+            use_webpush: Some(true),
+            broadcasts: None,
+        };
+        client.on_client_msg(msg).await.expect("Hello failed");
+    }
+
+    #[tokio::test]
+    async fn hello_invalid_uaid() {
+        let client = uclient(Default::default());
+        let msg = ClientMessage::Hello {
+            uaid: Some("invalid".to_owned()),
             channel_ids: None,
             use_webpush: Some(true),
             broadcasts: None,

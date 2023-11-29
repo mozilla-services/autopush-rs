@@ -9,11 +9,10 @@ use async_trait::async_trait;
 use cadence::StatsdClient;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
+use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
+use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use google_cloud_rust_raw::bigtable::v2::{
-    bigtable::ReadRowsRequest, bigtable_grpc::BigtableClient,
-};
-use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
+use grpcio::Channel;
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -26,6 +25,7 @@ use crate::db::{
 use crate::notification::STANDARD_NOTIFICATION_PREFIX;
 
 use self::row::Row;
+use super::pool::BigTablePool;
 use super::BigTableDbSettings;
 
 pub mod cell;
@@ -63,12 +63,10 @@ impl From<Uaid> for String {
 /// Wrapper for the BigTable connection
 pub struct BigTableClientImpl {
     pub(crate) settings: BigTableDbSettings,
-    /// The grpc client connection to BigTable (it carries no big table specific info)
-    client: BigtableClient,
     /// Metrics client
     _metrics: Arc<StatsdClient>,
-    /// Connection Channel
-    chan: Channel,
+    /// Connection Channel (used for alternate calls)
+    pool: BigTablePool,
 }
 
 fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
@@ -126,67 +124,15 @@ fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -
 ///
 impl BigTableClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
-        let env = Arc::new(EnvBuilder::new().build());
-        let endpoint = match &settings.dsn {
-            Some(v) => v,
-            None => {
-                return Err(DbError::ConnectionError(
-                    "No DSN specified in settings".to_owned(),
-                ))
-            }
-        };
-        debug!("🉑 DSN: {}", &endpoint);
-        let parsed = url::Url::parse(endpoint).map_err(|e| {
-            DbError::ConnectionError(format!("Invalid DSN: {:?} : {:?}", endpoint, e))
-        })?;
-        // Url::parsed() doesn't know how to handle `grpc:` schema, so it returns "null".
-        let origin = format!(
-            "{}:{}",
-            parsed
-                .host_str()
-                .ok_or_else(|| DbError::ConnectionError(format!(
-                    "Invalid DSN: Unparsable host {:?}",
-                    endpoint
-                )))?,
-            parsed.port().unwrap_or(8086)
-        );
-        if !parsed.path().is_empty() {
-            return Err(DbError::ConnectionError(format!(
-                "Invalid DSN: Table paths belong in settings : {:?}",
-                endpoint
-            )));
-        }
+        // let env = Arc::new(EnvBuilder::new().build());
+        debug!("🏊 BT Pool new");
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         debug!("🉑 {:#?}", db_settings);
-        let mut chan = ChannelBuilder::new(env)
-            .max_send_message_len(1 << 28)
-            .max_receive_message_len(1 << 28);
-        // Don't get the credentials if we are running in the emulator
-        if settings
-            .dsn
-            .clone()
-            .map(|v| v.contains("localhost"))
-            .unwrap_or(false)
-            || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
-        {
-            debug!("🉑 Using emulator");
-        } else {
-            chan = chan.set_credentials(
-                ChannelCredentials::google_default_credentials()
-                    .map_err(|e| DbError::ConnectionError(e.to_string()))?,
-            );
-            debug!("🉑 Using real");
-        }
-
-        let con_str = format!("{}{}", origin, parsed.path());
-        debug!("🉑 connection string {}", &con_str);
-        let chan = chan.connect(&con_str);
-        let client = BigtableClient::new(chan.clone());
+        let pool = BigTablePool::new(settings, &metrics)?;
         Ok(Self {
             settings: db_settings,
-            client,
-            chan,
             _metrics: metrics,
+            pool,
         })
     }
 
@@ -221,8 +167,9 @@ impl BigTableClientImpl {
         timestamp_filter: Option<u64>,
         limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
-        let resp = self
-            .client
+        let bigtable = self.pool.get().await?;
+        let resp = bigtable
+            .conn
             .read_rows(&req)
             .map_err(|e| error::BigTableError::Read(e.to_string()))?;
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
@@ -264,8 +211,9 @@ impl BigTableClientImpl {
 
         // Do the actual commit.
         // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
-        let _resp = self
-            .client
+        let bigtable = self.pool.get().await?;
+        let _resp = bigtable
+            .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
@@ -302,8 +250,9 @@ impl BigTableClientImpl {
 
         req.set_mutations(mutations);
 
-        let _resp = self
-            .client
+        let bigtable = self.pool.get().await?;
+        let _resp = bigtable
+            .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
@@ -322,8 +271,9 @@ impl BigTableClientImpl {
         mutations.push(mutation);
         req.set_mutations(mutations);
 
-        let _resp = self
-            .client
+        let bigtable = self.pool.get().await?;
+        let _resp = bigtable
+            .conn
             .mutate_row_async(&req)
             .map_err(|e| error::BigTableError::Write(e.to_string()))?
             .await
@@ -336,7 +286,7 @@ impl BigTableClientImpl {
     /// Note that deletion may take up to a week to occur.
     /// see https://cloud.google.com/php/docs/reference/cloud-bigtable/latest/Admin.V2.DropRowRangeRequest
     async fn delete_rows(&self, row_key: &str) -> Result<bool, error::BigTableError> {
-        let admin = BigtableTableAdminClient::new(self.chan.clone());
+        let admin = BigtableTableAdminClient::new(self.pool.get_channel()?);
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
@@ -371,7 +321,7 @@ impl BigTableClientImpl {
                 }
             }
             // get the dominant family type for this row.
-            if let Some(cell) = row.get_cell("channel_id") {
+            if let Some(cell) = row.take_cell("channel_id") {
                 let mut notif = Notification {
                     channel_id: Uuid::from_str(&to_string(cell.value, "channel_id")?).map_err(
                         |e| {
@@ -383,31 +333,31 @@ impl BigTableClientImpl {
                     )?,
                     ..Default::default()
                 };
-                if let Some(cell) = row.get_cell("version") {
+                if let Some(cell) = row.take_cell("version") {
                     notif.version = to_string(cell.value, "version")?;
                 }
-                if let Some(cell) = row.get_cell("topic") {
+                if let Some(cell) = row.take_cell("topic") {
                     notif.topic = Some(to_string(cell.value, "topic")?);
                 }
 
-                if let Some(cell) = row.get_cell("ttl") {
+                if let Some(cell) = row.take_cell("ttl") {
                     notif.ttl = to_u64(cell.value, "ttl")?;
                 }
 
-                if let Some(cell) = row.get_cell("data") {
+                if let Some(cell) = row.take_cell("data") {
                     notif.data = Some(to_string(cell.value, "data")?);
                 }
-                if let Some(cell) = row.get_cell("sortkey_timestamp") {
+                if let Some(cell) = row.take_cell("sortkey_timestamp") {
                     let sk_ts = to_u64(cell.value, "sortkey_timestamp")?;
                     notif.sortkey_timestamp = Some(sk_ts);
                     if sk_ts > max_timestamp {
                         max_timestamp = sk_ts;
                     }
                 }
-                if let Some(cell) = row.get_cell("timestamp") {
+                if let Some(cell) = row.take_cell("timestamp") {
                     notif.timestamp = to_u64(cell.value, "timestamp")?;
                 }
-                if let Some(cell) = row.get_cell("headers") {
+                if let Some(cell) = row.take_cell("headers") {
                     notif.headers = Some(
                         serde_json::from_str::<HashMap<String, String>>(&to_string(
                             cell.value, "headers",
@@ -428,6 +378,37 @@ impl BigTableClientImpl {
                 None
             },
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct BigtableDb {
+    pub(super) conn: BigtableClient,
+}
+
+impl BigtableDb {
+    pub fn new(channel: Channel) -> Self {
+        Self {
+            conn: BigtableClient::new(channel),
+        }
+    }
+
+    /// Perform a simple connectivity check.
+    pub fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
+        let mut req = bigtable::ReadRowsRequest::default();
+        req.set_table_name(table_name.to_owned());
+        let mut row = data::Row::default();
+        row.set_key("NOT FOUND".to_owned().as_bytes().to_vec());
+        let mut filter = data::RowFilter::default();
+        filter.set_block_all_filter(true);
+        req.set_filter(filter);
+
+        let _ = self
+            .conn
+            .read_rows(&req)
+            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
+
+        Ok(true)
     }
 }
 
@@ -511,8 +492,10 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
-    async fn update_user(&self, user: &User) -> DbResult<()> {
-        self.add_user(user).await
+    async fn update_user(&self, user: &User) -> DbResult<bool> {
+        self.add_user(user).await?;
+        // TODO: is a conditional check possible?
+        Ok(true)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -522,9 +505,9 @@ impl DbClient for BigTableClientImpl {
             ..Default::default()
         };
 
-        if let Some(record) = self.read_row(&key, None).await? {
+        if let Some(mut record) = self.read_row(&key, None).await? {
             trace!("🉑 Found a record for that user");
-            if let Some(mut cells) = record.get_cells("connected_at") {
+            if let Some(mut cells) = record.take_cells("connected_at") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
@@ -536,7 +519,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("router_type") {
+            if let Some(mut cells) = record.take_cells("router_type") {
                 if let Some(cell) = cells.pop() {
                     result.router_type = String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -547,7 +530,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("router_data") {
+            if let Some(mut cells) = record.take_cells("router_data") {
                 if let Some(cell) = cells.pop() {
                     result.router_data = from_str(&String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -564,7 +547,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("last_connect") {
+            if let Some(mut cells) = record.take_cells("last_connect") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
@@ -576,7 +559,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("node_id") {
+            if let Some(mut cells) = record.take_cells("node_id") {
                 if let Some(cell) = cells.pop() {
                     result.node_id = Some(String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -587,7 +570,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("record_version") {
+            if let Some(mut cells) = record.take_cells("record_version") {
                 if let Some(mut cell) = cells.pop() {
                     // there's only one byte, so pop it off and use it.
                     if let Some(b) = cell.value.pop() {
@@ -596,7 +579,7 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.get_cells("current_month") {
+            if let Some(mut cells) = record.take_cells("current_month") {
                 if let Some(cell) = cells.pop() {
                     result.current_month = Some(String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
@@ -608,7 +591,7 @@ impl DbClient for BigTableClientImpl {
             }
 
             //TODO: rename this to `last_notification_timestamp`
-            if let Some(mut cells) = record.get_cells("current_timestamp") {
+            if let Some(mut cells) = record.take_cells("current_timestamp") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
@@ -705,7 +688,12 @@ impl DbClient for BigTableClientImpl {
     }
 
     /// Remove the node_id. Can't really "surgically strike" this
-    async fn remove_node_id(&self, uaid: &Uuid, _node_id: &str, connected_at: u64) -> DbResult<()> {
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        _node_id: &str,
+        connected_at: u64,
+    ) -> DbResult<bool> {
         trace!(
             "🉑 Removing node_ids for {} up to {:?} ",
             &uaid.simple().to_string(),
@@ -721,8 +709,9 @@ impl DbClient for BigTableClientImpl {
             &["node_id"].to_vec(),
             Some(&time_range),
         )
-        .await
-        .map_err(|e| e.into())
+        .await?;
+        // TODO: is a conditional check possible?
+        Ok(true)
     }
 
     /// Write the notification to storage.
@@ -1024,22 +1013,10 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        let mut row = data::Row::default();
-        // Pick an non-existant key.
-        row.set_key("NOT_FOUND".to_owned().as_bytes().to_vec());
-        // Block any possible results.
-        let mut filter = data::RowFilter::default();
-        filter.set_block_all_filter(true);
-        req.set_filter(filter);
-        // we don't care about the return (it's going to be empty) but we DO care if it fails.
-        let _ = self
-            .client
-            .read_rows(&req)
-            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
-
-        Ok(true)
+        self.pool
+            .get()
+            .await?
+            .health_check(&self.settings.table_name)
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up

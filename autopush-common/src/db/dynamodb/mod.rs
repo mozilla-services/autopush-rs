@@ -25,7 +25,7 @@ use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
     AttributeValue, BatchWriteItemInput, DeleteItemInput, DescribeTableError, DescribeTableInput,
     DynamoDb, DynamoDbClient, GetItemInput, ListTablesInput, PutItemInput, PutRequest, QueryInput,
-    UpdateItemInput, WriteRequest,
+    UpdateItemError, UpdateItemInput, WriteRequest,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -40,21 +40,6 @@ pub struct DynamoDbSettings {
     pub router_table: String,
     #[serde(default)]
     pub message_table: String,
-    #[serde(default)]
-    pub message_table_names: Vec<String>,
-    #[serde(default)]
-    pub current_message_month: String,
-}
-
-impl Default for DynamoDbSettings {
-    fn default() -> Self {
-        Self {
-            router_table: "router".to_string(),
-            message_table: "message".to_string(),
-            message_table_names: Vec::new(),
-            current_message_month: String::default(),
-        }
-    }
 }
 
 impl TryFrom<&str> for DynamoDbSettings {
@@ -74,7 +59,7 @@ pub struct DdbClientImpl {
 
 impl DdbClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
-        let ddb = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
+        let db_client = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
                 StaticProvider::new_minimal("BogusKey".to_string(), "BogusKey".to_string()),
@@ -87,14 +72,9 @@ impl DdbClientImpl {
             DynamoDbClient::new(Region::default())
         };
 
-        let settings =
-            DynamoDbSettings::try_from(db_settings.db_settings.as_ref()).unwrap_or_else(|e| {
-                warn!("err: {:?}", e);
-                DynamoDbSettings::default()
-            });
-
+        let settings = DynamoDbSettings::try_from(db_settings.db_settings.as_ref())?;
         Ok(Self {
-            db_client: ddb,
+            db_client,
             metrics,
             settings,
         })
@@ -176,7 +156,7 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<()> {
+    async fn update_user(&self, user: &User) -> DbResult<bool> {
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {
@@ -209,13 +189,17 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        retry_policy()
+        let result = retry_policy()
             .retry_if(
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
-        Ok(())
+            .await;
+        match result {
+            Ok(_) => Ok(true),
+            Err(RusotoError::Service(UpdateItemError::ConditionalCheckFailed(_))) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -353,7 +337,12 @@ impl DbClient for DdbClientImpl {
             .unwrap_or(false))
     }
 
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64) -> DbResult<()> {
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: &str,
+        connected_at: u64,
+    ) -> DbResult<bool> {
         let input = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.simple().to_string() },
             update_expression: Some("REMOVE node_id".to_string()),
@@ -366,14 +355,17 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        retry_policy()
+        let result = retry_policy()
             .retry_if(
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
-
-        Ok(())
+            .await;
+        match result {
+            Ok(_) => Ok(true),
+            Err(RusotoError::Service(UpdateItemError::ConditionalCheckFailed(_))) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 
     async fn fetch_topic_messages(
