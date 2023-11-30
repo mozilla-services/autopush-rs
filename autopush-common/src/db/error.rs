@@ -68,6 +68,7 @@ pub enum DbError {
 impl ReportableError for DbError {
     fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
         match &self {
+            #[cfg(feature = "bigtable")]
             DbError::BTError(e) => Some(e),
             _ => None,
         }
@@ -79,6 +80,7 @@ impl ReportableError for DbError {
 
     fn is_sentry_event(&self) -> bool {
         match &self {
+            #[cfg(feature = "bigtable")]
             DbError::BTError(e) => e.is_sentry_event(),
             _ => false,
         }
@@ -86,6 +88,7 @@ impl ReportableError for DbError {
 
     fn metric_label(&self) -> Option<&'static str> {
         match &self {
+            #[cfg(feature = "bigtable")]
             DbError::BTError(e) => e.metric_label(),
             _ => None,
         }
@@ -93,6 +96,7 @@ impl ReportableError for DbError {
 
     fn extras(&self) -> Vec<(&str, String)> {
         match &self {
+            #[cfg(feature = "bigtable")]
             DbError::BTError(e) => e.extras(),
             _ => vec![],
         }
