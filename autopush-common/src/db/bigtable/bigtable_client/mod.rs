@@ -171,7 +171,7 @@ impl BigTableClientImpl {
         let resp = bigtable
             .conn
             .read_rows(&req)
-            .map_err(|e| error::BigTableError::Read(e.to_string()))?;
+            .map_err(error::BigTableError::Read)?;
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
@@ -195,7 +195,7 @@ impl BigTableClientImpl {
                 let timestamp = cell
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+                    .map_err(error::BigTableError::WriteTime)?;
                 set_cell.family_name = cell.family;
                 set_cell.set_column_qualifier(cell.qualifier.into_bytes());
                 set_cell.set_value(cell.value);
@@ -215,9 +215,9 @@ impl BigTableClientImpl {
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -254,9 +254,9 @@ impl BigTableClientImpl {
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -275,9 +275,9 @@ impl BigTableClientImpl {
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -297,7 +297,7 @@ impl BigTableClientImpl {
                 error!("{:?}", e);
                 error::BigTableError::Admin(
                     format!(
-                        "Could send delete command for {}",
+                        "Could not send delete command for {}",
                         self.settings.table_name.clone()
                     ),
                     Some(e.to_string()),
