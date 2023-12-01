@@ -756,9 +756,6 @@ def setup_endpoint_server():
     out_q = capture_output_to_queue(EP_SERVER.stdout)
     err_q = capture_output_to_queue(EP_SERVER.stderr)
     EP_QUEUES.extend([out_q, err_q])
-    while EP_SERVER.poll() is not None:
-        logging.debug("Waiting...")
-        time.sleep(1)
 
 
 def setup_module():
