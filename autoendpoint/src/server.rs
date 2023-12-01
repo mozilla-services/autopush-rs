@@ -18,7 +18,6 @@ use autopush_common::{
     middleware::sentry::SentryWrapper,
 };
 
-use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
 use crate::routers::{adm::router::AdmRouter, apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
@@ -30,6 +29,10 @@ use crate::routes::{
     webpush::{delete_notification_route, webpush_route},
 };
 use crate::settings::Settings;
+use crate::{
+    error::{ApiError, ApiErrorKind, ApiResult},
+    routers::stub::router::StubRouter,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -42,6 +45,7 @@ pub struct AppState {
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
     pub adm_router: Arc<AdmRouter>,
+    pub stub_router: Arc<StubRouter>,
 }
 
 pub struct Server;
@@ -111,6 +115,7 @@ impl Server {
             metrics.clone(),
             db.clone(),
         )?);
+        let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
         let app_state = AppState {
             metrics: metrics.clone(),
             settings,
@@ -120,6 +125,7 @@ impl Server {
             fcm_router,
             apns_router,
             adm_router,
+            stub_router,
         };
 
         let server = HttpServer::new(move || {

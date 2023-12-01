@@ -183,6 +183,7 @@ creation of the local server.
 """
 ENDPOINT_CONFIG = dict(
     host="localhost",
+    scheme="http",
     port=ENDPOINT_PORT,
     router_table_name=ROUTER_TABLE,
     message_table_name=MESSAGE_TABLE,
@@ -719,7 +720,7 @@ def setup_megaphone_server(connection_binary):
 
 
 def setup_endpoint_server():
-    global CONNECTION_CONFIG, EP_SERVER, BT_PROCESS
+    global CONNECTION_CONFIG, EP_SERVER, BT_PROCESS, ENDPOINT_CONFIG
 
     # Set up environment
     # NOTE:
@@ -733,7 +734,7 @@ def setup_endpoint_server():
         parsed = urlparse(url)
         ENDPOINT_CONFIG["hostname"] = parsed.hostname
         ENDPOINT_CONFIG["port"] = parsed.port
-        ENDPOINT_CONFIG["endpoint_scheme"] = parsed.scheme
+        ENDPOINT_CONFIG["scheme"] = parsed.scheme
         return
     else:
         write_config_to_env(ENDPOINT_CONFIG, "autoend__")
@@ -755,6 +756,9 @@ def setup_endpoint_server():
     out_q = capture_output_to_queue(EP_SERVER.stdout)
     err_q = capture_output_to_queue(EP_SERVER.stderr)
     EP_QUEUES.extend([out_q, err_q])
+    while EP_SERVER.poll() is not None:
+        logging.debug("Waiting...")
+        time.sleep(1)
 
 
 def setup_module():
@@ -1679,3 +1683,59 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         assert result["broadcasts"] == {}
 
         yield self.shut_down(client)
+
+    def test_mobile_register_v1(self):
+        """Test that the mobile "hello" request returns an unsigned endpoint if no `key` is included in the body"""
+        global ENDPOINT_CONFIG
+        endpoint_root = (
+            f"{ENDPOINT_CONFIG['scheme']}://{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}"
+        )
+        resp = requests.post(
+            f"{endpoint_root}/v1/stub/success/registration",
+            headers={"content-type": "application/json"},
+            data=json.dumps({"token": "success"}),
+        )
+        assert resp.status_code == 200, "Could not register stub endpoint"
+        response = resp.json()
+        endpoint = response.get("endpoint")
+        assert endpoint is not None
+        assert urlparse(endpoint).path.split("/")[2] == "v1"
+        assert response.get("secret") is not None
+        assert response.get("uaid") is not None
+
+    def test_mobile_register_v2(self):
+        """Test that a signed endpoint is returned if a valid VAPID public key is included in the body."""
+        global EP_SERVER, ENDPOINT_CONFIG
+        endpoint_root = (
+            f"{ENDPOINT_CONFIG['scheme']}://{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}"
+        )
+        vapid_pub = "BBO5r087l4d3kxx9INyRenewaA5WOWiaSFqy77UXN7ZRVxr3gNtyWePCjUbOerY1xUUcUFCtVoT5vdElIxTLlCc"
+        resp = requests.post(
+            f"{endpoint_root}/v1/stub/success/registration",
+            headers={"content-type": "application/json"},
+            data=json.dumps({"token": "success", "key": vapid_pub}),
+        )
+        assert resp.status_code == 200
+        response = resp.json()
+        endpoint = response.get("endpoint")
+        secret = response.get("secret")
+        uaid = response.get("uaid")
+        chid = response.get("channelID")
+        assert endpoint is not None
+        assert urlparse(endpoint).path.split("/")[2] == "v2"
+        assert secret is not None
+        assert uaid is not None
+
+        # and check to see that we can subscribe to a new channel and pass
+        # in an explicit channelID.
+        chid2 = str(uuid.uuid4())
+        resp = requests.post(
+            f"{endpoint_root}/v1/stub/success/registration/{uaid}/subscription",
+            headers={"content-type": "application/json", "authorization": f"webpush {secret}"},
+            data=json.dumps({"token": "success", "channelID": chid2, "key": vapid_pub}),
+        )
+        assert resp.status_code == 200
+        resp2 = resp.json()
+        end2 = resp2.get("endpoint")
+        assert end2 is not None and end2 != endpoint
+        assert chid2 == resp2.get("channelID")

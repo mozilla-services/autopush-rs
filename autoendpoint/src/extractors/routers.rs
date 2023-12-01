@@ -2,6 +2,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
+use crate::routers::stub::router::StubRouter;
 use crate::routers::webpush::WebPushRouter;
 use crate::routers::Router;
 use crate::server::AppState;
@@ -22,6 +23,7 @@ pub enum RouterType {
     GCM,
     APNS,
     ADM,
+    STUB,
 }
 
 impl FromStr for RouterType {
@@ -34,6 +36,7 @@ impl FromStr for RouterType {
             "gcm" => Ok(RouterType::GCM),
             "apns" => Ok(RouterType::APNS),
             "adm" => Ok(RouterType::ADM),
+            "stub" => Ok(RouterType::STUB),
             _ => Err(()),
         }
     }
@@ -47,6 +50,7 @@ impl Display for RouterType {
             RouterType::GCM => "gcm",
             RouterType::APNS => "apns",
             RouterType::ADM => "adm",
+            RouterType::STUB => "stub",
         })
     }
 }
@@ -58,6 +62,7 @@ pub struct Routers {
     fcm: Arc<FcmRouter>,
     apns: Arc<ApnsRouter>,
     adm: Arc<AdmRouter>,
+    stub: Arc<StubRouter>,
 }
 
 impl FromRequest for Routers {
@@ -79,6 +84,7 @@ impl FromRequest for Routers {
             fcm: app_state.fcm_router.clone(),
             apns: app_state.apns_router.clone(),
             adm: app_state.adm_router.clone(),
+            stub: app_state.stub_router.clone(),
         })
     }
 }
@@ -91,6 +97,7 @@ impl Routers {
             RouterType::FCM | RouterType::GCM => self.fcm.as_ref(),
             RouterType::APNS => self.apns.as_ref(),
             RouterType::ADM => self.adm.as_ref(),
+            RouterType::STUB => self.stub.as_ref(),
         }
     }
 }

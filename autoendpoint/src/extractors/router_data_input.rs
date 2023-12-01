@@ -44,6 +44,7 @@ impl FromRequest for RouterDataInput {
                     VALID_TOKEN.is_match(&data.token)
                 }
                 RouterType::ADM => VALID_ADM_TOKEN.is_match(&data.token),
+                RouterType::STUB => data.token.as_str() == "success",
             };
 
             if !is_valid {

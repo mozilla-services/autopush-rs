@@ -15,10 +15,13 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use thiserror::Error;
 
+use self::stub::error::StubError;
+
 pub mod adm;
 pub mod apns;
 mod common;
 pub mod fcm;
+pub mod stub;
 pub mod webpush;
 
 #[async_trait(?Send)]
@@ -82,6 +85,9 @@ pub enum RouterError {
     #[error(transparent)]
     Fcm(#[from] FcmError),
 
+    #[error(transparent)]
+    Stub(#[from] StubError),
+
     #[error("Database error while saving notification")]
     SaveDb(#[source] DbError),
 
@@ -120,6 +126,7 @@ impl RouterError {
             RouterError::Adm(e) => e.status(),
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => e.status(),
+            RouterError::Stub(e) => e.status(),
 
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
 
@@ -141,6 +148,7 @@ impl RouterError {
             RouterError::Adm(e) => e.errno(),
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
+            RouterError::Stub(e) => e.errno(),
 
             RouterError::TooMuchData(_) => Some(104),
 
