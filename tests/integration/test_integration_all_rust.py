@@ -1685,10 +1685,12 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         yield self.shut_down(client)
 
     def test_mobile_register_v1(self):
-        """Test that the mobile "hello" request returns an unsigned endpoint if no `key` is included in the body"""
+        """Test that the mobile "hello" request returns an unsigned endpoint
+        if no `key` is included in the body"""
         global ENDPOINT_CONFIG
         endpoint_root = (
-            f"{ENDPOINT_CONFIG['scheme']}://{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}"
+            (f"{ENDPOINT_CONFIG['scheme']}://"
+             f"{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}")
         )
         resp = requests.post(
             f"{endpoint_root}/v1/stub/success/registration",
@@ -1704,12 +1706,15 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         assert response.get("uaid") is not None
 
     def test_mobile_register_v2(self):
-        """Test that a signed endpoint is returned if a valid VAPID public key is included in the body."""
+        """Test that a signed endpoint is returned if a valid VAPID public
+        key is included in the body."""
         global EP_SERVER, ENDPOINT_CONFIG
         endpoint_root = (
-            f"{ENDPOINT_CONFIG['scheme']}://{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}"
+            f"{ENDPOINT_CONFIG['scheme']}://"
+            f"{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}"
         )
-        vapid_pub = "BBO5r087l4d3kxx9INyRenewaA5WOWiaSFqy77UXN7ZRVxr3gNtyWePCjUbOerY1xUUcUFCtVoT5vdElIxTLlCc"
+        vapid_pub = ("BBO5r087l4d3kxx9INyRenewaA5WOWiaSFqy77UXN7ZRVxr3gNtyWeP"
+                     "CjUbOerY1xUUcUFCtVoT5vdElIxTLlCc")
         resp = requests.post(
             f"{endpoint_root}/v1/stub/success/registration",
             headers={"content-type": "application/json"},
@@ -1720,7 +1725,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         endpoint = response.get("endpoint")
         secret = response.get("secret")
         uaid = response.get("uaid")
-        chid = response.get("channelID")
+        assert response.get("channelID") is not None
         assert endpoint is not None
         assert urlparse(endpoint).path.split("/")[2] == "v2"
         assert secret is not None
