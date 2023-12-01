@@ -1689,8 +1689,8 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         if no `key` is included in the body"""
         global ENDPOINT_CONFIG
         endpoint_root = (
-            (f"{ENDPOINT_CONFIG['scheme']}://"
-             f"{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}")
+            f"{ENDPOINT_CONFIG['scheme']}://"
+            f"{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}"
         )
         resp = requests.post(
             f"{endpoint_root}/v1/stub/success/registration",
@@ -1713,8 +1713,10 @@ class TestRustWebPushBroadcast(unittest.TestCase):
             f"{ENDPOINT_CONFIG['scheme']}://"
             f"{ENDPOINT_CONFIG['host']}:{ENDPOINT_CONFIG['port']}"
         )
-        vapid_pub = ("BBO5r087l4d3kxx9INyRenewaA5WOWiaSFqy77UXN7ZRVxr3gNtyWeP"
-                     "CjUbOerY1xUUcUFCtVoT5vdElIxTLlCc")
+        vapid_pub = (
+            "BBO5r087l4d3kxx9INyRenewaA5WOWiaSFqy77UXN7ZRVxr3gNtyWeP"
+            "CjUbOerY1xUUcUFCtVoT5vdElIxTLlCc"
+        )
         resp = requests.post(
             f"{endpoint_root}/v1/stub/success/registration",
             headers={"content-type": "application/json"},
