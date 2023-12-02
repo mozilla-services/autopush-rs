@@ -15,15 +15,14 @@ pub struct Row {
 
 impl Row {
     /// Return all cells for a given column
-    pub fn get_cells(&self, column: &str) -> Option<Vec<Cell>> {
-        self.cells.get(column).cloned()
+    pub fn take_cells(&mut self, column: &str) -> Option<Vec<Cell>> {
+        self.cells.remove(column)
     }
 
     /// get only the "top" cell value. Ignore other values.
-    /// TODO: https://mozilla-hub.atlassian.net/browse/SYNC-3836
-    pub fn get_cell(&mut self, column: &str) -> Option<Cell> {
-        if let Some(cells) = self.cells.get(column) {
-            return cells.last().cloned();
+    pub fn take_cell(&mut self, column: &str) -> Option<Cell> {
+        if let Some(mut cells) = self.cells.remove(column) {
+            return cells.pop();
         }
         None
     }

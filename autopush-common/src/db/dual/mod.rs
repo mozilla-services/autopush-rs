@@ -16,37 +16,29 @@ use serde_json::from_str;
 use uuid::Uuid;
 
 use crate::db::{
+    bigtable::BigTableClientImpl,
     client::{DbClient, FetchMessageResponse},
+    dynamodb::DdbClientImpl,
     error::{DbError, DbResult},
     DbSettings, Notification, User,
 };
 
 use super::StorageType;
 
-use crate::db::bigtable::BigTableClientImpl;
-use crate::db::dynamodb::DdbClientImpl;
-
 #[derive(Clone)]
 pub struct DualClientImpl {
     primary: BigTableClientImpl,
     secondary: DdbClientImpl,
-    /// This contains the "top limit" for the accounts to send to "Primary".
-    /// The first byte of the UAID is taken and compared to this value. All values equal
-    /// to or below this top byte are sent to primary, with the rest going to "Secondary"
+    write_to_secondary: bool,
     median: Option<u8>,
-    _metrics: Arc<StatsdClient>,
+    metrics: Arc<StatsdClient>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DualDbSettings {
-    #[serde(default)]
     primary: DbSettings,
-    #[serde(default)]
     secondary: DbSettings,
-    /// This contains the "top limit" for the accounts to send to "Primary".
-    /// The first byte of the UAID is taken and compared to this value. All values equal
-    /// to or below this top byte are sent to primary, with the rest going to "Secondary"
-    /// NOTE: specify as RAW hex string (e.g. `0A` not `0x0A`)
+    write_to_secondary: bool,
     #[serde(default)]
     median: Option<String>,
 }
@@ -92,7 +84,8 @@ impl DualClientImpl {
             primary,
             secondary: secondary.clone(),
             median,
-            _metrics: metrics,
+            write_to_secondary: db_settings.write_to_secondary,
+            metrics,
         })
     }
 }
@@ -102,6 +95,7 @@ impl DualClientImpl {
 impl DualClientImpl {
     /// Route and assign a user to the appropriate back end based on the defined
     /// allowance
+    /// Returns the dbclient to use and whether or not it's the primary database.
     async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<(Box<&'a dyn DbClient>, bool)> {
         if let Some(median) = self.median {
             if uaid.as_bytes()[0] <= median {
@@ -110,7 +104,7 @@ impl DualClientImpl {
                 // `auto[endpoint|connect].migrate` Maybe that's enough? Do we need
                 // tags?
                 let _ = self
-                    ._metrics
+                    .metrics
                     .incr("migrate.assign")
                     .map_err(|e| DbError::General(format!("Metrics error {:?}", e)))?;
                 Ok((Box::new(&self.primary), true))
@@ -126,13 +120,19 @@ impl DualClientImpl {
 #[async_trait]
 impl DbClient for DualClientImpl {
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        let (target, _) = self.allot(&user.uaid).await?;
+        let (target, is_primary) = self.allot(&user.uaid).await?;
+        if is_primary && self.write_to_secondary {
+            let _ = self.secondary.add_user(user).await?;
+        }
         target.add_user(user).await
     }
 
     async fn update_user(&self, user: &User) -> DbResult<bool> {
         //  If the UAID is in the allowance, move them to the new data store
-        let (target, _) = self.allot(&user.uaid).await?;
+        let (target, is_primary) = self.allot(&user.uaid).await?;
+        if is_primary && self.write_to_secondary {
+            let _ = self.secondary.add_user(user).await?;
+        }
         target.update_user(user).await
     }
 
@@ -148,7 +148,7 @@ impl DbClient for DualClientImpl {
                         info!("⚖ Found user record in secondary, moving to primary");
                         self.primary.add_user(&user).await?;
                         let _ = self
-                            ._metrics
+                            .metrics
                             .incr("migrate.moved")
                             .map_err(|e| DbError::General(format!("Metrics error {:?}", e)));
                         return Ok(Some(user));
@@ -214,7 +214,10 @@ impl DbClient for DualClientImpl {
     }
 
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
-        let (target, _) = self.allot(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
+        if is_primary && self.write_to_secondary {
+            let _ = self.secondary.save_message(uaid, message.clone()).await?;
+        }
         target.save_message(uaid, message).await
     }
 
@@ -260,12 +263,18 @@ impl DbClient for DualClientImpl {
     }
 
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
-        let (target, _) = self.allot(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
+        if is_primary && self.write_to_secondary {
+            let _ = self.secondary.save_messages(uaid, messages.clone()).await?;
+        }
         target.save_messages(uaid, messages).await
     }
 
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
-        let (target, _) = self.allot(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
+        if is_primary && self.write_to_secondary {
+            let _ = self.secondary.increment_storage(uaid, timestamp).await?;
+        }
         target.increment_storage(uaid, timestamp).await
     }
 
@@ -319,6 +328,7 @@ mod test {
                 }).to_string(),
             },
             "median": median.to_owned(),
+            "write_to_secondary": false,
         })
         .to_string()
     }
