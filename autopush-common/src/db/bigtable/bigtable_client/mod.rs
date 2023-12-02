@@ -956,9 +956,9 @@ impl DbClient for BigTableClientImpl {
             );
             regex_filter
         });
-        // Note set_rows_limit(v) limits the returned results from Bigtable.
-        // If you're doing additional filtering later, this may not be what
-        // you want and may artificially truncate possible return sets.
+        // Note set_rows_limit(v) limits the returned results
+        // If you're doing additional filtering later, this is not what
+        // you want.
         /*
         if limit > 0 {
             trace!("🉑 Setting limit to {limit}");
@@ -1083,10 +1083,17 @@ mod tests {
     }
 
     fn new_client() -> DbResult<BigTableClientImpl> {
+        let env_dsn = format!(
+            "grpc://{}",
+            std::env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8080".to_owned())
+        );
         let settings = DbSettings {
             // this presumes the table was created with
-            // `cbt -project test -instance test createtable autopush`
-            dsn: Some("grpc://localhost:8086".to_owned()),
+            // ```
+            // cbt -project test -instance test createtable autopush
+            // ```
+            // with `message`, `router`, and `message_topic` families
+            dsn: Some(env_dsn),
             db_settings: json!({"table_name":"projects/test/instances/test/tables/autopush"})
                 .to_string(),
         };
