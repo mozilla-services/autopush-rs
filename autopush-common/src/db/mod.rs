@@ -23,6 +23,9 @@ use crate::db::{dynamodb::has_connected_this_month, util::generate_last_connect}
 #[cfg(feature = "bigtable")]
 pub mod bigtable;
 pub mod client;
+#[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+pub mod dual;
+#[cfg(feature = "dynamodb")]
 pub mod dynamodb;
 pub mod error;
 pub mod models;
@@ -46,7 +49,11 @@ pub enum StorageType {
     INVALID,
     #[cfg(feature = "bigtable")]
     BigTable,
+    #[cfg(feature = "dynamodb")]
     DynamoDb,
+    #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+    Dual,
+    // Postgres,
 }
 
 /// The type of storage to use.
@@ -69,6 +76,7 @@ impl StorageType {
         let dsn = dsn
             .clone()
             .unwrap_or(std::env::var("AWS_LOCAL_DYNAMODB").unwrap_or_default());
+        #[cfg(feature = "dynamodb")]
         if dsn.starts_with("http") {
             trace!("Found http");
             return Self::DynamoDb;
@@ -86,13 +94,18 @@ impl StorageType {
             }
             return Self::BigTable;
         }
+        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+        if dsn.to_lowercase() == "dual" {
+            trace!("Found Dual mode");
+            return Self::Dual;
+        }
         Self::INVALID
     }
 }
 
 /// The universal settings for the database
 /// abstractor.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct DbSettings {
     /// Database connector string
     pub dsn: Option<String>,
