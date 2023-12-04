@@ -27,6 +27,7 @@ edition = "2021"
 # ideally, this would contain any crates that are shared between crates.
 # there are some lingering code interdependencies that prevent that, but it should
 # remain a goal for the overall refactor.
+
 actix = "0.13"
 actix-cors = "0.6"
 actix-http = "3.2"
@@ -112,7 +113,10 @@ autoconnect_settings = { path = "./autoconnect/autoconnect-settings" }
 autoconnect_web = { path = "./autoconnect/autoconnect-web" }
 autoconnect_ws = { path = "./autoconnect/autoconnect-ws" }
 autoconnect_ws_clientsm = { path = "./autoconnect/autoconnect-ws/autoconnect-ws-clientsm" }
-autopush_common = { path = "./autopush-common", features = ["bigtable"] }
+autopush_common = { path = "./autopush-common", features = [
+  "dynamodb",
+  "bigtable",
+] }
 
 [profile.release]
 debug = 1
