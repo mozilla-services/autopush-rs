@@ -24,8 +24,8 @@ pub fn make_endpoint(
 
     if let Some(k) = key {
         let raw_key = b64_decode_url(k).map_err(|e| {
-            warn!("Payload: error decrypting user provided VAPID key:{:?}", e);
-            ApcErrorKind::PayloadError("Error encrypting VAPID key".to_owned())
+            warn!("Payload: error decoding user provided VAPID key:{:?}", e);
+            ApcErrorKind::PayloadError("Error decoding VAPID key".to_owned())
         })?;
         let key_digest = hash::hash(hash::MessageDigest::sha256(), &raw_key).map_err(|e| {
             warn!("Payload: Error creating digest for VAPID key: {:?}", e);
