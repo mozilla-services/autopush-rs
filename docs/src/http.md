@@ -250,7 +250,7 @@ An example of the Authorization header would be:
     Authorization: Bearer 00secret00
 ```
 **{vapidKey}**  
-_The [VAPID Key](https://datatracker.ietf.org/doc/html/draft-ietf-webpush-vapid-01) provided by the subscribing third party_
+_The [VAPID Key](https://datatracker.ietf.org/doc/html/rfc8292#section-3.2) provided by the subscribing third party_
 
 The VAPID key is optional and provides a way for an application server to voluntarily identify itself.
 When the VAPID key is provided, autopush will return an endpoint that can only be used by the application server that provided the key.
