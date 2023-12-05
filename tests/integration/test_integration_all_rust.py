@@ -226,7 +226,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         if connection_port:  # pragma: nocover
             url = "ws://localhost:{}/".format(connection_port)
         self.ws = websocket.create_connection(url, header=self.headers)
-        return self.ws.connected
+        return self.ws.connected if self.ws else None
 
     def hello(self, uaid: str | None = None, services: list[str] | None = None):
         if not self.ws:
@@ -245,7 +245,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug("Send: %s", msg)
         self.ws.send(msg)
         reply = self.ws.recv()
-        log.debug(f"Recv: {reply} ({len(reply)})")
+        log.debug(f"Recv: {reply!r} ({len(reply)})")
         result = json.loads(reply)
         assert result["status"] == 200
         assert "-" not in result["uaid"]
