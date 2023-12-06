@@ -249,6 +249,14 @@ An example of the Authorization header would be:
 ```html
     Authorization: Bearer 00secret00
 ```
+**{vapidKey}**  
+_The [VAPID Key](https://datatracker.ietf.org/doc/html/rfc8292#section-3.2) provided by the subscribing third party_
+
+The VAPID key is optional and provides a way for an application server to voluntarily identify itself.
+When the VAPID key is provided, autopush will return an endpoint that can only be used by the application server that provided the key.
+**The VAPID key is formatted as a URL-safe Base64 encoded string with no padding.**
+
+
 
 ## Calls
 
@@ -269,11 +277,12 @@ This call requires no Authorization header.
 
 **Parameters:**
 
-`{"token":{instance_id}}`
+`{"token":{instance_id},
+  "key": {vapidkey}}`
 
-> _**Note**_
->
-> If additional information is required for the bridge, it may be
+> _**Notes**_
+> * The VAPID key is optional
+> * If additional information is required for the bridge, it may be
 > included in the parameters as JSON elements. Currently, no additional
 > information is required.
 >
@@ -290,7 +299,7 @@ example:
 ``` http
  POST /v1/fcm/33clienttoken33/registration
 
- {"token": "11-instance-id-11"}
+ {"token": "11-instance-id-11", "key": "AbC12ef0"}
 ```
 
 ``` json
@@ -364,7 +373,10 @@ Acquire a new ChannelID for a given UAID. (See
 
 **Parameters:**
 
-`{}`
+`{key: {vapidKey}}`
+
+**Note**
+> VAPID key is optional
 
 **Reply:**
 
@@ -378,7 +390,7 @@ example:
  POST /v1/fcm/33clienttoken33/registration/abcdef012345/subscription
  Authorization: Bearer 00secret00
 
- {}
+ {"key": "AbCd01hk"}
 ```
 
 ``` json
