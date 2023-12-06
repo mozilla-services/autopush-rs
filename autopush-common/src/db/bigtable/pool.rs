@@ -212,10 +212,14 @@ impl BigtableClientManager {
         {
             debug!("🉑 Using emulator");
         } else {
-            chan = chan.set_credentials(
-                ChannelCredentials::google_default_credentials()
-                    .map_err(|e| BigTableError::Admin(e.to_string()))?,
-            );
+            chan = chan.set_credentials(ChannelCredentials::google_default_credentials().map_err(
+                |e| {
+                    BigTableError::Admin(
+                        "Could not set credentials".to_owned(),
+                        Some(e.to_string()),
+                    )
+                },
+            )?);
             debug!("🉑 Using real");
         }
         Ok(chan)
