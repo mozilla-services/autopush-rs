@@ -298,7 +298,7 @@ impl BigTableClientImpl {
                 error::BigTableError::Admin(
                     format!(
                         "Could not send delete command for {}",
-                        self.settings.table_name.clone()
+                        &self.settings.table_name
                     ),
                     Some(e.to_string()),
                 )
@@ -309,7 +309,7 @@ impl BigTableClientImpl {
                 error::BigTableError::Admin(
                     format!(
                         "Could not delete data from table {}",
-                        self.settings.table_name.clone()
+                        &self.settings.table_name
                     ),
                     Some(e.to_string()),
                 )
