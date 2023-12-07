@@ -171,7 +171,7 @@ impl BigTableClientImpl {
         let resp = bigtable
             .conn
             .read_rows(&req)
-            .map_err(|e| error::BigTableError::Read(e.to_string()))?;
+            .map_err(error::BigTableError::Read)?;
         merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
     }
 
@@ -195,7 +195,7 @@ impl BigTableClientImpl {
                 let timestamp = cell
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+                    .map_err(error::BigTableError::WriteTime)?;
                 set_cell.family_name = cell.family;
                 set_cell.set_column_qualifier(cell.qualifier.into_bytes());
                 set_cell.set_value(cell.value);
@@ -215,9 +215,9 @@ impl BigTableClientImpl {
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -254,9 +254,9 @@ impl BigTableClientImpl {
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -275,9 +275,9 @@ impl BigTableClientImpl {
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -295,12 +295,24 @@ impl BigTableClientImpl {
             .drop_row_range_async(&req)
             .map_err(|e| {
                 error!("{:?}", e);
-                error::BigTableError::Admin("Could not delete data from table (0)".to_owned())
+                error::BigTableError::Admin(
+                    format!(
+                        "Could not send delete command for {}",
+                        &self.settings.table_name
+                    ),
+                    Some(e.to_string()),
+                )
             })?
             .await
             .map_err(|e| {
                 error!("post await: {:?}", e);
-                error::BigTableError::Admin("Could not delete data from table (1)".to_owned())
+                error::BigTableError::Admin(
+                    format!(
+                        "Could not delete data from table {}",
+                        &self.settings.table_name
+                    ),
+                    Some(e.to_string()),
+                )
             })?;
 
         Ok(true)
@@ -914,8 +926,12 @@ impl DbClient for BigTableClientImpl {
                 chidmessageid
             )));
         }
-        let chid = Uuid::parse_str(parts[1])
-            .map_err(|_| error::BigTableError::Admin("Invalid SortKey component".to_string()))?;
+        let chid = Uuid::parse_str(parts[1]).map_err(|e| {
+            error::BigTableError::Admin(
+                "Invalid SortKey component".to_string(),
+                Some(e.to_string()),
+            )
+        })?;
         let row_key = as_key(uaid, Some(&chid), Some(chidmessageid));
         debug!("🉑🔥 Deleting message {}", &row_key);
         self.delete_row(&row_key).await.map_err(|e| e.into())

@@ -388,7 +388,7 @@ impl RowMerger {
             stream = s;
             let row = match row_resp_res {
                 Ok(v) => v,
-                Err(e) => return Err(BigTableError::InvalidRowResponse(e.to_string())),
+                Err(e) => return Err(BigTableError::InvalidRowResponse(e)),
             };
             /*
             ReadRowsResponse:
