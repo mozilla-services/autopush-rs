@@ -335,6 +335,7 @@ impl ReportableError for ApiError {
     fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
         match &self.kind {
             ApiErrorKind::EndpointUrl(e) => Some(e),
+            ApiErrorKind::Database(e) => e.reportable_source(),
             _ => None,
         }
     }
