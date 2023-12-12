@@ -9,12 +9,17 @@ use actix_web::{
 };
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(feature = "dual")]
+use autopush_common::db::dual::DualClientImpl;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
 
+#[cfg(feature = "dynamodb")]
+use autopush_common::db::dynamodb::DdbClientImpl;
+
 use autopush_common::{
-    db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType},
+    db::{client::DbClient, DbSettings, StorageType},
     middleware::sentry::SentryWrapper,
 };
 
@@ -63,6 +68,7 @@ impl Server {
             },
         };
         let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
+            #[cfg(feature = "dynamodb")]
             StorageType::DynamoDb => {
                 debug!("Using Dynamodb");
                 Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?)
@@ -72,6 +78,8 @@ impl Server {
                 debug!("Using BigTable");
                 Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
             }
+            #[cfg(all(feature = "bigtable", feature = "dual"))]
+            StorageType::Dual => Box::new(DualClientImpl::new(metrics.clone(), &db_settings)?),
             _ => {
                 debug!("No idea what {:?} is", &db_settings.dsn);
                 return Err(ApiErrorKind::General(

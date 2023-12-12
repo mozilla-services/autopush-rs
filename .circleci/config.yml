@@ -5,27 +5,40 @@
 # DOCKER_EMAIL   - login info for docker hub
 # DOCKER_USER
 # DOCKER_PASS
-#
-#
+# DOCKERHUB_LOAD_TEST_REPO - Docker Hub repo for load tests, format: <username>/<repo>
+# DOCKER_LOAD_TEST_PASS - Docker Hub load test repo password
+# DOCKER_LOAD_TEST_USER - Docker Hub load test repo user
 
 version: 2.1
 
-defaults:
-  docker_login: &docker_login
-      run:
+commands:
+  docker_login:
+    parameters:
+      load:
+        type: boolean
+        default: False
+    steps:
+      - run:
           name: Login to Dockerhub
           command: |
-              if [ "${DOCKER_USER}" == "" ] || [ "${DOCKER_PASS}" == "" ]; then
-                  echo "Skipping Login to Dockerhub, no credentials."
-              else
-                  echo "${DOCKER_PASS}" | docker login -u="${DOCKER_USER}" --password-stdin
-              fi
+            USER="${DOCKER_USER}"
+            PASS="${DOCKER_PASS}"
+            if <<parameters.load>>; then
+              echo "Using load test repository credentials"
+              USER="${DOCKER_LOAD_TEST_USER}"
+              PASS="${DOCKER_LOAD_TEST_PASS}"
+            fi
+            if [ "${USER}" == "" ] || [ "${PASS}" == "" ]; then
+              echo "Skipping Login to Dockerhub, no credentials."
+            else
+              echo "${PASS}" | docker login -u="${USER}" --password-stdin
+            fi
 
 jobs:
   audit:
     docker:
       # NOTE: update version for all # RUST_VER
-      - image: rust:1.72
+      - image: rust:1.73
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -105,7 +118,7 @@ jobs:
             apt install build-essential curl libstdc++6 libstdc++-10-dev libssl-dev pkg-config -y
             apt install cmake -y
             # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.72 -y
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.73 -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
@@ -167,7 +180,7 @@ jobs:
           command: apk add --no-cache openssh-client git
       - checkout
       - setup_remote_docker
-      - *docker_login
+      - docker_login
       - run:
           name: Create a version.json
           command: |
@@ -194,6 +207,26 @@ jobs:
           paths:
             - docker.tar
 
+  build-load-test:
+    docker:
+      - image: cimg/base:2023.12
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build Image
+          command: docker build -t autopush-locust -f ./tests/load/Dockerfile .
+      - run:
+          name: Save Docker Image to Workspace
+          command: |
+            mkdir -p /tmp/workspace
+            docker save -o /tmp/workspace/autopush-locust.tar autopush-locust
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - autopush-locust.tar
+
   deploy:
     docker:
       - image: docker:18.03.0-ce
@@ -207,7 +240,7 @@ jobs:
         type: string
     steps:
       - setup_remote_docker
-      - *docker_login
+      - docker_login
       - attach_workspace:
           at: /cache
       - run:
@@ -229,6 +262,29 @@ jobs:
               docker images
               docker push "<<parameters.repo>>:${CIRCLE_TAG}"
             fi
+
+  deploy-load-test:
+    docker:
+      - image: cimg/base:2023.12
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      - setup_remote_docker
+      - run:
+          name: Load Docker Image From Workspace
+          command: docker load -i /tmp/workspace/autopush-locust.tar
+      - docker_login:
+          load: True
+      - run:
+          name: Push to Docker Hub
+          command: |
+            echo ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
+            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
+            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:latest
+            docker images
+            docker push "${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}"
+            docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
 workflows:
   version: 2
@@ -274,6 +330,11 @@ workflows:
             tags:
               only: /.*/
 
+      - build-load-test:
+          filters:
+            tags:
+              only: /.*/
+
       # Comment out the following two sections for local CircleCI testing.
       - deploy:
           name: deploy-autopush
@@ -308,6 +369,16 @@ workflows:
           requires:
             - build-autoendpoint
             - test
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
+      - deploy-load-test:
+          requires:
+            - build-load-test
+            - python-checks
           filters:
             tags:
               only: /.*/
