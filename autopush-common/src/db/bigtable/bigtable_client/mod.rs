@@ -178,11 +178,7 @@ impl BigTableClientImpl {
     /// write a given row.
     ///
     /// there's also `.mutate_rows` which I presume allows multiple.
-    async fn write_row(
-        &self,
-        row: row::Row,
-        table_name: Option<String>,
-    ) -> Result<(), error::BigTableError> {
+    async fn write_row(&self, row: row::Row) -> Result<(), error::BigTableError> {
         let mut req = bigtable::MutateRowRequest::default();
 
         // compile the mutations.
@@ -190,7 +186,7 @@ impl BigTableClientImpl {
         // mutations, clearing them, etc. It's all up for grabs until we commit
         // below. For now, let's just presume a write and be done.
         let mut mutations = protobuf::RepeatedField::default();
-        req.set_table_name(table_name.unwrap_or_else(|| self.settings.table_name.clone()));
+        req.set_table_name(self.settings.table_name.clone());
         req.set_row_key(row.row_key.into_bytes());
         for (_family, cells) in row.cells {
             for cell in cells {
@@ -502,7 +498,7 @@ impl DbClient for BigTableClientImpl {
         };
         row.add_cells(ROUTER_FAMILY, cells);
         trace!("🉑 Adding user");
-        self.write_row(row, None).await.map_err(|e| e.into())
+        self.write_row(row).await.map_err(|e| e.into())
     }
 
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
@@ -651,7 +647,7 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             }],
         );
-        self.write_row(row, None).await.map_err(|e| e.into())
+        self.write_row(row).await.map_err(|e| e.into())
     }
 
     /// Delete all the rows that start with the given prefix. NOTE: this may be metered and should
@@ -852,7 +848,7 @@ impl DbClient for BigTableClientImpl {
         }
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
-        self.write_row(row, None).await.map_err(|e| e.into())
+        self.write_row(row).await.map_err(|e| e.into())
     }
 
     /// Save a batch of messages to the database.
@@ -901,7 +897,7 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             }],
         );
-        self.write_row(row, None).await.map_err(|e| e.into())
+        self.write_row(row).await.map_err(|e| e.into())
     }
 
     /// Delete the notification from storage.
