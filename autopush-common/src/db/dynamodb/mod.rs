@@ -41,10 +41,6 @@ pub struct DynamoDbSettings {
     #[serde(default)]
     pub message_table: String,
     #[serde(default)]
-    pub message_table_names: Vec<String>,
-    #[serde(default)]
-    pub current_message_month: String,
-    #[serde(default)]
     pub db_routing_table: Option<String>,
 }
 

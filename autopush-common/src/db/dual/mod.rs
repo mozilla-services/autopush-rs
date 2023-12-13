@@ -99,14 +99,13 @@ impl DualClientImpl {
     async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<(Box<&'a dyn DbClient>, bool)> {
         if let Some(median) = self.median {
             if uaid.as_bytes()[0] <= median {
-                info!("⚖ Routing user to Bigtable");
-                // TODO: Better label for this? It's migration so it would appear as
-                // `auto[endpoint|connect].migrate` Maybe that's enough? Do we need
-                // tags?
-                let _ = self
-                    .metrics
-                    .incr("migrate.assign")
-                    .map_err(|e| DbError::General(format!("Metrics error {:?}", e)))?;
+                debug!("⚖ Routing user to Bigtable");
+                // These are migrations so the metrics should appear as
+                // `auto[endpoint|connect].migrate`.
+                self.metrics
+                    .incr_with_tags("migrate.assign")
+                    .with_tag("median", &self.median.unwrap_or(0).to_string())
+                    .send();
                 Ok((Box::new(&self.primary), true))
             } else {
                 Ok((Box::new(&self.secondary), false))
@@ -145,12 +144,12 @@ impl DbClient for DualClientImpl {
                     // The user wasn't in the current primary, so fetch them from the secondary.
                     if let Ok(Some(user)) = self.secondary.get_user(uaid).await {
                         // copy the user record over to the new data store.
-                        info!("⚖ Found user record in secondary, moving to primary");
+                        debug!("⚖ Found user record in secondary, moving to primary");
                         self.primary.add_user(&user).await?;
-                        let _ = self
-                            .metrics
-                            .incr("migrate.moved")
-                            .map_err(|e| DbError::General(format!("Metrics error {:?}", e)));
+                        self.metrics
+                            .incr_with_tags("migrate.moved")
+                            .with_tag("median", &self.median.unwrap_or(0).to_string())
+                            .send();
                         return Ok(Some(user));
                     }
                 }
