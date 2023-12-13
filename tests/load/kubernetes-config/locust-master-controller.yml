@@ -32,8 +32,6 @@ spec:
               value:
             - name: LOCUST_LOGFILE
               value:
-            - name: SERVER_URL
-              value:
           ports:
             - name: loc-master-web
               containerPort: 8089

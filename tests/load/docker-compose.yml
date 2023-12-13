@@ -12,7 +12,6 @@ services:
       LOCUST_USERCLASS_PICKER: true
       LOCUST_HOST: ${LOCUST_HOST}
       LOCUST_LOGLEVEL: "INFO"
-      SERVER_URL: ${SERVER_URL}
     command: >
       --master
 
@@ -24,6 +23,5 @@ services:
     environment:
       LOCUST_MASTER_NODE_HOST: locust_master
       LOCUST_LOGLEVEL: "INFO"
-      SERVER_URL: ${SERVER_URL}
     command: >
       --worker

@@ -8,8 +8,7 @@ POETRY := poetry --directory $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(TESTS_DIR)/pyproject.toml
 FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
-STAGE_SERVER_URL := "wss://autoconnect.stage.mozaws.net"
-STAGE_ENDPOINT_URL := "https://updates-autopush.stage.mozaws.net"
+LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
 
 .PHONY: ddb
 
@@ -48,7 +47,7 @@ lint:
 	$(POETRY) run mypy $(TESTS_DIR) --config-file=$(PYPROJECT_TOML)
 
 load:
-	SERVER_URL=$(STAGE_SERVER_URL) LOCUST_HOST=$(STAGE_ENDPOINT_URL) \
+	LOCUST_HOST=$(LOCUST_HOST) \
 	  $(DOCKER_COMPOSE) \
       -f $(LOAD_TEST_DIR)/docker-compose.yml \
       -p autopush-rs-load-tests \

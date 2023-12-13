@@ -28,8 +28,6 @@ spec:
               value:
             - name: LOCUST_LOGFILE
               value:
-            - name: SERVER_URL
-              value:
           resources:
             limits:
               cpu: 2
