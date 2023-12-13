@@ -245,7 +245,6 @@ impl BigTableClientImpl {
         req.set_true_mutations(mutations);
 
         // Do the actual commit.
-        // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
@@ -514,7 +513,8 @@ impl BigtableDb {
         }
     }
 
-    /// Perform a simple connectivity check.
+    /// Perform a simple connectivity check. This should return no actual results
+    /// but should verify that the connection is valid.
     pub fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
         let mut req = bigtable::ReadRowsRequest::default();
         req.set_table_name(table_name.to_owned());
@@ -555,8 +555,8 @@ impl DbClient for BigTableClientImpl {
         // record was created.
         //
         // Filters are not very sophisticated on BigTable.
-        // You can create RowFilterChains, where each filter acts as an "AND".
-        // A RowFilterUnion which acts as an "OR".
+        // You can create RowFilterChains, where each filter acts as an "AND" or
+        // a RowFilterUnion which acts as an "OR".
         //
         // There do not appear to be negative checks (e.g. check if not set)
         // According to [the docs](https://cloud.google.com/bigtable/docs/using-filters#chain)
@@ -687,7 +687,6 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            //TODO: rename this to `last_notification_timestamp`
             if let Some(mut cells) = record.take_cells("current_timestamp") {
                 if let Some(cell) = cells.pop() {
                     let v: [u8; 8] = cell.value.try_into().map_err(|e| {
@@ -807,7 +806,6 @@ impl DbClient for BigTableClientImpl {
             Some(&time_range),
         )
         .await?;
-        // TODO: is a conditional check possible?
         Ok(true)
     }
 
