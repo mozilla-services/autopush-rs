@@ -21,6 +21,7 @@ from args import parse_wait_time
 from exceptions import ZeroStatusRequestError
 from gevent import Greenlet
 from locust import FastHttpUser, events, task
+from locust.exception import LocustError
 from models import (
     HelloMessage,
     HelloRecord,
@@ -182,6 +183,9 @@ class AutopushUser(FastHttpUser):
 
     def connect(self) -> None:
         """Creates the WebSocketApp that will run indefinitely."""
+        if not self.host:
+            raise LocustError("'host' value is unavailable.")
+
         self.ws = websocket.WebSocketApp(
             self.host,
             header=self.WEBSOCKET_HEADERS,
