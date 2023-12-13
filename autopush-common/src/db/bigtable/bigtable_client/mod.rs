@@ -141,7 +141,6 @@ impl BigTableClientImpl {
         &self,
         row_key: &str,
         timestamp_filter: Option<u64>,
-        table_name: Option<String>,
     ) -> Result<Option<row::Row>, error::BigTableError> {
         debug!("🉑 Row key: {}", row_key);
 
@@ -152,7 +151,7 @@ impl BigTableClientImpl {
         row_set.set_row_keys(row_keys);
 
         let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(table_name.unwrap_or_else(|| self.settings.table_name.clone()));
+        req.set_table_name(self.settings.table_name.clone());
         req.set_rows(row_set);
 
         let rows = self.read_rows(req, timestamp_filter, None).await?;
@@ -522,7 +521,7 @@ impl DbClient for BigTableClientImpl {
             ..Default::default()
         };
 
-        if let Some(mut record) = self.read_row(&key, None, None).await? {
+        if let Some(mut record) = self.read_row(&key, None).await? {
             trace!("🉑 Found a record for that user");
             if let Some(mut cells) = record.take_cells("connected_at") {
                 if let Some(cell) = cells.pop() {
