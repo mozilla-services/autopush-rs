@@ -28,7 +28,7 @@ echo "Image tag for locust is set to: ${LOCUST_IMAGE_TAG}"
 ENVIRONMENT_VARIABLES=(
   "TARGET_HOST,$TARGET"
   'LOCUST_CSV,autopush'
-  'LOCUST_HOST,wss://autopush.stage.mozaws.net'
+  'LOCUST_HOST,wss://autoconnect.stage.mozaws.net'
   'LOCUST_LOGLEVEL,INFO'
   'LOCUST_LOGFILE,autopush.log'
 )
