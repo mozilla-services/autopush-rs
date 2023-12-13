@@ -102,10 +102,6 @@ impl DualClientImpl {
                 debug!("⚖ Routing user to Bigtable");
                 // These are migrations so the metrics should appear as
                 // `auto[endpoint|connect].migrate`.
-                self.metrics
-                    .incr_with_tags("migrate.assign")
-                    .with_tag("median", &self.median.unwrap_or(0).to_string())
-                    .send();
                 Ok((Box::new(&self.primary), true))
             } else {
                 Ok((Box::new(&self.secondary), false))
@@ -146,10 +142,6 @@ impl DbClient for DualClientImpl {
                         // copy the user record over to the new data store.
                         debug!("⚖ Found user record in secondary, moving to primary");
                         self.primary.add_user(&user).await?;
-                        self.metrics
-                            .incr_with_tags("migrate.moved")
-                            .with_tag("median", &self.median.unwrap_or(0).to_string())
-                            .send();
                         return Ok(Some(user));
                     }
                 }
