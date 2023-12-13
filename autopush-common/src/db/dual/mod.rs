@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cadence::{CountedExt, StatsdClient};
+use cadence::StatsdClient;
 use serde::Deserialize;
 use serde_json::from_str;
 use uuid::Uuid;
@@ -31,7 +31,6 @@ pub struct DualClientImpl {
     secondary: DdbClientImpl,
     write_to_secondary: bool,
     median: Option<u8>,
-    metrics: Arc<StatsdClient>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -85,7 +84,6 @@ impl DualClientImpl {
             secondary: secondary.clone(),
             median,
             write_to_secondary: db_settings.write_to_secondary,
-            metrics,
         })
     }
 }
