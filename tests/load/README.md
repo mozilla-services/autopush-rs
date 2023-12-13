@@ -65,7 +65,7 @@ make load
     * ShapeClass: Default
     * Number of users: 1
     * Spawn rate: 1
-    * Host (Endpoint URL): 'wss://autoconnect.stage.mozaws.net'
+    * Host: 'wss://autoconnect.stage.mozaws.net'
     * Duration (Optional): 10m
 * Select "Start Swarming"
 
@@ -162,7 +162,7 @@ The load tests can be executed from the [contextual-services-test-eng cloud shel
 
 * Set up the load test parameters:
     * ShapeClass: 'AutopushLoadTestShape'
-    * Host (Endpoint URL): 'wss://autoconnect.stage.mozaws.net'
+    * Host: 'wss://autoconnect.stage.mozaws.net'
 * Select "Start Swarming"
 
 #### 2. Stop Load Test
