@@ -29,6 +29,7 @@ pub mod dual;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
+pub mod routing;
 mod util;
 
 // used by integration testing
