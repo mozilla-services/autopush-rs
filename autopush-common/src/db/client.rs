@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Debug;
 
 use async_trait::async_trait;
 use mockall::automock;
@@ -101,6 +102,11 @@ pub trait DbClient: Send + Sync {
     fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
     fn box_clone(&self) -> Box<dyn DbClient>;
+
+    /// Provide the module name.
+    /// This was added for simple dual mode testing, but may be useful in
+    /// other situations.
+    fn name(&self) -> String;
 }
 
 impl Clone for Box<dyn DbClient> {
