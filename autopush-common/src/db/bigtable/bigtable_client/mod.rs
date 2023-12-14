@@ -1,5 +1,5 @@
-use core::fmt;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -1137,6 +1137,10 @@ impl DbClient for BigTableClientImpl {
 
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
+    }
+
+    fn name(&self) -> String {
+        "Bigtable".to_owned()
     }
 }
 

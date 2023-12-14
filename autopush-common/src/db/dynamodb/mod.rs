@@ -40,6 +40,8 @@ pub struct DynamoDbSettings {
     pub router_table: String,
     #[serde(default)]
     pub message_table: String,
+    #[serde(default)]
+    pub db_routing_table: Option<String>,
 }
 
 impl TryFrom<&str> for DynamoDbSettings {
@@ -618,6 +620,10 @@ impl DbClient for DdbClientImpl {
 
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
+    }
+
+    fn name(&self) -> String {
+        "DynamoDb".to_owned()
     }
 }
 
