@@ -119,12 +119,12 @@ environment used by Firefox/FirefoxOS.
 
 ### dev
 
-* Websocket: <wss://autopush.dev.mozaws.net/>
+* Websocket: <wss://autoconnect.dev.mozaws.net/>
 * Endpoint: <https://updates-autopush.dev.mozaws.net/>
 
 ### stage
 
-* Websocket: <wss://autopush.stage.mozaws.net/>
+* Websocket: <wss://autoconnect.stage.mozaws.net/>
 * Endpoint: <https://updates-autopush.stage.mozaws.net/>
 
 ### production
