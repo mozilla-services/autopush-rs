@@ -700,11 +700,45 @@ impl DbClient for BigTableClientImpl {
             .conn
             .mutate_rows(&req)
             .map_err(error::BigTableError::Write)?;
-        // TODO: is there a better way to do this? I don't think we care about the return stream.
-        // We just want to know if it worked or not.
-        let result = resp.into_future().await;
-        if let Some(result) = result.0 {
-            result.map_err(error::BigTableError::Write)?;
+
+        // Scan the returned stream looking for errors.
+        // As I understand, the returned stream contains chunked MutateRowsResponse structs. Each
+        // struct contains the result of the row mutation, and contains a `status` (non-zero on error)
+        // and an optional message string (empty if none).
+        // The structure also contains an overall `status` but that does not appear to be exposed.
+        // Status codes are defined at https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+        let mut stream = Box::pin(resp);
+        let mut cnt = 0;
+        loop {
+            let (result, remainder) = stream.into_future().await;
+            if let Some(result) = result {
+                debug!("🎏 Result block: {}", cnt);
+                match result {
+                    Ok(r) => {
+                        for e in r.get_entries() {
+                            if e.has_status() {
+                                let status = e.get_status();
+                                // See status code definitions: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+                                let code = error::MutateRowStatus::from(status.get_code());
+                                if !code.is_ok() {
+                                    return Err(error::BigTableError::Status(
+                                        code,
+                                        status.get_message().to_owned(),
+                                    )
+                                    .into());
+                                }
+                                debug!("🎏 Response: {} OK", e.index);
+                            }
+                        }
+                    }
+                    Err(e) => return Err(error::BigTableError::Write(e).into()),
+                };
+                cnt += 1;
+            } else {
+                debug!("🎏 Done!");
+                break;
+            }
+            stream = remainder;
         }
         Ok(())
     }
