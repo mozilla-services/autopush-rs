@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
+use futures::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
@@ -514,22 +515,33 @@ impl BigtableDb {
     }
 
     /// Perform a simple connectivity check. This should return no actual results
-    /// but should verify that the connection is valid.
-    pub fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
+    /// but should verify that the connection is valid. We use this for the
+    /// Recycle check as well, so it has to be fairly low in the implementation
+    /// stack.
+    ///
+    pub async fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
+        // build the associated request.
         let mut req = bigtable::ReadRowsRequest::default();
         req.set_table_name(table_name.to_owned());
-        let mut row = data::Row::default();
-        row.set_key("NOT FOUND".to_owned().as_bytes().to_vec());
+        // Create a request that is GRPC valid, but does not point to a valid row.
+        let mut row_keys = RepeatedField::default();
+        row_keys.push("NOT FOUND".to_owned().as_bytes().to_vec());
+        let mut row_set = data::RowSet::default();
+        row_set.set_row_keys(row_keys);
+        req.set_rows(row_set);
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
 
-        let _ = self
+        let r = self
             .conn
             .read_rows(&req)
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
-        Ok(true)
+        let (v, _stream) = r.into_future().await;
+        // Since this should return no rows (with the row key set to a value that shouldn't exist)
+        // the first component of the tuple should be None.
+        Ok(v.is_none())
     }
 }
 
@@ -1116,6 +1128,7 @@ impl DbClient for BigTableClientImpl {
             .get()
             .await?
             .health_check(&self.settings.table_name)
+            .await
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up
@@ -1197,6 +1210,15 @@ mod tests {
         let chidmessageid = "01:decafbad-0000-0000-0000-0123456789ab:Inbox";
         let k = as_key(&uaid, Some(&chid), Some(chidmessageid));
         assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad0000000000000123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
+    }
+
+    #[actix_rt::test]
+    async fn health_check() {
+        let client = new_client().unwrap();
+
+        let result = client.health_check().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
     }
 
     /// run a gauntlet of testing. These are a bit linear because they need
