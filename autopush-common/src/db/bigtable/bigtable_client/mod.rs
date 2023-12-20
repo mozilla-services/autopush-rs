@@ -253,7 +253,7 @@ impl BigTableClientImpl {
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
-        debug!("🉑 Predicate Matched: {}", resp.get_predicate_matched());
+        dbg!("🉑 Predicate Matched: {}", &resp.get_predicate_matched(),);
         Ok(resp.get_predicate_matched())
     }
 
@@ -326,7 +326,6 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
-        req.set_delete_all_data_from_table(true);
         admin
             .drop_row_range_async(&req)
             .map_err(|e| {
@@ -590,6 +589,8 @@ impl DbClient for BigTableClientImpl {
         filter_set.push(type_filter);
 
         // then check to make sure that the last connected_at time is before this one.
+        // Note: `check_and_mutate_row` uses `set_true_mutations`, meaning that only rows
+        // that match the provided filters will be modified.
         let mut connected_filter = RowFilter::default();
         connected_filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
         connected_filter
@@ -1251,19 +1252,35 @@ mod tests {
         assert!(user.is_ok());
         let fetched = client.get_user(&uaid).await.unwrap();
         assert!(fetched.is_some());
-        assert_eq!(fetched.unwrap().router_type, "webpush".to_owned());
+        let fetched = fetched.unwrap();
+        assert_eq!(fetched.router_type, "webpush".to_owned());
 
         // can we add channels?
         client.add_channel(&uaid, &chid).await.unwrap();
         let channels = client.get_channels(&uaid).await;
         assert!(channels.unwrap().contains(&chid));
 
-        // can we modify the user record?
+        // first ensure that we can't update a user that's before the time we set prior.
         let updated = User {
-            connected_at: now() + 3,
+            connected_at: fetched.connected_at - 3,
+            ..test_user.clone()
+        };
+        dbg!(fetched.connected_at, updated.connected_at);
+        let result = client.update_user(&updated).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), false);
+
+        // Make sure that the `connected_at` wasn't modified
+        let fetched2 = client.get_user(&fetched.uaid).await.unwrap().unwrap();
+        assert_eq!(fetched.connected_at, fetched2.connected_at);
+
+        // now ensure that we can update a user that's after the time we set prior.
+        // first ensure that we can't update a user that's before the time we set prior.
+        let updated = User {
+            connected_at: fetched.connected_at + 300,
             ..test_user
         };
-
+        dbg!(fetched.connected_at, updated.connected_at);
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
