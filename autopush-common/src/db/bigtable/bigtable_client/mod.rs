@@ -12,7 +12,9 @@ use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRan
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
-use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain, ValueRange};
+use google_cloud_rust_raw::bigtable::v2::data::{
+    RowFilter, RowFilter_Chain, RowFilter_Condition, ValueRange,
+};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
 use grpcio::Channel;
 use protobuf::RepeatedField;
@@ -626,7 +628,6 @@ impl DbClient for BigTableClientImpl {
 
         let mut filter = RowFilter::default();
         let mut val_range = ValueRange::default();
-        val_range.set_start_value_open(escape(0).as_bytes().to_vec());
         val_range.set_end_value_open(escape(user.connected_at).as_bytes().to_vec());
         dbg!(&val_range, escape(user.connected_at));
         filter.set_value_range_filter(val_range);
@@ -638,19 +639,14 @@ impl DbClient for BigTableClientImpl {
 
         // Gather the collections and try to update the row.
 
-        let mut joint_chains: RowFilter_Chain = RowFilter_Chain::default();
-        let mut joint_set: RepeatedField<RowFilter> = RepeatedField::default();
-        joint_set.push(router_filter);
-        joint_set.push(connected_filter);
-        joint_chains.set_filters(joint_set);
+        let mut cond = RowFilter_Condition::default();
+        cond.set_predicate_filter(router_filter);
+        cond.set_true_filter(connected_filter);
+        let mut cond_filter = RowFilter::default();
+        cond_filter.set_condition(cond);
+        dbg!(&cond_filter);
 
-        let mut joint_filter = RowFilter::default();
-        joint_filter.set_chain(joint_chains);
-
-        // TODO: make conditional filter set that uses both chains.
-        dbg!(&joint_filter);
-
-        Ok(self.check_and_mutate_row(row, joint_filter).await?)
+        Ok(self.check_and_mutate_row(row, cond_filter).await?)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -1427,7 +1423,7 @@ mod tests {
         dbg!(escape(fetched.connected_at), escape(updated.connected_at));
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
 
         // Make sure that the `connected_at` wasn't modified
         let fetched2 = client.get_user(&fetched.uaid).await.unwrap().unwrap();
