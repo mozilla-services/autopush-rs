@@ -140,6 +140,8 @@ impl DbClient for DualClientImpl {
                         // copy the user record over to the new data store.
                         debug!("⚖ Found user record in secondary, moving to primary");
                         self.primary.add_user(&user).await?;
+                        let channels = self.secondary.get_channels(uaid).await?;
+                        self.primary.add_channels(uaid, channels).await?;
                         return Ok(Some(user));
                     }
                 }
@@ -163,6 +165,11 @@ impl DbClient for DualClientImpl {
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
         let (target, _) = self.allot(uaid).await?;
         target.add_channel(uaid, channel_id).await
+    }
+
+    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
+        let (target, _) = self.allot(uaid).await?;
+        target.add_channels(uaid, channels).await
     }
 
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
