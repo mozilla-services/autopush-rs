@@ -291,7 +291,6 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
-        req.set_delete_all_data_from_table(true);
         admin
             .drop_row_range_async(&req)
             .map_err(|e| {
