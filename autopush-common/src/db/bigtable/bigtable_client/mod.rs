@@ -12,9 +12,7 @@ use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRan
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
-use google_cloud_rust_raw::bigtable::v2::data::{
-    RowFilter, RowFilter_Chain, RowFilter_Condition, ValueRange,
-};
+use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain, ValueRange};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
 use grpcio::Channel;
 use protobuf::RepeatedField;
@@ -589,9 +587,10 @@ impl DbClient for BigTableClientImpl {
         // matches and the new `connected_at` time is later than the existing `connected_at`
 
         let row = self.user_to_row(user);
+
+        // === Router Filter Chain.
         let mut router_filter_chain = RowFilter_Chain::default();
         let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
-
         // First check to see if the router type is either empty or matches exactly.
         // Yes, these are multiple filters. Each filter is basically an AND
         let mut filter = RowFilter::default();
@@ -606,13 +605,11 @@ impl DbClient for BigTableClientImpl {
         filter.set_value_regex_filter(user.router_type.as_bytes().to_vec());
         filter_set.push(filter);
 
-        let mut filter = RowFilter::default();
-        filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
-        filter_set.push(filter);
-
         router_filter_chain.set_filters(filter_set);
+        let mut router_filter = RowFilter::default();
+        router_filter.set_chain(router_filter_chain);
 
-        // next filter set
+        // === Connected_At filter chain
         let mut connected_filter_chain = RowFilter_Chain::default();
         let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
 
@@ -635,15 +632,25 @@ impl DbClient for BigTableClientImpl {
         filter.set_value_range_filter(val_range);
         filter_set.push(filter);
 
-        // Gather the collections and try to update the row.
         connected_filter_chain.set_filters(filter_set);
+        let mut connected_filter = RowFilter::default();
+        connected_filter.set_chain(connected_filter_chain);
+
+        // Gather the collections and try to update the row.
+
+        let mut joint_chains: RowFilter_Chain = RowFilter_Chain::default();
+        let mut joint_set: RepeatedField<RowFilter> = RepeatedField::default();
+        joint_set.push(router_filter);
+        joint_set.push(connected_filter);
+        joint_chains.set_filters(joint_set);
+
+        let mut joint_filter = RowFilter::default();
+        joint_filter.set_chain(joint_chains);
 
         // TODO: make conditional filter set that uses both chains.
-        dbg!(&router_filter_chain, &connected_filter_chain);
-        let mut filter = RowFilter::default();
-        let mut conditional = RowFilter_Condition::default();
+        dbg!(&joint_filter);
 
-        Ok(self.check_and_mutate_row(row, filter).await?)
+        Ok(self.check_and_mutate_row(row, joint_filter).await?)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
