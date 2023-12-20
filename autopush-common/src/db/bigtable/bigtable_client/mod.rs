@@ -12,7 +12,9 @@ use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRan
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
-use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain, ValueRange};
+use google_cloud_rust_raw::bigtable::v2::data::{
+    RowFilter, RowFilter_Chain, RowFilter_Condition, ValueRange,
+};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
 use grpcio::Channel;
 use protobuf::RepeatedField;
@@ -83,6 +85,14 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
         debug!("🉑 cannot read string {}: {:?}", name, e);
         DbError::DeserializeString(name.to_owned())
     })
+}
+
+fn escape(val: u64) -> String {
+    val.to_string()
+}
+
+fn unescape(val: String) -> u64 {
+    u64::from_str(&val).unwrap()
 }
 
 /// Create a normalized index key.
@@ -242,6 +252,7 @@ impl BigTableClientImpl {
         req.set_table_name(self.settings.table_name.clone());
         req.set_row_key(row.row_key.into_bytes());
         let mutations = self.get_mutations(row.cells)?;
+        dbg!(&filter);
         req.set_predicate_filter(filter);
         req.set_true_mutations(mutations);
 
@@ -437,7 +448,7 @@ impl BigTableClientImpl {
             cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
                 qualifier: "connected_at".to_owned(),
-                value: user.connected_at.to_be_bytes().to_vec(),
+                value: escape(user.connected_at).as_bytes().to_vec(),
                 ..Default::default()
             },
             cell::Cell {
@@ -578,33 +589,59 @@ impl DbClient for BigTableClientImpl {
         // matches and the new `connected_at` time is later than the existing `connected_at`
 
         let row = self.user_to_row(user);
-        let mut filter_chain = RowFilter_Chain::default();
+        let mut router_filter_chain = RowFilter_Chain::default();
         let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
 
         // First check to see if the router type is either empty or matches exactly.
-        let mut type_filter = RowFilter::default();
-        type_filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
-        type_filter.set_column_qualifier_regex_filter("router_type".to_owned().as_bytes().to_vec());
-        type_filter.set_value_regex_filter(user.router_type.as_bytes().to_vec());
-        filter_set.push(type_filter);
+        // Yes, these are multiple filters. Each filter is basically an AND
+        let mut filter = RowFilter::default();
+        filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
+        filter.set_column_qualifier_regex_filter("router_type".to_owned().as_bytes().to_vec());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
+        filter.set_value_regex_filter(user.router_type.as_bytes().to_vec());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
+        filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
+        filter_set.push(filter);
+
+        router_filter_chain.set_filters(filter_set);
+
+        // next filter set
+        let mut connected_filter_chain = RowFilter_Chain::default();
+        let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
 
         // then check to make sure that the last connected_at time is before this one.
         // Note: `check_and_mutate_row` uses `set_true_mutations`, meaning that only rows
         // that match the provided filters will be modified.
-        let mut connected_filter = RowFilter::default();
-        connected_filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
-        connected_filter
-            .set_column_qualifier_regex_filter("connected_at".to_owned().as_bytes().to_vec());
+        let mut filter = RowFilter::default();
+        filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
+        filter.set_column_qualifier_regex_filter("connected_at".to_owned().as_bytes().to_vec());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
         let mut val_range = ValueRange::default();
-        val_range.set_end_value_closed(user.connected_at.to_be_bytes().to_vec());
-        dbg!(user.connected_at.to_be_bytes().to_vec());
-        connected_filter.set_value_range_filter(val_range);
-        filter_set.push(connected_filter);
+        val_range.set_start_value_open(escape(0).as_bytes().to_vec());
+        val_range.set_end_value_open(escape(user.connected_at).as_bytes().to_vec());
+        dbg!(&val_range, escape(user.connected_at));
+        filter.set_value_range_filter(val_range);
+        filter_set.push(filter);
 
         // Gather the collections and try to update the row.
-        filter_chain.set_filters(filter_set);
+        connected_filter_chain.set_filters(filter_set);
+
+        // TODO: make conditional filter set that uses both chains.
+        dbg!(&router_filter_chain, &connected_filter_chain);
         let mut filter = RowFilter::default();
-        filter.set_chain(filter_chain);
+        let mut conditional = RowFilter_Condition::default();
 
         Ok(self.check_and_mutate_row(row, filter).await?)
     }
@@ -619,14 +656,16 @@ impl DbClient for BigTableClientImpl {
         if let Some(mut record) = self.read_row(&key, None).await? {
             trace!("🉑 Found a record for that user");
             if let Some(mut cells) = record.take_cells("connected_at") {
+                // let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                 if let Some(cell) = cells.pop() {
-                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
+                    let v: String = String::from_utf8(cell.value).map_err(|e| {
                         DbError::Serialization(format!(
                             "Could not deserialize connected_at: {:?}",
                             e
                         ))
                     })?;
-                    result.connected_at = u64::from_be_bytes(v);
+                    // result.connected_at = u64::from_be_bytes(v);
+                    result.connected_at = unescape(v);
                 }
             }
 
@@ -1378,6 +1417,7 @@ mod tests {
             ..test_user.clone()
         };
         dbg!(fetched.connected_at, updated.connected_at);
+        dbg!(escape(fetched.connected_at), escape(updated.connected_at));
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false);
@@ -1392,6 +1432,7 @@ mod tests {
             ..test_user
         };
         dbg!(fetched.connected_at, updated.connected_at);
+        dbg!(escape(fetched.connected_at), escape(updated.connected_at));
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
