@@ -596,7 +596,8 @@ impl DbClient for BigTableClientImpl {
         connected_filter
             .set_column_qualifier_regex_filter("connected_at".to_owned().as_bytes().to_vec());
         let mut val_range = ValueRange::default();
-        val_range.set_start_value_closed(user.connected_at.to_be_bytes().to_vec());
+        val_range.set_end_value_closed(user.connected_at.to_be_bytes().to_vec());
+        dbg!(user.connected_at.to_be_bytes().to_vec());
         connected_filter.set_value_range_filter(val_range);
         filter_set.push(connected_filter);
 
@@ -774,6 +775,7 @@ impl DbClient for BigTableClientImpl {
             };
             set_cell.set_column_qualifier("updated".to_owned().into_bytes().to_vec());
             set_cell.set_value(now.to_be_bytes().to_vec());
+            set_cell.set_timestamp_micros((now * 1000) as i64);
 
             mutation.set_set_cell(set_cell);
             cell_mutations.push(mutation);
@@ -1330,6 +1332,9 @@ mod tests {
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
         let node_id = "test_node".to_owned();
 
+        // purge the user record if it exists.
+        let _ = client.remove_user(&uaid).await;
+
         let test_user = User {
             uaid,
             router_type: "webpush".to_owned(),
@@ -1366,9 +1371,10 @@ mod tests {
         let channels = client.get_channels(&uaid).await.unwrap();
         assert_eq!(channels, new_channels);
 
-        // can we modify the user record?
+        // now ensure that we can update a user that's after the time we set prior.
+        // first ensure that we can't update a user that's before the time we set prior.
         let updated = User {
-            connected_at: fetched.connected_at - 3,
+            connected_at: fetched.connected_at - 300,
             ..test_user.clone()
         };
         dbg!(fetched.connected_at, updated.connected_at);
@@ -1380,8 +1386,7 @@ mod tests {
         let fetched2 = client.get_user(&fetched.uaid).await.unwrap().unwrap();
         assert_eq!(fetched.connected_at, fetched2.connected_at);
 
-        // now ensure that we can update a user that's after the time we set prior.
-        // first ensure that we can't update a user that's before the time we set prior.
+        // and make sure we can update a record with a later connected_at time.
         let updated = User {
             connected_at: fetched.connected_at + 300,
             ..test_user
