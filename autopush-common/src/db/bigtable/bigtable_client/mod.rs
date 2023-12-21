@@ -252,7 +252,6 @@ impl BigTableClientImpl {
         req.set_table_name(self.settings.table_name.clone());
         req.set_row_key(row.row_key.into_bytes());
         let mutations = self.get_mutations(row.cells)?;
-        dbg!(&filter);
         req.set_predicate_filter(filter);
         req.set_true_mutations(mutations);
 
@@ -264,7 +263,7 @@ impl BigTableClientImpl {
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
-        dbg!("🉑 Predicate Matched: {}", &resp.get_predicate_matched(),);
+        debug!("🉑 Predicate Matched: {}", &resp.get_predicate_matched(),);
         Ok(resp.get_predicate_matched())
     }
 
@@ -630,7 +629,7 @@ impl DbClient for BigTableClientImpl {
         let mut val_range = ValueRange::default();
         val_range.set_start_value_open(escape(0).as_bytes().to_vec());
         val_range.set_end_value_open(escape(user.connected_at).as_bytes().to_vec());
-        dbg!(&val_range, escape(user.connected_at));
+        // dbg!(&val_range, escape(user.connected_at));
         filter.set_value_range_filter(val_range);
         filter_set.push(filter);
 
@@ -639,28 +638,13 @@ impl DbClient for BigTableClientImpl {
         connected_filter.set_chain(connected_filter_chain);
 
         // Gather the collections and try to update the row.
-        /*
-        let mut joint_chains: RowFilter_Chain = RowFilter_Chain::default();
-        let mut joint_set: RepeatedField<RowFilter> = RepeatedField::default();
-        joint_set.push(router_filter);
-        joint_set.push(connected_filter);
-        joint_chains.set_filters(joint_set);
-
-        let mut joint_filter = RowFilter::default();
-        joint_filter.set_chain(joint_chains);
-
-        // TODO: make conditional filter set that uses both chains.
-        dbg!(&joint_filter);
-
-        Ok(self.check_and_mutate_row(row, joint_filter).await?)
-        // */
 
         let mut cond = RowFilter_Condition::default();
         cond.set_predicate_filter(router_filter);
         cond.set_true_filter(connected_filter);
         let mut cond_filter = RowFilter::default();
         cond_filter.set_condition(cond);
-        dbg!(&cond_filter);
+        // dbg!(&cond_filter);
 
         Ok(self.check_and_mutate_row(row, cond_filter).await?)
     }
@@ -1435,8 +1419,6 @@ mod tests {
             connected_at: fetched.connected_at - 300,
             ..test_user.clone()
         };
-        dbg!(fetched.connected_at, updated.connected_at);
-        dbg!(escape(fetched.connected_at), escape(updated.connected_at));
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
         assert!(!result.unwrap());
@@ -1450,8 +1432,7 @@ mod tests {
             connected_at: fetched.connected_at + 300,
             ..test_user
         };
-        dbg!(fetched.connected_at, updated.connected_at);
-        dbg!(escape(fetched.connected_at), escape(updated.connected_at));
+        // dbg!(escape(fetched.connected_at), escape(updated.connected_at));
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
