@@ -1,3 +1,5 @@
+use std::fmt::{self, Display};
+
 use backtrace::Backtrace;
 use thiserror::Error;
 
@@ -55,9 +57,9 @@ impl From<i32> for MutateRowStatus {
     }
 }
 
-impl ToString for MutateRowStatus {
-    fn to_string(&self) -> String {
-        match self {
+impl Display for MutateRowStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
             MutateRowStatus::OK => "Ok",
             MutateRowStatus::Cancelled => "Cancelled",
             MutateRowStatus::Unknown => "Unknown",
@@ -75,41 +77,40 @@ impl ToString for MutateRowStatus {
             MutateRowStatus::Unavailable => "Unavailable",
             MutateRowStatus::DataLoss => "Data Loss",
             MutateRowStatus::Unauthenticated => "Unauthenticated",
-        }
-        .to_owned()
+        })
     }
 }
 
 #[derive(Debug, Error)]
 pub enum BigTableError {
-    #[error("Invalid Row Response")]
-    InvalidRowResponse(grpcio::Error),
+    #[error("Invalid Row Response: {0}")]
+    InvalidRowResponse(#[source] grpcio::Error),
 
     #[error("Invalid Chunk")]
     InvalidChunk(String),
 
-    #[error("BigTable read error")]
+    #[error("BigTable read error: {0}")]
     Read(grpcio::Error),
 
-    #[error("BigTable write timestamp error")]
-    WriteTime(std::time::SystemTimeError),
+    #[error("BigTable write timestamp error: {0}")]
+    WriteTime(#[source] std::time::SystemTimeError),
 
-    #[error("Bigtable write error")]
-    Write(grpcio::Error),
+    #[error("Bigtable write error: {0}")]
+    Write(#[source] grpcio::Error),
 
     /// Return a GRPC status code and any message.
     /// See https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-    #[error("Bigtable status response")]
+    #[error("Bigtable status response: {0:?}")]
     Status(MutateRowStatus, String),
 
-    #[error("BigTable Admin Error")]
+    #[error("BigTable Admin Error: {0}")]
     Admin(String, Option<String>),
 
     #[error("Bigtable Recycle request")]
     Recycle,
 
     /// General Pool builder errors.
-    #[error("Pool Error")]
+    #[error("Pool Error: {0}")]
     Pool(String),
 }
 

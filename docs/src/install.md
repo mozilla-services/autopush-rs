@@ -172,16 +172,11 @@ export BIGTABLE_EMULATOR_HOST=localhost:8086
 Bigtable is memory only and does not maintain information between restarts. This
 means that you will need to create the table, column families, and policies.
 
-You can initialize these using the `cbt` command from the SDK:
+You can initialize these via the `setup_bt.sh` script which uses the `cbt`
+command from the SDK:
 
 ```bash
-cbt -project test -instance test createtable autopush && \
-cbt -project test -instance test createfamily autopush message && \
-cbt -project test -instance test createfamily autopush message_topic && \
-cbt -project test -instance test createfamily autopush router && \
-cbt -project test -instance test setgcpolicy autopush message maxage=1s && \
-cbt -project test -instance test setgcpolicy autopush router maxversions=1 && \
-cbt -project test -instance test setgcpolicy autopush message_topic maxversions=1
+scripts/setup_bt.sh test localhost:8086
 ```
 
 The `db_dsn` to access this data store with Autopendpoint would be:  

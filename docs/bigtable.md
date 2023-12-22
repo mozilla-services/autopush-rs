@@ -34,13 +34,7 @@ you can then use the following commands:
 
 ```bash
 BIGTABLE_EMULATOR_HOST=localhost:8086 \
-    cbt -project test -instance test createtable autopush && \
-    cbt -project test -instance test createfamily autopush router && \
-    cbt -project test -instance test createfamily autopush message && \
-    cbt -project test -instance test createfamily autopush message_topic && \
-    cbt -project test -instance test setgcpolicy autopush router maxversions=1 && \
-    cbt -project test -instance test setgcpolicy autopush message maxversions=1 and maxage=1s && \
-    cbt -project test -instance test setgcpolicy autopush message_topic maxversions=1 and maxage=1s
+    scripts/setup_bt.sh test localhost:8086
 ```
 
 This will create a new project named `test`, a new instance named `test` and a new table named `autopush`, along with column family definitions for `messsage` and `router`.

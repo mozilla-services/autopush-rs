@@ -1162,11 +1162,11 @@ mod tests {
     //!
     use std::sync::Arc;
     use std::time::SystemTime;
+
+    use cadence::StatsdClient;
     use uuid;
 
     use super::*;
-    use cadence::StatsdClient;
-
     use crate::db::DbSettings;
 
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
@@ -1180,19 +1180,19 @@ mod tests {
     }
 
     fn new_client() -> DbResult<BigTableClientImpl> {
-        let env_dsn = format!(
-            "grpc://{}",
-            std::env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8080".to_owned())
-        );
+        let host = std::env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8080".to_owned());
+        let env_dsn = format!("grpc://{}", host);
         let settings = DbSettings {
             // this presumes the table was created with
             // ```
-            // cbt -project test -instance test createtable autopush
+            // scripts/setup_bt.sh test -instance $BIGTABLE_EMULATOR_HOST
             // ```
             // with `message`, `router`, and `message_topic` families
             dsn: Some(env_dsn),
-            db_settings: json!({"table_name":"projects/test/instances/test/tables/autopush"})
-                .to_string(),
+            db_settings: json!({
+                "table_name": format!("projects/test/instances/{host}/tables/autopush")
+            })
+            .to_string(),
         };
 
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
@@ -1212,8 +1212,8 @@ mod tests {
     /// run a gauntlet of testing. These are a bit linear because they need
     /// to run in sequence.
     #[actix_rt::test]
-    async fn run_gauntlet() {
-        let client = new_client().unwrap();
+    async fn run_gauntlet() -> DbResult<()> {
+        let client = new_client()?;
 
         let connected_at = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -1235,16 +1235,15 @@ mod tests {
         };
 
         // can we add the user?
-        let user = client.add_user(&test_user).await;
-        assert!(user.is_ok());
-        let fetched = client.get_user(&uaid).await.unwrap();
+        client.add_user(&test_user).await?;
+        let fetched = client.get_user(&uaid).await?;
         assert!(fetched.is_some());
         assert_eq!(fetched.unwrap().router_type, "webpush".to_owned());
 
         // can we add channels?
-        client.add_channel(&uaid, &chid).await.unwrap();
-        let channels = client.get_channels(&uaid).await;
-        assert!(channels.unwrap().contains(&chid));
+        client.add_channel(&uaid, &chid).await?;
+        let channels = client.get_channels(&uaid).await?;
+        assert!(channels.contains(&chid));
 
         // can we add lots of channels?
         let mut new_channels: HashSet<Uuid> = HashSet::new();
@@ -1252,11 +1251,8 @@ mod tests {
         for _ in 1..10 {
             new_channels.insert(uuid::Uuid::new_v4());
         }
-        client
-            .add_channels(&uaid, new_channels.clone())
-            .await
-            .unwrap();
-        let channels = client.get_channels(&uaid).await.unwrap();
+        client.add_channels(&uaid, new_channels.clone()).await?;
+        let channels = client.get_channels(&uaid).await?;
         assert_eq!(channels, new_channels);
 
         // can we modify the user record?
@@ -1267,7 +1263,7 @@ mod tests {
         assert!(client.update_user(&updated).await.is_ok());
         assert_ne!(
             test_user.connected_at,
-            client.get_user(&uaid).await.unwrap().unwrap().connected_at
+            client.get_user(&uaid).await?.unwrap().connected_at
         );
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
@@ -1288,10 +1284,7 @@ mod tests {
             .await
             .is_ok());
 
-        let mut fetched = client
-            .fetch_timestamp_messages(&uaid, None, 999)
-            .await
-            .unwrap();
+        let mut fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_ne!(fetched.messages.len(), 0);
         let fm = fetched.messages.pop().unwrap();
         assert_eq!(fm.channel_id, test_notification.channel_id);
@@ -1300,15 +1293,13 @@ mod tests {
         // Grab all 1 of the messages that were submmited within the past 10 seconds.
         let fetched = client
             .fetch_timestamp_messages(&uaid, Some(timestamp - 10), 999)
-            .await
-            .unwrap();
+            .await?;
         assert_ne!(fetched.messages.len(), 0);
 
         // Try grabbing a message for 10 seconds from now.
         let fetched = client
             .fetch_timestamp_messages(&uaid, Some(timestamp + 10), 999)
-            .await
-            .unwrap();
+            .await?;
         assert_eq!(fetched.messages.len(), 0);
 
         // can we clean up our toys?
@@ -1325,14 +1316,15 @@ mod tests {
         // did we remove it?
         let msgs = client
             .fetch_timestamp_messages(&uaid, None, 999)
-            .await
-            .unwrap()
+            .await?
             .messages;
         assert!(msgs.is_empty());
 
         assert!(client.remove_user(&uaid).await.is_ok());
 
-        assert!(client.get_user(&uaid).await.unwrap().is_none());
+        assert!(client.get_user(&uaid).await?.is_none());
+
+        Ok(())
     }
 
     // #[actix_rt::test]
