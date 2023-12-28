@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
+use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
@@ -290,7 +291,6 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
-        req.set_delete_all_data_from_table(true);
         admin
             .drop_row_range_async(&req)
             .map_err(|e| {
@@ -648,6 +648,98 @@ impl DbClient for BigTableClientImpl {
             }],
         );
         self.write_row(row).await.map_err(|e| e.into())
+    }
+
+    /// Add channels in bulk (used mostly during migration)
+    ///
+    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| DbError::General(e.to_string()))?
+            .as_millis();
+        let mut entries = protobuf::RepeatedField::default();
+        let mut req = bigtable::MutateRowsRequest::default();
+        let mut limit: u32 = 0;
+        req.set_table_name(self.settings.table_name.clone());
+
+        // Create entries that define rows that contain mutations to hold the updated value which
+        // will create/update the channels.
+        for channel in channels {
+            let mut entry = bigtable::MutateRowsRequest_Entry::default();
+            let key = as_key(uaid, Some(&channel), None);
+            entry.set_row_key(key.into_bytes());
+
+            let mut cell_mutations = protobuf::RepeatedField::default();
+            let mut mutation = data::Mutation::default();
+            let mut set_cell = data::Mutation_SetCell {
+                family_name: ROUTER_FAMILY.to_owned(),
+                ..Default::default()
+            };
+            set_cell.set_column_qualifier("updated".to_owned().into_bytes().to_vec());
+            set_cell.set_value(now.to_be_bytes().to_vec());
+
+            mutation.set_set_cell(set_cell);
+            cell_mutations.push(mutation);
+            entry.set_mutations(cell_mutations);
+            entries.push(entry);
+            // There is a limit of 100,000 mutations per batch for bigtable.
+            // https://cloud.google.com/bigtable/quotas
+            // If you have 100,000 channels, you have too many.
+            limit += 1;
+            if limit >= 100_000 {
+                break;
+            }
+        }
+        req.set_entries(entries);
+
+        let bigtable = self.pool.get().await?;
+
+        // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
+        let resp = bigtable
+            .conn
+            .mutate_rows(&req)
+            .map_err(error::BigTableError::Write)?;
+
+        // Scan the returned stream looking for errors.
+        // As I understand, the returned stream contains chunked MutateRowsResponse structs. Each
+        // struct contains the result of the row mutation, and contains a `status` (non-zero on error)
+        // and an optional message string (empty if none).
+        // The structure also contains an overall `status` but that does not appear to be exposed.
+        // Status codes are defined at https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+        let mut stream = Box::pin(resp);
+        let mut cnt = 0;
+        loop {
+            let (result, remainder) = stream.into_future().await;
+            if let Some(result) = result {
+                debug!("🎏 Result block: {}", cnt);
+                match result {
+                    Ok(r) => {
+                        for e in r.get_entries() {
+                            if e.has_status() {
+                                let status = e.get_status();
+                                // See status code definitions: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+                                let code = error::MutateRowStatus::from(status.get_code());
+                                if !code.is_ok() {
+                                    return Err(error::BigTableError::Status(
+                                        code,
+                                        status.get_message().to_owned(),
+                                    )
+                                    .into());
+                                }
+                                debug!("🎏 Response: {} OK", e.index);
+                            }
+                        }
+                    }
+                    Err(e) => return Err(error::BigTableError::Write(e).into()),
+                };
+                cnt += 1;
+            } else {
+                debug!("🎏 Done!");
+                break;
+            }
+            stream = remainder;
+        }
+        Ok(())
     }
 
     /// Delete all the rows that start with the given prefix. NOTE: this may be metered and should
@@ -1070,6 +1162,7 @@ mod tests {
     //!
     use std::sync::Arc;
     use std::time::SystemTime;
+    use uuid;
 
     use super::*;
     use cadence::StatsdClient;
@@ -1153,6 +1246,19 @@ mod tests {
         let channels = client.get_channels(&uaid).await;
         assert!(channels.unwrap().contains(&chid));
 
+        // can we add lots of channels?
+        let mut new_channels: HashSet<Uuid> = HashSet::new();
+        new_channels.insert(chid);
+        for _ in 1..10 {
+            new_channels.insert(uuid::Uuid::new_v4());
+        }
+        client
+            .add_channels(&uaid, new_channels.clone())
+            .await
+            .unwrap();
+        let channels = client.get_channels(&uaid).await.unwrap();
+        assert_eq!(channels, new_channels);
+
         // can we modify the user record?
         let updated = User {
             connected_at: now() + 3,
@@ -1222,7 +1328,6 @@ mod tests {
             .await
             .unwrap()
             .messages;
-        print!("Messages: {:?}", &msgs);
         assert!(msgs.is_empty());
 
         assert!(client.remove_user(&uaid).await.is_ok());
