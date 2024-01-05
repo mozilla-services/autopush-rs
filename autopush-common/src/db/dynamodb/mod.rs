@@ -158,6 +158,7 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
+    #[must_use]
     async fn update_user(&self, user: &User) -> DbResult<bool> {
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
