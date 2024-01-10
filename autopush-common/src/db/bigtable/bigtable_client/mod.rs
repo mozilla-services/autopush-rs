@@ -87,14 +87,6 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     })
 }
 
-fn escape(val: u64) -> String {
-    val.to_string()
-}
-
-fn unescape(val: String) -> u64 {
-    u64::from_str(&val).unwrap()
-}
-
 /// Create a normalized index key.
 fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -> String {
     let mut parts: Vec<String> = Vec::new();
@@ -447,7 +439,7 @@ impl BigTableClientImpl {
             cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
                 qualifier: "connected_at".to_owned(),
-                value: escape(user.connected_at).as_bytes().to_vec(),
+                value: user.connected_at.to_be_bytes().to_vec(),
                 ..Default::default()
             },
             cell::Cell {
@@ -627,9 +619,8 @@ impl DbClient for BigTableClientImpl {
 
         let mut filter = RowFilter::default();
         let mut val_range = ValueRange::default();
-        val_range.set_start_value_open(escape(0).as_bytes().to_vec());
-        val_range.set_end_value_open(escape(user.connected_at).as_bytes().to_vec());
-        // dbg!(&val_range, escape(user.connected_at));
+        val_range.set_start_value_open(0_u64.to_be_bytes().to_vec());
+        val_range.set_end_value_open(user.connected_at.to_be_bytes().to_vec());
         filter.set_value_range_filter(val_range);
         filter_set.push(filter);
 
@@ -659,16 +650,14 @@ impl DbClient for BigTableClientImpl {
         if let Some(mut record) = self.read_row(&key, None).await? {
             trace!("🉑 Found a record for that user");
             if let Some(mut cells) = record.take_cells("connected_at") {
-                // let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                 if let Some(cell) = cells.pop() {
-                    let v: String = String::from_utf8(cell.value).map_err(|e| {
+                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
                         DbError::Serialization(format!(
                             "Could not deserialize connected_at: {:?}",
                             e
                         ))
                     })?;
-                    // result.connected_at = u64::from_be_bytes(v);
-                    result.connected_at = unescape(v);
+                    result.connected_at = u64::from_be_bytes(v);
                 }
             }
 
