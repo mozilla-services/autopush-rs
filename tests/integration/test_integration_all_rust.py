@@ -609,7 +609,7 @@ def setup_bt():
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/localhost:80806/tables/autopush"
         log.debug("🐍🟢 Setting up bigtable")
-        vv = subprocess.call([SETUP_BT_SH])
+        vv = subprocess.call([SETUP_BT_SH, "test", "localhost:8086"])
         log.debug(vv)
     except Exception as e:
         log.error("Bigtable Setup Error {}", e)
