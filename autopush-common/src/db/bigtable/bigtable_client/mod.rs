@@ -1421,7 +1421,6 @@ mod tests {
             connected_at: fetched.connected_at + 300,
             ..test_user
         };
-        // dbg!(escape(fetched.connected_at), escape(updated.connected_at));
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
