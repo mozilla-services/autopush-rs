@@ -38,7 +38,7 @@ jobs:
   audit:
     docker:
       # NOTE: update version for all # RUST_VER
-      - image: rust:1.73
+      - image: rust:1.74
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
