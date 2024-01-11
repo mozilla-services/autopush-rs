@@ -3,6 +3,83 @@ use thiserror::Error;
 
 use crate::errors::ReportableError;
 
+#[derive(PartialEq, Eq, Debug)]
+pub enum MutateRowStatus {
+    OK,
+    Cancelled,
+    Unknown,
+    InvalidArgument,
+    DeadlineExceeded,
+    NotFound,
+    AlreadyExists,
+    PermissionDenied,
+    ResourceExhausted,
+    FailedPrecondition,
+    Aborted,
+    OutOfRange,
+    Unimplemented,
+    Internal,
+    Unavailable,
+    DataLoss,
+    Unauthenticated,
+}
+
+impl MutateRowStatus {
+    pub fn is_ok(&self) -> bool {
+        self == &Self::OK
+    }
+}
+
+impl From<i32> for MutateRowStatus {
+    fn from(v: i32) -> Self {
+        match v {
+            0 => Self::OK,
+            1 => Self::Cancelled,
+            2 => Self::Unknown,
+            3 => Self::InvalidArgument,
+            4 => Self::DeadlineExceeded,
+            5 => Self::NotFound,
+            6 => Self::AlreadyExists,
+            7 => Self::PermissionDenied,
+            8 => Self::ResourceExhausted,
+            9 => Self::FailedPrecondition,
+            10 => Self::Aborted,
+            11 => Self::OutOfRange,
+            12 => Self::Unimplemented,
+            13 => Self::Internal,
+            14 => Self::Unavailable,
+            15 => Self::DataLoss,
+            16 => Self::Unauthenticated,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl ToString for MutateRowStatus {
+    fn to_string(&self) -> String {
+        match self {
+            MutateRowStatus::OK => "Ok",
+            MutateRowStatus::Cancelled => "Cancelled",
+            MutateRowStatus::Unknown => "Unknown",
+            MutateRowStatus::InvalidArgument => "Invalid Argument",
+            MutateRowStatus::DeadlineExceeded => "Deadline Exceeded",
+            MutateRowStatus::NotFound => "Not Found",
+            MutateRowStatus::AlreadyExists => "Already Exists",
+            MutateRowStatus::PermissionDenied => "Permission Denied",
+            MutateRowStatus::ResourceExhausted => "Resource Exhausted",
+            MutateRowStatus::FailedPrecondition => "Failed Precondition",
+            MutateRowStatus::Aborted => "Aborted",
+            MutateRowStatus::OutOfRange => "Out of Range",
+            MutateRowStatus::Unimplemented => "Unimplemented",
+            MutateRowStatus::Internal => "Internal",
+            MutateRowStatus::Unavailable => "Unavailable",
+            MutateRowStatus::DataLoss => "Data Loss",
+            MutateRowStatus::Unauthenticated => "Unauthenticated",
+        }
+        .to_owned()
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum BigTableError {
     #[error("Invalid Row Response")]
@@ -19,6 +96,11 @@ pub enum BigTableError {
 
     #[error("Bigtable write error")]
     Write(grpcio::Error),
+
+    /// Return a GRPC status code and any message.
+    /// See https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+    #[error("Bigtable status response")]
+    Status(MutateRowStatus, String),
 
     #[error("BigTable Admin Error")]
     Admin(String, Option<String>),
@@ -52,6 +134,7 @@ impl ReportableError for BigTableError {
             BigTableError::InvalidChunk(_) => "storage.bigtable.error.invalid_chunk",
             BigTableError::Read(_) => "storage.bigtable.error.read",
             BigTableError::Write(_) => "storage.bigtable.error.write",
+            BigTableError::Status(_, _) => "storage.bigtable.error.status",
             BigTableError::WriteTime(_) => "storage.bigtable.error.writetime",
             BigTableError::Admin(_, _) => "storage.bigtable.error.admin",
             BigTableError::Recycle => "storage.bigtable.error.recycle",
@@ -66,6 +149,9 @@ impl ReportableError for BigTableError {
             BigTableError::InvalidChunk(s) => vec![("error", s.to_string())],
             BigTableError::Read(s) => vec![("error", s.to_string())],
             BigTableError::Write(s) => vec![("error", s.to_string())],
+            BigTableError::Status(code, s) => {
+                vec![("code", code.to_string()), ("error", s.to_string())]
+            }
             BigTableError::WriteTime(s) => vec![("error", s.to_string())],
             BigTableError::Admin(s, raw) => {
                 let mut x = vec![("error", s.to_owned())];

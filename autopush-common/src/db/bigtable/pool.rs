@@ -179,11 +179,13 @@ impl Manager for BigtableClientManager {
         #[allow(clippy::blocks_in_if_conditions)]
         if !client
             .health_check(&self.settings.table_name)
+            .await
             .map_err(|e| {
                 debug!("🏊 Recycle requested (health). {:?}", e);
                 DbError::BTError(BigTableError::Recycle)
             })?
         {
+            debug!("🏊 Health check failed");
             return Err(DbError::BTError(BigTableError::Recycle).into());
         }
 

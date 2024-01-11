@@ -274,6 +274,14 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
+    /// Hopefully, this is never called. It is provided for completion sake.
+    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
+        for channel_id in channels {
+            self.add_channel(uaid, &channel_id).await?;
+        }
+        Ok(())
+    }
+
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         // Channel IDs are stored in a special row in the message table, where
         // chidmessageid = " "
