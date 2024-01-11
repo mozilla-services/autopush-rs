@@ -594,6 +594,7 @@ def capture_output_to_queue(output_stream):
 
 def setup_bt():
     global BT_PROCESS, BT_DB_SETTINGS
+    log.debug("🐍🟢 Starting bigtable emulator")
     BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
@@ -607,8 +608,6 @@ def setup_bt():
         )
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/localhost:80806/tables/autopush"
-        log.debug("🐍🟢 Starting bigtable emulator")
-        cmd_start = "cbt -project test -instance test".split(" ")
         log.debug("🐍🟢 Setting up bigtable")
         vv = subprocess.call([SETUP_BT_SH])
         log.debug(vv)
