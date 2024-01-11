@@ -127,6 +127,10 @@ impl UnidentifiedClient {
             if let Some(mut user) = self.app_state.db.get_user(&uaid).await? {
                 if let Some(flags) = process_existing_user(&self.app_state, &user).await? {
                     user.node_id = Some(self.app_state.router_url.to_owned());
+                    if user.connected_at > connected_at {
+                        let _ = self.app_state.metrics.incr("ua.already_connected");
+                        return Err(SMErrorKind::AlreadyConnected.into());
+                    }
                     user.connected_at = connected_at;
                     user.set_last_connect();
                     if !self.app_state.db.update_user(&user).await? {
