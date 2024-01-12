@@ -176,7 +176,7 @@ You can initialize these via the `setup_bt.sh` script which uses the `cbt`
 command from the SDK:
 
 ```bash
-scripts/setup_bt.sh test localhost:8086
+scripts/setup_bt.sh
 ```
 
 The `db_dsn` to access this data store with Autopendpoint would be:  

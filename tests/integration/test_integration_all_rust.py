@@ -121,7 +121,7 @@ def get_db_settings() -> str | dict[str, str | int | float] | None:
             router_table=ROUTER_TABLE,
             message_table=MESSAGE_TABLE,
             current_message_month=MESSAGE_TABLE,
-            table_name="projects/test/instances/localhost:8086/tables/autopush",
+            table_name="projects/test/instances/test/tables/autopush",
             router_family="router",
             message_family="message",
             message_topic_family="message_topic",
@@ -602,14 +602,14 @@ def setup_bt():
             "BT_DB_SETTINGS",
             json.dumps(
                 {
-                    "table_name": "projects/test/instances/localhost:8086/tables/autopush",
+                    "table_name": "projects/test/instances/test/tables/autopush",
                 }
             ),
         )
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
-        # using a Table Name of "projects/test/instances/localhost:80806/tables/autopush"
+        # using a Table Name of "projects/test/instances/test/tables/autopush"
         log.debug("🐍🟢 Setting up bigtable")
-        vv = subprocess.call([SETUP_BT_SH, "test", "localhost:8086"])
+        vv = subprocess.call([SETUP_BT_SH])
         log.debug(vv)
     except Exception as e:
         log.error("Bigtable Setup Error {}", e)

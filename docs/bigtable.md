@@ -34,7 +34,7 @@ you can then use the following commands:
 
 ```bash
 BIGTABLE_EMULATOR_HOST=localhost:8086 \
-    scripts/setup_bt.sh test localhost:8086
+    scripts/setup_bt.sh
 ```
 
 This will create a new project named `test`, a new instance named `test` and a new table named `autopush`, along with column family definitions for `messsage` and `router`.

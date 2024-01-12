@@ -1310,19 +1310,19 @@ mod tests {
     }
 
     fn new_client() -> DbResult<BigTableClientImpl> {
-        let host = std::env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8080".to_owned());
-        let env_dsn = format!("grpc://{}", host);
+        let env_dsn = format!(
+            "grpc://{}",
+            std::env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8080".to_owned())
+        );
         let settings = DbSettings {
             // this presumes the table was created with
             // ```
-            // scripts/setup_bt.sh test -instance $BIGTABLE_EMULATOR_HOST
+            // scripts/setup_bt.sh
             // ```
             // with `message`, `router`, and `message_topic` families
             dsn: Some(env_dsn),
-            db_settings: json!({
-                "table_name": format!("projects/test/instances/{host}/tables/autopush")
-            })
-            .to_string(),
+            db_settings: json!({"table_name": "projects/test/instances/test/tables/autopush"})
+                .to_string(),
         };
 
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
