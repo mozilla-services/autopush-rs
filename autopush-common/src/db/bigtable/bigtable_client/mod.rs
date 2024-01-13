@@ -1409,7 +1409,7 @@ mod tests {
         assert!(!result.unwrap());
 
         // Make sure that the `connected_at` wasn't modified
-        let fetched2 = client.get_user(&fetched.uaid).await.unwrap().unwrap();
+        let fetched2 = client.get_user(&fetched.uaid).await?.unwrap();
         assert_eq!(fetched.connected_at, fetched2.connected_at);
 
         // and make sure we can update a record with a later connected_at time.

@@ -90,7 +90,7 @@ pub enum BigTableError {
     InvalidChunk(String),
 
     #[error("BigTable read error: {0}")]
-    Read(grpcio::Error),
+    Read(#[source] grpcio::Error),
 
     #[error("BigTable write timestamp error: {0}")]
     WriteTime(#[source] std::time::SystemTimeError),
