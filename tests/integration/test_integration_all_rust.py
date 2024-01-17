@@ -51,6 +51,7 @@ root_dir = os.path.dirname(tests_dir)
 
 DDB_JAR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal.jar")
 DDB_LIB_DIR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal_lib")
+SETUP_BT_SH = os.path.join(root_dir, "scripts", "setup_bt.sh")
 DDB_PROCESS: subprocess.Popen | None = None
 BT_PROCESS: subprocess.Popen | None = None
 BT_DB_SETTINGS: str | None = None
@@ -593,6 +594,7 @@ def capture_output_to_queue(output_stream):
 
 def setup_bt():
     global BT_PROCESS, BT_DB_SETTINGS
+    log.debug("🐍🟢 Starting bigtable emulator")
     BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
@@ -606,19 +608,8 @@ def setup_bt():
         )
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/test/tables/autopush"
-        log.debug("🐍🟢 Starting bigtable emulator")
-        cmd_start = "cbt -project test -instance test".split(" ")
-        vv = subprocess.call(
-            cmd_start + "createtable autopush".split(" "), stderr=subprocess.STDOUT
-        )
-        vv = subprocess.call(cmd_start + "createfamily autopush message".split(" "))
-        vv = subprocess.call(cmd_start + "createfamily autopush message_topic".split(" "))
-        vv = subprocess.call(cmd_start + "createfamily autopush router".split(" "))
-        vv = subprocess.call(cmd_start + "setgcpolicy autopush message maxage=1s".split(" "))
-        vv = subprocess.call(
-            cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" ")
-        )
-        vv = subprocess.call(cmd_start + "setgcpolicy autopush router maxversions=1".split(" "))
+        log.debug("🐍🟢 Setting up bigtable")
+        vv = subprocess.call([SETUP_BT_SH])
         log.debug(vv)
     except Exception as e:
         log.error("Bigtable Setup Error {}", e)
