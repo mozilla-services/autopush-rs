@@ -30,7 +30,7 @@ Usage: autopush_rs [options]
 
 Options:
     -h, --help                          Show this message.
-    --config-connection=CONFIGFILE      Connection configuration file path.
+    --config=CONFIGFILE                 Connection configuration file path.
     --config-shared=CONFIGFILE          Common configuration file path.
 ";
 
