@@ -64,7 +64,7 @@ pub async fn register_uaid_route(
     trace!("🌍 Creating secret for UAID {}", user.uaid);
     let auth_keys = app_state.settings.auth_keys();
     let auth_key = auth_keys
-        .get(0)
+        .first()
         .expect("At least one auth key must be provided in the settings");
     let secret = AuthorizationCheck::generate_token(auth_key, &user.uaid)
         .map_err(ApiErrorKind::RegistrationSecretHash)?;

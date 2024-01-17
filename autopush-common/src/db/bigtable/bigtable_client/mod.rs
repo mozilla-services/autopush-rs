@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, User,
+    DbSettings, Notification, NotificationRecord, User,
 };
 use crate::notification::STANDARD_NOTIFICATION_PREFIX;
 
@@ -71,6 +71,19 @@ pub struct BigTableClientImpl {
     _metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
+}
+
+fn timestamp_filter() -> Result<data::RowFilter, error::BigTableError> {
+    let mut timestamp_filter = data::RowFilter::default();
+    let bt_now: i64 = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_err(error::BigTableError::WriteTime)?
+        .as_millis() as i64;
+    let mut range_filter = data::TimestampRange::default();
+    range_filter.set_start_timestamp_micros(bt_now * 1000);
+    timestamp_filter.set_timestamp_range_filter(range_filter);
+
+    Ok(timestamp_filter)
 }
 
 fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
@@ -168,7 +181,7 @@ impl BigTableClientImpl {
     async fn read_rows(
         &self,
         req: ReadRowsRequest,
-        timestamp_filter: Option<u64>,
+        sortkey_filter: Option<u64>,
         limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let bigtable = self.pool.get().await?;
@@ -176,7 +189,7 @@ impl BigTableClientImpl {
             .conn
             .read_rows(&req)
             .map_err(error::BigTableError::Read)?;
-        merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
+        merge::RowMerger::process_chunks(resp, sortkey_filter, limit).await
     }
 
     /// write a given row.
@@ -651,13 +664,7 @@ impl DbClient for BigTableClientImpl {
             trace!("🉑 Found a record for that user");
             if let Some(mut cells) = record.take_cells("connected_at") {
                 if let Some(cell) = cells.pop() {
-                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize connected_at: {:?}",
-                            e
-                        ))
-                    })?;
-                    result.connected_at = u64::from_be_bytes(v);
+                    result.connected_at = to_u64(cell.value, "connected_at")?;
                 }
             }
 
@@ -691,13 +698,7 @@ impl DbClient for BigTableClientImpl {
 
             if let Some(mut cells) = record.take_cells("last_connect") {
                 if let Some(cell) = cells.pop() {
-                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize last_connect: {:?}",
-                            e
-                        ))
-                    })?;
-                    result.last_connect = Some(u64::from_be_bytes(v));
+                    result.last_connect = Some(to_u64(cell.value, "last_connect")?)
                 }
             }
 
@@ -713,11 +714,8 @@ impl DbClient for BigTableClientImpl {
             }
 
             if let Some(mut cells) = record.take_cells("record_version") {
-                if let Some(mut cell) = cells.pop() {
-                    // there's only one byte, so pop it off and use it.
-                    if let Some(b) = cell.value.pop() {
-                        result.record_version = Some(b)
-                    }
+                if let Some(cell) = cells.pop() {
+                    result.record_version = Some(to_u64(cell.value, "record_version")?)
                 }
             }
 
@@ -734,13 +732,7 @@ impl DbClient for BigTableClientImpl {
 
             if let Some(mut cells) = record.take_cells("current_timestamp") {
                 if let Some(cell) = cells.pop() {
-                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize current_timestamp: {:?}",
-                            e
-                        ))
-                    })?;
-                    result.current_timestamp = Some(u64::from_be_bytes(v));
+                    result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
                 }
             }
 
@@ -996,6 +988,10 @@ impl DbClient for BigTableClientImpl {
         } else {
             MESSAGE_FAMILY
         };
+        let expiry: u128 = ttl
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
         cells.extend(vec![
             cell::Cell {
                 family: family.to_owned(),
@@ -1028,12 +1024,7 @@ impl DbClient for BigTableClientImpl {
             cell::Cell {
                 family: family.to_owned(),
                 qualifier: "expiry".to_owned(),
-                value: ttl
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-                    .to_be_bytes()
-                    .to_vec(),
+                value: expiry.to_be_bytes().to_vec(),
                 timestamp: ttl,
                 ..Default::default()
             },
@@ -1128,31 +1119,9 @@ impl DbClient for BigTableClientImpl {
             uaid.to_string(),
             chidmessageid
         );
-        // parse the sort_key to get the message's CHID
-        let parts: Vec<&str> = chidmessageid.split(':').collect();
-        if parts.len() < 3 {
-            return Err(DbError::General(format!(
-                "Invalid sort_key detected: {}",
-                chidmessageid
-            )));
-        }
-        let chid = match parts[0] {
-            "01" => parts[1], // Topic messages
-            "02" => parts[2], // Standard (timestamp) messages
-            _ => {
-                return Err(DbError::General(format!(
-                    "Invalid sort_key detected: {}",
-                    chidmessageid
-                )))
-            }
-        };
-        let chid = Uuid::parse_str(chid).map_err(|e| {
-            error::BigTableError::Admin(
-                "Invalid SortKey component".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
-        let row_key = as_key(uaid, Some(&chid), Some(chidmessageid));
+        let range_key = NotificationRecord::parse_chidmessageid(chidmessageid)
+            .map_err(|_| DbError::General(format!("Invalid ChidMessageId {}", chidmessageid)))?;
+        let row_key = as_key(uaid, Some(&range_key.channel_id), Some(chidmessageid));
         debug!("🉑🔥 Deleting message {}", &row_key);
         self.delete_row(&row_key).await.map_err(|e| e.into())
     }
@@ -1166,15 +1135,29 @@ impl DbClient for BigTableClientImpl {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
         req.set_filter({
-            let mut regex_filter = data::RowFilter::default();
+            let mut filter = data::RowFilter::default();
+
+            let mut chain = data::RowFilter_Chain::default();
+            let mut filter_chain = RepeatedField::default();
+
+            let mut row_filter = data::RowFilter::default();
             // channels for a given UAID all begin with `{uaid}#`
             // this will fetch all messages for all channels and all sort_keys
-            regex_filter.set_row_key_regex_filter(
+            row_filter.set_row_key_regex_filter(
                 format!("^{}#[^#]+#01:.+", uaid.simple())
                     .as_bytes()
                     .to_vec(),
             );
-            regex_filter
+
+            let time_filter = timestamp_filter()?;
+            // Filter by the keyed value first, then by the time.
+            filter_chain.push(row_filter);
+            filter_chain.push(time_filter);
+
+            chain.set_filters(filter_chain);
+            filter.set_chain(chain);
+
+            filter
         });
         // Note set_rows_limit(v) limits the returned results
         // If you're doing additional filtering later, this is not what
@@ -1210,6 +1193,12 @@ impl DbClient for BigTableClientImpl {
         //
         //
         let filter = {
+            let mut filter = data::RowFilter::default();
+
+            let mut chain = data::RowFilter_Chain::default();
+            let mut filter_chain = RepeatedField::default();
+
+            let mut row_filter = data::RowFilter::default();
             // Only look for channelids for the given UAID.
             // start by looking for rows that roughly match what we want
             // Note: BigTable provides a good deal of specialized filtering, but
@@ -1218,7 +1207,7 @@ impl DbClient for BigTableClientImpl {
             // cells. There does not appear to be a way to chain this so that it only
             // looks for rows with ranged values within a given family or qualifier types
             // That must be done externally.)
-            let mut filter = data::RowFilter::default();
+
             // look for anything belonging to this UAID that is also a Standard Notification
             let pattern = format!(
                 "^{}#[^#]+#{}:.*",
@@ -1226,7 +1215,25 @@ impl DbClient for BigTableClientImpl {
                 STANDARD_NOTIFICATION_PREFIX,
             );
             trace!("🉑 regex filter {:?}", pattern);
-            filter.set_row_key_regex_filter(pattern.as_bytes().to_vec());
+            row_filter.set_row_key_regex_filter(pattern.as_bytes().to_vec());
+            filter_chain.push(row_filter);
+
+            // Filter on our TTL.
+            let time_filter = timestamp_filter()?;
+            filter_chain.push(time_filter);
+
+            /*
+            //NOTE: if you filter on a given field, BigTable will only
+            // return that specific field. Adding filters for the rest of
+            // the known elements may NOT return those elements or may
+            // cause the message to not be returned because any of
+            // those elements are not present. It may be preferable to
+            // therefore run two filters, one to fetch the candidate IDs
+            // and another to fetch the content of the messages.
+             */
+
+            chain.set_filters(filter_chain);
+            filter.set_chain(chain);
             filter
         };
         req.set_filter(filter);
@@ -1300,6 +1307,7 @@ mod tests {
 
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
+    const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
 
     fn now() -> u64 {
         SystemTime::now()
@@ -1360,6 +1368,8 @@ mod tests {
 
         let uaid = Uuid::parse_str(TEST_USER).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let topic_chid = Uuid::parse_str(TOPIC_CHID).unwrap();
+
         let node_id = "test_node".to_owned();
 
         // purge the user record if it exists.
@@ -1374,6 +1384,10 @@ mod tests {
             node_id: Some(node_id.clone()),
             ..Default::default()
         };
+
+        // purge the old user (if present)
+        // in case a prior test failed for whatever reason.
+        let _ = client.remove_user(&uaid).await;
 
         // can we add the user?
         client.add_user(&test_user).await?;
@@ -1437,10 +1451,8 @@ mod tests {
             sortkey_timestamp: Some(sort_key),
             ..Default::default()
         };
-        assert!(client
-            .save_message(&uaid, test_notification.clone())
-            .await
-            .is_ok());
+        let res = client.save_message(&uaid, test_notification.clone()).await;
+        assert!(res.is_ok());
 
         let mut fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_ne!(fetched.messages.len(), 0);
@@ -1467,6 +1479,45 @@ mod tests {
             .is_ok());
 
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
+
+        // Now, can we do all that with topic messages
+        let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
+        let timestamp = now();
+        let sort_key = now();
+        // Can we store a message?
+        let test_notification = crate::db::Notification {
+            channel_id: topic_chid,
+            version: "test".to_owned(),
+            ttl: 300,
+            topic: Some("topic".to_owned()),
+            timestamp,
+            data: Some(test_data.clone()),
+            sortkey_timestamp: Some(sort_key),
+            ..Default::default()
+        };
+        assert!(client
+            .save_message(&uaid, test_notification.clone())
+            .await
+            .is_ok());
+
+        let mut fetched = client.fetch_topic_messages(&uaid, 999).await.unwrap();
+        assert_ne!(fetched.messages.len(), 0);
+        let fm = fetched.messages.pop().unwrap();
+        assert_eq!(fm.channel_id, test_notification.channel_id);
+        assert_eq!(fm.data, Some(test_data));
+
+        // Grab the message that was submmited.
+        let fetched = client.fetch_topic_messages(&uaid, 999).await.unwrap();
+        assert_ne!(fetched.messages.len(), 0);
+
+        // can we clean up our toys?
+        assert!(client
+            .remove_message(&uaid, &test_notification.chidmessageid())
+            .await
+            .is_ok());
+
+        assert!(client.remove_channel(&uaid, &topic_chid).await.is_ok());
+
         assert!(client
             .remove_node_id(&uaid, &node_id, connected_at)
             .await
