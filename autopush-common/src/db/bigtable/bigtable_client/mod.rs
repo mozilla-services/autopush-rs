@@ -1500,14 +1500,14 @@ mod tests {
             .await
             .is_ok());
 
-        let mut fetched = client.fetch_topic_messages(&uaid, 999).await.unwrap();
+        let mut fetched = client.fetch_topic_messages(&uaid, 999).await?;
         assert_ne!(fetched.messages.len(), 0);
         let fm = fetched.messages.pop().unwrap();
         assert_eq!(fm.channel_id, test_notification.channel_id);
         assert_eq!(fm.data, Some(test_data));
 
         // Grab the message that was submmited.
-        let fetched = client.fetch_topic_messages(&uaid, 999).await.unwrap();
+        let fetched = client.fetch_topic_messages(&uaid, 999).await?;
         assert_ne!(fetched.messages.len(), 0);
 
         // can we clean up our toys?
