@@ -1127,18 +1127,17 @@ impl DbClient for BigTableClientImpl {
                 chidmessageid
             )));
         }
-        let family = match parts[0] {
-            "01" => MESSAGE_TOPIC_FAMILY,
-            "02" => MESSAGE_FAMILY,
-            _ => "",
+        let chid = match parts[0] {
+            "01" => parts[1], // Topic messages
+            "02" => parts[2], // Standard (timestamp) messages
+            _ => {
+                return Err(DbError::General(format!(
+                    "Invalid sort_key detected: {}",
+                    chidmessageid
+                )))
+            }
         };
-        if family.is_empty() {
-            return Err(DbError::General(format!(
-                "Invalid sort_key detected: {}",
-                chidmessageid
-            )));
-        }
-        let chid = Uuid::parse_str(parts[1]).map_err(|e| {
+        let chid = Uuid::parse_str(chid).map_err(|e| {
             error::BigTableError::Admin(
                 "Invalid SortKey component".to_string(),
                 Some(e.to_string()),
@@ -1503,7 +1502,7 @@ mod tests {
 
         // can we clean up our toys?
         assert!(client
-            .remove_message(&uaid, &format!("02:{}:{}", chid.as_simple(), sort_key))
+            .remove_message(&uaid, &test_notification.chidmessageid())
             .await
             .is_ok());
 
