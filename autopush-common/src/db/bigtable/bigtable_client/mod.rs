@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, User,
+    DbSettings, Notification, NotificationRecord, User,
 };
 use crate::notification::STANDARD_NOTIFICATION_PREFIX;
 
@@ -1128,31 +1128,9 @@ impl DbClient for BigTableClientImpl {
             uaid.to_string(),
             chidmessageid
         );
-        // parse the sort_key to get the message's CHID
-        let parts: Vec<&str> = chidmessageid.split(':').collect();
-        if parts.len() < 3 {
-            return Err(DbError::General(format!(
-                "Invalid sort_key detected: {}",
-                chidmessageid
-            )));
-        }
-        let chid = match parts[0] {
-            "01" => parts[1], // Topic messages
-            "02" => parts[2], // Standard (timestamp) messages
-            _ => {
-                return Err(DbError::General(format!(
-                    "Invalid sort_key detected: {}",
-                    chidmessageid
-                )))
-            }
-        };
-        let chid = Uuid::parse_str(chid).map_err(|e| {
-            error::BigTableError::Admin(
-                "Invalid SortKey component".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
-        let row_key = as_key(uaid, Some(&chid), Some(chidmessageid));
+        let range_key = NotificationRecord::parse_chidmessageid(chidmessageid)
+            .map_err(|_| DbError::General(format!("Invalid ChidMessageId {}", chidmessageid)))?;
+        let row_key = as_key(uaid, Some(&range_key.channel_id), Some(chidmessageid));
         debug!("🉑🔥 Deleting message {}", &row_key);
         self.delete_row(&row_key).await.map_err(|e| e.into())
     }
@@ -1300,6 +1278,7 @@ mod tests {
 
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
+    const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
 
     fn now() -> u64 {
         SystemTime::now()
@@ -1360,6 +1339,8 @@ mod tests {
 
         let uaid = Uuid::parse_str(TEST_USER).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let topic_chid = Uuid::parse_str(TOPIC_CHID).unwrap();
+
         let node_id = "test_node".to_owned();
 
         // purge the user record if it exists.
@@ -1476,6 +1457,45 @@ mod tests {
             .is_ok());
 
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
+
+        // Now, can we do all that with topic messages
+        let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
+        let timestamp = now();
+        let sort_key = now();
+        // Can we store a message?
+        let test_notification = crate::db::Notification {
+            channel_id: topic_chid,
+            version: "test".to_owned(),
+            ttl: 300,
+            topic: Some("topic".to_owned()),
+            timestamp,
+            data: Some(test_data.clone()),
+            sortkey_timestamp: Some(sort_key),
+            ..Default::default()
+        };
+        assert!(client
+            .save_message(&uaid, test_notification.clone())
+            .await
+            .is_ok());
+
+        let mut fetched = client.fetch_topic_messages(&uaid, 999).await.unwrap();
+        assert_ne!(fetched.messages.len(), 0);
+        let fm = fetched.messages.pop().unwrap();
+        assert_eq!(fm.channel_id, test_notification.channel_id);
+        assert_eq!(fm.data, Some(test_data));
+
+        // Grab the message that was submmited.
+        let fetched = client.fetch_topic_messages(&uaid, 999).await.unwrap();
+        assert_ne!(fetched.messages.len(), 0);
+
+        // can we clean up our toys?
+        assert!(client
+            .remove_message(&uaid, &test_notification.chidmessageid())
+            .await
+            .is_ok());
+
+        assert!(client.remove_channel(&uaid, &topic_chid).await.is_ok());
+
         assert!(client
             .remove_node_id(&uaid, &node_id, connected_at)
             .await
