@@ -254,7 +254,7 @@ pub struct NotificationRecord {
 
 impl NotificationRecord {
     /// read the custom sort_key and convert it into something the database can use.
-    fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
+    pub(crate) fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet = RegexSet::new([
                 format!("^{}:\\S+:\\S+$", TOPIC_NOTIFICATION_PREFIX).as_str(),
