@@ -41,7 +41,7 @@ use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
 
 const MAX_EXPIRY: u64 = 2_592_000;
-pub const USER_RECORD_VERSION: u8 = 1;
+pub const USER_RECORD_VERSION: u64 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
 
@@ -166,7 +166,7 @@ pub struct User {
     pub node_id: Option<String>,
     /// Record version
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub record_version: Option<u8>,
+    pub record_version: Option<u64>,
     /// LEGACY: Current month table in the database the user is on
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_month: Option<String>,
