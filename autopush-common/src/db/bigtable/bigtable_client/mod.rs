@@ -86,34 +86,6 @@ fn timestamp_filter() -> Result<data::RowFilter, error::BigTableError> {
     Ok(timestamp_filter)
 }
 
-/*
-/// Filter based on the calculated expiry of the data row.
-/// NOTE: Filtering on a specific cell value will return only that
-/// cell value in the row.
-fn expiry_filter() -> Result<data::RowFilter, error::BigTableError> {
-    let mut expiry_filter = data::RowFilter::default();
-    let mut chain = data::RowFilter_Chain::default();
-    let mut filter_chain = RepeatedField::default();
-
-    let mut key_filter = data::RowFilter::default();
-    key_filter.set_column_qualifier_regex_filter("expiry".as_bytes().to_vec());
-    let bt_now: u128 = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_err(error::BigTableError::WriteTime)?
-        .as_millis();
-    let mut value_filter = data::RowFilter::default();
-    let mut range = data::ValueRange::default();
-
-    // Valid timestamps have not yet expired.
-    range.set_start_value_open(bt_now.to_be_bytes().to_vec());
-    value_filter.set_value_range_filter(range);
-    filter_chain.push(key_filter);
-    filter_chain.push(value_filter);
-    chain.set_filters(filter_chain);
-    expiry_filter.set_chain(chain);
-    Ok(expiry_filter)
-}
-// */
 fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
     let v: [u8; 8] = value
         .try_into()
@@ -1201,9 +1173,10 @@ impl DbClient for BigTableClientImpl {
             );
 
             let time_filter = timestamp_filter()?;
+            // Filter by the keyed value first, then by the time.
+            filter_chain.push(row_filter);
             filter_chain.push(time_filter);
 
-            filter_chain.push(row_filter);
             chain.set_filters(filter_chain);
             filter.set_chain(chain);
 
@@ -1269,7 +1242,6 @@ impl DbClient for BigTableClientImpl {
             filter_chain.push(row_filter);
 
             // Filter on our TTL.
-            // let time_filter = expiry_filter()?;
             let time_filter = timestamp_filter()?;
             filter_chain.push(time_filter);
 
