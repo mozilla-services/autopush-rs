@@ -154,6 +154,7 @@ impl BigTableClientImpl {
         debug!("🉑 {:#?}", db_settings);
         let pool = BigTablePool::new(settings, &metrics)?;
         let metadata = MetadataBuilder::with_prefix(&db_settings.table_name)
+            .routing_param("table_name", &db_settings.table_name)
             .route_to_leader(db_settings.route_to_leader)
             .build()
             .map_err(|err| DbError::BTError(error::BigTableError::GRPC(err)))?;

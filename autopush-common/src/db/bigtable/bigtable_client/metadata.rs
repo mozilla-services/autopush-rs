@@ -49,7 +49,6 @@ impl<'a> MetadataBuilder<'a> {
         }
     }
 
-    #[allow(unused)]
     /// Add a [ROUTING_KEY] header
     /// This normally specifies the session name, but unlike spanner, bigtable does not appear to have one of those?
     pub fn routing_param(mut self, key: &'a str, value: &'a str) -> Self {
