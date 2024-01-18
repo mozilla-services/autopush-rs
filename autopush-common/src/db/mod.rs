@@ -61,9 +61,13 @@ pub enum StorageType {
 impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
         #[allow(unused_mut)]
-        let mut result = ["DynamoDB"].to_vec();
+        let mut result: Vec<&str> = Vec::new();
+        #[cfg(feature = "dynamodb")]
+        result.push("DynamoDB");
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
+        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+        result.push("Dual");
         result
     }
 
