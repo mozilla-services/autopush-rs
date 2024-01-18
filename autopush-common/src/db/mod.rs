@@ -58,6 +58,7 @@ pub enum StorageType {
 }
 
 /// The type of storage to use.
+#[allow(clippy::vec_init_then_push)] // Because we are only pushing on feature flags.
 impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
         #[allow(unused_mut)]
