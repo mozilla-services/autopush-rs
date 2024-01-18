@@ -83,13 +83,21 @@ jobs:
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
+        environment:
+            RUST_BACKTRACE: 1
       - image: amazon/dynamodb-local:latest
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: -jar DynamoDBLocal.jar -sharedDb
+      - image: google/cloud-sdk:latest
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        command: gcloud beta emulators bigtable start --host-port=localhost:8086
     resource_class: xlarge
     environment:
+      BIGTABLE_EMULATOR_HOST: localhost:8086
       AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
       - checkout
@@ -105,7 +113,14 @@ jobs:
           name: Set up system
           command: |
             apt update
-            apt install libssl-dev -y
+            apt install libssl-dev apt-transport-https ca-certificates gnupg curl -y
+      - run:
+          name: Set up cbt
+          command: |
+            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+            apt-get update -y
+            apt install google-cloud-cli-cbt -y
       - run:
           name: Set up Python
           command: |
@@ -122,22 +137,23 @@ jobs:
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build --features=bigtable
+            cargo build --features=emulator
       - run:
           name: Check formatting
           command: |
             cargo fmt -- --check
             cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
       - run:
+          name: Setup Bigtable
+          command: scripts/setup_bt.sh
+      - run:
           name: Rust tests
-          environment:
-            BIGTABLE_EMULATOR_HOST: localhost:8086
           # Note: This build can potentially exceed the amount of memory availble to the CircleCI instance.
           # We've seen that limiting the number of jobs helps reduce the frequency of this. (Note that
           # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
           # the machine level memory and CPU which are far higher than the memory allocated to the docker
           # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=bigtable --jobs=2
+          command: cargo test --features=emulator --jobs=2
       - run:
           name: Integration tests (Autopush Legacy)
           command: make integration-test-legacy
