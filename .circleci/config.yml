@@ -155,15 +155,22 @@ jobs:
           # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
           command: cargo test --features=emulator --jobs=2
       - run:
-          name: Integration tests (Autopush Legacy)
-          command: make integration-test-legacy
+          name: Integration tests (Bigtable)
+          command: make integration-test
           environment:
+            DB_DSN: grpc://localhost:8086
             TEST_RESULTS_DIR: workspace/test-results
       - run:
-          name: Integration tests (Autoconnect)
+          name: Integration tests (DynamoDB)
           command: make integration-test
           environment:
             TEST_RESULTS_DIR: workspace/test-results
+#      - run:
+#          name: Integration tests (Dual Bigtable/DynamoDB)
+#          command: make integration-test
+#          environment:
+#            DB_DSN: dual
+#            TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
       - save_cache:
