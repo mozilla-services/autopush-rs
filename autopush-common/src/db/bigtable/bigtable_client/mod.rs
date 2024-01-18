@@ -471,14 +471,6 @@ impl BigTableClientImpl {
                 ..Default::default()
             });
         };
-        if let Some(last_connect) = user.last_connect {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "last_connect".to_owned(),
-                value: last_connect.to_be_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
         if let Some(current_timestamp) = user.current_timestamp {
             cells.push(cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
@@ -500,14 +492,6 @@ impl BigTableClientImpl {
                 family: ROUTER_FAMILY.to_owned(),
                 qualifier: "record_version".to_owned(),
                 value: record_version.to_be_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
-        if let Some(current_month) = &user.current_month {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "current_month".to_owned(),
-                value: current_month.clone().into_bytes().to_vec(),
                 ..Default::default()
             });
         };
@@ -696,12 +680,6 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.take_cells("last_connect") {
-                if let Some(cell) = cells.pop() {
-                    result.last_connect = Some(to_u64(cell.value, "last_connect")?)
-                }
-            }
-
             if let Some(mut cells) = record.take_cells("node_id") {
                 if let Some(cell) = cells.pop() {
                     result.node_id = Some(String::from_utf8(cell.value).map_err(|e| {
@@ -716,17 +694,6 @@ impl DbClient for BigTableClientImpl {
             if let Some(mut cells) = record.take_cells("record_version") {
                 if let Some(cell) = cells.pop() {
                     result.record_version = Some(to_u64(cell.value, "record_version")?)
-                }
-            }
-
-            if let Some(mut cells) = record.take_cells("current_month") {
-                if let Some(cell) = cells.pop() {
-                    result.current_month = Some(String::from_utf8(cell.value).map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize current_month: {:?}",
-                            e
-                        ))
-                    })?);
                 }
             }
 
@@ -970,13 +937,6 @@ impl DbClient for BigTableClientImpl {
 
         let family = if message.topic.is_some() {
             // Set the correct flag so we know how to read this row later.
-            cells.push(cell::Cell {
-                family: MESSAGE_FAMILY.to_owned(),
-                qualifier: "has_topic".to_owned(),
-                value: vec![1],
-                timestamp: ttl,
-                ..Default::default()
-            });
             cells.push(cell::Cell {
                 family: MESSAGE_TOPIC_FAMILY.to_owned(),
                 qualifier: "topic".to_owned(),
