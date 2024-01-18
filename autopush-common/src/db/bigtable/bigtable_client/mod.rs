@@ -16,7 +16,7 @@ use google_cloud_rust_raw::bigtable::v2::data::{
     RowFilter, RowFilter_Chain, RowFilter_Condition, ValueRange,
 };
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use grpcio::Channel;
+use grpcio::{Channel, Metadata};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -28,6 +28,7 @@ use crate::db::{
 };
 use crate::notification::STANDARD_NOTIFICATION_PREFIX;
 
+use self::metadata::MetadataBuilder;
 use self::row::Row;
 use super::pool::BigTablePool;
 use super::BigTableDbSettings;
@@ -35,6 +36,7 @@ use super::BigTableDbSettings;
 pub mod cell;
 pub mod error;
 pub(crate) mod merge;
+pub mod metadata;
 pub mod row;
 
 // these are normally Vec<u8>
@@ -71,6 +73,7 @@ pub struct BigTableClientImpl {
     _metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
+    metadata: Metadata,
 }
 
 fn timestamp_filter() -> Result<data::RowFilter, error::BigTableError> {
@@ -115,6 +118,10 @@ fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -
     parts.join("#")
 }
 
+fn call_opts(metadata: Metadata) -> ::grpcio::CallOption {
+    ::grpcio::CallOption::default().headers(metadata)
+}
+
 /// Connect to a BigTable storage model.
 ///
 /// BigTable is available via the Google Console, and is a schema less storage system.
@@ -146,9 +153,14 @@ impl BigTableClientImpl {
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         debug!("🉑 {:#?}", db_settings);
         let pool = BigTablePool::new(settings, &metrics)?;
+        let metadata = MetadataBuilder::with_prefix(&db_settings.table_name)
+            .route_to_leader(db_settings.route_to_leader)
+            .build()
+            .map_err(|err| DbError::BTError(error::BigTableError::GRPC(err)))?;
         Ok(Self {
             settings: db_settings,
             _metrics: metrics,
+            metadata,
             pool,
         })
     }
@@ -187,7 +199,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
-            .read_rows(&req)
+            .read_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Read)?;
         merge::RowMerger::process_chunks(resp, sortkey_filter, limit).await
     }
@@ -211,7 +223,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let _resp = bigtable
             .conn
-            .mutate_row_async(&req)
+            .mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
@@ -519,12 +531,14 @@ impl BigTableClientImpl {
 #[derive(Clone)]
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
+    pub(super) metadata: Metadata,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel) -> Self {
+    pub fn new(channel: Channel, metadata: &Metadata) -> Self {
         Self {
             conn: BigtableClient::new(channel),
+            metadata: metadata.clone(),
         }
     }
 
@@ -549,7 +563,7 @@ impl BigtableDb {
 
         let r = self
             .conn
-            .read_rows(&req)
+            .read_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
         let (v, _stream) = r.into_future().await;

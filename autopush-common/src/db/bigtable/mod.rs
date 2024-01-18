@@ -62,6 +62,9 @@ pub struct BigTableDbSettings {
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_u32_to_duration")]
     pub database_pool_max_idle: Duration,
+    /// Include route to leader header in metadata
+    #[serde(default)]
+    pub route_to_leader: bool,
 }
 
 impl TryFrom<&str> for BigTableDbSettings {
