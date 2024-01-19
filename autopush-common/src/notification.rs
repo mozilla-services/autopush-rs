@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::util::ms_since_epoch;
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
-/// A Publishable Notification record. Thi is a notofication that is either
+/// A Publishable Notification record. This is a notification that is either
 /// received from a third party or is outbound to a UserAgent. If the
 /// UserAgent is not currently available, it may be stored as a
 /// [crate::db::NotificationRecord]
