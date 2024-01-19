@@ -246,7 +246,7 @@ pub struct NotificationRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<NotificationHeaders>,
     /// This is the acknowledgement-id used for clients to ack that they have received the
-    /// message. Some Python code refers to this as a message_id. Endpoints generate this
+    /// message. Autoendpoint refers to this as a message_id. Endpoints generate this
     /// value before sending it to storage or a connection node.
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,
