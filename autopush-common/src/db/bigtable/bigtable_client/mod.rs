@@ -103,9 +103,9 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
 /// Create a normalized index key.
 fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -> String {
     let mut parts: Vec<String> = Vec::new();
-    parts.push(uaid.simple().to_string());
+    parts.push(uaid.as_simple().to_string());
     if let Some(channel_id) = channel_id {
-        parts.push(channel_id.simple().to_string());
+        parts.push(channel_id.as_hyphenated().to_string());
     } else if chidmessageid.is_some() {
         parts.push("".to_string())
     }
@@ -1303,7 +1303,7 @@ mod tests {
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
         let chidmessageid = "01:decafbad-0000-0000-0000-0123456789ab:Inbox";
         let k = as_key(&uaid, Some(&chid), Some(chidmessageid));
-        assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad0000000000000123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
+        assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad-0000-0000-0000-0123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
     }
 
     #[actix_rt::test]
