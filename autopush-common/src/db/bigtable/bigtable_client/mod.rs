@@ -152,6 +152,20 @@ impl BigTableClientImpl {
         })
     }
 
+    /// Return a ReadRowsRequest for a given row key
+    fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
+        let mut req = bigtable::ReadRowsRequest::default();
+        req.set_table_name(self.settings.table_name.clone());
+
+        let mut row_keys = RepeatedField::default();
+        row_keys.push(row_key.as_bytes().to_vec());
+        let mut row_set = data::RowSet::default();
+        row_set.set_row_keys(row_keys);
+        req.set_rows(row_set);
+
+        req
+    }
+
     /// Read a given row from the row key.
     async fn read_row(
         &self,
@@ -159,17 +173,7 @@ impl BigTableClientImpl {
         timestamp_filter: Option<u64>,
     ) -> Result<Option<row::Row>, error::BigTableError> {
         debug!("🉑 Row key: {}", row_key);
-
-        let mut row_keys = RepeatedField::default();
-        row_keys.push(row_key.as_bytes().to_vec());
-
-        let mut row_set = data::RowSet::default();
-        row_set.set_row_keys(row_keys);
-
-        let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_rows(row_set);
-
+        let req = self.read_row_request(row_key);
         let mut rows = self.read_rows(req, timestamp_filter, None).await?;
         Ok(rows.remove(row_key))
     }
