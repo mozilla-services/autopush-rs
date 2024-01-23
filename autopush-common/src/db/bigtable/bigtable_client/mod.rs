@@ -99,21 +99,6 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     })
 }
 
-/// Create a normalized index key.
-fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    parts.push(uaid.as_simple().to_string());
-    if let Some(channel_id) = channel_id {
-        parts.push(channel_id.as_hyphenated().to_string());
-    } else if chidmessageid.is_some() {
-        parts.push("".to_string())
-    }
-    if let Some(chidmessageid) = chidmessageid {
-        parts.push(chidmessageid.to_owned());
-    }
-    parts.join("#")
-}
-
 /// Connect to a BigTable storage model.
 ///
 /// BigTable is available via the Google Console, and is a schema less storage system.
@@ -708,7 +693,8 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        self.delete_rows(&as_key(uaid, None, None)).await?;
+        let row_key = uaid.simple().to_string();
+        self.delete_rows(&row_key).await?;
         Ok(())
     }
 
@@ -882,7 +868,7 @@ impl DbClient for BigTableClientImpl {
             &uaid.simple().to_string(),
             UNIX_EPOCH + Duration::from_secs(connected_at)
         );
-        let row_key = as_key(uaid, None, None);
+        let row_key = uaid.simple().to_string();
         let mut time_range = data::TimestampRange::default();
         // convert connected at seconds into microseconds
         time_range.set_end_timestamp_micros((connected_at * 1000000) as i64);
@@ -1035,16 +1021,16 @@ impl DbClient for BigTableClientImpl {
     /// records with timestamps later than `current_timestamp`.
     ///
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
-        let mut row = Row {
-            row_key: as_key(uaid, None, None),
-            ..Default::default()
-        };
-
+        let row_key = uaid.simple().to_string();
         debug!(
             "🉑 Updating {} current_timestamp:  {:?}",
-            as_key(uaid, None, None),
+            &row_key,
             timestamp.to_be_bytes().to_vec()
         );
+        let mut row = Row {
+            row_key,
+            ..Default::default()
+        };
 
         row.cells.insert(
             MESSAGE_FAMILY.to_owned(),
@@ -1122,15 +1108,16 @@ impl DbClient for BigTableClientImpl {
 
         let mut rows = data::RowSet::default();
         let mut row_range = data::RowRange::default();
-        if let Some(ts) = timestamp {
-            let key = format!("{}#02:{}", uaid.simple(), ts);
-            row_range.set_start_key_open(key.into_bytes());
+
+        let start_key = if let Some(ts) = timestamp {
+            format!("{}#02:{}", uaid.simple(), ts)
         } else {
-            let key = format!("{}#02:", uaid.simple());
-            row_range.set_start_key_closed(key.into_bytes());
+            format!("{}#02:", uaid.simple())
         };
         let end_key = format!("{}#03:", uaid.simple());
+        row_range.set_start_key_open(start_key.into_bytes());
         row_range.set_end_key_open(end_key.into_bytes());
+
         let mut row_ranges = RepeatedField::default();
         row_ranges.push(row_range);
         rows.set_row_ranges(row_ranges);
@@ -1248,15 +1235,6 @@ mod tests {
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
 
         BigTableClientImpl::new(metrics, &settings)
-    }
-
-    #[test]
-    fn row_key() {
-        let uaid = Uuid::parse_str(TEST_USER).unwrap();
-        let chid = Uuid::parse_str(TEST_CHID).unwrap();
-        let chidmessageid = "01:decafbad-0000-0000-0000-0123456789ab:Inbox";
-        let k = as_key(&uaid, Some(&chid), Some(chidmessageid));
-        assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad-0000-0000-0000-0123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
     }
 
     #[actix_rt::test]
