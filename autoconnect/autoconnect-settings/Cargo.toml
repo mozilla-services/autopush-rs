@@ -22,5 +22,8 @@ autoconnect_common.workspace = true
 autopush_common.workspace = true
 
 [features]
+default = ["dynamodb"]
+dynamodb = []
 bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
+dual = ["bigtable", "dynamodb"]

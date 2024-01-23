@@ -2,6 +2,10 @@ use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+use autopush_common::db::dual::DualClientImpl;
+#[cfg(feature = "dynamodb")]
+use autopush_common::db::dynamodb::DdbClientImpl;
 use cadence::StatsdClient;
 use fernet::{Fernet, MultiFernet};
 use tokio::sync::RwLock;
@@ -10,7 +14,7 @@ use autoconnect_common::{
     broadcast::BroadcastChangeTracker, megaphone::init_and_spawn_megaphone_updater,
     registry::ClientRegistry,
 };
-use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
+use autopush_common::db::{client::DbClient, DbSettings, StorageType};
 use autopush_common::errors::{ApcErrorKind, Result};
 
 use crate::{Settings, ENV_PREFIX};
@@ -71,12 +75,16 @@ impl AppState {
             db_settings: settings.db_settings.clone(),
         };
         let storage_type = StorageType::from_dsn(&db_settings.dsn);
+        #[allow(unused)]
         let db: Box<dyn DbClient> = match storage_type {
+            #[cfg(feature = "dynamodb")]
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
             }
+            #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+            StorageType::Dual => Box::new(DualClientImpl::new(metrics.clone(), &db_settings)?),
             _ => panic!(
                 "Invalid Storage type {:?}. Check {}__DB_DSN.",
                 storage_type,
