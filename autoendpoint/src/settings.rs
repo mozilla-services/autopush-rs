@@ -94,7 +94,6 @@ impl Settings {
         let built = config.build()?;
 
         built.try_deserialize::<Self>().map_err(|error| {
-            dbg!(&error);
             match error {
                 // Configuration errors are not very sysop friendly, Try to make them
                 // a bit more 3AM useful.

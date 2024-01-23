@@ -4,7 +4,6 @@
 
 """Performance test module."""
 
-import base64
 import json
 import logging
 import random
@@ -255,21 +254,19 @@ class AutopushUser(FastHttpUser):
                 case "notification":
                     message = NotificationMessage(**message_dict)
                     message_data: str = message.data
-                    decode_data: str = base64.urlsafe_b64decode(message_data + "===").decode(
-                        "utf8"
+                    # scan through the notification records to see
+                    # if this matches a record we sent.
+                    record = self.notification_records.get(
+                        sha1(message_data.encode()).digest(), None
                     )
-                    # scan through the notification records to see if this matches a record we sent.
-                    record = self.notification_records.get(sha1(message_data.encode()).digest(), None)
                 case "register":
                     message = RegisterMessage(**message_dict)
                     register_chid: str = message.channelID
-                    record = self.register_records.get(
-                        register_chid,
-                        None)
+                    record = self.register_records.get(register_chid, None)
                 case "unregister":
                     message = UnregisterMessage(**message_dict)
                     unregister_chid: str = message.channelID
-                    record = self.unregister_records.get(message.channelID)
+                    record = self.unregister_records.get(unregister_chid)
                 case _:
                     exception = f"Unexpected data was received. Data: {data}"
 
@@ -345,7 +342,7 @@ class AutopushUser(FastHttpUser):
         message_type: str = "register"
         data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
         record = RegisterRecord(send_time=time.perf_counter(), channel_id=channel_id)
-        self.register_records[channel_id]=record
+        self.register_records[channel_id] = record
         self.send(ws, message_type, data)
 
     def send_unregister(self, ws: WebSocketApp, channel_id: str) -> None:
