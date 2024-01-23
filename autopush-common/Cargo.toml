@@ -80,6 +80,7 @@ actix-rt = "2.8"
 default = ["dynamodb"]
 bigtable = ["dep:google-cloud-rust-raw", "dep:grpcio", "dep:protobuf"]
 dynamodb = ["dep:rusoto_core", "dep:rusoto_credential", "dep:rusoto_dynamodb"]
+dual = ["dynamodb", "bigtable"]
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.
