@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, User,
+    DbSettings, Notification, User, MAX_CHANNEL_TTL,
 };
 
 use self::row::Row;
@@ -177,6 +177,60 @@ impl BigTableClientImpl {
         let req = self.read_row_request(row_key);
         let mut rows = self.read_rows(req, timestamp_filter, None).await?;
         Ok(rows.remove(row_key))
+    }
+
+    /// Perform a MutateRowsRequest
+    async fn mutate_rows(
+        &self,
+        req: bigtable::MutateRowsRequest,
+    ) -> Result<(), error::BigTableError> {
+        let bigtable = self.pool.get().await?;
+        // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
+        let resp = bigtable
+            .conn
+            .mutate_rows(&req)
+            .map_err(error::BigTableError::Write)?;
+
+        // Scan the returned stream looking for errors.
+        // As I understand, the returned stream contains chunked MutateRowsResponse structs. Each
+        // struct contains the result of the row mutation, and contains a `status` (non-zero on error)
+        // and an optional message string (empty if none).
+        // The structure also contains an overall `status` but that does not appear to be exposed.
+        // Status codes are defined at https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+        let mut stream = Box::pin(resp);
+        let mut cnt = 0;
+        loop {
+            let (result, remainder) = stream.into_future().await;
+            if let Some(result) = result {
+                debug!("🎏 Result block: {}", cnt);
+                match result {
+                    Ok(r) => {
+                        for e in r.get_entries() {
+                            if e.has_status() {
+                                let status = e.get_status();
+                                // See status code definitions: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+                                let code = error::MutateRowStatus::from(status.get_code());
+                                if !code.is_ok() {
+                                    return Err(error::BigTableError::Status(
+                                        code,
+                                        status.get_message().to_owned(),
+                                    ));
+                                }
+                                debug!("🎏 Response: {} OK", e.index);
+                            }
+                        }
+                    }
+                    Err(e) => return Err(error::BigTableError::Write(e)),
+                };
+                cnt += 1;
+            } else {
+                debug!("🎏 Done!");
+                break;
+            }
+            stream = remainder;
+        }
+
+        Ok(())
     }
 
     /// Take a big table ReadRowsRequest (containing the keys and filters) and return a set of row data indexed by row key.
@@ -718,26 +772,18 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let key = uaid.simple().to_string();
-
-        // We can use the default timestamp here because there shouldn't be a time
-        // based GC for router records.
         let mut row = Row {
-            row_key: key,
+            row_key: uaid.simple().to_string(),
             ..Default::default()
         };
-        let _now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| DbError::General(e.to_string()))?
-            .as_millis();
-        // XXX: I think this should be a mutation? we're not writing a row, we're writing cells
-        // XXX: timestamp
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL);
         row.cells.insert(
             META_FAMILY.to_owned(),
             vec![cell::Cell {
                 family: META_FAMILY.to_owned(),
                 qualifier: format!("chid:{}", channel_id.as_hyphenated()),
                 value: vec![],
+                timestamp: expiry,
                 ..Default::default()
             }],
         );
@@ -747,10 +793,11 @@ impl DbClient for BigTableClientImpl {
     /// Add channels in bulk (used mostly during migration)
     ///
     async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| DbError::General(e.to_string()))?
+        let expiry = (std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL))
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(error::BigTableError::WriteTime)?
             .as_millis();
+
         let mut entries = protobuf::RepeatedField::default();
         let mut req = bigtable::MutateRowsRequest::default();
         let mut limit: u32 = 0;
@@ -765,17 +812,12 @@ impl DbClient for BigTableClientImpl {
         // will create/update the channels.
         for channel in channels {
             let mut mutation = data::Mutation::default();
-            let mut set_cell = data::Mutation_SetCell {
+            let set_cell = data::Mutation_SetCell {
                 family_name: META_FAMILY.to_owned(),
+                column_qualifier: format!("chid:{}", channel.as_hyphenated()).into_bytes(),
+                timestamp_micros: (expiry * 1000) as i64,
                 ..Default::default()
             };
-            set_cell.set_column_qualifier(
-                format!("chid:{}", channel.as_hyphenated())
-                    .as_bytes()
-                    .to_vec(),
-            );
-            //set_cell.set_value(now.to_be_bytes().to_vec());
-            set_cell.set_timestamp_micros((now * 1000) as i64);
 
             mutation.set_set_cell(set_cell);
             cell_mutations.push(mutation);
@@ -791,119 +833,54 @@ impl DbClient for BigTableClientImpl {
         entries.push(entry);
         req.set_entries(entries);
 
-        let bigtable = self.pool.get().await?;
-
-        // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
-        let resp = bigtable
-            .conn
-            .mutate_rows(&req)
-            .map_err(error::BigTableError::Write)?;
-
-        // Scan the returned stream looking for errors.
-        // As I understand, the returned stream contains chunked MutateRowsResponse structs. Each
-        // struct contains the result of the row mutation, and contains a `status` (non-zero on error)
-        // and an optional message string (empty if none).
-        // The structure also contains an overall `status` but that does not appear to be exposed.
-        // Status codes are defined at https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-        let mut stream = Box::pin(resp);
-        let mut cnt = 0;
-        loop {
-            let (result, remainder) = stream.into_future().await;
-            if let Some(result) = result {
-                debug!("🎏 Result block: {}", cnt);
-                match result {
-                    Ok(r) => {
-                        for e in r.get_entries() {
-                            if e.has_status() {
-                                let status = e.get_status();
-                                // See status code definitions: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-                                let code = error::MutateRowStatus::from(status.get_code());
-                                if !code.is_ok() {
-                                    return Err(error::BigTableError::Status(
-                                        code,
-                                        status.get_message().to_owned(),
-                                    )
-                                    .into());
-                                }
-                                debug!("🎏 Response: {} OK", e.index);
-                            }
-                        }
-                    }
-                    Err(e) => return Err(error::BigTableError::Write(e).into()),
-                };
-                cnt += 1;
-            } else {
-                debug!("🎏 Done!");
-                break;
-            }
-            stream = remainder;
-        }
+        self.mutate_rows(req).await?;
         Ok(())
     }
 
     /// Delete all the rows that start with the given prefix. NOTE: this may be metered and should
     /// be used with caution.
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
-        let mut result = HashSet::new();
-
         let key = uaid.simple().to_string();
         let mut req = self.read_row_request(&key);
 
+        let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
+
+        let mut family_filter = data::RowFilter::default();
+        family_filter.set_family_name_regex_filter(format!("^{META_FAMILY}$"));
+
+        let mut cq_filter = data::RowFilter::default();
+        cq_filter.set_column_qualifier_regex_filter("^chid:.*$".as_bytes().to_vec());
+
+        filter_set.push(family_filter);
+        filter_set.push(cq_filter);
+
+        let mut filter_chain = RowFilter_Chain::default();
+        filter_chain.set_filters(filter_set);
+
         let mut filter = data::RowFilter::default();
-        filter.set_family_name_regex_filter(format!("^{META_FAMILY}$"));
+        filter.set_chain(filter_chain);
         req.set_filter(filter);
 
         let mut rows = self.read_rows(req, None, None).await?;
+        let mut result = HashSet::new();
         if let Some(record) = rows.remove(&key) {
-            eprintln!("A {:#?}", record.cells);
             for mut cells in record.cells.into_values() {
-                if let Some(cell) = cells.pop() {
-                    eprintln!("Cell: {:?}", cell);
-                    // XXX: Could filter by CQ REGEX "chid:.*"
-                    if cell.qualifier.starts_with("chid:") {
-                        if let Some(chid) = cell.qualifier.split("chid:").last() {
-                            result.insert(
-                                Uuid::from_str(chid)
-                                    .map_err(|e| DbError::General(e.to_string()))?,
-                            );
-                        }
-                    }
-                }
+                let Some(cell) = cells.pop() else {
+                    continue;
+                };
+                let Some(chid) = cell.qualifier.split("chid:").last() else {
+                    return Err(DbError::Integrity(
+                        "get_channels expected: chid:<chid>".to_owned(),
+                    ));
+                };
+                result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
             }
         }
-        /*
-
-                let mut req = bigtable::ReadRowsRequest::default();
-                req.set_table_name(self.settings.table_name.clone());
-
-                let start_key = format!("{}@", uaid.simple());
-                // '[' is the char after '@'
-                let end_key = format!("{}[", uaid.simple());
-                let mut rows = data::RowSet::default();
-                let mut row_range = data::RowRange::default();
-                row_range.set_start_key_open(start_key.into_bytes());
-                row_range.set_end_key_open(end_key.into_bytes());
-                let mut row_ranges = RepeatedField::default();
-                row_ranges.push(row_range);
-                rows.set_row_ranges(row_ranges);
-                req.set_rows(rows);
-
-                let mut strip_filter = data::RowFilter::default();
-                strip_filter.set_strip_value_transformer(true);
-                req.set_filter(strip_filter);
-
-                let rows = self.read_rows(req, None, None).await?;
-                for key in rows.keys().map(|v| v.to_owned()).collect::<Vec<String>>() {
-                    if let Some(chid) = key.split('@').last() {
-                        result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
-                    }
-                }
-        */
 
         Ok(result)
     }
 
-    /// Delete the channel and all associated pending messages.
+    /// Delete the channel. Does not delete its associated pending messages.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let key = uaid.simple().to_string();
 
@@ -913,6 +890,7 @@ impl DbClient for BigTableClientImpl {
         let mut entries = protobuf::RepeatedField::default();
         let mut entry = bigtable::MutateRowsRequest_Entry::default();
         entry.set_row_key(key.into_bytes());
+
         let mut cell_mutations = protobuf::RepeatedField::default();
         let mut mutation = data::Mutation::default();
         let delete_from_column = data::Mutation_DeleteFromColumn {
@@ -922,53 +900,14 @@ impl DbClient for BigTableClientImpl {
         };
         mutation.set_delete_from_column(delete_from_column);
         cell_mutations.push(mutation);
+
         entry.set_mutations(cell_mutations);
         entries.push(entry);
         req.set_entries(entries);
-        trace!("remove_channel: {:?}", req);
-        eprintln!("remove_channel: {:?}", req);
 
-        let bigtable = self.pool.get().await?;
-        let resp = bigtable
-            .conn
-            .mutate_rows(&req)
-            .map_err(error::BigTableError::Write)?;
+        self.mutate_rows(req).await?;
 
-        let mut stream = Box::pin(resp);
-        let mut cnt = 0;
-        loop {
-            let (result, remainder) = stream.into_future().await;
-            if let Some(result) = result {
-                debug!("🎏 Result block: {}", cnt);
-                match result {
-                    Ok(r) => {
-                        for e in r.get_entries() {
-                            if e.has_status() {
-                                let status = e.get_status();
-                                // See status code definitions: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-                                let code = error::MutateRowStatus::from(status.get_code());
-                                if !code.is_ok() {
-                                    return Err(error::BigTableError::Status(
-                                        code,
-                                        status.get_message().to_owned(),
-                                    )
-                                    .into());
-                                }
-                                debug!("🎏 Response: {} OK", e.index);
-                            }
-                        }
-                    }
-                    Err(e) => return Err(error::BigTableError::Write(e).into()),
-                };
-                cnt += 1;
-            } else {
-                debug!("🎏 Done!");
-                break;
-            }
-            stream = remainder;
-        }
-
-        // XXX: handle result
+        // XXX: false case?
         Ok(true)
     }
 
