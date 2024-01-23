@@ -103,9 +103,9 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
 /// Create a normalized index key.
 fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -> String {
     let mut parts: Vec<String> = Vec::new();
-    parts.push(uaid.simple().to_string());
+    parts.push(uaid.as_simple().to_string());
     if let Some(channel_id) = channel_id {
-        parts.push(channel_id.simple().to_string());
+        parts.push(channel_id.as_hyphenated().to_string());
     } else if chidmessageid.is_some() {
         parts.push("".to_string())
     }
@@ -162,7 +162,7 @@ impl BigTableClientImpl {
         debug!("🉑 Row key: {}", row_key);
 
         let mut row_keys = RepeatedField::default();
-        row_keys.push(row_key.to_owned().as_bytes().to_vec());
+        row_keys.push(row_key.as_bytes().to_vec());
 
         let mut row_set = data::RowSet::default();
         row_set.set_row_keys(row_keys);
@@ -171,8 +171,8 @@ impl BigTableClientImpl {
         req.set_table_name(self.settings.table_name.clone());
         req.set_rows(row_set);
 
-        let rows = self.read_rows(req, timestamp_filter, None).await?;
-        Ok(rows.get(row_key).cloned())
+        let mut rows = self.read_rows(req, timestamp_filter, None).await?;
+        Ok(rows.remove(row_key))
     }
 
     /// Take a big table ReadRowsRequest (containing the keys and filters) and return a set of row data indexed by row key.
@@ -471,14 +471,6 @@ impl BigTableClientImpl {
                 ..Default::default()
             });
         };
-        if let Some(last_connect) = user.last_connect {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "last_connect".to_owned(),
-                value: last_connect.to_be_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
         if let Some(current_timestamp) = user.current_timestamp {
             cells.push(cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
@@ -491,7 +483,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
                 qualifier: "node_id".to_owned(),
-                value: node_id.clone().into_bytes().to_vec(),
+                value: node_id.as_bytes().to_vec(),
                 ..Default::default()
             });
         };
@@ -500,14 +492,6 @@ impl BigTableClientImpl {
                 family: ROUTER_FAMILY.to_owned(),
                 qualifier: "record_version".to_owned(),
                 value: record_version.to_be_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
-        if let Some(current_month) = &user.current_month {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "current_month".to_owned(),
-                value: current_month.clone().into_bytes().to_vec(),
                 ..Default::default()
             });
         };
@@ -539,7 +523,7 @@ impl BigtableDb {
         req.set_table_name(table_name.to_owned());
         // Create a request that is GRPC valid, but does not point to a valid row.
         let mut row_keys = RepeatedField::default();
-        row_keys.push("NOT FOUND".to_owned().as_bytes().to_vec());
+        row_keys.push("NOT FOUND".as_bytes().to_vec());
         let mut row_set = data::RowSet::default();
         row_set.set_row_keys(row_keys);
         req.set_rows(row_set);
@@ -696,12 +680,6 @@ impl DbClient for BigTableClientImpl {
                 }
             }
 
-            if let Some(mut cells) = record.take_cells("last_connect") {
-                if let Some(cell) = cells.pop() {
-                    result.last_connect = Some(to_u64(cell.value, "last_connect")?)
-                }
-            }
-
             if let Some(mut cells) = record.take_cells("node_id") {
                 if let Some(cell) = cells.pop() {
                     result.node_id = Some(String::from_utf8(cell.value).map_err(|e| {
@@ -716,17 +694,6 @@ impl DbClient for BigTableClientImpl {
             if let Some(mut cells) = record.take_cells("record_version") {
                 if let Some(cell) = cells.pop() {
                     result.record_version = Some(to_u64(cell.value, "record_version")?)
-                }
-            }
-
-            if let Some(mut cells) = record.take_cells("current_month") {
-                if let Some(cell) = cells.pop() {
-                    result.current_month = Some(String::from_utf8(cell.value).map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize current_month: {:?}",
-                            e
-                        ))
-                    })?);
                 }
             }
 
@@ -796,7 +763,7 @@ impl DbClient for BigTableClientImpl {
                 family_name: ROUTER_FAMILY.to_owned(),
                 ..Default::default()
             };
-            set_cell.set_column_qualifier("updated".to_owned().into_bytes().to_vec());
+            set_cell.set_column_qualifier("updated".as_bytes().to_vec());
             set_cell.set_value(now.to_be_bytes().to_vec());
             set_cell.set_timestamp_micros((now * 1000) as i64);
 
@@ -968,19 +935,12 @@ impl DbClient for BigTableClientImpl {
 
         let mut cells: Vec<cell::Cell> = Vec::new();
 
-        let family = if message.topic.is_some() {
+        let family = if let Some(topic) = message.topic {
             // Set the correct flag so we know how to read this row later.
-            cells.push(cell::Cell {
-                family: MESSAGE_FAMILY.to_owned(),
-                qualifier: "has_topic".to_owned(),
-                value: vec![1],
-                timestamp: ttl,
-                ..Default::default()
-            });
             cells.push(cell::Cell {
                 family: MESSAGE_TOPIC_FAMILY.to_owned(),
                 qualifier: "topic".to_owned(),
-                value: message.topic.unwrap().into_bytes().to_vec(),
+                value: topic.into_bytes(),
                 timestamp: ttl,
                 ..Default::default()
             });
@@ -1034,7 +994,7 @@ impl DbClient for BigTableClientImpl {
                 cells.push(cell::Cell {
                     family: family.to_owned(),
                     qualifier: "headers".to_owned(),
-                    value: json!(headers).to_string().into_bytes().to_vec(),
+                    value: json!(headers).to_string().into_bytes(),
                     timestamp: ttl,
                     ..Default::default()
                 });
@@ -1044,7 +1004,7 @@ impl DbClient for BigTableClientImpl {
             cells.push(cell::Cell {
                 family: family.to_owned(),
                 qualifier: "data".to_owned(),
-                value: data.into_bytes().to_vec(),
+                value: data.into_bytes(),
                 timestamp: ttl,
                 ..Default::default()
             });
@@ -1343,7 +1303,7 @@ mod tests {
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
         let chidmessageid = "01:decafbad-0000-0000-0000-0123456789ab:Inbox";
         let k = as_key(&uaid, Some(&chid), Some(chidmessageid));
-        assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad0000000000000123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
+        assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad-0000-0000-0000-0123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
     }
 
     #[actix_rt::test]
