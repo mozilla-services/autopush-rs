@@ -186,9 +186,9 @@ impl BigTableClientImpl {
         // It's possible to do a lot here, including altering in process
         // mutations, clearing them, etc. It's all up for grabs until we commit
         // below. For now, let's just presume a write and be done.
+        let mutations = self.get_mutations(row.cells)?;
         req.set_table_name(self.settings.table_name.clone());
         req.set_row_key(row.row_key.into_bytes());
-        let mutations = self.get_mutations(row.cells)?;
         req.set_mutations(mutations);
 
         // Do the actual commit.
@@ -1462,6 +1462,37 @@ mod tests {
         };
         assert_eq!(row.cells.len(), 1);
         assert_eq!(row.cells.keys().next().unwrap(), ROUTER_FAMILY);
+    }
+
+    #[actix_rt::test]
+    async fn read_cells_family_id() {
+        let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        let client = new_client().unwrap();
+        let _ = client.remove_user(&uaid).await.unwrap();
+
+        let qualifier = "foo".to_owned();
+
+        let row_key = uaid.simple().to_string();
+
+        let mut row = Row {
+            row_key: row_key.clone(),
+            ..Default::default()
+        };
+        row.cells.insert(
+            ROUTER_FAMILY.to_owned(),
+            vec![cell::Cell {
+                family: ROUTER_FAMILY.to_owned(),
+                qualifier: qualifier.clone(),
+                value: "bar".as_bytes().to_vec(),
+                ..Default::default()
+            }],
+        );
+        client.write_row(row).await.unwrap();
+        let Some(row) = client.read_row(&row_key, None).await.unwrap() else {
+            panic!("Expected row");
+        };
+        assert_eq!(row.cells.len(), 1);
+        assert_eq!(row.cells.keys().next().unwrap(), qualifier.as_str());
     }
 
     // #[actix_rt::test]
