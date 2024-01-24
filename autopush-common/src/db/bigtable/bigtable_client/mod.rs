@@ -716,10 +716,9 @@ impl DbClient for BigTableClientImpl {
             .map_err(|e| DbError::General(e.to_string()))?
             .as_millis();
         row.cells.insert(
-            ROUTER_FAMILY.to_owned(),
+            "updated".to_owned(),
             vec![cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
-                qualifier: "updated".to_owned(),
                 value: now.to_be_bytes().to_vec(),
                 ..Default::default()
             }],
@@ -1029,7 +1028,7 @@ impl DbClient for BigTableClientImpl {
         };
 
         row.cells.insert(
-            MESSAGE_FAMILY.to_owned(),
+            "current_timestamp".to_owned(),
             vec![cell::Cell {
                 qualifier: "current_timestamp".to_owned(),
                 value: timestamp.to_be_bytes().to_vec(),
