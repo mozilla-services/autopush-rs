@@ -1435,6 +1435,35 @@ mod tests {
         Ok(())
     }
 
+    #[actix_rt::test]
+    async fn read_cells_family_id() {
+        let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        let client = new_client().unwrap();
+        let _ = client.remove_user(&uaid).await.unwrap();
+
+        let row_key = uaid.simple().to_string();
+
+        let mut row = Row {
+            row_key: row_key.clone(),
+            ..Default::default()
+        };
+        row.cells.insert(
+            ROUTER_FAMILY.to_owned(),
+            vec![cell::Cell {
+                family: ROUTER_FAMILY.to_owned(),
+                qualifier: "foo".to_owned(),
+                value: "bar".as_bytes().to_vec(),
+                ..Default::default()
+            }],
+        );
+        client.write_row(row).await.unwrap();
+        let Some(row) = client.read_row(&row_key, None).await.unwrap() else {
+            panic!("Expected row");
+        };
+        assert_eq!(row.cells.len(), 1);
+        assert_eq!(row.cells.keys().next().unwrap(), ROUTER_FAMILY);
+    }
+
     // #[actix_rt::test]
     // async fn sometest() {}
 
