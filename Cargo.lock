@@ -523,7 +523,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "autoconnect"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "actix",
  "actix-cors",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_common"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "actix-web",
  "autopush_common",
@@ -591,7 +591,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_settings"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "autoconnect_common",
  "autopush_common",
@@ -611,7 +611,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_web"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "actix-codec",
  "actix-http",
@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_ws"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "actix-http",
  "actix-rt",
@@ -665,7 +665,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_ws_sm"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "autoendpoint"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "a2",
  "actix-cors",
@@ -744,7 +744,7 @@ dependencies = [
 
 [[package]]
 name = "autopush"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "autopush_common",
  "base64 0.21.5",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "autopush_common"
-version = "1.69.7"
+version = "1.69.8"
 dependencies = [
  "actix-http",
  "actix-rt",
@@ -2354,7 +2354,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite 0.2.13",
- "socket2 0.4.10",
+ "socket2 0.5.5",
  "tokio 1.35.1",
  "tower-service",
  "tracing",
