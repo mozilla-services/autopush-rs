@@ -208,7 +208,7 @@ impl BigTableClientImpl {
         cells: HashMap<String, Vec<crate::db::bigtable::bigtable_client::cell::Cell>>,
     ) -> Result<protobuf::RepeatedField<data::Mutation>, error::BigTableError> {
         let mut mutations = protobuf::RepeatedField::default();
-        for (_family, cells) in cells {
+        for (qualifier, cells) in cells {
             for cell in cells {
                 let mut mutation = data::Mutation::default();
                 let mut set_cell = data::Mutation_SetCell::default();
@@ -217,7 +217,7 @@ impl BigTableClientImpl {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
                 set_cell.family_name = cell.family;
-                set_cell.set_column_qualifier(cell.qualifier.into_bytes());
+                set_cell.set_column_qualifier(qualifier.clone().into_bytes());
                 set_cell.set_value(cell.value);
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
                 // a `Timestamp granularity mismatch` error
@@ -712,10 +712,9 @@ impl DbClient for BigTableClientImpl {
             .map_err(|e| DbError::General(e.to_string()))?
             .as_millis();
         row.cells.insert(
-            ROUTER_FAMILY.to_owned(),
+            "updated".to_owned(),
             vec![cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
-                qualifier: "updated".to_owned(),
                 value: now.to_be_bytes().to_vec(),
                 ..Default::default()
             }],
@@ -1033,10 +1032,9 @@ impl DbClient for BigTableClientImpl {
         };
 
         row.cells.insert(
-            MESSAGE_FAMILY.to_owned(),
+            "current_timestamp".to_owned(),
             vec![cell::Cell {
                 family: MESSAGE_FAMILY.to_owned(),
-                qualifier: "current_timestamp".to_owned(),
                 value: timestamp.to_be_bytes().to_vec(),
                 ..Default::default()
             }],
@@ -1448,10 +1446,9 @@ mod tests {
             ..Default::default()
         };
         row.cells.insert(
-            ROUTER_FAMILY.to_owned(),
+            "foo".to_owned(),
             vec![cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
-                qualifier: "foo".to_owned(),
                 value: "bar".as_bytes().to_vec(),
                 ..Default::default()
             }],
@@ -1479,10 +1476,9 @@ mod tests {
             ..Default::default()
         };
         row.cells.insert(
-            ROUTER_FAMILY.to_owned(),
+            qualifier.to_owned(),
             vec![cell::Cell {
                 family: ROUTER_FAMILY.to_owned(),
-                qualifier: qualifier.clone(),
                 value: "bar".as_bytes().to_vec(),
                 ..Default::default()
             }],
