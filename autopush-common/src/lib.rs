@@ -18,3 +18,6 @@ pub mod tags;
 
 #[macro_use]
 pub mod util;
+
+#[cfg(test)]
+pub mod test_tools;

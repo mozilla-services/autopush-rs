@@ -1358,15 +1358,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn read_cells_family_id() -> DbResult<()> {
-        // let uaid = Uuid::parse_str(TEST_USER).unwrap();
-        // generate a somewhat random test UAID to prevent possible false test fails
-        // if the account is deleted before this test completes.
-        let uaid = {
-            let temp = Uuid::new_v4().to_string();
-            let mut parts: Vec<&str> = temp.split('-').collect();
-            parts[0] = "DEADBEEF";
-            Uuid::parse_str(&parts.join("-")).unwrap()
-        };
+        let uaid = crate::test_tools::gen_test_uaid();
         let client = new_client().unwrap();
         client.remove_user(&uaid).await.unwrap();
 

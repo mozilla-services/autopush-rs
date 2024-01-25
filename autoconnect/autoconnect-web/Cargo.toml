@@ -34,3 +34,9 @@ ctor.workspace = true
 tokio.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
+
+[features]
+bigtable = ["autoconnect_settings/bigtable", "autopush_common/bigtable"]
+dual = ["autoconnect_settings/dual", "autopush_common/dual"]
+dynamodb = ["autoconnect_settings/dynamodb", "autopush_common/dynamodb"]
+emulator = ["autoconnect_settings/emulator", "autopush_common/emulator"]
