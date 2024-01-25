@@ -438,13 +438,11 @@ impl BigTableClientImpl {
 
         let mut cells: Vec<cell::Cell> = vec![
             cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "connected_at".to_owned(),
                 value: user.connected_at.to_be_bytes().to_vec(),
                 ..Default::default()
             },
             cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "router_type".to_owned(),
                 value: user.router_type.clone().into_bytes(),
                 ..Default::default()
@@ -453,7 +451,6 @@ impl BigTableClientImpl {
 
         if let Some(router_data) = &user.router_data {
             cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "router_data".to_owned(),
                 value: json!(router_data).to_string().as_bytes().to_vec(),
                 ..Default::default()
@@ -461,7 +458,6 @@ impl BigTableClientImpl {
         };
         if let Some(current_timestamp) = user.current_timestamp {
             cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "current_timestamp".to_owned(),
                 value: current_timestamp.to_be_bytes().to_vec(),
                 ..Default::default()
@@ -469,7 +465,6 @@ impl BigTableClientImpl {
         };
         if let Some(node_id) = &user.node_id {
             cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "node_id".to_owned(),
                 value: node_id.as_bytes().to_vec(),
                 ..Default::default()
@@ -477,7 +472,6 @@ impl BigTableClientImpl {
         };
         if let Some(record_version) = user.record_version {
             cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "record_version".to_owned(),
                 value: record_version.to_be_bytes().to_vec(),
                 ..Default::default()
@@ -716,9 +710,9 @@ impl DbClient for BigTableClientImpl {
             .map_err(|e| DbError::General(e.to_string()))?
             .as_millis();
         row.cells.insert(
-            "updated".to_owned(),
+            ROUTER_FAMILY.to_owned(),
             vec![cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
+                qualifier: "updated".to_owned(),
                 value: now.to_be_bytes().to_vec(),
                 ..Default::default()
             }],
@@ -1028,7 +1022,7 @@ impl DbClient for BigTableClientImpl {
         };
 
         row.cells.insert(
-            "current_timestamp".to_owned(),
+            ROUTER_FAMILY.to_owned(),
             vec![cell::Cell {
                 qualifier: "current_timestamp".to_owned(),
                 value: timestamp.to_be_bytes().to_vec(),
@@ -1330,6 +1324,17 @@ mod tests {
             test_user.connected_at,
             client.get_user(&uaid).await?.unwrap().connected_at
         );
+
+        // can we increment the storage for the user?
+        client
+            .increment_storage(
+                &fetched.uaid,
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            )
+            .await?;
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
         let timestamp = now();

@@ -76,8 +76,8 @@ actix-rt = "2.8"
 
 [features]
 # for testing:
-# default = ["emulator", "bigtable", "dynamodb"]
-default = ["dynamodb"]
+default = ["emulator", "bigtable", "dynamodb"]
+# default = ["dynamodb"]
 bigtable = ["dep:google-cloud-rust-raw", "dep:grpcio", "dep:protobuf"]
 dynamodb = ["dep:rusoto_core", "dep:rusoto_credential", "dep:rusoto_dynamodb"]
 dual = ["dynamodb", "bigtable"]
