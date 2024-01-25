@@ -1,7 +1,8 @@
 [workspace]
 members = [
   "autopush-common",
-  "autopush",
+  # Pending removal: https://github.com/mozilla-services/autopush-rs/issues/524
+  #"autopush",
   "autoendpoint",
   "autoconnect",
   "autoconnect/autoconnect-common",

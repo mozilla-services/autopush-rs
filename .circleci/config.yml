@@ -326,14 +326,14 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - build:
-          name: build-autopush
-          image: autopush:build
-          crate: autopush
-          binary: autopush_rs
-          filters:
-            tags:
-              only: /.*/
+#      - build:
+#          name: build-autopush
+#          image: autopush:build
+#          crate: autopush
+#          binary: autopush_rs
+#          filters:
+#            tags:
+#              only: /.*/
 
       - build:
           name: build-autoconnect
@@ -359,18 +359,18 @@ workflows:
               only: /.*/
 
       # Comment out the following two sections for local CircleCI testing.
-      - deploy:
-          name: deploy-autopush
-          image: autopush:build
-          repo: ${DOCKERHUB_REPO}
-          requires:
-            - build-autopush
-            - test
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only: master
+#      - deploy:
+#          name: deploy-autopush
+#          image: autopush:build
+#          repo: ${DOCKERHUB_REPO}
+#          requires:
+#            - build-autopush
+#            - test
+#          filters:
+#            tags:
+#              only: /.*/
+#            branches:
+#              only: master
 
       - deploy:
           name: deploy-autoconnect
