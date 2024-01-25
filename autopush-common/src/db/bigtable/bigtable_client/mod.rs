@@ -38,8 +38,12 @@ pub mod row;
 
 // these are normally Vec<u8>
 pub type RowKey = String;
+
+// These are more for code clarity than functional types.
+// Rust will happily swap between the two in any case.
+// See [super::row::Row] for discussion about how these
+// are overloaded in order to simplify fetching data.
 pub type Qualifier = String;
-// This must be a String.
 pub type FamilyId = String;
 
 const ROUTER_FAMILY: &str = "router";
@@ -244,9 +248,9 @@ impl BigTableClientImpl {
         // It's possible to do a lot here, including altering in process
         // mutations, clearing them, etc. It's all up for grabs until we commit
         // below. For now, let's just presume a write and be done.
+        let mutations = self.get_mutations(row.cells)?;
         req.set_table_name(self.settings.table_name.clone());
         req.set_row_key(row.row_key.into_bytes());
-        let mutations = self.get_mutations(row.cells)?;
         req.set_mutations(mutations);
 
         // Do the actual commit.
@@ -263,10 +267,10 @@ impl BigTableClientImpl {
     /// Compile the list of mutations for this row.
     fn get_mutations(
         &self,
-        cells: HashMap<String, Vec<crate::db::bigtable::bigtable_client::cell::Cell>>,
+        cells: HashMap<FamilyId, Vec<crate::db::bigtable::bigtable_client::cell::Cell>>,
     ) -> Result<protobuf::RepeatedField<data::Mutation>, error::BigTableError> {
         let mut mutations = protobuf::RepeatedField::default();
-        for (_family, cells) in cells {
+        for (family_id, cells) in cells {
             for cell in cells {
                 let mut mutation = data::Mutation::default();
                 let mut set_cell = data::Mutation_SetCell::default();
@@ -274,8 +278,8 @@ impl BigTableClientImpl {
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
-                set_cell.family_name = cell.family;
-                set_cell.set_column_qualifier(cell.qualifier.into_bytes());
+                set_cell.family_name = family_id.clone();
+                set_cell.set_column_qualifier(cell.qualifier.clone().into_bytes());
                 set_cell.set_value(cell.value);
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
                 // a `Timestamp granularity mismatch` error
@@ -492,13 +496,11 @@ impl BigTableClientImpl {
 
         let mut cells: Vec<cell::Cell> = vec![
             cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "connected_at".to_owned(),
                 value: user.connected_at.to_be_bytes().to_vec(),
                 ..Default::default()
             },
             cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "router_type".to_owned(),
                 value: user.router_type.clone().into_bytes(),
                 ..Default::default()
@@ -507,7 +509,6 @@ impl BigTableClientImpl {
 
         if let Some(router_data) = &user.router_data {
             cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "router_data".to_owned(),
                 value: json!(router_data).to_string().as_bytes().to_vec(),
                 ..Default::default()
@@ -515,7 +516,6 @@ impl BigTableClientImpl {
         };
         if let Some(current_timestamp) = user.current_timestamp {
             cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "current_timestamp".to_owned(),
                 value: current_timestamp.to_be_bytes().to_vec(),
                 ..Default::default()
@@ -523,7 +523,6 @@ impl BigTableClientImpl {
         };
         if let Some(node_id) = &user.node_id {
             cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "node_id".to_owned(),
                 value: node_id.as_bytes().to_vec(),
                 ..Default::default()
@@ -531,7 +530,6 @@ impl BigTableClientImpl {
         };
         if let Some(record_version) = user.record_version {
             cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: "record_version".to_owned(),
                 value: record_version.to_be_bytes().to_vec(),
                 ..Default::default()
@@ -779,7 +777,6 @@ impl DbClient for BigTableClientImpl {
         row.cells.insert(
             ROUTER_FAMILY.to_owned(),
             vec![cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
                 qualifier: format!("chid:{}", channel_id.as_hyphenated()),
                 timestamp: expiry,
                 ..Default::default()
@@ -952,35 +949,30 @@ impl DbClient for BigTableClientImpl {
             .as_millis();
         cells.extend(vec![
             cell::Cell {
-                family: family.to_owned(),
                 qualifier: "ttl".to_owned(),
                 value: message.ttl.to_be_bytes().to_vec(),
                 timestamp: ttl,
                 ..Default::default()
             },
             cell::Cell {
-                family: family.to_owned(),
                 qualifier: "channel_id".to_owned(),
                 value: message.channel_id.as_hyphenated().to_string().into_bytes(),
                 timestamp: ttl,
                 ..Default::default()
             },
             cell::Cell {
-                family: family.to_owned(),
                 qualifier: "timestamp".to_owned(),
                 value: message.timestamp.to_be_bytes().to_vec(),
                 timestamp: ttl,
                 ..Default::default()
             },
             cell::Cell {
-                family: family.to_owned(),
                 qualifier: "version".to_owned(),
                 value: message.version.into_bytes(),
                 timestamp: ttl,
                 ..Default::default()
             },
             cell::Cell {
-                family: family.to_owned(),
                 qualifier: "expiry".to_owned(),
                 value: expiry.to_be_bytes().to_vec(),
                 timestamp: ttl,
@@ -990,7 +982,6 @@ impl DbClient for BigTableClientImpl {
         if let Some(headers) = message.headers {
             if !headers.is_empty() {
                 cells.push(cell::Cell {
-                    family: family.to_owned(),
                     qualifier: "headers".to_owned(),
                     value: json!(headers).to_string().into_bytes(),
                     timestamp: ttl,
@@ -1000,7 +991,6 @@ impl DbClient for BigTableClientImpl {
         }
         if let Some(data) = message.data {
             cells.push(cell::Cell {
-                family: family.to_owned(),
                 qualifier: "data".to_owned(),
                 value: data.into_bytes(),
                 timestamp: ttl,
@@ -1009,7 +999,6 @@ impl DbClient for BigTableClientImpl {
         }
         if let Some(sortkey_timestamp) = message.sortkey_timestamp {
             cells.push(cell::Cell {
-                family: family.to_owned(),
                 qualifier: "sortkey_timestamp".to_owned(),
                 value: sortkey_timestamp.to_be_bytes().to_vec(),
                 timestamp: ttl,
@@ -1059,9 +1048,8 @@ impl DbClient for BigTableClientImpl {
         };
 
         row.cells.insert(
-            MESSAGE_FAMILY.to_owned(),
+            ROUTER_FAMILY.to_owned(),
             vec![cell::Cell {
-                family: MESSAGE_FAMILY.to_owned(),
                 qualifier: "current_timestamp".to_owned(),
                 value: timestamp.to_be_bytes().to_vec(),
                 ..Default::default()
@@ -1363,6 +1351,17 @@ mod tests {
             client.get_user(&uaid).await?.unwrap().connected_at
         );
 
+        // can we increment the storage for the user?
+        client
+            .increment_storage(
+                &fetched.uaid,
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            )
+            .await?;
+
         let test_data = "An_encrypted_pile_of_crap".to_owned();
         let timestamp = now();
         let sort_key = now();
@@ -1459,6 +1458,45 @@ mod tests {
         assert!(client.get_user(&uaid).await?.is_none());
 
         Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn read_cells_family_id() -> DbResult<()> {
+        // let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        // generate a somewhat random test UAID to prevent possible false test fails
+        // if the account is deleted before this test completes.
+        let uaid = {
+            let temp = Uuid::new_v4().to_string();
+            let mut parts: Vec<&str> = temp.split('-').collect();
+            parts[0] = "DEADBEEF";
+            Uuid::parse_str(&parts.join("-")).unwrap()
+        };
+        let client = new_client().unwrap();
+        client.remove_user(&uaid).await.unwrap();
+
+        let qualifier = "foo".to_owned();
+
+        let row_key = uaid.simple().to_string();
+
+        let mut row = Row {
+            row_key: row_key.clone(),
+            ..Default::default()
+        };
+        row.cells.insert(
+            ROUTER_FAMILY.to_owned(),
+            vec![cell::Cell {
+                qualifier: qualifier.to_owned(),
+                value: "bar".as_bytes().to_vec(),
+                ..Default::default()
+            }],
+        );
+        client.write_row(row).await.unwrap();
+        let Some(row) = client.read_row(&row_key, None).await.unwrap() else {
+            panic!("Expected row");
+        };
+        assert_eq!(row.cells.len(), 1);
+        assert_eq!(row.cells.keys().next().unwrap(), qualifier.as_str());
+        client.remove_user(&uaid).await
     }
 
     // #[actix_rt::test]
