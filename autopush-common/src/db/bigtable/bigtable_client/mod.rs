@@ -1467,7 +1467,7 @@ mod tests {
         // if the account is deleted before this test completes.
         let uaid = {
             let temp = Uuid::new_v4().to_string();
-            let mut parts: Vec<&str> = temp.split("-").collect();
+            let mut parts: Vec<&str> = temp.split('-').collect();
             parts[0] = "DEADBEEF";
             Uuid::parse_str(&parts.join("-")).unwrap()
         };
@@ -1496,7 +1496,7 @@ mod tests {
         };
         assert_eq!(row.cells.len(), 1);
         assert_eq!(row.cells.keys().next().unwrap(), qualifier.as_str());
-        Ok(client.remove_user(&uaid).await?)
+        client.remove_user(&uaid).await
     }
 
     // #[actix_rt::test]
