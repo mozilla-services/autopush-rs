@@ -61,6 +61,9 @@ pub enum DbError {
     #[error("Connection failure {0}")]
     ConnectionError(String),
 
+    #[error("Database integrity error: {}", _0)]
+    Integrity(String),
+
     #[error("Unknown Database Error {0}")]
     General(String),
 }
