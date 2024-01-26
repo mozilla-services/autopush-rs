@@ -37,6 +37,7 @@ pub struct DualClientImpl {
 pub struct DualDbSettings {
     primary: DbSettings,
     secondary: DbSettings,
+    #[serde(default)]
     write_to_secondary: bool,
     #[serde(default)]
     median: Option<String>,
