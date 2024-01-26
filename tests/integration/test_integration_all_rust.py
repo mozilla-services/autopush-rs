@@ -465,7 +465,7 @@ def _get_vapid(
 
 
 def enqueue_output(out, queue):
-    for line in iter(out.readline, b""):
+    for line in iter(out.readline, ""):
         queue.put(line)
     out.close()
 
