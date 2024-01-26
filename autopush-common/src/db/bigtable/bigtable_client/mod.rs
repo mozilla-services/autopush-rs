@@ -156,14 +156,10 @@ impl BigTableClientImpl {
     }
 
     /// Read a given row from the row key.
-    async fn read_row(
-        &self,
-        row_key: &str,
-        timestamp_filter: Option<u64>,
-    ) -> Result<Option<row::Row>, error::BigTableError> {
+    async fn read_row(&self, row_key: &str) -> Result<Option<row::Row>, error::BigTableError> {
         debug!("🉑 Row key: {}", row_key);
         let req = self.read_row_request(row_key);
-        let mut rows = self.read_rows(req, timestamp_filter, None).await?;
+        let mut rows = self.read_rows(req, None).await?;
         Ok(rows.remove(row_key))
     }
 
@@ -227,7 +223,6 @@ impl BigTableClientImpl {
     async fn read_rows(
         &self,
         req: ReadRowsRequest,
-        sortkey_filter: Option<u64>,
         limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let bigtable = self.pool.get().await?;
@@ -235,7 +230,7 @@ impl BigTableClientImpl {
             .conn
             .read_rows(&req)
             .map_err(error::BigTableError::Read)?;
-        merge::RowMerger::process_chunks(resp, sortkey_filter, limit).await
+        merge::RowMerger::process_chunks(resp, limit).await
     }
 
     /// write a given row.
@@ -684,7 +679,7 @@ impl DbClient for BigTableClientImpl {
             ..Default::default()
         };
 
-        if let Some(mut record) = self.read_row(&row_key, None).await? {
+        if let Some(mut record) = self.read_row(&row_key).await? {
             trace!("🉑 Found a record for that user");
             if let Some(mut cells) = record.take_cells("connected_at") {
                 if let Some(cell) = cells.pop() {
@@ -854,7 +849,7 @@ impl DbClient for BigTableClientImpl {
         filter.set_chain(filter_chain);
         req.set_filter(filter);
 
-        let mut rows = self.read_rows(req, None, None).await?;
+        let mut rows = self.read_rows(req, None).await?;
         let mut result = HashSet::new();
         if let Some(record) = rows.remove(&row_key) {
             for mut cells in record.cells.into_values() {
@@ -1100,7 +1095,7 @@ impl DbClient for BigTableClientImpl {
             req.set_rows_limit(limit as i64);
         }
         // */
-        let rows = self.read_rows(req, None, Some(limit)).await?;
+        let rows = self.read_rows(req, Some(limit)).await?;
         debug!(
             "🉑 Fetch Topic Messages. Found {} row(s) of {}",
             rows.len(),
@@ -1124,7 +1119,9 @@ impl DbClient for BigTableClientImpl {
         let mut row_range = data::RowRange::default();
 
         let start_key = if let Some(ts) = timestamp {
-            format!("{}#02:{}", uaid.simple(), ts)
+            // Fetch everything after the last message with timestamp: the "z"
+            // moves past the last message's channel_id's 1st hex digit
+            format!("{}#02:{}z", uaid.simple(), ts)
         } else {
             format!("{}#02:", uaid.simple())
         };
@@ -1159,7 +1156,7 @@ impl DbClient for BigTableClientImpl {
             req.set_rows_limit(limit as i64);
         }
         // */
-        let rows = self.read_rows(req, timestamp, Some(limit)).await?;
+        let rows = self.read_rows(req, Some(limit)).await?;
         debug!(
             "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s) of {}",
             timestamp,
@@ -1491,7 +1488,7 @@ mod tests {
             }],
         );
         client.write_row(row).await.unwrap();
-        let Some(row) = client.read_row(&row_key, None).await.unwrap() else {
+        let Some(row) = client.read_row(&row_key).await.unwrap() else {
             panic!("Expected row");
         };
         assert_eq!(row.cells.len(), 1);
