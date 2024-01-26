@@ -1,7 +1,7 @@
 # These environment variables must be set in CircleCI UI
 #
-# DOCKERHUB_REPO - docker hub repo, format: <username>/<repo>
-# DOCKERHUB_ENDPOINT_REPO - same as DOCKERHUB_REPO, but for autoendpoint
+# DOCKERHUB_CONNECT_REPO - autoconnect docker hub repo, format: <username>/<repo>
+# DOCKERHUB_ENDPOINT_REPO - autoendpoint docker hub repo, format: <username>/<repo>
 # DOCKER_EMAIL   - login info for docker hub
 # DOCKER_USER
 # DOCKER_PASS
@@ -327,14 +327,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - build:
-          name: build-autopush
-          image: autopush:build
-          crate: autopush
-          binary: autopush_rs
-          filters:
-            tags:
-              only: /.*/
 
       - build:
           name: build-autoconnect
@@ -360,19 +352,6 @@ workflows:
               only: /.*/
 
       # Comment out the following two sections for local CircleCI testing.
-      - deploy:
-          name: deploy-autopush
-          image: autopush:build
-          repo: ${DOCKERHUB_REPO}
-          requires:
-            - build-autopush
-            - test
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only: master
-
       - deploy:
           name: deploy-autoconnect
           image: autoconnect:build
