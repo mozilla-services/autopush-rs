@@ -60,9 +60,12 @@ pub(crate) struct PartialRow {
     cells: HashMap<FamilyId, Vec<PartialCell>>,
     /// the last family id string we encountered
     last_family: FamilyId,
-    /// the working set of family and cells
-    /// we've encountered so far
-    last_family_cells: HashMap<FamilyId, Vec<Cell>>,
+    /// the working set of cells for a given qualifier
+    /// *NOTE* Bigtable wants to collect cells by Family ID. That's
+    /// not important for us to process data, so we cheat a bit and
+    /// return a row structure that replaces the Family ID with the
+    /// cell qualifier, allowing us to index the returned data faster.
+    last_collected_cells: HashMap<Qualifier, Vec<Cell>>,
     /// the last column name we've encountered
     last_qualifier: Qualifier,
     /// Any cell that may be in progress (chunked
@@ -320,8 +323,11 @@ impl RowMerger {
                 value: cell_in_progress.value.clone(),
                 ..Default::default()
             }];
+            // The Family ID is only really important for us for garbage collection,
+            // the rest of the time, the data is basically flat and contains one cell.
+            //
             row_in_progress
-                .last_family_cells
+                .last_collected_cells
                 .insert(qualifier.clone(), qualifier_cells);
             row_in_progress.last_qualifier = qualifier;
         }
@@ -353,7 +359,7 @@ impl RowMerger {
 
         Ok(Row {
             row_key: row.row_key,
-            cells: row.last_family_cells,
+            cells: row.last_collected_cells,
         })
     }
 
