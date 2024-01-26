@@ -46,6 +46,7 @@ pub struct DualDbSettings {
 impl DualClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         // Not really sure we need the dsn here.
+        info!("Trying: {:?}", settings.db_settings);
         let db_settings: DualDbSettings = from_str(&settings.db_settings).map_err(|e| {
             DbError::General(format!("Could not parse DualDBSettings string {:?}", e))
         })?;
