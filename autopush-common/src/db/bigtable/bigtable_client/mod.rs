@@ -250,6 +250,7 @@ impl BigTableClientImpl {
 
         // Do the actual commit.
         let bigtable = self.pool.get().await?;
+        debug!("🉑 writing row...");
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
@@ -582,8 +583,8 @@ impl BigtableDb {
 impl DbClient for BigTableClientImpl {
     /// add user to the database
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        let row = self.user_to_row(user);
         trace!("🉑 Adding user");
+        let row = self.user_to_row(user);
         self.write_row(row).await.map_err(|e| e.into())
     }
 

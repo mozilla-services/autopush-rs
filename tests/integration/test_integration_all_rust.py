@@ -69,8 +69,8 @@ ROUTER_PORT = 9170
 MP_CONNECTION_PORT = 9052
 MP_ROUTER_PORT = 9072
 
-CONNECTION_BINARY = os.environ.get("CONNECTION_BINARY", "autopush_rs")
-CONNECTION_SETTINGS_PREFIX = os.environ.get("CONNECTION_SETTINGS_PREFIX", "autopush__")
+CONNECTION_BINARY = os.environ.get("CONNECTION_BINARY", "autoconnect")
+CONNECTION_SETTINGS_PREFIX = os.environ.get("CONNECTION_SETTINGS_PREFIX", "autoconnect__")
 
 CN_SERVER: subprocess.Popen | None = None
 CN_MP_SERVER: subprocess.Popen | None = None
@@ -465,7 +465,7 @@ def _get_vapid(
 
 
 def enqueue_output(out, queue):
-    for line in iter(out.readline, b""):
+    for line in iter(out.readline, ""):
         queue.put(line)
     out.close()
 
@@ -667,10 +667,14 @@ def setup_connection_server(connection_binary):
         CONNECTION_CONFIG["port"] = parsed.port
         CONNECTION_CONFIG["endpoint_scheme"] = parsed.scheme
         write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
+        log.debug("Using existing Connection server")
         return
     else:
         write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
+    run_args = os.getenv("RUN_ARGS")
+    if run_args is not None:
+        cmd.append(run_args)
     log.debug(f"🐍🟢 Starting Connection server: {' '.join(cmd)}")
     CN_SERVER = subprocess.Popen(
         cmd,
@@ -701,6 +705,7 @@ def setup_megaphone_server(connection_binary):
             parsed = urlparse(url)
             MEGAPHONE_CONFIG["endpoint_port"] = parsed.port
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
+        log.debug("Using existing Megaphone server")
         return
     else:
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
@@ -725,6 +730,7 @@ def setup_endpoint_server():
         ENDPOINT_CONFIG["hostname"] = parsed.hostname
         ENDPOINT_CONFIG["port"] = parsed.port
         ENDPOINT_CONFIG["endpoint_scheme"] = parsed.scheme
+        log.debug("Using existing Endpoint server")
         return
     else:
         write_config_to_env(ENDPOINT_CONFIG, "autoend__")
