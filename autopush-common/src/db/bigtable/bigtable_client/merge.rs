@@ -376,7 +376,6 @@ impl RowMerger {
     /// Iterate through all the returned chunks and compile them into a hash of finished cells indexed by row_key
     pub async fn process_chunks(
         mut stream: ClientSStreamReceiver<ReadRowsResponse>,
-        timestamp_filter: Option<u64>,
         limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, Row>, BigTableError> {
         // Work object
@@ -440,28 +439,7 @@ impl RowMerger {
                 }
                 if merger.state == ReadState::RowComplete {
                     debug! {"🟧 row complete"};
-                    // Check to see if we can add this row, or if it's blocked by the timestamp filter.
                     let finished_row = merger.row_complete(&mut chunk)?;
-                    if let Some(timestamp) = timestamp_filter {
-                        if let Some(sk_ts) = finished_row.clone().take_cell("sortkey_timestamp") {
-                            let ts_val = crate::db::bigtable::bigtable_client::to_u64(
-                                sk_ts.value,
-                                "sortkey_timestamp",
-                            )
-                            .map_err(|_| {
-                                BigTableError::InvalidChunk("Invalid timestamp".to_owned())
-                            })?;
-                            if ts_val <= timestamp {
-                                trace!(
-                                    "⚖ {}: Skipping {} <= {}",
-                                    &finished_row.row_key,
-                                    ts_val,
-                                    timestamp
-                                );
-                                continue;
-                            }
-                        }
-                    }
                     rows.insert(finished_row.row_key.clone(), finished_row);
                 } else if chunk.has_commit_row() {
                     return Err(BigTableError::InvalidChunk(format!(

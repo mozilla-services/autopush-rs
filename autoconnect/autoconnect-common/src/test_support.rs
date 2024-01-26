@@ -1,6 +1,9 @@
 use uuid::Uuid;
 
-use autopush_common::db::{mock::MockDbClient, User};
+use autopush_common::{
+    db::{mock::MockDbClient, User},
+    util::timing::ms_since_epoch,
+};
 
 pub const UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/110.0";
@@ -33,6 +36,8 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     db.expect_get_user().times(1).return_once(move |_| {
         Ok(Some(User {
             uaid,
+            // Last connected 10 minutes ago
+            connected_at: ms_since_epoch() - (10 * 60 * 1000),
             current_month: Some(CURRENT_MONTH.to_owned()),
             ..Default::default()
         }))
