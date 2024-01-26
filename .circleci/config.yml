@@ -154,24 +154,25 @@ jobs:
           # the machine level memory and CPU which are far higher than the memory allocated to the docker
           # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
           command: cargo test --features=emulator --features=dual --jobs=2
-      - run:
-          name: Integration tests (Bigtable)
-          command: make integration-test
-          environment:
-            DB_DSN: grpc://localhost:8086
-            TEST_RESULTS_DIR: workspace/test-results
-      - run:
-          name: Integration tests (DynamoDB)
-          command: make integration-test
-          environment:
-            TEST_RESULTS_DIR: workspace/test-results
+      # - run:
+      #     name: Integration tests (Bigtable)
+      #     command: make integration-test
+      #     environment:
+      #       DB_DSN: grpc://localhost:8086
+      #       TEST_RESULTS_DIR: workspace/test-results
+      # - run:
+      #     name: Integration tests (DynamoDB)
+      #     command: make integration-test
+      #     environment:
+      #       TEST_RESULTS_DIR: workspace/test-results
       - run:
           name: Integration tests (Dual Bigtable/DynamoDB)
           command: make integration-test
           environment:
+            RUST_LOG: autopush=trace,autopush_common=trace,autoendpoint=trace,autoconnect=trace,slog_mozlog_json=info,warn
             PYTEST_ARGS: -sv
             DB_DSN: dual
-            DB_SETTINGS: '{\"primary\":{\"db_settings\":\"{\\\"message_family\\\":\\\"message\\\",\\\"router_family\\\":\\\"router\\\",\\\"table_name\\\":\\\"projects/some-project/instances/some-instance/tables/some-table\\\"}\",\"dsn\":\"grpc://bigtable.googleapis.com\"},\"secondary\":{\"db_settings\":\"{\\\"message_table\\\":\\\"test_message\\\",\\\"router_table\\\":\\\"test_router\\\"}\",\"dsn\":\"http://localhost:8000/\"}}'
+            DB_SETTINGS: tests/integration/dual_test.json
             TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
