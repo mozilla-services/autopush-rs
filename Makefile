@@ -43,6 +43,7 @@ lint:
 	$(POETRY) run isort --sp $(PYPROJECT_TOML) -c $(TESTS_DIR)
 	$(POETRY) run black --quiet --diff --config $(PYPROJECT_TOML) --check $(TESTS_DIR)
 	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)
+	$(POETRY) run pydocstyle --config=$(PYPROJECT_TOML)
 	$(POETRY) run mypy $(TESTS_DIR) --config-file=$(PYPROJECT_TOML)
 
 load:
