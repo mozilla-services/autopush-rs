@@ -45,6 +45,7 @@ impl From<HashMap<String, String>> for NotificationHeaders {
 }
 
 /// Contains some meta info regarding the message we're handling.
+#[derive(Debug)]
 pub(crate) struct RangeKey {
     /// The channel_identifier
     pub(crate) channel_id: Uuid,

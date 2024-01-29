@@ -61,6 +61,9 @@ pub enum DbError {
     #[error("Connection failure {0}")]
     ConnectionError(String),
 
+    #[error("The conditional request failed")]
+    Conditional,
+
     #[error("Database integrity error: {}", _0)]
     Integrity(String),
 
