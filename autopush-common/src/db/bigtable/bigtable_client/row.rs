@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::db::error::{DbError, DbResult};
+
 use super::{cell::Cell, RowKey};
 
 /// A Bigtable storage row. Bigtable stores by Family ID which isn't
@@ -28,10 +30,16 @@ impl Row {
 
     /// get only the "top" cell value. Ignore other values.
     pub fn take_cell(&mut self, column: &str) -> Option<Cell> {
-        if let Some(mut cells) = self.cells.remove(column) {
+        if let Some(mut cells) = self.take_cells(column) {
             return cells.pop();
         }
         None
+    }
+
+    /// Like [take_cell] but returns an Error when no cell is present
+    pub fn take_required_cell(&mut self, column: &str) -> DbResult<Cell> {
+        self.take_cell(column)
+            .ok_or_else(|| DbError::Integrity(format!("Expected column: {column}")))
     }
 
     /// Add cells to a given column

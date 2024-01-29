@@ -376,7 +376,6 @@ impl RowMerger {
     /// Iterate through all the returned chunks and compile them into a hash of finished cells indexed by row_key
     pub async fn process_chunks(
         mut stream: ClientSStreamReceiver<ReadRowsResponse>,
-        limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, Row>, BigTableError> {
         // Work object
         let mut merger = Self::default();
@@ -385,11 +384,6 @@ impl RowMerger {
         let mut rows = BTreeMap::<RowKey, Row>::new();
 
         while let (Some(row_resp_res), s) = stream.into_future().await {
-            if let Some(limit) = limit {
-                if limit > 0 && rows.len() > limit {
-                    break;
-                }
-            }
             stream = s;
             let row = match row_resp_res {
                 Ok(v) => v,
