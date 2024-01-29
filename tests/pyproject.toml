@@ -30,6 +30,7 @@ license = "Mozilla Public License Version 2.0"
 [tool.poetry.dependencies]
 python = "^3.10"
 websocket-client = "^1.7.0"
+pydocstyle = "^6.3.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.0"
