@@ -255,6 +255,7 @@ impl BigTableClientImpl {
 
         // Do the actual commit.
         let bigtable = self.pool.get().await?;
+        debug!("🉑 writing row...");
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
