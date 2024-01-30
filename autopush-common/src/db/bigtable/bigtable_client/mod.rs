@@ -1,5 +1,5 @@
-use core::fmt;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -7,10 +7,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
+use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
+use google_cloud_rust_raw::bigtable::v2::data::{
+    RowFilter, RowFilter_Chain, RowFilter_Condition, ValueRange,
+};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
 use grpcio::Channel;
 use protobuf::RepeatedField;
@@ -20,9 +24,8 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, User,
+    DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
 };
-use crate::notification::STANDARD_NOTIFICATION_PREFIX;
 
 use self::row::Row;
 use super::pool::BigTablePool;
@@ -35,8 +38,12 @@ pub mod row;
 
 // these are normally Vec<u8>
 pub type RowKey = String;
+
+// These are more for code clarity than functional types.
+// Rust will happily swap between the two in any case.
+// See [super::row::Row] for discussion about how these
+// are overloaded in order to simplify fetching data.
 pub type Qualifier = String;
-// This must be a String.
 pub type FamilyId = String;
 
 const ROUTER_FAMILY: &str = "router";
@@ -69,6 +76,33 @@ pub struct BigTableClientImpl {
     pool: BigTablePool,
 }
 
+fn timestamp_filter() -> Result<data::RowFilter, error::BigTableError> {
+    let mut timestamp_filter = data::RowFilter::default();
+    let bt_now: i64 = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_err(error::BigTableError::WriteTime)?
+        .as_millis() as i64;
+    let mut range_filter = data::TimestampRange::default();
+    range_filter.set_start_timestamp_micros(bt_now * 1000);
+    timestamp_filter.set_timestamp_range_filter(range_filter);
+
+    Ok(timestamp_filter)
+}
+
+/// Return a ReadRowsRequest against table for a given row key
+fn read_row_request(table_name: &str, row_key: &str) -> bigtable::ReadRowsRequest {
+    let mut req = bigtable::ReadRowsRequest::default();
+    req.set_table_name(table_name.to_owned());
+
+    let mut row_keys = RepeatedField::default();
+    row_keys.push(row_key.as_bytes().to_vec());
+    let mut row_set = data::RowSet::default();
+    row_set.set_row_keys(row_keys);
+    req.set_rows(row_set);
+
+    req
+}
+
 fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
     let v: [u8; 8] = value
         .try_into()
@@ -81,21 +115,6 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
         debug!("🉑 cannot read string {}: {:?}", name, e);
         DbError::DeserializeString(name.to_owned())
     })
-}
-
-/// Create a normalized index key.
-fn as_key(uaid: &Uuid, channel_id: Option<&Uuid>, chidmessageid: Option<&str>) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    parts.push(uaid.simple().to_string());
-    if let Some(channel_id) = channel_id {
-        parts.push(channel_id.simple().to_string());
-    } else if chidmessageid.is_some() {
-        parts.push("".to_string())
-    }
-    if let Some(chidmessageid) = chidmessageid {
-        parts.push(chidmessageid.to_owned());
-    }
-    parts.join("#")
 }
 
 /// Connect to a BigTable storage model.
@@ -136,26 +155,72 @@ impl BigTableClientImpl {
         })
     }
 
+    /// Return a ReadRowsRequest for a given row key
+    fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
+        read_row_request(&self.settings.table_name, row_key)
+    }
+
     /// Read a given row from the row key.
-    async fn read_row(
-        &self,
-        row_key: &str,
-        timestamp_filter: Option<u64>,
-    ) -> Result<Option<row::Row>, error::BigTableError> {
+    async fn read_row(&self, row_key: &str) -> Result<Option<row::Row>, error::BigTableError> {
         debug!("🉑 Row key: {}", row_key);
+        let req = self.read_row_request(row_key);
+        let mut rows = self.read_rows(req).await?;
+        Ok(rows.remove(row_key))
+    }
 
-        let mut row_keys = RepeatedField::default();
-        row_keys.push(row_key.to_owned().as_bytes().to_vec());
+    /// Perform a MutateRowsRequest
+    #[allow(unused)]
+    async fn mutate_rows(
+        &self,
+        req: bigtable::MutateRowsRequest,
+    ) -> Result<(), error::BigTableError> {
+        let bigtable = self.pool.get().await?;
+        // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
+        let resp = bigtable
+            .conn
+            .mutate_rows(&req)
+            .map_err(error::BigTableError::Write)?;
 
-        let mut row_set = data::RowSet::default();
-        row_set.set_row_keys(row_keys);
+        // Scan the returned stream looking for errors.
+        // As I understand, the returned stream contains chunked MutateRowsResponse structs. Each
+        // struct contains the result of the row mutation, and contains a `status` (non-zero on error)
+        // and an optional message string (empty if none).
+        // The structure also contains an overall `status` but that does not appear to be exposed.
+        // Status codes are defined at https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+        let mut stream = Box::pin(resp);
+        let mut cnt = 0;
+        loop {
+            let (result, remainder) = stream.into_future().await;
+            if let Some(result) = result {
+                debug!("🎏 Result block: {}", cnt);
+                match result {
+                    Ok(r) => {
+                        for e in r.get_entries() {
+                            if e.has_status() {
+                                let status = e.get_status();
+                                // See status code definitions: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+                                let code = error::MutateRowStatus::from(status.get_code());
+                                if !code.is_ok() {
+                                    return Err(error::BigTableError::Status(
+                                        code,
+                                        status.get_message().to_owned(),
+                                    ));
+                                }
+                                debug!("🎏 Response: {} OK", e.index);
+                            }
+                        }
+                    }
+                    Err(e) => return Err(error::BigTableError::Write(e)),
+                };
+                cnt += 1;
+            } else {
+                debug!("🎏 Done!");
+                break;
+            }
+            stream = remainder;
+        }
 
-        let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_rows(row_set);
-
-        let rows = self.read_rows(req, timestamp_filter, None).await?;
-        Ok(rows.get(row_key).cloned())
+        Ok(())
     }
 
     /// Take a big table ReadRowsRequest (containing the keys and filters) and return a set of row data indexed by row key.
@@ -164,15 +229,13 @@ impl BigTableClientImpl {
     async fn read_rows(
         &self,
         req: ReadRowsRequest,
-        timestamp_filter: Option<u64>,
-        limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
             .read_rows(&req)
-            .map_err(|e| error::BigTableError::Read(e.to_string()))?;
-        merge::RowMerger::process_chunks(resp, timestamp_filter, limit).await
+            .map_err(error::BigTableError::Read)?;
+        merge::RowMerger::process_chunks(resp).await
     }
 
     /// write a given row.
@@ -185,19 +248,39 @@ impl BigTableClientImpl {
         // It's possible to do a lot here, including altering in process
         // mutations, clearing them, etc. It's all up for grabs until we commit
         // below. For now, let's just presume a write and be done.
-        let mut mutations = protobuf::RepeatedField::default();
+        let mutations = self.get_mutations(row.cells)?;
         req.set_table_name(self.settings.table_name.clone());
         req.set_row_key(row.row_key.into_bytes());
-        for (_family, cells) in row.cells {
+        req.set_mutations(mutations);
+
+        // Do the actual commit.
+        let bigtable = self.pool.get().await?;
+        debug!("🉑 writing row...");
+        let _resp = bigtable
+            .conn
+            .mutate_row_async(&req)
+            .map_err(error::BigTableError::Write)?
+            .await
+            .map_err(error::BigTableError::Write)?;
+        Ok(())
+    }
+
+    /// Compile the list of mutations for this row.
+    fn get_mutations(
+        &self,
+        cells: HashMap<FamilyId, Vec<crate::db::bigtable::bigtable_client::cell::Cell>>,
+    ) -> Result<protobuf::RepeatedField<data::Mutation>, error::BigTableError> {
+        let mut mutations = protobuf::RepeatedField::default();
+        for (family_id, cells) in cells {
             for cell in cells {
                 let mut mutation = data::Mutation::default();
                 let mut set_cell = data::Mutation_SetCell::default();
                 let timestamp = cell
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(|e| error::BigTableError::Write(e.to_string()))?;
-                set_cell.family_name = cell.family;
-                set_cell.set_column_qualifier(cell.qualifier.into_bytes());
+                    .map_err(error::BigTableError::WriteTime)?;
+                set_cell.family_name = family_id.clone();
+                set_cell.set_column_qualifier(cell.qualifier.clone().into_bytes());
                 set_cell.set_value(cell.value);
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
                 // a `Timestamp granularity mismatch` error
@@ -207,18 +290,43 @@ impl BigTableClientImpl {
                 mutations.push(mutation);
             }
         }
-        req.set_mutations(mutations);
+        Ok(mutations)
+    }
+
+    /// Write mutations if the row meets a condition specified by the filter.
+    ///
+    /// Mutations can be applied either when the filter matches (state `true`)
+    /// or doesn't match (state `false`).
+    ///
+    /// Returns whether the filter matched records (which indicates whether the
+    /// mutations were applied, depending on the state)
+    async fn check_and_mutate_row(
+        &self,
+        row: row::Row,
+        filter: RowFilter,
+        state: bool,
+    ) -> Result<bool, error::BigTableError> {
+        let mut req = bigtable::CheckAndMutateRowRequest::default();
+        req.set_table_name(self.settings.table_name.clone());
+        req.set_row_key(row.row_key.into_bytes());
+        let mutations = self.get_mutations(row.cells)?;
+        req.set_predicate_filter(filter);
+        if state {
+            req.set_true_mutations(mutations);
+        } else {
+            req.set_false_mutations(mutations);
+        }
 
         // Do the actual commit.
-        // fails with `cannot execute `LocalPool` executor from within another executor: EnterError`
         let bigtable = self.pool.get().await?;
-        let _resp = bigtable
+        let resp = bigtable
             .conn
-            .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .check_and_mutate_row_async(&req)
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
-        Ok(())
+            .map_err(error::BigTableError::Write)?;
+        debug!("🉑 Predicate Matched: {}", &resp.get_predicate_matched(),);
+        Ok(resp.get_predicate_matched())
     }
 
     /// Delete all cell data from the specified columns with the optional time range.
@@ -226,7 +334,7 @@ impl BigTableClientImpl {
         &self,
         row_key: &str,
         family: &str,
-        column_names: &Vec<&str>,
+        column_names: &[&str],
         time_range: Option<&data::TimestampRange>,
     ) -> Result<(), error::BigTableError> {
         let mut req = bigtable::MutateRowRequest::default();
@@ -254,9 +362,9 @@ impl BigTableClientImpl {
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -275,9 +383,9 @@ impl BigTableClientImpl {
         let _resp = bigtable
             .conn
             .mutate_row_async(&req)
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?
+            .map_err(error::BigTableError::Write)?
             .await
-            .map_err(|e| error::BigTableError::Write(e.to_string()))?;
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -290,17 +398,28 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
-        req.set_delete_all_data_from_table(true);
         admin
             .drop_row_range_async(&req)
             .map_err(|e| {
                 error!("{:?}", e);
-                error::BigTableError::Admin("Could not delete data from table (0)".to_owned())
+                error::BigTableError::Admin(
+                    format!(
+                        "Could not send delete command for {}",
+                        &self.settings.table_name
+                    ),
+                    Some(e.to_string()),
+                )
             })?
             .await
             .map_err(|e| {
                 error!("post await: {:?}", e);
-                error::BigTableError::Admin("Could not delete data from table (1)".to_owned())
+                error::BigTableError::Admin(
+                    format!(
+                        "Could not delete data from table {}",
+                        &self.settings.table_name
+                    ),
+                    Some(e.to_string()),
+                )
             })?;
 
         Ok(true)
@@ -309,75 +428,100 @@ impl BigTableClientImpl {
     fn rows_to_notifications(
         &self,
         rows: BTreeMap<String, Row>,
-        limit: Option<usize>,
-    ) -> Result<FetchMessageResponse, crate::db::error::DbError> {
-        let mut messages: Vec<Notification> = Vec::new();
-        let mut max_timestamp: u64 = 0;
+    ) -> Result<Vec<Notification>, DbError> {
+        rows.into_iter()
+            .map(|(row_key, row)| self.row_to_notification(&row_key, row))
+            .collect()
+    }
 
-        for (_key, mut row) in rows {
-            if let Some(limit) = limit {
-                if messages.len() >= limit {
-                    break;
-                }
-            }
-            // get the dominant family type for this row.
-            if let Some(cell) = row.take_cell("channel_id") {
-                let mut notif = Notification {
-                    channel_id: Uuid::from_str(&to_string(cell.value, "channel_id")?).map_err(
-                        |e| {
-                            DbError::Serialization(format!(
-                                "Could not deserialize chid to uuid: {:?}",
-                                e
-                            ))
-                        },
-                    )?,
-                    ..Default::default()
-                };
-                if let Some(cell) = row.take_cell("version") {
-                    notif.version = to_string(cell.value, "version")?;
-                }
-                if let Some(cell) = row.take_cell("topic") {
-                    notif.topic = Some(to_string(cell.value, "topic")?);
-                }
+    fn row_to_notification(&self, row_key: &str, mut row: Row) -> Result<Notification, DbError> {
+        let Some((_, chidmessageid)) = row_key.split_once('#') else {
+            return Err(DbError::Integrity(
+                "rows_to_notification expected row_key: uaid:chidmessageid ".to_owned(),
+            ));
+        };
+        let range_key = NotificationRecord::parse_chidmessageid(chidmessageid).map_err(|e| {
+            DbError::Integrity(format!("rows_to_notification expected chidmessageid: {e}"))
+        })?;
 
-                if let Some(cell) = row.take_cell("ttl") {
-                    notif.ttl = to_u64(cell.value, "ttl")?;
-                }
+        let mut notif = Notification {
+            channel_id: range_key.channel_id,
+            topic: range_key.topic,
+            sortkey_timestamp: range_key.sortkey_timestamp,
+            version: to_string(row.take_required_cell("version")?.value, "version")?,
+            ttl: to_u64(row.take_required_cell("ttl")?.value, "ttl")?,
+            timestamp: to_u64(row.take_required_cell("timestamp")?.value, "timestamp")?,
+            ..Default::default()
+        };
 
-                if let Some(cell) = row.take_cell("data") {
-                    notif.data = Some(to_string(cell.value, "data")?);
-                }
-                if let Some(cell) = row.take_cell("sortkey_timestamp") {
-                    let sk_ts = to_u64(cell.value, "sortkey_timestamp")?;
-                    notif.sortkey_timestamp = Some(sk_ts);
-                    if sk_ts > max_timestamp {
-                        max_timestamp = sk_ts;
-                    }
-                }
-                if let Some(cell) = row.take_cell("timestamp") {
-                    notif.timestamp = to_u64(cell.value, "timestamp")?;
-                }
-                if let Some(cell) = row.take_cell("headers") {
-                    notif.headers = Some(
-                        serde_json::from_str::<HashMap<String, String>>(&to_string(
-                            cell.value, "headers",
-                        )?)
-                        .map_err(|e| DbError::Serialization(e.to_string()))?,
-                    );
-                }
-                trace!("🚣  adding row: {:?}", &notif);
-                messages.push(notif);
-            }
+        if let Some(cell) = row.take_cell("data") {
+            notif.data = Some(to_string(cell.value, "data")?);
+        }
+        if let Some(cell) = row.take_cell("headers") {
+            notif.headers = Some(
+                serde_json::from_str::<HashMap<String, String>>(&to_string(cell.value, "headers")?)
+                    .map_err(|e| DbError::Serialization(e.to_string()))?,
+            );
         }
 
-        Ok(FetchMessageResponse {
-            messages,
-            timestamp: if max_timestamp > 0 {
-                Some(max_timestamp)
-            } else {
-                None
+        trace!("🚣  Deserialized message row: {:?}", &notif);
+        Ok(notif)
+    }
+
+    fn user_to_row(&self, user: &User) -> Row {
+        let row_key = user.uaid.simple().to_string();
+        let mut row = Row::new(row_key);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+
+        let mut cells: Vec<cell::Cell> = vec![
+            cell::Cell {
+                qualifier: "connected_at".to_owned(),
+                value: user.connected_at.to_be_bytes().to_vec(),
+                timestamp: expiry,
+                ..Default::default()
             },
-        })
+            cell::Cell {
+                qualifier: "router_type".to_owned(),
+                value: user.router_type.clone().into_bytes(),
+                timestamp: expiry,
+                ..Default::default()
+            },
+        ];
+
+        if let Some(router_data) = &user.router_data {
+            cells.push(cell::Cell {
+                qualifier: "router_data".to_owned(),
+                value: json!(router_data).to_string().as_bytes().to_vec(),
+                timestamp: expiry,
+                ..Default::default()
+            });
+        };
+        if let Some(current_timestamp) = user.current_timestamp {
+            cells.push(cell::Cell {
+                qualifier: "current_timestamp".to_owned(),
+                value: current_timestamp.to_be_bytes().to_vec(),
+                timestamp: expiry,
+                ..Default::default()
+            });
+        };
+        if let Some(node_id) = &user.node_id {
+            cells.push(cell::Cell {
+                qualifier: "node_id".to_owned(),
+                value: node_id.as_bytes().to_vec(),
+                timestamp: expiry,
+                ..Default::default()
+            });
+        };
+        if let Some(record_version) = user.record_version {
+            cells.push(cell::Cell {
+                qualifier: "record_version".to_owned(),
+                value: record_version.to_be_bytes().to_vec(),
+                timestamp: expiry,
+                ..Default::default()
+            });
+        };
+        row.add_cells(ROUTER_FAMILY, cells);
+        row
     }
 }
 
@@ -393,22 +537,27 @@ impl BigtableDb {
         }
     }
 
-    /// Perform a simple connectivity check.
-    pub fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
-        let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(table_name.to_owned());
-        let mut row = data::Row::default();
-        row.set_key("NOT FOUND".to_owned().as_bytes().to_vec());
+    /// Perform a simple connectivity check. This should return no actual results
+    /// but should verify that the connection is valid. We use this for the
+    /// Recycle check as well, so it has to be fairly low in the implementation
+    /// stack.
+    ///
+    pub async fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
+        // Create a request that is GRPC valid, but does not point to a valid row.
+        let mut req = read_row_request(table_name, "NOT FOUND");
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
 
-        let _ = self
+        let r = self
             .conn
             .read_rows(&req)
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
-        Ok(true)
+        let (v, _stream) = r.into_future().await;
+        // Since this should return no rows (with the row key set to a value that shouldn't exist)
+        // the first component of the tuple should be None.
+        Ok(v.is_none())
     }
 }
 
@@ -416,264 +565,227 @@ impl BigtableDb {
 impl DbClient for BigTableClientImpl {
     /// add user to the database
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        let mut row = Row {
-            row_key: user.uaid.simple().to_string(),
-            ..Default::default()
-        };
-
-        let mut cells: Vec<cell::Cell> = vec![
-            cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "connected_at".to_owned(),
-                value: user.connected_at.to_be_bytes().to_vec(),
-                ..Default::default()
-            },
-            cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "router_type".to_owned(),
-                value: user.router_type.clone().into_bytes(),
-                ..Default::default()
-            },
-        ];
-
-        if let Some(router_data) = &user.router_data {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "router_data".to_owned(),
-                value: json!(router_data).to_string().as_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
-        if let Some(last_connect) = user.last_connect {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "last_connect".to_owned(),
-                value: last_connect.to_be_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
-        if let Some(current_timestamp) = user.current_timestamp {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "current_timestamp".to_owned(),
-                value: current_timestamp.to_be_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
-        if let Some(node_id) = &user.node_id {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "node_id".to_owned(),
-                value: node_id.clone().into_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
-        if let Some(record_version) = user.record_version {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "record_version".to_owned(),
-                value: record_version.to_be_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
-        if let Some(current_month) = &user.current_month {
-            cells.push(cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "current_month".to_owned(),
-                value: current_month.clone().into_bytes().to_vec(),
-                ..Default::default()
-            });
-        };
-        row.add_cells(ROUTER_FAMILY, cells);
         trace!("🉑 Adding user");
-        self.write_row(row).await.map_err(|e| e.into())
+        let row = self.user_to_row(user);
+
+        // Only add when the user doesn't already exist
+        let mut filter = RowFilter::default();
+        filter.set_row_key_regex_filter(format!("^{}$", row.row_key).into_bytes());
+
+        if self.check_and_mutate_row(row, filter, false).await? {
+            return Err(DbError::Conditional);
+        }
+        Ok(())
     }
 
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
     async fn update_user(&self, user: &User) -> DbResult<bool> {
-        self.add_user(user).await?;
-        // TODO: is a conditional check possible?
-        Ok(true)
+        // `update_user` supposes the following logic:
+        //   check to see if the user is in the router table AND
+        //   (either does not have a router_type or the router type is the same as what they're currently using) AND
+        //   (either there's no node_id assigned or the `connected_at` is earlier than the current connected_at)
+        // Bigtable can't really do a few of those (e.g. detect non-existing values) so we have to simplify
+        // things down a bit. We presume the record exists and that the `router_type` was specified when the
+        // record was created.
+        //
+        // Filters are not very sophisticated on BigTable.
+        // You can create RowFilterChains, where each filter acts as an "AND" or
+        // a RowFilterUnion which acts as an "OR".
+        //
+        // There do not appear to be negative checks (e.g. check if not set)
+        // According to [the docs](https://cloud.google.com/bigtable/docs/using-filters#chain)
+        // ConditionalRowFilter is not atomic and changes can occur between predicate
+        // and execution.
+        //
+        // We then use a ChainFilter (essentially an AND operation) to make sure that the router_type
+        // matches and the new `connected_at` time is later than the existing `connected_at`
+
+        let row = self.user_to_row(user);
+
+        // === Router Filter Chain.
+        let mut router_filter_chain = RowFilter_Chain::default();
+        let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
+        // First check to see if the router type is either empty or matches exactly.
+        // Yes, these are multiple filters. Each filter is basically an AND
+        let mut filter = RowFilter::default();
+        filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
+        filter.set_column_qualifier_regex_filter("router_type".to_owned().as_bytes().to_vec());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
+        filter.set_value_regex_filter(user.router_type.as_bytes().to_vec());
+        filter_set.push(filter);
+
+        router_filter_chain.set_filters(filter_set);
+        let mut router_filter = RowFilter::default();
+        router_filter.set_chain(router_filter_chain);
+
+        // === Connected_At filter chain
+        let mut connected_filter_chain = RowFilter_Chain::default();
+        let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
+
+        // then check to make sure that the last connected_at time is before this one.
+        // Note: `check_and_mutate_row` uses `set_true_mutations`, meaning that only rows
+        // that match the provided filters will be modified.
+        let mut filter = RowFilter::default();
+        filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
+        filter.set_column_qualifier_regex_filter("connected_at".to_owned().as_bytes().to_vec());
+        filter_set.push(filter);
+
+        let mut filter = RowFilter::default();
+        let mut val_range = ValueRange::default();
+        val_range.set_start_value_open(0_u64.to_be_bytes().to_vec());
+        val_range.set_end_value_open(user.connected_at.to_be_bytes().to_vec());
+        filter.set_value_range_filter(val_range);
+        filter_set.push(filter);
+
+        connected_filter_chain.set_filters(filter_set);
+        let mut connected_filter = RowFilter::default();
+        connected_filter.set_chain(connected_filter_chain);
+
+        // Gather the collections and try to update the row.
+
+        let mut cond = RowFilter_Condition::default();
+        cond.set_predicate_filter(router_filter);
+        cond.set_true_filter(connected_filter);
+        let mut cond_filter = RowFilter::default();
+        cond_filter.set_condition(cond);
+        // dbg!(&cond_filter);
+
+        Ok(self.check_and_mutate_row(row, cond_filter, true).await?)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
-        let key = uaid.as_simple().to_string();
+        let row_key = uaid.as_simple().to_string();
+        let Some(mut row) = self.read_row(&row_key).await? else {
+            return Ok(None);
+        };
+
+        trace!("🉑 Found a record for {}", row_key);
         let mut result = User {
             uaid: *uaid,
+            connected_at: to_u64(
+                row.take_required_cell("connected_at")?.value,
+                "connected_at",
+            )?,
+            router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
             ..Default::default()
         };
 
-        if let Some(mut record) = self.read_row(&key, None).await? {
-            trace!("🉑 Found a record for that user");
-            if let Some(mut cells) = record.take_cells("connected_at") {
-                if let Some(cell) = cells.pop() {
-                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize connected_at: {:?}",
-                            e
-                        ))
-                    })?;
-                    result.connected_at = u64::from_be_bytes(v);
-                }
-            }
-
-            if let Some(mut cells) = record.take_cells("router_type") {
-                if let Some(cell) = cells.pop() {
-                    result.router_type = String::from_utf8(cell.value).map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize router_type: {:?}",
-                            e
-                        ))
-                    })?;
-                }
-            }
-
-            if let Some(mut cells) = record.take_cells("router_data") {
-                if let Some(cell) = cells.pop() {
-                    result.router_data = from_str(&String::from_utf8(cell.value).map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize router_type: {:?}",
-                            e
-                        ))
-                    })?)
-                    .map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize router_type: {:?}",
-                            e
-                        ))
-                    })?;
-                }
-            }
-
-            if let Some(mut cells) = record.take_cells("last_connect") {
-                if let Some(cell) = cells.pop() {
-                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize last_connect: {:?}",
-                            e
-                        ))
-                    })?;
-                    result.last_connect = Some(u64::from_be_bytes(v));
-                }
-            }
-
-            if let Some(mut cells) = record.take_cells("node_id") {
-                if let Some(cell) = cells.pop() {
-                    result.node_id = Some(String::from_utf8(cell.value).map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize router_type: {:?}",
-                            e
-                        ))
-                    })?);
-                }
-            }
-
-            if let Some(mut cells) = record.take_cells("record_version") {
-                if let Some(mut cell) = cells.pop() {
-                    // there's only one byte, so pop it off and use it.
-                    if let Some(b) = cell.value.pop() {
-                        result.record_version = Some(b)
-                    }
-                }
-            }
-
-            if let Some(mut cells) = record.take_cells("current_month") {
-                if let Some(cell) = cells.pop() {
-                    result.current_month = Some(String::from_utf8(cell.value).map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize current_month: {:?}",
-                            e
-                        ))
-                    })?);
-                }
-            }
-
-            //TODO: rename this to `last_notification_timestamp`
-            if let Some(mut cells) = record.take_cells("current_timestamp") {
-                if let Some(cell) = cells.pop() {
-                    let v: [u8; 8] = cell.value.try_into().map_err(|e| {
-                        DbError::Serialization(format!(
-                            "Could not deserialize current_timestamp: {:?}",
-                            e
-                        ))
-                    })?;
-                    result.current_timestamp = Some(u64::from_be_bytes(v));
-                }
-            }
-
-            return Ok(Some(result));
+        if let Some(cell) = row.take_cell("router_data") {
+            result.router_data = from_str(&to_string(cell.value, "router_type")?).map_err(|e| {
+                DbError::Serialization(format!("Could not deserialize router_type: {e:?}"))
+            })?;
         }
-        Ok(None)
+
+        if let Some(cell) = row.take_cell("node_id") {
+            result.node_id = Some(to_string(cell.value, "node_id")?);
+        }
+
+        if let Some(cell) = row.take_cell("record_version") {
+            result.record_version = Some(to_u64(cell.value, "record_version")?)
+        }
+
+        if let Some(cell) = row.take_cell("current_timestamp") {
+            result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
+        }
+
+        Ok(Some(result))
     }
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        self.delete_rows(&as_key(uaid, None, None)).await?;
+        let row_key = uaid.simple().to_string();
+        self.delete_rows(&row_key).await?;
         Ok(())
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let key = as_key(uaid, Some(channel_id), None);
-
-        // We can use the default timestamp here because there shouldn't be a time
-        // based GC for router records.
-        let mut row = Row {
-            row_key: key,
-            ..Default::default()
-        };
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| DbError::General(e.to_string()))?
-            .as_millis();
-        row.cells.insert(
-            ROUTER_FAMILY.to_owned(),
-            vec![cell::Cell {
-                family: ROUTER_FAMILY.to_owned(),
-                qualifier: "updated".to_owned(),
-                value: now.to_be_bytes().to_vec(),
-                ..Default::default()
-            }],
-        );
-        self.write_row(row).await.map_err(|e| e.into())
+        let channels = HashSet::from_iter([channel_id.to_owned()]);
+        self.add_channels(uaid, channels).await
     }
 
-    /// Delete all the rows that start with the given prefix. NOTE: this may be metered and should
-    /// be used with caution.
+    /// Add channels in bulk (used mostly during migration)
+    ///
+    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
+        // channel_ids are stored as a set within one Bigtable row
+        //
+        // Bigtable allows "millions of columns in a table, as long as no row
+        // exceeds the maximum limit of 256 MB per row" enabling the use of
+        // column qualifiers as data.
+        //
+        // The "set" of channel_ids consists of column qualifiers named
+        // "chid:<chid value>" as set member entries (with their cell values
+        // being a single 0 byte).
+        //
+        // Storing the full set in a single row makes batch updates
+        // (particularly to reset the GC expiry timestamps) potentially more
+        // easy/efficient
+        let row_key = uaid.simple().to_string();
+        let mut row = Row::new(row_key);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL);
+
+        let mut cells = Vec::with_capacity(channels.len().min(100_000));
+        for (i, channel_id) in channels.into_iter().enumerate() {
+            // There is a limit of 100,000 mutations per batch for bigtable.
+            // https://cloud.google.com/bigtable/quotas
+            // If you have 100,000 channels, you have too many.
+            if i >= 100_000 {
+                break;
+            }
+            cells.push(cell::Cell {
+                qualifier: format!("chid:{}", channel_id.as_hyphenated()),
+                timestamp: expiry,
+                ..Default::default()
+            });
+        }
+        row.add_cells(ROUTER_FAMILY, cells);
+
+        self.write_row(row).await?;
+        Ok(())
+    }
+
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
+        let row_key = uaid.simple().to_string();
+        let mut req = self.read_row_request(&row_key);
+
+        let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
+
+        let mut family_filter = data::RowFilter::default();
+        family_filter.set_family_name_regex_filter(format!("^{ROUTER_FAMILY}$"));
+
+        let mut cq_filter = data::RowFilter::default();
+        cq_filter.set_column_qualifier_regex_filter("^chid:.*$".as_bytes().to_vec());
+
+        filter_set.push(family_filter);
+        filter_set.push(cq_filter);
+
+        let mut filter_chain = RowFilter_Chain::default();
+        filter_chain.set_filters(filter_set);
+
+        let mut filter = data::RowFilter::default();
+        filter.set_chain(filter_chain);
+        req.set_filter(filter);
+
+        let mut rows = self.read_rows(req).await?;
         let mut result = HashSet::new();
-
-        let req = {
-            let filter = {
-                let mut strip_filter = data::RowFilter::default();
-                strip_filter.set_strip_value_transformer(true);
-                let mut regex_filter = data::RowFilter::default();
-                // Your regex expression must match the WHOLE string. No partial matches.
-                // For this, we only want to grab the channel meta records (which do not
-                // have a sort key suffix)
-                let key = format!("^{}#[^#]+", uaid.simple());
-                regex_filter.set_row_key_regex_filter(key.as_bytes().to_vec());
-                let mut chain = data::RowFilter_Chain::default();
-                let mut repeat_field = RepeatedField::default();
-                repeat_field.push(strip_filter);
-                repeat_field.push(regex_filter);
-                chain.set_filters(repeat_field);
-
-                let mut filter = data::RowFilter::default();
-                filter.set_chain(chain);
-                filter
-            };
-
-            let mut req = bigtable::ReadRowsRequest::default();
-            req.set_table_name(self.settings.table_name.clone());
-            req.set_filter(filter);
-
-            req
-        };
-
-        let rows = self.read_rows(req, None, None).await?;
-        for key in rows.keys().map(|v| v.to_owned()).collect::<Vec<String>>() {
-            if let Some(chid) = key.split('#').last() {
+        if let Some(record) = rows.remove(&row_key) {
+            for mut cells in record.cells.into_values() {
+                let Some(cell) = cells.pop() else {
+                    continue;
+                };
+                let Some((_, chid)) = cell.qualifier.split_once("chid:") else {
+                    return Err(DbError::Integrity(
+                        "get_channels expected: chid:<chid>".to_owned(),
+                    ));
+                };
                 result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
             }
         }
@@ -681,10 +793,15 @@ impl DbClient for BigTableClientImpl {
         Ok(result)
     }
 
-    /// Delete the channel and all associated pending messages.
+    /// Delete the channel. Does not delete its associated pending messages.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
-        let row_key = as_key(uaid, Some(channel_id), None);
-        Ok(self.delete_rows(&row_key).await?)
+        let row_key = uaid.simple().to_string();
+        let column = format!("chid:{}", channel_id.as_hyphenated());
+        self.delete_cells(&row_key, ROUTER_FAMILY, &[column.as_ref()], None)
+            .await?;
+        // XXX: Can we determine if the cq was actually removed (existed) from
+        // mutate_row's response?
+        Ok(true)
     }
 
     /// Remove the node_id. Can't really "surgically strike" this
@@ -699,44 +816,32 @@ impl DbClient for BigTableClientImpl {
             &uaid.simple().to_string(),
             UNIX_EPOCH + Duration::from_secs(connected_at)
         );
-        let row_key = as_key(uaid, None, None);
+        let row_key = uaid.simple().to_string();
         let mut time_range = data::TimestampRange::default();
         // convert connected at seconds into microseconds
         time_range.set_end_timestamp_micros((connected_at * 1000000) as i64);
-        self.delete_cells(
-            &row_key,
-            ROUTER_FAMILY,
-            &["node_id"].to_vec(),
-            Some(&time_range),
-        )
-        .await?;
-        // TODO: is a conditional check possible?
+        self.delete_cells(&row_key, ROUTER_FAMILY, &["node_id"], Some(&time_range))
+            .await?;
         Ok(true)
     }
 
     /// Write the notification to storage.
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
-        let row_key = as_key(
-            uaid,
-            Some(&message.channel_id),
-            Some(&message.chidmessageid()),
-        );
+        let row_key = format!("{}#{}", uaid.simple(), message.chidmessageid());
         debug!("🗄️ Saving message {} :: {:?}", &row_key, &message);
         trace!(
             "🉑 timestamp: {:?}",
             &message.timestamp.to_be_bytes().to_vec()
         );
-        let mut row = Row {
-            row_key,
-            ..Default::default()
-        };
+        let mut row = Row::new(row_key);
 
         // Remember, `timestamp` is effectively the time to kill the message, not the
         // current time.
-        let ttl = SystemTime::now() + Duration::from_secs(message.ttl);
+        let expiry = SystemTime::now() + Duration::from_secs(message.ttl);
         trace!(
             "🉑 Message Expiry {}",
-            ttl.duration_since(SystemTime::UNIX_EPOCH)
+            expiry
+                .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis()
         );
@@ -744,93 +849,45 @@ impl DbClient for BigTableClientImpl {
         let mut cells: Vec<cell::Cell> = Vec::new();
 
         let family = if message.topic.is_some() {
-            // Set the correct flag so we know how to read this row later.
-            cells.push(cell::Cell {
-                family: MESSAGE_FAMILY.to_owned(),
-                qualifier: "has_topic".to_owned(),
-                value: vec![1],
-                timestamp: ttl,
-                ..Default::default()
-            });
-            cells.push(cell::Cell {
-                family: MESSAGE_TOPIC_FAMILY.to_owned(),
-                qualifier: "topic".to_owned(),
-                value: message.topic.unwrap().into_bytes().to_vec(),
-                timestamp: ttl,
-                ..Default::default()
-            });
             MESSAGE_TOPIC_FAMILY
         } else {
             MESSAGE_FAMILY
         };
         cells.extend(vec![
             cell::Cell {
-                family: family.to_owned(),
                 qualifier: "ttl".to_owned(),
                 value: message.ttl.to_be_bytes().to_vec(),
-                timestamp: ttl,
+                timestamp: expiry,
                 ..Default::default()
             },
             cell::Cell {
-                family: family.to_owned(),
-                qualifier: "channel_id".to_owned(),
-                value: message.channel_id.as_hyphenated().to_string().into_bytes(),
-                timestamp: ttl,
-                ..Default::default()
-            },
-            cell::Cell {
-                family: family.to_owned(),
                 qualifier: "timestamp".to_owned(),
                 value: message.timestamp.to_be_bytes().to_vec(),
-                timestamp: ttl,
+                timestamp: expiry,
                 ..Default::default()
             },
             cell::Cell {
-                family: family.to_owned(),
                 qualifier: "version".to_owned(),
                 value: message.version.into_bytes(),
-                timestamp: ttl,
-                ..Default::default()
-            },
-            cell::Cell {
-                family: family.to_owned(),
-                qualifier: "expiry".to_owned(),
-                value: ttl
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-                    .to_be_bytes()
-                    .to_vec(),
-                timestamp: ttl,
+                timestamp: expiry,
                 ..Default::default()
             },
         ]);
         if let Some(headers) = message.headers {
             if !headers.is_empty() {
                 cells.push(cell::Cell {
-                    family: family.to_owned(),
                     qualifier: "headers".to_owned(),
-                    value: json!(headers).to_string().into_bytes().to_vec(),
-                    timestamp: ttl,
+                    value: json!(headers).to_string().into_bytes(),
+                    timestamp: expiry,
                     ..Default::default()
                 });
             }
         }
         if let Some(data) = message.data {
             cells.push(cell::Cell {
-                family: family.to_owned(),
                 qualifier: "data".to_owned(),
-                value: data.into_bytes().to_vec(),
-                timestamp: ttl,
-                ..Default::default()
-            });
-        }
-        if let Some(sortkey_timestamp) = message.sortkey_timestamp {
-            cells.push(cell::Cell {
-                family: family.to_owned(),
-                qualifier: "sortkey_timestamp".to_owned(),
-                value: sortkey_timestamp.to_be_bytes().to_vec(),
-                timestamp: ttl,
+                value: data.into_bytes(),
+                timestamp: expiry,
                 ..Default::default()
             });
         }
@@ -865,23 +922,20 @@ impl DbClient for BigTableClientImpl {
     /// records with timestamps later than `current_timestamp`.
     ///
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
-        let mut row = Row {
-            row_key: as_key(uaid, None, None),
-            ..Default::default()
-        };
-
+        let row_key = uaid.simple().to_string();
         debug!(
             "🉑 Updating {} current_timestamp:  {:?}",
-            as_key(uaid, None, None),
+            &row_key,
             timestamp.to_be_bytes().to_vec()
         );
-
+        let mut row = Row::new(row_key);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
         row.cells.insert(
-            MESSAGE_FAMILY.to_owned(),
+            ROUTER_FAMILY.to_owned(),
             vec![cell::Cell {
-                family: MESSAGE_FAMILY.to_owned(),
                 qualifier: "current_timestamp".to_owned(),
                 value: timestamp.to_be_bytes().to_vec(),
+                timestamp: expiry,
                 ..Default::default()
             }],
         );
@@ -895,28 +949,7 @@ impl DbClient for BigTableClientImpl {
             uaid.to_string(),
             chidmessageid
         );
-        // parse the sort_key to get the message's CHID
-        let parts: Vec<&str> = chidmessageid.split(':').collect();
-        if parts.len() < 3 {
-            return Err(DbError::General(format!(
-                "Invalid sort_key detected: {}",
-                chidmessageid
-            )));
-        }
-        let family = match parts[0] {
-            "01" => MESSAGE_TOPIC_FAMILY,
-            "02" => MESSAGE_FAMILY,
-            _ => "",
-        };
-        if family.is_empty() {
-            return Err(DbError::General(format!(
-                "Invalid sort_key detected: {}",
-                chidmessageid
-            )));
-        }
-        let chid = Uuid::parse_str(parts[1])
-            .map_err(|_| error::BigTableError::Admin("Invalid SortKey component".to_string()))?;
-        let row_key = as_key(uaid, Some(&chid), Some(chidmessageid));
+        let row_key = format!("{}#{}", uaid.simple(), chidmessageid);
         debug!("🉑🔥 Deleting message {}", &row_key);
         self.delete_row(&row_key).await.map_err(|e| e.into())
     }
@@ -929,33 +962,39 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
-        req.set_filter({
-            let mut regex_filter = data::RowFilter::default();
-            // channels for a given UAID all begin with `{uaid}#`
-            // this will fetch all messages for all channels and all sort_keys
-            regex_filter.set_row_key_regex_filter(
-                format!("^{}#[^#]+#01:.+", uaid.simple())
-                    .as_bytes()
-                    .to_vec(),
-            );
-            regex_filter
-        });
-        // Note set_rows_limit(v) limits the returned results
-        // If you're doing additional filtering later, this is not what
-        // you want.
-        /*
+
+        let start_key = format!("{}#01:", uaid.simple());
+        let end_key = format!("{}#02:", uaid.simple());
+        let mut rows = data::RowSet::default();
+        let mut row_range = data::RowRange::default();
+        row_range.set_start_key_open(start_key.into_bytes());
+        row_range.set_end_key_open(end_key.into_bytes());
+        let mut row_ranges = RepeatedField::default();
+        row_ranges.push(row_range);
+        rows.set_row_ranges(row_ranges);
+        req.set_rows(rows);
+
+        req.set_filter(timestamp_filter()?);
         if limit > 0 {
             trace!("🉑 Setting limit to {limit}");
             req.set_rows_limit(limit as i64);
         }
-        // */
-        let rows = self.read_rows(req, None, Some(limit)).await?;
+        let rows = self.read_rows(req).await?;
         debug!(
             "🉑 Fetch Topic Messages. Found {} row(s) of {}",
             rows.len(),
             limit
         );
-        self.rows_to_notifications(rows, if limit > 0 { Some(limit) } else { None })
+
+        let messages = self.rows_to_notifications(rows)?;
+        // Note: Bigtable always returns a timestamp of None here whereas
+        // DynamoDB returns the `current_timestamp` read from its meta
+        // record. Under Bigtable `current_timestamp` is instead initially read
+        // from [get_user]
+        Ok(FetchMessageResponse {
+            messages,
+            timestamp: None,
+        })
     }
 
     /// Return `limit` messages pending for a UAID that have a sortkey_timestamp after
@@ -969,47 +1008,57 @@ impl DbClient for BigTableClientImpl {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
 
+        let mut rows = data::RowSet::default();
+        let mut row_range = data::RowRange::default();
+
+        let start_key = if let Some(ts) = timestamp {
+            // Fetch everything after the last message with timestamp: the "z"
+            // moves past the last message's channel_id's 1st hex digit
+            format!("{}#02:{}z", uaid.simple(), ts)
+        } else {
+            format!("{}#02:", uaid.simple())
+        };
+        let end_key = format!("{}#03:", uaid.simple());
+        row_range.set_start_key_open(start_key.into_bytes());
+        row_range.set_end_key_open(end_key.into_bytes());
+
+        let mut row_ranges = RepeatedField::default();
+        row_ranges.push(row_range);
+        rows.set_row_ranges(row_ranges);
+        req.set_rows(rows);
+
         // We can fetch data and do [some remote filtering](https://cloud.google.com/bigtable/docs/filters),
         // unfortunately I don't think the filtering we need will be super helpful.
         //
         //
-        let filter = {
-            // Only look for channelids for the given UAID.
-            // start by looking for rows that roughly match what we want
-            // Note: BigTable provides a good deal of specialized filtering, but
-            // it tends to be overly specialized. (For instance, a value range retuns
-            // cells which has values within a specific range. Not rows, not families,
-            // cells. There does not appear to be a way to chain this so that it only
-            // looks for rows with ranged values within a given family or qualifier types
-            // That must be done externally.)
-            let mut filter = data::RowFilter::default();
-            // look for anything belonging to this UAID that is also a Standard Notification
-            let pattern = format!(
-                "^{}#[^#]+#{}:.*",
-                uaid.simple(),
-                STANDARD_NOTIFICATION_PREFIX,
-            );
-            trace!("🉑 regex filter {:?}", pattern);
-            filter.set_row_key_regex_filter(pattern.as_bytes().to_vec());
-            filter
-        };
-        req.set_filter(filter);
-        // Note set_rows_limit(v) limits the returned results from Bigtable.
-        // If you're doing additional filtering later, this may not be what
-        // you want and may artificially truncate possible return sets.
         /*
+        //NOTE: if you filter on a given field, BigTable will only
+        // return that specific field. Adding filters for the rest of
+        // the known elements may NOT return those elements or may
+        // cause the message to not be returned because any of
+        // those elements are not present. It may be preferable to
+        // therefore run two filters, one to fetch the candidate IDs
+        // and another to fetch the content of the messages.
+         */
+        req.set_filter(timestamp_filter()?);
         if limit > 0 {
             req.set_rows_limit(limit as i64);
         }
-        // */
-        let rows = self.read_rows(req, timestamp, Some(limit)).await?;
+        let rows = self.read_rows(req).await?;
         debug!(
             "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s) of {}",
             timestamp,
             rows.len(),
             limit,
         );
-        self.rows_to_notifications(rows, if limit > 0 { Some(limit) } else { None })
+
+        let messages = self.rows_to_notifications(rows)?;
+        // The timestamp of the last message read
+        let timestamp = messages.last().and_then(|m| m.sortkey_timestamp);
+        Ok(FetchMessageResponse {
+            messages,
+            timestamp,
+        })
     }
 
     async fn health_check(&self) -> DbResult<bool> {
@@ -1017,6 +1066,7 @@ impl DbClient for BigTableClientImpl {
             .get()
             .await?
             .health_check(&self.settings.table_name)
+            .await
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up
@@ -1039,6 +1089,10 @@ impl DbClient for BigTableClientImpl {
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
     }
+
+    fn name(&self) -> String {
+        "Bigtable".to_owned()
+    }
 }
 
 #[cfg(all(test, feature = "emulator"))]
@@ -1051,13 +1105,15 @@ mod tests {
     use std::sync::Arc;
     use std::time::SystemTime;
 
-    use super::*;
     use cadence::StatsdClient;
+    use uuid;
 
+    use super::*;
     use crate::db::DbSettings;
 
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
+    const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
 
     fn now() -> u64 {
         SystemTime::now()
@@ -1074,11 +1130,11 @@ mod tests {
         let settings = DbSettings {
             // this presumes the table was created with
             // ```
-            // cbt -project test -instance test createtable autopush
+            // scripts/setup_bt.sh
             // ```
             // with `message`, `router`, and `message_topic` families
             dsn: Some(env_dsn),
-            db_settings: json!({"table_name":"projects/test/instances/test/tables/autopush"})
+            db_settings: json!({"table_name": "projects/test/instances/test/tables/autopush"})
                 .to_string(),
         };
 
@@ -1087,20 +1143,20 @@ mod tests {
         BigTableClientImpl::new(metrics, &settings)
     }
 
-    #[test]
-    fn row_key() {
-        let uaid = Uuid::parse_str(TEST_USER).unwrap();
-        let chid = Uuid::parse_str(TEST_CHID).unwrap();
-        let chidmessageid = "01:decafbad-0000-0000-0000-0123456789ab:Inbox";
-        let k = as_key(&uaid, Some(&chid), Some(chidmessageid));
-        assert_eq!(k, "deadbeef0000000000000123456789ab#decafbad0000000000000123456789ab#01:decafbad-0000-0000-0000-0123456789ab:Inbox");
+    #[actix_rt::test]
+    async fn health_check() {
+        let client = new_client().unwrap();
+
+        let result = client.health_check().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
     }
 
     /// run a gauntlet of testing. These are a bit linear because they need
     /// to run in sequence.
     #[actix_rt::test]
-    async fn run_gauntlet() {
-        let client = new_client().unwrap();
+    async fn run_gauntlet() -> DbResult<()> {
+        let client = new_client()?;
 
         let connected_at = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -1109,7 +1165,12 @@ mod tests {
 
         let uaid = Uuid::parse_str(TEST_USER).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let topic_chid = Uuid::parse_str(TOPIC_CHID).unwrap();
+
         let node_id = "test_node".to_owned();
+
+        // purge the user record if it exists.
+        let _ = client.remove_user(&uaid).await;
 
         let test_user = User {
             uaid,
@@ -1121,28 +1182,77 @@ mod tests {
             ..Default::default()
         };
 
+        // purge the old user (if present)
+        // in case a prior test failed for whatever reason.
+        let _ = client.remove_user(&uaid).await;
+
         // can we add the user?
-        let user = client.add_user(&test_user).await;
-        assert!(user.is_ok());
-        let fetched = client.get_user(&uaid).await.unwrap();
+        client.add_user(&test_user).await?;
+        let fetched = client.get_user(&uaid).await?;
         assert!(fetched.is_some());
-        assert_eq!(fetched.unwrap().router_type, "webpush".to_owned());
+        let fetched = fetched.unwrap();
+        assert_eq!(fetched.router_type, "webpush".to_owned());
 
         // can we add channels?
-        client.add_channel(&uaid, &chid).await.unwrap();
-        let channels = client.get_channels(&uaid).await;
-        assert!(channels.unwrap().contains(&chid));
+        client.add_channel(&uaid, &chid).await?;
+        let channels = client.get_channels(&uaid).await?;
+        assert!(channels.contains(&chid));
 
-        // can we modify the user record?
+        // can we add lots of channels?
+        let mut new_channels: HashSet<Uuid> = HashSet::new();
+        new_channels.insert(chid);
+        for _ in 1..10 {
+            new_channels.insert(uuid::Uuid::new_v4());
+        }
+        let chid_to_remove = uuid::Uuid::new_v4();
+        new_channels.insert(chid_to_remove);
+        client.add_channels(&uaid, new_channels.clone()).await?;
+        let channels = client.get_channels(&uaid).await?;
+        assert_eq!(channels, new_channels);
+
+        // can we remove a channel?
+        client.remove_channel(&uaid, &chid_to_remove).await?;
+        new_channels.remove(&chid_to_remove);
+        let channels = client.get_channels(&uaid).await?;
+        assert_eq!(channels, new_channels);
+
+        // now ensure that we can update a user that's after the time we set prior.
+        // first ensure that we can't update a user that's before the time we set prior.
         let updated = User {
-            connected_at: now() + 3,
+            connected_at: fetched.connected_at - 300,
+            ..test_user.clone()
+        };
+        let result = client.update_user(&updated).await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+
+        // Make sure that the `connected_at` wasn't modified
+        let fetched2 = client.get_user(&fetched.uaid).await?.unwrap();
+        assert_eq!(fetched.connected_at, fetched2.connected_at);
+
+        // and make sure we can update a record with a later connected_at time.
+        let updated = User {
+            connected_at: fetched.connected_at + 300,
             ..test_user
         };
-        assert!(client.update_user(&updated).await.is_ok());
+        let result = client.update_user(&updated).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
         assert_ne!(
             test_user.connected_at,
-            client.get_user(&uaid).await.unwrap().unwrap().connected_at
+            client.get_user(&uaid).await?.unwrap().connected_at
         );
+
+        // can we increment the storage for the user?
+        client
+            .increment_storage(
+                &fetched.uaid,
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            )
+            .await?;
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
         let timestamp = now();
@@ -1157,15 +1267,10 @@ mod tests {
             sortkey_timestamp: Some(sort_key),
             ..Default::default()
         };
-        assert!(client
-            .save_message(&uaid, test_notification.clone())
-            .await
-            .is_ok());
+        let res = client.save_message(&uaid, test_notification.clone()).await;
+        assert!(res.is_ok());
 
-        let mut fetched = client
-            .fetch_timestamp_messages(&uaid, None, 999)
-            .await
-            .unwrap();
+        let mut fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_ne!(fetched.messages.len(), 0);
         let fm = fetched.messages.pop().unwrap();
         assert_eq!(fm.channel_id, test_notification.channel_id);
@@ -1174,45 +1279,133 @@ mod tests {
         // Grab all 1 of the messages that were submmited within the past 10 seconds.
         let fetched = client
             .fetch_timestamp_messages(&uaid, Some(timestamp - 10), 999)
-            .await
-            .unwrap();
+            .await?;
         assert_ne!(fetched.messages.len(), 0);
 
         // Try grabbing a message for 10 seconds from now.
         let fetched = client
             .fetch_timestamp_messages(&uaid, Some(timestamp + 10), 999)
-            .await
-            .unwrap();
+            .await?;
         assert_eq!(fetched.messages.len(), 0);
 
         // can we clean up our toys?
         assert!(client
-            .remove_message(&uaid, &format!("02:{}:{}", chid.as_simple(), sort_key))
+            .remove_message(&uaid, &test_notification.chidmessageid())
             .await
             .is_ok());
 
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
+
+        // Now, can we do all that with topic messages
+        let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
+        let timestamp = now();
+        let sort_key = now();
+        // Can we store a message?
+        let test_notification = crate::db::Notification {
+            channel_id: topic_chid,
+            version: "test".to_owned(),
+            ttl: 300,
+            topic: Some("topic".to_owned()),
+            timestamp,
+            data: Some(test_data.clone()),
+            sortkey_timestamp: Some(sort_key),
+            ..Default::default()
+        };
+        assert!(client
+            .save_message(&uaid, test_notification.clone())
+            .await
+            .is_ok());
+
+        let mut fetched = client.fetch_topic_messages(&uaid, 999).await?;
+        assert_ne!(fetched.messages.len(), 0);
+        let fm = fetched.messages.pop().unwrap();
+        assert_eq!(fm.channel_id, test_notification.channel_id);
+        assert_eq!(fm.data, Some(test_data));
+
+        // Grab the message that was submmited.
+        let fetched = client.fetch_topic_messages(&uaid, 999).await?;
+        assert_ne!(fetched.messages.len(), 0);
+
+        // can we clean up our toys?
+        assert!(client
+            .remove_message(&uaid, &test_notification.chidmessageid())
+            .await
+            .is_ok());
+
+        assert!(client.remove_channel(&uaid, &topic_chid).await.is_ok());
+
+        let msgs = client
+            .fetch_timestamp_messages(&uaid, None, 999)
+            .await?
+            .messages;
+        assert!(msgs.is_empty());
+
         assert!(client
             .remove_node_id(&uaid, &node_id, connected_at)
             .await
             .is_ok());
+        // TODO:
         // did we remove it?
-        let msgs = client
-            .fetch_timestamp_messages(&uaid, None, 999)
-            .await
-            .unwrap()
-            .messages;
-        print!("Messages: {:?}", &msgs);
-        assert!(msgs.is_empty());
+        //let fetched = client.get_user(&uaid).await?.unwrap();
+        //assert_eq!(fetched.node_id, None);
 
         assert!(client.remove_user(&uaid).await.is_ok());
 
-        assert!(client.get_user(&uaid).await.unwrap().is_none());
+        assert!(client.get_user(&uaid).await?.is_none());
+
+        Ok(())
     }
 
-    // #[actix_rt::test]
-    // async fn sometest() {}
+    #[actix_rt::test]
+    async fn read_cells_family_id() -> DbResult<()> {
+        // let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        // generate a somewhat random test UAID to prevent possible false test fails
+        // if the account is deleted before this test completes.
+        let uaid = {
+            let temp = Uuid::new_v4().to_string();
+            let mut parts: Vec<&str> = temp.split('-').collect();
+            parts[0] = "DEADBEEF";
+            Uuid::parse_str(&parts.join("-")).unwrap()
+        };
+        let client = new_client().unwrap();
+        client.remove_user(&uaid).await.unwrap();
 
-    // #[test]
-    // fn sometest () {}
+        let qualifier = "foo".to_owned();
+
+        let row_key = uaid.simple().to_string();
+        let mut row = Row::new(row_key.clone());
+        row.cells.insert(
+            ROUTER_FAMILY.to_owned(),
+            vec![cell::Cell {
+                qualifier: qualifier.to_owned(),
+                value: "bar".as_bytes().to_vec(),
+                ..Default::default()
+            }],
+        );
+        client.write_row(row).await.unwrap();
+        let Some(row) = client.read_row(&row_key).await.unwrap() else {
+            panic!("Expected row");
+        };
+        assert_eq!(row.cells.len(), 1);
+        assert_eq!(row.cells.keys().next().unwrap(), qualifier.as_str());
+        client.remove_user(&uaid).await
+    }
+
+    /*
+    // XXX: uncomment after the uaid clashing fix
+    #[actix_rt::test]
+    async fn add_user_existing() {
+        let client = new_client().unwrap();
+        let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        let user = User {
+            uaid,
+            ..Default::default()
+        };
+        client.remove_user(&uaid).await.unwrap();
+
+        client.add_user(&user).await.unwrap();
+        let err = client.add_user(&user).await.unwrap_err();
+        assert!(matches!(err, DbError::Conditional));
+    }
+    */
 }

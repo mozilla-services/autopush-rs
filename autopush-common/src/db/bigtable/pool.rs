@@ -40,10 +40,13 @@ impl BigTablePool {
     pub async fn get(
         &self,
     ) -> Result<deadpool::managed::Object<BigtableClientManager>, error::BigTableError> {
-        self.pool
+        let obj = self
+            .pool
             .get()
             .await
-            .map_err(|e| error::BigTableError::Pool(e.to_string()))
+            .map_err(|e| error::BigTableError::Pool(e.to_string()))?;
+        debug!("🉑 Got db from pool");
+        Ok(obj)
     }
 
     /// Get the pools manager, because we would like to talk to them.
@@ -151,7 +154,9 @@ impl Manager for BigtableClientManager {
     /// `BigtableClient` is the most atomic we can go.
     async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        Ok(BigtableDb::new(self.get_channel()?))
+        let entry = BigtableDb::new(self.get_channel()?);
+        debug!("🏊 Bigtable connection acquired");
+        Ok(entry)
     }
 
     /// Recycle if the connection has outlived it's lifespan.
@@ -179,11 +184,13 @@ impl Manager for BigtableClientManager {
         #[allow(clippy::blocks_in_if_conditions)]
         if !client
             .health_check(&self.settings.table_name)
+            .await
             .map_err(|e| {
                 debug!("🏊 Recycle requested (health). {:?}", e);
                 DbError::BTError(BigTableError::Recycle)
             })?
         {
+            debug!("🏊 Health check failed");
             return Err(DbError::BTError(BigTableError::Recycle).into());
         }
 
@@ -212,10 +219,14 @@ impl BigtableClientManager {
         {
             debug!("🉑 Using emulator");
         } else {
-            chan = chan.set_credentials(
-                ChannelCredentials::google_default_credentials()
-                    .map_err(|e| BigTableError::Admin(e.to_string()))?,
-            );
+            chan = chan.set_credentials(ChannelCredentials::google_default_credentials().map_err(
+                |e| {
+                    BigTableError::Admin(
+                        "Could not set credentials".to_owned(),
+                        Some(e.to_string()),
+                    )
+                },
+            )?);
             debug!("🉑 Using real");
         }
         Ok(chan)

@@ -1,3 +1,4 @@
+use backtrace::Backtrace;
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     BatchWriteItemError, DeleteItemError, DescribeTableError, GetItemError, PutItemError,
@@ -7,6 +8,7 @@ use thiserror::Error;
 
 #[cfg(feature = "bigtable")]
 use crate::db::bigtable::BigTableError;
+use crate::errors::ReportableError;
 
 pub type DbResult<T> = Result<T, DbError>;
 
@@ -59,6 +61,50 @@ pub enum DbError {
     #[error("Connection failure {0}")]
     ConnectionError(String),
 
+    #[error("The conditional request failed")]
+    Conditional,
+
+    #[error("Database integrity error: {}", _0)]
+    Integrity(String),
+
     #[error("Unknown Database Error {0}")]
     General(String),
+}
+
+impl ReportableError for DbError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self {
+            #[cfg(feature = "bigtable")]
+            DbError::BTError(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        None
+    }
+
+    fn is_sentry_event(&self) -> bool {
+        match &self {
+            #[cfg(feature = "bigtable")]
+            DbError::BTError(e) => e.is_sentry_event(),
+            _ => false,
+        }
+    }
+
+    fn metric_label(&self) -> Option<&'static str> {
+        match &self {
+            #[cfg(feature = "bigtable")]
+            DbError::BTError(e) => e.metric_label(),
+            _ => None,
+        }
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        match &self {
+            #[cfg(feature = "bigtable")]
+            DbError::BTError(e) => e.extras(),
+            _ => vec![],
+        }
+    }
 }

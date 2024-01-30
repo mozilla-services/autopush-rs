@@ -51,6 +51,7 @@ root_dir = os.path.dirname(tests_dir)
 
 DDB_JAR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal.jar")
 DDB_LIB_DIR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal_lib")
+SETUP_BT_SH = os.path.join(root_dir, "scripts", "setup_bt.sh")
 DDB_PROCESS: subprocess.Popen | None = None
 BT_PROCESS: subprocess.Popen | None = None
 BT_DB_SETTINGS: str | None = None
@@ -68,8 +69,8 @@ ROUTER_PORT = 9170
 MP_CONNECTION_PORT = 9052
 MP_ROUTER_PORT = 9072
 
-CONNECTION_BINARY = os.environ.get("CONNECTION_BINARY", "autopush_rs")
-CONNECTION_SETTINGS_PREFIX = os.environ.get("CONNECTION_SETTINGS_PREFIX", "autopush__")
+CONNECTION_BINARY = os.environ.get("CONNECTION_BINARY", "autoconnect")
+CONNECTION_SETTINGS_PREFIX = os.environ.get("CONNECTION_SETTINGS_PREFIX", "autoconnect__")
 
 CN_SERVER: subprocess.Popen | None = None
 CN_MP_SERVER: subprocess.Popen | None = None
@@ -226,7 +227,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         if connection_port:  # pragma: nocover
             url = "ws://localhost:{}/".format(connection_port)
         self.ws = websocket.create_connection(url, header=self.headers)
-        return self.ws.connected
+        return self.ws.connected if self.ws else None
 
     def hello(self, uaid: str | None = None, services: list[str] | None = None):
         if not self.ws:
@@ -245,7 +246,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug("Send: %s", msg)
         self.ws.send(msg)
         reply = self.ws.recv()
-        log.debug(f"Recv: {reply} ({len(reply)})")
+        log.debug(f"Recv: {reply!r} ({len(reply)})")
         result = json.loads(reply)
         assert result["status"] == 200
         assert "-" not in result["uaid"]
@@ -464,7 +465,7 @@ def _get_vapid(
 
 
 def enqueue_output(out, queue):
-    for line in iter(out.readline, b""):
+    for line in iter(out.readline, ""):
         queue.put(line)
     out.close()
 
@@ -593,6 +594,7 @@ def capture_output_to_queue(output_stream):
 
 def setup_bt():
     global BT_PROCESS, BT_DB_SETTINGS
+    log.debug("🐍🟢 Starting bigtable emulator")
     BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
@@ -606,19 +608,8 @@ def setup_bt():
         )
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/test/tables/autopush"
-        log.debug("🐍🟢 Starting bigtable emulator")
-        cmd_start = "cbt -project test -instance test".split(" ")
-        vv = subprocess.call(
-            cmd_start + "createtable autopush".split(" "), stderr=subprocess.STDOUT
-        )
-        vv = subprocess.call(cmd_start + "createfamily autopush message".split(" "))
-        vv = subprocess.call(cmd_start + "createfamily autopush message_topic".split(" "))
-        vv = subprocess.call(cmd_start + "createfamily autopush router".split(" "))
-        vv = subprocess.call(cmd_start + "setgcpolicy autopush message maxage=1s".split(" "))
-        vv = subprocess.call(
-            cmd_start + "setgcpolicy autopush message_topic maxversions=1".split(" ")
-        )
-        vv = subprocess.call(cmd_start + "setgcpolicy autopush router maxversions=1".split(" "))
+        log.debug("🐍🟢 Setting up bigtable")
+        vv = subprocess.call([SETUP_BT_SH])
         log.debug(vv)
     except Exception as e:
         log.error("Bigtable Setup Error {}", e)
@@ -676,10 +667,14 @@ def setup_connection_server(connection_binary):
         CONNECTION_CONFIG["port"] = parsed.port
         CONNECTION_CONFIG["endpoint_scheme"] = parsed.scheme
         write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
+        log.debug("Using existing Connection server")
         return
     else:
         write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
+    run_args = os.getenv("RUN_ARGS")
+    if run_args is not None:
+        cmd.append(run_args)
     log.debug(f"🐍🟢 Starting Connection server: {' '.join(cmd)}")
     CN_SERVER = subprocess.Popen(
         cmd,
@@ -710,6 +705,7 @@ def setup_megaphone_server(connection_binary):
             parsed = urlparse(url)
             MEGAPHONE_CONFIG["endpoint_port"] = parsed.port
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
+        log.debug("Using existing Megaphone server")
         return
     else:
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
@@ -734,6 +730,7 @@ def setup_endpoint_server():
         ENDPOINT_CONFIG["hostname"] = parsed.hostname
         ENDPOINT_CONFIG["port"] = parsed.port
         ENDPOINT_CONFIG["endpoint_scheme"] = parsed.scheme
+        log.debug("Using existing Endpoint server")
         return
     else:
         write_config_to_env(ENDPOINT_CONFIG, "autoend__")

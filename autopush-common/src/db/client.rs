@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Debug;
 
 use async_trait::async_trait;
 use mockall::automock;
@@ -39,6 +40,9 @@ pub trait DbClient: Send + Sync {
 
     /// Add a channel to a user
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()>;
+
+    /// Add a batch of channels to a user
+    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()>;
 
     /// Get the set of channel IDs for a user
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>>;
@@ -101,6 +105,11 @@ pub trait DbClient: Send + Sync {
     fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
     fn box_clone(&self) -> Box<dyn DbClient>;
+
+    /// Provide the module name.
+    /// This was added for simple dual mode testing, but may be useful in
+    /// other situations.
+    fn name(&self) -> String;
 }
 
 impl Clone for Box<dyn DbClient> {

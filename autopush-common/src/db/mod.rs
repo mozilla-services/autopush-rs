@@ -29,6 +29,7 @@ pub mod dual;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
+pub mod routing;
 mod util;
 
 // used by integration testing
@@ -40,9 +41,11 @@ use crate::util::timing::{ms_since_epoch, sec_since_epoch};
 use models::{NotificationHeaders, RangeKey};
 
 const MAX_EXPIRY: u64 = 2_592_000;
-pub const USER_RECORD_VERSION: u8 = 1;
+pub const USER_RECORD_VERSION: u64 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
+/// The maximum TTL for router records, 30 days
+pub const MAX_ROUTER_TTL: u64 = MAX_CHANNEL_TTL;
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {
@@ -57,12 +60,17 @@ pub enum StorageType {
 }
 
 /// The type of storage to use.
+#[allow(clippy::vec_init_then_push)] // Because we are only pushing on feature flags.
 impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
         #[allow(unused_mut)]
-        let mut result = ["DynamoDB"].to_vec();
+        let mut result: Vec<&str> = Vec::new();
+        #[cfg(feature = "dynamodb")]
+        result.push("DynamoDB");
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
+        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+        result.push("Dual");
         result
     }
 
@@ -165,7 +173,7 @@ pub struct User {
     pub node_id: Option<String>,
     /// Record version
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub record_version: Option<u8>,
+    pub record_version: Option<u64>,
     /// LEGACY: Current month table in the database the user is on
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_month: Option<String>,
@@ -245,7 +253,7 @@ pub struct NotificationRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<NotificationHeaders>,
     /// This is the acknowledgement-id used for clients to ack that they have received the
-    /// message. Some Python code refers to this as a message_id. Endpoints generate this
+    /// message. Autoendpoint refers to this as a message_id. Endpoints generate this
     /// value before sending it to storage or a connection node.
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,
@@ -253,7 +261,7 @@ pub struct NotificationRecord {
 
 impl NotificationRecord {
     /// read the custom sort_key and convert it into something the database can use.
-    fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
+    pub(crate) fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet = RegexSet::new([
                 format!("^{}:\\S+:\\S+$", TOPIC_NOTIFICATION_PREFIX).as_str(),

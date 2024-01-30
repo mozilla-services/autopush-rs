@@ -40,6 +40,8 @@ pub struct DynamoDbSettings {
     pub router_table: String,
     #[serde(default)]
     pub message_table: String,
+    #[serde(default)]
+    pub db_routing_table: Option<String>,
 }
 
 impl TryFrom<&str> for DynamoDbSettings {
@@ -59,6 +61,7 @@ pub struct DdbClientImpl {
 
 impl DdbClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
+        debug!("🛢️DynamoDB Settings {:?}", db_settings);
         let db_client = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
@@ -262,6 +265,14 @@ impl DbClient for DdbClientImpl {
                 retryable_updateitem_error(self.metrics.clone()),
             )
             .await?;
+        Ok(())
+    }
+
+    /// Hopefully, this is never called. It is provided for completion sake.
+    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
+        for channel_id in channels {
+            self.add_channel(uaid, &channel_id).await?;
+        }
         Ok(())
     }
 
@@ -618,6 +629,10 @@ impl DbClient for DdbClientImpl {
 
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
+    }
+
+    fn name(&self) -> String {
+        "DynamoDb".to_owned()
     }
 }
 

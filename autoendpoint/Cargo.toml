@@ -67,8 +67,8 @@ tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
-default = ["dynamodb"]
-dynamodb = ["autopush_common/dynamodb"]
-emulator = ["bigtable"]
-dual = ["bigtable", "dynamodb"]
+default = ["dual"]
 bigtable = ["autopush_common/bigtable"]
+dynamodb = ["autopush_common/dynamodb"]
+dual = ["bigtable", "dynamodb"]
+emulator = ["bigtable"]

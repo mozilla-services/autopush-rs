@@ -99,7 +99,7 @@ mod test {
         // hopefully no-op type test to check locally generated tokens.
         let uaid: Uuid = "729e5104f5f04abc9196085340317dea".parse().unwrap();
         let auth_keys = ["HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned()].to_vec();
-        let token = AuthorizationCheck::generate_token(auth_keys.get(0).unwrap(), &uaid).unwrap();
+        let token = AuthorizationCheck::generate_token(auth_keys.first().unwrap(), &uaid).unwrap();
 
         AuthorizationCheck::validate_token(&token, &uaid, &auth_keys)?;
         Ok(())
@@ -115,7 +115,7 @@ mod test {
         // the following token was generated using the old python application.
         let legacy_token = "f694963453adf5dedcc379bbdd6900d692b6e09f1c91f44169bfcd2f941bf36c";
         // pop the firstkey off of the auth_key list.
-        let selected = auth_keys.get(0).unwrap();
+        let selected = auth_keys.first().unwrap();
         let token = AuthorizationCheck::generate_token(selected, &uaid).unwrap();
 
         assert_eq!(&token, legacy_token);
@@ -126,7 +126,7 @@ mod test {
     fn test_token_extractor() -> ApiResult<()> {
         let uaid: Uuid = "729e5104f5f04abc9196085340317dea".parse().unwrap();
         let auth_keys = ["HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned()].to_vec();
-        let token = AuthorizationCheck::generate_token(auth_keys.get(0).unwrap(), &uaid).unwrap();
+        let token = AuthorizationCheck::generate_token(auth_keys.first().unwrap(), &uaid).unwrap();
 
         assert!(get_token_from_auth_header(&format!("bearer {}", &token)).is_some());
         assert!(get_token_from_auth_header(&format!("webpush {}", &token)).is_some());

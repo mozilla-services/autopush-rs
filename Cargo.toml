@@ -1,7 +1,8 @@
 [workspace]
 members = [
   "autopush-common",
-  "autopush",
+  # Pending removal: https://github.com/mozilla-services/autopush-rs/issues/524
+  #"autopush",
   "autoendpoint",
   "autoconnect",
   "autoconnect/autoconnect-common",
@@ -75,12 +76,12 @@ rusoto_credential = { version = "0.47" } # locked by serde_dynamodb 0.9
 rusoto_dynamodb = { version = "0.47", default-features = false, features = [
   "rustls",
 ] } # locked by serde_dynamodb 0.9
-sentry = { version = "0.31", features = [
+sentry = { version = "0.32", features = [
   "debug-logs",
 ] } # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
-sentry-core = { version = "0.31" }
-sentry-actix = "0.31"
-sentry-backtrace = "0.31"
+sentry-core = { version = "0.32" }
+sentry-actix = "0.32"
+sentry-backtrace = "0.32"
 serde = "1.0"
 serde_derive = "1.0"
 serde_dynamodb = "0.9"
@@ -113,10 +114,7 @@ autoconnect_settings = { path = "./autoconnect/autoconnect-settings" }
 autoconnect_web = { path = "./autoconnect/autoconnect-web" }
 autoconnect_ws = { path = "./autoconnect/autoconnect-ws" }
 autoconnect_ws_clientsm = { path = "./autoconnect/autoconnect-ws/autoconnect-ws-clientsm" }
-autopush_common = { path = "./autopush-common", features = [
-  "dynamodb",
-  "bigtable",
-] }
+autopush_common = { path = "./autopush-common", features = ["dual"] }
 
 [profile.release]
 debug = 1

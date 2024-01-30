@@ -36,6 +36,10 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).add_channel(uaid, channel_id).await
     }
 
+    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
+        Arc::as_ref(self).add_channels(uaid, channels).await
+    }
+
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         Arc::as_ref(self).get_channels(uaid).await
     }
@@ -108,6 +112,10 @@ impl DbClient for Arc<MockDbClient> {
 
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(Arc::clone(self))
+    }
+
+    fn name(&self) -> String {
+        Arc::as_ref(self).name()
     }
 }
 

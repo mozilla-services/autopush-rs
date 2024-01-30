@@ -21,6 +21,7 @@ from args import parse_wait_time
 from exceptions import ZeroStatusRequestError
 from gevent import Greenlet
 from locust import FastHttpUser, events, task
+from locust.exception import LocustError
 from models import (
     HelloMessage,
     HelloRecord,
@@ -31,7 +32,7 @@ from models import (
     UnregisterMessage,
 )
 from pydantic import ValidationError
-from websocket import WebSocketApp, WebSocketConnectionClosedException
+from websocket import WebSocket, WebSocketApp, WebSocketConnectionClosedException
 
 Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | UnregisterMessage
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
@@ -45,20 +46,6 @@ logger: Logger = logging.getLogger("AutopushUser")
 
 @events.init_command_line_parser.add_listener
 def _(parser: Any):
-    parser.add_argument(
-        "--websocket_url",
-        type=str,
-        env_var="AUTOPUSH_WEBSOCKET_URL",
-        required=True,
-        help="Server URL",
-    )
-    parser.add_argument(
-        "--endpoint_url",
-        type=str,
-        env_var="AUTOPUSH_ENDPOINT_URL",
-        required=True,
-        help="Endpoint URL",
-    )
     parser.add_argument(
         "--wait_time",
         type=str,
@@ -108,7 +95,7 @@ class AutopushUser(FastHttpUser):
         if self.ws_greenlet:
             gevent.kill(self.ws_greenlet)
 
-    def on_ws_open(self, ws: WebSocketApp) -> None:
+    def on_ws_open(self, ws: WebSocket) -> None:
         """Called when opening a WebSocket.
 
         Args:
@@ -116,7 +103,7 @@ class AutopushUser(FastHttpUser):
         """
         self.send_hello(ws)
 
-    def on_ws_message(self, ws: WebSocketApp, data: str) -> None:
+    def on_ws_message(self, ws: WebSocket, data: str) -> None:
         """Called when received data from a WebSocket.
 
         Args:
@@ -133,8 +120,8 @@ class AutopushUser(FastHttpUser):
         elif isinstance(message, UnregisterMessage):
             del self.channels[message.channelID]
 
-    def on_ws_error(self, ws: WebSocketApp, error: Exception) -> None:
-        """Called when there is a WebSocketApp error or if an exception is raised in a WebSocket
+    def on_ws_error(self, ws: WebSocket, error: Exception) -> None:
+        """Called when there is a WebSocket error or if an exception is raised in a WebSocket
         callback function.
 
         Args:
@@ -152,7 +139,7 @@ class AutopushUser(FastHttpUser):
         )
 
     def on_ws_close(
-        self, ws: WebSocketApp, close_status_code: int | None, close_msg: str | None
+        self, ws: WebSocket, close_status_code: int | None, close_msg: str | None
     ) -> None:
         """Called when closing a WebSocket.
 
@@ -196,8 +183,11 @@ class AutopushUser(FastHttpUser):
 
     def connect(self) -> None:
         """Creates the WebSocketApp that will run indefinitely."""
+        if not self.host:
+            raise LocustError("'host' value is unavailable.")
+
         self.ws = websocket.WebSocketApp(
-            self.environment.parsed_options.websocket_url,
+            self.host,
             header=self.WEBSOCKET_HEADERS,
             on_message=self.on_ws_message,
             on_error=self.on_ws_error,
@@ -306,7 +296,7 @@ class AutopushUser(FastHttpUser):
 
         return message
 
-    def send_ack(self, ws: WebSocketApp, channel_id: str, version: str) -> None:
+    def send_ack(self, ws: WebSocket, channel_id: str, version: str) -> None:
         """Send an 'ack' message to Autopush.
 
         After sending a notification, the client must also send an 'ack' to the server
@@ -326,7 +316,7 @@ class AutopushUser(FastHttpUser):
         )
         self.send(ws, message_type, data)
 
-    def send_hello(self, ws: WebSocketApp) -> None:
+    def send_hello(self, ws: WebSocket) -> None:
         """Send a 'hello' message to Autopush.
 
         Connections must say hello after connecting to the server, otherwise the connection is
@@ -347,7 +337,7 @@ class AutopushUser(FastHttpUser):
         self.hello_record = HelloRecord(send_time=time.perf_counter())
         self.send(ws, message_type, data)
 
-    def send_register(self, ws: WebSocketApp, channel_id: str) -> None:
+    def send_register(self, ws: WebSocket, channel_id: str) -> None:
         """Send a 'register' message to Autopush.
 
         Args:
@@ -377,7 +367,7 @@ class AutopushUser(FastHttpUser):
         self.unregister_records.append(record)
         self.send(ws, message_type, data)
 
-    def send(self, ws: WebSocketApp, message_type: str, data: dict[str, Any]) -> None:
+    def send(self, ws: WebSocket | WebSocketApp, message_type: str, data: dict[str, Any]) -> None:
         """Send a message to Autopush.
 
         Args:
