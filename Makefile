@@ -33,8 +33,6 @@ integration-test-legacy:
 integration-test:
 	$(POETRY) -V
 	$(POETRY) install --without dev,load --no-root
-	CONNECTION_BINARY=autoconnect \
-		CONNECTION_SETTINGS_PREFIX=autoconnect__ \
 		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
