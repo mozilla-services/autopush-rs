@@ -1,6 +1,4 @@
-"""
-Rust Connection and Endpoint Node Integration Tests
-"""
+"""Rust Connection and Endpoint Node Integration Tests."""
 
 import base64
 import copy
@@ -95,6 +93,7 @@ RUST_LOG = ",".join(log_string) + ",error"
 
 
 def get_free_port() -> int:
+    """Get free port."""
     port: int
     s = socket.socket(socket.AF_INET, type=socket.SOCK_STREAM)
     s.bind(("localhost", 0))
@@ -110,6 +109,7 @@ If that points to a file, read the settings from that file.
 
 
 def get_db_settings() -> str | dict[str, str | int | float] | None:
+    """Get database settings."""
     env_var = os.environ.get("DB_SETTINGS")
     if env_var:
         if os.path.isfile(env_var):
@@ -212,6 +212,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         }
 
     def __getattribute__(self, name: str):
+        """Turn functions into deferToThread functions."""
         # Python fun to turn all functions into deferToThread functions
         f = object.__getattribute__(self, name)
         if name.startswith("__"):
@@ -223,6 +224,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             return f
 
     def connect(self, connection_port: int | None = None):
+        """Connect."""
         url = self.url
         if connection_port:  # pragma: nocover
             url = "ws://localhost:{}/".format(connection_port)
@@ -230,6 +232,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return self.ws.connected if self.ws else None
 
     def hello(self, uaid: str | None = None, services: list[str] | None = None):
+        """Hello verification."""
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
 
@@ -261,6 +264,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return result
 
     def broadcast_subscribe(self, services: list[str]):
+        """Broadcast subscribe."""
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
 
@@ -269,6 +273,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.ws.send(msg)
 
     def register(self, chid: str | None = None, key=None, status=200):
+        """Register."""
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
 
@@ -286,6 +291,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return result
 
     def unregister(self, chid):
+        """Unregister."""
         msg = json.dumps(dict(messageType="unregister", channelID=chid))
         log.debug("Send: %s", msg)
         self.ws.send(msg)
@@ -294,6 +300,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return result
 
     def delete_notification(self, channel, message=None, status=204):
+        """Delete notification."""
         messages = self.messages[channel]
         if not message:
             message = random.choice(messages)
@@ -317,6 +324,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         topic=None,
         headers=None,
     ):
+        """Send notification."""
         if not channel:
             channel = random.choice(list(self.channels.keys()))
 
@@ -375,6 +383,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             return resp
 
     def get_notification(self, timeout=1):
+        """Get notification."""
         orig_timeout = self.ws.gettimeout()
         self.ws.settimeout(timeout)
         try:
@@ -387,6 +396,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             self.ws.settimeout(orig_timeout)
 
     def get_broadcast(self, timeout=1):  # pragma: nocover
+        """Get broadcast."""
         orig_timeout = self.ws.gettimeout()
         self.ws.settimeout(timeout)
         try:
@@ -402,6 +412,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             self.ws.settimeout(orig_timeout)
 
     def ping(self):
+        """Test ping."""
         log.debug("Send: %s", "{}")
         self.ws.send("{}")
         result = self.ws.recv()
@@ -410,6 +421,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return result
 
     def ack(self, channel, version):
+        """Acknowledge message send."""
         msg = json.dumps(
             dict(
                 messageType="ack",
@@ -420,13 +432,15 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.ws.send(msg)
 
     def disconnect(self):
+        """Disconnect"""
         self.ws.close()
 
     def sleep(self, duration: int):  # pragma: nocover
+        """Sleep wrapper function."""
         time.sleep(duration)
 
     def wait_for(self, func):
-        """Waits several seconds for a function to return True"""
+        """Wait several seconds for a function to return True"""
         times = 0
         while not func():  # pragma: nocover
             time.sleep(1)
@@ -440,6 +454,7 @@ def _get_vapid(
     payload: dict[str, str | int] | None = None,
     endpoint: str | None = None,
 ) -> dict[str, str | bytes]:
+    """Get vapid key."""
     global CONNECTION_CONFIG
 
     if endpoint is None:
@@ -471,6 +486,7 @@ def enqueue_output(out, queue):
 
 
 def print_lines_in_queues(queues, prefix):
+    """Print lines in queues to stdout."""
     for queue in queues:
         is_empty = False
         while not is_empty:
@@ -516,6 +532,8 @@ def max_logs(endpoint=None, conn=None):
     """
 
     def max_logs_decorator(func):
+        """Decorate max_logs."""
+
         def wrapper(self, *args, **kwargs):
             if endpoint is not None:
                 self.max_endpoint_logs = endpoint
@@ -530,24 +548,30 @@ def max_logs(endpoint=None, conn=None):
 
 @app.get("/v1/broadcasts")
 def broadcast_handler():
+    """Broadcast handler setup."""
     assert bottle.request.headers["Authorization"] == MOCK_MP_TOKEN
     MOCK_MP_POLLED.set()
     return dict(broadcasts=MOCK_MP_SERVICES)
 
 
 @app.post("/api/1/envelope/")
-def sentry_handler():
+def sentry_handler() -> dict[str, str]:
+    """Sentry handler configuration."""
     headers, item_headers, payload = bottle.request.body.read().splitlines()
     MOCK_SENTRY_QUEUE.put(json.loads(payload))
     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
 
 
 class CustomClient(Client):
+    """Custom Client for testing."""
+
     def send_bad_data(self):
+        """Set `bad-data`"""
         self.ws.send("bad-data")
 
 
 def kill_process(process):
+    """Kill child processes."""
     # This kinda sucks, but its the only way to nuke the child procs
     if process is None:
         return
@@ -559,6 +583,7 @@ def kill_process(process):
 
 
 def get_rust_binary_path(binary):
+    """Get Rust binary path."""
     global STRICT_LOG_COUNTS
 
     rust_bin = root_dir + "/target/release/{}".format(binary)
@@ -578,6 +603,7 @@ def get_rust_binary_path(binary):
 
 
 def write_config_to_env(config, prefix):
+    """Write configurations to env."""
     for key, val in config.items():
         new_key = prefix + key
         log.debug("✍ config {} => {}".format(new_key, val))
@@ -585,6 +611,7 @@ def write_config_to_env(config, prefix):
 
 
 def capture_output_to_queue(output_stream):
+    """Capture output to log queue."""
     log_queue = Queue()
     t = Thread(target=enqueue_output, args=(output_stream, log_queue))
     t.daemon = True  # thread dies with the program
@@ -593,6 +620,7 @@ def capture_output_to_queue(output_stream):
 
 
 def setup_bt():
+    """Set up BigTable emulator."""
     global BT_PROCESS, BT_DB_SETTINGS
     log.debug("🐍🟢 Starting bigtable emulator")
     BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
@@ -617,6 +645,7 @@ def setup_bt():
 
 
 def setup_dynamodb():
+    """Set up DynamoDB."""
     global DDB_PROCESS
 
     log.debug("🐍🟢 Starting dynamodb")
@@ -643,6 +672,7 @@ def setup_dynamodb():
 
 
 def setup_mock_server():
+    """Set up mock server."""
     global MOCK_SERVER_THREAD
 
     MOCK_SERVER_THREAD = Thread(target=app.run, kwargs=dict(port=MOCK_SERVER_PORT, debug=True))
@@ -654,6 +684,7 @@ def setup_mock_server():
 
 
 def setup_connection_server(connection_binary):
+    """Set up connection server from config."""
     global CN_SERVER, BT_PROCESS, DDB_PROCESS
 
     # NOTE:
@@ -692,6 +723,7 @@ def setup_connection_server(connection_binary):
 
 
 def setup_megaphone_server(connection_binary):
+    """Set up megaphone server from configuration."""
     global CN_MP_SERVER
 
     url = os.getenv("AUTOPUSH_MP_SERVER")
@@ -715,6 +747,7 @@ def setup_megaphone_server(connection_binary):
 
 
 def setup_endpoint_server():
+    """Set up endpoint server from configuration."""
     global CONNECTION_CONFIG, EP_SERVER, BT_PROCESS
 
     # Set up environment
@@ -755,6 +788,9 @@ def setup_endpoint_server():
 
 
 def setup_module():
+    """Set up module including BigTable or Dynamo
+    and connection, endpoint and megaphone servers.
+    """
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, STRICT_LOG_COUNTS, RUST_LOG
 
     if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
@@ -787,6 +823,7 @@ def setup_module():
 
 
 def teardown_module():
+    """Teardown module for dynamo, bigtable, and servers."""
     if DDB_PROCESS:
         os.unsetenv("AWS_LOCAL_DYNAMODB")
         log.debug("🐍🔴 Stopping dynamodb")
@@ -804,6 +841,8 @@ def teardown_module():
 
 
 class TestRustWebPush(unittest.TestCase):
+    """Test class for Rust Web Push."""
+
     # Max log lines allowed to be emitted by each node type
     max_endpoint_logs = 8
     max_conn_logs = 3
@@ -813,16 +852,19 @@ class TestRustWebPush(unittest.TestCase):
     }
 
     def tearDown(self):
+        """Tear down and log processing."""
         process_logs(self)
         while not MOCK_SENTRY_QUEUE.empty():
             MOCK_SENTRY_QUEUE.get_nowait()
 
     def host_endpoint(self, client):
+        """Return host endpoint."""
         parsed = urlparse(list(client.channels.values())[0])
         return "{}://{}".format(parsed.scheme, parsed.netloc)
 
     @inlineCallbacks
     def quick_register(self):
+        """Quick register."""
         log.debug("🐍#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
@@ -833,6 +875,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def shut_down(self, client=None):
+        """Shut down client."""
         if client:
             yield client.disconnect()
 
@@ -843,6 +886,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_sentry_output_autoconnect(self):
+        """Test sentry output for autoconnect."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
@@ -866,6 +910,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=1)
     def test_sentry_output_autoendpoint(self):
+        """Test sentry output for autoendpoint."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
@@ -886,6 +931,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @max_logs(conn=4)
     def test_no_sentry_output(self):
+        """Test for no Sentry output."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
@@ -902,6 +948,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_hello_echo(self):
+        """Test hello echo."""
         client = Client(self._ws_url)
         yield client.connect()
         result = yield client.hello()
@@ -911,6 +958,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_hello_with_bad_prior_uaid(self):
+        """Test hello with bard prior uaid."""
         non_uaid = uuid.uuid4().hex
         client = Client(self._ws_url)
         yield client.connect()
@@ -922,6 +970,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery(self):
+        """Test basic delivery."""
         data = str(uuid.uuid4())
         client: Client = yield self.quick_register()
         result = yield client.send_notification(data=data)
@@ -934,6 +983,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_basic_delivery(self):
+        """Test topic basic delivery."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, topic="Inbox")
@@ -946,6 +996,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_replacement_delivery(self):
+        """Test topic replacement delivery."""
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -968,6 +1019,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_topic_no_delivery_on_reconnect(self):
+        """Test topic no delivery on reconnect."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -993,6 +1045,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_vapid(self):
+        """Test basic delivery with vapid."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload)
@@ -1006,6 +1059,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid(self):
+        """Test basic delivery with invalid vapid."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
@@ -1015,6 +1069,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_exp(self):
+        """Test basic delivery with invalid vapid exp."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1030,6 +1085,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_auth(self):
+        """Test basic delivery with invalid vapid auth."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1042,6 +1098,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_signature(self):
+        """Test basic delivery with invalid signature."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1056,6 +1113,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_ckey(self):
+        """Test basic delivery with invalid vapid ckey."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
@@ -1065,6 +1123,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_delivery_repeat_without_ack(self):
+        """Test delivery repeat without ack."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1086,6 +1145,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_repeat_delivery_with_disconnect_without_ack(self):
+        """Test repeat delivery with disconnect without ack."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data)
@@ -1101,6 +1161,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_multiple_delivery_repeat_without_ack(self):
+        """Test multiple delivery repeat without ack."""
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -1130,6 +1191,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_expired(self):
+        """Test topic expired."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1148,6 +1210,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_multiple_delivery_with_single_ack(self):
+        """Test multiple delivery with single ack."""
         data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
         data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
         client = yield self.quick_register()
@@ -1188,6 +1251,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_multiple_delivery_with_multiple_ack(self):
+        """Test multiple delivery with multiple ack."""
         data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "FirstMessage"
         data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "OtherMessage"
         client = yield self.quick_register()
@@ -1216,6 +1280,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_no_delivery_to_unregistered(self):
+        """Test no delivery to unregistered."""
         data = str(uuid.uuid4())
         client: Client = yield self.quick_register()
         assert client.channels
@@ -1237,6 +1302,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_0_connected(self):
+        """Test TTL 0 connected."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, ttl=0)
@@ -1250,6 +1316,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_0_not_connected(self):
+        """Test TTL 0 not connected."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1262,6 +1329,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_expired(self):
+        """Test TTL expired."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1276,6 +1344,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=28)
     def test_ttl_batch_expired_and_good_one(self):
+        """Test TTL batch expired with one good result."""
         data = str(uuid.uuid4()).encode()
         data2 = base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode()
         print(data2)
@@ -1303,6 +1372,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=28)
     def test_ttl_batch_partly_expired_and_good_one(self):
+        """Test TTL batch partly expired with one good result."""
         data = str(uuid.uuid4())
         data1 = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
@@ -1339,6 +1409,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_message_without_crypto_headers(self):
+        """Test message without crypto headers."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, use_header=False, status=400)
@@ -1347,6 +1418,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_empty_message_without_crypto_headers(self):
+        """Test empty message without crypto headers."""
         client = yield self.quick_register()
         result = yield client.send_notification(use_header=False)
         assert result is not None
@@ -1369,6 +1441,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_empty_message_with_crypto_headers(self):
+        """Test empty message with crypto headers."""
         client = yield self.quick_register()
         result = yield client.send_notification()
         assert result is not None
@@ -1447,6 +1520,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_with_key(self):
+        """Test with key."""
         private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
         claims = {
             "aud": "http://localhost:{}".format(ENDPOINT_PORT),
@@ -1474,6 +1548,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_with_bad_key(self):
+        """Test with bad key."""
         chid = str(uuid.uuid4())
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
@@ -1486,6 +1561,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=44)
     def test_msg_limit(self):
+        """Test message limit."""
         client = yield self.quick_register()
         uaid = client.uaid
         yield client.disconnect()
@@ -1506,6 +1582,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_can_ping(self):
+        """Test can ping."""
         client = yield self.quick_register()
         yield client.ping()
         assert client.ws.connected
@@ -1544,14 +1621,18 @@ class TestRustWebPush(unittest.TestCase):
 
 
 class TestRustWebPushBroadcast(unittest.TestCase):
+    """Test class for Rust Web Push Broadcast."""
+
     max_endpoint_logs = 4
     max_conn_logs = 1
 
     def tearDown(self):
+        """Tear down."""
         process_logs(self)
 
     @inlineCallbacks
     def quick_register(self, connection_port=None):
+        """Connect and register client."""
         conn_port = connection_port or MP_CONNECTION_PORT
         client = Client("ws://localhost:{}/".format(conn_port))
         yield client.connect()
@@ -1561,6 +1642,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def shut_down(self, client=None):
+        """Shut down client connection."""
         if client:
             yield client.disconnect()
 
@@ -1570,6 +1652,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_update_on_connect(self):
+        """Test broadcast update on connect."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
@@ -1594,6 +1677,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_update_on_connect_with_errors(self):
+        """Test broadcast update on connect with errors."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
@@ -1611,6 +1695,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_subscribe(self):
+        """Test broadcast subscribe."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
@@ -1639,6 +1724,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_subscribe_with_errors(self):
+        """Test that broadcast returns expected errors."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
@@ -1661,6 +1747,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_no_changes(self):
+        """Test to ensure there are no changes from broadcast."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()

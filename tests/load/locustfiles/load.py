@@ -27,7 +27,7 @@ class QuadraticTrend:
         )
 
     def calculate_users(self, run_time: int) -> int:
-        """Determined the number of active users given a run time.
+        """Determine the number of active users given a run time.
 
         Returns:
             int: The number of users

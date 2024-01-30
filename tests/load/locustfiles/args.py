@@ -1,3 +1,4 @@
+"""Load test arguments."""
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -19,6 +20,7 @@ def parse_wait_time(val: str):
             raise ValueError("Invalid wait_time")
 
 
-def float_or_int(val: str):
+def float_or_int(val: str) -> int | float:
+    """Parse string value into float or integer."""
     float_val: float = float(val)
     return int(float_val) if float_val.is_integer() else float_val

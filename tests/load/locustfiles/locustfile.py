@@ -1,8 +1,7 @@
+"""Performance test module."""
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
-"""Performance test module."""
 
 import base64
 import json
@@ -61,6 +60,8 @@ def _(environment, **kwargs):
 
 
 class AutopushUser(FastHttpUser):
+    """AutopushUser class."""
+
     REST_HEADERS: dict[str, str] = {"TTL": "60", "Content-Encoding": "aes128gcm"}
     WEBSOCKET_HEADERS: dict[str, str] = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) "
@@ -79,14 +80,15 @@ class AutopushUser(FastHttpUser):
         self.ws_greenlet: Greenlet | None = None
 
     def wait_time(self):
+        """Return the autopush wait time."""
         return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
-        """Called when a User starts running."""
+        """Call when a User starts running."""
         self.ws_greenlet = gevent.spawn(self.connect)
 
     def on_stop(self) -> Any:
-        """Called when a User stops running."""
+        """Call when a User stops running."""
         if self.ws:
             for channel_id in self.channels.keys():
                 self.send_unregister(self.ws, channel_id)
@@ -96,7 +98,7 @@ class AutopushUser(FastHttpUser):
             gevent.kill(self.ws_greenlet)
 
     def on_ws_open(self, ws: WebSocket) -> None:
-        """Called when opening a WebSocket.
+        """Call when opening a WebSocket.
 
         Args:
             ws: WebSocket class object
@@ -104,7 +106,7 @@ class AutopushUser(FastHttpUser):
         self.send_hello(ws)
 
     def on_ws_message(self, ws: WebSocket, data: str) -> None:
-        """Called when received data from a WebSocket.
+        """Call when received data from a WebSocket.
 
         Args:
             ws: WebSocket class object
@@ -121,7 +123,7 @@ class AutopushUser(FastHttpUser):
             del self.channels[message.channelID]
 
     def on_ws_error(self, ws: WebSocket, error: Exception) -> None:
-        """Called when there is a WebSocket error or if an exception is raised in a WebSocket
+        """Call when there is a WebSocket error or if an exception is raised in a WebSocket
         callback function.
 
         Args:
@@ -141,7 +143,7 @@ class AutopushUser(FastHttpUser):
     def on_ws_close(
         self, ws: WebSocket, close_status_code: int | None, close_msg: str | None
     ) -> None:
-        """Called when closing a WebSocket.
+        """Call when closing a WebSocket.
 
         Args:
             ws: WebSocket class object
@@ -153,7 +155,7 @@ class AutopushUser(FastHttpUser):
 
     @task(weight=98)
     def send_notification(self):
-        """Sends a notification to a registered endpoint while connected to Autopush."""
+        """Send a notification to a registered endpoint while connected to Autopush."""
         if not self.ws or not self.channels:
             logger.debug("Task 'send_notification' skipped.")
             return
@@ -163,7 +165,7 @@ class AutopushUser(FastHttpUser):
 
     @task(weight=1)
     def subscribe(self):
-        """Subscribes a user to an Autopush channel."""
+        """Subscribe a user to an Autopush channel."""
         if not self.ws:
             logger.debug("Task 'subscribe' skipped.")
             return
@@ -173,7 +175,7 @@ class AutopushUser(FastHttpUser):
 
     @task(weight=1)
     def unsubscribe(self):
-        """Unsubscribes a user from an Autopush channel."""
+        """Unsubscribe a user from an Autopush channel."""
         if not self.ws or not self.channels:
             logger.debug("Task 'unsubscribe' skipped.")
             return
@@ -182,7 +184,7 @@ class AutopushUser(FastHttpUser):
         self.send_unregister(self.ws, channel_id)
 
     def connect(self) -> None:
-        """Creates the WebSocketApp that will run indefinitely."""
+        """Create the WebSocketApp that will run indefinitely."""
         if not self.host:
             raise LocustError("'host' value is unavailable.")
 
