@@ -3,7 +3,7 @@ use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
@@ -12,9 +12,7 @@ use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRan
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
 use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
-use google_cloud_rust_raw::bigtable::v2::data::{
-    RowFilter, RowFilter_Chain, RowFilter_Condition, ValueRange,
-};
+use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
 use grpcio::Channel;
 use protobuf::RepeatedField;
@@ -89,6 +87,47 @@ fn timestamp_filter() -> Result<data::RowFilter, error::BigTableError> {
     Ok(timestamp_filter)
 }
 
+/// Return a RowFilter limiting to a match of the specified `version`'s column
+/// value
+fn version_filter(version: &Uuid) -> data::RowFilter {
+    let mut router_filter_chain = RowFilter_Chain::default();
+    let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
+
+    let mut family_filter = data::RowFilter::default();
+    family_filter.set_family_name_regex_filter(format!("^{ROUTER_FAMILY}$"));
+
+    let mut cq_filter = data::RowFilter::default();
+    cq_filter.set_column_qualifier_regex_filter("^version$".as_bytes().to_vec());
+
+    let mut value_filter = data::RowFilter::default();
+    value_filter
+        .set_value_regex_filter(format!("^{}$", version.as_hyphenated()).as_bytes().to_vec());
+
+    filter_set.push(family_filter);
+    filter_set.push(cq_filter);
+    filter_set.push(value_filter);
+
+    router_filter_chain.set_filters(filter_set);
+    let mut router_filter = RowFilter::default();
+    router_filter.set_chain(router_filter_chain);
+    router_filter
+}
+
+/// Return a newly generated `version` column `Cell`
+fn new_version_cell(timestamp: SystemTime) -> cell::Cell {
+    let value = Uuid::new_v4()
+        .as_hyphenated()
+        .to_string()
+        .as_bytes()
+        .to_vec();
+    cell::Cell {
+        qualifier: "version".to_owned(),
+        value,
+        timestamp,
+        ..Default::default()
+    }
+}
+
 /// Return a ReadRowsRequest against table for a given row key
 fn read_row_request(table_name: &str, row_key: &str) -> bigtable::ReadRowsRequest {
     let mut req = bigtable::ReadRowsRequest::default();
@@ -160,12 +199,35 @@ impl BigTableClientImpl {
         read_row_request(&self.settings.table_name, row_key)
     }
 
+    /// Return a MutateRowRequest for a given row key
+    fn mutate_row_request(&self, row_key: &str) -> bigtable::MutateRowRequest {
+        let mut req = bigtable::MutateRowRequest::default();
+        req.set_table_name(self.settings.table_name.clone());
+        req.set_row_key(row_key.as_bytes().to_vec());
+        req
+    }
+
+    /// Return a CheckAndMutateRowRequest for a given row key
+    fn check_and_mutate_row_request(&self, row_key: &str) -> bigtable::CheckAndMutateRowRequest {
+        let mut req = bigtable::CheckAndMutateRowRequest::default();
+        req.set_table_name(self.settings.table_name.clone());
+        req.set_row_key(row_key.as_bytes().to_vec());
+        req
+    }
+
     /// Read a given row from the row key.
-    async fn read_row(&self, row_key: &str) -> Result<Option<row::Row>, error::BigTableError> {
-        debug!("🉑 Row key: {}", row_key);
-        let req = self.read_row_request(row_key);
-        let mut rows = self.read_rows(req).await?;
-        Ok(rows.remove(row_key))
+    async fn mutate_row(
+        &self,
+        req: bigtable::MutateRowRequest,
+    ) -> Result<(), error::BigTableError> {
+        let bigtable = self.pool.get().await?;
+        bigtable
+            .conn
+            .mutate_row_async(&req)
+            .map_err(error::BigTableError::Write)?
+            .await
+            .map_err(error::BigTableError::Write)?;
+        Ok(())
     }
 
     /// Perform a MutateRowsRequest
@@ -223,6 +285,14 @@ impl BigTableClientImpl {
         Ok(())
     }
 
+    /// Read a given row from the row key.
+    async fn read_row(&self, row_key: &str) -> Result<Option<row::Row>, error::BigTableError> {
+        debug!("🉑 Row key: {row_key}");
+        let req = self.read_row_request(row_key);
+        let mut rows = self.read_rows(req).await?;
+        Ok(rows.remove(row_key))
+    }
+
     /// Take a big table ReadRowsRequest (containing the keys and filters) and return a set of row data indexed by row key.
     ///
     ///
@@ -242,26 +312,14 @@ impl BigTableClientImpl {
     ///
     /// there's also `.mutate_rows` which I presume allows multiple.
     async fn write_row(&self, row: row::Row) -> Result<(), error::BigTableError> {
-        let mut req = bigtable::MutateRowRequest::default();
-
+        let mut req = self.mutate_row_request(&row.row_key);
         // compile the mutations.
         // It's possible to do a lot here, including altering in process
         // mutations, clearing them, etc. It's all up for grabs until we commit
         // below. For now, let's just presume a write and be done.
         let mutations = self.get_mutations(row.cells)?;
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_row_key(row.row_key.into_bytes());
         req.set_mutations(mutations);
-
-        // Do the actual commit.
-        let bigtable = self.pool.get().await?;
-        debug!("🉑 writing row...");
-        let _resp = bigtable
-            .conn
-            .mutate_row_async(&req)
-            .map_err(error::BigTableError::Write)?
-            .await
-            .map_err(error::BigTableError::Write)?;
+        self.mutate_row(req).await?;
         Ok(())
     }
 
@@ -306,9 +364,7 @@ impl BigTableClientImpl {
         filter: RowFilter,
         state: bool,
     ) -> Result<bool, error::BigTableError> {
-        let mut req = bigtable::CheckAndMutateRowRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_row_key(row.row_key.into_bytes());
+        let mut req = self.check_and_mutate_row_request(&row.row_key);
         let mutations = self.get_mutations(row.cells)?;
         req.set_predicate_filter(filter);
         if state {
@@ -316,8 +372,13 @@ impl BigTableClientImpl {
         } else {
             req.set_false_mutations(mutations);
         }
+        self.check_and_mutate(req).await
+    }
 
-        // Do the actual commit.
+    async fn check_and_mutate(
+        &self,
+        req: bigtable::CheckAndMutateRowRequest,
+    ) -> Result<bool, error::BigTableError> {
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
@@ -329,18 +390,13 @@ impl BigTableClientImpl {
         Ok(resp.get_predicate_matched())
     }
 
-    /// Delete all cell data from the specified columns with the optional time range.
-    async fn delete_cells(
+    fn get_delete_mutations(
         &self,
-        row_key: &str,
         family: &str,
         column_names: &[&str],
         time_range: Option<&data::TimestampRange>,
-    ) -> Result<(), error::BigTableError> {
-        let mut req = bigtable::MutateRowRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
+    ) -> Result<protobuf::RepeatedField<data::Mutation>, error::BigTableError> {
         let mut mutations = protobuf::RepeatedField::default();
-        req.set_row_key(row_key.to_owned().into_bytes());
         for column in column_names {
             let mut mutation = data::Mutation::default();
             // Mutation_DeleteFromRow -- Delete all cells for a given row.
@@ -355,38 +411,31 @@ impl BigTableClientImpl {
             mutation.set_delete_from_column(del_cell);
             mutations.push(mutation);
         }
+        Ok(mutations)
+    }
 
-        req.set_mutations(mutations);
-
-        let bigtable = self.pool.get().await?;
-        let _resp = bigtable
-            .conn
-            .mutate_row_async(&req)
-            .map_err(error::BigTableError::Write)?
-            .await
-            .map_err(error::BigTableError::Write)?;
-        Ok(())
+    /// Delete all cell data from the specified columns with the optional time range.
+    async fn delete_cells(
+        &self,
+        row_key: &str,
+        family: &str,
+        column_names: &[&str],
+        time_range: Option<&data::TimestampRange>,
+    ) -> Result<(), error::BigTableError> {
+        let mut req = self.mutate_row_request(row_key);
+        req.set_mutations(self.get_delete_mutations(family, column_names, time_range)?);
+        self.mutate_row(req).await
     }
 
     /// Delete all the cells for the given row. NOTE: This will drop the row.
     async fn delete_row(&self, row_key: &str) -> Result<(), error::BigTableError> {
-        let mut req = bigtable::MutateRowRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
+        let mut req = self.mutate_row_request(row_key);
         let mut mutations = protobuf::RepeatedField::default();
-        req.set_row_key(row_key.to_owned().into_bytes());
         let mut mutation = data::Mutation::default();
         mutation.set_delete_from_row(data::Mutation_DeleteFromRow::default());
         mutations.push(mutation);
         req.set_mutations(mutations);
-
-        let bigtable = self.pool.get().await?;
-        let _resp = bigtable
-            .conn
-            .mutate_row_async(&req)
-            .map_err(error::BigTableError::Write)?
-            .await
-            .map_err(error::BigTableError::Write)?;
-        Ok(())
+        self.mutate_row(req).await
     }
 
     /// This uses the admin interface to drop row ranges.
@@ -520,6 +569,10 @@ impl BigTableClientImpl {
                 ..Default::default()
             });
         };
+
+        // Always write a newly generated version
+        cells.push(new_version_cell(expiry));
+
         row.add_cells(ROUTER_FAMILY, cells);
         row
     }
@@ -582,85 +635,12 @@ impl DbClient for BigTableClientImpl {
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
     async fn update_user(&self, user: &User) -> DbResult<bool> {
-        // `update_user` supposes the following logic:
-        //   check to see if the user is in the router table AND
-        //   (either does not have a router_type or the router type is the same as what they're currently using) AND
-        //   (either there's no node_id assigned or the `connected_at` is earlier than the current connected_at)
-        // Bigtable can't really do a few of those (e.g. detect non-existing values) so we have to simplify
-        // things down a bit. We presume the record exists and that the `router_type` was specified when the
-        // record was created.
-        //
-        // Filters are not very sophisticated on BigTable.
-        // You can create RowFilterChains, where each filter acts as an "AND" or
-        // a RowFilterUnion which acts as an "OR".
-        //
-        // There do not appear to be negative checks (e.g. check if not set)
-        // According to [the docs](https://cloud.google.com/bigtable/docs/using-filters#chain)
-        // ConditionalRowFilter is not atomic and changes can occur between predicate
-        // and execution.
-        //
-        // We then use a ChainFilter (essentially an AND operation) to make sure that the router_type
-        // matches and the new `connected_at` time is later than the existing `connected_at`
-
-        let row = self.user_to_row(user);
-
-        // === Router Filter Chain.
-        let mut router_filter_chain = RowFilter_Chain::default();
-        let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
-        // First check to see if the router type is either empty or matches exactly.
-        // Yes, these are multiple filters. Each filter is basically an AND
-        let mut filter = RowFilter::default();
-        filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
-        filter_set.push(filter);
-
-        let mut filter = RowFilter::default();
-        filter.set_column_qualifier_regex_filter("router_type".to_owned().as_bytes().to_vec());
-        filter_set.push(filter);
-
-        let mut filter = RowFilter::default();
-        filter.set_value_regex_filter(user.router_type.as_bytes().to_vec());
-        filter_set.push(filter);
-
-        router_filter_chain.set_filters(filter_set);
-        let mut router_filter = RowFilter::default();
-        router_filter.set_chain(router_filter_chain);
-
-        // === Connected_At filter chain
-        let mut connected_filter_chain = RowFilter_Chain::default();
-        let mut filter_set: RepeatedField<RowFilter> = RepeatedField::default();
-
-        // then check to make sure that the last connected_at time is before this one.
-        // Note: `check_and_mutate_row` uses `set_true_mutations`, meaning that only rows
-        // that match the provided filters will be modified.
-        let mut filter = RowFilter::default();
-        filter.set_family_name_regex_filter(ROUTER_FAMILY.to_owned());
-        filter_set.push(filter);
-
-        let mut filter = RowFilter::default();
-        filter.set_column_qualifier_regex_filter("connected_at".to_owned().as_bytes().to_vec());
-        filter_set.push(filter);
-
-        let mut filter = RowFilter::default();
-        let mut val_range = ValueRange::default();
-        val_range.set_start_value_open(0_u64.to_be_bytes().to_vec());
-        val_range.set_end_value_open(user.connected_at.to_be_bytes().to_vec());
-        filter.set_value_range_filter(val_range);
-        filter_set.push(filter);
-
-        connected_filter_chain.set_filters(filter_set);
-        let mut connected_filter = RowFilter::default();
-        connected_filter.set_chain(connected_filter_chain);
-
-        // Gather the collections and try to update the row.
-
-        let mut cond = RowFilter_Condition::default();
-        cond.set_predicate_filter(router_filter);
-        cond.set_true_filter(connected_filter);
-        let mut cond_filter = RowFilter::default();
-        cond_filter.set_condition(cond);
-        // dbg!(&cond_filter);
-
-        Ok(self.check_and_mutate_row(row, cond_filter, true).await?)
+        let Some(ref version) = user.version else {
+            return Err(DbError::General("Expected a user version field".to_owned()));
+        };
+        Ok(self
+            .check_and_mutate_row(self.user_to_row(user), version_filter(version), true)
+            .await?)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -696,6 +676,12 @@ impl DbClient for BigTableClientImpl {
 
         if let Some(cell) = row.take_cell("current_timestamp") {
             result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
+        }
+
+        if let Some(cell) = row.take_cell("version") {
+            result.version = Some(Uuid::from_str(&to_string(cell.value, "version")?).map_err(
+                |e| DbError::Serialization(format!("Could not deserialize version: {e:?}")),
+            )?);
         }
 
         Ok(Some(result))
@@ -746,6 +732,8 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             });
         }
+        // Note: updating the version column isn't 100% necessary since this
+        // likely only adds new column that didn't previously exist
         row.add_cells(ROUTER_FAMILY, cells);
 
         self.write_row(row).await?;
@@ -796,33 +784,44 @@ impl DbClient for BigTableClientImpl {
     /// Delete the channel. Does not delete its associated pending messages.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let row_key = uaid.simple().to_string();
+        let mut req = self.mutate_row_request(&row_key);
+
+        // Delete the column representing the channel_id
         let column = format!("chid:{}", channel_id.as_hyphenated());
-        self.delete_cells(&row_key, ROUTER_FAMILY, &[column.as_ref()], None)
-            .await?;
-        // XXX: Can we determine if the cq was actually removed (existed) from
-        // mutate_row's response?
+        let mut mutations = self.get_delete_mutations(ROUTER_FAMILY, &[column.as_ref()], None)?;
+
+        // and write a new version cell
+        let mut row = Row::new(row_key);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        row.cells
+            .insert(ROUTER_FAMILY.to_owned(), vec![new_version_cell(expiry)]);
+        mutations.extend(self.get_mutations(row.cells)?);
+        req.set_mutations(mutations);
+
+        self.mutate_row(req).await?;
+        // XXX: this could be check_and_mutate to determine if the channel existed
         Ok(true)
     }
 
-    /// Remove the node_id. Can't really "surgically strike" this
+    /// Remove the node_id
     async fn remove_node_id(
         &self,
         uaid: &Uuid,
         _node_id: &str,
-        connected_at: u64,
+        _connected_at: u64,
+        version: &Option<Uuid>,
     ) -> DbResult<bool> {
-        trace!(
-            "🉑 Removing node_ids for {} up to {:?} ",
-            &uaid.simple().to_string(),
-            UNIX_EPOCH + Duration::from_secs(connected_at)
-        );
         let row_key = uaid.simple().to_string();
-        let mut time_range = data::TimestampRange::default();
-        // convert connected at seconds into microseconds
-        time_range.set_end_timestamp_micros((connected_at * 1000000) as i64);
-        self.delete_cells(&row_key, ROUTER_FAMILY, &["node_id"], Some(&time_range))
-            .await?;
-        Ok(true)
+        trace!("🉑 Removing node_id for: {row_key} (version: {version:?}) ",);
+        let Some(ref version) = version else {
+            return Err(DbError::General("Expected a user version field".to_owned()));
+        };
+
+        let mut req = self.check_and_mutate_row_request(&row_key);
+        req.set_predicate_filter(version_filter(version));
+        req.set_true_mutations(self.get_delete_mutations(ROUTER_FAMILY, &["node_id"], None)?);
+
+        Ok(self.check_and_mutate(req).await?)
     }
 
     /// Write the notification to storage.
@@ -932,12 +931,15 @@ impl DbClient for BigTableClientImpl {
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
         row.cells.insert(
             ROUTER_FAMILY.to_owned(),
-            vec![cell::Cell {
-                qualifier: "current_timestamp".to_owned(),
-                value: timestamp.to_be_bytes().to_vec(),
-                timestamp: expiry,
-                ..Default::default()
-            }],
+            vec![
+                cell::Cell {
+                    qualifier: "current_timestamp".to_owned(),
+                    value: timestamp.to_be_bytes().to_vec(),
+                    timestamp: expiry,
+                    ..Default::default()
+                },
+                new_version_cell(expiry),
+            ],
         );
         self.write_row(row).await.map_err(|e| e.into())
     }
@@ -1109,7 +1111,7 @@ mod tests {
     use uuid;
 
     use super::*;
-    use crate::db::DbSettings;
+    use crate::{db::DbSettings, util::ms_since_epoch};
 
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
@@ -1193,6 +1195,9 @@ mod tests {
         let fetched = fetched.unwrap();
         assert_eq!(fetched.router_type, "webpush".to_owned());
 
+        // Simulate a connected_at occuring before the following writes
+        let connected_at = ms_since_epoch();
+
         // can we add channels?
         client.add_channel(&uaid, &chid).await?;
         let channels = client.get_channels(&uaid).await?;
@@ -1216,10 +1221,11 @@ mod tests {
         let channels = client.get_channels(&uaid).await?;
         assert_eq!(channels, new_channels);
 
-        // now ensure that we can update a user that's after the time we set prior.
-        // first ensure that we can't update a user that's before the time we set prior.
+        // now ensure that we can update a user that's after the time we set
+        // prior. first ensure that we can't update a user that's before the
+        // time we set prior to the last write
         let updated = User {
-            connected_at: fetched.connected_at - 300,
+            connected_at,
             ..test_user.clone()
         };
         let result = client.update_user(&updated).await;
@@ -1233,13 +1239,13 @@ mod tests {
         // and make sure we can update a record with a later connected_at time.
         let updated = User {
             connected_at: fetched.connected_at + 300,
-            ..test_user
+            ..fetched2
         };
         let result = client.update_user(&updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
         assert_ne!(
-            test_user.connected_at,
+            fetched2.connected_at,
             client.get_user(&uaid).await?.unwrap().connected_at
         );
 
@@ -1340,14 +1346,14 @@ mod tests {
             .messages;
         assert!(msgs.is_empty());
 
+        let fetched = client.get_user(&uaid).await?.unwrap();
         assert!(client
-            .remove_node_id(&uaid, &node_id, connected_at)
+            .remove_node_id(&uaid, &node_id, connected_at, &fetched.version)
             .await
             .is_ok());
-        // TODO:
         // did we remove it?
-        //let fetched = client.get_user(&uaid).await?.unwrap();
-        //assert_eq!(fetched.node_id, None);
+        let fetched = client.get_user(&uaid).await?.unwrap();
+        assert_eq!(fetched.node_id, None);
 
         assert!(client.remove_user(&uaid).await.is_ok());
 
