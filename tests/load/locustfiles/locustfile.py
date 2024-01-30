@@ -84,11 +84,11 @@ class AutopushUser(FastHttpUser):
         return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
-        """Call when a User starts running."""
+        """Call when a websocket starts running."""
         self.ws_greenlet = gevent.spawn(self.connect)
 
     def on_stop(self) -> Any:
-        """Call when a User stops running."""
+        """Call when a websocket stops running."""
         if self.ws:
             for channel_id in self.channels.keys():
                 self.send_unregister(self.ws, channel_id)
@@ -100,17 +100,20 @@ class AutopushUser(FastHttpUser):
     def on_ws_open(self, ws: WebSocket) -> None:
         """Call when opening a WebSocket.
 
-        Args:
-            ws: WebSocket class object
+        Parameters
+        ----------
+        ws : WebSocket
         """
         self.send_hello(ws)
 
     def on_ws_message(self, ws: WebSocket, data: str) -> None:
         """Call when received data from a WebSocket.
 
-        Args:
-            ws: WebSocket class object
-            data: utf-8 data received from the server
+        Parameters
+        ----------
+        ws : WebSocket
+        data : str
+            utf-8 data received from the server
         """
         message: Message | None = self.recv(data)
         if isinstance(message, HelloMessage):
@@ -126,9 +129,10 @@ class AutopushUser(FastHttpUser):
         """Call when there is a WebSocket error or if an exception is raised in a WebSocket
         callback function.
 
-        Args:
-            ws: WebSocket class object
-            error: Exception object
+        Parameters
+        ----------
+        ws : WebSocket
+        error : Exception
         """
         logger.error(str(error))
 
@@ -145,16 +149,19 @@ class AutopushUser(FastHttpUser):
     ) -> None:
         """Call when closing a WebSocket.
 
-        Args:
-            ws: WebSocket class object
-            close_status_code: WebSocket close status
-            close_msg: WebSocket close message
+        Parameters
+        ----------
+        ws: WebSocket
+        close_status_code : int | None
+            WebSocket close status
+        close_msg : str | None
+            ebSocket close message
         """
         if close_status_code or close_msg:
             logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
 
     @task(weight=98)
-    def send_notification(self):
+    def send_notification(self) -> None:
         """Send a notification to a registered endpoint while connected to Autopush."""
         if not self.ws or not self.channels:
             logger.debug("Task 'send_notification' skipped.")
@@ -174,7 +181,7 @@ class AutopushUser(FastHttpUser):
         self.send_register(self.ws, channel_id)
 
     @task(weight=1)
-    def unsubscribe(self):
+    def unsubscribe(self) -> None:
         """Unsubscribe a user from an Autopush channel."""
         if not self.ws or not self.channels:
             logger.debug("Task 'unsubscribe' skipped.")
@@ -203,11 +210,16 @@ class AutopushUser(FastHttpUser):
     def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
 
-        Args:
-            endpoint_url: A channel destination endpoint url
-        Raises:
-            ZeroStatusRequestError: In the event that Locust experiences a network issue while
-                                    sending a notification.
+        Parameters
+        ----------
+        endpoint_url : str
+            A channel destination endpoint url
+
+        Raises
+        ------
+        ZeroStatusRequestError
+            In the event that Locust experiences a network issue while
+            sending a notification.
         """
         message_type: str = "notification"
         # Prefix random message with 'TestData' to more easily differentiate the payload
@@ -236,8 +248,20 @@ class AutopushUser(FastHttpUser):
     def recv(self, data: str) -> Message | None:
         """Verify the contents of an Autopush message and report response statistics to Locust.
 
-        Args:
-            data: utf-8 data received from the server
+        Parameters
+        ----------
+        data : str
+            utf-8 data received from the server
+
+        Returns
+        -------
+        Message | None
+            TypeAlias for multiple Message children
+            HelloMessage | NotificationMessage | RegisterMessage | UnregisterMessage
+
+        Raises
+        ------
+        ValidationError | JSONDecodeError
         """
         recv_time: float = time.perf_counter()
         exception: str | None = None
@@ -304,11 +328,16 @@ class AutopushUser(FastHttpUser):
         After sending a notification, the client must also send an 'ack' to the server
         to confirm receipt.
 
-        Args:
-            ws: WebSocket class object
-            channel_id: Notification message channel ID
-            version: Notification message version
-        Raises:
+        Parameters
+        ----------
+        ws: WebSocket
+        channel_id : str
+            Notification message channel ID
+        version : str
+            Notification message version
+
+        Raises
+        ------
             WebSocketException: Error raised by the WebSocket client
         """
         message_type: str = "ack"
@@ -324,10 +353,15 @@ class AutopushUser(FastHttpUser):
         Connections must say hello after connecting to the server, otherwise the connection is
         quickly dropped.
 
-        Args:
-            ws: WebSocket class object
-        Raises:
-            WebSocketException: Error raised by the WebSocket client
+        Parameters
+        ----------
+        ws : WebSocket
+            Websocket class object
+
+        Raises
+        ------
+        WebSocketException
+            Error raised by the WebSocket client
         """
         message_type: str = "hello"
         data: dict[str, Any] = dict(
@@ -339,14 +373,18 @@ class AutopushUser(FastHttpUser):
         self.hello_record = HelloRecord(send_time=time.perf_counter())
         self.send(ws, message_type, data)
 
-    def send_register(self, ws: WebSocket, channel_id: str) -> None:
+    def send_register(self, ws: WebSocket, channel_id: str):
         """Send a 'register' message to Autopush.
 
-        Args:
-            ws: WebSocket class object
-            channel_id: Notification message channel ID
-        Raises:
-            WebSocketException: Error raised by the WebSocket client
+        Parameters
+        ----------
+        ws : WebSocket
+        channel_id : str
+            Notification message channel ID
+
+        Raises
+        ------
+        WebSocketException
         """
         message_type: str = "register"
         data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
@@ -357,11 +395,15 @@ class AutopushUser(FastHttpUser):
     def send_unregister(self, ws: WebSocketApp, channel_id: str) -> None:
         """Send an 'unregister' message to Autopush.
 
-        Args:
-            ws: WebSocket class object
-            channel_id: Notification message channel ID
-        Raises:
-            WebSocketException: Error raised by the WebSocket client
+        Parameters
+        ----------
+        ws : WebSocket
+        channel_id : str
+            Notification message channel ID
+
+        Raises
+        ------
+        WebSocketException
         """
         message_type: str = "unregister"
         data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
@@ -372,12 +414,17 @@ class AutopushUser(FastHttpUser):
     def send(self, ws: WebSocket | WebSocketApp, message_type: str, data: dict[str, Any]) -> None:
         """Send a message to Autopush.
 
-        Args:
-            ws: WebSocket class object
-            message_type: Message type. Examples: 'ack', 'hello', 'register' or 'unregister'
-            data: Message data
-        Raises:
-            WebSocketException: Error raised by the WebSocket client
+        Parameters
+        ----------
+        ws : WebSocket
+        message_type : str
+            Examples: 'ack', 'hello', 'register' or 'unregister'
+        data : dict[str, Any]
+            Message data
+
+        Raises
+        ------
+        WebSocketException
         """
         try:
             ws.send(json.dumps(data))
