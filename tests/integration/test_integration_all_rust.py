@@ -224,7 +224,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             return f
 
     def connect(self, connection_port: int | None = None):
-        """Connect."""
+        """Establish a websocket connection to localhost at the provided `connection_port`."""
         url = self.url
         if connection_port:  # pragma: nocover
             url = "ws://localhost:{}/".format(connection_port)
@@ -264,7 +264,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return result
 
     def broadcast_subscribe(self, services: list[str]):
-        """Broadcast subscribe."""
+        """Broadcast WebSocket subscribe."""
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
 
@@ -432,7 +432,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.ws.send(msg)
 
     def disconnect(self):
-        """Disconnect"""
+        """Disconnect from the application websocket."""
         self.ws.close()
 
     def sleep(self, duration: int):  # pragma: nocover
@@ -480,7 +480,12 @@ def _get_vapid(
 
 
 def enqueue_output(out, queue):
+<<<<<<< HEAD
     for line in iter(out.readline, ""):
+=======
+    """Add lines from the out buffer to the provided queue."""
+    for line in iter(out.readline, b""):
+>>>>>>> f775454 (review comments for clearer test functions)
         queue.put(line)
     out.close()
 
@@ -532,7 +537,7 @@ def max_logs(endpoint=None, conn=None):
     """
 
     def max_logs_decorator(func):
-        """Decorate max_logs."""
+        """Overwrite `max_endpoint_logs` with a given endpoint if it is specified."""
 
         def wrapper(self, *args, **kwargs):
             if endpoint is not None:
@@ -566,7 +571,7 @@ class CustomClient(Client):
     """Custom Client for testing."""
 
     def send_bad_data(self):
-        """Set `bad-data`"""
+        """Send an invalid data message via websocket to the autoconnect client."""
         self.ws.send("bad-data")
 
 
@@ -583,7 +588,9 @@ def kill_process(process):
 
 
 def get_rust_binary_path(binary):
-    """Get Rust binary path."""
+    """Get path to pre-built Rust binary.
+    This presumes that the application has already been built with proper features.
+    """
     global STRICT_LOG_COUNTS
 
     rust_bin = root_dir + "/target/release/{}".format(binary)
@@ -603,7 +610,7 @@ def get_rust_binary_path(binary):
 
 
 def write_config_to_env(config, prefix):
-    """Write configurations to env."""
+    """Write configurations to application read environment variables."""
     for key, val in config.items():
         new_key = prefix + key
         log.debug("✍ config {} => {}".format(new_key, val))
@@ -958,7 +965,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_hello_with_bad_prior_uaid(self):
-        """Test hello with bard prior uaid."""
+        """Test hello with bad prior uaid."""
         non_uaid = uuid.uuid4().hex
         client = Client(self._ws_url)
         yield client.connect()
@@ -970,7 +977,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery(self):
-        """Test basic delivery."""
+        """Test basic regular push message delivery."""
         data = str(uuid.uuid4())
         client: Client = yield self.quick_register()
         result = yield client.send_notification(data=data)
@@ -983,7 +990,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_basic_delivery(self):
-        """Test topic basic delivery."""
+        """Test basic topic push message delivery."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, topic="Inbox")
@@ -996,7 +1003,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_replacement_delivery(self):
-        """Test topic replacement delivery."""
+        """Test that a topic push message replaces it's prior version."""
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -1045,7 +1052,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_vapid(self):
-        """Test basic delivery with vapid."""
+        """Test delivery of a basic push message with a VAPID header."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload)
@@ -1059,7 +1066,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid(self):
-        """Test basic delivery with invalid vapid."""
+        """Test basic delivery with invalid VAPID header."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
@@ -1069,7 +1076,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_exp(self):
-        """Test basic delivery with invalid vapid exp."""
+        """Test basic delivery of a push message with invalid VAPID `exp` assertion."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1520,7 +1527,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_with_key(self):
-        """Test with key."""
+        """Test getting a locked subscription with a valid VAPID public key."""
         private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
         claims = {
             "aud": "http://localhost:{}".format(ENDPOINT_PORT),
