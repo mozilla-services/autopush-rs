@@ -44,6 +44,8 @@ const MAX_EXPIRY: u64 = 2_592_000;
 pub const USER_RECORD_VERSION: u64 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
+/// The maximum TTL for router records, 30 days
+pub const MAX_ROUTER_TTL: u64 = MAX_CHANNEL_TTL;
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {
@@ -58,12 +60,17 @@ pub enum StorageType {
 }
 
 /// The type of storage to use.
+#[allow(clippy::vec_init_then_push)] // Because we are only pushing on feature flags.
 impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
         #[allow(unused_mut)]
-        let mut result = ["DynamoDB"].to_vec();
+        let mut result: Vec<&str> = Vec::new();
+        #[cfg(feature = "dynamodb")]
+        result.push("DynamoDB");
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
+        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+        result.push("Dual");
         result
     }
 
@@ -246,7 +253,7 @@ pub struct NotificationRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<NotificationHeaders>,
     /// This is the acknowledgement-id used for clients to ack that they have received the
-    /// message. Some Python code refers to this as a message_id. Endpoints generate this
+    /// message. Autoendpoint refers to this as a message_id. Endpoints generate this
     /// value before sending it to storage or a connection node.
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,

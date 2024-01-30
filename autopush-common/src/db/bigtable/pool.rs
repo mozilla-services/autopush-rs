@@ -41,10 +41,13 @@ impl BigTablePool {
     pub async fn get(
         &self,
     ) -> Result<deadpool::managed::Object<BigtableClientManager>, error::BigTableError> {
-        self.pool
+        let obj = self
+            .pool
             .get()
             .await
-            .map_err(|e| error::BigTableError::Pool(e.to_string()))
+            .map_err(|e| error::BigTableError::Pool(e.to_string()))?;
+        debug!("🉑 Got db from pool");
+        Ok(obj)
     }
 
     /// Get the pools manager, because we would like to talk to them.
@@ -156,7 +159,9 @@ impl Manager for BigtableClientManager {
             .route_to_leader(self.settings.route_to_leader)
             .build()
             .map_err(|e| DbError::BTError(BigTableError::GRPC(e)))?;
-        Ok(BigtableDb::new(self.get_channel()?, &metadata))
+        let entry = BigtableDb::new(self.get_channel()?, &metadata);
+        debug!("🏊 Bigtable connection acquired");
+        Ok(entry)
     }
 
     /// Recycle if the connection has outlived it's lifespan.

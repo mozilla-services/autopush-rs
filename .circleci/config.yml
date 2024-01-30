@@ -1,7 +1,7 @@
 # These environment variables must be set in CircleCI UI
 #
-# DOCKERHUB_REPO - docker hub repo, format: <username>/<repo>
-# DOCKERHUB_ENDPOINT_REPO - same as DOCKERHUB_REPO, but for autoendpoint
+# DOCKERHUB_CONNECT_REPO - autoconnect docker hub repo, format: <username>/<repo>
+# DOCKERHUB_ENDPOINT_REPO - autoendpoint docker hub repo, format: <username>/<repo>
 # DOCKER_EMAIL   - login info for docker hub
 # DOCKER_USER
 # DOCKER_PASS
@@ -137,7 +137,7 @@ jobs:
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build --features=emulator
+            cargo build --features=emulator --features=dual
       - run:
           name: Check formatting
           command: |
@@ -153,16 +153,26 @@ jobs:
           # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
           # the machine level memory and CPU which are far higher than the memory allocated to the docker
           # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=emulator --jobs=2
+          command: cargo test --features=emulator --features=dual --jobs=2
       - run:
-          name: Integration tests (Autopush Legacy)
-          command: make integration-test-legacy
+          name: Integration tests (Bigtable)
+          command: make integration-test
+          environment:
+            DB_DSN: grpc://localhost:8086
+            TEST_RESULTS_DIR: workspace/test-results
+      - run:
+          name: Integration tests (DynamoDB)
+          command: make integration-test
           environment:
             TEST_RESULTS_DIR: workspace/test-results
       - run:
-          name: Integration tests (Autoconnect)
+          name: Integration tests (Dual Bigtable/DynamoDB)
           command: make integration-test
           environment:
+            RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
+            # PYTEST_ARGS: -sv
+            DB_DSN: dual
+            DB_SETTINGS: tests/integration/dual_test.json
             TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
@@ -319,14 +329,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - build:
-          name: build-autopush
-          image: autopush:build
-          crate: autopush
-          binary: autopush_rs
-          filters:
-            tags:
-              only: /.*/
 
       - build:
           name: build-autoconnect
@@ -352,19 +354,6 @@ workflows:
               only: /.*/
 
       # Comment out the following two sections for local CircleCI testing.
-      - deploy:
-          name: deploy-autopush
-          image: autopush:build
-          repo: ${DOCKERHUB_REPO}
-          requires:
-            - build-autopush
-            - test
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only: master
-
       - deploy:
           name: deploy-autoconnect
           image: autoconnect:build

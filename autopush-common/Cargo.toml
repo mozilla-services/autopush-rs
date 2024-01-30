@@ -76,9 +76,8 @@ tokio = { version = "0.2", features = ["macros"] }
 actix-rt = "2.8"
 
 [features]
-# for testing:
-# default = ["emulator", "bigtable", "dynamodb"]
-default = ["dynamodb"]
+# NOTE: Do not set a `default` here, rather specify them in the calling library.
+# This is to reduce complexity around feature specification.
 bigtable = [
     "dep:google-cloud-rust-raw",
     "dep:grpcio",
@@ -86,6 +85,7 @@ bigtable = [
     "dep:form_urlencoded",
 ]
 dynamodb = ["dep:rusoto_core", "dep:rusoto_credential", "dep:rusoto_dynamodb"]
+dual = ["dynamodb", "bigtable"]
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.
