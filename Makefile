@@ -8,14 +8,23 @@ LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(TESTS_DIR)/pyproject.toml
+POETRY_LOCK := $(TESTS_DIR)/poetry.lock
 FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
+INSTALL_STAMP := .install.stamp
 
 .PHONY: ddb
 
 ddb:
 	mkdir $@
 	curl -sSL http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz | tar xzvC $@
+
+.PHONY: install
+install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
+$(INSTALL_STAMP): $(PYPROJECT_TOML) $(POETRY_LOCK)
+	@if [ -z $(POETRY) ]; then echo "Poetry could not be found. See https://python-poetry.org/docs/"; exit 2; fi
+	$(POETRY) install
+	touch $(INSTALL_STAMP)
 
 upgrade:
 	$(CARGO) install cargo-edit ||
@@ -36,6 +45,10 @@ integration-test:
 		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
+
+.PHONY: pydocstyle
+pydocstyle: $(INSTALL_STAMP)  ##  Run pydocstyle
+	$(POETRY) run pydocstyle -es $(TESTS_DIR) --count --config=$(PYPROJECT_TOML)
 
 lint:
 	$(POETRY) -V
