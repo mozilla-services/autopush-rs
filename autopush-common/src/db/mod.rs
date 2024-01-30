@@ -44,6 +44,8 @@ const MAX_EXPIRY: u64 = 2_592_000;
 pub const USER_RECORD_VERSION: u64 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
+/// The maximum TTL for router records, 30 days
+pub const MAX_ROUTER_TTL: u64 = MAX_CHANNEL_TTL;
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {

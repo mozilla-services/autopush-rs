@@ -23,6 +23,14 @@ pub struct Row {
 }
 
 impl Row {
+    /// Create a new Row w/ the specified row_key
+    pub fn new(row_key: RowKey) -> Self {
+        Row {
+            row_key,
+            ..Default::default()
+        }
+    }
+
     /// Return all cells for a given column
     pub fn take_cells(&mut self, column: &str) -> Option<Vec<Cell>> {
         self.cells.remove(column)
@@ -42,8 +50,8 @@ impl Row {
             .ok_or_else(|| DbError::Integrity(format!("Expected column: {column}")))
     }
 
-    /// Add cells to a given column
-    pub fn add_cells(&mut self, column: &str, cells: Vec<Cell>) -> Option<Vec<Cell>> {
-        self.cells.insert(column.to_owned(), cells)
+    /// Add cells to a given family
+    pub fn add_cells(&mut self, family: &str, cells: Vec<Cell>) -> Option<Vec<Cell>> {
+        self.cells.insert(family.to_owned(), cells)
     }
 }
