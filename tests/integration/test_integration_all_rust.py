@@ -480,12 +480,8 @@ def _get_vapid(
 
 
 def enqueue_output(out, queue):
-<<<<<<< HEAD
-    for line in iter(out.readline, ""):
-=======
     """Add lines from the out buffer to the provided queue."""
-    for line in iter(out.readline, b""):
->>>>>>> f775454 (review comments for clearer test functions)
+    for line in iter(out.readline, ""):
         queue.put(line)
     out.close()
 
