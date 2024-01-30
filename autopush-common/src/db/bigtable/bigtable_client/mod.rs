@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL,
+    DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
 };
 
 use self::row::Row;
@@ -89,6 +89,20 @@ fn timestamp_filter() -> Result<data::RowFilter, error::BigTableError> {
     Ok(timestamp_filter)
 }
 
+/// Return a ReadRowsRequest against table for a given row key
+fn read_row_request(table_name: &str, row_key: &str) -> bigtable::ReadRowsRequest {
+    let mut req = bigtable::ReadRowsRequest::default();
+    req.set_table_name(table_name.to_owned());
+
+    let mut row_keys = RepeatedField::default();
+    row_keys.push(row_key.as_bytes().to_vec());
+    let mut row_set = data::RowSet::default();
+    row_set.set_row_keys(row_keys);
+    req.set_rows(row_set);
+
+    req
+}
+
 fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
     let v: [u8; 8] = value
         .try_into()
@@ -143,16 +157,7 @@ impl BigTableClientImpl {
 
     /// Return a ReadRowsRequest for a given row key
     fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
-        let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-
-        let mut row_keys = RepeatedField::default();
-        row_keys.push(row_key.as_bytes().to_vec());
-        let mut row_set = data::RowSet::default();
-        row_set.set_row_keys(row_keys);
-        req.set_rows(row_set);
-
-        req
+        read_row_request(&self.settings.table_name, row_key)
     }
 
     /// Read a given row from the row key.
@@ -164,6 +169,7 @@ impl BigTableClientImpl {
     }
 
     /// Perform a MutateRowsRequest
+    #[allow(unused)]
     async fn mutate_rows(
         &self,
         req: bigtable::MutateRowsRequest,
@@ -463,20 +469,21 @@ impl BigTableClientImpl {
     }
 
     fn user_to_row(&self, user: &User) -> Row {
-        let mut row = Row {
-            row_key: user.uaid.simple().to_string(),
-            ..Default::default()
-        };
+        let row_key = user.uaid.simple().to_string();
+        let mut row = Row::new(row_key);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
 
         let mut cells: Vec<cell::Cell> = vec![
             cell::Cell {
                 qualifier: "connected_at".to_owned(),
                 value: user.connected_at.to_be_bytes().to_vec(),
+                timestamp: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "router_type".to_owned(),
                 value: user.router_type.clone().into_bytes(),
+                timestamp: expiry,
                 ..Default::default()
             },
         ];
@@ -485,6 +492,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "router_data".to_owned(),
                 value: json!(router_data).to_string().as_bytes().to_vec(),
+                timestamp: expiry,
                 ..Default::default()
             });
         };
@@ -492,6 +500,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "current_timestamp".to_owned(),
                 value: current_timestamp.to_be_bytes().to_vec(),
+                timestamp: expiry,
                 ..Default::default()
             });
         };
@@ -499,6 +508,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "node_id".to_owned(),
                 value: node_id.as_bytes().to_vec(),
+                timestamp: expiry,
                 ..Default::default()
             });
         };
@@ -506,6 +516,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "record_version".to_owned(),
                 value: record_version.to_be_bytes().to_vec(),
+                timestamp: expiry,
                 ..Default::default()
             });
         };
@@ -532,15 +543,8 @@ impl BigtableDb {
     /// stack.
     ///
     pub async fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
-        // build the associated request.
-        let mut req = bigtable::ReadRowsRequest::default();
-        req.set_table_name(table_name.to_owned());
         // Create a request that is GRPC valid, but does not point to a valid row.
-        let mut row_keys = RepeatedField::default();
-        row_keys.push("NOT FOUND".as_bytes().to_vec());
-        let mut row_set = data::RowSet::default();
-        row_set.set_row_keys(row_keys);
-        req.set_rows(row_set);
+        let mut req = read_row_request(table_name, "NOT FOUND");
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
@@ -704,7 +708,13 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let row_key = uaid.simple().to_string();
+        let channels = HashSet::from_iter([channel_id.to_owned()]);
+        self.add_channels(uaid, channels).await
+    }
+
+    /// Add channels in bulk (used mostly during migration)
+    ///
+    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
         // channel_ids are stored as a set within one Bigtable row
         //
         // Bigtable allows "millions of columns in a table, as long as no row
@@ -718,66 +728,27 @@ impl DbClient for BigTableClientImpl {
         // Storing the full set in a single row makes batch updates
         // (particularly to reset the GC expiry timestamps) potentially more
         // easy/efficient
-        let mut row = Row {
-            row_key,
-            ..Default::default()
-        };
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL);
-        row.cells.insert(
-            ROUTER_FAMILY.to_owned(),
-            vec![cell::Cell {
-                qualifier: format!("chid:{}", channel_id.as_hyphenated()),
-                timestamp: expiry,
-                ..Default::default()
-            }],
-        );
-        self.write_row(row).await.map_err(|e| e.into())
-    }
-
-    /// Add channels in bulk (used mostly during migration)
-    ///
-    async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
         let row_key = uaid.simple().to_string();
-        let expiry = (std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL))
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(error::BigTableError::WriteTime)?
-            .as_millis();
+        let mut row = Row::new(row_key);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL);
 
-        let mut entries = protobuf::RepeatedField::default();
-        let mut req = bigtable::MutateRowsRequest::default();
-        let mut limit: u32 = 0;
-        req.set_table_name(self.settings.table_name.clone());
-
-        let mut entry = bigtable::MutateRowsRequest_Entry::default();
-        entry.set_row_key(row_key.into_bytes());
-        let mut cell_mutations = protobuf::RepeatedField::default();
-
-        // Create entries that define rows that contain mutations to
-        // create/update the channels.
-        for channel in channels {
-            let mut mutation = data::Mutation::default();
-            let set_cell = data::Mutation_SetCell {
-                family_name: ROUTER_FAMILY.to_owned(),
-                column_qualifier: format!("chid:{}", channel.as_hyphenated()).into_bytes(),
-                timestamp_micros: (expiry * 1000) as i64,
-                ..Default::default()
-            };
-
-            mutation.set_set_cell(set_cell);
-            cell_mutations.push(mutation);
+        let mut cells = Vec::with_capacity(channels.len().min(100_000));
+        for (i, channel_id) in channels.into_iter().enumerate() {
             // There is a limit of 100,000 mutations per batch for bigtable.
             // https://cloud.google.com/bigtable/quotas
             // If you have 100,000 channels, you have too many.
-            limit += 1;
-            if limit >= 100_000 {
+            if i >= 100_000 {
                 break;
             }
+            cells.push(cell::Cell {
+                qualifier: format!("chid:{}", channel_id.as_hyphenated()),
+                timestamp: expiry,
+                ..Default::default()
+            });
         }
-        entry.set_mutations(cell_mutations);
-        entries.push(entry);
-        req.set_entries(entries);
+        row.add_cells(ROUTER_FAMILY, cells);
 
-        self.mutate_rows(req).await?;
+        self.write_row(row).await?;
         Ok(())
     }
 
@@ -862,17 +833,15 @@ impl DbClient for BigTableClientImpl {
             "🉑 timestamp: {:?}",
             &message.timestamp.to_be_bytes().to_vec()
         );
-        let mut row = Row {
-            row_key,
-            ..Default::default()
-        };
+        let mut row = Row::new(row_key);
 
         // Remember, `timestamp` is effectively the time to kill the message, not the
         // current time.
-        let ttl = SystemTime::now() + Duration::from_secs(message.ttl);
+        let expiry = SystemTime::now() + Duration::from_secs(message.ttl);
         trace!(
             "🉑 Message Expiry {}",
-            ttl.duration_since(SystemTime::UNIX_EPOCH)
+            expiry
+                .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis()
         );
@@ -888,19 +857,19 @@ impl DbClient for BigTableClientImpl {
             cell::Cell {
                 qualifier: "ttl".to_owned(),
                 value: message.ttl.to_be_bytes().to_vec(),
-                timestamp: ttl,
+                timestamp: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "timestamp".to_owned(),
                 value: message.timestamp.to_be_bytes().to_vec(),
-                timestamp: ttl,
+                timestamp: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "version".to_owned(),
                 value: message.version.into_bytes(),
-                timestamp: ttl,
+                timestamp: expiry,
                 ..Default::default()
             },
         ]);
@@ -909,7 +878,7 @@ impl DbClient for BigTableClientImpl {
                 cells.push(cell::Cell {
                     qualifier: "headers".to_owned(),
                     value: json!(headers).to_string().into_bytes(),
-                    timestamp: ttl,
+                    timestamp: expiry,
                     ..Default::default()
                 });
             }
@@ -918,7 +887,7 @@ impl DbClient for BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "data".to_owned(),
                 value: data.into_bytes(),
-                timestamp: ttl,
+                timestamp: expiry,
                 ..Default::default()
             });
         }
@@ -959,16 +928,14 @@ impl DbClient for BigTableClientImpl {
             &row_key,
             timestamp.to_be_bytes().to_vec()
         );
-        let mut row = Row {
-            row_key,
-            ..Default::default()
-        };
-
+        let mut row = Row::new(row_key);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
         row.cells.insert(
             ROUTER_FAMILY.to_owned(),
             vec![cell::Cell {
                 qualifier: "current_timestamp".to_owned(),
                 value: timestamp.to_be_bytes().to_vec(),
+                timestamp: expiry,
                 ..Default::default()
             }],
         );
@@ -1367,16 +1334,20 @@ mod tests {
 
         assert!(client.remove_channel(&uaid, &topic_chid).await.is_ok());
 
-        assert!(client
-            .remove_node_id(&uaid, &node_id, connected_at)
-            .await
-            .is_ok());
-        // did we remove it?
         let msgs = client
             .fetch_timestamp_messages(&uaid, None, 999)
             .await?
             .messages;
         assert!(msgs.is_empty());
+
+        assert!(client
+            .remove_node_id(&uaid, &node_id, connected_at)
+            .await
+            .is_ok());
+        // TODO:
+        // did we remove it?
+        //let fetched = client.get_user(&uaid).await?.unwrap();
+        //assert_eq!(fetched.node_id, None);
 
         assert!(client.remove_user(&uaid).await.is_ok());
 
@@ -1402,11 +1373,7 @@ mod tests {
         let qualifier = "foo".to_owned();
 
         let row_key = uaid.simple().to_string();
-
-        let mut row = Row {
-            row_key: row_key.clone(),
-            ..Default::default()
-        };
+        let mut row = Row::new(row_key.clone());
         row.cells.insert(
             ROUTER_FAMILY.to_owned(),
             vec![cell::Cell {
