@@ -20,6 +20,7 @@ import websocket
 from args import parse_wait_time
 from exceptions import ZeroStatusRequestError
 from gevent import Greenlet
+from hashlib import sha1
 from locust import FastHttpUser, events, task
 from locust.exception import LocustError
 from models import (
@@ -71,7 +72,7 @@ class AutopushUser(FastHttpUser):
         super().__init__(environment)
         self.channels: dict[str, str] = {}
         self.hello_record: HelloRecord | None = None
-        self.notification_records: list[NotificationRecord] = []
+        self.notification_records: dict[bytes, NotificationRecord] = {}
         self.register_records: list[RegisterRecord] = []
         self.unregister_records: list[RegisterRecord] = []
         self.uaid: str = ""
@@ -186,7 +187,9 @@ class AutopushUser(FastHttpUser):
         ws = self.ws = websocket.WebSocket()
         self.ws.connect(self.host)
         self.send_hello(ws)
-        for i in range(len(self.notification_records)):
+        # Read the Hello response, then all Notifications previously sent
+        # (while Ack'ing each)
+        for i in range(1 + len(self.notification_records)):
             self.on_ws_message(ws, ws.recv())
         self.ws.close()
 
@@ -225,7 +228,8 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
-        self.notification_records.append(record)
+        logger.info("adding: %r %r" % (len(data), sha1(data.encode()).digest()))
+        self.notification_records[sha1(data.encode()).digest()] = record
 
         with self.client.post(
             url=endpoint_url,
@@ -265,12 +269,13 @@ class AutopushUser(FastHttpUser):
                     decode_data: str = base64.urlsafe_b64decode(message_data + "===").decode(
                         "utf8"
                     )
-                    i, record = next(
-                        ((i, r) for (i, r) in enumerate(self.notification_records) if r.data == decode_data), (None, None)
+                    # scan through the notification records to see if this
+                    # matches a record we sent.
+                    record = self.notification_records.pop(
+                        sha1(decode_data.encode()).digest(), None
                     )
-                    if i:
-                        self.notification_records.pop(i)
-
+                    if record:
+                        logger.info("found: %r %r" % (len(message_data), sha1(decode_data.encode()).digest()))
                 case "register":
                     message = RegisterMessage(**message_dict)
                     register_chid: str = message.channelID
@@ -291,6 +296,7 @@ class AutopushUser(FastHttpUser):
             if record:
                 response_time = (recv_time - record.send_time) * 1000
             else:
+                logger.info("failed: %r %r" % (len(message_data), sha1(decode_data.encode()).digest()))
                 exception = f"There is no record of the '{message_type}' message"
                 logger.error(f"{exception}. Contents: {message}")
         except (ValidationError, JSONDecodeError) as error:
