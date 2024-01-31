@@ -5,8 +5,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use again::RetryPolicy;
 use async_trait::async_trait;
-use cadence::StatsdClient;
+use cadence::{CountedExt, StatsdClient};
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
@@ -71,7 +72,7 @@ impl From<Uaid> for String {
 pub struct BigTableClientImpl {
     pub(crate) settings: BigTableDbSettings,
     /// Metrics client
-    _metrics: Arc<StatsdClient>,
+    metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
 }
@@ -117,6 +118,55 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     })
 }
 
+pub fn retry_policy(max: usize) -> RetryPolicy {
+    RetryPolicy::default()
+        .with_max_retries(max)
+        .with_jitter(true)
+}
+
+pub fn retryable_describe_table_error(
+    metrics: Arc<StatsdClient>,
+) -> impl Fn(&grpcio::Error) -> bool {
+    move |err| {
+        debug!("🉑 Checking error...{err}");
+        match err {
+            grpcio::Error::RpcFailure(_) => {
+                metrics
+                    .incr_with_tags("database.retry")
+                    .with_tag("error", "RpcFailure")
+                    .with_tag("type", "bigtable")
+                    .send();
+                true
+            }
+            grpcio::Error::QueueShutdown => {
+                metrics
+                    .incr_with_tags("database.retry")
+                    .with_tag("error", "QueueShutdown")
+                    .with_tag("type", "bigtable")
+                    .send();
+                true
+            }
+            grpcio::Error::BindFail(_) => {
+                metrics
+                    .incr_with_tags("database.retry")
+                    .with_tag("error", "BindFail")
+                    .with_tag("type", "bigtable")
+                    .send();
+                true
+            }
+            grpcio::Error::CallFailure(_) => {
+                metrics
+                    .incr_with_tags("database.retry")
+                    .with_tag("error", "CallFailure")
+                    .with_tag("type", "bigtable")
+                    .send();
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 /// Connect to a BigTable storage model.
 ///
 /// BigTable is available via the Google Console, and is a schema less storage system.
@@ -150,7 +200,7 @@ impl BigTableClientImpl {
         let pool = BigTablePool::new(settings, &metrics)?;
         Ok(Self {
             settings: db_settings,
-            _metrics: metrics,
+            metrics,
             pool,
         })
     }
@@ -231,10 +281,13 @@ impl BigTableClientImpl {
         req: ReadRowsRequest,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let bigtable = self.pool.get().await?;
-        let resp = bigtable
-            .conn
-            .read_rows(&req)
-            .map_err(error::BigTableError::Read)?;
+        let resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async { bigtable.conn.read_rows(&req) },
+                retryable_describe_table_error(self.metrics.clone()),
+            )
+            .await
+            .map_err(error::BigTableError::Write)?;
         merge::RowMerger::process_chunks(resp).await
     }
 
@@ -256,10 +309,11 @@ impl BigTableClientImpl {
         // Do the actual commit.
         let bigtable = self.pool.get().await?;
         debug!("🉑 writing row...");
-        let _resp = bigtable
-            .conn
-            .mutate_row_async(&req)
-            .map_err(error::BigTableError::Write)?
+        let _resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async { bigtable.conn.mutate_row_async(&req) },
+                retryable_describe_table_error(self.metrics.clone()),
+            )
             .await
             .map_err(error::BigTableError::Write)?;
         Ok(())
@@ -319,9 +373,12 @@ impl BigTableClientImpl {
 
         // Do the actual commit.
         let bigtable = self.pool.get().await?;
-        let resp = bigtable
-            .conn
-            .check_and_mutate_row_async(&req)
+        let resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async { bigtable.conn.check_and_mutate_row_async(&req) },
+                retryable_describe_table_error(self.metrics.clone()),
+            )
+            .await
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
@@ -380,10 +437,11 @@ impl BigTableClientImpl {
         req.set_mutations(mutations);
 
         let bigtable = self.pool.get().await?;
-        let _resp = bigtable
-            .conn
-            .mutate_row_async(&req)
-            .map_err(error::BigTableError::Write)?
+        let _resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async { bigtable.conn.mutate_row_async(&req) },
+                retryable_describe_table_error(self.metrics.clone()),
+            )
             .await
             .map_err(error::BigTableError::Write)?;
         Ok(())
@@ -1368,6 +1426,7 @@ mod tests {
             Uuid::parse_str(&parts.join("-")).unwrap()
         };
         let client = new_client().unwrap();
+        debug!("UAID: {uaid}");
         client.remove_user(&uaid).await.unwrap();
 
         let qualifier = "foo".to_owned();

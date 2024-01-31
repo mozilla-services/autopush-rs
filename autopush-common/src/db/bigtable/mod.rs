@@ -31,6 +31,10 @@ use std::time::Duration;
 use crate::db::error::DbError;
 use crate::util::deserialize_u32_to_duration;
 
+fn retry_default() -> usize {
+    10
+}
+
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
 pub struct BigTableDbSettings {
@@ -62,6 +66,8 @@ pub struct BigTableDbSettings {
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_u32_to_duration")]
     pub database_pool_max_idle: Duration,
+    #[serde(default = "retry_default")]
+    pub retry_count: usize,
 }
 
 impl TryFrom<&str> for BigTableDbSettings {
