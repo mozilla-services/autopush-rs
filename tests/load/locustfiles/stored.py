@@ -83,7 +83,7 @@ class AutopushUser(FastHttpUser):
 
     def on_start(self) -> Any:
         """Called when a User starts running."""
-        self.ws_greenlet = gevent.spawn(self.connect)
+        self.ws_greenlet = gevent.spawn(self.connect_and_register)
 
     def on_stop(self) -> Any:
         """Called when a User stops running."""
@@ -181,22 +181,30 @@ class AutopushUser(FastHttpUser):
         channel_id: str = random.choice(list(self.channels.keys()))
         self.send_unregister(self.ws, channel_id)
 
-    def connect(self) -> None:
+    @task(weight=10)
+    def connect_and_read(self):
+        ws = self.ws = websocket.WebSocket()
+        self.ws.connect(self.host)
+        self.send_hello(ws)
+        for i in range(len(self.notification_records)):
+            self.on_ws_message(ws, ws.recv())
+        self.ws.close()
+
+    def connect_and_register(self) -> None:
         """Creates the WebSocketApp that will run indefinitely."""
         if not self.host:
             raise LocustError("'host' value is unavailable.")
 
-        self.ws = websocket.WebSocketApp(
-            self.host,
-            header=self.WEBSOCKET_HEADERS,
-            on_message=self.on_ws_message,
-            on_error=self.on_ws_error,
-            on_close=self.on_ws_close,
-            on_open=self.on_ws_open,
-        )
+        channel_count = random.randint(1, 5)
 
-        # If reconnect is set to 0 (default) the WebSocket will not reconnect.
-        self.ws.run_forever(reconnect=1)
+        ws = self.ws = websocket.WebSocket()
+        self.ws.connect(self.host)
+        self.send_hello(ws)
+        self.on_ws_message(ws, ws.recv())
+        for i in range(channel_count):
+            self.subscribe()
+            self.on_ws_message(ws, ws.recv())
+        self.ws.close()
 
     def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
@@ -257,9 +265,12 @@ class AutopushUser(FastHttpUser):
                     decode_data: str = base64.urlsafe_b64decode(message_data + "===").decode(
                         "utf8"
                     )
-                    record = next(
-                        (r for r in self.notification_records if r.data == decode_data), None
+                    i, record = next(
+                        ((i, r) for (i, r) in enumerate(self.notification_records) if r.data == decode_data), (None, None)
                     )
+                    if i:
+                        self.notification_records.pop(i)
+
                 case "register":
                     message = RegisterMessage(**message_dict)
                     register_chid: str = message.channelID
