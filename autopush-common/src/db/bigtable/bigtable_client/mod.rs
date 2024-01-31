@@ -212,7 +212,7 @@ impl BigTableClientImpl {
 
     /// Read a given row from the row key.
     async fn read_row(&self, row_key: &str) -> Result<Option<row::Row>, error::BigTableError> {
-        debug!("🉑 Row key: {}", row_key);
+        dbg!("🉑 Row key: {}", row_key);
         let req = self.read_row_request(row_key);
         let mut rows = self.read_rows(req).await?;
         Ok(rows.remove(row_key))
@@ -311,7 +311,11 @@ impl BigTableClientImpl {
         debug!("🉑 writing row...");
         let _resp = retry_policy(self.settings.retry_count)
             .retry_if(
-                || async { bigtable.conn.mutate_row_async(&req) },
+                || async {
+                    // Note: `mutate_row_async` will return before the row is written, which may
+                    // cause race conditions for reads. (see test::read_cells_family_id() )
+                    bigtable.conn.mutate_row(&req)
+                },
                 retryable_describe_table_error(self.metrics.clone()),
             )
             .await
@@ -375,11 +379,13 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let resp = retry_policy(self.settings.retry_count)
             .retry_if(
-                || async { bigtable.conn.check_and_mutate_row_async(&req) },
+                || async {
+                    // Note: check_and_mutate_row_async may return before the row
+                    // is written, which can cause race conditions for reads
+                    bigtable.conn.check_and_mutate_row(&req)
+                },
                 retryable_describe_table_error(self.metrics.clone()),
             )
-            .await
-            .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
         debug!("🉑 Predicate Matched: {}", &resp.get_predicate_matched(),);
@@ -416,10 +422,15 @@ impl BigTableClientImpl {
         req.set_mutations(mutations);
 
         let bigtable = self.pool.get().await?;
-        let _resp = bigtable
-            .conn
-            .mutate_row_async(&req)
-            .map_err(error::BigTableError::Write)?
+        let _resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async {
+                    // NOTE: `mutate_row_async` will return before the row is written, which may
+                    // cause race conditions for reads.
+                    bigtable.conn.mutate_row(&req)
+                },
+                retryable_describe_table_error(self.metrics.clone()),
+            )
             .await
             .map_err(error::BigTableError::Write)?;
         Ok(())
@@ -439,7 +450,11 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let _resp = retry_policy(self.settings.retry_count)
             .retry_if(
-                || async { bigtable.conn.mutate_row_async(&req) },
+                || async {
+                    // NOTE: `mutate_row_async` will return before the row is written, which may
+                    // cause race conditions for reads.
+                    bigtable.conn.mutate_row(&req)
+                },
                 retryable_describe_table_error(self.metrics.clone()),
             )
             .await
@@ -600,16 +615,23 @@ impl BigtableDb {
     /// Recycle check as well, so it has to be fairly low in the implementation
     /// stack.
     ///
-    pub async fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
+    pub async fn health_check(
+        &mut self,
+        table_name: &str,
+        metrics: Arc<StatsdClient>,
+    ) -> DbResult<bool> {
         // Create a request that is GRPC valid, but does not point to a valid row.
         let mut req = read_row_request(table_name, "NOT FOUND");
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
 
-        let r = self
-            .conn
-            .read_rows(&req)
+        let r = retry_policy(10)
+            .retry_if(
+                || async { self.conn.read_rows(&req) },
+                retryable_describe_table_error(metrics.clone()),
+            )
+            .await
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
         let (v, _stream) = r.into_future().await;
@@ -1123,7 +1145,7 @@ impl DbClient for BigTableClientImpl {
         self.pool
             .get()
             .await?
-            .health_check(&self.settings.table_name)
+            .health_check(&self.settings.table_name, self.metrics.clone())
             .await
     }
 
@@ -1446,6 +1468,7 @@ mod tests {
             panic!("Expected row");
         };
         assert_eq!(row.cells.len(), 1);
+        dbg!(&row.cells.keys());
         assert_eq!(row.cells.keys().next().unwrap(), qualifier.as_str());
         client.remove_user(&uaid).await
     }

@@ -87,8 +87,12 @@ impl BigTablePool {
         debug!("🉑 connection string {}", &connection);
 
         // Construct a new manager and put them in a pool for handling future requests.
-        let manager =
-            BigtableClientManager::new(&bt_settings, settings.dsn.clone(), connection.clone())?;
+        let manager = BigtableClientManager::new(
+            &bt_settings,
+            settings.dsn.clone(),
+            connection.clone(),
+            metrics.clone(),
+        )?;
         let mut config = PoolConfig::default();
         if let Some(size) = bt_settings.database_pool_max_size {
             debug!("🏊 Setting pool max size {}", &size);
@@ -121,6 +125,7 @@ pub struct BigtableClientManager {
     settings: BigTableDbSettings,
     dsn: Option<String>,
     connection: String,
+    metrics: Arc<StatsdClient>,
 }
 
 impl BigtableClientManager {
@@ -128,11 +133,13 @@ impl BigtableClientManager {
         settings: &BigTableDbSettings,
         dsn: Option<String>,
         connection: String,
+        metrics: Arc<StatsdClient>,
     ) -> Result<Self, DbError> {
         Ok(Self {
             settings: settings.clone(),
             dsn,
             connection,
+            metrics,
         })
     }
 }
@@ -183,7 +190,7 @@ impl Manager for BigtableClientManager {
         // Clippy 0.1.73 complains about the `.map_err` being hard to read.
         #[allow(clippy::blocks_in_if_conditions)]
         if !client
-            .health_check(&self.settings.table_name)
+            .health_check(&self.settings.table_name, self.metrics.clone())
             .await
             .map_err(|e| {
                 debug!("🏊 Recycle requested (health). {:?}", e);
