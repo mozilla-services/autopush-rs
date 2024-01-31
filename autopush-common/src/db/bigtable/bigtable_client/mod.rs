@@ -212,7 +212,6 @@ impl BigTableClientImpl {
 
     /// Read a given row from the row key.
     async fn read_row(&self, row_key: &str) -> Result<Option<row::Row>, error::BigTableError> {
-        dbg!("🉑 Row key: {}", row_key);
         let req = self.read_row_request(row_key);
         let mut rows = self.read_rows(req).await?;
         Ok(rows.remove(row_key))
@@ -1468,7 +1467,6 @@ mod tests {
             panic!("Expected row");
         };
         assert_eq!(row.cells.len(), 1);
-        dbg!(&row.cells.keys());
         assert_eq!(row.cells.keys().next().unwrap(), qualifier.as_str());
         client.remove_user(&uaid).await
     }
