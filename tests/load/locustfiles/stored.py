@@ -11,6 +11,7 @@ import random
 import string
 import time
 import uuid
+from hashlib import sha1
 from json import JSONDecodeError
 from logging import Logger
 from typing import Any, TypeAlias
@@ -38,21 +39,10 @@ Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | Unre
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
 
 # Set to 'True' to view the verbose connection information for the web socket
-websocket.enableTrace(False)
-websocket.setdefaulttimeout(5)
+#websocket.enableTrace(False)
+#websocket.setdefaulttimeout(5)
 
-logger: Logger = logging.getLogger("AutopushUser")
-
-
-@events.init_command_line_parser.add_listener
-def _(parser: Any):
-    parser.add_argument(
-        "--wait_time",
-        type=str,
-        env_var="AUTOPUSH_WAIT_TIME",
-        help="AutopushUser wait time between tasks",
-        default="25, 30",
-    )
+logger: Logger = logging.getLogger("StoredNotifAutopushUser")
 
 
 @events.test_start.add_listener
@@ -60,7 +50,7 @@ def _(environment, **kwargs):
     environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
 
 
-class AutopushUser(FastHttpUser):
+class StoredNotifAutopushUser(FastHttpUser):
     REST_HEADERS: dict[str, str] = {"TTL": "60", "Content-Encoding": "aes128gcm"}
     WEBSOCKET_HEADERS: dict[str, str] = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) "
@@ -71,7 +61,7 @@ class AutopushUser(FastHttpUser):
         super().__init__(environment)
         self.channels: dict[str, str] = {}
         self.hello_record: HelloRecord | None = None
-        self.notification_records: list[NotificationRecord] = []
+        self.notification_records: dict[bytes, NotificationRecord] = {}
         self.register_records: list[RegisterRecord] = []
         self.unregister_records: list[RegisterRecord] = []
         self.uaid: str = ""
@@ -83,7 +73,7 @@ class AutopushUser(FastHttpUser):
 
     def on_start(self) -> Any:
         """Called when a User starts running."""
-        self.ws_greenlet = gevent.spawn(self.connect)
+        self.connect_and_register()
 
     def on_stop(self) -> Any:
         """Called when a User stops running."""
@@ -151,7 +141,7 @@ class AutopushUser(FastHttpUser):
         if close_status_code or close_msg:
             logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
 
-    @task(weight=98)
+    @task(weight=78)
     def send_notification(self):
         """Sends a notification to a registered endpoint while connected to Autopush."""
         if not self.ws or not self.channels:
@@ -168,8 +158,12 @@ class AutopushUser(FastHttpUser):
             logger.debug("Task 'subscribe' skipped.")
             return
 
+        if not self.ws.connected:
+            self.connect_and_hello()
         channel_id: str = str(uuid.uuid4())
         self.send_register(self.ws, channel_id)
+        self.recv_message()
+        self.ws.close()
 
     @task(weight=1)
     def unsubscribe(self):
@@ -178,25 +172,41 @@ class AutopushUser(FastHttpUser):
             logger.debug("Task 'unsubscribe' skipped.")
             return
 
+        if not self.ws.connected:
+            self.connect_and_hello()
         channel_id: str = random.choice(list(self.channels.keys()))
         self.send_unregister(self.ws, channel_id)
+        self.recv_message()
+        self.ws.close()
 
-    def connect(self) -> None:
+    @task(weight=20)
+    def connect_and_read(self) -> None:
+        self.connect_and_hello()
+        self.ws.close()
+
+    def connect_and_register(self) -> None:
         """Creates the WebSocketApp that will run indefinitely."""
         if not self.host:
             raise LocustError("'host' value is unavailable.")
 
-        self.ws = websocket.WebSocketApp(
-            self.host,
-            header=self.WEBSOCKET_HEADERS,
-            on_message=self.on_ws_message,
-            on_error=self.on_ws_error,
-            on_close=self.on_ws_close,
-            on_open=self.on_ws_open,
-        )
+        channel_count = random.randint(1, 3)
 
-        # If reconnect is set to 0 (default) the WebSocket will not reconnect.
-        self.ws.run_forever(reconnect=1)
+        self.ws = websocket.WebSocket()
+        self.connect_and_hello()
+        for i in range(channel_count):
+            self.subscribe()
+        self.ws.close()
+
+    def connect_and_hello(self) -> None:
+        self.ws.connect(self.host)
+        self.send_hello(self.ws)
+        self.recv_message()
+        # Read all Notifications previously sent (while Ack'ing each)
+        for _ in range(len(self.notification_records)):
+            self.recv_message()
+
+    def recv_message(self) -> None:
+        self.on_ws_message(self.ws, self.ws.recv())
 
     def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
@@ -217,7 +227,7 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
-        self.notification_records.append(record)
+        self.notification_records[sha1(data.encode()).digest()] = record
 
         with self.client.post(
             url=endpoint_url,
@@ -257,8 +267,8 @@ class AutopushUser(FastHttpUser):
                     decode_data: str = base64.urlsafe_b64decode(message_data + "===").decode(
                         "utf8"
                     )
-                    record = next(
-                        (r for r in self.notification_records if r.data == decode_data), None
+                    record = self.notification_records.pop(
+                        sha1(decode_data.encode()).digest(), None
                     )
                 case "register":
                     message = RegisterMessage(**message_dict)
