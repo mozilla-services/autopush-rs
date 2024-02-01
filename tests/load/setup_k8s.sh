@@ -20,6 +20,7 @@ AUTOPUSH_DIRECTORY=$DIRECTORY/tests/load/kubernetes-config
 MASTER_FILE=locust-master-controller.yml
 WORKER_FILE=locust-worker-controller.yml
 SERVICE_FILE=locust-master-service.yml
+DAEMONSET_FILE=locust-worker-daemonset.yml
 WORKER_KUBELET_CONFIG_FILE=worker-kubelet-config.yml
 
 LOCUST_IMAGE_TAG=$(git log -1 --pretty=format:%h)
@@ -85,6 +86,7 @@ SetupGksCluster()
     $KUBECTL apply -f $AUTOPUSH_DIRECTORY/$MASTER_FILE
     $KUBECTL apply -f $AUTOPUSH_DIRECTORY/$SERVICE_FILE
     $KUBECTL apply -f $AUTOPUSH_DIRECTORY/$WORKER_FILE
+    $KUBECTL apply -f $AUTOPUSH_DIRECTORY/$DAEMONSET_FILE
 
     echo -e "==================== Verify the Locust deployments & Services"
     $KUBECTL get pods -o wide
