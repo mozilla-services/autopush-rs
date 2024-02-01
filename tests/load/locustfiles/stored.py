@@ -45,23 +45,12 @@ websocket.setdefaulttimeout(5)
 logger: Logger = logging.getLogger("AutopushUser")
 
 
-@events.init_command_line_parser.add_listener
-def _(parser: Any):
-    parser.add_argument(
-        "--wait_time",
-        type=str,
-        env_var="AUTOPUSH_WAIT_TIME",
-        help="AutopushUser wait time between tasks",
-        default="25, 30",
-    )
-
-
 @events.test_start.add_listener
 def _(environment, **kwargs):
     environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
 
 
-class AutopushUser(FastHttpUser):
+class StoredNotifAutopushUser(FastHttpUser):
     REST_HEADERS: dict[str, str] = {"TTL": "60", "Content-Encoding": "aes128gcm"}
     WEBSOCKET_HEADERS: dict[str, str] = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) "
