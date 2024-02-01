@@ -48,13 +48,12 @@ class AutopushLoadTestShape(LoadTestShape):
     """
 
     MAX_RUN_TIME: int = os.environ.get("MAX_RUN_TIME", 600)  # 10 minutes
-
-    # Must match value defined in setup_k8s.sh
-    WORKER_COUNT: int = os.environ.get("WORKER_COUNT", 300)
-
-    # Number of users supported on a worker running on a n1-standard-2
-    USERS_PER_WORKER: int = os.environ.get("USERS_PER_WORKER", 500)
-
+    WORKER_COUNT: int = os.environ.get(
+        "WORKER_COUNT", 300
+    )  # Must match value defined in setup_k8s.sh
+    USERS_PER_WORKER: int = os.environ.get(
+        "USERS_PER_WORKER", 500
+    )  # Number of users supported on a worker running on a n1-standard-2
     MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
     user_classes: list[Type[User]] = [AutopushUser]
