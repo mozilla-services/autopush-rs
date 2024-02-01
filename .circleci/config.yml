@@ -137,7 +137,7 @@ jobs:
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build --features=emulator
+            cargo build --features=emulator --features=dual
       - run:
           name: Check formatting
           command: |
@@ -153,7 +153,7 @@ jobs:
           # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
           # the machine level memory and CPU which are far higher than the memory allocated to the docker
           # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=emulator --jobs=2
+          command: cargo test --features=emulator --features=dual --jobs=2
       - run:
           name: Integration tests (Bigtable)
           command: make integration-test
@@ -164,6 +164,16 @@ jobs:
           name: Integration tests (DynamoDB)
           command: make integration-test
           environment:
+            DB_DSN: grpc://localhost:8086
+            TEST_RESULTS_DIR: workspace/test-results
+      - run:
+          name: Integration tests (Dual Bigtable/DynamoDB)
+          command: make integration-test
+          environment:
+            RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
+            # PYTEST_ARGS: -sv
+            DB_DSN: dual
+            DB_SETTINGS: tests/integration/dual_test.json
             TEST_RESULTS_DIR: workspace/test-results
 #      - run:
 #          name: Integration tests (Dual Bigtable/DynamoDB)

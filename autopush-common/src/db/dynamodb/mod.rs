@@ -61,6 +61,7 @@ pub struct DdbClientImpl {
 
 impl DdbClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
+        debug!("🛢️DynamoDB Settings {:?}", db_settings);
         let db_client = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
