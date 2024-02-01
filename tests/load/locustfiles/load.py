@@ -4,6 +4,7 @@
 
 """Load test shape module."""
 import math
+import os
 from typing import Type
 
 import numpy
@@ -36,16 +37,19 @@ class QuadraticTrend:
 
 
 class AutopushLoadTestShape(LoadTestShape):
-    """A load test shape class for Autopush (Duration: 10 minutes, Users: 83300).
+    """A load test shape class for Autopush
+
+    A run is (Duration: MAX_RUN_TIME (600) seconds) of
+    (Users: WORKER_COUNT (300) * USERS_PER_WORKER (500))
 
     Note: The Shape class assumes that the workers can support the generated spawn rates. Should
     the number of available Locust workers change or should the Locust worker capacity change,
     the MAX_USERS should also be changed.
     """
 
-    MAX_RUN_TIME: int = 600  # 10 minutes
-    WORKER_COUNT: int = 300  # Must match value defined in setup_k8s.sh
-    USERS_PER_WORKER: int = 500  # Number of users supported on a worker running on a n1-standard-2
+    MAX_RUN_TIME: int = os.environ.get("MAX_RUN_TIME", 600)  # 10 minutes
+    WORKER_COUNT: int = os.environ.get("WORKER_COUNT", 300)  # Must match value defined in setup_k8s.sh
+    USERS_PER_WORKER: int = os.environ.get("USERS_PER_WORKER", 500)  # Number of users supported on a worker running on a n1-standard-2
     MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
     user_classes: list[Type[User]] = [AutopushUser]
