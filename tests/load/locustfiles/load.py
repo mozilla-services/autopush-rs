@@ -44,8 +44,8 @@ class AutopushLoadTestShape(LoadTestShape):
     """
 
     MAX_RUN_TIME: int = 600  # 10 minutes
-    WORKER_COUNT: int = 100  # Must match value defined in setup_k8s.sh
-    USERS_PER_WORKER: int = 1500  # Number of users supported on a c3d-standard-4 hosted worker
+    WORKER_COUNT: int = 150  # Must match value defined in setup_k8s.sh
+    USERS_PER_WORKER: int = 1000  # Number of users supported on a c3d-standard-4 hosted worker
     MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
     user_classes: list[Type[User]] = [AutopushUser]
