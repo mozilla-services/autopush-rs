@@ -123,11 +123,14 @@ impl DualClientImpl {
 impl DbClient for DualClientImpl {
     async fn add_user(&self, user: &User) -> DbResult<()> {
         let (target, is_primary) = self.allot(&user.uaid).await?;
-        if is_primary && self.write_to_secondary {
-            let _ = self.secondary.add_user(user).await?;
-        }
         debug!("⚖ adding user to {}...", target.name());
         let result = target.add_user(user).await?;
+        if is_primary && self.write_to_secondary {
+            let _ = self.secondary.add_user(user).await.map_err(|e| {
+                error!("⚡ Error: {:?}", e);
+                e
+            });
+        }
         debug!("⚖ User added...");
         Ok(result)
     }
@@ -135,10 +138,14 @@ impl DbClient for DualClientImpl {
     async fn update_user(&self, user: &User) -> DbResult<bool> {
         //  If the UAID is in the allowance, move them to the new data store
         let (target, is_primary) = self.allot(&user.uaid).await?;
+        let result = target.update_user(user).await?;
         if is_primary && self.write_to_secondary {
-            let _ = self.secondary.add_user(user).await?;
+            let _ = self.secondary.add_user(user).await.map_err(|e| {
+                error!("⚡ Error: {:?}", e);
+                e
+            });
         }
-        target.update_user(user).await
+        Ok(result)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -243,7 +250,7 @@ impl DbClient for DualClientImpl {
         let (target, is_primary) = self.allot(uaid).await?;
         let result = target.remove_message(uaid, sort_key).await?;
         if is_primary {
-            let _ = self.primary.remove_message(uaid, sort_key).await?;
+            let _ = self.secondary.remove_message(uaid, sort_key).await?;
         }
         Ok(result)
     }

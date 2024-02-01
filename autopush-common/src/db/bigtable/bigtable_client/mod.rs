@@ -557,6 +557,7 @@ impl BigtableDb {
         let (v, _stream) = r.into_future().await;
         // Since this should return no rows (with the row key set to a value that shouldn't exist)
         // the first component of the tuple should be None.
+        debug!("🉑 health check");
         Ok(v.is_none())
     }
 }

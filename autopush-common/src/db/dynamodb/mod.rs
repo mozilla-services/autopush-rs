@@ -619,6 +619,7 @@ impl DbClient for DdbClientImpl {
             .map_err(|e| DbError::General(format!("DynamoDB health check failure: {:?}", e)))?;
         if let Some(names) = result.table_names {
             // We found at least one table that matches the message_table
+            debug!("dynamodb ok");
             return Ok(!names.is_empty());
         }
         // Huh, we couldn't find a message table? That's a failure.
