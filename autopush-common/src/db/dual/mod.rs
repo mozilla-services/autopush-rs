@@ -180,7 +180,7 @@ impl DbClient for DualClientImpl {
         debug!("⚖ Adding channel to {}", target.name());
         let result = target.add_channel(uaid, channel_id).await;
         if is_primary {
-            let _ = self.secondary.add_channel(uaid, channel_id).await?;
+            let _ = self.secondary.add_channel(uaid, channel_id).await;
         }
         result
     }
@@ -189,7 +189,7 @@ impl DbClient for DualClientImpl {
         let (target, is_primary) = self.allot(uaid).await?;
         let result = target.add_channels(uaid, channels.clone()).await;
         if is_primary {
-            let _ = self.secondary.add_channels(uaid, channels).await?;
+            let _ = self.secondary.add_channels(uaid, channels).await;
         }
         result
     }
@@ -208,7 +208,7 @@ impl DbClient for DualClientImpl {
         let (target, is_primary) = self.allot(uaid).await?;
         let result = target.remove_channel(uaid, channel_id).await?;
         if is_primary {
-            let _ = self.secondary.remove_channel(uaid, channel_id).await?;
+            let _ = self.secondary.remove_channel(uaid, channel_id).await;
         }
         Ok(result)
     }
