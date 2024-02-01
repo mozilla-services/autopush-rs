@@ -84,11 +84,11 @@ class AutopushUser(FastHttpUser):
         return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
-        """Call when a websocket starts running."""
+        """Call when a User starts running."""
         self.ws_greenlet = gevent.spawn(self.connect)
 
     def on_stop(self) -> Any:
-        """Call when a websocket stops running."""
+        """Call when a User stops running."""
         if self.ws:
             for channel_id in self.channels.keys():
                 self.send_unregister(self.ws, channel_id)

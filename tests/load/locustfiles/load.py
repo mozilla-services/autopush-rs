@@ -68,13 +68,13 @@ class AutopushLoadTestShape(LoadTestShape):
         -------
         TickTuple | None
 
-        Distribution Parameters
-        -----------------------
-        user_count : Total user count
-        spawn_rate : Number of users to start/stop per second when changing
-            number of users
-        user_classes : None or a List of user classes to be spawned
-        None : Instruction to stop the load test
+        TickTuple Contained Parameters
+            user_count: Total user count
+            spawn_rate: Number of users to start/stop per second when changing
+                        number of users
+            user_classes: None or a List of user classes to be spawned
+
+        None: Instruction to stop the load test
         """
         run_time: int = self.get_run_time()
         if run_time > self.MAX_RUN_TIME:
