@@ -14,6 +14,8 @@ spec:
       labels:
         app: locust-worker
     spec:
+      nodeSelector:
+        node-pool: locust-workers
       containers:
         - name: locust-worker
           image: gcr.io/[PROJECT_ID]/locust-autopush:[LOCUST_IMAGE_TAG]
@@ -37,5 +39,3 @@ spec:
             requests:
               cpu: 1
               memory: 3Gi
-          nodeSelector:
-            node-pool: locust-workers

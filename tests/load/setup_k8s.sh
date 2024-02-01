@@ -99,7 +99,7 @@ do
     case $response in
         create) #Setup Kubernetes Cluster
             echo -e "==================== Creating the GKE cluster "
-            $GCLOUD container clusters create $CLUSTER --region $REGION --scopes $SCOPE --enable-autoscaling --scopes=logging-write,storage-ro --addons HorizontalPodAutoscaling,HttpLoadBalancing --enable-dataplane-v2
+            $GCLOUD container clusters create $CLUSTER --region $REGION --scopes $SCOPE --enable-autoscaling --scopes=logging-write,storage-ro --machine-type=$MACHINE_TYPE --addons HorizontalPodAutoscaling,HttpLoadBalancing --enable-dataplane-v2
             # Created 'locust-workers' node pool to enforce static policy (grants Guaranteed pods with integer CPU requests access to exclusive CPUs
             # https://kubernetes.io/docs/tasks/administer-cluster/cpu-management-policies/#static-policy
             $GCLOUD container node-pools create locust-workers --cluster=$CLUSTER --region $REGION --node-labels=node-pool=locust-workers --enable-autoscaling --total-min-nodes=1 --total-max-nodes=100 --scopes=$SCOPE,logging-write,storage-ro --machine-type=$MACHINE_TYPE --system-config-from-file=$AUTOPUSH_DIRECTORY/$WORKER_KUBELET_CONFIG_FILE
