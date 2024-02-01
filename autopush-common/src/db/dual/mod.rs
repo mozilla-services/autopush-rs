@@ -33,11 +33,15 @@ pub struct DualClientImpl {
     median: Option<u8>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct DualDbSettings {
     primary: DbSettings,
     secondary: DbSettings,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     write_to_secondary: bool,
     #[serde(default)]
     median: Option<String>,
@@ -172,14 +176,22 @@ impl DbClient for DualClientImpl {
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
         debug!("⚖ getting target");
-        let (target, _) = self.allot(uaid).await?;
+        let (target, is_primary) = self.allot(uaid).await?;
         debug!("⚖ Adding channel to {}", target.name());
-        target.add_channel(uaid, channel_id).await
+        let result = target.add_channel(uaid, channel_id).await;
+        if is_primary {
+            let _ = self.secondary.add_channel(uaid, channel_id).await?;
+        }
+        result
     }
 
     async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
-        let (target, _) = self.allot(uaid).await?;
-        target.add_channels(uaid, channels).await
+        let (target, is_primary) = self.allot(uaid).await?;
+        let result = target.add_channels(uaid, channels.clone()).await;
+        if is_primary {
+            let _ = self.secondary.add_channels(uaid, channels).await?;
+        }
+        result
     }
 
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
