@@ -141,7 +141,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         if close_status_code or close_msg:
             logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
 
-    @task(weight=98)
+    @task(weight=78)
     def send_notification(self):
         """Sends a notification to a registered endpoint while connected to Autopush."""
         if not self.ws or not self.channels:
