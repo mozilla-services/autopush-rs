@@ -87,6 +87,28 @@ fn timestamp_filter() -> Result<data::RowFilter, error::BigTableError> {
     Ok(timestamp_filter)
 }
 
+/// Escape bytes for RE values
+///
+/// Based off google-re2/perl's quotemeta function
+fn escape_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut vec = Vec::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        if !b.is_ascii_alphanumeric() && b != b'_' && (b & 128) == 0 {
+            if b == b'\0' {
+                // Special handling for null: Note that this special handling
+                // is not strictly required for RE2, but this quoting is
+                // required for other regexp libraries such as PCRE.
+                // Can't use "\\0" since the next character might be a digit.
+                vec.extend("\\x00".as_bytes());
+                continue;
+            }
+            vec.push(b'\\');
+        }
+        vec.push(b);
+    }
+    vec
+}
+
 /// Return a RowFilter limiting to a match of the specified `version`'s column
 /// value
 fn version_filter(version: &Uuid) -> data::RowFilter {
@@ -100,8 +122,7 @@ fn version_filter(version: &Uuid) -> data::RowFilter {
     cq_filter.set_column_qualifier_regex_filter("^version$".as_bytes().to_vec());
 
     let mut value_filter = data::RowFilter::default();
-    value_filter
-        .set_value_regex_filter(format!("^{}$", version.as_hyphenated()).as_bytes().to_vec());
+    value_filter.set_value_regex_filter(escape_bytes(version.as_bytes()));
 
     filter_set.push(family_filter);
     filter_set.push(cq_filter);
@@ -115,14 +136,9 @@ fn version_filter(version: &Uuid) -> data::RowFilter {
 
 /// Return a newly generated `version` column `Cell`
 fn new_version_cell(timestamp: SystemTime) -> cell::Cell {
-    let value = Uuid::new_v4()
-        .as_hyphenated()
-        .to_string()
-        .as_bytes()
-        .to_vec();
     cell::Cell {
         qualifier: "version".to_owned(),
-        value,
+        value: Uuid::new_v4().into_bytes().to_vec(),
         timestamp,
         ..Default::default()
     }
@@ -650,6 +666,11 @@ impl DbClient for BigTableClientImpl {
         };
 
         trace!("🉑 Found a record for {}", row_key);
+        let version = row
+            .take_required_cell("version")?
+            .value
+            .try_into()
+            .map_err(|e| DbError::Serialization(format!("Could not deserialize version: {e:?}")))?;
         let mut result = User {
             uaid: *uaid,
             connected_at: to_u64(
@@ -657,6 +678,7 @@ impl DbClient for BigTableClientImpl {
                 "connected_at",
             )?,
             router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
+            version: Some(Uuid::from_bytes(version)),
             ..Default::default()
         };
 
@@ -676,12 +698,6 @@ impl DbClient for BigTableClientImpl {
 
         if let Some(cell) = row.take_cell("current_timestamp") {
             result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
-        }
-
-        if let Some(cell) = row.take_cell("version") {
-            result.version = Some(Uuid::from_str(&to_string(cell.value, "version")?).map_err(
-                |e| DbError::Serialization(format!("Could not deserialize version: {e:?}")),
-            )?);
         }
 
         Ok(Some(result))
@@ -732,8 +748,9 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             });
         }
-        // Note: updating the version column isn't 100% necessary since this
-        // likely only adds new column that didn't previously exist
+        // Note: updating the version column isn't necessary here because this
+        // write only adds a new (or updates an existing) column with a 0 byte
+        // value
         row.add_cells(ROUTER_FAMILY, cells);
 
         self.write_row(row).await?;
@@ -1145,6 +1162,21 @@ mod tests {
         BigTableClientImpl::new(metrics, &settings)
     }
 
+    #[test]
+    fn escape_bytes_for_regex() {
+        let b = b"hi";
+        assert_eq!(escape_bytes(b), b.to_vec());
+        assert_eq!(escape_bytes(b"h.*i!"), b"h\\.\\*i\\!".to_vec());
+        let b = b"\xe2\x80\xb3";
+        assert_eq!(escape_bytes(b), b.to_vec());
+        // clippy::octal-escapes rightly discourages this ("\022") in a byte literal
+        let b = [b'f', b'o', b'\0', b'2', b'2', b'o'];
+        assert_eq!(escape_bytes(&b), b"fo\\x0022o".to_vec());
+        let b = b"\xc0";
+        assert_eq!(escape_bytes(b), b.to_vec());
+        assert_eq!(escape_bytes(b"\x03"), b"\\\x03".to_vec());
+    }
+
     #[actix_rt::test]
     async fn health_check() {
         let client = new_client().unwrap();
@@ -1160,10 +1192,7 @@ mod tests {
     async fn run_gauntlet() -> DbResult<()> {
         let client = new_client()?;
 
-        let connected_at = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let connected_at = ms_since_epoch();
 
         let uaid = Uuid::parse_str(TEST_USER).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();

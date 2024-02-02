@@ -182,6 +182,7 @@ pub struct User {
     //TODO: rename this to `last_notification_timestamp`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_timestamp: Option<u64>,
+    /// UUID4 version number for optimistic locking of updates on Bigtable
     pub version: Option<Uuid>,
 }
 
