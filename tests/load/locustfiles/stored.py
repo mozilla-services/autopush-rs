@@ -158,8 +158,10 @@ class StoredNotifAutopushUser(FastHttpUser):
             logger.debug("Task 'subscribe' skipped.")
             return
 
+        self.connect_and_hello()
         channel_id: str = str(uuid.uuid4())
         self.send_register(self.ws, channel_id)
+        self.recv_message()
 
     @task(weight=1)
     def unsubscribe(self):
@@ -168,18 +170,18 @@ class StoredNotifAutopushUser(FastHttpUser):
             logger.debug("Task 'unsubscribe' skipped.")
             return
 
+        self.connect_and_hello()
         channel_id: str = random.choice(list(self.channels.keys()))
         self.send_unregister(self.ws, channel_id)
+        self.recv_message()
 
     @task(weight=20)
-    def connect_and_read(self):
-        ws = self.ws = websocket.WebSocket()
-        self.ws.connect(self.host)
-        self.send_hello(ws)
-        # Read the Hello response, then all Notifications previously sent
-        # (while Ack'ing each)
-        for _ in range(1 + len(self.notification_records)):
-            self.on_ws_message(ws, ws.recv())
+    def connect_and_read(self) -> None:
+        self.ws = websocket.WebSocket()
+        self.connect_and_hello()
+        # Read all Notifications previously sent (while Ack'ing each)
+        for _ in range(len(self.notification_records)):
+            self.recv_message()
         self.ws.close()
 
     def connect_and_register(self) -> None:
@@ -189,14 +191,20 @@ class StoredNotifAutopushUser(FastHttpUser):
 
         channel_count = random.randint(1, 5)
 
-        ws = self.ws = websocket.WebSocket()
-        self.ws.connect(self.host)
-        self.send_hello(ws)
-        self.on_ws_message(ws, ws.recv())
+        self.ws = websocket.WebSocket()
+        self.connect_and_hello()
         for i in range(channel_count):
             self.subscribe()
-            self.on_ws_message(ws, ws.recv())
+            self.recv_message()
         self.ws.close()
+
+    def connect_and_hello(self) -> None:
+        self.ws.connect(self.host)
+        self.send_hello(self.ws)
+        self.recv_message()
+
+    def recv_message(self) -> None:
+        self.on_ws_message(self.ws, self.ws.recv())
 
     def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
