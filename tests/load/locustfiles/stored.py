@@ -11,6 +11,7 @@ import random
 import string
 import time
 import uuid
+from hashlib import sha1
 from json import JSONDecodeError
 from logging import Logger
 from typing import Any, TypeAlias
@@ -20,7 +21,6 @@ import websocket
 from args import parse_wait_time
 from exceptions import ZeroStatusRequestError
 from gevent import Greenlet
-from hashlib import sha1
 from locust import FastHttpUser, events, task
 from locust.exception import LocustError
 from models import (
@@ -35,15 +35,14 @@ from models import (
 from pydantic import ValidationError
 from websocket import WebSocket, WebSocketApp, WebSocketConnectionClosedException
 
-D = False
 Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | UnregisterMessage
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
 
 # Set to 'True' to view the verbose connection information for the web socket
-websocket.enableTrace(False)
-websocket.setdefaulttimeout(5)
+#websocket.enableTrace(False)
+#websocket.setdefaulttimeout(5)
 
-logger: Logger = logging.getLogger("AutopushUser")
+logger: Logger = logging.getLogger("StoredNotifAutopushUser")
 
 
 @events.test_start.add_listener
@@ -182,12 +181,7 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     @task(weight=20)
     def connect_and_read(self) -> None:
-        #self.ws = websocket.WebSocket()
         self.connect_and_hello()
-        # XXX:
-        # Ack's generally don't return a response: wait a short
-        # duration for the full Ack process to finish
-        #time.sleep(10)
         self.ws.close()
 
     def connect_and_register(self) -> None:
@@ -246,9 +240,6 @@ class StoredNotifAutopushUser(FastHttpUser):
                 raise ZeroStatusRequestError()
             if response.status_code != 201:
                 response.failure(f"{response.status_code=}, expected 201, {response.text=}")
-            record.location = response.headers.get("Location")
-        if D:
-            logger.info("added: %r %r location: %r" % (len(data), sha1(data.encode()).digest(), record.location))
 
     def recv(self, data: str) -> Message | None:
         """Verify the contents of an Autopush message and report response statistics to Locust.
@@ -279,9 +270,6 @@ class StoredNotifAutopushUser(FastHttpUser):
                     record = self.notification_records.pop(
                         sha1(decode_data.encode()).digest(), None
                     )
-                    if D and record:
-                        logger.info("found: %r %r (message_data len %r)" % (len(decode_data), sha1(decode_data.encode()).digest(), len(message_data)))
-
                 case "register":
                     message = RegisterMessage(**message_dict)
                     register_chid: str = message.channelID
@@ -304,10 +292,6 @@ class StoredNotifAutopushUser(FastHttpUser):
             else:
                 exception = f"There is no record of the '{message_type}' message"
                 logger.error(f"{exception}. Contents: {message}")
-                if D:
-                    logger.info("failed: %r %r (message_data len: %r)" % (len(decode_data), sha1(decode_data.encode()).digest(), len(message_data)))
-                    logger.info("location: " % ())
-
         except (ValidationError, JSONDecodeError) as error:
             exception = str(error)
 
