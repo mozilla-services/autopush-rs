@@ -69,11 +69,15 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.ws_greenlet: Greenlet | None = None
 
     def wait_time(self):
+        #logger.info("wait_time {}", self.environment.autopush_wait_time)
         return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
         """Called when a User starts running."""
-        self.ws_greenlet = gevent.spawn(self.connect_and_register)
+        #self.ws_greenlet = gevent.spawn(self.connect_and_register)
+        logger.info("start")
+        self.connect_and_register()
+        logger.info("finished starting")
 
     def on_stop(self) -> Any:
         """Called when a User stops running."""
@@ -144,6 +148,7 @@ class StoredNotifAutopushUser(FastHttpUser):
     @task(weight=78)
     def send_notification(self):
         """Sends a notification to a registered endpoint while connected to Autopush."""
+        logger.info("send_notif")
         if not self.ws or not self.channels:
             logger.debug("Task 'send_notification' skipped.")
             return
@@ -158,7 +163,8 @@ class StoredNotifAutopushUser(FastHttpUser):
             logger.debug("Task 'subscribe' skipped.")
             return
 
-        self.connect_and_hello()
+        if not self.ws.connected:
+            self.connect_and_hello()
         channel_id: str = str(uuid.uuid4())
         self.send_register(self.ws, channel_id)
         self.recv_message()
@@ -170,7 +176,8 @@ class StoredNotifAutopushUser(FastHttpUser):
             logger.debug("Task 'unsubscribe' skipped.")
             return
 
-        self.connect_and_hello()
+        if not self.ws.connected:
+            self.connect_and_hello()
         channel_id: str = random.choice(list(self.channels.keys()))
         self.send_unregister(self.ws, channel_id)
         self.recv_message()
@@ -186,16 +193,23 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     def connect_and_register(self) -> None:
         """Creates the WebSocketApp that will run indefinitely."""
+        logger.info("connect_and_reg")
         if not self.host:
             raise LocustError("'host' value is unavailable.")
 
-        channel_count = random.randint(1, 5)
+        channel_count = random.randint(1, 3)
+        logger.info("+connect_and_reg")
 
         self.ws = websocket.WebSocket()
+        logger.info("++connect_and_reg")
         self.connect_and_hello()
+        logger.info("+++connect_and_reg")
         for i in range(channel_count):
+            logger.info("++++connect_and_reg")
             self.subscribe()
-            self.recv_message()
+            logger.info("!onnect_and_reg")
+            logger.info("!!onnect_and_reg")
+        logger.info("!!!onnect_and_reg")
         self.ws.close()
 
     def connect_and_hello(self) -> None:

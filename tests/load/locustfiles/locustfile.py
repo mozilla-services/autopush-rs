@@ -38,7 +38,7 @@ Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | Unre
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
 
 # Set to 'True' to view the verbose connection information for the web socket
-websocket.enableTrace(False)
+#websocket.enableTrace(False)
 websocket.setdefaulttimeout(5)
 
 logger: Logger = logging.getLogger("AutopushUser")
