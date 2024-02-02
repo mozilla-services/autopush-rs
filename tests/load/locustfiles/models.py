@@ -40,6 +40,7 @@ class NotificationRecord(BaseModel):
 
     send_time: float
     data: str
+    location: str | None = None
 
 
 class RegisterMessage(BaseModel):
