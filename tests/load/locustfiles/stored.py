@@ -16,11 +16,9 @@ from json import JSONDecodeError
 from logging import Logger
 from typing import Any, TypeAlias
 
-import gevent
 import websocket
 from args import parse_wait_time
 from exceptions import ZeroStatusRequestError
-from gevent import Greenlet
 from locust import FastHttpUser, events, task
 from locust.exception import LocustError
 from models import (
@@ -38,9 +36,6 @@ from websocket import WebSocket, WebSocketApp, WebSocketConnectionClosedExceptio
 Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | UnregisterMessage
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
 
-# Set to 'True' to view the verbose connection information for the web socket
-#websocket.enableTrace(False)
-#websocket.setdefaulttimeout(5)
 
 logger: Logger = logging.getLogger("StoredNotifAutopushUser")
 
@@ -65,8 +60,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.register_records: list[RegisterRecord] = []
         self.unregister_records: list[RegisterRecord] = []
         self.uaid: str = ""
-        self.ws: WebSocketApp | None = None
-        self.ws_greenlet: Greenlet | None = None
+        self.ws: WebSocket = websocket.WebSocket()
 
     def wait_time(self):
         return self.environment.autopush_wait_time(self)
@@ -77,13 +71,9 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     def on_stop(self) -> Any:
         """Called when a User stops running."""
-        if self.ws:
-            for channel_id in self.channels.keys():
-                self.send_unregister(self.ws, channel_id)
-            self.ws.close()
-            self.ws = None
-        if self.ws_greenlet:
-            gevent.kill(self.ws_greenlet)
+        for channel_id in self.channels.keys():
+            self.send_unregister(self.ws, channel_id)
+        self.ws.close()
 
     def on_ws_open(self, ws: WebSocket) -> None:
         """Called when opening a WebSocket.
@@ -144,7 +134,7 @@ class StoredNotifAutopushUser(FastHttpUser):
     @task(weight=78)
     def send_notification(self):
         """Sends a notification to a registered endpoint while connected to Autopush."""
-        if not self.ws or not self.channels:
+        if not self.channels:
             logger.debug("Task 'send_notification' skipped.")
             return
 
@@ -154,10 +144,6 @@ class StoredNotifAutopushUser(FastHttpUser):
     @task(weight=1)
     def subscribe(self):
         """Subscribes a user to an Autopush channel."""
-        if not self.ws:
-            logger.debug("Task 'subscribe' skipped.")
-            return
-
         if not self.ws.connected:
             self.connect_and_hello()
         channel_id: str = str(uuid.uuid4())
@@ -168,7 +154,7 @@ class StoredNotifAutopushUser(FastHttpUser):
     @task(weight=1)
     def unsubscribe(self):
         """Unsubscribes a user from an Autopush channel."""
-        if not self.ws or not self.channels:
+        if not self.channels:
             logger.debug("Task 'unsubscribe' skipped.")
             return
 
@@ -205,7 +191,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         for _ in range(len(self.notification_records)):
             self.recv_message()
 
-    def recv_message(self) -> None:
+    def recv_message(self):
         self.on_ws_message(self.ws, self.ws.recv())
 
     def post_notification(self, endpoint_url: str) -> None:
@@ -362,7 +348,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.register_records.append(record)
         self.send(ws, message_type, data)
 
-    def send_unregister(self, ws: WebSocketApp, channel_id: str) -> None:
+    def send_unregister(self, ws: WebSocket, channel_id: str) -> None:
         """Send an 'unregister' message to Autopush.
 
         Args:
