@@ -206,13 +206,16 @@ impl DbClient for DualClientImpl {
         uaid: &Uuid,
         node_id: &str,
         connected_at: u64,
+        version: &Option<Uuid>,
     ) -> DbResult<bool> {
         let (target, is_primary) = self.allot(uaid).await?;
-        let mut result = target.remove_node_id(uaid, node_id, connected_at).await?;
+        let mut result = target
+            .remove_node_id(uaid, node_id, connected_at, version)
+            .await?;
         if is_primary {
             result = self
                 .secondary
-                .remove_node_id(uaid, node_id, connected_at)
+                .remove_node_id(uaid, node_id, connected_at, version)
                 .await?
                 || result;
         }
