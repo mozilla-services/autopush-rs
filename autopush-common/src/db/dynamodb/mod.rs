@@ -353,6 +353,7 @@ impl DbClient for DdbClientImpl {
         uaid: &Uuid,
         node_id: &str,
         connected_at: u64,
+        _version: &Option<Uuid>,
     ) -> DbResult<bool> {
         let input = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.simple().to_string() },
