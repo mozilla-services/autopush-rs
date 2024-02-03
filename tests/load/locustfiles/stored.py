@@ -71,6 +71,10 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     def on_stop(self) -> Any:
         """Called when a User stops running."""
+        if not self.channels:
+            return
+        if not self.ws.connected:
+            self.connect_and_hello()
         for channel_id in self.channels.keys():
             self.send_unregister(self.ws, channel_id)
         self.ws.close()
