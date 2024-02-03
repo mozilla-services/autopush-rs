@@ -53,9 +53,10 @@ impl DbClient for Arc<MockDbClient> {
         uaid: &Uuid,
         node_id: &str,
         connected_at: u64,
+        version: &Option<Uuid>,
     ) -> DbResult<bool> {
         Arc::as_ref(self)
-            .remove_node_id(uaid, node_id, connected_at)
+            .remove_node_id(uaid, node_id, connected_at, version)
             .await
     }
 

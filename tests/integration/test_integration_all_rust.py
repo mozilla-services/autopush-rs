@@ -1486,7 +1486,6 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=44)
     def test_msg_limit(self):
-        self.skipTest("known broken")
         client = yield self.quick_register()
         uaid = client.uaid
         yield client.disconnect()
