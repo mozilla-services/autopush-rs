@@ -287,10 +287,11 @@ impl BigTableClientImpl {
         req: bigtable::MutateRowRequest,
     ) -> Result<(), error::BigTableError> {
         let bigtable = self.pool.get().await?;
-        bigtable
-            .conn
-            .mutate_row_async(&req)
-            .map_err(error::BigTableError::Write)?
+        retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async { bigtable.conn.mutate_row(&req) },
+                retryable_describe_table_error(self.metrics.clone()),
+            )
             .await
             .map_err(error::BigTableError::Write)?;
         Ok(())
@@ -304,9 +305,12 @@ impl BigTableClientImpl {
     ) -> Result<(), error::BigTableError> {
         let bigtable = self.pool.get().await?;
         // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
-        let resp = bigtable
-            .conn
-            .mutate_rows(&req)
+        let resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async { bigtable.conn.mutate_rows(&req) },
+                retryable_describe_table_error(self.metrics.clone()),
+            )
+            .await
             .map_err(error::BigTableError::Write)?;
 
         // Scan the returned stream looking for errors.
