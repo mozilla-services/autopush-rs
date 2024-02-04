@@ -273,7 +273,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.ws.send(msg)
 
     def register(self, chid: str | None = None, key=None, status=200):
-        """Register."""
+        """Register a new endpoint for the provided ChannelID.
+        Optionally locked to the provided VAPID Public key.
+        """
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
 
@@ -291,7 +293,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return result
 
     def unregister(self, chid):
-        """Unregister."""
+        """Unregister the ChannelID, which should invalidate the associated Endpoint."""
         msg = json.dumps(dict(messageType="unregister", channelID=chid))
         log.debug("Send: %s", msg)
         self.ws.send(msg)
@@ -454,7 +456,9 @@ def _get_vapid(
     payload: dict[str, str | int] | None = None,
     endpoint: str | None = None,
 ) -> dict[str, str | bytes]:
-    """Get vapid key."""
+    """Get VAPID information, including the `Authorization` header string,
+    public and private keys.
+    """
     global CONNECTION_CONFIG
 
     if endpoint is None:
@@ -648,7 +652,7 @@ def setup_bt():
 
 
 def setup_dynamodb():
-    """Set up DynamoDB."""
+    """Set up DynamoDB emulator."""
     global DDB_PROCESS
 
     log.debug("🐍🟢 Starting dynamodb")
@@ -867,7 +871,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def quick_register(self):
-        """Quick register."""
+        """Perform a connection initialization, which includes a new connection,
+        `hello`, and channel registration.
+        """
         log.debug("🐍#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
@@ -1022,7 +1028,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_topic_no_delivery_on_reconnect(self):
-        """Test topic no delivery on reconnect."""
+        """Test that a topic message does not attempt to redeliver on reconnect."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1088,7 +1094,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_auth(self):
-        """Test basic delivery with invalid vapid auth."""
+        """Test basic delivery with invalid VAPID auth."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1101,7 +1107,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_signature(self):
-        """Test basic delivery with invalid signature."""
+        """Test that a basic delivery with invalid VAPID signature fails."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1116,7 +1122,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_ckey(self):
-        """Test basic delivery with invalid vapid ckey."""
+        """Test that basic delivery with invalid VAPID crypto-key fails."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
@@ -1126,7 +1132,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_delivery_repeat_without_ack(self):
-        """Test delivery repeat without ack."""
+        """Test that message delivery repeats if the client does not acknowledge messages."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1148,7 +1154,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_repeat_delivery_with_disconnect_without_ack(self):
-        """Test repeat delivery with disconnect without ack."""
+        """Test that message delivery repeats if the client disconnects
+        without acknowledging the message.
+        """
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data)
@@ -1164,7 +1172,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_multiple_delivery_repeat_without_ack(self):
-        """Test multiple delivery repeat without ack."""
+        """Test that the server will always try to deliver messages
+        until the client acknowledges them.
+        """
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -1194,7 +1204,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_expired(self):
-        """Test topic expired."""
+        """Test that the server will not deliver a message topic that has expired."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1213,7 +1223,11 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_multiple_delivery_with_single_ack(self):
-        """Test multiple delivery with single ack."""
+        """Test that the server provides the right unacknowledged messages
+        if the client only acknowledges one of the received messages.
+        Note: the `data` fields are constructed so that they return
+        `FirstMessage` and `OtherMessage`, which may be useful for debugging.
+        """
         data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
         data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
         client = yield self.quick_register()
@@ -1254,7 +1268,11 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_multiple_delivery_with_multiple_ack(self):
-        """Test multiple delivery with multiple ack."""
+        """Test that the server provides the no additional unacknowledged messages
+        if the client acknowledges both of the received messages.
+        Note: the `data` fields are constructed so that they return
+        `FirstMessage` and `OtherMessage`, which may be useful for debugging.
+        """
         data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "FirstMessage"
         data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "OtherMessage"
         client = yield self.quick_register()
@@ -1283,7 +1301,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_no_delivery_to_unregistered(self):
-        """Test no delivery to unregistered."""
+        """Test that the server does not try to deliver to unregistered channel IDs."""
         data = str(uuid.uuid4())
         client: Client = yield self.quick_register()
         assert client.channels
@@ -1305,7 +1323,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_0_connected(self):
-        """Test TTL 0 connected."""
+        """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, ttl=0)
@@ -1319,7 +1337,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_0_not_connected(self):
-        """Test TTL 0 not connected."""
+        """Test that a message with a TTL=0 and a recipient client that is not connected,
+        is not delivered when the client reconnects.
+        """
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1332,7 +1352,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_expired(self):
-        """Test TTL expired."""
+        """Test that messages with a TTL that has expired are not delivered
+        to a recipient client.
+        """
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1347,7 +1369,10 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=28)
     def test_ttl_batch_expired_and_good_one(self):
-        """Test TTL batch expired with one good result."""
+        """Test that if a batch of messages are received while the recipient is offline,
+        only messages that have not expired are sent to the recipient.
+        This test checks if the latest pending message is not expired.
+        """
         data = str(uuid.uuid4()).encode()
         data2 = base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode()
         print(data2)
@@ -1375,7 +1400,10 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=28)
     def test_ttl_batch_partly_expired_and_good_one(self):
-        """Test TTL batch partly expired with one good result."""
+        """Test that if a batch of messages are received while the recipient is offline,
+        only messages that have not expired are sent to the recipient.
+        This test checks if there is an equal mix of expired and unexpired messages.
+        """
         data = str(uuid.uuid4())
         data1 = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
@@ -1412,7 +1440,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_message_without_crypto_headers(self):
-        """Test message without crypto headers."""
+        """Test that a message without crypto headers, but has data is not accepted."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, use_header=False, status=400)
@@ -1421,7 +1449,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_empty_message_without_crypto_headers(self):
-        """Test empty message without crypto headers."""
+        """Test that a message without crypto headers, and does not have data, is accepted."""
         client = yield self.quick_register()
         result = yield client.send_notification(use_header=False)
         assert result is not None
@@ -1444,7 +1472,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_empty_message_with_crypto_headers(self):
-        """Test empty message with crypto headers."""
+        """Test that an empty message with crypto headers does not send either `headers`
+        or `data` as part of the incoming websocket `notification` message.
+        """
         client = yield self.quick_register()
         result = yield client.send_notification()
         assert result is not None
@@ -1551,7 +1581,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_with_bad_key(self):
-        """Test with bad key."""
+        """Test that a message registration request with bad VAPID public key is rejected."""
         chid = str(uuid.uuid4())
         client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
@@ -1564,7 +1594,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=44)
     def test_msg_limit(self):
-        """Test message limit."""
+        """Test that sent messages that are larger than our size limit are rejected."""
         client = yield self.quick_register()
         uaid = client.uaid
         yield client.disconnect()
@@ -1585,7 +1615,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_can_ping(self):
-        """Test can ping."""
+        """Test that the client can send an active ping message and get a valid response."""
         client = yield self.quick_register()
         yield client.ping()
         assert client.ws.connected
@@ -1655,7 +1685,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_update_on_connect(self):
-        """Test broadcast update on connect."""
+        """Test that the client receives any pending broadcast updates on connect."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
@@ -1680,7 +1710,9 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_update_on_connect_with_errors(self):
-        """Test broadcast update on connect with errors."""
+        """Test that the client can receive broadcast updates on connect
+        that may have produced internal errors.
+        """
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
@@ -1698,7 +1730,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     @inlineCallbacks
     def test_broadcast_subscribe(self):
-        """Test broadcast subscribe."""
+        """Test that the client can subscribe to new broadcasts."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
