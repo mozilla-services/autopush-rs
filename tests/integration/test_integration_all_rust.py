@@ -38,6 +38,7 @@ from .db import (
     create_message_table_ddb,
     get_router_table,
 )
+from .push_test_client import CustomPushTestClient, PushTestClient
 
 app = bottle.Bottle()
 logging.basicConfig(level=logging.DEBUG)
@@ -875,7 +876,7 @@ class TestRustWebPush(unittest.TestCase):
         `hello`, and channel registration.
         """
         log.debug("🐍#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
-        client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
+        client = PushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
         yield client.register()
@@ -900,7 +901,7 @@ class TestRustWebPush(unittest.TestCase):
             SkipTest("Skipping sentry test")
             return
         # Ensure bad data doesn't throw errors
-        client = CustomClient(self._ws_url)
+        client = CustomPushTestClient(self._ws_url)
         yield client.connect()
         yield client.hello()
         yield client.send_bad_data()
@@ -958,7 +959,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     def test_hello_echo(self):
         """Test hello echo."""
-        client = Client(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello()
         assert result != {}
@@ -969,7 +970,7 @@ class TestRustWebPush(unittest.TestCase):
     def test_hello_with_bad_prior_uaid(self):
         """Test hello with bad prior uaid."""
         non_uaid = uuid.uuid4().hex
-        client = Client(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello(uaid=non_uaid)
         assert result != {}
@@ -981,7 +982,7 @@ class TestRustWebPush(unittest.TestCase):
     def test_basic_delivery(self):
         """Test basic regular push message delivery."""
         data = str(uuid.uuid4())
-        client: Client = yield self.quick_register()
+        client: PushTestClient = yield self.quick_register()
         result = yield client.send_notification(data=data)
         # the following presumes that only `salt` is padded.
         clean_header = client._crypto_key.replace('"', "").rstrip("=")
@@ -1303,7 +1304,7 @@ class TestRustWebPush(unittest.TestCase):
     def test_no_delivery_to_unregistered(self):
         """Test that the server does not try to deliver to unregistered channel IDs."""
         data = str(uuid.uuid4())
-        client: Client = yield self.quick_register()
+        client: PushTestClient = yield self.quick_register()
         assert client.channels
         chan = list(client.channels.keys())[0]
 
@@ -1563,7 +1564,7 @@ class TestRustWebPush(unittest.TestCase):
         vapid = _get_vapid(private_key, claims)
         pk_hex = vapid["crypto-key"]
         chid = str(uuid.uuid4())
-        client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
+        client = PushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
         yield client.register(chid=chid, key=pk_hex)
@@ -1583,7 +1584,7 @@ class TestRustWebPush(unittest.TestCase):
     def test_with_bad_key(self):
         """Test that a message registration request with bad VAPID public key is rejected."""
         chid = str(uuid.uuid4())
-        client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
+        client = PushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
         result = yield client.register(chid=chid, key="af1883%&!@#*(", status=400)
@@ -1667,7 +1668,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
     def quick_register(self, connection_port=None):
         """Connect and register client."""
         conn_port = connection_port or MP_CONNECTION_PORT
-        client = Client("ws://localhost:{}/".format(conn_port))
+        client = PushTestClient("ws://localhost:{}/".format(conn_port))
         yield client.connect()
         yield client.hello()
         yield client.register()
@@ -1692,7 +1693,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0"}
-        client = Client(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello(services=old_ver)
         assert result != {}
@@ -1719,7 +1720,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        client = Client(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello(services=old_ver)
         assert result != {}
@@ -1737,7 +1738,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0"}
-        client = Client(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello()
         assert result != {}
@@ -1766,7 +1767,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        client = Client(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello()
         assert result != {}
@@ -1789,7 +1790,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver1"}
-        client = Client(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello(services=old_ver)
         assert result != {}
