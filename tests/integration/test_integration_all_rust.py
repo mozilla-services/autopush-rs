@@ -1801,7 +1801,8 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     def test_mobile_register_v1(self):
         """Test that the mobile "hello" request returns an unsigned endpoint
-        if no `key` is included in the body"""
+        if no `key` is included in the body
+        """
         global ENDPOINT_CONFIG
         endpoint_root = (
             f"{ENDPOINT_CONFIG['scheme']}://"
@@ -1822,7 +1823,8 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
     def test_mobile_register_v2(self):
         """Test that a signed endpoint is returned if a valid VAPID public
-        key is included in the body."""
+        key is included in the body.
+        """
         global EP_SERVER, ENDPOINT_CONFIG
         endpoint_root = (
             f"{ENDPOINT_CONFIG['scheme']}://"
