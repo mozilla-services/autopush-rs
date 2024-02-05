@@ -40,19 +40,19 @@ class AutopushLoadTestShape(LoadTestShape):
     """A load test shape class for Autopush
 
     A run is (Duration: MAX_RUN_TIME (600) seconds) of
-    (Users: WORKER_COUNT (300) * USERS_PER_WORKER (500))
+    (Users: WORKER_COUNT (150) * USERS_PER_WORKER (1000))
 
     Note: The Shape class assumes that the workers can support the generated spawn rates. Should
     the number of available Locust workers change or should the Locust worker capacity change,
-    the MAX_USERS should also be changed.
+    the WORKERS_COUNT and USERS_PER_WORKER values must be changed respectively.
     """
 
     MAX_RUN_TIME: int = int(os.environ.get("MAX_RUN_TIME", 600))  # 10 minutes
     WORKER_COUNT: int = int(
-        os.environ.get("WORKER_COUNT", 300)
+        os.environ.get("WORKER_COUNT", 150)
     )  # Must match value defined in setup_k8s.sh
     USERS_PER_WORKER: int = int(
-        os.environ.get("USERS_PER_WORKER", 500)
+        os.environ.get("USERS_PER_WORKER", 1000)
     )  # Number of users supported on a worker running on a n1-standard-2
     MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
@@ -73,7 +73,7 @@ class AutopushLoadTestShape(LoadTestShape):
                 user_classes: None or a List of user classes to be spawned
             None: Instruction to stop the load test
         """
-        run_time: int = self.get_run_time()
+        run_time: int = int(self.get_run_time())
         if run_time > self.MAX_RUN_TIME:
             return None
 
