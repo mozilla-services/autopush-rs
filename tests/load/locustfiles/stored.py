@@ -195,8 +195,12 @@ class StoredNotifAutopushUser(FastHttpUser):
         for _ in range(len(self.notification_records)):
             self.recv_message()
 
-    def recv_message(self):
-        self.on_ws_message(self.ws, self.ws.recv())
+    def recv_message(self) -> None:
+        data = self.ws.recv()
+        if not isinstance(data, str):
+            logger.error("recv_message unexpectedly recieved bytes")
+            data = str(data)
+        self.on_ws_message(self.ws, data)
 
     def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
