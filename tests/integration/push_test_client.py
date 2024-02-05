@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 
-class PushTestClient(object):
+class PushTestClient:
     """Push Test Client for integration tests."""
 
     def __init__(self, url) -> None:
@@ -46,18 +46,24 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         else:
             return f
 
-    def connect(self, connection_port: int | None = None):
-        """Establish a websocket connection to localhost at the provided `connection_port`."""
+    def connect(self, connection_port: int | None = None) -> None:
+        """Establish a websocket connection to localhost at the provided `connection_port`.
+
+        Parameters
+        ----------
+        connection_port : int, optional
+            A defined connection port, which is auto-assigned unless specified.
+        """
         url = self.url
-        if connection_port:  # pragma: nocover
+        if connection_port:  # pragma: no cover
             url = f"ws://localhost:{connection_port}/"
         self.ws = websocket.create_connection(url, header=self.headers)
-        return self.ws.connected if self.ws else None
+        return None
 
     def hello(self, uaid: str | None = None, services: list[str] | None = None):
         """Hello verification."""
         if not self.ws:
-            raise Exception("WebSocket client not available as expected")
+            raise Exception("WebSocket client not available as expected.")
 
         if self.channels:
             chans = list(self.channels.keys())
@@ -66,7 +72,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         hello_dict: dict[str, Any] = dict(messageType="hello", use_webpush=True, channelIDs=chans)
         if uaid or self.uaid:
             hello_dict["uaid"] = uaid or self.uaid
-        if services:  # pragma: nocover
+        if services:  # pragma: no cover
             hello_dict["broadcasts"] = services
         message = json.dumps(hello_dict)
         log.debug(f"Send: {message}")
@@ -76,40 +82,34 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         result = json.loads(reply)
         assert result["status"] == 200
         assert "-" not in result["uaid"]
-        if self.uaid and self.uaid != result["uaid"]:  # pragma: nocover
-            log.debug(
-                "Mismatch on re-using uaid. Old: %s, New: %s",
-                self.uaid,
-                result["uaid"],
-            )
+        if self.uaid and self.uaid != result["uaid"]:  # pragma: no cover
+            log.debug(f"Mismatch on re-using uaid. Old: {self.uaid}, New: {result['uaid']}")
             self.channels = {}
         self.uaid = result["uaid"]
         return result
 
-    def broadcast_subscribe(self, services: list[str]):
+    def broadcast_subscribe(self, services: list[str]) -> None:
         """Broadcast WebSocket subscribe."""
         if not self.ws:
-            raise Exception("WebSocket client not available as expected")
+            raise Exception("WebSocket client not available as expected.")
 
-        message = json.dumps(dict(messageType="broadcast_subscribe", broadcasts=services))
-        log.debug(
-            f"Send: {message}",
-        )
+        message: str = json.dumps(dict(messageType="broadcast_subscribe", broadcasts=services))
+        log.debug(f"Send: {message}")
         self.ws.send(message)
 
-    def register(self, chid: str | None = None, key=None, status=200):
+    def register(self, channel_id: str | None = None, key=None, status=200):
         """Register a new endpoint for the provided ChannelID.
         Optionally locked to the provided VAPID Public key.
         """
         if not self.ws:
-            raise Exception("WebSocket client not available as expected")
+            raise Exception("WebSocket client not available as expected.")
 
-        chid = chid or str(uuid.uuid4())
-        message = json.dumps(dict(messageType="register", channelID=chid, key=key))
+        chid: str = channel_id or str(uuid.uuid4())
+        message: str = json.dumps(dict(messageType="register", channelID=chid, key=key))
         log.debug(f"Send: {message}")
         self.ws.send(message)
         rcv = self.ws.recv()
-        result = json.loads(rcv)
+        result: Any = json.loads(rcv)
         log.debug(f"Recv: {result}")
         assert result["status"] == status
         assert result["channelID"] == chid
@@ -119,11 +119,14 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
     def unregister(self, chid):
         """Unregister the ChannelID, which should invalidate the associated Endpoint."""
-        message = json.dumps(dict(messageType="unregister", channelID=chid))
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected")
+
+        message: str = json.dumps(dict(messageType="unregister", channelID=chid))
         log.debug(f"Send: {message}")
         self.ws.send(message)
         result = json.loads(self.ws.recv())
-        log.debug("Recv: %s", result)
+        log.debug(f"Recv: {result}")
         return result
 
     def delete_notification(self, channel, message=None, status=204):
@@ -184,11 +187,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug(f"{method} body: {body}")
         log.debug(f"  headers: {headers}")
         resp = requests.request(method=method, url=url.geturl(), data=body, headers=headers)
-        log.debug("%s Response (%s): %s", method, resp.status_code, resp.text)
-        assert resp.status_code == status, "Expected {%d}, got %d" % (
-            status,
-            resp.status_code,
-        )
+        log.debug(f"{method} Response ({resp.status_code}): {resp.text}")
+        assert resp.status_code == status, f"Expected {status}, got {resp.status_code}"
         self.notif_response = resp
         location = resp.headers.get("Location", None)
         log.debug(f"Response Headers: {resp.headers}")
@@ -211,18 +211,21 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
     def get_notification(self, timeout=1):
         """Get notification."""
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected")
+
         orig_timeout = self.ws.gettimeout()
         self.ws.settimeout(timeout)
         try:
             d = self.ws.recv()
-            log.debug("Recv: %s", d)
+            log.debug(f"Recv: {d}")
             return json.loads(d)
         except Exception:
             return None
         finally:
             self.ws.settimeout(orig_timeout)
 
-    def get_broadcast(self, timeout=1):  # pragma: nocover
+    def get_broadcast(self, timeout=1):  # pragma: no cover
         """Get broadcast."""
         orig_timeout = self.ws.gettimeout()
         self.ws.settimeout(timeout)
@@ -232,7 +235,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             result = json.loads(d)
             assert result.get("messageType") == "broadcast"
             return result
-        except Exception as ex:  # pragma: nocover
+        except Exception as ex:  # pragma: no cover
             log.error(f"Error: {ex}")
             return None
         finally:
@@ -240,6 +243,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
     def ping(self):
         """Test ping."""
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected.")
+        
         log.debug("Send: %s", "{}")
         self.ws.send("{}")
         result = self.ws.recv()
@@ -247,32 +253,34 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         assert result == "{}"
         return result
 
-    def ack(self, channel, version):
+    def ack(self, channel, version) -> None:
         """Acknowledge message send."""
-        msg = json.dumps(
+        message: str = json.dumps(
             dict(
                 messageType="ack",
                 updates=[dict(channelID=channel, version=version)],
             )
         )
-        log.debug("Send: %s", msg)
-        self.ws.send(msg)
+        if self.ws:
+            log.debug(f"Send: {message}")
+            self.ws.send(message)
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         """Disconnect from the application websocket."""
-        self.ws.close()
+        if self.ws:
+            self.ws.close()
 
-    def sleep(self, duration: int):  # pragma: nocover
+    def sleep(self, duration: int) -> None:  # pragma: no cover
         """Sleep wrapper function."""
         time.sleep(duration)
 
     def wait_for(self, func):
         """Wait several seconds for a function to return True"""
         times = 0
-        while not func():  # pragma: nocover
+        while not func():  # pragma: no cover
             time.sleep(1)
             times += 1
-            if times > 9:  # pragma: nocover
+            if times > 9:  # pragma: no cover
                 break
 
 

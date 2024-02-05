@@ -1298,7 +1298,7 @@ class TestRustWebPush(unittest.TestCase):
         client = PushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
-        yield client.register(chid=chid, key=pk_hex)
+        yield client.register(channel_id=chid, key=pk_hex)
 
         # Send an update with a properly formatted key.
         yield client.send_notification(vapid=vapid)
@@ -1318,7 +1318,7 @@ class TestRustWebPush(unittest.TestCase):
         client = PushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
-        result = yield client.register(chid=chid, key="af1883%&!@#*(", status=400)
+        result = yield client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
         assert result["status"] == 400
 
         yield self.shut_down(client)
