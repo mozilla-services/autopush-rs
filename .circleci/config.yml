@@ -171,16 +171,9 @@ jobs:
           command: make integration-test
           environment:
             RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
-            # PYTEST_ARGS: -sv
             DB_DSN: dual
             DB_SETTINGS: tests/integration/dual_test.json
             TEST_RESULTS_DIR: workspace/test-results
-#      - run:
-#          name: Integration tests (Dual Bigtable/DynamoDB)
-#          command: make integration-test
-#          environment:
-#            DB_DSN: dual
-#            TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
       - save_cache:
@@ -320,7 +313,6 @@ jobs:
             docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
 workflows:
-  version: 2
 
   build-test-deploy:
     jobs:
