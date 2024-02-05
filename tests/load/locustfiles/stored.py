@@ -46,6 +46,8 @@ def _(environment, **kwargs):
 
 
 class StoredNotifAutopushUser(FastHttpUser):
+    """StoredNotifAutopushUser class."""
+
     REST_HEADERS: dict[str, str] = {"TTL": "60", "Content-Encoding": "aes128gcm"}
     WEBSOCKET_HEADERS: dict[str, str] = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) "
@@ -63,14 +65,15 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.ws: WebSocket = websocket.WebSocket()
 
     def wait_time(self):
+        """Return the autopush wait time."""
         return self.environment.autopush_wait_time(self)
 
     def on_start(self) -> Any:
-        """Called when a User starts running."""
+        """Call when a User starts running."""
         self.connect_and_register()
 
     def on_stop(self) -> Any:
-        """Called when a User stops running."""
+        """Call when a User stops running."""
         if not self.channels:
             return
         if not self.ws.connected:
@@ -80,19 +83,22 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.ws.close()
 
     def on_ws_open(self, ws: WebSocket) -> None:
-        """Called when opening a WebSocket.
+        """Call when opening a WebSocket.
 
-        Args:
-            ws: WebSocket class object
+        Parameters
+        ----------
+        ws : WebSocket
         """
         self.send_hello(ws)
 
     def on_ws_message(self, ws: WebSocket, data: str) -> None:
-        """Called when received data from a WebSocket.
+        """Call when received data from a WebSocket.
 
-        Args:
-            ws: WebSocket class object
-            data: utf-8 data received from the server
+        Parameters
+        ----------
+        ws : WebSocket
+        data : str
+            utf-8 data received from the server
         """
         message: Message | None = self.recv(data)
         if isinstance(message, HelloMessage):
@@ -105,12 +111,13 @@ class StoredNotifAutopushUser(FastHttpUser):
             del self.channels[message.channelID]
 
     def on_ws_error(self, ws: WebSocket, error: Exception) -> None:
-        """Called when there is a WebSocket error or if an exception is raised in a WebSocket
+        """Call when there is a WebSocket error or if an exception is raised in a WebSocket
         callback function.
 
-        Args:
-            ws: WebSocket class object
-            error: Exception object
+        Parameters
+        ----------
+        ws : WebSocket
+        error : Exception
         """
         logger.error(str(error))
 
@@ -125,19 +132,22 @@ class StoredNotifAutopushUser(FastHttpUser):
     def on_ws_close(
         self, ws: WebSocket, close_status_code: int | None, close_msg: str | None
     ) -> None:
-        """Called when closing a WebSocket.
+        """Call when closing a WebSocket.
 
-        Args:
-            ws: WebSocket class object
-            close_status_code: WebSocket close status
-            close_msg: WebSocket close message
+        Parameters
+        ----------
+        ws: WebSocket
+        close_status_code : int | None
+            WebSocket close status
+        close_msg : str | None
+            ebSocket close message
         """
         if close_status_code or close_msg:
             logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
 
     @task(weight=78)
     def send_notification(self):
-        """Sends a notification to a registered endpoint while connected to Autopush."""
+        """Send a notification to a registered endpoint while connected to Autopush."""
         if not self.channels:
             logger.debug("Task 'send_notification' skipped.")
             return
@@ -147,7 +157,7 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     @task(weight=1)
     def subscribe(self):
-        """Subscribes a user to an Autopush channel."""
+        """Subscribe a user to an Autopush channel."""
         if not self.ws.connected:
             self.connect_and_hello()
         channel_id: str = str(uuid.uuid4())
@@ -157,7 +167,7 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     @task(weight=1)
     def unsubscribe(self):
-        """Unsubscribes a user from an Autopush channel."""
+        """Unsubscribe a user from an Autopush channel."""
         if not self.channels:
             logger.debug("Task 'unsubscribe' skipped.")
             return
@@ -171,11 +181,12 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     @task(weight=20)
     def connect_and_read(self) -> None:
+        """connect_and_hello then disconnect"""
         self.connect_and_hello()
         self.ws.close()
 
     def connect_and_register(self) -> None:
-        """Creates the WebSocketApp that will run indefinitely."""
+        """Initialize the WebSocket and Hello/Register initial channels"""
         if not self.host:
             raise LocustError("'host' value is unavailable.")
 
@@ -188,6 +199,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.ws.close()
 
     def connect_and_hello(self) -> None:
+        """Connect the WebSocket and complete the initial Hello handshake"""
         self.ws.connect(self.host)
         self.send_hello(self.ws)
         self.recv_message()
@@ -196,6 +208,7 @@ class StoredNotifAutopushUser(FastHttpUser):
             self.recv_message()
 
     def recv_message(self) -> None:
+        """Receive and handle data from the WebSocket"""
         data = self.ws.recv()
         if not isinstance(data, str):
             logger.error("recv_message unexpectedly recieved bytes")
@@ -205,11 +218,16 @@ class StoredNotifAutopushUser(FastHttpUser):
     def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
 
-        Args:
-            endpoint_url: A channel destination endpoint url
-        Raises:
-            ZeroStatusRequestError: In the event that Locust experiences a network issue while
-                                    sending a notification.
+        Parameters
+        ----------
+        endpoint_url : str
+            A channel destination endpoint url
+
+        Raises
+        ------
+        ZeroStatusRequestError
+            In the event that Locust experiences a network issue while
+            sending a notification.
         """
         message_type: str = "notification"
         # Prefix random message with 'TestData' to more easily differentiate the payload
@@ -238,8 +256,20 @@ class StoredNotifAutopushUser(FastHttpUser):
     def recv(self, data: str) -> Message | None:
         """Verify the contents of an Autopush message and report response statistics to Locust.
 
-        Args:
-            data: utf-8 data received from the server
+        Parameters
+        ----------
+        data : str
+            utf-8 data received from the server
+
+        Returns
+        -------
+        Message | None
+            TypeAlias for multiple Message children
+            HelloMessage | NotificationMessage | RegisterMessage | UnregisterMessage
+
+        Raises
+        ------
+        ValidationError | JSONDecodeError
         """
         recv_time: float = time.perf_counter()
         exception: str | None = None
@@ -306,11 +336,16 @@ class StoredNotifAutopushUser(FastHttpUser):
         After sending a notification, the client must also send an 'ack' to the server
         to confirm receipt.
 
-        Args:
-            ws: WebSocket class object
-            channel_id: Notification message channel ID
-            version: Notification message version
-        Raises:
+        Parameters
+        ----------
+        ws: WebSocket
+        channel_id : str
+            Notification message channel ID
+        version : str
+            Notification message version
+
+        Raises
+        ------
             WebSocketException: Error raised by the WebSocket client
         """
         message_type: str = "ack"
@@ -326,10 +361,15 @@ class StoredNotifAutopushUser(FastHttpUser):
         Connections must say hello after connecting to the server, otherwise the connection is
         quickly dropped.
 
-        Args:
-            ws: WebSocket class object
-        Raises:
-            WebSocketException: Error raised by the WebSocket client
+        Parameters
+        ----------
+        ws : WebSocket
+            Websocket class object
+
+        Raises
+        ------
+        WebSocketException
+            Error raised by the WebSocket client
         """
         message_type: str = "hello"
         data: dict[str, Any] = dict(
@@ -344,11 +384,15 @@ class StoredNotifAutopushUser(FastHttpUser):
     def send_register(self, ws: WebSocket, channel_id: str) -> None:
         """Send a 'register' message to Autopush.
 
-        Args:
-            ws: WebSocket class object
-            channel_id: Notification message channel ID
-        Raises:
-            WebSocketException: Error raised by the WebSocket client
+        Parameters
+        ----------
+        ws : WebSocket
+        channel_id : str
+            Notification message channel ID
+
+        Raises
+        ------
+        WebSocketException
         """
         message_type: str = "register"
         data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
@@ -359,11 +403,15 @@ class StoredNotifAutopushUser(FastHttpUser):
     def send_unregister(self, ws: WebSocket, channel_id: str) -> None:
         """Send an 'unregister' message to Autopush.
 
-        Args:
-            ws: WebSocket class object
-            channel_id: Notification message channel ID
-        Raises:
-            WebSocketException: Error raised by the WebSocket client
+        Parameters
+        ----------
+        ws : WebSocket
+        channel_id : str
+            Notification message channel ID
+
+        Raises
+        ------
+        WebSocketException
         """
         message_type: str = "unregister"
         data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
@@ -374,12 +422,17 @@ class StoredNotifAutopushUser(FastHttpUser):
     def send(self, ws: WebSocket | WebSocketApp, message_type: str, data: dict[str, Any]) -> None:
         """Send a message to Autopush.
 
-        Args:
-            ws: WebSocket class object
-            message_type: Message type. Examples: 'ack', 'hello', 'register' or 'unregister'
-            data: Message data
-        Raises:
-            WebSocketException: Error raised by the WebSocket client
+        Parameters
+        ----------
+        ws : WebSocket
+        message_type : str
+            Examples: 'ack', 'hello', 'register' or 'unregister'
+        data : dict[str, Any]
+            Message data
+
+        Raises
+        ------
+        WebSocketException
         """
         try:
             ws.send(json.dumps(data))
