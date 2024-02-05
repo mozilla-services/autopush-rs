@@ -27,10 +27,17 @@ class QuadraticTrend:
         )
 
     def calculate_users(self, run_time: int) -> int:
-        """Determined the number of active users given a run time.
+        """Determine the number of active users given a run time.
 
-        Returns:
-            int: The number of users
+        Parameters
+        ----------
+        run_time : int
+            Run time in seconds
+
+        Returns
+        -------
+        run_time : int
+            The number of users
         """
         return int(round((self.a * math.pow(run_time, 2)) + (self.b * run_time) + self.c))
 
@@ -57,13 +64,17 @@ class AutopushLoadTestShape(LoadTestShape):
     def tick(self) -> TickTuple | None:
         """Override defining the desired distribution for Autopush load testing.
 
-        Returns:
-            TickTuple: Distribution parameters
-                user_count: Total user count
-                spawn_rate: Number of users to start/stop per second when changing
-                            number of users
-                user_classes: None or a List of user classes to be spawned
-            None: Instruction to stop the load test
+        Returns
+        -------
+        TickTuple | None
+
+        TickTuple Contained Parameters
+            user_count: Total user count
+            spawn_rate: Number of users to start/stop per second when changing
+                        number of users
+            user_classes: None or a List of user classes to be spawned
+
+        None: Instruction to stop the load test
         """
         run_time: int = self.get_run_time()
         if run_time > self.MAX_RUN_TIME:

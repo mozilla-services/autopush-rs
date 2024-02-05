@@ -1,5 +1,7 @@
+"""Module to process configuration from cli arguments and environment
+variables.
+"""
 #! env python3
-
 import argparse
 import os
 
@@ -35,6 +37,7 @@ def config(env_args: os._Environ) -> argparse.Namespace:
 
 
 def main():
+    """Process environment arguments/variables and set key."""
     args = config(os.environ)
     if isinstance(args.key, list):
         key = args.key[0]
