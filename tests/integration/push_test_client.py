@@ -227,6 +227,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
     def get_broadcast(self, timeout=1):  # pragma: no cover
         """Get broadcast."""
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected")
+
         orig_timeout = self.ws.gettimeout()
         self.ws.settimeout(timeout)
         try:
@@ -245,7 +248,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         """Test ping."""
         if not self.ws:
             raise Exception("WebSocket client not available as expected.")
-        
+
         log.debug("Send: %s", "{}")
         self.ws.send("{}")
         result = self.ws.recv()
@@ -255,20 +258,24 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
     def ack(self, channel, version) -> None:
         """Acknowledge message send."""
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected.")
+
         message: str = json.dumps(
             dict(
                 messageType="ack",
                 updates=[dict(channelID=channel, version=version)],
             )
         )
-        if self.ws:
-            log.debug(f"Send: {message}")
-            self.ws.send(message)
+        log.debug(f"Send: {message}")
+        self.ws.send(message)
 
     def disconnect(self) -> None:
         """Disconnect from the application websocket."""
-        if self.ws:
-            self.ws.close()
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected.")
+
+        self.ws.close()
 
     def sleep(self, duration: int) -> None:  # pragma: no cover
         """Sleep wrapper function."""
