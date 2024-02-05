@@ -59,6 +59,8 @@ class ItemNotFound(Exception):
 
 
 class DynamoDBResource(threading.local):
+    """DynamoDBResource class subclassing threading.local"""
+
     def __init__(self, **kwargs):
         conf = kwargs
         if not conf.get("endpoint_url"):
@@ -87,7 +89,7 @@ class DynamoDBResource(threading.local):
     def get_latest_message_tablenames(
         self, prefix: str = "message", previous: int = 1
     ) -> list[str]:
-        """Fetches the name of the last message table"""
+        """Fetch the name of the last message table."""
         client = self._resource.meta.client
         paginator = client.get_paginator("list_tables")
         tables = []
@@ -102,11 +104,13 @@ class DynamoDBResource(threading.local):
         return tables[0 - previous :]
 
     def get_latest_message_tablename(self, prefix: str = "message") -> str:
-        """Fetches the name of the last message table"""
+        """Fetch the name of the last message table."""
         return self.get_latest_message_tablenames(prefix=prefix, previous=1)[0]
 
 
 class DynamoDBTable(threading.local):
+    """DynamoDBTable class."""
+
     def __init__(self, ddb_resource: DynamoDBResource, *args, **kwargs) -> None:
         self._table = ddb_resource.Table(*args, **kwargs)
 
@@ -118,13 +122,24 @@ class DynamoDBTable(threading.local):
 def generate_hash(key: bytes, payload: bytes) -> str:
     """Generate a HMAC for the uaid using the secret
 
-    :returns: HMAC hash and the nonce used as a tuple (nonce, hash).
+    :param key: key
+    :type: bytes
+    :param payload: payload
+    :type: bytes
+    :returns: A hexadecimal string of the HMAC hash and the nonce, used as a tuple (nonce, hash)
+    :rtype: str
     """
     h = hmac.new(key=key, msg=payload, digestmod=hashlib.sha256)
     return h.hexdigest()
 
 
 def normalize_id(ident: uuid.UUID | str) -> str:
+    """Normalize and return ID as string
+
+    :param ident: uuid.UUID or str identifier
+    :returns: string representation of UUID
+    :raises ValueError: raises an exception if UUID is invalid
+    """
     if isinstance(ident, uuid.UUID):
         return str(ident)
     try:
@@ -134,9 +149,10 @@ def normalize_id(ident: uuid.UUID | str) -> str:
 
 
 def base64url_encode(value: bytes | str) -> str:
+    """Encode an unpadded Base64 URL-encoded string per RFC 7515."""
     if isinstance(value, str):
         value = bytes(value, "utf-8")
-    """Encodes an unpadded Base64 URL-encoded string per RFC 7515."""
+
     return base64.urlsafe_b64encode(value).strip(b"=").decode("utf-8")
 
 
@@ -155,9 +171,7 @@ MAX_DDB_SESSIONS = 50  # constants.THREAD_POOL_SIZE
 
 
 def get_month(delta: int = 0) -> datetime.date:
-    """Basic helper function to get a datetime.date object iterations months
-    ahead/behind of now.
-    """
+    """Get a datetime.date object iterations months ahead/behind of now."""
     new = last = datetime.date.today()
     # Move until we hit a new month, this avoids having to manually
     # check year changes as we push forward or backward since the Python
@@ -308,7 +322,8 @@ def get_router_table(
 
 def track_provisioned(func: Callable[..., T]) -> Callable[..., T]:
     """Tracks provisioned exceptions and increments a metric for them named
-    after the function decorated"""
+    after the function decorated.
+    """
 
     @wraps(func)
     def wrapper(self, *args, **kwargs):

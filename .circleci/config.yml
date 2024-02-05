@@ -74,7 +74,7 @@ jobs:
             pip install --upgrade pip
             pip install poetry
       - run:
-          name: isort, black, flake8 and mypy
+          name: isort, black, flake8, pydocstyle and mypy
           command: make lint
 
   test:
@@ -84,7 +84,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         environment:
-            RUST_BACKTRACE: 1
+          RUST_BACKTRACE: 1
       - image: amazon/dynamodb-local:latest
         auth:
           username: $DOCKER_USER
