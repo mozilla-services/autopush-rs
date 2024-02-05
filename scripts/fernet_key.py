@@ -1,6 +1,4 @@
-"""
-A command-line utility that generates endpoint encryption keys.
-"""
+"""A command-line utility that generates endpoint encryption keys."""
 
 from __future__ import print_function
 from cryptography.fernet import Fernet

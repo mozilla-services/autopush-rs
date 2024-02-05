@@ -10,8 +10,8 @@ CLUSTER='autopush-locust-load-test'
 TARGET='https://updates-autopush.stage.mozaws.net'
 SCOPE='https://www.googleapis.com/auth/cloud-platform'
 REGION='us-central1'
-WORKER_COUNT=300
-MACHINE_TYPE='n1-standard-2' # 2 CPUs + 7.50GB Memory
+WORKER_COUNT=150
+MACHINE_TYPE='c3d-standard-4' # 4 CPUs + 16GB Memory
 BOLD=$(tput bold)
 NORM=$(tput sgr0)
 DIRECTORY=$(pwd)
@@ -20,6 +20,8 @@ AUTOPUSH_DIRECTORY=$DIRECTORY/tests/load/kubernetes-config
 MASTER_FILE=locust-master-controller.yml
 WORKER_FILE=locust-worker-controller.yml
 SERVICE_FILE=locust-master-service.yml
+DAEMONSET_FILE=locust-worker-daemonset.yml
+WORKER_KUBELET_CONFIG_FILE=worker-kubelet-config.yml
 
 LOCUST_IMAGE_TAG=$(git log -1 --pretty=format:%h)
 echo "Image tag for locust is set to: ${LOCUST_IMAGE_TAG}"
@@ -84,6 +86,7 @@ SetupGksCluster()
     $KUBECTL apply -f $AUTOPUSH_DIRECTORY/$MASTER_FILE
     $KUBECTL apply -f $AUTOPUSH_DIRECTORY/$SERVICE_FILE
     $KUBECTL apply -f $AUTOPUSH_DIRECTORY/$WORKER_FILE
+    $KUBECTL apply -f $AUTOPUSH_DIRECTORY/$DAEMONSET_FILE
 
     echo -e "==================== Verify the Locust deployments & Services"
     $KUBECTL get pods -o wide
@@ -98,13 +101,16 @@ do
     case $response in
         create) #Setup Kubernetes Cluster
             echo -e "==================== Creating the GKE cluster "
-            # The total-max-nodes = WORKER_COUNT + 1 (MASTER)
-            $GCLOUD container clusters create $CLUSTER --region $REGION --scopes $SCOPE --enable-autoscaling --total-min-nodes "1" --total-max-nodes "301" --scopes=logging-write,storage-ro --addons HorizontalPodAutoscaling,HttpLoadBalancing  --machine-type $MACHINE_TYPE
+            $GCLOUD container clusters create $CLUSTER --region $REGION --scopes $SCOPE --enable-autoscaling --scopes=logging-write,storage-ro --machine-type=$MACHINE_TYPE --addons HorizontalPodAutoscaling,HttpLoadBalancing --enable-dataplane-v2
+            # Created 'locust-workers' node pool to enforce static policy (grants Guaranteed pods with integer CPU requests access to exclusive CPUs
+            # https://kubernetes.io/docs/tasks/administer-cluster/cpu-management-policies/#static-policy
+            $GCLOUD container node-pools create locust-workers --cluster=$CLUSTER --region $REGION --node-labels=node-pool=locust-workers --enable-autoscaling --total-min-nodes=1 --total-max-nodes=75 --scopes=$SCOPE,logging-write,storage-ro --machine-type=$MACHINE_TYPE --system-config-from-file=$AUTOPUSH_DIRECTORY/$WORKER_KUBELET_CONFIG_FILE
             SetupGksCluster
             break
             ;;
         delete)
             echo -e "==================== Delete the GKE cluster "
+            # This should delete the 'locust-workers' node pool
             $GCLOUD container clusters delete $CLUSTER --region $REGION
             break
             ;;
