@@ -234,7 +234,7 @@ Execute the `setup_k8s.sh` file from the root directory and select the **delete*
 [13]: https://docs.locust.io/en/stable/writing-a-locustfile.html#wait-time
 [14]: https://docs.locust.io/en/stable/writing-a-locustfile.html#task-decorator
 [15]: https://console.cloud.google.com/home/dashboard?q=search&referrer=search&project=spheric-keel-331521&cloudshell=false
-[16]: https://console.cloud.google.com/compute/instances?project=spheric-keel-331521
+[16]: https://console.cloud.google.com/gcr/images/spheric-keel-331521/global/locust-autopush?project=spheric-keel-331521
 [17]: https://earthangel-b40313e5.influxcloud.net/d/do4mmwcVz/autopush-gcp?orgId=1&refresh=1m
 
 
