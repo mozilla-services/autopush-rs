@@ -14,6 +14,8 @@ spec:
       labels:
         app: locust-worker
     spec:
+      nodeSelector:
+        node-pool: locust-workers
       containers:
         - name: locust-worker
           image: gcr.io/[PROJECT_ID]/locust-autopush:[LOCUST_IMAGE_TAG]
@@ -29,9 +31,11 @@ spec:
             - name: LOCUST_LOGFILE
               value:
           resources:
+            # Forcing requests and limits to match to ensured pods run in Guaranteed QoS class
+            # Using 1 core per worker based on recommendations from https://docs.locust.io/en/stable/running-distributed.html
             limits:
-              cpu: 2
+              cpu: 1
               memory: 3Gi
             requests:
               cpu: 1
-              memory: 2Gi
+              memory: 3Gi
