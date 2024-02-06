@@ -1,3 +1,34 @@
+<a name="1.70.0"></a>
+## 1.70.0 (2024-02-06)
+
+
+#### Refactor
+
+*   cleanup add_channels to use mutate_row (#583) ([db2e02ed](https://github.com/mozilla-services/autopush-rs/commit/db2e02ed0cd02ad5dd57f1b9bc81368d96777def))
+
+#### Chore
+
+*   tag 1.69.8 (#601) ([978bc153](https://github.com/mozilla-services/autopush-rs/commit/978bc15380adb73f1c5b06a6fc656d30c0ffb670))
+*   stop building legacy autopush (#575) ([80264495](https://github.com/mozilla-services/autopush-rs/commit/8026449591db85cfb388a886bfc5d1ea8e647f0e))
+
+#### Features
+
+*   add a new test that produces stored notifs  (#598) ([a6bd3cd7](https://github.com/mozilla-services/autopush-rs/commit/a6bd3cd7074c799c91bab99ed15df186ab58febe))
+*   filter reads by latest cell (#599) ([e012955a](https://github.com/mozilla-services/autopush-rs/commit/e012955a56243258513a86033c5711821b256d46))
+*   [SYNC-3835] pydocstyle implementation (#585) ([aa5773da](https://github.com/mozilla-services/autopush-rs/commit/aa5773da196a51a3779a6f76d8ed20837b604c66))
+*   Add integration test for `dual` mode (#582) ([76848753](https://github.com/mozilla-services/autopush-rs/commit/76848753b268b7116e572ad6ab3e9f3d256f2009))
+*   don't store duplicated message columns (#581) ([7f2396aa](https://github.com/mozilla-services/autopush-rs/commit/7f2396aaaccbfd783fb0d52e177b887cdcc6a8bd))
+*   store the channel_id metadata in a single bigtable row (#574) ([1716f205](https://github.com/mozilla-services/autopush-rs/commit/1716f205bd746a7c8aafe4a0932ce213a0d9983e))
+
+#### Bug Fixes
+
+*   errors when deleting and provisioning load test clusters (#593) ([925130a1](https://github.com/mozilla-services/autopush-rs/commit/925130a10712fa07f2ef6fd3025fbdb201b3fb01))
+*   fix remove_node_id's condition check to be more reliable (#590) ([dc077623](https://github.com/mozilla-services/autopush-rs/commit/dc0776232ab44d3b41f4de980ec1a0edbd91ea3a))
+*   fetch messages shouldn't read the current timestamp's notif (#577) ([fc99e774](https://github.com/mozilla-services/autopush-rs/commit/fc99e7741eb36ca5e1156c17f7644439ce32a469))
+*   Clarify how the index for Row is used between reading and writing to Bigtable (#573) ([09fe7ac2](https://github.com/mozilla-services/autopush-rs/commit/09fe7ac20f83ee22ab44a068685f57403ed9c946))
+
+
+
 <a name="1.69.8"></a>
 ## 1.69.8 (2024-01-24)
 
