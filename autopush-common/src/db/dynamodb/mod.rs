@@ -61,6 +61,7 @@ pub struct DdbClientImpl {
 
 impl DdbClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
+        debug!("🛢️DynamoDB Settings {:?}", db_settings);
         let db_client = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
@@ -352,6 +353,7 @@ impl DbClient for DdbClientImpl {
         uaid: &Uuid,
         node_id: &str,
         connected_at: u64,
+        _version: &Option<Uuid>,
     ) -> DbResult<bool> {
         let input = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.simple().to_string() },

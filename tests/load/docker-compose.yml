@@ -10,6 +10,7 @@ services:
       - "8089:8089"
     environment:
       LOCUST_USERCLASS_PICKER: true
+      LOCUST_MODERN_UI: true
       LOCUST_HOST: ${LOCUST_HOST}
       LOCUST_LOGLEVEL: "INFO"
     command: >

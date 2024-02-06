@@ -8,14 +8,23 @@ LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(TESTS_DIR)/pyproject.toml
+POETRY_LOCK := $(TESTS_DIR)/poetry.lock
 FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
+INSTALL_STAMP := .install.stamp
 
 .PHONY: ddb
 
 ddb:
 	mkdir $@
 	curl -sSL http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz | tar xzvC $@
+
+.PHONY: install
+install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
+$(INSTALL_STAMP): $(PYPROJECT_TOML) $(POETRY_LOCK)
+	@if [ -z $(POETRY) ]; then echo "Poetry could not be found. See https://python-poetry.org/docs/"; exit 2; fi
+	$(POETRY) install
+	touch $(INSTALL_STAMP)
 
 upgrade:
 	$(CARGO) install cargo-edit ||
@@ -33,11 +42,13 @@ integration-test-legacy:
 integration-test:
 	$(POETRY) -V
 	$(POETRY) install --without dev,load --no-root
-	CONNECTION_BINARY=autoconnect \
-		CONNECTION_SETTINGS_PREFIX=autoconnect__ \
 		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
+
+.PHONY: pydocstyle
+pydocstyle: $(INSTALL_STAMP)  ##  Run pydocstyle
+	$(POETRY) run pydocstyle -es --count --config=$(PYPROJECT_TOML) $(TESTS_DIR)
 
 lint:
 	$(POETRY) -V
@@ -45,6 +56,7 @@ lint:
 	$(POETRY) run isort --sp $(PYPROJECT_TOML) -c $(TESTS_DIR)
 	$(POETRY) run black --quiet --diff --config $(PYPROJECT_TOML) --check $(TESTS_DIR)
 	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)
+	$(POETRY) run pydocstyle --config=$(PYPROJECT_TOML) $(TESTS_DIR)
 	$(POETRY) run mypy $(TESTS_DIR) --config-file=$(PYPROJECT_TOML)
 
 load:

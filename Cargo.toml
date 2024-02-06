@@ -1,7 +1,8 @@
 [workspace]
 members = [
   "autopush-common",
-  "autopush",
+  # Pending removal: https://github.com/mozilla-services/autopush-rs/issues/524
+  #"autopush",
   "autoendpoint",
   "autoconnect",
   "autoconnect/autoconnect-common",
@@ -113,10 +114,7 @@ autoconnect_settings = { path = "./autoconnect/autoconnect-settings" }
 autoconnect_web = { path = "./autoconnect/autoconnect-web" }
 autoconnect_ws = { path = "./autoconnect/autoconnect-ws" }
 autoconnect_ws_clientsm = { path = "./autoconnect/autoconnect-ws/autoconnect-ws-clientsm" }
-autopush_common = { path = "./autopush-common", features = [
-  "dynamodb",
-  "bigtable",
-] }
+autopush_common = { path = "./autopush-common", features = ["dual"] }
 
 [profile.release]
 debug = 1

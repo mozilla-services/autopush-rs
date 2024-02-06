@@ -44,6 +44,8 @@ const MAX_EXPIRY: u64 = 2_592_000;
 pub const USER_RECORD_VERSION: u64 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
+/// The maximum TTL for router records, 30 days
+pub const MAX_ROUTER_TTL: u64 = MAX_CHANNEL_TTL;
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {
@@ -180,6 +182,9 @@ pub struct User {
     //TODO: rename this to `last_notification_timestamp`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_timestamp: Option<u64>,
+    /// UUID4 version number for optimistic locking of updates on Bigtable
+    #[serde(skip_serializing)]
+    pub version: Option<Uuid>,
 }
 
 impl Default for User {
@@ -196,6 +201,7 @@ impl Default for User {
             record_version: Some(USER_RECORD_VERSION),
             current_month: None,
             current_timestamp: None,
+            version: Some(Uuid::new_v4()),
         }
     }
 }

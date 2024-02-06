@@ -37,6 +37,7 @@ pub struct DualClientImpl {
 pub struct DualDbSettings {
     primary: DbSettings,
     secondary: DbSettings,
+    #[serde(default)]
     write_to_secondary: bool,
     #[serde(default)]
     median: Option<String>,
@@ -45,6 +46,7 @@ pub struct DualDbSettings {
 impl DualClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         // Not really sure we need the dsn here.
+        info!("Trying: {:?}", settings.db_settings);
         let db_settings: DualDbSettings = from_str(&settings.db_settings).map_err(|e| {
             DbError::General(format!("Could not parse DualDBSettings string {:?}", e))
         })?;
@@ -79,6 +81,7 @@ impl DualClientImpl {
         };
         let primary = BigTableClientImpl::new(metrics.clone(), &db_settings.primary)?;
         let secondary = DdbClientImpl::new(metrics.clone(), &db_settings.secondary)?;
+        debug!("⚖ Got primary and secondary");
         Ok(Self {
             primary,
             secondary: secondary.clone(),
@@ -95,18 +98,20 @@ impl DualClientImpl {
     /// allowance
     /// Returns the dbclient to use and whether or not it's the primary database.
     async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<(Box<&'a dyn DbClient>, bool)> {
-        if let Some(median) = self.median {
+        let target: (Box<&'a dyn DbClient>, bool) = if let Some(median) = self.median {
             if uaid.as_bytes()[0] <= median {
                 debug!("⚖ Routing user to Bigtable");
                 // These are migrations so the metrics should appear as
                 // `auto[endpoint|connect].migrate`.
-                Ok((Box::new(&self.primary), true))
+                (Box::new(&self.primary), true)
             } else {
-                Ok((Box::new(&self.secondary), false))
+                (Box::new(&self.secondary), false)
             }
         } else {
-            Ok((Box::new(&self.primary), true))
-        }
+            (Box::new(&self.primary), true)
+        };
+        debug!("⚖ alloting to {}", target.0.name());
+        Ok(target)
     }
 }
 
@@ -117,7 +122,10 @@ impl DbClient for DualClientImpl {
         if is_primary && self.write_to_secondary {
             let _ = self.secondary.add_user(user).await?;
         }
-        target.add_user(user).await
+        debug!("⚖ adding user to {}...", target.name());
+        let result = target.add_user(user).await?;
+        debug!("⚖ User added...");
+        Ok(result)
     }
 
     async fn update_user(&self, user: &User) -> DbResult<bool> {
@@ -163,7 +171,9 @@ impl DbClient for DualClientImpl {
     }
 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
+        debug!("⚖ getting target");
         let (target, _) = self.allot(uaid).await?;
+        debug!("⚖ Adding channel to {}", target.name());
         target.add_channel(uaid, channel_id).await
     }
 
@@ -196,13 +206,16 @@ impl DbClient for DualClientImpl {
         uaid: &Uuid,
         node_id: &str,
         connected_at: u64,
+        version: &Option<Uuid>,
     ) -> DbResult<bool> {
         let (target, is_primary) = self.allot(uaid).await?;
-        let mut result = target.remove_node_id(uaid, node_id, connected_at).await?;
+        let mut result = target
+            .remove_node_id(uaid, node_id, connected_at, version)
+            .await?;
         if is_primary {
             result = self
                 .secondary
-                .remove_node_id(uaid, node_id, connected_at)
+                .remove_node_id(uaid, node_id, connected_at, version)
                 .await?
                 || result;
         }

@@ -1,5 +1,6 @@
 .DS_Store
 .git
+.install.stamp
 .svn
 *.pyc
 *.egg-info
