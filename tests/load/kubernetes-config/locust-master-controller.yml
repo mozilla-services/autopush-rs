@@ -22,6 +22,8 @@ spec:
               value: "true"
             - name: LOCUST_USERCLASS_PICKER
               value: "true"
+            - name: LOCUST_MODERN_UI
+              value: "true"
             - name: TARGET_HOST
               value:
             - name: LOCUST_CSV

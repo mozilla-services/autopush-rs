@@ -15,6 +15,7 @@ pub mod middleware;
 pub mod notification;
 pub mod sentry;
 pub mod tags;
+pub mod test_support;
 
 #[macro_use]
 pub mod util;
