@@ -1,3 +1,47 @@
+<a name="1.69.8"></a>
+## 1.69.8 (2024-01-24)
+
+
+#### Bug Fixes
+
+*   channel_ids should continue being represented in hyphenated format (#561) ([661a705d](https://github.com/mozilla-services/autopush-rs/commit/661a705d631279bbd1c1d895cae5880cdce1acb9))
+*   Use standard chidmessageid parser for remove_message (#555) ([42775f9e](https://github.com/mozilla-services/autopush-rs/commit/42775f9e747fa39ca1cd753f44e74e42de3d3cee))
+*   filter by timestamp (#548) ([b7cd357b](https://github.com/mozilla-services/autopush-rs/commit/b7cd357b6a8aa68ff7ed0b93a099aae343023281))
+*   don't assume topic chidmessageids in remove_message (#553) ([e6729c06](https://github.com/mozilla-services/autopush-rs/commit/e6729c06ad373b826c6dee6d25015668bb2a9f9e))
+*   Add proper update_user logic for Bigtable  (#503) ([89c3bd98](https://github.com/mozilla-services/autopush-rs/commit/89c3bd9844f6e3c9a79e8bbf17bc0a9bbdfe8cf4))
+*   kill the delete_all_data_from_table flag (#541) ([8c99f47c](https://github.com/mozilla-services/autopush-rs/commit/8c99f47c796694d51d5cb7ca33aa859a76a8f07a))
+*   copy over the channels when migrating the user (#539) ([e36b3fef](https://github.com/mozilla-services/autopush-rs/commit/e36b3fefdf26c3602cacda3381fdd6ca726cb75b))
+*   remove unneeded clone operation (#521) ([53b6f03f](https://github.com/mozilla-services/autopush-rs/commit/53b6f03f66ce702173247765d242ea16427199cf))
+
+#### Features
+
+*   set all column families (message) to maxversions=1 (#566) ([464c87a5](https://github.com/mozilla-services/autopush-rs/commit/464c87a5486ab23d49eb9eb22cef5d3578026251))
+*   read via row ranges instead of regex (#564) ([0a96e1b8](https://github.com/mozilla-services/autopush-rs/commit/0a96e1b82418dab6b9e4731eb720f307f22542d0))
+*   Be more clear and consistent about features around `dual` (#557) ([60c8b333](https://github.com/mozilla-services/autopush-rs/commit/60c8b33327ec314874a729c0e2909c2d0afb5d64))
+*   save some cloning (possibly) (#563) ([03afd7cc](https://github.com/mozilla-services/autopush-rs/commit/03afd7cc968a56afb3fea87525c62569bbd67a56))
+*   run integration tests against Bigtable (#558) ([356f24cf](https://github.com/mozilla-services/autopush-rs/commit/356f24cf7c89344502311b05815fd99183dcd618))
+*   run unit tests against the bigtable emulator (#547) ([21e0d40c](https://github.com/mozilla-services/autopush-rs/commit/21e0d40c3d8ae4c02254cfa5f16784d505ade381))
+*   Add database routing support (#473) ([5aea6548](https://github.com/mozilla-services/autopush-rs/commit/5aea6548d18f1a20cad227e078d9e5f0a49b98b0))
+*   Report BigTableErrors with extra data (#530) ([c7fa922f](https://github.com/mozilla-services/autopush-rs/commit/c7fa922f46e8c22456a06cd62058b7ca28e8cb66))
+*   support dual mode data storage (#369) ([6624a19a](https://github.com/mozilla-services/autopush-rs/commit/6624a19ad97af90174cc7623b9b8683392c3aec9))
+*   quiet remove_node_id's conditional failure case errors (#517) ([7fe9d489](https://github.com/mozilla-services/autopush-rs/commit/7fe9d4892018916a0b240e20db58e1d89799bd1f))
+
+#### Doc
+
+*   update to the new autoconnect url (#538) ([ac5c691f](https://github.com/mozilla-services/autopush-rs/commit/ac5c691f162da6020e603d23f3adce453ab59f94))
+*   Document VAPID key should be base64 encoded (#535) ([c9b9d6bd](https://github.com/mozilla-services/autopush-rs/commit/c9b9d6bdd980af1df9d3d9705a438fa55f3c4f37))
+
+#### Chore
+
+*   replace AUTOPUSH_ENDPOINT_URL and AUTOPUSH_SERVER_URL with LOCUST_HOST in load tests (#523) ([b72dee15](https://github.com/mozilla-services/autopush-rs/commit/b72dee153ef49ef6dcae5ed7a01d98a23a640a96))
+*   add build_load_test and deploy-load-test job to build-test-deploy ci workflow ([05b6d448](https://github.com/mozilla-services/autopush-rs/commit/05b6d448823a5007b70f9c7db7f20a62e70d1900))
+*   update python dependencies and fix mypy errors ([a5d8828d](https://github.com/mozilla-services/autopush-rs/commit/a5d8828dc5bd1724979706a057139e28563b4dca))
+*   upload integration test results to CircleCI test insights  (#519) ([ff882fea](https://github.com/mozilla-services/autopush-rs/commit/ff882fea571dd898de01b643f28f0f2fe0d03750))
+*   lint & make integration tests in autopush-rs (#518) ([e3d38c6c](https://github.com/mozilla-services/autopush-rs/commit/e3d38c6c10c2e94e04f8ca0e2694424101ca8c0a))
+* **deps:**  bump openssl from 0.10.57 to 0.10.60 (#525) ([3b52f7b7](https://github.com/mozilla-services/autopush-rs/commit/3b52f7b7842c16dca9329858bc0d811444f6f1de))
+
+
+
 <a name="1.69.7"></a>
 ## 1.69.7 (2023-11-13)
 
