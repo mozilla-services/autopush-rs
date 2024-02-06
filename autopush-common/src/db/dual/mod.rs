@@ -27,9 +27,15 @@ use super::StorageType;
 
 #[derive(Clone)]
 pub struct DualClientImpl {
+    /// The primary data store, which will always be Bigtable.
     primary: BigTableClientImpl,
+    /// The secondary data store, which will always be DynamoDB.
     secondary: DdbClientImpl,
+    /// Write changes to the secondary, including messages and updates
+    /// as well as account and channel additions/deletions.
     write_to_secondary: bool,
+    /// Hex value to use to specify the first byte of the median offset.
+    /// e.g. "0a" will start from include all UUIDs upto and including "0a"
     median: Option<u8>,
 }
 
@@ -39,10 +45,16 @@ fn default_true() -> bool {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct DualDbSettings {
+    /// The primary data store, which will always be Bigtable.
     primary: DbSettings,
+    /// The secondary data store, which will always be DynamoDB.
     secondary: DbSettings,
+    /// Write changes to the secondary, including messages and updates
+    /// as well as account and channel additions/deletions.
     #[serde(default = "default_true")]
     write_to_secondary: bool,
+    /// Hex value to use to specify the first byte of the median offset.
+    /// e.g. "0a" will start from include all UUIDs upto and including "0a"
     #[serde(default)]
     median: Option<String>,
 }
@@ -50,11 +62,11 @@ pub struct DualDbSettings {
 impl DualClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         // Not really sure we need the dsn here.
-        info!("Trying: {:?}", settings.db_settings);
+        info!("⚖ Trying: {:?}", settings.db_settings);
         let db_settings: DualDbSettings = from_str(&settings.db_settings).map_err(|e| {
             DbError::General(format!("Could not parse DualDBSettings string {:?}", e))
         })?;
-        debug!("settings: {:?}", &db_settings.median);
+        debug!("⚖ settings: {:?}", &db_settings);
         if StorageType::from_dsn(&db_settings.primary.dsn) != StorageType::BigTable {
             return Err(DbError::General(
                 "Invalid primary DSN specified (must be BigTable type)".to_owned(),
