@@ -183,6 +183,7 @@ pub struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_timestamp: Option<u64>,
     /// UUID4 version number for optimistic locking of updates on Bigtable
+    #[serde(skip_serializing)]
     pub version: Option<Uuid>,
 }
 
