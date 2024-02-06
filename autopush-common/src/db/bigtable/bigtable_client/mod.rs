@@ -1142,7 +1142,7 @@ mod tests {
     use uuid;
 
     use super::*;
-    use crate::{db::DbSettings, util::ms_since_epoch};
+    use crate::{db::DbSettings, test_support::gen_test_uaid, util::ms_since_epoch};
 
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
@@ -1407,16 +1407,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn read_cells_family_id() -> DbResult<()> {
-        // let uaid = Uuid::parse_str(TEST_USER).unwrap();
-        // generate a somewhat random test UAID to prevent possible false test fails
-        // if the account is deleted before this test completes.
-        let uaid = {
-            let temp = Uuid::new_v4().to_string();
-            let mut parts: Vec<&str> = temp.split('-').collect();
-            parts[0] = "DEADBEEF";
-            Uuid::parse_str(&parts.join("-")).unwrap()
-        };
         let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
         client.remove_user(&uaid).await.unwrap();
 
         let qualifier = "foo".to_owned();
@@ -1443,7 +1435,7 @@ mod tests {
     #[actix_rt::test]
     async fn add_user_existing() {
         let client = new_client().unwrap();
-        let uaid = Uuid::new_v4();
+        let uaid = gen_test_uaid();
         let user = User {
             uaid,
             ..Default::default()
@@ -1458,7 +1450,7 @@ mod tests {
     #[actix_rt::test]
     async fn version_check() {
         let client = new_client().unwrap();
-        let uaid = Uuid::new_v4();
+        let uaid = gen_test_uaid();
         let user = User {
             uaid,
             ..Default::default()
@@ -1473,5 +1465,7 @@ mod tests {
         assert_ne!(user.version, fetched.version);
         // should now fail w/ a stale version
         assert!(!client.update_user(&user).await.unwrap());
+
+        client.remove_user(&uaid).await.unwrap();
     }
 }
