@@ -48,7 +48,7 @@ integration-test:
 
 .PHONY: pydocstyle
 pydocstyle: $(INSTALL_STAMP)  ##  Run pydocstyle
-	$(POETRY) run pydocstyle -es $(TESTS_DIR) --count --config=$(PYPROJECT_TOML)
+	$(POETRY) run pydocstyle -es --count --config=$(PYPROJECT_TOML) $(TESTS_DIR)
 
 lint:
 	$(POETRY) -V
@@ -56,7 +56,7 @@ lint:
 	$(POETRY) run isort --sp $(PYPROJECT_TOML) -c $(TESTS_DIR)
 	$(POETRY) run black --quiet --diff --config $(PYPROJECT_TOML) --check $(TESTS_DIR)
 	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)
-	$(POETRY) run pydocstyle --config=$(PYPROJECT_TOML)
+	$(POETRY) run pydocstyle --config=$(PYPROJECT_TOML) $(TESTS_DIR)
 	$(POETRY) run mypy $(TESTS_DIR) --config-file=$(PYPROJECT_TOML)
 
 load:
