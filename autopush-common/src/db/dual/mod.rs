@@ -185,10 +185,13 @@ impl DbClient for DualClientImpl {
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
         let (target, is_primary) = self.allot(uaid).await?;
         let result = target.remove_user(uaid).await?;
-        if is_primary && self.write_to_secondary {
+        if is_primary {
             // try removing the user from the old store, just in case.
             // leaving them could cause false reporting later.
-            let _ = self.secondary.remove_user(uaid).await;
+            let _ = self.secondary.remove_user(uaid).await.map_err(|e| {
+                debug!("⚖ Secondary remove_user error {:?}", e);
+                e
+            });
         }
         Ok(result)
     }
@@ -226,8 +229,16 @@ impl DbClient for DualClientImpl {
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let (target, is_primary) = self.allot(uaid).await?;
         let result = target.remove_channel(uaid, channel_id).await?;
-        if is_primary && self.write_to_secondary {
-            let _ = self.secondary.remove_channel(uaid, channel_id).await;
+        // Always remove the channel
+        if is_primary {
+            let _ = self
+                .secondary
+                .remove_channel(uaid, channel_id)
+                .await
+                .map_err(|e| {
+                    debug!("⚖ Secondary remove_channel error: {:?}", e);
+                    e
+                });
         }
         Ok(result)
     }
@@ -243,11 +254,16 @@ impl DbClient for DualClientImpl {
         let mut result = target
             .remove_node_id(uaid, node_id, connected_at, version)
             .await?;
-        if is_primary && self.write_to_secondary {
+        // Always remove the node_id.
+        if is_primary {
             result = self
                 .secondary
                 .remove_node_id(uaid, node_id, connected_at, version)
-                .await?
+                .await
+                .unwrap_or_else(|e| {
+                    debug!("⚖ Secondary remove_node_id error: {:?}", e);
+                    false
+                })
                 || result;
         }
         Ok(result)
@@ -264,8 +280,17 @@ impl DbClient for DualClientImpl {
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
         let (target, is_primary) = self.allot(uaid).await?;
         let result = target.remove_message(uaid, sort_key).await?;
-        if is_primary && self.write_to_secondary {
-            let _ = self.secondary.remove_message(uaid, sort_key).await?;
+        // Always remove the message
+        if is_primary {
+            // this will be increasingly chatty as we wind down dynamodb.
+            let _ = self
+                .secondary
+                .remove_message(uaid, sort_key)
+                .await
+                .map_err(|e| {
+                    debug!("⚖ Secondary remove_message error: {:?}", e);
+                    e
+                });
         }
         Ok(result)
     }
