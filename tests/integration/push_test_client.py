@@ -17,6 +17,8 @@ log = logging.getLogger(__name__)
 
 
 class ClientMessageType(Enum):
+    """All variants for Message Type sent from client."""
+
     HELLO = "hello"
     REGISTER = "register"
     UNREGISTER = "unregister"
