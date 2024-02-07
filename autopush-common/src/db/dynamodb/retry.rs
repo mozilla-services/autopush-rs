@@ -3,7 +3,7 @@ use cadence::{CountedExt, StatsdClient};
 use rusoto_core::RusotoError;
 use rusoto_dynamodb::{
     BatchWriteItemError, DeleteItemError, DescribeTableError, GetItemError, PutItemError,
-    UpdateItemError,
+    QueryError, UpdateItemError,
 };
 use std::sync::Arc;
 
@@ -12,7 +12,8 @@ macro_rules! retryable_error {
     ($name:ident, $error:tt, $error_tag:expr) => {
         pub fn $name(metrics: Arc<StatsdClient>) -> impl Fn(&RusotoError<$error>) -> bool {
             move |err| match err {
-                RusotoError::Service($error::InternalServerError(_))
+                RusotoError::HttpDispatch(_)
+                | RusotoError::Service($error::InternalServerError(_))
                 | RusotoError::Service($error::ProvisionedThroughputExceeded(_)) => {
                     debug!("retryable {} {:?}", $error_tag, &err);
                     metrics
@@ -27,6 +28,7 @@ macro_rules! retryable_error {
     };
 }
 
+retryable_error!(retryable_query_error, QueryError, "query");
 retryable_error!(retryable_getitem_error, GetItemError, "get_item");
 retryable_error!(retryable_updateitem_error, UpdateItemError, "update_item");
 retryable_error!(retryable_putitem_error, PutItemError, "put_item");
