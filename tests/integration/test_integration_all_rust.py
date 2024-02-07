@@ -1270,6 +1270,7 @@ class TestRustWebPush(unittest.TestCase):
     # Note: dict_keys obj was not iterable, corrected by converting to iterable.
     @inlineCallbacks
     def test_delete_saved_notification(self):
+        """Test deleting a saved notification in client server."""
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
