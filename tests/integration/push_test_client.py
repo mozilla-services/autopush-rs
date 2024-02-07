@@ -4,6 +4,7 @@ import logging
 import random
 import time
 import uuid
+from enum import Enum
 from typing import Any
 from urllib.parse import urlparse
 
@@ -13,6 +14,16 @@ from twisted.internet.threads import deferToThread
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
+
+
+class ClientMessageType(Enum):
+    HELLO = "hello"
+    REGISTER = "register"
+    UNREGISTER = "unregister"
+    BROADCAST_SUBSCRIBE = "broadcast_subscribe"
+    ACK = "ack"
+    NACK = "nack"
+    PING = "ping"
 
 
 class PushTestClient:
@@ -46,6 +57,21 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         else:
             return f
 
+    def ws_server_send(self, message: dict) -> None:
+        """Send message to websocket server.
+        Serialize dictionary into a JSON object and send to server.
+
+        Parameters
+        ----------
+        message : dict
+            message content being sent to websocket server.
+        """
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected.")
+        payload: str = json.dumps(message)
+        log.debug(f"Send: {payload}")
+        self.ws.send(payload)
+
     def connect(self, connection_port: int | None = None) -> None:
         """Establish a websocket connection to localhost at the provided `connection_port`.
 
@@ -66,17 +92,20 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             raise Exception("WebSocket client not available as expected.")
 
         if self.channels:
-            chans = list(self.channels.keys())
+            channels = list(self.channels.keys())
         else:
-            chans = []
-        hello_dict: dict[str, Any] = dict(messageType="hello", use_webpush=True, channelIDs=chans)
+            channels = []
+        hello_content: dict[str, Any] = dict(
+            messageType=ClientMessageType.HELLO.value, use_webpush=True, channelIDs=channels
+        )
+
         if uaid or self.uaid:
-            hello_dict["uaid"] = uaid or self.uaid
+            hello_content["uaid"] = uaid or self.uaid
+
         if services:  # pragma: no cover
-            hello_dict["broadcasts"] = services
-        message = json.dumps(hello_dict)
-        log.debug(f"Send: {message}")
-        self.ws.send(message)
+            hello_content["broadcasts"] = services
+
+        self.ws_server_send(message=hello_content)
         reply = self.ws.recv()
         log.debug(f"Recv: {reply!r} ({len(reply)})")
         result = json.loads(reply)
@@ -93,9 +122,10 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         if not self.ws:
             raise Exception("WebSocket client not available as expected.")
 
-        message: str = json.dumps(dict(messageType="broadcast_subscribe", broadcasts=services))
-        log.debug(f"Send: {message}")
-        self.ws.send(message)
+        message: dict = dict(
+            messageType=ClientMessageType.BROADCAST_SUBSCRIBE.value, broadcasts=services
+        )
+        self.ws_server_send(message=message)
 
     def register(self, channel_id: str | None = None, key=None, status=200):
         """Register a new endpoint for the provided ChannelID.
@@ -105,9 +135,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             raise Exception("WebSocket client not available as expected.")
 
         chid: str = channel_id or str(uuid.uuid4())
-        message: str = json.dumps(dict(messageType="register", channelID=chid, key=key))
-        log.debug(f"Send: {message}")
-        self.ws.send(message)
+        message: dict = dict(messageType=ClientMessageType.REGISTER.value, channelID=chid, key=key)
+        self.ws_server_send(message=message)
         rcv = self.ws.recv()
         result: Any = json.loads(rcv)
         log.debug(f"Recv: {result}")
@@ -122,9 +151,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
 
-        message: str = json.dumps(dict(messageType="unregister", channelID=chid))
-        log.debug(f"Send: {message}")
-        self.ws.send(message)
+        message: dict = dict(messageType="unregister", channelID=chid)
+        self.ws_server_send(message=message)
         result = json.loads(self.ws.recv())
         log.debug(f"Recv: {result}")
         return result
@@ -249,7 +277,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         if not self.ws:
             raise Exception("WebSocket client not available as expected.")
 
-        log.debug("Send: %s", "{}")
+        log.debug("Send: {}")
         self.ws.send("{}")
         result = self.ws.recv()
         log.debug("Recv: %s", result)

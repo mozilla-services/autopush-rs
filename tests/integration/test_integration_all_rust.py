@@ -1267,13 +1267,13 @@ class TestRustWebPush(unittest.TestCase):
     # cause Client.delete_notification to fail.
 
     # Skipping test for now.
-    """
+    # Note: dict_keys obj was not iterable, corrected by converting to iterable.
     @inlineCallbacks
     def test_delete_saved_notification(self):
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        chan = client.channels.keys()[0]
+        chan = list(client.channels.keys())[0]
         yield client.send_notification()
         yield client.delete_notification(chan, status=204)
         yield client.connect()
@@ -1281,7 +1281,6 @@ class TestRustWebPush(unittest.TestCase):
         result = yield client.get_notification()
         assert result is None
         yield self.shut_down(client)
-    # """
 
     @inlineCallbacks
     def test_with_key(self):
