@@ -337,8 +337,15 @@ impl DbClient for DualClientImpl {
 
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
         let (target, is_primary) = self.allot(uaid).await?;
-        if is_primary && self.write_to_secondary {
-            let _ = self.secondary.increment_storage(uaid, timestamp).await?;
+        if is_primary {
+            let _ = self
+                .secondary
+                .increment_storage(uaid, timestamp)
+                .await
+                .map_err(|e| {
+                    debug!("⚖ Secondary increment_storage error: {:?}", e);
+                    e
+                });
         }
         target.increment_storage(uaid, timestamp).await
     }
