@@ -211,7 +211,7 @@ impl BigTableClientImpl {
         // let env = Arc::new(EnvBuilder::new().build());
         debug!("🏊 BT Pool new");
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
-        debug!("🉑 {:#?}", db_settings);
+        info!("🉑 {:#?}", db_settings);
         let pool = BigTablePool::new(settings, &metrics)?;
         let call_options = CallOption::default().timeout(db_settings.request_timeout);
         Ok(Self {
