@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cadence::StatsdClient;
+use cadence::{CountedExt, StatsdClient};
 use serde::Deserialize;
 use serde_json::from_str;
 use uuid::Uuid;
@@ -37,6 +37,7 @@ pub struct DualClientImpl {
     /// Hex value to use to specify the first byte of the median offset.
     /// e.g. "0a" will start from include all UUIDs upto and including "0a"
     median: Option<u8>,
+    metrics: Arc<StatsdClient>,
 }
 
 fn default_true() -> bool {
@@ -103,6 +104,7 @@ impl DualClientImpl {
             secondary: secondary.clone(),
             median,
             write_to_secondary: db_settings.write_to_secondary,
+            metrics,
         })
     }
 }
@@ -126,6 +128,10 @@ impl DualClientImpl {
         } else {
             (Box::new(&self.primary), true)
         };
+        self.metrics
+            .incr_with_tags("database.dual.allot")
+            .with_tag("target", &target.0.name())
+            .send();
         debug!("⚖ alloting to {}", target.0.name());
         Ok(target)
     }
@@ -139,7 +145,11 @@ impl DbClient for DualClientImpl {
         let result = target.add_user(user).await?;
         if is_primary && self.write_to_secondary {
             let _ = self.secondary.add_user(user).await.map_err(|e| {
-                error!("⚡ Error: {:?}", e);
+                error!("⚖ Error: {:?}", e);
+                self.metrics
+                    .incr_with_tags("database.dual.error")
+                    .with_tag("func", "add_user")
+                    .send();
                 e
             });
         }
@@ -154,6 +164,10 @@ impl DbClient for DualClientImpl {
         if is_primary && self.write_to_secondary {
             let _ = self.secondary.add_user(user).await.map_err(|e| {
                 error!("⚡ Error: {:?}", e);
+                self.metrics
+                    .incr_with_tags("database.dual.error")
+                    .with_tag("func", "remove_user")
+                    .send();
                 e
             });
         }
@@ -190,6 +204,10 @@ impl DbClient for DualClientImpl {
             // leaving them could cause false reporting later.
             let _ = self.secondary.remove_user(uaid).await.map_err(|e| {
                 debug!("⚖ Secondary remove_user error {:?}", e);
+                self.metrics
+                    .incr_with_tags("database.dual.error")
+                    .with_tag("func", "remove_user")
+                    .send();
                 e
             });
         }
@@ -202,7 +220,17 @@ impl DbClient for DualClientImpl {
         debug!("⚖ Adding channel to {}", target.name());
         let result = target.add_channel(uaid, channel_id).await;
         if is_primary && self.write_to_secondary {
-            let _ = self.secondary.add_channel(uaid, channel_id).await;
+            let _ = self
+                .secondary
+                .add_channel(uaid, channel_id)
+                .await
+                .map_err(|e| {
+                    self.metrics
+                        .incr_with_tags("database.dual.allot")
+                        .with_tag("func", "add_channel")
+                        .send();
+                    e
+                });
         }
         result
     }
@@ -211,7 +239,17 @@ impl DbClient for DualClientImpl {
         let (target, is_primary) = self.allot(uaid).await?;
         let result = target.add_channels(uaid, channels.clone()).await;
         if is_primary && self.write_to_secondary {
-            let _ = self.secondary.add_channels(uaid, channels).await;
+            let _ = self
+                .secondary
+                .add_channels(uaid, channels)
+                .await
+                .map_err(|e| {
+                    self.metrics
+                        .incr_with_tags("database.dual.allot")
+                        .with_tag("func", "add_channels")
+                        .send();
+                    e
+                });
         }
         result
     }
@@ -237,6 +275,11 @@ impl DbClient for DualClientImpl {
                 .await
                 .map_err(|e| {
                     debug!("⚖ Secondary remove_channel error: {:?}", e);
+                    self.metrics
+                        .incr_with_tags("database.dual.error")
+                        .with_tag("func", "remove_channel")
+                        .send();
+
                     e
                 });
         }
@@ -262,6 +305,11 @@ impl DbClient for DualClientImpl {
                 .await
                 .unwrap_or_else(|e| {
                     debug!("⚖ Secondary remove_node_id error: {:?}", e);
+                    self.metrics
+                        .incr_with_tags("database.dual.error")
+                        .with_tag("func", "remove_node_id")
+                        .send();
+
                     false
                 })
                 || result;
@@ -289,6 +337,10 @@ impl DbClient for DualClientImpl {
                 .await
                 .map_err(|e| {
                     debug!("⚖ Secondary remove_message error: {:?}", e);
+                    self.metrics
+                        .incr_with_tags("database.dual.error")
+                        .with_tag("func", "remove_message")
+                        .send();
                     e
                 });
         }
@@ -344,6 +396,10 @@ impl DbClient for DualClientImpl {
                 .await
                 .map_err(|e| {
                     debug!("⚖ Secondary increment_storage error: {:?}", e);
+                    self.metrics
+                        .incr_with_tags("database.dual.error")
+                        .with_tag("func", "increment_storage")
+                        .send();
                     e
                 });
         }
