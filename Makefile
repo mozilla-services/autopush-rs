@@ -47,7 +47,7 @@ integration-test:
 		-v $(PYTEST_ARGS)
 
 .PHONY: format
-format: $(INSTALL_STAMP)  ##  Sort imports and reformat code
+format: $(INSTALL_STAMP)  ##  Sort imports and reformats code
 	$(POETRY) run isort $(TESTS_DIR)
 	$(POETRY) run black $(TESTS_DIR)
 
@@ -65,7 +65,7 @@ flake8: $(INSTALL_STAMP)  ##  Run flake8
 
 .PHONY: bandit
 bandit: $(INSTALL_STAMP)  ##  Run bandit
-	$(POETRY) run bandit --quiet -r $(TESTS_DIR) -c $(PYPROJECT_TOML)
+	$(POETRY) run bandit --quiet -r -c $(PYPROJECT_TOML) $(TESTS_DIR)
 
 .PHONY: mypy
 mypy: $(INSTALL_STAMP)  ##  Run mypy
@@ -81,6 +81,7 @@ lint:
 	$(POETRY) run isort --sp $(PYPROJECT_TOML) -c $(TESTS_DIR)
 	$(POETRY) run black --quiet --diff --config $(PYPROJECT_TOML) --check $(TESTS_DIR)
 	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)
+	$(POETRY) run bandit --quiet -r -c $(PYPROJECT_TOML) $(TESTS_DIR)
 	$(POETRY) run pydocstyle --config=$(PYPROJECT_TOML) $(TESTS_DIR)
 	$(POETRY) run mypy $(TESTS_DIR) --config-file=$(PYPROJECT_TOML)
 
