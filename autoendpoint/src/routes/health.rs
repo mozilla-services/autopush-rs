@@ -41,10 +41,13 @@ fn interpret_table_health(health: DbResult<bool>) -> serde_json::Value {
             "status": "NOT OK",
             "cause": "Nonexistent table"
         }),
-        Err(e) => json!({
-            "status": "NOT OK",
-            "cause": e.to_string()
-        }),
+        Err(e) => {
+            error!("Autoendpoint health error: {:?}", e);
+            json!({
+                "status": "NOT OK",
+                "cause": e.to_string()
+            })
+        }
     }
 }
 
