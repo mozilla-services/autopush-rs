@@ -31,6 +31,8 @@ use std::time::Duration;
 use crate::db::error::DbError;
 use crate::util::deserialize_u32_to_duration;
 
+pub const REQUEST_TIMEOUT: u64 = 5;
+
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
 pub struct BigTableDbSettings {
@@ -62,12 +64,16 @@ pub struct BigTableDbSettings {
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_u32_to_duration")]
     pub database_pool_max_idle: Duration,
+    /// Max time for a bigtable request to run
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_u32_to_duration")]
+    pub request_timeout: Duration,
 }
 
 impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
-        let me: Self = serde_json::from_str(setting_string)
+        let mut me: Self = serde_json::from_str(setting_string)
             .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))?;
 
         if me.table_name.starts_with('/') {
@@ -75,6 +81,12 @@ impl TryFrom<&str> for BigTableDbSettings {
                 "Table name path begins with a '/'".to_owned(),
             ));
         };
+
+        // set a minimum timeout value, other than 0s.
+        // this is also used to timeout bigtable operations.
+        if me.request_timeout == Duration::from_secs(0) {
+            me.request_timeout = Duration::from_secs(REQUEST_TIMEOUT);
+        }
 
         Ok(me)
     }

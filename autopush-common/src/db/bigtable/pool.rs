@@ -13,7 +13,7 @@ use crate::db::DbSettings;
 use super::bigtable_client::error;
 
 const MAX_MESSAGE_LEN: i32 = 1 << 28; // 268,435,456 bytes
-const DEFAULT_GRPC_PORT: u16 = 8086;
+const DEFAULT_GRPC_PORT: u16 = 443;
 
 /// The pool of BigTable Clients.
 /// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
@@ -154,7 +154,10 @@ impl Manager for BigtableClientManager {
     /// `BigtableClient` is the most atomic we can go.
     async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        let entry = BigtableDb::new(self.get_channel()?);
+        let entry = BigtableDb::new(
+            self.get_channel()?,
+            self.settings.database_pool_connection_ttl,
+        );
         debug!("🏊 Bigtable connection acquired");
         Ok(entry)
     }
