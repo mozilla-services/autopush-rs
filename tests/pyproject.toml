@@ -9,7 +9,9 @@ skip_gitignore = true
 # skips asserts
 # B101: https://bandit.readthedocs.io/en/latest/plugins/b101_assert_used.html#
 # B104: https://bandit.readthedocs.io/en/latest/plugins/b104_hardcoded_bind_all_interfaces.html
-skips = ["B101", "B104"]
+# B311: https://bandit.readthedocs.io/en/1.7.7/blacklists/blacklist_calls.html#b311-random
+# B404: https://bandit.readthedocs.io/en/1.7.7/blacklists/blacklist_imports.html#b404-import-subprocess
+skips = ["B101", "B104", "B311", "B404"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -53,6 +55,7 @@ websocket-client = "^1.7.0"
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.0"
 isort = "^5.13.1"
+# flake8 configs in .flake8 file. Doesn't support .toml
 flake8 = "^6.1.0"
 mypy = "^1.7.1"
 pydocstyle = "^6.3.0"
