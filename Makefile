@@ -46,6 +46,31 @@ integration-test:
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
 
+.PHONY: format
+format: $(INSTALL_STAMP)  ##  Sort imports and reformat code
+	$(POETRY) run isort $(TESTS_DIR)
+	$(POETRY) run black $(TESTS_DIR)
+
+.PHONY: isort
+isort: $(INSTALL_STAMP)  ##  Run isort
+	$(POETRY) run isort --check-only $(TESTS_DIR)
+
+.PHONY: black
+black: $(INSTALL_STAMP)  ##  Run black
+	$(POETRY) run black --quiet --diff --check $(TESTS_DIR)
+
+.PHONY: flake8
+flake8: $(INSTALL_STAMP)  ##  Run flake8
+	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)
+
+.PHONY: bandit
+bandit: $(INSTALL_STAMP)  ##  Run bandit
+	$(POETRY) run bandit --quiet -r $(TESTS_DIR) -c $(PYPROJECT_TOML)
+
+.PHONY: mypy
+mypy: $(INSTALL_STAMP)  ##  Run mypy
+	$(POETRY) run mypy --config-file=$(PYPROJECT_TOML) $(TESTS_DIR)
+
 .PHONY: pydocstyle
 pydocstyle: $(INSTALL_STAMP)  ##  Run pydocstyle
 	$(POETRY) run pydocstyle -es --count --config=$(PYPROJECT_TOML) $(TESTS_DIR)
