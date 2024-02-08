@@ -26,6 +26,7 @@ pub fn config(config: &mut web::ServiceConfig) {
 }
 
 /// Handle the `/health` and `/__heartbeat__` routes
+#[allow(clippy::blocks_in_conditions)]
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     let status = if state
         .db
