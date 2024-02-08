@@ -36,7 +36,7 @@ from .db import (
     create_message_table_ddb,
     get_router_table,
 )
-from .push_test_client import CustomPushTestClient, PushTestClient
+from .push_test_client import ClientMessageType, PushTestClient
 
 app = bottle.Bottle()
 logging.basicConfig(level=logging.DEBUG)
@@ -632,7 +632,7 @@ class TestRustWebPush(unittest.TestCase):
             SkipTest("Skipping sentry test")
             return
         # Ensure bad data doesn't throw errors
-        client = CustomPushTestClient(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         yield client.hello()
         yield client.send_bad_data()
@@ -1276,7 +1276,9 @@ class TestRustWebPush(unittest.TestCase):
         assert client.channels
         chan = list(client.channels.keys())[0]
         yield client.send_notification()
-        yield client.delete_notification(chan, status=204)
+        status_code: int = 204
+        delete_resp = yield client.delete_notification(chan, status=status_code)
+        assert delete_resp.status_code == status_code
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
@@ -1349,7 +1351,8 @@ class TestRustWebPush(unittest.TestCase):
     def test_can_ping(self):
         """Test that the client can send an active ping message and get a valid response."""
         client = yield self.quick_register()
-        yield client.ping()
+        result = yield client.ping()
+        assert result == "{}"
         assert client.ws.connected
         try:
             yield client.ping()
@@ -1436,6 +1439,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.wait(timeout=5)
 
         result = yield client.get_broadcast(2)
+        assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
         yield self.shut_down(client)
@@ -1478,6 +1482,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
         client.broadcast_subscribe(old_ver)
         result = yield client.get_broadcast()
+        assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver1"
 
         MOCK_MP_SERVICES = {"kinto:123": "ver2"}
@@ -1485,6 +1490,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.wait(timeout=5)
 
         result = yield client.get_broadcast(2)
+        assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
         yield self.shut_down(client)
@@ -1507,6 +1513,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
 
         client.broadcast_subscribe(old_ver)
         result = yield client.get_broadcast()
+        assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
 

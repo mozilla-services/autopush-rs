@@ -22,6 +22,7 @@ class ClientMessageType(Enum):
     HELLO = "hello"
     REGISTER = "register"
     UNREGISTER = "unregister"
+    BROADCAST = "broadcast"
     BROADCAST_SUBSCRIBE = "broadcast_subscribe"
     ACK = "ack"
     NACK = "nack"
@@ -153,13 +154,13 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
 
-        message: dict = dict(messageType="unregister", channelID=chid)
+        message: dict = dict(messageType=ClientMessageType.UNREGISTER.value, channelID=chid)
         self.ws_server_send(message=message)
         result = json.loads(self.ws.recv())
         log.debug(f"Recv: {result}")
         return result
 
-    def delete_notification(self, channel, message=None, status=204):
+    def delete_notification(self, channel, message=None, status=204) -> requests.Response:
         """Delete notification."""
         messages = self.messages[channel]
         if not message:
@@ -168,7 +169,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug(f"Delete: {message}")
         url = urlparse(message)
         resp = requests.delete(url=url.geturl())
-        assert resp.status_code == status
+        return resp
 
     def send_notification(
         self,
@@ -266,7 +267,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             d = self.ws.recv()
             log.debug(f"Recv: {d}")
             result = json.loads(d)
-            assert result.get("messageType") == "broadcast"
+            # ASK JR
+            # assert result.get("messageType") == ClientMessageType.BROADCAST.value
             return result
         except Exception as ex:  # pragma: no cover
             log.error(f"Error: {ex}")
@@ -283,7 +285,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.ws.send("{}")
         result = self.ws.recv()
         log.debug("Recv: %s", result)
-        assert result == "{}"
+        # assert result == "{}"
         return result
 
     def ack(self, channel, version) -> None:
@@ -293,7 +295,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         message: str = json.dumps(
             dict(
-                messageType="ack",
+                messageType=ClientMessageType.ACK.value,
                 updates=[dict(channelID=channel, version=version)],
             )
         )
@@ -311,19 +313,21 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         """Sleep wrapper function."""
         time.sleep(duration)
 
+    def send_bad_data(self) -> None:
+        """Send `bad-data` as a string. Used in determining Sentry output
+        in autoconnect to ensure error logs indicate disconnection.
+        """
+        if not self.ws:
+            raise Exception("WebSocket client not available as expected.")
+        self.ws.send("bad-data")
+
     def wait_for(self, func):
         """Wait several seconds for a function to return True"""
+        # This function currently not used for anything so may be removable.
+        # However, it may have had historic value when dealing with latency.
         times = 0
         while not func():  # pragma: no cover
             time.sleep(1)
             times += 1
             if times > 9:  # pragma: no cover
                 break
-
-
-class CustomPushTestClient(PushTestClient):
-    """Custom client used for testing Sentry output in autoconnect."""
-
-    def send_bad_data(self):
-        """Send `bad-data` as a string."""
-        self.ws.send("bad-data")
