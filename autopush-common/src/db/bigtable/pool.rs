@@ -154,10 +154,7 @@ impl Manager for BigtableClientManager {
     /// `BigtableClient` is the most atomic we can go.
     async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        let entry = BigtableDb::new(
-            self.get_channel()?,
-            self.settings.database_pool_connection_ttl,
-        );
+        let entry = BigtableDb::new(self.get_channel()?, self.settings.request_timeout);
         debug!("🏊 Bigtable connection acquired");
         Ok(entry)
     }
