@@ -8,7 +8,7 @@ use slog_mozlog_json::MozLogJson;
 
 use crate::errors::Result;
 
-#[cfg(featre = "aws")]
+#[cfg(feature = "aws")]
 static EC2_INSTANCE_ID: OnceLock<Option<String>> = OnceLock::new();
 
 pub fn init_logging(json: bool, name: &str, version: &str) -> Result<()> {
