@@ -362,7 +362,7 @@ def setup_bt():
     """Set up BigTable emulator."""
     global BT_PROCESS, BT_DB_SETTINGS
     log.debug("🐍🟢 Starting bigtable emulator")
-    BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
+    BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))  # nosec
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
         BT_DB_SETTINGS = os.environ.get(
@@ -376,7 +376,7 @@ def setup_bt():
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/test/tables/autopush"
         log.debug("🐍🟢 Setting up bigtable")
-        vv = subprocess.call([SETUP_BT_SH])
+        vv = subprocess.call([SETUP_BT_SH])  # nosec
         log.debug(vv)
     except Exception as e:
         log.error("Bigtable Setup Error {}", e)
@@ -399,7 +399,7 @@ def setup_dynamodb():
                 "-inMemory",
             ]
         )
-        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
+        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
         os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
     else:
         print("Using existing DynamoDB instance")
@@ -453,7 +453,7 @@ def setup_connection_server(connection_binary):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True,
-    )
+    )  # nosec
 
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(CN_SERVER.stdout)
@@ -482,7 +482,7 @@ def setup_megaphone_server(connection_binary):
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
     log.debug("🐍🟢 Starting Megaphone server: {}".format(" ".join(cmd)))
-    CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
+    CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
 
 
 def setup_endpoint_server():
@@ -518,7 +518,7 @@ def setup_endpoint_server():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True,
-    )
+    )  # nosec
 
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(EP_SERVER.stdout)
@@ -639,7 +639,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
         # LogCheck does throw an error every time
-        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT))
+        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT))  # nosec
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # new autoconnect emits 2 events
         try:
@@ -660,7 +660,7 @@ class TestRustWebPush(unittest.TestCase):
         endpoint = self.host_endpoint(client)
         yield self.shut_down(client)
 
-        requests.get("{}/__error__".format(endpoint))
+        requests.get("{}/__error__".format(endpoint))  # nosec
         # 2 events excpted: 1 from a panic and 1 from a returned Error
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
@@ -678,7 +678,7 @@ class TestRustWebPush(unittest.TestCase):
             return
         ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
         try:
-            requests.get(ws_url)
+            requests.get(ws_url)  # nosec
         except requests.exceptions.ConnectionError:
             pass
         try:
@@ -1376,10 +1376,10 @@ class TestRustWebPush(unittest.TestCase):
             url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
             # First ensure the endpoint we're testing for on the public port exists where
             # we expect it on the internal ROUTER_PORT
-            requests.put(url).raise_for_status()
+            requests.put(url).raise_for_status()  # nosec
 
         try:
-            requests.put(parsed.geturl()).raise_for_status()
+            requests.put(parsed.geturl()).raise_for_status()  # nosec
         except requests.exceptions.ConnectionError:
             pass
         except requests.exceptions.HTTPError as e:
