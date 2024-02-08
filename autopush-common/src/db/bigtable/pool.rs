@@ -181,6 +181,7 @@ impl Manager for BigtableClientManager {
         }
 
         // Clippy 0.1.73 complains about the `.map_err` being hard to read.
+        // note, this changes to `blocks_in_conditions` for 1.76+
         #[allow(clippy::blocks_in_if_conditions)]
         if !client
             .health_check(&self.settings.table_name)
