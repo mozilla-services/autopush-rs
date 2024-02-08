@@ -78,6 +78,7 @@ class StoredNotifAutopushUser(FastHttpUser):
             return
         if not self.ws:
             self.connect_and_hello()
+        assert self.ws
         for channel_id in self.channels.keys():
             self.send_unregister(self.ws, channel_id)
         self.close()
@@ -213,6 +214,7 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     def recv_message(self) -> None:
         """Receive and handle data from the WebSocket"""
+        assert self.ws
         data = self.ws.recv()
         if not isinstance(data, str):
             logger.error("recv_message unexpectedly recieved bytes")
@@ -221,8 +223,9 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     def close(self) -> None:
         """Close the WebSocket connection"""
-        self.ws.close()
-        self.ws = None
+        if self.ws:
+            self.ws.close()
+            self.ws = None
 
     def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
