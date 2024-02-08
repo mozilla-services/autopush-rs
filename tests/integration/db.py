@@ -69,7 +69,7 @@ class DynamoDBResource(threading.local):
                     dict(
                         endpoint_url=os.getenv("AWS_LOCAL_DYNAMODB"),
                         aws_access_key_id="Bogus",
-                        aws_secret_access_key="Bogus",
+                        aws_secret_access_key="Bogus",  # nosec
                     )
                 )
         # If there is no endpoint URL, we must delete the entry
@@ -359,7 +359,7 @@ def generate_last_connect() -> int:
             str(today.year),
             str(today.month).zfill(2),
             str(today.hour).zfill(2),
-            str(random.randint(0, 10)).zfill(4),
+            str(random.randint(0, 10)).zfill(4),  # nosec
         ]
     )
     return int(val)
