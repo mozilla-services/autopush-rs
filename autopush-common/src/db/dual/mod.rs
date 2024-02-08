@@ -50,7 +50,7 @@ impl DualClientImpl {
         let db_settings: DualDbSettings = from_str(&settings.db_settings).map_err(|e| {
             DbError::General(format!("Could not parse DualDBSettings string {:?}", e))
         })?;
-        debug!("settings: {:?}", &db_settings.median);
+        info!("⚖ {:?}", &db_settings);
         if StorageType::from_dsn(&db_settings.primary.dsn) != StorageType::BigTable {
             return Err(DbError::General(
                 "Invalid primary DSN specified (must be BigTable type)".to_owned(),
