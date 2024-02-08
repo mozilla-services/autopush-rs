@@ -27,7 +27,16 @@ pub fn config(config: &mut web::ServiceConfig) {
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
-    let status = if state.db.health_check().await.is_ok() {
+    let status = if state
+        .db
+        .health_check()
+        .await
+        .map_err(|e| {
+            error!("Autoconnect Health Error: {:?}", e);
+            e
+        })
+        .is_ok()
+    {
         "OK"
     } else {
         "ERROR"
