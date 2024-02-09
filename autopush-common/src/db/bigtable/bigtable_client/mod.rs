@@ -213,7 +213,10 @@ impl BigTableClientImpl {
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         info!("🉑 {:#?}", db_settings);
         let pool = BigTablePool::new(settings, &metrics)?;
-        let call_options = CallOption::default().timeout(db_settings.request_timeout);
+        let mut call_options = CallOption::default();
+        if let Some(timeout) = db_settings.request_timeout {
+            call_options = call_options.timeout(timeout);
+        }
         Ok(Self {
             settings: db_settings,
             _metrics: metrics,
@@ -477,7 +480,7 @@ impl BigTableClientImpl {
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
         admin
-            .drop_row_range_async(&req)
+            .drop_row_range_async_opt(&req, self.call_options.clone())
             .map_err(|e| {
                 error!("{:?}", e);
                 error::BigTableError::Admin(
@@ -614,8 +617,12 @@ pub struct BigtableDb {
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel, timeout: Duration) -> Self {
-        let call_options = CallOption::default().timeout(timeout);
+    pub fn new(channel: Channel, timeout: Option<Duration>) -> Self {
+        let call_options = if let Some(timeout) = timeout {
+            CallOption::default().timeout(timeout)
+        } else {
+            CallOption::default()
+        };
         Self {
             conn: BigtableClient::new(channel),
             call_options,

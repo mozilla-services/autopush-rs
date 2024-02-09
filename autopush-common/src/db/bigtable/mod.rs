@@ -29,9 +29,9 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use crate::db::error::DbError;
-use crate::util::deserialize_u32_to_duration;
+use crate::util::deserialize_opt_u32_to_duration;
 
-pub const REQUEST_TIMEOUT: u64 = 5;
+pub const REQUEST_TIMEOUT_SECS: u64 = 30;
 
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
@@ -52,28 +52,32 @@ pub struct BigTableDbSettings {
     pub message_topic_family: String,
     #[serde(default)]
     pub database_pool_max_size: Option<u32>,
-    /// Max time (in seconds) to wait for a database connection
+    /// Max time (in seconds) to wait to create a new connection to bigtable
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub database_pool_connection_timeout: Duration,
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_create_timeout: Option<Duration>,
+    /// Max time (in seconds) to wait for a socket to become available
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_wait_timeout: Option<Duration>,
     /// Max time (in seconds) a connection should live
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub database_pool_connection_ttl: Duration,
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_connection_ttl: Option<Duration>,
     /// Max idle time(in seconds) for a connection
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub database_pool_max_idle: Duration,
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_max_idle: Option<Duration>,
     /// Max time for a bigtable request to run
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub request_timeout: Duration,
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub request_timeout: Option<Duration>,
 }
 
 impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
-        let mut me: Self = serde_json::from_str(setting_string)
+        let me: Self = serde_json::from_str(setting_string)
             .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))?;
 
         if me.table_name.starts_with('/') {
@@ -82,12 +86,22 @@ impl TryFrom<&str> for BigTableDbSettings {
             ));
         };
 
-        // set a minimum timeout value, other than 0s.
-        // this is also used to timeout bigtable operations.
-        if me.request_timeout == Duration::from_secs(0) {
-            me.request_timeout = Duration::from_secs(REQUEST_TIMEOUT);
-        }
-
         Ok(me)
+    }
+}
+
+mod tests {
+
+    #[test]
+    fn test_settings_parse() -> Result<(), crate::db::error::DbError> {
+        let settings =
+            super::BigTableDbSettings::try_from("{\"database_pool_create_timeout\": 123}")?;
+        dbg!(&settings);
+        assert_eq!(
+            settings.database_pool_create_timeout,
+            Some(std::time::Duration::from_secs(123))
+        );
+        assert_eq!(settings.request_timeout, None);
+        Ok(())
     }
 }

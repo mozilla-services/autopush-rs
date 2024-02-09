@@ -94,16 +94,13 @@ impl BigTablePool {
             debug!("🏊 Setting pool max size {}", &size);
             config.max_size = size as usize;
         };
-        if !bt_settings.database_pool_connection_timeout.is_zero() {
-            debug!(
-                "🏊 Setting connection timeout to {} seconds",
-                &bt_settings.database_pool_connection_timeout.as_secs()
-            );
-            config.timeouts = Timeouts {
-                create: Some(bt_settings.database_pool_connection_timeout),
-                ..Default::default()
-            };
-        }
+        config.timeouts = Timeouts {
+            wait: bt_settings.database_pool_wait_timeout,
+            create: bt_settings.database_pool_create_timeout,
+            recycle: bt_settings.database_pool_connection_ttl,
+        };
+        debug!("🏊 Timeouts: {:?}", &config.timeouts);
+
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
             .build()
@@ -165,15 +162,15 @@ impl Manager for BigtableClientManager {
         client: &mut Self::Type,
         metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        if !self.settings.database_pool_connection_ttl.is_zero()
-            && Instant::now() - metrics.created > self.settings.database_pool_connection_ttl
-        {
-            debug!("🏊 Recycle requested (old).");
-            return Err(DbError::BTError(BigTableError::Recycle).into());
+        if let Some(timeout) = self.settings.database_pool_connection_ttl {
+            if Instant::now() - metrics.created > timeout {
+                debug!("🏊 Recycle requested (old).");
+                return Err(DbError::BTError(BigTableError::Recycle).into());
+            }
         }
-        if !self.settings.database_pool_max_idle.is_zero() {
+        if let Some(timeout) = self.settings.database_pool_max_idle {
             if let Some(recycled) = metrics.recycled {
-                if Instant::now() - recycled > self.settings.database_pool_max_idle {
+                if Instant::now() - recycled > timeout {
                     debug!("🏊 Recycle requested (idle).");
                     return Err(DbError::BTError(BigTableError::Recycle).into());
                 }
