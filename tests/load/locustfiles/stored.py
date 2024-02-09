@@ -62,7 +62,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.register_records: list[RegisterRecord] = []
         self.unregister_records: list[RegisterRecord] = []
         self.uaid: str = ""
-        self.ws: WebSocket = websocket.WebSocket()
+        self.ws: WebSocket | None = websocket.WebSocket()
 
     def wait_time(self):
         """Return the autopush wait time."""
@@ -76,11 +76,12 @@ class StoredNotifAutopushUser(FastHttpUser):
         """Call when a User stops running."""
         if not self.channels:
             return
-        if not self.ws.connected:
+        if not self.ws:
             self.connect_and_hello()
+        assert self.ws
         for channel_id in self.channels.keys():
             self.send_unregister(self.ws, channel_id)
-        self.ws.close()
+        self.close()
 
     def on_ws_open(self, ws: WebSocket) -> None:
         """Call when opening a WebSocket.
@@ -156,34 +157,38 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.post_notification(endpoint_url)
 
     @task(weight=1)
+    def connect_and_subscribe(self):
+        """Connect, Subscribe a user to an Autopush channel, then disconnect."""
+        if not self.ws:
+            self.connect_and_hello()
+        self.subscribe()
+        self.close()
+
     def subscribe(self):
         """Subscribe a user to an Autopush channel."""
-        if not self.ws.connected:
-            self.connect_and_hello()
         channel_id: str = str(uuid.uuid4())
         self.send_register(self.ws, channel_id)
         self.recv_message()
-        self.ws.close()
 
     @task(weight=1)
-    def unsubscribe(self):
-        """Unsubscribe a user from an Autopush channel."""
+    def connect_and_unsubscribe(self):
+        """Connect, Unsubscribe a user to an Autopush channel, then disconnect."""
         if not self.channels:
             logger.debug("Task 'unsubscribe' skipped.")
             return
 
-        if not self.ws.connected:
+        if not self.ws:
             self.connect_and_hello()
         channel_id: str = random.choice(list(self.channels.keys()))
         self.send_unregister(self.ws, channel_id)
         self.recv_message()
-        self.ws.close()
+        self.close()
 
     @task(weight=20)
     def connect_and_read(self) -> None:
         """connect_and_hello then disconnect"""
         self.connect_and_hello()
-        self.ws.close()
+        self.close()
 
     def connect_and_register(self) -> None:
         """Initialize the WebSocket and Hello/Register initial channels"""
@@ -192,14 +197,14 @@ class StoredNotifAutopushUser(FastHttpUser):
 
         channel_count = random.randint(1, 3)
 
-        self.ws = websocket.WebSocket()
         self.connect_and_hello()
         for i in range(channel_count):
             self.subscribe()
-        self.ws.close()
+        self.close()
 
     def connect_and_hello(self) -> None:
         """Connect the WebSocket and complete the initial Hello handshake"""
+        self.ws = websocket.WebSocket()
         self.ws.connect(self.host)
         self.send_hello(self.ws)
         self.recv_message()
@@ -209,11 +214,18 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     def recv_message(self) -> None:
         """Receive and handle data from the WebSocket"""
+        assert self.ws
         data = self.ws.recv()
         if not isinstance(data, str):
             logger.error("recv_message unexpectedly recieved bytes")
             data = str(data)
         self.on_ws_message(self.ws, data)
+
+    def close(self) -> None:
+        """Close the WebSocket connection"""
+        if self.ws:
+            self.ws.close()
+            self.ws = None
 
     def post_notification(self, endpoint_url: str) -> None:
         """Send a notification to Autopush.
