@@ -255,13 +255,8 @@ impl DbClient for DualClientImpl {
     }
 
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
-        let (target, is_primary) = self.allot(uaid).await?;
-        let mut channels = target.get_channels(uaid).await?;
-        // check to see if we need to copy over channels from the secondary
-        if channels.is_empty() && is_primary {
-            channels = self.secondary.get_channels(uaid).await?;
-        }
-        Ok(channels)
+        let (target, _is_primary) = self.allot(uaid).await?;
+        target.get_channels(uaid).await
     }
 
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
