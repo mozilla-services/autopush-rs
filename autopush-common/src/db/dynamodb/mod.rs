@@ -8,7 +8,7 @@ use crate::db::client::DbClient;
 use crate::db::dynamodb::retry::{
     retry_policy, retryable_batchwriteitem_error, retryable_delete_error,
     retryable_describe_table_error, retryable_getitem_error, retryable_putitem_error,
-    retryable_updateitem_error,
+    retryable_query_error, retryable_updateitem_error,
 };
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
@@ -399,7 +399,13 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        let output = self.db_client.query(input.clone()).await?;
+        let output = retry_policy()
+            .retry_if(
+                || self.db_client.query(input.clone()),
+                retryable_query_error(self.metrics.clone()),
+            )
+            .await?;
+
         let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
             debug!("Got response of: {:?}", items);
             items
@@ -462,7 +468,13 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        let output = self.db_client.query(input.clone()).await?;
+        let output = retry_policy()
+            .retry_if(
+                || self.db_client.query(input.clone()),
+                retryable_query_error(self.metrics.clone()),
+            )
+            .await?;
+
         let messages = output.items.map_or_else(Vec::new, |items| {
             debug!("Got response of: {:?}", items);
             items
