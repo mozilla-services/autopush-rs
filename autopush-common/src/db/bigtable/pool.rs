@@ -103,6 +103,7 @@ impl BigTablePool {
 
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
+            .runtime(deadpool::Runtime::Tokio1)
             .build()
             .map_err(|e| DbError::BTError(BigTableError::Pool(e.to_string())))?;
 
