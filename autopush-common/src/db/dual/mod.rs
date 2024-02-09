@@ -129,7 +129,7 @@ impl DualClientImpl {
             (Box::new(&self.primary), true)
         };
         self.metrics
-            .incr_with_tags("database.dual.allot")
+            .incr_with_tags("database.dual.error")
             .with_tag("target", &target.0.name())
             .send();
         debug!("⚖ alloting to {}", target.0.name());
@@ -166,7 +166,7 @@ impl DbClient for DualClientImpl {
                 error!("⚡ Error: {:?}", e);
                 self.metrics
                     .incr_with_tags("database.dual.error")
-                    .with_tag("func", "remove_user")
+                    .with_tag("func", "update_user")
                     .send();
                 e
             });
@@ -226,7 +226,7 @@ impl DbClient for DualClientImpl {
                 .await
                 .map_err(|e| {
                     self.metrics
-                        .incr_with_tags("database.dual.allot")
+                        .incr_with_tags("database.dual.error")
                         .with_tag("func", "add_channel")
                         .send();
                     e
@@ -245,7 +245,7 @@ impl DbClient for DualClientImpl {
                 .await
                 .map_err(|e| {
                     self.metrics
-                        .incr_with_tags("database.dual.allot")
+                        .incr_with_tags("database.dual.error")
                         .with_tag("func", "add_channels")
                         .send();
                     e
