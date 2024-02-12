@@ -153,7 +153,7 @@ class StoredNotifAutopushUser(FastHttpUser):
             logger.debug("Task 'send_notification' skipped.")
             return
 
-        endpoint_url: str = random.choice(list(self.channels.values()))  # nosec
+        endpoint_url: str = random.choice(list(self.channels.values()))
         self.post_notification(endpoint_url)
 
     @task(weight=1)
@@ -179,7 +179,7 @@ class StoredNotifAutopushUser(FastHttpUser):
 
         if not self.ws:
             self.connect_and_hello()
-        channel_id: str = random.choice(list(self.channels.keys()))  # nosec
+        channel_id: str = random.choice(list(self.channels.keys()))
         self.send_unregister(self.ws, channel_id)
         self.recv_message()
         self.close()
@@ -195,7 +195,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         if not self.host:
             raise LocustError("'host' value is unavailable.")
 
-        channel_count = random.randint(1, 3)  # nosec
+        channel_count = random.randint(1, 3)
 
         self.connect_and_hello()
         for i in range(channel_count):
@@ -245,8 +245,8 @@ class StoredNotifAutopushUser(FastHttpUser):
         # Prefix random message with 'TestData' to more easily differentiate the payload
         data: str = "TestData" + "".join(
             [
-                random.choice(string.ascii_letters + string.digits)  # nosec
-                for i in range(0, random.randrange(1024, 4096, 2) - 8)  # nosec
+                random.choice(string.ascii_letters + string.digits)
+                for i in range(0, random.randrange(1024, 4096, 2) - 8)
             ]
         )
 

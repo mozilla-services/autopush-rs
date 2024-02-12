@@ -362,6 +362,9 @@ def setup_bt():
     """Set up BigTable emulator."""
     global BT_PROCESS, BT_DB_SETTINGS
     log.debug("🐍🟢 Starting bigtable emulator")
+    # All calls to subprocess module for setup. Not passing untrusted input.
+    # Will look at future replacement when moving to Docker.
+    # https://bandit.readthedocs.io/en/latest/plugins/b603_subprocess_without_shell_equals_true.html
     BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))  # nosec
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
@@ -639,7 +642,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
         # LogCheck does throw an error every time
-        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT))  # nosec
+        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT), timeout=30)
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # new autoconnect emits 2 events
         try:
@@ -660,7 +663,7 @@ class TestRustWebPush(unittest.TestCase):
         endpoint = self.host_endpoint(client)
         yield self.shut_down(client)
 
-        requests.get("{}/__error__".format(endpoint))  # nosec
+        requests.get("{}/__error__".format(endpoint), timeout=30)
         # 2 events excpted: 1 from a panic and 1 from a returned Error
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
@@ -678,7 +681,7 @@ class TestRustWebPush(unittest.TestCase):
             return
         ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
         try:
-            requests.get(ws_url)  # nosec
+            requests.get(ws_url, timeout=30)
         except requests.exceptions.ConnectionError:
             pass
         try:
@@ -1376,10 +1379,10 @@ class TestRustWebPush(unittest.TestCase):
             url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
             # First ensure the endpoint we're testing for on the public port exists where
             # we expect it on the internal ROUTER_PORT
-            requests.put(url).raise_for_status()  # nosec
+            requests.put(url, timeout=30).raise_for_status()
 
         try:
-            requests.put(parsed.geturl()).raise_for_status()  # nosec
+            requests.put(parsed.geturl(), timeout=30).raise_for_status()
         except requests.exceptions.ConnectionError:
             pass
         except requests.exceptions.HTTPError as e:

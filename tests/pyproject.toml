@@ -9,7 +9,7 @@ skip_gitignore = true
 # skips asserts
 # B101: https://bandit.readthedocs.io/en/latest/plugins/b101_assert_used.html#
 # B104: https://bandit.readthedocs.io/en/latest/plugins/b104_hardcoded_bind_all_interfaces.html
-# B311: https://bandit.readthedocs.io/en/latest/blacklists/blacklist_calls.html#b311-random
+# B311: https://bandit.readthedocs.io/en/latest/blacklists/blacklist_calls.html#b311-random 
 # B404: https://bandit.readthedocs.io/en/latest/blacklists/blacklist_imports.html#b404-import-subprocess
 skips = ["B101", "B104", "B311", "B404"]
 
