@@ -168,7 +168,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         log.debug(f"Delete: {message}")
         url = urlparse(message)
-        resp = requests.delete(url=url.geturl())
+        resp = requests.delete(url=url.geturl(), timeout=30)
         return resp
 
     def send_notification(
