@@ -4,14 +4,25 @@ import json
 import os
 import socket
 import subprocess
+import sys
+import time
 import uuid
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from threading import Event, Thread
 from typing import Any
 
+import ecdsa
 import twisted
 from cryptography.fernet import Fernet
+from jose import jws
+
+from .db import (
+    DynamoDBResource,
+    base64url_encode,
+    create_message_table_ddb,
+    get_router_table,
+)
 
 integration_dir: Path = Path(".").absolute()
 tests_dir: Path = integration_dir.parent
@@ -167,3 +178,55 @@ ENDPOINT_CONFIG = dict(
     human_logs="true",
     crypto_keys=f"[{CRYPTO_KEY}]",
 )
+
+
+def _get_vapid(
+    key: ecdsa.SigningKey | None = None,
+    payload: dict[str, str | int] | None = None,
+    endpoint: str | None = None,
+) -> dict[str, str | bytes]:
+    """Get VAPID information, including the `Authorization` header string,
+    public and private keys.
+    """
+    global CONNECTION_CONFIG
+
+    if endpoint is None:
+        endpoint = "{}://{}:{}".format(
+            CONNECTION_CONFIG.get("endpoint_scheme"),
+            CONNECTION_CONFIG.get("endpoint_hostname"),
+            CONNECTION_CONFIG.get("endpoint_port"),
+        )
+    if not payload:
+        payload = {
+            "aud": endpoint,
+            "exp": int(time.time()) + 86400,
+            "sub": "mailto:admin@example.com",
+        }
+    if not payload.get("aud"):
+        payload["aud"] = endpoint
+    if not key:
+        key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+    vk: ecdsa.VerifyingKey = key.get_verifying_key()
+    auth: str = jws.sign(payload, key, algorithm="ES256").strip("=")
+    crypto_key: str = base64url_encode((b"\4" + vk.to_string()))
+    return {"auth": auth, "crypto-key": crypto_key, "key": key}
+
+
+def enqueue_output(out, queue):
+    """Add lines from the out buffer to the provided queue."""
+    for line in iter(out.readline, ""):
+        queue.put(line)
+    out.close()
+
+
+def print_lines_in_queues(queues, prefix):
+    """Print lines in queues to stdout."""
+    for queue in queues:
+        is_empty = False
+        while not is_empty:
+            try:
+                line = queue.get_nowait()
+            except Empty:
+                is_empty = True
+            else:
+                sys.stdout.write(prefix + line)
