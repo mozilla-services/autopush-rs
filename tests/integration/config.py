@@ -1,6 +1,7 @@
 """Configuration module for autopush-rs integration tests."""
 import copy
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -23,6 +24,9 @@ from .db import (
     create_message_table_ddb,
     get_router_table,
 )
+
+logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger(__name__)
 
 integration_dir: Path = Path(".").absolute()
 tests_dir: Path = integration_dir.parent
@@ -230,3 +234,55 @@ def print_lines_in_queues(queues, prefix):
                 is_empty = True
             else:
                 sys.stdout.write(prefix + line)
+
+
+def setup_bt():
+    """Set up BigTable emulator."""
+    global BT_PROCESS, BT_DB_SETTINGS
+    log.debug("🐍🟢 Starting bigtable emulator")
+    BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
+    os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
+    try:
+        BT_DB_SETTINGS = os.environ.get(
+            "BT_DB_SETTINGS",
+            json.dumps(
+                {
+                    "table_name": "projects/test/instances/test/tables/autopush",
+                }
+            ),
+        )
+        # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
+        # using a Table Name of "projects/test/instances/test/tables/autopush"
+        log.debug("🐍🟢 Setting up bigtable")
+        vv = subprocess.call([SETUP_BT_SH])
+        log.debug(vv)
+    except Exception as e:
+        log.error("Bigtable Setup Error {}", e)
+        raise
+
+
+def setup_dynamodb():
+    """Set up DynamoDB emulator."""
+    global DDB_PROCESS
+
+    log.debug("🐍🟢 Starting dynamodb")
+    if os.getenv("AWS_LOCAL_DYNAMODB") is None:
+        cmd = " ".join(
+            [
+                "java",
+                f"-Djava.library.path={DDB_LIB_DIR}",
+                "-jar",
+                f"{DDB_JAR}",
+                "-sharedDb",
+                "-inMemory",
+            ]
+        )
+        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
+        os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
+    else:
+        print("Using existing DynamoDB instance")
+
+    # Setup the necessary tables
+    boto_resource = DynamoDBResource()
+    create_message_table_ddb(boto_resource, MESSAGE_TABLE)
+    get_router_table(boto_resource, ROUTER_TABLE)
