@@ -149,7 +149,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             self.channels[chid] = result["pushEndpoint"]
         return result
 
-    def unregister(self, chid):
+    def unregister(self, chid) -> Any:
         """Unregister the ChannelID, which should invalidate the associated Endpoint."""
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
