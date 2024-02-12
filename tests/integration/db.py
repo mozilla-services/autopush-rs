@@ -69,7 +69,8 @@ class DynamoDBResource(threading.local):
                     dict(
                         endpoint_url=os.getenv("AWS_LOCAL_DYNAMODB"),
                         aws_access_key_id="Bogus",
-                        aws_secret_access_key="Bogus",
+                        aws_secret_access_key="Bogus",  # nosec
+                        # Not a real access key, ignoring security warning.
                     )
                 )
         # If there is no endpoint URL, we must delete the entry
