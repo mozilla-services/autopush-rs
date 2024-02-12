@@ -96,7 +96,6 @@ mod tests {
     fn test_settings_parse() -> Result<(), crate::db::error::DbError> {
         let settings =
             super::BigTableDbSettings::try_from("{\"database_pool_create_timeout\": 123}")?;
-        dbg!(&settings);
         assert_eq!(
             settings.database_pool_create_timeout,
             Some(std::time::Duration::from_secs(123))
