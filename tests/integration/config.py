@@ -13,6 +13,7 @@ from queue import Empty, Queue
 from threading import Event, Thread
 from typing import Any
 
+import bottle
 import ecdsa
 import twisted
 from cryptography.fernet import Fernet
@@ -24,6 +25,8 @@ from .db import (
     create_message_table_ddb,
     get_router_table,
 )
+
+app = bottle.Bottle()
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
