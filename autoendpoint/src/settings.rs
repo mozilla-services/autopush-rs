@@ -134,7 +134,7 @@ impl Settings {
         let keys = &self.crypto_keys.replace(['"', ' '], "");
         let fernets = Self::read_list_from_str(keys, "Invalid AUTOEND_CRYPTO_KEYS")
             .map(|key| {
-                debug!("Fernet keys: {:?}", &key);
+                debug!("🔐 Fernet keys: {:?}", &key);
                 Fernet::new(key).expect("Invalid AUTOEND_CRYPTO_KEYS")
             })
             .collect();
