@@ -167,7 +167,7 @@ class AutopushUser(FastHttpUser):
             logger.debug("Task 'send_notification' skipped.")
             return
 
-        endpoint_url: str = random.choice(list(self.channels.values()))
+        endpoint_url: str = random.choice(list(self.channels.values()))  # nosec
         self.post_notification(endpoint_url)
 
     @task(weight=1)
@@ -187,7 +187,7 @@ class AutopushUser(FastHttpUser):
             logger.debug("Task 'unsubscribe' skipped.")
             return
 
-        channel_id: str = random.choice(list(self.channels.keys()))
+        channel_id: str = random.choice(list(self.channels.keys()))  # nosec
         self.send_unregister(self.ws, channel_id)
 
     def connect(self) -> None:
@@ -225,8 +225,8 @@ class AutopushUser(FastHttpUser):
         # Prefix random message with 'TestData' to more easily differentiate the payload
         data: str = "TestData" + "".join(
             [
-                random.choice(string.ascii_letters + string.digits)
-                for i in range(0, random.randrange(1024, 4096, 2) - 8)
+                random.choice(string.ascii_letters + string.digits)  # nosec
+                for i in range(0, random.randrange(1024, 4096, 2) - 8)  # nosec
             ]
         )
 
