@@ -147,7 +147,7 @@ class StoredNotifAutopushUser(FastHttpUser):
             logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
 
     @task(weight=78)
-    def send_notification(self):
+    def send_notification(self) -> None:
         """Send a notification to a registered endpoint while connected to Autopush."""
         if not self.channels:
             logger.debug("Task 'send_notification' skipped.")
@@ -157,7 +157,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.post_notification(endpoint_url)
 
     @task(weight=1)
-    def connect_and_subscribe(self):
+    def connect_and_subscribe(self) -> None:
         """Connect, Subscribe a user to an Autopush channel, then disconnect."""
         if not self.ws:
             self.connect_and_hello()
@@ -251,7 +251,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
-        self.notification_records[sha1(data.encode()).digest()] = record
+        self.notification_records[sha1(data.encode(), usedforsecurity=False).digest()] = record
 
         with self.client.post(
             url=endpoint_url,
@@ -304,7 +304,7 @@ class StoredNotifAutopushUser(FastHttpUser):
                         "utf8"
                     )
                     record = self.notification_records.pop(
-                        sha1(decode_data.encode()).digest(), None
+                        sha1(decode_data.encode(), usedforsecurity=False).digest(), None
                     )
                 case "register":
                     message = RegisterMessage(**message_dict)
