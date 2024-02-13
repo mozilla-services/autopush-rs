@@ -260,7 +260,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         bigtable
             .conn
-            .mutate_row_async(&req)
+            .mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
@@ -277,7 +277,7 @@ impl BigTableClientImpl {
         // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
         let resp = bigtable
             .conn
-            .mutate_rows(&req)
+            .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?;
 
         // Scan the returned stream looking for errors.
@@ -419,7 +419,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
-            .check_and_mutate_row_async(&req)
+            .check_and_mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
@@ -486,8 +486,29 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
+        // Admin calls use a slightly different routing param and a truncated prefix
+        // See https://github.com/googleapis/google-cloud-cpp/issues/190#issuecomment-370520185
+        let prefix = &self
+            .settings
+            .table_name
+            .split("/tables/")
+            .collect::<Vec<&str>>()
+            .first()
+            .map(|v| *v);
+        if prefix.is_none() {
+            return Err(error::BigTableError::Admin(
+                "Invalid table name specified".to_string(),
+                None,
+            ));
+        }
+        let admin_meta = MetadataBuilder::with_prefix(prefix.unwrap())
+            .routing_param("name", &self.settings.table_name)
+            .route_to_leader(self.settings.route_to_leader)
+            .build()
+            .map_err(|err| error::BigTableError::GRPC(err))?;
+
         admin
-            .drop_row_range_async(&req)
+            .drop_row_range_async_opt(&req, call_opts(admin_meta))
             .map_err(|e| {
                 error!("{:?}", e);
                 error::BigTableError::Admin(
