@@ -74,7 +74,7 @@ impl FromRequest for Subscription {
         async move {
             // Collect token info and server state
             let token_info = TokenInfo::extract(&req).await?;
-            trace!("Token info: {:?}", &token_info);
+            trace!("🔐 Token info: {:?}", &token_info);
             let app_state: Data<AppState> =
                 Data::extract(&req).await.expect("No server state found");
             let metrics = Metrics::from(&app_state);
@@ -84,7 +84,7 @@ impl FromRequest for Subscription {
                 .fernet
                 .decrypt(&repad_base64(&token_info.token))
                 .map_err(|e| {
-                    error!("fernet: {:?}", e);
+                    error!("🔐 fernet: {:?}", e);
                     ApiErrorKind::InvalidToken
                 })?;
 
