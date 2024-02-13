@@ -18,7 +18,9 @@ use serde::Serializer;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::db::{dynamodb::has_connected_this_month, util::generate_last_connect};
+#[cfg(feature = "dynamodb")]
+use crate::db::dynamodb::has_connected_this_month;
+use util::generate_last_connect;
 
 #[cfg(feature = "bigtable")]
 pub mod bigtable;
@@ -59,6 +61,20 @@ pub enum StorageType {
     // Postgres,
 }
 
+impl From<&str> for StorageType {
+    fn from(name: &str) -> Self {
+        match name.to_lowercase().as_str() {
+            #[cfg(feature = "bigtable")]
+            "bigtable" => Self::BigTable,
+            #[cfg(feature = "dual")]
+            "dual" => Self::Dual,
+            #[cfg(feature = "dynamodb")]
+            "dynamodb" => Self::DynamoDb,
+            _ => Self::INVALID,
+        }
+    }
+}
+
 /// The type of storage to use.
 #[allow(clippy::vec_init_then_push)] // Because we are only pushing on feature flags.
 impl StorageType {
@@ -78,8 +94,9 @@ impl StorageType {
         debug!("Supported data types: {:?}", StorageType::available());
         debug!("Checking DSN: {:?}", &dsn);
         if dsn.is_none() {
-            info!("No DSN specified, failing over to old default dsn");
-            return Self::DynamoDb;
+            let default = Self::available()[0];
+            info!("No DSN specified, failing over to old default dsn: {default}");
+            return Self::from(default);
         }
         let dsn = dsn
             .clone()
@@ -207,6 +224,7 @@ impl Default for User {
 }
 
 impl User {
+    #[cfg(feature = "dynamodb")]
     pub fn set_last_connect(&mut self) {
         self.last_connect = if has_connected_this_month(self) {
             None
