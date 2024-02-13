@@ -3,6 +3,7 @@ name = "autopush_common"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+build = "build.rs"
 
 [lib]
 name = "autopush_common"
