@@ -1,5 +1,7 @@
 use backtrace::Backtrace;
+#[cfg(feature = "dynamodb")]
 use rusoto_core::RusotoError;
+#[cfg(feature = "dynamodb")]
 use rusoto_dynamodb::{
     BatchWriteItemError, DeleteItemError, DescribeTableError, GetItemError, PutItemError,
     QueryError, UpdateItemError,
@@ -14,27 +16,35 @@ pub type DbResult<T> = Result<T, DbError>;
 
 #[derive(Debug, Error)]
 pub enum DbError {
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing GetItem")]
     DdbGetItem(#[from] RusotoError<GetItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing UpdateItem")]
     DdbUpdateItem(#[from] RusotoError<UpdateItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing PutItem")]
     DdbPutItem(#[from] RusotoError<PutItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing DeleteItem")]
     DdbDeleteItem(#[from] RusotoError<DeleteItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing BatchWriteItem")]
     DdbBatchWriteItem(#[from] RusotoError<BatchWriteItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing DescribeTable")]
     DdbDescribeTable(#[from] RusotoError<DescribeTableError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing Query")]
     DdbQuery(#[from] RusotoError<QueryError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Error while performing DynamoDB (de)serialization: {0}")]
     DdbSerialization(#[from] serde_dynamodb::Error),
 
