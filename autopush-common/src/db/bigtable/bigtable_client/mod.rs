@@ -494,7 +494,7 @@ impl BigTableClientImpl {
             .split("/tables/")
             .collect::<Vec<&str>>()
             .first()
-            .map(|v| *v);
+            .copied();
         if prefix.is_none() {
             return Err(error::BigTableError::Admin(
                 "Invalid table name specified".to_string(),
@@ -505,7 +505,7 @@ impl BigTableClientImpl {
             .routing_param("name", &self.settings.table_name)
             .route_to_leader(self.settings.route_to_leader)
             .build()
-            .map_err(|err| error::BigTableError::GRPC(err))?;
+            .map_err(error::BigTableError::GRPC)?;
 
         admin
             .drop_row_range_async_opt(&req, call_opts(admin_meta))
