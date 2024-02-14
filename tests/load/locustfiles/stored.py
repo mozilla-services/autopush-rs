@@ -152,7 +152,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         if close_status_code or close_msg:
             logger.info(f"WebSocket closed. status={close_status_code} msg={close_msg}")
 
-    @task(weight=70)
+    @task(weight=60)
     def send_notification(self) -> None:
         """Send a notification to a registered endpoint while connected to Autopush."""
         if not (self.initialized and self.channels):
@@ -193,7 +193,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.recv_message()
         self.close()
 
-    @task(weight=20)
+    @task(weight=30)
     def connect_and_read(self) -> None:
         """connect_and_hello then disconnect"""
         if not (self.initialized and self.channels):
