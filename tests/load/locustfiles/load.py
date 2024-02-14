@@ -56,7 +56,7 @@ class AutopushLoadTestShape(LoadTestShape):
     USERS_PER_WORKER: int = 1000  # Number of users supported on a c3d-standard-4 hosted worker
     MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
-    user_classes: list[Type[User]] = [AutopushUser, StoredNotifAutopushUser]
+    user_classes: list[Type[User]] = [AutopushUser]
 
     def __init__(self):
         super(LoadTestShape, self).__init__()
@@ -86,3 +86,11 @@ class AutopushLoadTestShape(LoadTestShape):
         spawn_rate: float = max(abs(users - self.get_current_user_count()), 1)
 
         return users, spawn_rate, self.user_classes
+
+
+class StoredNotifAutopushLoadTestShape(AutopushLoadTestShape):
+    """A load test shape class for StoredNotifAutopushLoadTestShape
+    (Duration: 10 minutes, Users: 15000).
+    """
+
+    user_classes: list[Type[User]] = [StoredNotifAutopushUser]
