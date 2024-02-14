@@ -231,7 +231,7 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
-        self.notification_records[sha1(data.encode()).digest()] = record
+        self.notification_records[sha1(data.encode()).digest()] = record  # nosec
 
         with self.client.post(
             url=endpoint_url,
@@ -283,7 +283,7 @@ class AutopushUser(FastHttpUser):
                     # scan through the notification records to see
                     # if this matches a record we sent.
                     record = self.notification_records.get(
-                        sha1(message_data.encode()).digest(), None
+                        sha1(message_data.encode()).digest(), None  # nosec
                     )
                 case "register":
                     message = RegisterMessage(**message_dict)
