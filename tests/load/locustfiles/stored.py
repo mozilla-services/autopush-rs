@@ -207,7 +207,7 @@ class StoredNotifAutopushUser(FastHttpUser):
             raise LocustError("'host' value is unavailable.")
 
         #channel_count = random.randint(0, 1)
-        channel_count = 1
+        channel_count = 0
 
         self.connect_and_hello()
         for i in range(channel_count):
