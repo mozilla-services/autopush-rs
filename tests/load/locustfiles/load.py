@@ -90,8 +90,8 @@ class AutopushLoadTestShape(LoadTestShape):
 
 class StoredNotifAutopushLoadTestShape(AutopushLoadTestShape):
     """A load test shape class for StoredNotifAutopushLoadTestShape
-    (Duration: 20 minutes (Max), Users: 150000).
+    (Duration: 15 minutes, Users: 150000).
     """
 
-    MAX_RUN_TIME: int = 1200  # 20 minutes
+    MAX_RUN_TIME: int = 900  # 15 minutes
     user_classes: list[Type[User]] = [StoredNotifAutopushUser]
