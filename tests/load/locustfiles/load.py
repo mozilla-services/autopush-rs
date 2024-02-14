@@ -44,7 +44,7 @@ class QuadraticTrend:
 
 
 class AutopushLoadTestShape(LoadTestShape):
-    """A load test shape class for Autopush (Duration: 10 minutes, Users: 15000).
+    """A load test shape class for Autopush (Duration: 10 minutes, Users: 150000).
 
     Note: The Shape class assumes that the workers can support the generated spawn rates. Should
     the number of available Locust workers change or should the Locust worker capacity change,
@@ -90,7 +90,7 @@ class AutopushLoadTestShape(LoadTestShape):
 
 class StoredNotifAutopushLoadTestShape(AutopushLoadTestShape):
     """A load test shape class for StoredNotifAutopushLoadTestShape
-    (Duration: 10 minutes, Users: 15000).
+    (Duration: 10 minutes, Users: 150000).
     """
 
     user_classes: list[Type[User]] = [StoredNotifAutopushUser]
