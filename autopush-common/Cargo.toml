@@ -3,6 +3,7 @@ name = "autopush_common"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+build = "build.rs"
 
 [lib]
 name = "autopush_common"
@@ -80,6 +81,7 @@ actix-rt = "2.8"
 bigtable = ["dep:google-cloud-rust-raw", "dep:grpcio", "dep:protobuf"]
 dynamodb = ["dep:rusoto_core", "dep:rusoto_credential", "dep:rusoto_dynamodb"]
 dual = ["dynamodb", "bigtable"]
+aws = []
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.
