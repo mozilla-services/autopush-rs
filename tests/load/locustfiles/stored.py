@@ -164,7 +164,7 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     @task(weight=5)
     def connect_and_subscribe(self) -> None:
-        """Connect, Subscribe a user to an Autopush channel, then disconnect."""
+        """Connect, subscribe a user to an Autopush channel, then disconnect."""
         if not self.initialized:
             logger.debug("Task 'connect_and_subscribe' skipped.")
             return
@@ -203,7 +203,11 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.close()
 
     def connect(self) -> None:
-        """Initialize the WebSocket, sending a Hello command"""
+        """Connect the WebSocket, send the initial 'hello' message, then disconnect.
+
+        This receives a new UAID from autoconnect which is used throughout the
+        rest of the test.
+        """
         if not self.host:
             raise LocustError("'host' value is unavailable.")
 
@@ -212,7 +216,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.initialized = True
 
     def connect_and_hello(self) -> None:
-        """Connect the WebSocket and complete the initial Hello handshake"""
+        """Connect, 'hello', then read any pending notifications"""
         self.ws = websocket.WebSocket()
         self.ws.connect(self.host)
         self.send_hello(self.ws)
