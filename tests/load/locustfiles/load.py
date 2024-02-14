@@ -9,6 +9,7 @@ from typing import Type
 import numpy
 from locust import LoadTestShape, User
 from locustfile import AutopushUser
+from stored import StoredNotifAutopushUser
 
 TickTuple = tuple[int, float, list[Type[User]]]
 
@@ -85,3 +86,11 @@ class AutopushLoadTestShape(LoadTestShape):
         spawn_rate: float = max(abs(users - self.get_current_user_count()), 1)
 
         return users, spawn_rate, self.user_classes
+
+
+class StoredNotifAutopushLoadTestShape(AutopushLoadTestShape):
+    """A load test shape class for StoredNotifAutopushLoadTestShape
+    (Duration: 10 minutes, Users: 15000).
+    """
+
+    user_classes: list[Type[User]] = [StoredNotifAutopushUser]
