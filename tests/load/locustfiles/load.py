@@ -9,6 +9,7 @@ from typing import Type
 import numpy
 from locust import LoadTestShape, User
 from locustfile import AutopushUser
+from stored import StoredNotifAutopushUser
 
 TickTuple = tuple[int, float, list[Type[User]]]
 
@@ -55,7 +56,7 @@ class AutopushLoadTestShape(LoadTestShape):
     USERS_PER_WORKER: int = 1000  # Number of users supported on a c3d-standard-4 hosted worker
     MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
-    user_classes: list[Type[User]] = [AutopushUser]
+    user_classes: list[Type[User]] = [AutopushUser, StoredNotifAutopushUser]
 
     def __init__(self):
         super(LoadTestShape, self).__init__()

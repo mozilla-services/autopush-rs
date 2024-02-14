@@ -20,6 +20,7 @@ import gevent
 import websocket
 from args import parse_wait_time
 from exceptions import ZeroStatusRequestError
+from gevent import Greenlet
 from locust import FastHttpUser, events, task
 from locust.exception import LocustError
 from models import (
@@ -73,7 +74,7 @@ class StoredNotifAutopushUser(FastHttpUser):
 
     def on_start(self) -> Any:
         """Call when a User starts running."""
-        self.ws_greenlet = gevent.spawn(self.connect_and_register)
+        self.ws_greenlet = gevent.spawn(self.connect)
 
     def on_stop(self) -> Any:
         """Call when a User stops running."""
@@ -201,17 +202,12 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.connect_and_hello()
         self.close()
 
-    def connect_and_register(self) -> None:
-        """Initialize the WebSocket, Hello and possibly Register and initial channel"""
+    def connect(self) -> None:
+        """Initialize the WebSocket, sending a Hello command"""
         if not self.host:
             raise LocustError("'host' value is unavailable.")
 
-        #channel_count = random.randint(0, 1)
-        channel_count = 0
-
         self.connect_and_hello()
-        for i in range(channel_count):
-            self.subscribe()
         self.close()
         self.initialized = True
 
