@@ -162,7 +162,7 @@ impl DbClient for DualClientImpl {
         let (target, is_primary) = self.allot(&user.uaid).await?;
         let result = target.update_user(user).await?;
         if is_primary && self.write_to_secondary {
-            let _ = self.secondary.add_user(user).await.map_err(|e| {
+            let _ = self.secondary.update_user(user).await.map_err(|e| {
                 error!("⚡ Error: {:?}", e);
                 self.metrics
                     .incr_with_tags("database.dual.error")
