@@ -14,7 +14,7 @@ use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use grpcio::Channel;
+use grpcio::{Channel, Metadata};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -25,6 +25,7 @@ use crate::db::{
     DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
 };
 
+pub use self::metadata::MetadataBuilder;
 use self::row::Row;
 use super::pool::BigTablePool;
 use super::BigTableDbSettings;
@@ -32,6 +33,7 @@ use super::BigTableDbSettings;
 pub mod cell;
 pub mod error;
 pub(crate) mod merge;
+pub mod metadata;
 pub mod row;
 
 // these are normally Vec<u8>
@@ -72,6 +74,8 @@ pub struct BigTableClientImpl {
     _metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
+    metadata: Metadata,
+    admin_metadata: Metadata,
 }
 
 /// Return a a RowFilter matching the GC policy of the router Column Family
@@ -180,6 +184,10 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     })
 }
 
+fn call_opts(metadata: Metadata) -> ::grpcio::CallOption {
+    ::grpcio::CallOption::default().headers(metadata)
+}
+
 /// Connect to a BigTable storage model.
 ///
 /// BigTable is available via the Google Console, and is a schema less storage system.
@@ -209,11 +217,17 @@ impl BigTableClientImpl {
         // let env = Arc::new(EnvBuilder::new().build());
         debug!("🏊 BT Pool new");
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
-        debug!("🉑 {:#?}", db_settings);
+        info!("🉑 {:#?}", db_settings);
         let pool = BigTablePool::new(settings, &metrics)?;
+
+        // create the metadata header blocks required by Google for accessing GRPC resources.
+        let metadata = db_settings.metadata()?;
+        let admin_metadata = db_settings.admin_metadata()?;
         Ok(Self {
             settings: db_settings,
             _metrics: metrics,
+            metadata,
+            admin_metadata,
             pool,
         })
     }
@@ -247,7 +261,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         bigtable
             .conn
-            .mutate_row_async(&req)
+            .mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
@@ -264,7 +278,7 @@ impl BigTableClientImpl {
         // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
         let resp = bigtable
             .conn
-            .mutate_rows(&req)
+            .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?;
 
         // Scan the returned stream looking for errors.
@@ -327,7 +341,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
-            .read_rows(&req)
+            .read_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Read)?;
         merge::RowMerger::process_chunks(resp).await
     }
@@ -406,7 +420,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
-            .check_and_mutate_row_async(&req)
+            .check_and_mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
@@ -438,6 +452,7 @@ impl BigTableClientImpl {
         Ok(mutations)
     }
 
+    #[allow(unused)]
     /// Delete all cell data from the specified columns with the optional time range.
     #[allow(unused)]
     async fn delete_cells(
@@ -472,8 +487,9 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
+
         admin
-            .drop_row_range_async(&req)
+            .drop_row_range_async_opt(&req, call_opts(self.admin_metadata.clone()))
             .map_err(|e| {
                 error!("{:?}", e);
                 error::BigTableError::Admin(
@@ -606,12 +622,14 @@ impl BigTableClientImpl {
 #[derive(Clone)]
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
+    pub(super) metadata: Metadata,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel) -> Self {
+    pub fn new(channel: Channel, metadata: &Metadata) -> Self {
         Self {
             conn: BigtableClient::new(channel),
+            metadata: metadata.clone(),
         }
     }
 
@@ -629,12 +647,13 @@ impl BigtableDb {
 
         let r = self
             .conn
-            .read_rows(&req)
+            .read_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
         let (v, _stream) = r.into_future().await;
         // Since this should return no rows (with the row key set to a value that shouldn't exist)
         // the first component of the tuple should be None.
+        debug!("🉑 health check");
         Ok(v.is_none())
     }
 }

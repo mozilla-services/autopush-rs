@@ -38,7 +38,7 @@ jobs:
   audit:
     docker:
       # NOTE: update version for all # RUST_VER
-      - image: rust:1.74
+      - image: rust:1.76
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -133,7 +133,7 @@ jobs:
             apt install build-essential curl libstdc++6 libstdc++-10-dev libssl-dev pkg-config -y
             apt install cmake -y
             # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.73 -y
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.76 -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version

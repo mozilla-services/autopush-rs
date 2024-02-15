@@ -154,7 +154,7 @@ impl Manager for BigtableClientManager {
     /// `BigtableClient` is the most atomic we can go.
     async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        let entry = BigtableDb::new(self.get_channel()?);
+        let entry = BigtableDb::new(self.get_channel()?, &self.settings.metadata()?);
         debug!("🏊 Bigtable connection acquired");
         Ok(entry)
     }
@@ -181,7 +181,8 @@ impl Manager for BigtableClientManager {
         }
 
         // Clippy 0.1.73 complains about the `.map_err` being hard to read.
-        #[allow(clippy::blocks_in_if_conditions)]
+        // note, this changes to `blocks_in_conditions` for 1.76+
+        #[allow(clippy::blocks_in_conditions)]
         if !client
             .health_check(&self.settings.table_name)
             .await
