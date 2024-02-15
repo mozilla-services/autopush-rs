@@ -157,6 +157,7 @@ impl Manager for BigtableClientManager {
         debug!("🏊 Create a new pool entry.");
         let metadata = MetadataBuilder::with_prefix(&self.settings.table_name)
             .route_to_leader(self.settings.route_to_leader)
+            .routing_param("name", &self.settings.table_name)
             .build()
             .map_err(|e| DbError::BTError(BigTableError::GRPC(e)))?;
         let entry = BigtableDb::new(self.get_channel()?, &metadata);
@@ -187,7 +188,7 @@ impl Manager for BigtableClientManager {
 
         // Clippy 0.1.73 complains about the `.map_err` being hard to read.
         // note, this changes to `blocks_in_conditions` for 1.76+
-        #[allow(clippy::blocks_in_if_conditions)]
+        #[allow(clippy::blocks_in_conditions)]
         if !client
             .health_check(&self.settings.table_name)
             .await

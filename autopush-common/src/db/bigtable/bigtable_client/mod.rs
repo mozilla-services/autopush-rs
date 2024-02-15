@@ -75,6 +75,7 @@ pub struct BigTableClientImpl {
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
     metadata: Metadata,
+    admin_metadata: Metadata,
 }
 
 /// Return a a RowFilter matching the GC policy of the router Column Family
@@ -218,15 +219,32 @@ impl BigTableClientImpl {
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         info!("🉑 {:#?}", db_settings);
         let pool = BigTablePool::new(settings, &metrics)?;
+
+        // create the metadata header blocks required by Google for accessing GRPC resources.
         let metadata = MetadataBuilder::with_prefix(&db_settings.table_name)
             .routing_param("table_name", &db_settings.table_name)
             .route_to_leader(db_settings.route_to_leader)
             .build()
             .map_err(|err| DbError::BTError(error::BigTableError::GRPC(err)))?;
+        // Admin calls use a slightly different routing param and a truncated prefix
+        // See https://github.com/googleapis/google-cloud-cpp/issues/190#issuecomment-370520185
+        let Some(admin_prefix) = db_settings.table_name.split_once("/tables/").map(|v| v.0) else {
+            return Err(DbError::BTError(error::BigTableError::Admin(
+                "Invalid table name specified".to_owned(),
+                None,
+            )));
+        };
+        let admin_metadata = MetadataBuilder::with_prefix(admin_prefix)
+            .routing_param("name", &db_settings.table_name)
+            .route_to_leader(db_settings.route_to_leader)
+            .build()
+            .map_err(error::BigTableError::GRPC)?;
+
         Ok(Self {
             settings: db_settings,
             _metrics: metrics,
             metadata,
+            admin_metadata,
             pool,
         })
     }
@@ -486,29 +504,9 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
-        // Admin calls use a slightly different routing param and a truncated prefix
-        // See https://github.com/googleapis/google-cloud-cpp/issues/190#issuecomment-370520185
-        let prefix = &self
-            .settings
-            .table_name
-            .split("/tables/")
-            .collect::<Vec<&str>>()
-            .first()
-            .copied();
-        if prefix.is_none() {
-            return Err(error::BigTableError::Admin(
-                "Invalid table name specified".to_string(),
-                None,
-            ));
-        }
-        let admin_meta = MetadataBuilder::with_prefix(prefix.unwrap())
-            .routing_param("name", &self.settings.table_name)
-            .route_to_leader(self.settings.route_to_leader)
-            .build()
-            .map_err(error::BigTableError::GRPC)?;
 
         admin
-            .drop_row_range_async_opt(&req, call_opts(admin_meta))
+            .drop_row_range_async_opt(&req, call_opts(self.admin_metadata.clone()))
             .map_err(|e| {
                 error!("{:?}", e);
                 error::BigTableError::Admin(
