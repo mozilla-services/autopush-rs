@@ -1,4 +1,6 @@
-use std::{io, sync::OnceLock, time::Duration};
+use std::io;
+#[cfg(feature = "aws")]
+use std::{sync::OnceLock, time::Duration};
 
 use gethostname::gethostname;
 use slog::{self, Drain};
@@ -6,14 +8,18 @@ use slog_mozlog_json::MozLogJson;
 
 use crate::errors::Result;
 
+#[cfg(feature = "aws")]
 static EC2_INSTANCE_ID: OnceLock<Option<String>> = OnceLock::new();
 
 pub fn init_logging(json: bool, name: &str, version: &str) -> Result<()> {
     let logger = if json {
-        let ec2_instance_id = EC2_INSTANCE_ID.get_or_init(|| get_ec2_instance_id().ok());
-        let hostname = ec2_instance_id
-            .clone()
-            .unwrap_or_else(|| gethostname().to_string_lossy().to_string());
+        let hostname = {
+            #[cfg(feature = "aws")]
+            let result = ec2_instance_id();
+            #[cfg(not(feature = "aws"))]
+            let result = gethostname().to_string_lossy().to_string();
+            result
+        };
         let drain = MozLogJson::new(io::stdout())
             .logger_name(format!("{}-{}", name, version))
             .msg_type(format!("{}:log", name))
@@ -56,9 +62,17 @@ pub fn init_test_logging() {
     slog_stdlog::init().ok();
 }
 
+#[cfg(feature = "aws")]
+fn ec2_instance_id() -> String {
+    let ec2_instance_id = EC2_INSTANCE_ID.get_or_init(|| get_ec2_instance_id().ok());
+    ec2_instance_id
+        .clone()
+        .unwrap_or_else(|| gethostname().to_string_lossy().to_string())
+}
 /// Fetch the EC2 instance-id
 ///
 /// NOTE: This issues a blocking web request
+#[cfg(feature = "aws")]
 fn get_ec2_instance_id() -> reqwest::Result<String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(1))
