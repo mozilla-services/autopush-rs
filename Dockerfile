@@ -1,5 +1,6 @@
 # NOTE: Ensure builder's Rust version matches CI's in .circleci/config.yml
-FROM rust:1.74-buster as builder
+# RUST_VER 
+FROM rust:1.76-buster as builder
 ARG CRATE
 
 ADD . /app

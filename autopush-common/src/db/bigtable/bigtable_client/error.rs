@@ -98,6 +98,9 @@ pub enum BigTableError {
     #[error("Bigtable write error: {0}")]
     Write(#[source] grpcio::Error),
 
+    #[error("GRPC Error: {0}")]
+    GRPC(#[source] grpcio::Error),
+
     /// Return a GRPC status code and any message.
     /// See https://grpc.github.io/grpc/core/md_doc_statuscodes.html
     #[error("Bigtable status response: {0:?}")]
@@ -140,6 +143,7 @@ impl ReportableError for BigTableError {
             BigTableError::Admin(_, _) => "storage.bigtable.error.admin",
             BigTableError::Recycle => "storage.bigtable.error.recycle",
             BigTableError::Pool(_) => "storage.bigtable.error.pool",
+            BigTableError::GRPC(_) => "storage.bigtable.error.grpc",
         };
         Some(err)
     }
@@ -148,6 +152,7 @@ impl ReportableError for BigTableError {
         match &self {
             BigTableError::InvalidRowResponse(s) => vec![("error", s.to_string())],
             BigTableError::InvalidChunk(s) => vec![("error", s.to_string())],
+            BigTableError::GRPC(s) => vec![("error", s.to_string())],
             BigTableError::Read(s) => vec![("error", s.to_string())],
             BigTableError::Write(s) => vec![("error", s.to_string())],
             BigTableError::Status(code, s) => {
