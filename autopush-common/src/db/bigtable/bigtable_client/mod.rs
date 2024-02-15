@@ -25,7 +25,7 @@ use crate::db::{
     DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
 };
 
-use self::metadata::MetadataBuilder;
+pub use self::metadata::MetadataBuilder;
 use self::row::Row;
 use super::pool::BigTablePool;
 use super::BigTableDbSettings;
@@ -221,25 +221,8 @@ impl BigTableClientImpl {
         let pool = BigTablePool::new(settings, &metrics)?;
 
         // create the metadata header blocks required by Google for accessing GRPC resources.
-        let metadata = MetadataBuilder::with_prefix(&db_settings.table_name)
-            .routing_param("table_name", &db_settings.table_name)
-            .route_to_leader(db_settings.route_to_leader)
-            .build()
-            .map_err(|err| DbError::BTError(error::BigTableError::GRPC(err)))?;
-        // Admin calls use a slightly different routing param and a truncated prefix
-        // See https://github.com/googleapis/google-cloud-cpp/issues/190#issuecomment-370520185
-        let Some(admin_prefix) = db_settings.table_name.split_once("/tables/").map(|v| v.0) else {
-            return Err(DbError::BTError(error::BigTableError::Admin(
-                "Invalid table name specified".to_owned(),
-                None,
-            )));
-        };
-        let admin_metadata = MetadataBuilder::with_prefix(admin_prefix)
-            .routing_param("name", &db_settings.table_name)
-            .route_to_leader(db_settings.route_to_leader)
-            .build()
-            .map_err(error::BigTableError::GRPC)?;
-
+        let metadata = db_settings.metadata()?;
+        let admin_metadata = db_settings.admin_metadata()?;
         Ok(Self {
             settings: db_settings,
             _metrics: metrics,

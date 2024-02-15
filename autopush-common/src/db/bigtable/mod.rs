@@ -25,9 +25,11 @@ mod pool;
 pub use bigtable_client::error::BigTableError;
 pub use bigtable_client::BigTableClientImpl;
 
+use grpcio::Metadata;
 use serde::Deserialize;
 use std::time::Duration;
 
+use crate::db::bigtable::bigtable_client::MetadataBuilder;
 use crate::db::error::DbError;
 use crate::util::deserialize_u32_to_duration;
 
@@ -65,6 +67,32 @@ pub struct BigTableDbSettings {
     /// Include route to leader header in metadata
     #[serde(default)]
     pub route_to_leader: bool,
+}
+
+impl BigTableDbSettings {
+    pub fn metadata(&self) -> Result<Metadata, BigTableError> {
+        MetadataBuilder::with_prefix(&self.table_name)
+            .routing_param("table_name", &self.table_name)
+            .route_to_leader(self.route_to_leader)
+            .build()
+            .map_err(BigTableError::GRPC)
+    }
+
+    pub fn admin_metadata(&self) -> Result<Metadata, BigTableError> {
+        // Admin calls use a slightly different routing param and a truncated prefix
+        // See https://github.com/googleapis/google-cloud-cpp/issues/190#issuecomment-370520185
+        let Some(admin_prefix) = self.table_name.split_once("/tables/").map(|v| v.0) else {
+            return Err(BigTableError::Admin(
+                "Invalid table name specified".to_owned(),
+                None,
+            ));
+        };
+        MetadataBuilder::with_prefix(admin_prefix)
+            .routing_param("name", &self.table_name)
+            .route_to_leader(self.route_to_leader)
+            .build()
+            .map_err(BigTableError::GRPC)
+    }
 }
 
 impl TryFrom<&str> for BigTableDbSettings {

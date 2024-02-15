@@ -6,7 +6,6 @@ use cadence::StatsdClient;
 use deadpool::managed::{Manager, PoolConfig, Timeouts};
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 
-use crate::db::bigtable::bigtable_client::metadata::MetadataBuilder;
 use crate::db::bigtable::{bigtable_client::BigtableDb, BigTableDbSettings, BigTableError};
 use crate::db::error::{DbError, DbResult};
 use crate::db::DbSettings;
@@ -155,12 +154,7 @@ impl Manager for BigtableClientManager {
     /// `BigtableClient` is the most atomic we can go.
     async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        let metadata = MetadataBuilder::with_prefix(&self.settings.table_name)
-            .route_to_leader(self.settings.route_to_leader)
-            .routing_param("name", &self.settings.table_name)
-            .build()
-            .map_err(|e| DbError::BTError(BigTableError::GRPC(e)))?;
-        let entry = BigtableDb::new(self.get_channel()?, &metadata);
+        let entry = BigtableDb::new(self.get_channel()?, &self.settings.metadata()?);
         debug!("🏊 Bigtable connection acquired");
         Ok(entry)
     }
