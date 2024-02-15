@@ -661,6 +661,7 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
+    #[must_use]
     async fn update_user(&self, user: &User) -> DbResult<bool> {
         let Some(ref version) = user.version else {
             return Err(DbError::General("Expected a user version field".to_owned()));

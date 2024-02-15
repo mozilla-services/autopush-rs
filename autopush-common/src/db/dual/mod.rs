@@ -157,6 +157,7 @@ impl DbClient for DualClientImpl {
         Ok(result)
     }
 
+    #[must_use]
     async fn update_user(&self, user: &User) -> DbResult<bool> {
         //  If the UAID is in the allowance, move them to the new data store
         let (target, is_primary) = self.allot(&user.uaid).await?;
