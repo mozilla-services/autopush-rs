@@ -1,3 +1,33 @@
+<a name="1.70.1"></a>
+## 1.70.1 (2024-02-15)
+
+
+#### Features
+
+*   add metadata headers for bigtable (#586) ([e043fb02](https://github.com/mozilla-services/autopush-rs/commit/e043fb02dc4ccd13f39c5083c94b7311887f3fef))
+*   simplify StoredNotifAutopushUser's on_start (#614) ([c2841113](https://github.com/mozilla-services/autopush-rs/commit/c284111312ba4cb034d887aaec14d1fda7286ae1))
+*   simplify StoredNotifAutopushUser's on_start ([0d0e99e6](https://github.com/mozilla-services/autopush-rs/commit/0d0e99e6996c11b2a81cfeebd2a89c609a7a9d01))
+*   retry dynamodb HttpDispatch errors (#605) ([cb1482de](https://github.com/mozilla-services/autopush-rs/commit/cb1482de2f5cedef0047ca9a7b01db0d7103e5ab))
+*   Elevate big table settings dump for deployment debug (#609) ([7d29c16d](https://github.com/mozilla-services/autopush-rs/commit/7d29c16dae5388ab41052832fe672fd41cfcf3d0))
+*   put old AWS crap behind a feature flag (#606) ([04df79e5](https://github.com/mozilla-services/autopush-rs/commit/04df79e5df9899fc0563d116187fbd59e0a53eee))
+
+#### Chore
+
+* **deps-dev:**
+  *  bump jinja2 from 3.1.2 to 3.1.3 in /tests (#549) ([80c961a5](https://github.com/mozilla-services/autopush-rs/commit/80c961a53c0bb3946fb32851ad58e8744c9909a3))
+  *  bump cryptography from 41.0.7 to 42.0.0 in /tests (#600) ([4fbbaea2](https://github.com/mozilla-services/autopush-rs/commit/4fbbaea2a4dda5e818420d6f77df2d1e6486e82c))
+  *  bump cryptography from 41.0.7 to 42.0.0 in /tests ([222c05cc](https://github.com/mozilla-services/autopush-rs/commit/222c05cc7d6af778d5aa5fe3ec38517cc2bc806f))
+  *  bump jinja2 from 3.1.2 to 3.1.3 in /tests ([3c7d900b](https://github.com/mozilla-services/autopush-rs/commit/3c7d900b59848ee053197809d19dc201c566f750))
+
+#### Bug Fixes
+
+*   add secondary_write for channels (#597) ([37b377ae](https://github.com/mozilla-services/autopush-rs/commit/37b377ae17c2afe30e72c739fc539aa9eec465d5))
+*   Isolate dynamodb to feature flag only (#612) ([158e01c4](https://github.com/mozilla-services/autopush-rs/commit/158e01c45017c051c2f834537a1cb8c9c5546da6))
+*   Add errors for health check reporting (#610) ([37a0724a](https://github.com/mozilla-services/autopush-rs/commit/37a0724a8815d42c471ca30ebb56c352f0ed673e))
+*   reset the WebSocket every time it disconnects (#607) ([9bb964c6](https://github.com/mozilla-services/autopush-rs/commit/9bb964c62df7b46b101d3c98739155ec84112fe3))
+
+
+
 <a name="1.70.0"></a>
 ## 1.70.0 (2024-02-06)
 
