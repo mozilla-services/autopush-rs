@@ -93,7 +93,29 @@ impl FromRequest for Subscription {
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
 
-            trace!("Vapid: {:?}", &vapid);
+            trace!("raw vapid: {:?}", &vapid);
+
+            // Capturing the vapid sub right now will cause too much cardinality. Instead,
+            // let's just capture if we have a valid VAPID, as well as what sort of bad sub
+            // values we get.
+            if let Some(header) = vapid.clone() {
+                let sub = header
+                    .vapid
+                    .sub()
+                    .map_err(|e| {
+                        // Capture the type of error and add it to metrics.
+                        let mut tags = Tags::default();
+                        tags.tags
+                            .insert("error".to_owned(), e.as_metric().to_owned());
+                        metrics
+                            .clone()
+                            .incr_with_tags("notification.auth.error", Some(tags));
+                    })
+                    .unwrap_or_default();
+                // For now, record that we had a good (?) VAPID sub,
+                metrics.clone().incr("notification.auth.ok");
+                info!("VAPID sub: {:?}", sub)
+            };
 
             match token_info.api_version {
                 ApiVersion::Version1 => version_1_validation(&token)?,
@@ -160,7 +182,13 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Opti
         None => return Ok(None),
     };
 
-    let vapid = VapidHeader::parse(auth_header)?;
+    let vapid = VapidHeader::parse(auth_header).map_err(|e| {
+        metrics
+            .incr_with_tags("notification.auth.error")
+            .with_tag("error", e.as_metric())
+            .send();
+        e
+    })?;
 
     metrics
         .incr_with_tags("notification.auth")
@@ -298,7 +326,12 @@ fn validate_vapid_jwt(
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
             _ => {
-                metrics.clone().incr("notification.auth.bad_vapid.other");
+                let mut tags = Tags::default();
+                tags.tags.insert("error".to_owned(), e.to_string());
+                metrics
+                    .clone()
+                    .incr_with_tags("notification.auth.bad_vapid.other", Some(tags));
+                error!("Bad Aud: Unexpected VAPID error: {:?}", &e);
                 return Err(e.into());
             }
         },
