@@ -1,3 +1,13 @@
+<a name="1.70.2"></a>
+## 1.70.2 (2024-02-15)
+
+
+#### Bug Fixes
+
+*   dual update_user calling add_user ([c80866d6](https://github.com/mozilla-services/autopush-rs/commit/c80866d6b3c7b0f8b09e456cc7e4aa4bba7bf6e7))
+
+
+
 <a name="1.70.1"></a>
 ## 1.70.1 (2024-02-15)
 
