@@ -107,7 +107,7 @@ pub async fn update_token_route(
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
 
     // Update the user in the database
-    let user = User {
+    let mut user = User {
         uaid: path_args.uaid,
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),
@@ -115,7 +115,7 @@ pub async fn update_token_route(
     };
     trace!("🌍 Updating user with UAID {}", user.uaid);
     trace!("🌍 user = {:?}", user);
-    if !app_state.db.update_user(&user).await? {
+    if !app_state.db.update_user(&mut user).await? {
         // Unlikely to occur on mobile records
         return Err(ApiErrorKind::General("Conditional update failed".to_owned()).into());
     }

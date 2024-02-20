@@ -558,7 +558,12 @@ impl BigTableClientImpl {
         Ok(notif)
     }
 
-    fn user_to_row(&self, user: &User) -> Row {
+    /// Return a Row for writing from a [User] and a `version`
+    ///
+    /// `version` is specified as an argument (ignoring [User::version]) so
+    /// that [update_user] may specify a new version to write before modifying
+    /// the [User] struct
+    fn user_to_row(&self, user: &User, version: &Uuid) -> Row {
         let row_key = user.uaid.simple().to_string();
         let mut row = Row::new(row_key);
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
@@ -611,8 +616,12 @@ impl BigTableClientImpl {
             });
         };
 
-        // Always write a newly generated version
-        cells.push(new_version_cell(expiry));
+        cells.push(cell::Cell {
+            qualifier: "version".to_owned(),
+            value: (*version).into(),
+            timestamp: expiry,
+            ..Default::default()
+        });
 
         row.add_cells(ROUTER_FAMILY, cells);
         row
@@ -663,7 +672,12 @@ impl DbClient for BigTableClientImpl {
     /// add user to the database
     async fn add_user(&self, user: &User) -> DbResult<()> {
         trace!("🉑 Adding user");
-        let row = self.user_to_row(user);
+        let Some(ref version) = user.version else {
+            return Err(DbError::General(
+                "add_user expected a user version field".to_owned(),
+            ));
+        };
+        let row = self.user_to_row(user, version);
 
         // Only add when the user doesn't already exist
         let mut row_key_filter = RowFilter::default();
@@ -679,18 +693,24 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
-    async fn update_user(&self, user: &User) -> DbResult<bool> {
+    async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         let Some(ref version) = user.version else {
-            return Err(DbError::General("Expected a user version field".to_owned()));
+            return Err(DbError::General(
+                "update_user expected a user version field".to_owned(),
+            ));
         };
 
         let mut filters = vec![router_gc_policy_filter()];
         filters.extend(version_filter(version));
         let filter = filter_chain(filters);
 
-        Ok(self
-            .check_and_mutate_row(self.user_to_row(user), filter, true)
-            .await?)
+        let new_version = Uuid::new_v4();
+        // Always write a newly generated version
+        let row = self.user_to_row(user, &new_version);
+
+        let predicate_matched = self.check_and_mutate_row(row, filter, true).await?;
+        user.version = Some(new_version);
+        Ok(predicate_matched)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -1286,11 +1306,11 @@ mod tests {
         // now ensure that we can update a user that's after the time we set
         // prior. first ensure that we can't update a user that's before the
         // time we set prior to the last write
-        let updated = User {
+        let mut updated = User {
             connected_at,
             ..test_user.clone()
         };
-        let result = client.update_user(&updated).await;
+        let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
         assert!(!result.unwrap());
 
@@ -1299,11 +1319,11 @@ mod tests {
         assert_eq!(fetched.connected_at, fetched2.connected_at);
 
         // and make sure we can update a record with a later connected_at time.
-        let updated = User {
+        let mut updated = User {
             connected_at: fetched.connected_at + 300,
             ..fetched2
         };
-        let result = client.update_user(&updated).await;
+        let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
         assert_ne!(
@@ -1477,13 +1497,13 @@ mod tests {
         client.remove_user(&uaid).await.unwrap();
 
         client.add_user(&user).await.unwrap();
-        let user = client.get_user(&uaid).await.unwrap().unwrap();
-        assert!(client.update_user(&user).await.unwrap());
+        let mut user = client.get_user(&uaid).await.unwrap().unwrap();
+        assert!(client.update_user(&mut user.clone()).await.unwrap());
 
         let fetched = client.get_user(&uaid).await.unwrap().unwrap();
         assert_ne!(user.version, fetched.version);
         // should now fail w/ a stale version
-        assert!(!client.update_user(&user).await.unwrap());
+        assert!(!client.update_user(&mut user).await.unwrap());
 
         client.remove_user(&uaid).await.unwrap();
     }
