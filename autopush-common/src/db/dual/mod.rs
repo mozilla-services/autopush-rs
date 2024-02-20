@@ -126,8 +126,6 @@ impl DualClientImpl {
         let target: (Box<&'a dyn DbClient>, bool) = if let Some(median) = self.median {
             if uaid.as_bytes()[0] <= median {
                 debug!("⚖ Routing user to Bigtable");
-                // These are migrations so the metrics should appear as
-                // `auto[endpoint|connect].migrate`.
                 (Box::new(&self.primary), true)
             } else {
                 (Box::new(&self.secondary), false)
@@ -192,6 +190,7 @@ impl DbClient for DualClientImpl {
                         debug_assert!(user.version.is_none());
                         user.version = Some(Uuid::new_v4());
                         self.primary.add_user(&user).await?;
+                        self.metrics.incr_with_tags("database.migrate").send();
                         let channels = self.secondary.get_channels(uaid).await?;
                         // NOTE: add_channels doesn't write a new version:
                         // user.version is still valid
