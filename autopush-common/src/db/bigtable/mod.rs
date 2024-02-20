@@ -68,8 +68,8 @@ pub struct BigTableDbSettings {
     pub database_pool_connection_ttl: Option<Duration>,
     /// Max idle time(in seconds) for a connection
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub database_pool_max_idle: Duration,
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_max_idle: Option<Duration>,
     /// Include route to leader header in metadata
     #[serde(default)]
     pub route_to_leader: bool,
@@ -127,7 +127,6 @@ mod tests {
             settings.database_pool_create_timeout,
             Some(std::time::Duration::from_secs(123))
         );
-        assert_eq!(settings.request_timeout, None);
         Ok(())
     }
 }

@@ -14,7 +14,7 @@ use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use grpcio::{CallOption, Channel, Metadata};
+use grpcio::{Channel, Metadata};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
