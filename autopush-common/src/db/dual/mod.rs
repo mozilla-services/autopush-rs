@@ -99,6 +99,13 @@ impl DualClientImpl {
         let primary = BigTableClientImpl::new(metrics.clone(), &db_settings.primary)?;
         let secondary = DdbClientImpl::new(metrics.clone(), &db_settings.secondary)?;
         debug!("⚖ Got primary and secondary");
+        metrics
+            .incr_with_tags("database.dual.allot")
+            .with_tag(
+                "median",
+                &median.map_or_else(|| "None".to_owned(), |m| m.to_string()),
+            )
+            .send();
         Ok(Self {
             primary,
             secondary: secondary.clone(),
@@ -128,10 +135,6 @@ impl DualClientImpl {
         } else {
             (Box::new(&self.primary), true)
         };
-        self.metrics
-            .incr_with_tags("database.dual.error")
-            .with_tag("target", &target.0.name())
-            .send();
         debug!("⚖ alloting to {}", target.0.name());
         Ok(target)
     }
