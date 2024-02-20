@@ -14,7 +14,7 @@ use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use grpcio::{CallOption, Channel};
+use grpcio::{CallOption, Channel, Metadata};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -25,6 +25,7 @@ use crate::db::{
     DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
 };
 
+pub use self::metadata::MetadataBuilder;
 use self::row::Row;
 use super::pool::BigTablePool;
 use super::BigTableDbSettings;
@@ -32,6 +33,7 @@ use super::BigTableDbSettings;
 pub mod cell;
 pub mod error;
 pub(crate) mod merge;
+pub mod metadata;
 pub mod row;
 
 // these are normally Vec<u8>
@@ -72,8 +74,8 @@ pub struct BigTableClientImpl {
     _metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
-    /// Call Options for clients
-    call_options: CallOption,
+    metadata: Metadata,
+    admin_metadata: Metadata,
 }
 
 /// Return a a RowFilter matching the GC policy of the router Column Family
@@ -182,6 +184,10 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     })
 }
 
+fn call_opts(metadata: Metadata) -> ::grpcio::CallOption {
+    ::grpcio::CallOption::default().headers(metadata)
+}
+
 /// Connect to a BigTable storage model.
 ///
 /// BigTable is available via the Google Console, and is a schema less storage system.
@@ -213,14 +219,15 @@ impl BigTableClientImpl {
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         info!("🉑 {:#?}", db_settings);
         let pool = BigTablePool::new(settings, &metrics)?;
-        let mut call_options = CallOption::default();
-        if let Some(timeout) = db_settings.request_timeout {
-            call_options = call_options.timeout(timeout);
-        }
+
+        // create the metadata header blocks required by Google for accessing GRPC resources.
+        let metadata = db_settings.metadata()?;
+        let admin_metadata = db_settings.admin_metadata()?;
         Ok(Self {
             settings: db_settings,
             _metrics: metrics,
-            call_options,
+            metadata,
+            admin_metadata,
             pool,
         })
     }
@@ -254,7 +261,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         bigtable
             .conn
-            .mutate_row_async_opt(&req, self.call_options.clone())
+            .mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
@@ -271,7 +278,7 @@ impl BigTableClientImpl {
         // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
         let resp = bigtable
             .conn
-            .mutate_rows_opt(&req, self.call_options.clone())
+            .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?;
 
         // Scan the returned stream looking for errors.
@@ -334,7 +341,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
-            .read_rows_opt(&req, self.call_options.clone())
+            .read_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Read)?;
         merge::RowMerger::process_chunks(resp).await
     }
@@ -413,7 +420,7 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let resp = bigtable
             .conn
-            .check_and_mutate_row_async_opt(&req, self.call_options.clone())
+            .check_and_mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
             .map_err(error::BigTableError::Write)?
             .await
             .map_err(error::BigTableError::Write)?;
@@ -445,6 +452,7 @@ impl BigTableClientImpl {
         Ok(mutations)
     }
 
+    #[allow(unused)]
     /// Delete all cell data from the specified columns with the optional time range.
     #[allow(unused)]
     async fn delete_cells(
@@ -479,8 +487,9 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
+
         admin
-            .drop_row_range_async_opt(&req, self.call_options.clone())
+            .drop_row_range_async_opt(&req, call_opts(self.admin_metadata.clone()))
             .map_err(|e| {
                 error!("{:?}", e);
                 error::BigTableError::Admin(
@@ -549,7 +558,12 @@ impl BigTableClientImpl {
         Ok(notif)
     }
 
-    fn user_to_row(&self, user: &User) -> Row {
+    /// Return a Row for writing from a [User] and a `version`
+    ///
+    /// `version` is specified as an argument (ignoring [User::version]) so
+    /// that [update_user] may specify a new version to write before modifying
+    /// the [User] struct
+    fn user_to_row(&self, user: &User, version: &Uuid) -> Row {
         let row_key = user.uaid.simple().to_string();
         let mut row = Row::new(row_key);
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
@@ -602,8 +616,12 @@ impl BigTableClientImpl {
             });
         };
 
-        // Always write a newly generated version
-        cells.push(new_version_cell(expiry));
+        cells.push(cell::Cell {
+            qualifier: "version".to_owned(),
+            value: (*version).into(),
+            timestamp: expiry,
+            ..Default::default()
+        });
 
         row.add_cells(ROUTER_FAMILY, cells);
         row
@@ -613,19 +631,14 @@ impl BigTableClientImpl {
 #[derive(Clone)]
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
-    call_options: CallOption,
+    pub(super) metadata: Metadata,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel, timeout: Option<Duration>) -> Self {
-        let call_options = if let Some(timeout) = timeout {
-            CallOption::default().timeout(timeout)
-        } else {
-            CallOption::default()
-        };
+    pub fn new(channel: Channel, metadata: &Metadata) -> Self {
         Self {
             conn: BigtableClient::new(channel),
-            call_options,
+            metadata: metadata.clone(),
         }
     }
 
@@ -643,12 +656,13 @@ impl BigtableDb {
 
         let r = self
             .conn
-            .read_rows_opt(&req, self.call_options.clone())
+            .read_rows_opt(&req, call_opts(self.metadata.clone()))
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
         let (v, _stream) = r.into_future().await;
         // Since this should return no rows (with the row key set to a value that shouldn't exist)
         // the first component of the tuple should be None.
+        debug!("🉑 health check");
         Ok(v.is_none())
     }
 }
@@ -658,7 +672,12 @@ impl DbClient for BigTableClientImpl {
     /// add user to the database
     async fn add_user(&self, user: &User) -> DbResult<()> {
         trace!("🉑 Adding user");
-        let row = self.user_to_row(user);
+        let Some(ref version) = user.version else {
+            return Err(DbError::General(
+                "add_user expected a user version field".to_owned(),
+            ));
+        };
+        let row = self.user_to_row(user, version);
 
         // Only add when the user doesn't already exist
         let mut row_key_filter = RowFilter::default();
@@ -674,18 +693,24 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
-    async fn update_user(&self, user: &User) -> DbResult<bool> {
+    async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         let Some(ref version) = user.version else {
-            return Err(DbError::General("Expected a user version field".to_owned()));
+            return Err(DbError::General(
+                "update_user expected a user version field".to_owned(),
+            ));
         };
 
         let mut filters = vec![router_gc_policy_filter()];
         filters.extend(version_filter(version));
         let filter = filter_chain(filters);
 
-        Ok(self
-            .check_and_mutate_row(self.user_to_row(user), filter, true)
-            .await?)
+        let new_version = Uuid::new_v4();
+        // Always write a newly generated version
+        let row = self.user_to_row(user, &new_version);
+
+        let predicate_matched = self.check_and_mutate_row(row, filter, true).await?;
+        user.version = Some(new_version);
+        Ok(predicate_matched)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -1281,11 +1306,11 @@ mod tests {
         // now ensure that we can update a user that's after the time we set
         // prior. first ensure that we can't update a user that's before the
         // time we set prior to the last write
-        let updated = User {
+        let mut updated = User {
             connected_at,
             ..test_user.clone()
         };
-        let result = client.update_user(&updated).await;
+        let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
         assert!(!result.unwrap());
 
@@ -1294,11 +1319,11 @@ mod tests {
         assert_eq!(fetched.connected_at, fetched2.connected_at);
 
         // and make sure we can update a record with a later connected_at time.
-        let updated = User {
+        let mut updated = User {
             connected_at: fetched.connected_at + 300,
             ..fetched2
         };
-        let result = client.update_user(&updated).await;
+        let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
         assert_ne!(
@@ -1472,13 +1497,13 @@ mod tests {
         client.remove_user(&uaid).await.unwrap();
 
         client.add_user(&user).await.unwrap();
-        let user = client.get_user(&uaid).await.unwrap().unwrap();
-        assert!(client.update_user(&user).await.unwrap());
+        let mut user = client.get_user(&uaid).await.unwrap().unwrap();
+        assert!(client.update_user(&mut user.clone()).await.unwrap());
 
         let fetched = client.get_user(&uaid).await.unwrap().unwrap();
         assert_ne!(user.version, fetched.version);
         // should now fail w/ a stale version
-        assert!(!client.update_user(&user).await.unwrap());
+        assert!(!client.update_user(&mut user).await.unwrap());
 
         client.remove_user(&uaid).await.unwrap();
     }

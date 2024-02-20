@@ -159,7 +159,7 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<bool> {
+    async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {
@@ -632,6 +632,7 @@ impl DbClient for DdbClientImpl {
             .map_err(|e| DbError::General(format!("DynamoDB health check failure: {:?}", e)))?;
         if let Some(names) = result.table_names {
             // We found at least one table that matches the message_table
+            debug!("dynamodb ok");
             return Ok(!names.is_empty());
         }
         // Huh, we couldn't find a message table? That's a failure.

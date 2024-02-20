@@ -3,6 +3,7 @@ name = "autopush_common"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+build = "build.rs"
 
 [lib]
 name = "autopush_common"
@@ -67,6 +68,7 @@ google-cloud-rust-raw = { version = "0.16", default-features = false, features =
 ], optional = true }
 grpcio = { version = "=0.13.0", features = ["openssl"], optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
+form_urlencoded = { version = "1.2", optional = true }
 
 [dev-dependencies]
 mockito = "0.31"
@@ -77,7 +79,12 @@ actix-rt = "2.8"
 [features]
 # NOTE: Do not set a `default` here, rather specify them in the calling library.
 # This is to reduce complexity around feature specification.
-bigtable = ["dep:google-cloud-rust-raw", "dep:grpcio", "dep:protobuf"]
+bigtable = [
+    "dep:google-cloud-rust-raw",
+    "dep:grpcio",
+    "dep:protobuf",
+    "dep:form_urlencoded",
+]
 dynamodb = ["dep:rusoto_core", "dep:rusoto_credential", "dep:rusoto_dynamodb"]
 dual = ["dynamodb", "bigtable"]
 aws = []

@@ -51,7 +51,7 @@ impl AppState {
             );
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
-        debug!("Fernet keys: {:?}", &crypto_key);
+        debug!("🔐 Fernet keys: {:?}", &crypto_key);
         let fernets: Vec<Fernet> = crypto_key
             .split(',')
             .map(|s| s.trim().to_string())
