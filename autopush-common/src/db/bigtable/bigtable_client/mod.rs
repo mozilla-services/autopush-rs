@@ -23,6 +23,7 @@ use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
     DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
+    USER_RECORD_VERSION,
 };
 
 pub use self::metadata::MetadataBuilder;
@@ -581,6 +582,22 @@ impl BigTableClientImpl {
                 timestamp: expiry,
                 ..Default::default()
             },
+            cell::Cell {
+                qualifier: "record_version".to_owned(),
+                value: user
+                    .record_version
+                    .unwrap_or(USER_RECORD_VERSION)
+                    .to_be_bytes()
+                    .to_vec(),
+                timestamp: expiry,
+                ..Default::default()
+            },
+            cell::Cell {
+                qualifier: "version".to_owned(),
+                value: (*version).into(),
+                timestamp: expiry,
+                ..Default::default()
+            },
         ];
 
         if let Some(router_data) = &user.router_data {
@@ -607,21 +624,6 @@ impl BigTableClientImpl {
                 ..Default::default()
             });
         };
-        if let Some(record_version) = user.record_version {
-            cells.push(cell::Cell {
-                qualifier: "record_version".to_owned(),
-                value: record_version.to_be_bytes().to_vec(),
-                timestamp: expiry,
-                ..Default::default()
-            });
-        };
-
-        cells.push(cell::Cell {
-            qualifier: "version".to_owned(),
-            value: (*version).into(),
-            timestamp: expiry,
-            ..Default::default()
-        });
 
         row.add_cells(ROUTER_FAMILY, cells);
         row
@@ -727,6 +729,10 @@ impl DbClient for BigTableClientImpl {
                 "connected_at",
             )?,
             router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
+            record_version: Some(to_u64(
+                row.take_required_cell("record_version")?.value,
+                "record_version",
+            )?),
             version: Some(
                 row.take_required_cell("version")?
                     .value
@@ -746,10 +752,6 @@ impl DbClient for BigTableClientImpl {
 
         if let Some(cell) = row.take_cell("node_id") {
             result.node_id = Some(to_string(cell.value, "node_id")?);
-        }
-
-        if let Some(cell) = row.take_cell("record_version") {
-            result.record_version = Some(to_u64(cell.value, "record_version")?)
         }
 
         if let Some(cell) = row.take_cell("current_timestamp") {
