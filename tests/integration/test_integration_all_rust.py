@@ -1554,7 +1554,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
             f"{endpoint_root}/v1/stub/success/registration",
             headers={"content-type": "application/json"},
             data=json.dumps({"token": "success"}),
-        ) # nosec
+        )  # nosec
         assert resp.status_code == 200, "Could not register stub endpoint"
         response = resp.json()
         endpoint = response.get("endpoint")
@@ -1580,7 +1580,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
             f"{endpoint_root}/v1/stub/success/registration",
             headers={"content-type": "application/json"},
             data=json.dumps({"token": "success", "key": vapid_pub}),
-        ) # nosec
+        )  # nosec
         assert resp.status_code == 200
         response = resp.json()
         endpoint = response.get("endpoint")
@@ -1599,7 +1599,7 @@ class TestRustWebPushBroadcast(unittest.TestCase):
             f"{endpoint_root}/v1/stub/success/registration/{uaid}/subscription",
             headers={"content-type": "application/json", "authorization": f"webpush {secret}"},
             data=json.dumps({"token": "success", "channelID": chid2, "key": vapid_pub}),
-        ) # nosec
+        )  # nosec
         assert resp.status_code == 200
         resp2 = resp.json()
         end2 = resp2.get("endpoint")
