@@ -1,3 +1,18 @@
+<a name="1.70.4"></a>
+## 1.70.4 (2024-02-20)
+
+
+#### Features
+
+*   have Bigtable match DynamoDB's metrics (#627) ([0ce81aab](https://github.com/mozilla-services/autopush-rs/commit/0ce81aab562d4129d1a976bd7d232a0ea95fa1fa))
+*   have bigtable remove_channel write conditionally (#625) ([60c6675b](https://github.com/mozilla-services/autopush-rs/commit/60c6675b607a113cc6ba01ff49126781e7fa9df2))
+
+#### Bug Fixes
+
+*   "recycle" the user object in update_token_route (#621) ([4bd48278](https://github.com/mozilla-services/autopush-rs/commit/4bd48278d13a675a27626a1b0042e0c366c76dde))
+
+
+
 <a name="1.70.3"></a>
 ## 1.70.3 (2024-02-20)
 
