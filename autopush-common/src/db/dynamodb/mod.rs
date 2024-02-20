@@ -547,6 +547,7 @@ impl DbClient for DdbClientImpl {
         self.metrics
             .incr_with_tags("notification.message.stored")
             .with_tag("topic", &topic)
+            .with_tag("database", &self.name())
             .send();
         Ok(())
     }
@@ -559,6 +560,7 @@ impl DbClient for DdbClientImpl {
                 self.metrics
                     .incr_with_tags("notification.message.stored")
                     .with_tag("topic", &n.topic.is_some().to_string())
+                    .with_tag("database", &self.name())
                     .send();
                 serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(uaid, n))
                     .ok()
@@ -600,6 +602,7 @@ impl DbClient for DdbClientImpl {
             .await?;
         self.metrics
             .incr_with_tags("notification.message.deleted")
+            .with_tag("database", &self.name())
             .send();
         Ok(())
     }

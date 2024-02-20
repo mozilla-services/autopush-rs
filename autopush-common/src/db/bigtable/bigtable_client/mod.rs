@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
-use cadence::StatsdClient;
+use cadence::{CountedExt, StatsdClient};
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
@@ -23,6 +23,7 @@ use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
     DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
+    USER_RECORD_VERSION,
 };
 
 pub use self::metadata::MetadataBuilder;
@@ -71,7 +72,7 @@ impl From<Uaid> for String {
 pub struct BigTableClientImpl {
     pub(crate) settings: BigTableDbSettings,
     /// Metrics client
-    _metrics: Arc<StatsdClient>,
+    metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
     metadata: Metadata,
@@ -100,6 +101,13 @@ fn message_gc_policy_filter() -> Result<Vec<data::RowFilter>, error::BigTableErr
     Ok(vec![router_gc_policy_filter(), timestamp_filter])
 }
 
+/// Return a Column family regex RowFilter
+fn family_filter(regex: String) -> data::RowFilter {
+    let mut filter = data::RowFilter::default();
+    filter.set_family_name_regex_filter(regex);
+    filter
+}
+
 /// Escape bytes for RE values
 ///
 /// Based off google-re2/perl's quotemeta function
@@ -125,16 +133,17 @@ fn escape_bytes(bytes: &[u8]) -> Vec<u8> {
 /// Return a chain of RowFilters limiting to a match of the specified
 /// `version`'s column value
 fn version_filter(version: &Uuid) -> Vec<data::RowFilter> {
-    let mut family_filter = data::RowFilter::default();
-    family_filter.set_family_name_regex_filter(format!("^{ROUTER_FAMILY}$"));
-
     let mut cq_filter = data::RowFilter::default();
     cq_filter.set_column_qualifier_regex_filter("^version$".as_bytes().to_vec());
 
     let mut value_filter = data::RowFilter::default();
     value_filter.set_value_regex_filter(escape_bytes(version.as_bytes()));
 
-    vec![family_filter, cq_filter, value_filter]
+    vec![
+        family_filter(format!("^{ROUTER_FAMILY}$")),
+        cq_filter,
+        value_filter,
+    ]
 }
 
 /// Return a newly generated `version` column `Cell`
@@ -225,7 +234,7 @@ impl BigTableClientImpl {
         let admin_metadata = db_settings.admin_metadata()?;
         Ok(Self {
             settings: db_settings,
-            _metrics: metrics,
+            metrics,
             metadata,
             admin_metadata,
             pool,
@@ -323,12 +332,13 @@ impl BigTableClientImpl {
         Ok(())
     }
 
-    /// Read a given row from the row key.
-    async fn read_row(&self, row_key: &str) -> Result<Option<row::Row>, error::BigTableError> {
-        debug!("🉑 Row key: {row_key}");
-        let req = self.read_row_request(row_key);
+    /// Read one row for the [ReadRowsRequest] (assuming only a single row was requested).
+    async fn read_row(
+        &self,
+        req: bigtable::ReadRowsRequest,
+    ) -> Result<Option<row::Row>, error::BigTableError> {
         let mut rows = self.read_rows(req).await?;
-        Ok(rows.remove(row_key))
+        Ok(rows.pop_first().map(|(_, v)| v))
     }
 
     /// Take a big table ReadRowsRequest (containing the keys and filters) and return a set of row data indexed by row key.
@@ -581,6 +591,22 @@ impl BigTableClientImpl {
                 timestamp: expiry,
                 ..Default::default()
             },
+            cell::Cell {
+                qualifier: "record_version".to_owned(),
+                value: user
+                    .record_version
+                    .unwrap_or(USER_RECORD_VERSION)
+                    .to_be_bytes()
+                    .to_vec(),
+                timestamp: expiry,
+                ..Default::default()
+            },
+            cell::Cell {
+                qualifier: "version".to_owned(),
+                value: (*version).into(),
+                timestamp: expiry,
+                ..Default::default()
+            },
         ];
 
         if let Some(router_data) = &user.router_data {
@@ -607,21 +633,6 @@ impl BigTableClientImpl {
                 ..Default::default()
             });
         };
-        if let Some(record_version) = user.record_version {
-            cells.push(cell::Cell {
-                qualifier: "record_version".to_owned(),
-                value: record_version.to_be_bytes().to_vec(),
-                timestamp: expiry,
-                ..Default::default()
-            });
-        };
-
-        cells.push(cell::Cell {
-            qualifier: "version".to_owned(),
-            value: (*version).into(),
-            timestamp: expiry,
-            ..Default::default()
-        });
 
         row.add_cells(ROUTER_FAMILY, cells);
         row
@@ -715,7 +726,9 @@ impl DbClient for BigTableClientImpl {
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
         let row_key = uaid.as_simple().to_string();
-        let Some(mut row) = self.read_row(&row_key).await? else {
+        let mut req = self.read_row_request(&row_key);
+        req.set_filter(family_filter(format!("^{ROUTER_FAMILY}$")));
+        let Some(mut row) = self.read_row(req).await? else {
             return Ok(None);
         };
 
@@ -727,6 +740,10 @@ impl DbClient for BigTableClientImpl {
                 "connected_at",
             )?,
             router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
+            record_version: Some(to_u64(
+                row.take_required_cell("record_version")?.value,
+                "record_version",
+            )?),
             version: Some(
                 row.take_required_cell("version")?
                     .value
@@ -746,10 +763,6 @@ impl DbClient for BigTableClientImpl {
 
         if let Some(cell) = row.take_cell("node_id") {
             result.node_id = Some(to_string(cell.value, "node_id")?);
-        }
-
-        if let Some(cell) = row.take_cell("record_version") {
-            result.record_version = Some(to_u64(cell.value, "record_version")?)
         }
 
         if let Some(cell) = row.take_cell("current_timestamp") {
@@ -817,21 +830,16 @@ impl DbClient for BigTableClientImpl {
         let row_key = uaid.simple().to_string();
         let mut req = self.read_row_request(&row_key);
 
-        let mut family_filter = data::RowFilter::default();
-        family_filter.set_family_name_regex_filter(format!("^{ROUTER_FAMILY}$"));
-
         let mut cq_filter = data::RowFilter::default();
         cq_filter.set_column_qualifier_regex_filter("^chid:.*$".as_bytes().to_vec());
-
         req.set_filter(filter_chain(vec![
             router_gc_policy_filter(),
-            family_filter,
+            family_filter(format!("^{ROUTER_FAMILY}$")),
             cq_filter,
         ]));
 
-        let mut rows = self.read_rows(req).await?;
         let mut result = HashSet::new();
-        if let Some(record) = rows.remove(&row_key) {
+        if let Some(record) = self.read_row(req).await? {
             for mut cells in record.cells.into_values() {
                 let Some(cell) = cells.pop() else {
                     continue;
@@ -851,7 +859,7 @@ impl DbClient for BigTableClientImpl {
     /// Delete the channel. Does not delete its associated pending messages.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let row_key = uaid.simple().to_string();
-        let mut req = self.mutate_row_request(&row_key);
+        let mut req = self.check_and_mutate_row_request(&row_key);
 
         // Delete the column representing the channel_id
         let column = format!("chid:{}", channel_id.as_hyphenated());
@@ -863,11 +871,14 @@ impl DbClient for BigTableClientImpl {
         row.cells
             .insert(ROUTER_FAMILY.to_owned(), vec![new_version_cell(expiry)]);
         mutations.extend(self.get_mutations(row.cells)?);
-        req.set_mutations(mutations);
 
-        self.mutate_row(req).await?;
-        // XXX: this could be check_and_mutate to determine if the channel existed
-        Ok(true)
+        // check if the channel existed/was actually removed
+        let mut cq_filter = data::RowFilter::default();
+        cq_filter.set_column_qualifier_regex_filter(format!("^{column}$").into_bytes());
+        req.set_predicate_filter(filter_chain(vec![router_gc_policy_filter(), cq_filter]));
+        req.set_true_mutations(mutations);
+
+        Ok(self.check_and_mutate(req).await?)
     }
 
     /// Remove the node_id
@@ -917,7 +928,8 @@ impl DbClient for BigTableClientImpl {
 
         let mut cells: Vec<cell::Cell> = Vec::new();
 
-        let family = if message.topic.is_some() {
+        let is_topic = message.topic.is_some();
+        let family = if is_topic {
             MESSAGE_TOPIC_FAMILY
         } else {
             MESSAGE_FAMILY
@@ -962,7 +974,14 @@ impl DbClient for BigTableClientImpl {
         }
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row).await?;
+
+        self.metrics
+            .incr_with_tags("notification.message.stored")
+            .with_tag("topic", &is_topic.to_string())
+            .with_tag("database", &self.name())
+            .send();
+        Ok(())
     }
 
     /// Save a batch of messages to the database.
@@ -1011,7 +1030,8 @@ impl DbClient for BigTableClientImpl {
                 new_version_cell(expiry),
             ],
         );
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row).await?;
+        Ok(())
     }
 
     /// Delete the notification from storage.
@@ -1023,7 +1043,12 @@ impl DbClient for BigTableClientImpl {
         );
         let row_key = format!("{}#{}", uaid.simple(), chidmessageid);
         debug!("🉑🔥 Deleting message {}", &row_key);
-        self.delete_row(&row_key).await.map_err(|e| e.into())
+        self.delete_row(&row_key).await?;
+        self.metrics
+            .incr_with_tags("notification.message.deleted")
+            .with_tag("database", &self.name())
+            .send();
+        Ok(())
     }
 
     /// Return `limit` pending messages from storage. `limit=0` for all messages.
@@ -1046,7 +1071,10 @@ impl DbClient for BigTableClientImpl {
         rows.set_row_ranges(row_ranges);
         req.set_rows(rows);
 
-        req.set_filter(filter_chain(message_gc_policy_filter()?));
+        let mut filters = message_gc_policy_filter()?;
+        filters.push(family_filter(format!("^{MESSAGE_TOPIC_FAMILY}$")));
+
+        req.set_filter(filter_chain(filters));
         if limit > 0 {
             trace!("🉑 Setting limit to {limit}");
             req.set_rows_limit(limit as i64);
@@ -1112,7 +1140,10 @@ impl DbClient for BigTableClientImpl {
         // therefore run two filters, one to fetch the candidate IDs
         // and another to fetch the content of the messages.
          */
-        req.set_filter(filter_chain(message_gc_policy_filter()?));
+        let mut filters = message_gc_policy_filter()?;
+        filters.push(family_filter(format!("^{MESSAGE_FAMILY}$")));
+
+        req.set_filter(filter_chain(filters));
         if limit > 0 {
             req.set_rows_limit(limit as i64);
         }
@@ -1298,7 +1329,8 @@ mod tests {
         assert_eq!(channels, new_channels);
 
         // can we remove a channel?
-        client.remove_channel(&uaid, &chid_to_remove).await?;
+        assert!(client.remove_channel(&uaid, &chid_to_remove).await?);
+        assert!(!client.remove_channel(&uaid, &chid_to_remove).await?);
         new_channels.remove(&chid_to_remove);
         let channels = client.get_channels(&uaid).await?;
         assert_eq!(channels, new_channels);
@@ -1385,6 +1417,7 @@ mod tests {
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
 
         // Now, can we do all that with topic messages
+        client.add_channel(&uaid, &topic_chid).await?;
         let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
         let timestamp = now();
         let sort_key = now();
@@ -1463,7 +1496,8 @@ mod tests {
             }],
         );
         client.write_row(row).await.unwrap();
-        let Some(row) = client.read_row(&row_key).await.unwrap() else {
+        let req = client.read_row_request(&row_key);
+        let Some(row) = client.read_row(req).await.unwrap() else {
             panic!("Expected row");
         };
         assert_eq!(row.cells.len(), 1);
