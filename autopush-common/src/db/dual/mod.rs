@@ -190,6 +190,8 @@ impl DbClient for DualClientImpl {
                         user.version = Some(Uuid::new_v4());
                         self.primary.add_user(&user).await?;
                         let channels = self.secondary.get_channels(uaid).await?;
+                        // NOTE: add_channels doesn't write a new version:
+                        // user.version is still valid
                         self.primary.add_channels(uaid, channels).await?;
                         return Ok(Some(user));
                     }
