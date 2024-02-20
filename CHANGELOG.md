@@ -1,3 +1,13 @@
+<a name="1.70.3"></a>
+## 1.70.3 (2024-02-20)
+
+
+#### Bug Fixes
+
+*   fix add/update_user version field handling on migrations (#619) ([1ff88e79](https://github.com/mozilla-services/autopush-rs/commit/1ff88e796611749714cada7b88fd4986049d83bb))
+
+
+
 <a name="1.70.2"></a>
 ## 1.70.2 (2024-02-15)
 
