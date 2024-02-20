@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
-use cadence::StatsdClient;
+use cadence::{CountedExt, StatsdClient};
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
@@ -72,7 +72,7 @@ impl From<Uaid> for String {
 pub struct BigTableClientImpl {
     pub(crate) settings: BigTableDbSettings,
     /// Metrics client
-    _metrics: Arc<StatsdClient>,
+    metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
     metadata: Metadata,
@@ -234,7 +234,7 @@ impl BigTableClientImpl {
         let admin_metadata = db_settings.admin_metadata()?;
         Ok(Self {
             settings: db_settings,
-            _metrics: metrics,
+            metrics,
             metadata,
             admin_metadata,
             pool,
@@ -928,7 +928,8 @@ impl DbClient for BigTableClientImpl {
 
         let mut cells: Vec<cell::Cell> = Vec::new();
 
-        let family = if message.topic.is_some() {
+        let is_topic = message.topic.is_some();
+        let family = if is_topic {
             MESSAGE_TOPIC_FAMILY
         } else {
             MESSAGE_FAMILY
@@ -973,7 +974,14 @@ impl DbClient for BigTableClientImpl {
         }
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row).await?;
+
+        self.metrics
+            .incr_with_tags("notification.message.stored")
+            .with_tag("topic", &is_topic.to_string())
+            .with_tag("database", &self.name())
+            .send();
+        Ok(())
     }
 
     /// Save a batch of messages to the database.
@@ -1022,7 +1030,8 @@ impl DbClient for BigTableClientImpl {
                 new_version_cell(expiry),
             ],
         );
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row).await?;
+        Ok(())
     }
 
     /// Delete the notification from storage.
@@ -1034,7 +1043,12 @@ impl DbClient for BigTableClientImpl {
         );
         let row_key = format!("{}#{}", uaid.simple(), chidmessageid);
         debug!("🉑🔥 Deleting message {}", &row_key);
-        self.delete_row(&row_key).await.map_err(|e| e.into())
+        self.delete_row(&row_key).await?;
+        self.metrics
+            .incr_with_tags("notification.message.deleted")
+            .with_tag("database", &self.name())
+            .send();
+        Ok(())
     }
 
     /// Return `limit` pending messages from storage. `limit=0` for all messages.
