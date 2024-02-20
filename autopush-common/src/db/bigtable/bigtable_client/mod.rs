@@ -15,7 +15,7 @@ use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use grpcio::Channel;
+use grpcio::{Channel, Metadata};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -24,8 +24,10 @@ use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
     DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
+    USER_RECORD_VERSION,
 };
 
+pub use self::metadata::MetadataBuilder;
 use self::row::Row;
 use super::pool::BigTablePool;
 use super::BigTableDbSettings;
@@ -33,6 +35,7 @@ use super::BigTableDbSettings;
 pub mod cell;
 pub mod error;
 pub(crate) mod merge;
+pub mod metadata;
 pub mod row;
 
 // these are normally Vec<u8>
@@ -73,6 +76,8 @@ pub struct BigTableClientImpl {
     metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
+    metadata: Metadata,
+    admin_metadata: Metadata,
 }
 
 /// Return a a RowFilter matching the GC policy of the router Column Family
@@ -230,6 +235,10 @@ pub fn retryable_describe_table_error(
     }
 }
 
+fn call_opts(metadata: Metadata) -> ::grpcio::CallOption {
+    ::grpcio::CallOption::default().headers(metadata)
+}
+
 /// Connect to a BigTable storage model.
 ///
 /// BigTable is available via the Google Console, and is a schema less storage system.
@@ -261,9 +270,15 @@ impl BigTableClientImpl {
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         info!("🉑 {:#?}", db_settings);
         let pool = BigTablePool::new(settings, &metrics)?;
+
+        // create the metadata header blocks required by Google for accessing GRPC resources.
+        let metadata = db_settings.metadata()?;
+        let admin_metadata = db_settings.admin_metadata()?;
         Ok(Self {
             settings: db_settings,
             metrics,
+            metadata,
+            admin_metadata,
             pool,
         })
     }
@@ -297,7 +312,11 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         retry_policy(self.settings.retry_count)
             .retry_if(
-                || async { bigtable.conn.mutate_row(&req) },
+                || async {
+                    bigtable
+                        .conn
+                        .mutate_row_opt(&req, call_opts(self.metadata.clone()))
+                },
                 retryable_describe_table_error(self.metrics.clone()),
             )
             .await
@@ -315,7 +334,11 @@ impl BigTableClientImpl {
         // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
         let resp = retry_policy(self.settings.retry_count)
             .retry_if(
-                || async { bigtable.conn.mutate_rows(&req) },
+                || async {
+                    bigtable
+                        .conn
+                        .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
+                },
                 retryable_describe_table_error(self.metrics.clone()),
             )
             .await
@@ -381,11 +404,15 @@ impl BigTableClientImpl {
         let bigtable = self.pool.get().await?;
         let resp = retry_policy(self.settings.retry_count)
             .retry_if(
-                || async { bigtable.conn.read_rows(&req) },
+                || async {
+                    bigtable
+                        .conn
+                        .read_rows_opt(&req, call_opts(self.metadata.clone()))
+                },
                 retryable_describe_table_error(self.metrics.clone()),
             )
             .await
-            .map_err(error::BigTableError::Write)?;
+            .map_err(error::BigTableError::Read)?;
         merge::RowMerger::process_chunks(resp).await
     }
 
@@ -466,7 +493,9 @@ impl BigTableClientImpl {
                 || async {
                     // Note: check_and_mutate_row_async may return before the row
                     // is written, which can cause race conditions for reads
-                    bigtable.conn.check_and_mutate_row(&req)
+                    bigtable
+                        .conn
+                        .check_and_mutate_row_opt(&req, call_opts(self.metadata.clone()))
                 },
                 retryable_describe_table_error(self.metrics.clone()),
             )
@@ -500,6 +529,7 @@ impl BigTableClientImpl {
         Ok(mutations)
     }
 
+    #[allow(unused)]
     /// Delete all cell data from the specified columns with the optional time range.
     #[allow(unused)]
     async fn delete_cells(
@@ -534,8 +564,9 @@ impl BigTableClientImpl {
         let mut req = DropRowRangeRequest::new();
         req.set_name(self.settings.table_name.clone());
         req.set_row_key_prefix(row_key.as_bytes().to_vec());
+
         admin
-            .drop_row_range_async(&req)
+            .drop_row_range_async_opt(&req, call_opts(self.admin_metadata.clone()))
             .map_err(|e| {
                 error!("{:?}", e);
                 error::BigTableError::Admin(
@@ -604,7 +635,12 @@ impl BigTableClientImpl {
         Ok(notif)
     }
 
-    fn user_to_row(&self, user: &User) -> Row {
+    /// Return a Row for writing from a [User] and a `version`
+    ///
+    /// `version` is specified as an argument (ignoring [User::version]) so
+    /// that [update_user] may specify a new version to write before modifying
+    /// the [User] struct
+    fn user_to_row(&self, user: &User, version: &Uuid) -> Row {
         let row_key = user.uaid.simple().to_string();
         let mut row = Row::new(row_key);
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
@@ -619,6 +655,22 @@ impl BigTableClientImpl {
             cell::Cell {
                 qualifier: "router_type".to_owned(),
                 value: user.router_type.clone().into_bytes(),
+                timestamp: expiry,
+                ..Default::default()
+            },
+            cell::Cell {
+                qualifier: "record_version".to_owned(),
+                value: user
+                    .record_version
+                    .unwrap_or(USER_RECORD_VERSION)
+                    .to_be_bytes()
+                    .to_vec(),
+                timestamp: expiry,
+                ..Default::default()
+            },
+            cell::Cell {
+                qualifier: "version".to_owned(),
+                value: (*version).into(),
                 timestamp: expiry,
                 ..Default::default()
             },
@@ -648,17 +700,6 @@ impl BigTableClientImpl {
                 ..Default::default()
             });
         };
-        if let Some(record_version) = user.record_version {
-            cells.push(cell::Cell {
-                qualifier: "record_version".to_owned(),
-                value: record_version.to_be_bytes().to_vec(),
-                timestamp: expiry,
-                ..Default::default()
-            });
-        };
-
-        // Always write a newly generated version
-        cells.push(new_version_cell(expiry));
 
         row.add_cells(ROUTER_FAMILY, cells);
         row
@@ -668,12 +709,14 @@ impl BigTableClientImpl {
 #[derive(Clone)]
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
+    pub(super) metadata: Metadata,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel) -> Self {
+    pub fn new(channel: Channel, metadata: &Metadata) -> Self {
         Self {
             conn: BigtableClient::new(channel),
+            metadata: metadata.clone(),
         }
     }
 
@@ -695,7 +738,10 @@ impl BigtableDb {
 
         let r = retry_policy(10)
             .retry_if(
-                || async { self.conn.read_rows(&req) },
+                || async {
+                    self.conn
+                        .read_rows_opt(&req, call_opts(self.metadata.clone()))
+                },
                 retryable_describe_table_error(metrics.clone()),
             )
             .await
@@ -714,7 +760,12 @@ impl DbClient for BigTableClientImpl {
     /// add user to the database
     async fn add_user(&self, user: &User) -> DbResult<()> {
         trace!("🉑 Adding user");
-        let row = self.user_to_row(user);
+        let Some(ref version) = user.version else {
+            return Err(DbError::General(
+                "add_user expected a user version field".to_owned(),
+            ));
+        };
+        let row = self.user_to_row(user, version);
 
         // Only add when the user doesn't already exist
         let mut row_key_filter = RowFilter::default();
@@ -730,18 +781,24 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
-    async fn update_user(&self, user: &User) -> DbResult<bool> {
+    async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         let Some(ref version) = user.version else {
-            return Err(DbError::General("Expected a user version field".to_owned()));
+            return Err(DbError::General(
+                "update_user expected a user version field".to_owned(),
+            ));
         };
 
         let mut filters = vec![router_gc_policy_filter()];
         filters.extend(version_filter(version));
         let filter = filter_chain(filters);
 
-        Ok(self
-            .check_and_mutate_row(self.user_to_row(user), filter, true)
-            .await?)
+        let new_version = Uuid::new_v4();
+        // Always write a newly generated version
+        let row = self.user_to_row(user, &new_version);
+
+        let predicate_matched = self.check_and_mutate_row(row, filter, true).await?;
+        user.version = Some(new_version);
+        Ok(predicate_matched)
     }
 
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
@@ -758,6 +815,10 @@ impl DbClient for BigTableClientImpl {
                 "connected_at",
             )?,
             router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
+            record_version: Some(to_u64(
+                row.take_required_cell("record_version")?.value,
+                "record_version",
+            )?),
             version: Some(
                 row.take_required_cell("version")?
                     .value
@@ -777,10 +838,6 @@ impl DbClient for BigTableClientImpl {
 
         if let Some(cell) = row.take_cell("node_id") {
             result.node_id = Some(to_string(cell.value, "node_id")?);
-        }
-
-        if let Some(cell) = row.take_cell("record_version") {
-            result.record_version = Some(to_u64(cell.value, "record_version")?)
         }
 
         if let Some(cell) = row.take_cell("current_timestamp") {
@@ -1337,11 +1394,11 @@ mod tests {
         // now ensure that we can update a user that's after the time we set
         // prior. first ensure that we can't update a user that's before the
         // time we set prior to the last write
-        let updated = User {
+        let mut updated = User {
             connected_at,
             ..test_user.clone()
         };
-        let result = client.update_user(&updated).await;
+        let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
         assert!(!result.unwrap());
 
@@ -1350,11 +1407,11 @@ mod tests {
         assert_eq!(fetched.connected_at, fetched2.connected_at);
 
         // and make sure we can update a record with a later connected_at time.
-        let updated = User {
+        let mut updated = User {
             connected_at: fetched.connected_at + 300,
             ..fetched2
         };
-        let result = client.update_user(&updated).await;
+        let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
         assert_ne!(
@@ -1528,13 +1585,13 @@ mod tests {
         client.remove_user(&uaid).await.unwrap();
 
         client.add_user(&user).await.unwrap();
-        let user = client.get_user(&uaid).await.unwrap().unwrap();
-        assert!(client.update_user(&user).await.unwrap());
+        let mut user = client.get_user(&uaid).await.unwrap().unwrap();
+        assert!(client.update_user(&mut user.clone()).await.unwrap());
 
         let fetched = client.get_user(&uaid).await.unwrap().unwrap();
         assert_ne!(user.version, fetched.version);
         // should now fail w/ a stale version
-        assert!(!client.update_user(&user).await.unwrap());
+        assert!(!client.update_user(&mut user).await.unwrap());
 
         client.remove_user(&uaid).await.unwrap();
     }
