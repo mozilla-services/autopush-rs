@@ -859,7 +859,7 @@ impl DbClient for BigTableClientImpl {
     /// Delete the channel. Does not delete its associated pending messages.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let row_key = uaid.simple().to_string();
-        let mut req = self.mutate_row_request(&row_key);
+        let mut req = self.check_and_mutate_row_request(&row_key);
 
         // Delete the column representing the channel_id
         let column = format!("chid:{}", channel_id.as_hyphenated());
@@ -871,11 +871,14 @@ impl DbClient for BigTableClientImpl {
         row.cells
             .insert(ROUTER_FAMILY.to_owned(), vec![new_version_cell(expiry)]);
         mutations.extend(self.get_mutations(row.cells)?);
-        req.set_mutations(mutations);
 
-        self.mutate_row(req).await?;
-        // XXX: this could be check_and_mutate to determine if the channel existed
-        Ok(true)
+        // check if the channel existed/was actually removed
+        let mut cq_filter = data::RowFilter::default();
+        cq_filter.set_column_qualifier_regex_filter(format!("^{column}$").into_bytes());
+        req.set_predicate_filter(filter_chain(vec![router_gc_policy_filter(), cq_filter]));
+        req.set_true_mutations(mutations);
+
+        Ok(self.check_and_mutate(req).await?)
     }
 
     /// Remove the node_id
@@ -1312,7 +1315,8 @@ mod tests {
         assert_eq!(channels, new_channels);
 
         // can we remove a channel?
-        client.remove_channel(&uaid, &chid_to_remove).await?;
+        assert!(client.remove_channel(&uaid, &chid_to_remove).await?);
+        assert!(!client.remove_channel(&uaid, &chid_to_remove).await?);
         new_channels.remove(&chid_to_remove);
         let channels = client.get_channels(&uaid).await?;
         assert_eq!(channels, new_channels);
@@ -1399,6 +1403,7 @@ mod tests {
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
 
         // Now, can we do all that with topic messages
+        client.add_channel(&uaid, &topic_chid).await?;
         let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
         let timestamp = now();
         let sort_key = now();
