@@ -14,9 +14,9 @@ WORKER_COUNT=${WORKER_COUNT:-150}
 MACHINE_TYPE='c3d-standard-4' # 4 CPUs + 16GB Memory
 BOLD=$(tput bold)
 NORM=$(tput sgr0)
-DIRECTORY=$(pwd)
+LOAD_DIRECTORY=$(dirname $(realpath $0))
 
-AUTOPUSH_DIRECTORY=$DIRECTORY/tests/load/kubernetes-config
+AUTOPUSH_DIRECTORY=$LOAD_DIRECTORY/kubernetes-config
 MASTER_FILE=locust-master-controller.yml
 WORKER_FILE=locust-worker-controller.yml
 SERVICE_FILE=locust-master-service.yml

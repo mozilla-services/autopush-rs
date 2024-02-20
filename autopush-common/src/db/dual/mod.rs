@@ -157,12 +157,12 @@ impl DbClient for DualClientImpl {
         Ok(result)
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<bool> {
+    async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         //  If the UAID is in the allowance, move them to the new data store
         let (target, is_primary) = self.allot(&user.uaid).await?;
         let result = target.update_user(user).await?;
         if is_primary && self.write_to_secondary {
-            let _ = self.secondary.add_user(user).await.map_err(|e| {
+            let _ = self.secondary.update_user(user).await.map_err(|e| {
                 error!("⚡ Error: {:?}", e);
                 self.metrics
                     .incr_with_tags("database.dual.error")
@@ -181,11 +181,17 @@ impl DbClient for DualClientImpl {
             Ok(None) => {
                 if is_primary {
                     // The user wasn't in the current primary, so fetch them from the secondary.
-                    if let Ok(Some(user)) = self.secondary.get_user(uaid).await {
+                    if let Ok(Some(mut user)) = self.secondary.get_user(uaid).await {
                         // copy the user record over to the new data store.
                         debug!("⚖ Found user record in secondary, moving to primary");
+                        // Users read from DynamoDB lack a version field needed
+                        // for Bigtable
+                        debug_assert!(user.version.is_none());
+                        user.version = Some(Uuid::new_v4());
                         self.primary.add_user(&user).await?;
                         let channels = self.secondary.get_channels(uaid).await?;
+                        // NOTE: add_channels doesn't write a new version:
+                        // user.version is still valid
                         self.primary.add_channels(uaid, channels).await?;
                         return Ok(Some(user));
                     }
