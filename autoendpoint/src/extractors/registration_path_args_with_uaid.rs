@@ -9,12 +9,14 @@ use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use uuid::Uuid;
 
+use autopush_common::db::User;
+
 /// An extension of `RegistrationPathArgs` which requires a `uaid` path arg.
 /// The `uaid` is verified by checking if the user exists in the database.
 pub struct RegistrationPathArgsWithUaid {
     pub router_type: RouterType,
     pub app_id: String,
-    pub uaid: Uuid,
+    pub user: User,
 }
 
 impl FromRequest for RegistrationPathArgsWithUaid {
@@ -37,14 +39,14 @@ impl FromRequest for RegistrationPathArgsWithUaid {
                 .map_err(|_| ApiErrorKind::NoUser)?;
 
             // Verify that the user exists
-            if app_state.db.get_user(&uaid).await?.is_none() {
+            let Some(user) = app_state.db.get_user(&uaid).await? else {
                 return Err(ApiErrorKind::NoUser.into());
-            }
+            };
 
             Ok(Self {
                 router_type: path_args.router_type,
                 app_id: path_args.app_id,
-                uaid,
+                user,
             })
         }
         .boxed_local()
