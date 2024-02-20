@@ -1,6 +1,6 @@
 # Architecture
 
-![image](assets/push_architecture.svg)
+![image](assets/push_architecture2.svg)
 
 ## Overview
 
