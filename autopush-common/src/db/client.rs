@@ -30,7 +30,7 @@ pub trait DbClient: Send + Sync {
     /// update will not occur if the user does not already exist, has a
     /// different router type, or has a newer `connected_at` timestamp.
     // TODO: make the bool a #[must_use]
-    async fn update_user(&self, user: &User) -> DbResult<bool>;
+    async fn update_user(&self, user: &mut User) -> DbResult<bool>;
 
     /// Read a user from the database
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>>;
