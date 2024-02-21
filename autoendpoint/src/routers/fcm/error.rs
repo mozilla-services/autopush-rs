@@ -1,6 +1,9 @@
 use crate::error::ApiErrorKind;
 use crate::routers::RouterError;
+
 use actix_web::http::StatusCode;
+use autopush_common::errors::ReportableError;
+use backtrace::Backtrace;
 
 /// Errors that may occur in the Firebase Cloud Messaging router
 #[derive(thiserror::Error, Debug)]
@@ -71,9 +74,47 @@ impl FcmError {
             | FcmError::NoOAuthToken => None,
         }
     }
+}
 
-    pub fn extras(&self) -> Vec<(&str, String)> {
+impl From<FcmError> for ApiErrorKind {
+    fn from(e: FcmError) -> Self {
+        ApiErrorKind::Router(RouterError::Fcm(e))
+    }
+}
+
+impl ReportableError for FcmError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        None
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        None
+    }
+
+    fn is_sentry_event(&self) -> bool {
+        match &self {
+            FcmError::InvalidAppId(_) => true,
+            FcmError::NoAppId => true,
+            FcmError::EmptyResponse(_) => true,
+            FcmError::InvalidResponse(_, _, _) => true,
+            _ => false,
+        }
+    }
+
+    fn metric_label(&self) -> Option<&'static str> {
+        match &self {
+            FcmError::InvalidAppId(_) | FcmError::NoAppId => {
+                Some("notification.bridge.error.fcm.badappid")
+            }
+            _ => None,
+        }
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
         match self {
+            FcmError::InvalidAppId(appid) => {
+                vec![("app_id", appid.to_string())]
+            }
             FcmError::EmptyResponse(status) => {
                 vec![("status", status.to_string())]
             }
@@ -82,11 +123,5 @@ impl FcmError {
             }
             _ => vec![],
         }
-    }
-}
-
-impl From<FcmError> for ApiErrorKind {
-    fn from(e: FcmError) -> Self {
-        ApiErrorKind::Router(RouterError::Fcm(e))
     }
 }

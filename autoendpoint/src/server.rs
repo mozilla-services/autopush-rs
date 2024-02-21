@@ -25,7 +25,8 @@ use autopush_common::{
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
-use crate::routers::{adm::router::AdmRouter, apns::router::ApnsRouter, fcm::router::FcmRouter};
+use crate::routers::adm::router::AdmRouter;
+use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
     registration::{

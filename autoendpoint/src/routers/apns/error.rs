@@ -1,6 +1,8 @@
 use crate::error::ApiErrorKind;
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
+use autopush_common::errors::ReportableError;
+use backtrace::Backtrace;
 use std::io;
 
 /// Errors that may occur in the Apple Push Notification Service router
@@ -84,5 +86,35 @@ impl ApnsError {
 impl From<ApnsError> for ApiErrorKind {
     fn from(e: ApnsError) -> Self {
         ApiErrorKind::Router(RouterError::Apns(e))
+    }
+}
+
+impl ReportableError for ApnsError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        None
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        None
+    }
+
+    fn is_sentry_event(&self) -> bool {
+        match &self {
+            ApnsError::SizeLimit(_) => true,
+            ApnsError::Unregistered => true,
+            ApnsError::ApnsUpstream(_) => true,
+            _ => false,
+        }
+    }
+
+    fn metric_label(&self) -> Option<&'static str> {
+        match &self {
+            ApnsError::SizeLimit(_) => Some("notification.bridge.error.apns.oversized"),
+            _ => None,
+        }
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        vec![]
     }
 }

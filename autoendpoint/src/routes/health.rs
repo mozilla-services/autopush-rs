@@ -1,4 +1,5 @@
 //! Health and Dockerflow routes
+use std::collections::HashMap;
 use std::thread;
 
 use actix_web::{
@@ -17,18 +18,19 @@ use crate::server::AppState;
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     let router_health = interpret_table_health(state.db.router_table_exists().await);
     let message_health = interpret_table_health(state.db.message_table_exists().await);
+    let mut routers: HashMap<&str, bool> = HashMap::new();
+    routers.insert("adm", state.adm_router.active());
+    routers.insert("apns", state.apns_router.active());
+    routers.insert("fcm", state.fcm_router.active());
 
-    Json(json!({
-        "status": "OK",
-        "version": env!("CARGO_PKG_VERSION"),
-        "router_table": router_health,
-        "message_table": message_health,
-        "routers": {
-            "adm": state.adm_router.active(),
-            "apns": state.apns_router.active(),
-            "fcm": state.fcm_router.active(),
-        }
-    }))
+    let health = json!({
+    "status": "OK",
+    "version": env!("CARGO_PKG_VERSION"),
+    "router_table": router_health,
+    "message_table": message_health,
+    "routers": routers});
+
+    Json(health)
 }
 
 /// Convert the result of a DB health check to JSON

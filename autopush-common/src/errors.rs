@@ -141,7 +141,7 @@ pub enum ApcErrorKind {
     #[error("Database Error: {0}")]
     DatabaseError(String),
 
-    // TODO: option this.
+    // TODO: Feature flag this.
     #[error("Rusoto Error: {0}")]
     RusotoError(String),
 }
@@ -173,17 +173,14 @@ impl ApcErrorKind {
 
     pub fn metric_label(&self) -> Option<&'static str> {
         // TODO: add labels for skipped stuff
-        let label = match self {
-            Self::PongTimeout => "pong_timeout",
-            Self::ExcessivePing => "excessive_ping",
-            Self::PayloadError(_) => "payload",
+        match self {
+            Self::PongTimeout => Some("pong_timeout"),
+            Self::ExcessivePing => Some("excessive_ping"),
+            Self::PayloadError(_) => Some("payload"),
             #[cfg(feature = "bigtable")]
-            Self::DbError(crate::db::error::DbError::BTError(
-                crate::db::bigtable::BigTableError::Recycle,
-            )) => "bt_recycle",
+            Self::DbError(e) => e.metric_label(),
             _ => return None,
-        };
-        Some(label)
+        }
     }
 }
 
@@ -220,6 +217,12 @@ pub trait ReportableError: std::error::Error {
 }
 
 impl ReportableError for ApcError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self.kind {
+            ApcErrorKind::DbError(e) => Some(e),
+            _ => None,
+        }
+    }
     fn backtrace(&self) -> Option<&Backtrace> {
         Some(&self.backtrace)
     }
