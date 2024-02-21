@@ -25,7 +25,9 @@ use autopush_common::{
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
-use crate::routers::{adm::router::AdmRouter, apns::router::ApnsRouter, fcm::router::FcmRouter};
+#[cfg(feature = "adm")]
+use crate::routers::adm::router::AdmRouter;
+use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
     registration::{
@@ -46,6 +48,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
+    #[cfg(feature = "adm")]
     pub adm_router: Arc<AdmRouter>,
 }
 
@@ -112,6 +115,7 @@ impl Server {
             )
             .await?,
         );
+        #[cfg(feature = "adm")]
         let adm_router = Arc::new(AdmRouter::new(
             settings.adm.clone(),
             endpoint_url,
@@ -127,6 +131,7 @@ impl Server {
             http,
             fcm_router,
             apns_router,
+            #[cfg(feature = "adm")]
             adm_router,
         };
 
