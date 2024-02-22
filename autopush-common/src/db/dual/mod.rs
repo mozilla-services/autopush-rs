@@ -190,10 +190,13 @@ impl DbClient for DualClientImpl {
                         // for Bigtable
                         debug_assert!(user.version.is_none());
                         user.version = Some(Uuid::new_v4());
-                        self.primary
-                            .add_user(&user)
-                            .await
-                            .map_err(|e| DbError::Backoff(e.to_string()))?;
+                        self.primary.add_user(&user).await.map_err(|e| {
+                            if e.to_string().contains("conditional") {
+                                DbError::Backoff(e.to_string())
+                            } else {
+                                e
+                            }
+                        })?;
                         self.metrics.incr_with_tags("database.migrate").send();
                         let channels = self.secondary.get_channels(uaid).await?;
                         if !channels.is_empty() {
