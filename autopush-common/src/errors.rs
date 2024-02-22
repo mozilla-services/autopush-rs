@@ -179,7 +179,7 @@ impl ApcErrorKind {
             Self::PayloadError(_) => Some("payload"),
             #[cfg(feature = "bigtable")]
             Self::DbError(e) => e.metric_label(),
-            _ => return None,
+            _ => None,
         }
     }
 }

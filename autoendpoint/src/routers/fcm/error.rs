@@ -92,13 +92,13 @@ impl ReportableError for FcmError {
     }
 
     fn is_sentry_event(&self) -> bool {
-        match &self {
-            FcmError::InvalidAppId(_) => true,
-            FcmError::NoAppId => true,
-            FcmError::EmptyResponse(_) => true,
-            FcmError::InvalidResponse(_, _, _) => true,
-            _ => false,
-        }
+        matches!(
+            &self,
+            FcmError::InvalidAppId(_)
+                | FcmError::NoAppId
+                | FcmError::EmptyResponse(_)
+                | FcmError::InvalidResponse(_, _, _)
+        )
     }
 
     fn metric_label(&self) -> Option<&'static str> {
