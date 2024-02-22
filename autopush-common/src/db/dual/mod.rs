@@ -195,13 +195,7 @@ impl DbClient for DualClientImpl {
                                 // User is being migrated underneath us.
                                 // Try fetching the record from primary again,
                                 // and back off if still not there.
-                                let user = self.primary.get_user(uaid).await.map_err(|e| {
-                                    if matches!(e, DbError::Conditional) {
-                                        DbError::Backoff(e.to_string())
-                                    } else {
-                                        e
-                                    }
-                                })?;
+                                let user = self.primary.get_user(uaid).await?;
                                 // Possibly a higher number of these occur than
                                 // expected, so sanity check that a user now
                                 // exists
@@ -209,6 +203,9 @@ impl DbClient for DualClientImpl {
                                     .incr_with_tags("database.already_migrated")
                                     .with_tag("exists", &user.is_some().to_string())
                                     .send();
+                                if user.is_none() {
+                                    return Err(DbError::Backoff("Move in progress".to_owned()));
+                                };
                                 return Ok(user);
                             }
                         };
