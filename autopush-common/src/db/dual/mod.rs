@@ -192,9 +192,11 @@ impl DbClient for DualClientImpl {
                         self.primary.add_user(&user).await?;
                         self.metrics.incr_with_tags("database.migrate").send();
                         let channels = self.secondary.get_channels(uaid).await?;
-                        // NOTE: add_channels doesn't write a new version:
-                        // user.version is still valid
-                        self.primary.add_channels(uaid, channels).await?;
+                        if !channels.is_empty() {
+                            // NOTE: add_channels doesn't write a new version:
+                            // user.version is still valid
+                            self.primary.add_channels(uaid, channels).await?;
+                        }
                         return Ok(Some(user));
                     }
                 }
