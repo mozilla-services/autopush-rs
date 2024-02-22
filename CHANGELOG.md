@@ -1,3 +1,13 @@
+<a name="1.70.6"></a>
+## 1.70.6 (2024-02-22)
+
+
+#### Features
+
+*   prefer the simpler delete to avoid the admin API (#636) ([0b7265ed](https://github.com/mozilla-services/autopush-rs/commit/0b7265edaa047bd10a556009a9174aa9772fec82))
+
+
+
 <a name="1.70.5"></a>
 ## 1.70.5 (2024-02-22)
 
