@@ -193,8 +193,15 @@ impl DbClient for DualClientImpl {
                         if let Err(e) = self.primary.add_user(&user).await {
                             if matches!(e, DbError::Conditional) {
                                 // User is being migrated underneath us.
-                                // Try fetching the record from primary again
-                                let user = self.primary.get_user(uaid).await?;
+                                // Try fetching the record from primary again,
+                                // and back off if still not there.
+                                let user = self.primary.get_user(uaid).await.map_err(|e| {
+                                    if matches!(e, DbError::Conditional) {
+                                        DbError::Backoff(e.to_string())
+                                    } else {
+                                        e
+                                    }
+                                })?;
                                 // Possibly a higher number of these occur than
                                 // expected, so sanity check that a user now
                                 // exists
