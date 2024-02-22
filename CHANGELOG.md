@@ -1,3 +1,14 @@
+<a name="1.70.7"></a>
+## 1.70.7 (2024-02-22)
+
+
+#### Bug Fixes
+
+*   retry get_user when the add_user condition fails (#637) ([87ed38c3](https://github.com/mozilla-services/autopush-rs/commit/87ed38c3f745073bc917c2c73cc06c5807eae134))
+*   Add missing doc diagram. (#623) ([12bce705](https://github.com/mozilla-services/autopush-rs/commit/12bce70538f11edaab7d281f8dbb2130f4626c01))
+
+
+
 <a name="1.70.6"></a>
 ## 1.70.6 (2024-02-22)
 
