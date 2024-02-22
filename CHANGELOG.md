@@ -1,3 +1,13 @@
+<a name="1.70.5"></a>
+## 1.70.5 (2024-02-22)
+
+
+#### Bug Fixes
+
+*   don't add_channels when there's none to add (#634) ([b0ffa8cd](https://github.com/mozilla-services/autopush-rs/commit/b0ffa8cd10a900d32ddacfeaeadf0ccc51160021))
+
+
+
 <a name="1.70.4"></a>
 ## 1.70.4 (2024-02-20)
 
