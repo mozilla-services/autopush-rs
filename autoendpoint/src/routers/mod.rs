@@ -200,20 +200,15 @@ impl ReportableError for RouterError {
         // NOTE: Some metrics are emitted for other Errors via handle_error
         // callbacks, whereas some are emitted via this method. These 2 should
         // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
-        let err = match self {
+        match self {
             RouterError::Adm(AdmError::InvalidProfile | AdmError::NoProfile) => {
-                "notification.bridge.error.adm.profile"
+                Some("notification.bridge.error.adm.profile")
             }
-            RouterError::Apns(ApnsError::SizeLimit(_)) => {
-                "notification.bridge.error.apns.oversized"
-            }
-            RouterError::TooMuchData(_) => "notification.bridge.error.too_much_data",
-            _ => "",
-        };
-        if !err.is_empty() {
-            return Some(err);
+            RouterError::Apns(e) => e.metric_label(),
+            RouterError::Fcm(e) => e.metric_label(),
+            RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),
+            _ => None,
         }
-        None
     }
 
     fn extras(&self) -> Vec<(&str, String)> {
