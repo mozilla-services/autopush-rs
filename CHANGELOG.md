@@ -1,3 +1,99 @@
+<a name="1.70.4"></a>
+## 1.70.4 (2024-02-20)
+
+
+#### Features
+
+*   have Bigtable match DynamoDB's metrics (#627) ([0ce81aab](https://github.com/mozilla-services/autopush-rs/commit/0ce81aab562d4129d1a976bd7d232a0ea95fa1fa))
+*   have bigtable remove_channel write conditionally (#625) ([60c6675b](https://github.com/mozilla-services/autopush-rs/commit/60c6675b607a113cc6ba01ff49126781e7fa9df2))
+
+#### Bug Fixes
+
+*   "recycle" the user object in update_token_route (#621) ([4bd48278](https://github.com/mozilla-services/autopush-rs/commit/4bd48278d13a675a27626a1b0042e0c366c76dde))
+
+
+
+<a name="1.70.3"></a>
+## 1.70.3 (2024-02-20)
+
+
+#### Bug Fixes
+
+*   fix add/update_user version field handling on migrations (#619) ([1ff88e79](https://github.com/mozilla-services/autopush-rs/commit/1ff88e796611749714cada7b88fd4986049d83bb))
+
+
+
+<a name="1.70.2"></a>
+## 1.70.2 (2024-02-15)
+
+
+#### Bug Fixes
+
+*   dual update_user calling add_user ([c80866d6](https://github.com/mozilla-services/autopush-rs/commit/c80866d6b3c7b0f8b09e456cc7e4aa4bba7bf6e7))
+
+
+
+<a name="1.70.1"></a>
+## 1.70.1 (2024-02-15)
+
+
+#### Features
+
+*   add metadata headers for bigtable (#586) ([e043fb02](https://github.com/mozilla-services/autopush-rs/commit/e043fb02dc4ccd13f39c5083c94b7311887f3fef))
+*   simplify StoredNotifAutopushUser's on_start (#614) ([c2841113](https://github.com/mozilla-services/autopush-rs/commit/c284111312ba4cb034d887aaec14d1fda7286ae1))
+*   simplify StoredNotifAutopushUser's on_start ([0d0e99e6](https://github.com/mozilla-services/autopush-rs/commit/0d0e99e6996c11b2a81cfeebd2a89c609a7a9d01))
+*   retry dynamodb HttpDispatch errors (#605) ([cb1482de](https://github.com/mozilla-services/autopush-rs/commit/cb1482de2f5cedef0047ca9a7b01db0d7103e5ab))
+*   Elevate big table settings dump for deployment debug (#609) ([7d29c16d](https://github.com/mozilla-services/autopush-rs/commit/7d29c16dae5388ab41052832fe672fd41cfcf3d0))
+*   put old AWS crap behind a feature flag (#606) ([04df79e5](https://github.com/mozilla-services/autopush-rs/commit/04df79e5df9899fc0563d116187fbd59e0a53eee))
+
+#### Chore
+
+* **deps-dev:**
+  *  bump jinja2 from 3.1.2 to 3.1.3 in /tests (#549) ([80c961a5](https://github.com/mozilla-services/autopush-rs/commit/80c961a53c0bb3946fb32851ad58e8744c9909a3))
+  *  bump cryptography from 41.0.7 to 42.0.0 in /tests (#600) ([4fbbaea2](https://github.com/mozilla-services/autopush-rs/commit/4fbbaea2a4dda5e818420d6f77df2d1e6486e82c))
+  *  bump cryptography from 41.0.7 to 42.0.0 in /tests ([222c05cc](https://github.com/mozilla-services/autopush-rs/commit/222c05cc7d6af778d5aa5fe3ec38517cc2bc806f))
+  *  bump jinja2 from 3.1.2 to 3.1.3 in /tests ([3c7d900b](https://github.com/mozilla-services/autopush-rs/commit/3c7d900b59848ee053197809d19dc201c566f750))
+
+#### Bug Fixes
+
+*   add secondary_write for channels (#597) ([37b377ae](https://github.com/mozilla-services/autopush-rs/commit/37b377ae17c2afe30e72c739fc539aa9eec465d5))
+*   Isolate dynamodb to feature flag only (#612) ([158e01c4](https://github.com/mozilla-services/autopush-rs/commit/158e01c45017c051c2f834537a1cb8c9c5546da6))
+*   Add errors for health check reporting (#610) ([37a0724a](https://github.com/mozilla-services/autopush-rs/commit/37a0724a8815d42c471ca30ebb56c352f0ed673e))
+*   reset the WebSocket every time it disconnects (#607) ([9bb964c6](https://github.com/mozilla-services/autopush-rs/commit/9bb964c62df7b46b101d3c98739155ec84112fe3))
+
+
+
+<a name="1.70.0"></a>
+## 1.70.0 (2024-02-06)
+
+
+#### Refactor
+
+*   cleanup add_channels to use mutate_row (#583) ([db2e02ed](https://github.com/mozilla-services/autopush-rs/commit/db2e02ed0cd02ad5dd57f1b9bc81368d96777def))
+
+#### Chore
+
+*   tag 1.69.8 (#601) ([978bc153](https://github.com/mozilla-services/autopush-rs/commit/978bc15380adb73f1c5b06a6fc656d30c0ffb670))
+*   stop building legacy autopush (#575) ([80264495](https://github.com/mozilla-services/autopush-rs/commit/8026449591db85cfb388a886bfc5d1ea8e647f0e))
+
+#### Features
+
+*   add a new test that produces stored notifs  (#598) ([a6bd3cd7](https://github.com/mozilla-services/autopush-rs/commit/a6bd3cd7074c799c91bab99ed15df186ab58febe))
+*   filter reads by latest cell (#599) ([e012955a](https://github.com/mozilla-services/autopush-rs/commit/e012955a56243258513a86033c5711821b256d46))
+*   [SYNC-3835] pydocstyle implementation (#585) ([aa5773da](https://github.com/mozilla-services/autopush-rs/commit/aa5773da196a51a3779a6f76d8ed20837b604c66))
+*   Add integration test for `dual` mode (#582) ([76848753](https://github.com/mozilla-services/autopush-rs/commit/76848753b268b7116e572ad6ab3e9f3d256f2009))
+*   don't store duplicated message columns (#581) ([7f2396aa](https://github.com/mozilla-services/autopush-rs/commit/7f2396aaaccbfd783fb0d52e177b887cdcc6a8bd))
+*   store the channel_id metadata in a single bigtable row (#574) ([1716f205](https://github.com/mozilla-services/autopush-rs/commit/1716f205bd746a7c8aafe4a0932ce213a0d9983e))
+
+#### Bug Fixes
+
+*   errors when deleting and provisioning load test clusters (#593) ([925130a1](https://github.com/mozilla-services/autopush-rs/commit/925130a10712fa07f2ef6fd3025fbdb201b3fb01))
+*   fix remove_node_id's condition check to be more reliable (#590) ([dc077623](https://github.com/mozilla-services/autopush-rs/commit/dc0776232ab44d3b41f4de980ec1a0edbd91ea3a))
+*   fetch messages shouldn't read the current timestamp's notif (#577) ([fc99e774](https://github.com/mozilla-services/autopush-rs/commit/fc99e7741eb36ca5e1156c17f7644439ce32a469))
+*   Clarify how the index for Row is used between reading and writing to Bigtable (#573) ([09fe7ac2](https://github.com/mozilla-services/autopush-rs/commit/09fe7ac20f83ee22ab44a068685f57403ed9c946))
+
+
+
 <a name="1.69.8"></a>
 ## 1.69.8 (2024-01-24)
 
