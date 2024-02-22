@@ -190,13 +190,21 @@ impl DbClient for DualClientImpl {
                         // for Bigtable
                         debug_assert!(user.version.is_none());
                         user.version = Some(Uuid::new_v4());
-                        self.primary.add_user(&user).await.map_err(|e| {
-                            if e.to_string().contains("conditional") {
-                                DbError::Backoff(e.to_string())
-                            } else {
-                                e
+                        if let Err(e) = self.primary.add_user(&user).await {
+                            if matches!(e, DbError::Conditional) {
+                                // User is being migrated underneath us.
+                                // Try fetching the record from primary again
+                                let user = self.primary.get_user(uaid).await?;
+                                // Possibly a higher number of these occur than
+                                // expected, so sanity check that a user now
+                                // exists
+                                self.metrics
+                                    .incr_with_tags("database.already_migrated")
+                                    .with_tag("exists", &user.is_some().to_string())
+                                    .send();
+                                return Ok(user);
                             }
-                        })?;
+                        };
                         self.metrics.incr_with_tags("database.migrate").send();
                         let channels = self.secondary.get_channels(uaid).await?;
                         if !channels.is_empty() {
