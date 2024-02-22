@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cadence::{CountedExt, StatsdClient};
+use cadence::{CountedExt, StatsdClient, Timed};
 use serde::Deserialize;
 use serde_json::from_str;
 use uuid::Uuid;
@@ -182,6 +182,7 @@ impl DbClient for DualClientImpl {
             Ok(None) => {
                 if is_primary {
                     // The user wasn't in the current primary, so fetch them from the secondary.
+                    let start = std::time::Instant::now();
                     if let Ok(Some(mut user)) = self.secondary.get_user(uaid).await {
                         // copy the user record over to the new data store.
                         debug!("⚖ Found user record in secondary, moving to primary");
@@ -200,6 +201,12 @@ impl DbClient for DualClientImpl {
                             // user.version is still valid
                             self.primary.add_channels(uaid, channels).await?;
                         }
+                        self.metrics
+                            .time_with_tags(
+                                "database.migrate.time",
+                                (std::time::Instant::now() - start).as_millis() as u64,
+                            )
+                            .send();
                         return Ok(Some(user));
                     }
                 }
