@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cadence::{CountedExt, StatsdClient};
+use cadence::{CountedExt, StatsdClient, Timed};
 use serde::Deserialize;
 use serde_json::from_str;
 use uuid::Uuid;
@@ -182,6 +182,7 @@ impl DbClient for DualClientImpl {
             Ok(None) => {
                 if is_primary {
                     // The user wasn't in the current primary, so fetch them from the secondary.
+                    let start = std::time::Instant::now();
                     if let Ok(Some(mut user)) = self.secondary.get_user(uaid).await {
                         // copy the user record over to the new data store.
                         debug!("⚖ Found user record in secondary, moving to primary");
@@ -189,12 +190,38 @@ impl DbClient for DualClientImpl {
                         // for Bigtable
                         debug_assert!(user.version.is_none());
                         user.version = Some(Uuid::new_v4());
-                        self.primary.add_user(&user).await?;
+                        if let Err(e) = self.primary.add_user(&user).await {
+                            if matches!(e, DbError::Conditional) {
+                                // User is being migrated underneath us.
+                                // Try fetching the record from primary again,
+                                // and back off if still not there.
+                                let user = self.primary.get_user(uaid).await?;
+                                // Possibly a higher number of these occur than
+                                // expected, so sanity check that a user now
+                                // exists
+                                self.metrics
+                                    .incr_with_tags("database.already_migrated")
+                                    .with_tag("exists", &user.is_some().to_string())
+                                    .send();
+                                if user.is_none() {
+                                    return Err(DbError::Backoff("Move in progress".to_owned()));
+                                };
+                                return Ok(user);
+                            }
+                        };
                         self.metrics.incr_with_tags("database.migrate").send();
                         let channels = self.secondary.get_channels(uaid).await?;
-                        // NOTE: add_channels doesn't write a new version:
-                        // user.version is still valid
-                        self.primary.add_channels(uaid, channels).await?;
+                        if !channels.is_empty() {
+                            // NOTE: add_channels doesn't write a new version:
+                            // user.version is still valid
+                            self.primary.add_channels(uaid, channels).await?;
+                        }
+                        self.metrics
+                            .time_with_tags(
+                                "database.migrate.time",
+                                (std::time::Instant::now() - start).as_millis() as u64,
+                            )
+                            .send();
                         return Ok(Some(user));
                     }
                 }
