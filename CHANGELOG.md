@@ -1,3 +1,34 @@
+<a name="1.70.7"></a>
+## 1.70.7 (2024-02-22)
+
+
+#### Bug Fixes
+
+*   retry get_user when the add_user condition fails (#637) ([87ed38c3](https://github.com/mozilla-services/autopush-rs/commit/87ed38c3f745073bc917c2c73cc06c5807eae134))
+*   Add missing doc diagram. (#623) ([12bce705](https://github.com/mozilla-services/autopush-rs/commit/12bce70538f11edaab7d281f8dbb2130f4626c01))
+
+
+
+<a name="1.70.6"></a>
+## 1.70.6 (2024-02-22)
+
+
+#### Features
+
+*   prefer the simpler delete to avoid the admin API (#636) ([0b7265ed](https://github.com/mozilla-services/autopush-rs/commit/0b7265edaa047bd10a556009a9174aa9772fec82))
+
+
+
+<a name="1.70.5"></a>
+## 1.70.5 (2024-02-22)
+
+
+#### Bug Fixes
+
+*   don't add_channels when there's none to add (#634) ([b0ffa8cd](https://github.com/mozilla-services/autopush-rs/commit/b0ffa8cd10a900d32ddacfeaeadf0ccc51160021))
+
+
+
 <a name="1.70.4"></a>
 ## 1.70.4 (2024-02-20)
 
