@@ -44,6 +44,10 @@ pub struct BigTableDbSettings {
     /// bigtable.
     #[serde(default)]
     pub table_name: String,
+    /// Routing replication profile id.
+    /// Should be used everywhere we set `table_name` when creating requests
+    #[serde(default)]
+    pub profile_id: String,
     #[serde(default)]
     pub router_family: String,
     #[serde(default)]
@@ -98,7 +102,7 @@ impl BigTableDbSettings {
 impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
-        let me: Self = serde_json::from_str(setting_string)
+        let mut me: Self = serde_json::from_str(setting_string)
             .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))?;
 
         if me.table_name.starts_with('/') {
@@ -106,6 +110,13 @@ impl TryFrom<&str> for BigTableDbSettings {
                 "Table name path begins with a '/'".to_owned(),
             ));
         };
+
+        // specify the default string "default" if it's not specified.
+        // There's a small chance that this could be reported as "unspecified", so this
+        // removes that confusion.
+        if me.profile_id.is_empty() {
+            me.profile_id = "default".to_owned();
+        }
 
         Ok(me)
     }

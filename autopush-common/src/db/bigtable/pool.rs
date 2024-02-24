@@ -184,7 +184,7 @@ impl Manager for BigtableClientManager {
         // note, this changes to `blocks_in_conditions` for 1.76+
         #[allow(clippy::blocks_in_conditions)]
         if !client
-            .health_check(&self.settings.table_name)
+            .health_check(&self.settings.table_name, &self.settings.profile_id)
             .await
             .map_err(|e| {
                 debug!("🏊 Recycle requested (health). {:?}", e);
