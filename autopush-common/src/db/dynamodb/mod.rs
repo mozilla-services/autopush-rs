@@ -264,7 +264,14 @@ impl DbClient for DdbClientImpl {
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                error!(
+                    "add_channel failed; uaid: {:?}, channel_id: {:?}",
+                    uaid, channel_id
+                );
+                e
+            })?;
         Ok(())
     }
 
@@ -336,7 +343,14 @@ impl DbClient for DdbClientImpl {
                 || self.db_client.update_item(input.clone()),
                 retryable_updateitem_error(self.metrics.clone()),
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                error!(
+                    "remove_channel failed: uaid:{:?}, chid:{:?}",
+                    uaid, channel_id
+                );
+                e
+            })?;
 
         // Check if the old channel IDs contain the removed channel
         Ok(output
@@ -376,7 +390,13 @@ impl DbClient for DdbClientImpl {
         match result {
             Ok(_) => Ok(true),
             Err(RusotoError::Service(UpdateItemError::ConditionalCheckFailed(_))) => Ok(false),
-            Err(e) => Err(e.into()),
+            Err(e) => {
+                error!(
+                    "remove_node_id failed. node_id:{:?}, connected_at:{:?}",
+                    node_id, connected_at
+                );
+                Err(e.into())
+            }
         }
     }
 
