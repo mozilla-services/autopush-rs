@@ -743,6 +743,7 @@ dependencies = [
  "gethostname",
  "google-cloud-rust-raw",
  "grpcio",
+ "grpcio-sys",
  "hex",
  "httparse",
  "hyper",

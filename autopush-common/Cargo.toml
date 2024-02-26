@@ -67,6 +67,7 @@ google-cloud-rust-raw = { version = "0.16", default-features = false, features =
     "bigtable",
 ], optional = true }
 grpcio = { version = "=0.13.0", features = ["openssl"], optional = true }
+grpcio-sys = { version = "=0.13.0", optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 form_urlencoded = { version = "1.2", optional = true }
 
@@ -82,6 +83,7 @@ actix-rt = "2.8"
 bigtable = [
     "dep:google-cloud-rust-raw",
     "dep:grpcio",
+    "dep:grpcio-sys",
     "dep:protobuf",
     "dep:form_urlencoded",
 ]

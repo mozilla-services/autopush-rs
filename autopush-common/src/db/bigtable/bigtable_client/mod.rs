@@ -15,7 +15,7 @@ use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use grpcio::{Channel, Metadata};
+use grpcio::{Channel, Metadata, RpcStatus, RpcStatusCode};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -200,19 +200,38 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
         .with_jitter(true)
 }
 
+fn retriable_internal_error(status: &RpcStatus) -> bool {
+    match status.code() {
+        RpcStatusCode::UNKNOWN => {
+            "error occurred when fetching oauth2 token" == status.message().to_ascii_lowercase()
+        }
+        RpcStatusCode::INTERNAL => [
+            "rst_stream",
+            "rst stream",
+            "received unexpected eos on data from from server",
+        ]
+        .contains(&status.message().to_lowercase().as_str()),
+        RpcStatusCode::UNAVAILABLE => true,
+        RpcStatusCode::DEADLINE_EXCEEDED => true,
+        _ => false,
+    }
+}
+
 pub fn retryable_describe_table_error(
     metrics: Arc<StatsdClient>,
 ) -> impl Fn(&grpcio::Error) -> bool {
     move |err| {
         debug!("🉑 Checking error...{err}");
         match err {
-            grpcio::Error::RpcFailure(_) => {
+            grpcio::Error::RpcFailure(status) => {
+                info!("GRPC Failure :{:?}", status);
                 metrics
                     .incr_with_tags("database.retry")
                     .with_tag("error", "RpcFailure")
                     .with_tag("type", "bigtable")
+                    .with_tag("code", &status.code().to_string())
                     .send();
-                true
+                retriable_internal_error(status)
             }
             grpcio::Error::QueueShutdown => {
                 metrics
@@ -230,10 +249,21 @@ pub fn retryable_describe_table_error(
                     .send();
                 true
             }
-            grpcio::Error::CallFailure(_) => {
+            // The parameter here is a [grpcio_sys::grpc_call_error] enum
+            // Not all of these are retriable.
+            grpcio::Error::CallFailure(grpc_call_status) => {
                 metrics
                     .incr_with_tags("database.retry")
                     .with_tag("error", "CallFailure")
+                    .with_tag("type", "bigtable")
+                    .with_tag("code", &format!("{:?}", grpc_call_status))
+                    .send();
+                grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR
+            }
+            grpcio::Error::ShutdownFailed => {
+                metrics
+                    .incr_with_tags("database.retry")
+                    .with_tag("error", "ShutdownFailed")
                     .with_tag("type", "bigtable")
                     .send();
                 true
