@@ -568,6 +568,7 @@ impl BigTableClientImpl {
     /// This will drop ALL data associated with these rows.
     /// Note that deletion may take up to a week to occur.
     /// see https://cloud.google.com/php/docs/reference/cloud-bigtable/latest/Admin.V2.DropRowRangeRequest
+    #[allow(unused)]
     async fn delete_rows(&self, row_key: &str) -> Result<bool, error::BigTableError> {
         let admin = BigtableTableAdminClient::new(self.pool.get_channel()?);
         let mut req = DropRowRangeRequest::new();
@@ -813,7 +814,9 @@ impl DbClient for BigTableClientImpl {
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
         let row_key = uaid.as_simple().to_string();
         let mut req = self.read_row_request(&row_key);
-        req.set_filter(family_filter(format!("^{ROUTER_FAMILY}$")));
+        let mut filters = vec![router_gc_policy_filter()];
+        filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
+        req.set_filter(filter_chain(filters));
         let Some(mut row) = self.read_row(req).await? else {
             return Ok(None);
         };
@@ -860,7 +863,7 @@ impl DbClient for BigTableClientImpl {
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
         let row_key = uaid.simple().to_string();
-        self.delete_rows(&row_key).await?;
+        self.delete_row(&row_key).await?;
         Ok(())
     }
 
