@@ -598,6 +598,7 @@ impl BigTableClientImpl {
     /// This will drop ALL data associated with these rows.
     /// Note that deletion may take up to a week to occur.
     /// see https://cloud.google.com/php/docs/reference/cloud-bigtable/latest/Admin.V2.DropRowRangeRequest
+    #[allow(unused)]
     async fn delete_rows(&self, row_key: &str) -> Result<bool, error::BigTableError> {
         let admin = BigtableTableAdminClient::new(self.pool.get_channel()?);
         let mut req = DropRowRangeRequest::new();
@@ -843,7 +844,9 @@ impl DbClient for BigTableClientImpl {
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
         let row_key = uaid.as_simple().to_string();
         let mut req = self.read_row_request(&row_key);
-        req.set_filter(family_filter(format!("^{ROUTER_FAMILY}$")));
+        let mut filters = vec![router_gc_policy_filter()];
+        filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
+        req.set_filter(filter_chain(filters));
         let Some(mut row) = self.read_row(req).await? else {
             return Ok(None);
         };
@@ -890,7 +893,7 @@ impl DbClient for BigTableClientImpl {
 
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
         let row_key = uaid.simple().to_string();
-        self.delete_rows(&row_key).await?;
+        self.delete_row(&row_key).await?;
         Ok(())
     }
 
@@ -1044,7 +1047,8 @@ impl DbClient for BigTableClientImpl {
 
         let mut cells: Vec<cell::Cell> = Vec::new();
 
-        let family = if message.topic.is_some() {
+        let is_topic = message.topic.is_some();
+        let family = if is_topic {
             MESSAGE_TOPIC_FAMILY
         } else {
             MESSAGE_FAMILY
@@ -1089,7 +1093,14 @@ impl DbClient for BigTableClientImpl {
         }
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row).await?;
+
+        self.metrics
+            .incr_with_tags("notification.message.stored")
+            .with_tag("topic", &is_topic.to_string())
+            .with_tag("database", &self.name())
+            .send();
+        Ok(())
     }
 
     /// Save a batch of messages to the database.
@@ -1138,7 +1149,8 @@ impl DbClient for BigTableClientImpl {
                 new_version_cell(expiry),
             ],
         );
-        self.write_row(row).await.map_err(|e| e.into())
+        self.write_row(row).await?;
+        Ok(())
     }
 
     /// Delete the notification from storage.
@@ -1150,7 +1162,12 @@ impl DbClient for BigTableClientImpl {
         );
         let row_key = format!("{}#{}", uaid.simple(), chidmessageid);
         debug!("🉑🔥 Deleting message {}", &row_key);
-        self.delete_row(&row_key).await.map_err(|e| e.into())
+        self.delete_row(&row_key).await?;
+        self.metrics
+            .incr_with_tags("notification.message.deleted")
+            .with_tag("database", &self.name())
+            .send();
+        Ok(())
     }
 
     /// Return `limit` pending messages from storage. `limit=0` for all messages.
