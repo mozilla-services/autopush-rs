@@ -97,7 +97,7 @@ impl BigTablePool {
         config.timeouts = Timeouts {
             wait: bt_settings.database_pool_wait_timeout,
             create: bt_settings.database_pool_create_timeout,
-            recycle: bt_settings.database_pool_connection_ttl,
+            recycle: bt_settings.database_pool_recycle_timeout,
         };
         debug!("🏊 Timeouts: {:?}", &config.timeouts);
 

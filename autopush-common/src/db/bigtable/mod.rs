@@ -33,8 +33,6 @@ use crate::db::bigtable::bigtable_client::MetadataBuilder;
 use crate::db::error::DbError;
 use crate::util::deserialize_opt_u32_to_duration;
 
-pub const REQUEST_TIMEOUT_SECS: u64 = 30;
-
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
 pub struct BigTableDbSettings {
@@ -62,6 +60,10 @@ pub struct BigTableDbSettings {
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_wait_timeout: Option<Duration>,
+    /// Max time(in seconds) to recycle a connection
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_recycle_timeout: Option<Duration>,
     /// Max time (in seconds) a connection should live
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
