@@ -150,6 +150,8 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => StatusCode::IM_A_TEAPOT,
 
+            ApiErrorKind::Database(DbError::Backoff(_)) => StatusCode::SERVICE_UNAVAILABLE,
+
             ApiErrorKind::General(_)
             | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
