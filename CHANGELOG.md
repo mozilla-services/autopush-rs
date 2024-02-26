@@ -1,3 +1,13 @@
+<a name="1.70.8"></a>
+## 1.70.8 (2024-02-26)
+
+
+#### Bug Fixes
+
+*   don't ignore add_user errors (#640) ([6a91bce5](https://github.com/mozilla-services/autopush-rs/commit/6a91bce5525b019e904d5ec7c4f025b5b2e917a7))
+
+
+
 <a name="1.70.7"></a>
 ## 1.70.7 (2024-02-22)
 
