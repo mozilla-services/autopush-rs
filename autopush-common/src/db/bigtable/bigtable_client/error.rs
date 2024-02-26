@@ -115,6 +115,10 @@ pub enum BigTableError {
     /// General Pool builder errors.
     #[error("Pool Error: {0}")]
     Pool(String),
+
+    /// Retryable error
+    #[error("Retry")]
+    Retry(grpcio::RpcStatusCode),
 }
 
 impl ReportableError for BigTableError {
@@ -144,6 +148,7 @@ impl ReportableError for BigTableError {
             BigTableError::Recycle => "storage.bigtable.error.recycle",
             BigTableError::Pool(_) => "storage.bigtable.error.pool",
             BigTableError::GRPC(_) => "storage.bigtable.error.grpc",
+            BigTableError::Retry(_) => return None,
         };
         Some(err)
     }

@@ -387,6 +387,13 @@ impl RowMerger {
             stream = s;
             let row = match row_resp_res {
                 Ok(v) => v,
+                Err(grpcio::Error::RpcFailure(status))
+                    if status
+                        .message()
+                        .contains("Error occurred when fetching oauth2 token") =>
+                {
+                    return Err(BigTableError::Retry(status.code()));
+                }
                 Err(e) => return Err(BigTableError::InvalidRowResponse(e)),
             };
             /*

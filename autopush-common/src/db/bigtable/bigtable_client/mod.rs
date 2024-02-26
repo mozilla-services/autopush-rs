@@ -29,7 +29,7 @@ use crate::db::{
 pub use self::metadata::MetadataBuilder;
 use self::row::Row;
 use super::pool::BigTablePool;
-use super::BigTableDbSettings;
+use super::{BigTableDbSettings, BigTableError};
 
 pub mod cell;
 pub mod error;
@@ -348,12 +348,31 @@ impl BigTableClientImpl {
         &self,
         req: ReadRowsRequest,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
-        let bigtable = self.pool.get().await?;
-        let resp = bigtable
-            .conn
-            .read_rows_opt(&req, call_opts(self.metadata.clone()))
-            .map_err(error::BigTableError::Read)?;
-        merge::RowMerger::process_chunks(resp).await
+        let mut bigtable = self.pool.get().await?;
+        // Semi-temporary patch to see if we can retry a specifig Bigtable error.
+        // see [merge::RowMerger::process_chunks] for error detection.
+        // If this is successful, we may want to do similar wraps around all connection operations.
+        for _ in 0..5 {
+            let resp = bigtable
+                .conn
+                .read_rows_opt(&req, call_opts(self.metadata.clone()))
+                .map_err(error::BigTableError::Read)?;
+            let result = merge::RowMerger::process_chunks(resp).await;
+            if let Err(BigTableError::Retry(status)) = result {
+                // reset connection?
+                self.metrics
+                    .incr_with_tags("error.oauth2_retry")
+                    .with_tag("status", &status.to_string())
+                    .send();
+                bigtable = self.pool.get().await?;
+                continue;
+            }
+            return result;
+        }
+        Err(BigTableError::Admin(
+            "Retry count exceeded".to_owned(),
+            None,
+        ))
     }
 
     /// write a given row.
