@@ -31,7 +31,7 @@ use std::time::Duration;
 
 use crate::db::bigtable::bigtable_client::MetadataBuilder;
 use crate::db::error::DbError;
-use crate::util::deserialize_u32_to_duration;
+use crate::util::deserialize_opt_u32_to_duration;
 
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
@@ -52,26 +52,26 @@ pub struct BigTableDbSettings {
     pub message_topic_family: String,
     #[serde(default)]
     pub database_pool_max_size: Option<u32>,
-    /// Max time (in seconds) to wait for a database connection
+    /// Max time (in seconds) to wait to create a new connection to bigtable
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration_opt")]
-    pub database_pool_connection_wait_timeout: Option<Duration>,
-    /// Max time (in seconds) to wait when creating a database connection
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_create_timeout: Option<Duration>,
+    /// Max time (in seconds) to wait for a socket to become available
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration_opt")]
-    pub database_pool_connection_create_timeout: Option<Duration>,
-    /// Max time (in seconds) to wait when recycling a database connection
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_wait_timeout: Option<Duration>,
+    /// Max time(in seconds) to recycle a connection
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration_opt")]
-    pub database_pool_connection_recycle_timeout: Option<Duration>,
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_recycle_timeout: Option<Duration>,
     /// Max time (in seconds) a connection should live
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub database_pool_connection_ttl: Duration,
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_connection_ttl: Option<Duration>,
     /// Max idle time(in seconds) for a connection
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub database_pool_max_idle: Duration,
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub database_pool_max_idle: Option<Duration>,
     /// Include route to leader header in metadata
     #[serde(default)]
     pub route_to_leader: bool,
@@ -119,12 +119,16 @@ impl TryFrom<&str> for BigTableDbSettings {
     }
 }
 
-pub fn deserialize_u32_to_duration_opt<'de, D>(
-    deserializer: D,
-) -> Result<Option<Duration>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let maybe_seconds: Option<u32> = Option::deserialize(deserializer)?;
-    Ok(maybe_seconds.map(|s| Duration::from_secs(s.into())))
+mod tests {
+
+    #[test]
+    fn test_settings_parse() -> Result<(), crate::db::error::DbError> {
+        let settings =
+            super::BigTableDbSettings::try_from("{\"database_pool_create_timeout\": 123}")?;
+        assert_eq!(
+            settings.database_pool_create_timeout,
+            Some(std::time::Duration::from_secs(123))
+        );
+        Ok(())
+    }
 }
