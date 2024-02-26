@@ -94,16 +94,12 @@ impl BigTablePool {
             debug!("🏊 Setting pool max size {}", &size);
             config.max_size = size as usize;
         };
-        if !bt_settings.database_pool_connection_timeout.is_zero() {
-            debug!(
-                "🏊 Setting connection timeout to {} seconds",
-                &bt_settings.database_pool_connection_timeout.as_secs()
-            );
-            config.timeouts = Timeouts {
-                create: Some(bt_settings.database_pool_connection_timeout),
-                ..Default::default()
-            };
-        }
+        config.timeouts = Timeouts {
+            wait: bt_settings.database_pool_connection_wait_timeout,
+            create: bt_settings.database_pool_connection_create_timeout,
+            recycle: bt_settings.database_pool_connection_recycle_timeout,
+        };
+        debug!("🏊 Setting pool timeouts to {:?}", &config.timeouts);
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
             .build()

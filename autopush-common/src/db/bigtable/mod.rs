@@ -26,7 +26,7 @@ pub use bigtable_client::error::BigTableError;
 pub use bigtable_client::BigTableClientImpl;
 
 use grpcio::Metadata;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::time::Duration;
 
 use crate::db::bigtable::bigtable_client::MetadataBuilder;
@@ -54,8 +54,16 @@ pub struct BigTableDbSettings {
     pub database_pool_max_size: Option<u32>,
     /// Max time (in seconds) to wait for a database connection
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub database_pool_connection_timeout: Duration,
+    #[serde(deserialize_with = "deserialize_u32_to_duration_opt")]
+    pub database_pool_connection_wait_timeout: Option<Duration>,
+    /// Max time (in seconds) to wait when creating a database connection
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_u32_to_duration_opt")]
+    pub database_pool_connection_create_timeout: Option<Duration>,
+    /// Max time (in seconds) to wait when recycling a database connection
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_u32_to_duration_opt")]
+    pub database_pool_connection_recycle_timeout: Option<Duration>,
     /// Max time (in seconds) a connection should live
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_u32_to_duration")]
@@ -109,4 +117,14 @@ impl TryFrom<&str> for BigTableDbSettings {
 
         Ok(me)
     }
+}
+
+pub fn deserialize_u32_to_duration_opt<'de, D>(
+    deserializer: D,
+) -> Result<Option<Duration>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let maybe_seconds: Option<u32> = Option::deserialize(deserializer)?;
+    Ok(maybe_seconds.map(|s| Duration::from_secs(s.into())))
 }
