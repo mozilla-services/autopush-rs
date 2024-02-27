@@ -836,12 +836,33 @@ impl DbClient for BigTableClientImpl {
         };
 
         trace!("🉑 Found a record for {}", row_key);
+
+        let connected_at_cell = match row.take_required_cell("connected_at") {
+            Ok(cell) => cell,
+            Err(e) => {
+                if !row.cells.keys().all(|k| k.starts_with("chid:")) {
+                    return Err(e);
+                }
+                // Special case for:
+                // 1) A migration code bug caused some channels to be migrated
+                // after a user record failed to be added. Returning None will
+                // eventually re-trigger their migration:
+                // https://github.com/mozilla-services/autopush-rs/pull/640
+                // 2) When router TTLs are enabled: add_channel can write chid
+                // cells with later expiry times than the other router cells
+                trace!("🉑 Dropping a chid-only user record for {}", row_key);
+                self.metrics
+                    .incr_with_tags("database.drop_user")
+                    .with_tag("reason", "chid_only")
+                    .send();
+                self.remove_user(uaid).await?;
+                return Ok(None);
+            }
+        };
+
         let mut result = User {
             uaid: *uaid,
-            connected_at: to_u64(
-                row.take_required_cell("connected_at")?.value,
-                "connected_at",
-            )?,
+            connected_at: to_u64(connected_at_cell.value, "connected_at")?,
             router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
             record_version: Some(to_u64(
                 row.take_required_cell("record_version")?.value,
@@ -1645,6 +1666,31 @@ mod tests {
         assert_ne!(user.version, fetched.version);
         // should now fail w/ a stale version
         assert!(!client.update_user(&mut user).await.unwrap());
+
+        client.remove_user(&uaid).await.unwrap();
+    }
+
+    #[actix_rt::test]
+    async fn lingering_chid_record() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let user = User {
+            uaid,
+            ..Default::default()
+        };
+        client.remove_user(&uaid).await.unwrap();
+
+        // add_channel doesn't check for the existence of a user
+        client.add_channel(&uaid, &chid).await.unwrap();
+
+        // w/ chid records in the router row, get_user should treat
+        // this as the user not existing
+        assert!(client.get_user(&uaid).await.unwrap().is_none());
+
+        client.add_user(&user).await.unwrap();
+        // get_user should have also cleaned up the chids
+        assert!(client.get_channels(&uaid).await.unwrap().is_empty());
 
         client.remove_user(&uaid).await.unwrap();
     }
