@@ -1,3 +1,16 @@
+<a name="1.70.9"></a>
+## 1.70.9 (2024-02-27)
+
+
+#### Features
+
+*   Make bigtable calls retryable (#591) ([12dd7b41](https://github.com/mozilla-services/autopush-rs/commit/12dd7b41e44c5dfdf58eceee4a8a14e8f9e0fcf7))
+*   special case "chid-only" records (#646) ([5ab83fb8](https://github.com/mozilla-services/autopush-rs/commit/5ab83fb832383d5d7889d27edcd80ec7159afb60))
+*   report db pool metrics (#644) ([93d4cd38](https://github.com/mozilla-services/autopush-rs/commit/93d4cd38a5ecd4a8428ad3f93cb2a910521769cd))
+*   Add timeouts for bigtable operations (#611) ([34964235](https://github.com/mozilla-services/autopush-rs/commit/349642355656a407be9edab089c18a6491332c49))
+
+
+
 <a name="1.70.8"></a>
 ## 1.70.8 (2024-02-26)
 
