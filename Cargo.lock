@@ -750,6 +750,7 @@ dependencies = [
  "log",
  "mockall",
  "mockito",
+ "num_cpus",
  "openssl",
  "protobuf",
  "rand 0.8.5",
