@@ -73,6 +73,7 @@ pub struct BigTableDbSettings {
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_connection_ttl: Option<Duration>,
     /// Max idle time(in seconds) for a connection
+    #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_max_idle: Option<Duration>,
     /// Include route to leader header in metadata
