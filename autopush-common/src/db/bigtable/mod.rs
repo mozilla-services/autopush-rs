@@ -26,7 +26,7 @@ pub use bigtable_client::error::BigTableError;
 pub use bigtable_client::BigTableClientImpl;
 
 use grpcio::Metadata;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use std::time::Duration;
 
 use crate::db::bigtable::bigtable_client::MetadataBuilder;
