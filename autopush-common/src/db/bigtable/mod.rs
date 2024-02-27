@@ -33,6 +33,10 @@ use crate::db::bigtable::bigtable_client::MetadataBuilder;
 use crate::db::error::DbError;
 use crate::util::deserialize_opt_u32_to_duration;
 
+fn retry_default() -> usize {
+    bigtable_client::RETRY_COUNT
+}
+
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
 pub struct BigTableDbSettings {
@@ -75,6 +79,9 @@ pub struct BigTableDbSettings {
     /// Include route to leader header in metadata
     #[serde(default)]
     pub route_to_leader: bool,
+    /// Number of times to retry a GRPC function
+    #[serde(default = "retry_default")]
+    pub retry_count: usize,
 }
 
 impl BigTableDbSettings {
