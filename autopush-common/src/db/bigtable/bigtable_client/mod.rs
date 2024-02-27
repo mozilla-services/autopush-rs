@@ -211,62 +211,44 @@ fn retriable_internal_error(status: &RpcStatus) -> bool {
             "received unexpected eos on data from from server",
         ]
         .contains(&status.message().to_lowercase().as_str()),
-        RpcStatusCode::UNAVAILABLE => true,
-        RpcStatusCode::DEADLINE_EXCEEDED => true,
+        RpcStatusCode::UNAVAILABLE | RpcStatusCode::DEADLINE_EXCEEDED => true,
         _ => false,
     }
 }
 
-pub fn retryable_describe_table_error(
-    metrics: Arc<StatsdClient>,
-) -> impl Fn(&grpcio::Error) -> bool {
+pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
+    let mut metric = metrics
+        .incr_with_tags("database.retry")
+        .with_tag("error", err_type)
+        .with_tag("type", "bigtable");
+    if let Some(code) = code {
+        metric = metric.with_tag("code", code);
+    }
+    metric.send();
+}
+
+pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) -> bool {
     move |err| {
         debug!("🉑 Checking error...{err}");
         match err {
             grpcio::Error::RpcFailure(status) => {
                 info!("GRPC Failure :{:?}", status);
-                metrics
-                    .incr_with_tags("database.retry")
-                    .with_tag("error", "RpcFailure")
-                    .with_tag("type", "bigtable")
-                    .with_tag("code", &status.code().to_string())
-                    .send();
+                metric(&metrics, "RpcFailure", Some(&status.code().to_string()));
                 retriable_internal_error(status)
             }
-            grpcio::Error::QueueShutdown => {
-                metrics
-                    .incr_with_tags("database.retry")
-                    .with_tag("error", "QueueShutdown")
-                    .with_tag("type", "bigtable")
-                    .send();
-                true
-            }
             grpcio::Error::BindFail(_) => {
-                metrics
-                    .incr_with_tags("database.retry")
-                    .with_tag("error", "BindFail")
-                    .with_tag("type", "bigtable")
-                    .send();
+                metric(&metrics, "BindFail", None);
                 true
             }
             // The parameter here is a [grpcio_sys::grpc_call_error] enum
             // Not all of these are retriable.
             grpcio::Error::CallFailure(grpc_call_status) => {
-                metrics
-                    .incr_with_tags("database.retry")
-                    .with_tag("error", "CallFailure")
-                    .with_tag("type", "bigtable")
-                    .with_tag("code", &format!("{:?}", grpc_call_status))
-                    .send();
+                metric(
+                    &metrics,
+                    "CallFailure",
+                    Some(&format!("{:?}", grpc_call_status)),
+                );
                 grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR
-            }
-            grpcio::Error::ShutdownFailed => {
-                metrics
-                    .incr_with_tags("database.retry")
-                    .with_tag("error", "ShutdownFailed")
-                    .with_tag("type", "bigtable")
-                    .send();
-                true
             }
             _ => false,
         }
@@ -355,7 +337,7 @@ impl BigTableClientImpl {
                         .conn
                         .mutate_row_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_describe_table_error(self.metrics.clone()),
+                retryable_error(self.metrics.clone()),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -377,7 +359,7 @@ impl BigTableClientImpl {
                         .conn
                         .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_describe_table_error(self.metrics.clone()),
+                retryable_error(self.metrics.clone()),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -448,7 +430,7 @@ impl BigTableClientImpl {
                         .conn
                         .read_rows_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_describe_table_error(self.metrics.clone()),
+                retryable_error(self.metrics.clone()),
             )
             .await
             .map_err(error::BigTableError::Read)?;
@@ -536,7 +518,7 @@ impl BigTableClientImpl {
                         .conn
                         .check_and_mutate_row_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_describe_table_error(self.metrics.clone()),
+                retryable_error(self.metrics.clone()),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -782,7 +764,7 @@ impl BigtableDb {
                     self.conn
                         .read_rows_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_describe_table_error(metrics.clone()),
+                retryable_error(metrics.clone()),
             )
             .await
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
