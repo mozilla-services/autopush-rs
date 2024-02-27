@@ -166,9 +166,14 @@ fn filter_chain(filters: impl Into<RepeatedField<RowFilter>>) -> RowFilter {
 }
 
 /// Return a ReadRowsRequest against table for a given row key
-fn read_row_request(table_name: &str, row_key: &str) -> bigtable::ReadRowsRequest {
+fn read_row_request(
+    table_name: &str,
+    app_profile_id: &str,
+    row_key: &str,
+) -> bigtable::ReadRowsRequest {
     let mut req = bigtable::ReadRowsRequest::default();
     req.set_table_name(table_name.to_owned());
+    req.set_app_profile_id(app_profile_id.to_owned());
 
     let mut row_keys = RepeatedField::default();
     row_keys.push(row_key.as_bytes().to_vec());
@@ -243,13 +248,18 @@ impl BigTableClientImpl {
 
     /// Return a ReadRowsRequest for a given row key
     fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
-        read_row_request(&self.settings.table_name, row_key)
+        read_row_request(
+            &self.settings.table_name,
+            &self.settings.profile_id,
+            row_key,
+        )
     }
 
     /// Return a MutateRowRequest for a given row key
     fn mutate_row_request(&self, row_key: &str) -> bigtable::MutateRowRequest {
         let mut req = bigtable::MutateRowRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.profile_id.clone());
         req.set_row_key(row_key.as_bytes().to_vec());
         req
     }
@@ -258,6 +268,7 @@ impl BigTableClientImpl {
     fn check_and_mutate_row_request(&self, row_key: &str) -> bigtable::CheckAndMutateRowRequest {
         let mut req = bigtable::CheckAndMutateRowRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.profile_id.clone());
         req.set_row_key(row_key.as_bytes().to_vec());
         req
     }
@@ -659,9 +670,9 @@ impl BigtableDb {
     /// Recycle check as well, so it has to be fairly low in the implementation
     /// stack.
     ///
-    pub async fn health_check(&mut self, table_name: &str) -> DbResult<bool> {
+    pub async fn health_check(&mut self, table_name: &str, profile_id: &str) -> DbResult<bool> {
         // Create a request that is GRPC valid, but does not point to a valid row.
-        let mut req = read_row_request(table_name, "NOT FOUND");
+        let mut req = read_row_request(table_name, profile_id, "NOT FOUND");
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
@@ -1062,6 +1073,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.profile_id.clone());
 
         let start_key = format!("{}#01:", uaid.simple());
         let end_key = format!("{}#02:", uaid.simple());
@@ -1110,6 +1122,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.profile_id.clone());
 
         let mut rows = data::RowSet::default();
         let mut row_range = data::RowRange::default();
@@ -1171,7 +1184,7 @@ impl DbClient for BigTableClientImpl {
         self.pool
             .get()
             .await?
-            .health_check(&self.settings.table_name)
+            .health_check(&self.settings.table_name, &self.settings.profile_id)
             .await
     }
 
