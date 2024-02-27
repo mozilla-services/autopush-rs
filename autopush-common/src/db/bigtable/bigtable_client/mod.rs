@@ -52,6 +52,8 @@ const ROUTER_FAMILY: &str = "router";
 const MESSAGE_FAMILY: &str = "message"; // The default family for messages
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 
+pub(crate) const RETRY_COUNT: usize = 5;
+
 /// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
 // TODO:Should we create something similar for ChannelID?
 struct Uaid(Uuid);
@@ -758,7 +760,7 @@ impl BigtableDb {
         filter.set_block_all_filter(true);
         req.set_filter(filter);
 
-        let r = retry_policy(10)
+        let r = retry_policy(RETRY_COUNT)
             .retry_if(
                 || async {
                     self.conn

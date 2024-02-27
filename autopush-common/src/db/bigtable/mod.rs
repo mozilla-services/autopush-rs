@@ -34,7 +34,7 @@ use crate::db::error::DbError;
 use crate::util::deserialize_opt_u32_to_duration;
 
 fn retry_default() -> usize {
-    5
+    bigtable_client::RETRY_COUNT
 }
 
 /// The settings for accessing the BigTable contents.
