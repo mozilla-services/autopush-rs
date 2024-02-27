@@ -1297,6 +1297,10 @@ impl DbClient for BigTableClientImpl {
     fn name(&self) -> String {
         "Bigtable".to_owned()
     }
+
+    fn pool_status(&self) -> Option<deadpool::Status> {
+        Some(self.pool.pool.status())
+    }
 }
 
 #[cfg(all(test, feature = "emulator"))]

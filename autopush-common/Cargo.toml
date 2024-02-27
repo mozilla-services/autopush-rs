@@ -59,6 +59,7 @@ async-trait = "0.1"
 deadpool = { version = "0.10", features = ["managed", "rt_tokio_1"] }
 gethostname = "0.4"
 futures-backoff = "0.1.0"
+num_cpus = "1.16"
 woothee = "0.13"
 
 # #[cfg(bigtable)] for this section.
