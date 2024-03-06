@@ -56,6 +56,7 @@ impl ReportableError for SMError {
     fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
         match &self.kind {
             SMErrorKind::MakeEndpoint(e) => Some(e),
+            SMErrorKind::Database(e) => Some(e),
             _ => None,
         }
     }

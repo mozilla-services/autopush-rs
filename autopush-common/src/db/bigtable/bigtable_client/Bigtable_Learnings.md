@@ -46,3 +46,7 @@ fn expiry_filter() -> Result<data::RowFilter, error::BigTableError> {
 ```
 
 Adding this filter to a query will return a result that only includes the "expiry" cells which have a value that is greater than the current time. No other cells or values will be included in the return set, however each "row" will include the row meta information, including the key.
+
+## Connections
+
+GRPC is not very smart. It's often best to include the port number when including the DSN (e.g. `grpc://bigtable.googleapis.com:443`)

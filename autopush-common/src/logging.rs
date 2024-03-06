@@ -83,3 +83,13 @@ fn get_ec2_instance_id() -> reqwest::Result<String> {
         .error_for_status()?
         .text()
 }
+
+/// Return parallelism/number of CPU information to log at startup
+pub fn parallelism_banner() -> String {
+    format!(
+        "available_parallelism: {:?} num_cpus: {} num_cpus (phys): {}",
+        std::thread::available_parallelism(),
+        num_cpus::get(),
+        num_cpus::get_physical()
+    )
+}

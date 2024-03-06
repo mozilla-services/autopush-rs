@@ -59,9 +59,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await
         .expect("Could not start server");
     info!(
-        "Starting autoendpoint on port: {} (available_parallelism: {:?})",
+        "Starting autoendpoint on port: {} ({})",
         host_port,
-        std::thread::available_parallelism()
+        logging::parallelism_banner()
     );
     server.await?;
 

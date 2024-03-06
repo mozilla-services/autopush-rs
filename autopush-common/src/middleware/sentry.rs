@@ -8,7 +8,6 @@ use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
 use futures_util::future::{ok, Ready};
 use sentry::{protocol::Event, Hub};
-use serde_json::value::Value;
 
 use crate::{errors::ReportableError, tags::Tags};
 
@@ -114,17 +113,7 @@ where
                         }
                     };
                     debug!("Reporting error to Sentry (service error): {}", error);
-                    let mut event = event_from_actix_error::<E>(&error);
-                    event.extra.append(&mut tags.clone().extra_tree());
-                    event.tags.append(&mut tags.clone().tag_tree());
-                    if let Some(reportable_err) = error.as_error::<E>() {
-                        for (key, val) in reportable_err.extras() {
-                            event.extra.insert(key.to_owned(), Value::from(val));
-                        }
-                        for (key, val) in reportable_err.tags() {
-                            event.tags.insert(key.to_owned(), val);
-                        }
-                    }
+                    let event = event_from_actix_error::<E>(&error);
                     let event_id = hub.capture_event(event);
                     trace!("event_id = {}", event_id);
                     return Err(error);
@@ -143,17 +132,7 @@ where
                     }
                 }
                 debug!("Reporting error to Sentry (response error): {}", error);
-                let mut event = event_from_actix_error::<E>(error);
-                event.extra.append(&mut tags.clone().extra_tree());
-                event.tags.append(&mut tags.clone().tag_tree());
-                if let Some(reportable_err) = error.as_error::<E>() {
-                    for (key, val) in reportable_err.extras() {
-                        event.extra.insert(key.to_owned(), Value::from(val));
-                    }
-                    for (key, val) in reportable_err.tags() {
-                        event.tags.insert(key.to_owned(), val);
-                    }
-                }
+                let event = event_from_actix_error::<E>(error);
                 let event_id = hub.capture_event(event);
                 trace!("event_id = {}", event_id);
             }

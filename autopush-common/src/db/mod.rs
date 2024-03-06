@@ -31,11 +31,14 @@ pub mod dual;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
+pub mod reporter;
 pub mod routing;
 mod util;
 
 // used by integration testing
 pub mod mock;
+
+pub use reporter::spawn_pool_periodic_reporter;
 
 use crate::errors::{ApcErrorKind, Result};
 use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};

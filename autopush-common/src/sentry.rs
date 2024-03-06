@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{collections::BTreeMap, error::Error};
 
 use crate::errors::ReportableError;
 
@@ -17,20 +17,29 @@ pub fn client_options() -> sentry::ClientOptions {
 ///
 /// `std::error::Error` doesn't support backtraces, thus `sentry::event_from_error`
 /// doesn't either. This function works against `ReportableError` instead to
-/// extract backtraces from it and its chain of `reportable_source's.
+/// extract backtraces, etc. from it and its chain of `reportable_source's.
 ///
 /// A caveat of this function is that it cannot extract
-/// `ReportableError`s/backtraces that occur in a chain after a
+/// `ReportableError`s/backtraces, etc. that occur in a chain after a
 /// `std::error::Error` occurs: as `std::error::Error::source` only allows
 /// downcasting to a concrete type, not `dyn ReportableError`.
 pub fn event_from_error(
     mut reportable_err: &dyn ReportableError,
 ) -> sentry::protocol::Event<'static> {
     let mut exceptions = vec![];
+    let mut tags = BTreeMap::new();
+    let mut extra = BTreeMap::new();
 
-    // Gather reportable_source()'s for their backtraces
+    // Gather reportable_source()'s for their backtraces, etc
     loop {
         exceptions.push(exception_from_reportable_error(reportable_err));
+        for (k, v) in reportable_err.tags() {
+            // NOTE: potentially overwrites other tags/extras from this chain
+            tags.insert(k.to_owned(), v);
+        }
+        for (k, v) in reportable_err.extras() {
+            extra.insert(k.to_owned(), v.into());
+        }
         reportable_err = match reportable_err.reportable_source() {
             Some(reportable_err) => reportable_err,
             None => break,
@@ -48,6 +57,8 @@ pub fn event_from_error(
     sentry::protocol::Event {
         exception: exceptions.into(),
         level: sentry::protocol::Level::Error,
+        tags,
+        extra,
         ..Default::default()
     }
 }

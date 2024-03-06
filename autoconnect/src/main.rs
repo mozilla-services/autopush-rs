@@ -4,7 +4,7 @@
 #[macro_use]
 extern crate slog_scope;
 
-use std::{env, vec::Vec};
+use std::{env, time::Duration, vec::Vec};
 
 use actix_http::HttpService;
 use actix_server::Server;
@@ -16,6 +16,7 @@ use serde::Deserialize;
 use autoconnect_settings::{AppState, Settings};
 use autoconnect_web::{build_app, config, config_router};
 use autopush_common::{
+    db::spawn_pool_periodic_reporter,
     errors::{ApcErrorKind, Result},
     logging,
 };
@@ -79,12 +80,17 @@ async fn main() -> Result<()> {
     let actix_workers = settings.actix_workers;
     let app_state = AppState::from_settings(settings)?;
     app_state.init_and_spawn_megaphone_updater().await?;
+    spawn_pool_periodic_reporter(
+        Duration::from_secs(10),
+        app_state.db.clone(),
+        app_state.metrics.clone(),
+    );
 
     info!(
-        "Starting autoconnect on port: {} router_port: {} (available_parallelism: {:?})",
+        "Starting autoconnect on port: {} router_port: {} ({})",
         port,
         router_port,
-        std::thread::available_parallelism()
+        logging::parallelism_banner()
     );
 
     let router_app_state = app_state.clone();

@@ -75,10 +75,14 @@ pub enum DbError {
     Conditional,
 
     #[error("Database integrity error: {}", _0)]
-    Integrity(String),
+    Integrity(String, Option<String>),
 
     #[error("Unknown Database Error {0}")]
     General(String),
+
+    // Return a 503 error
+    #[error("Process pending, please wait.")]
+    Backoff(String),
 }
 
 impl ReportableError for DbError {
@@ -106,6 +110,7 @@ impl ReportableError for DbError {
         match &self {
             #[cfg(feature = "bigtable")]
             DbError::BTError(e) => e.metric_label(),
+            DbError::Backoff(_) => Some("storage.error.backoff"),
             _ => None,
         }
     }
@@ -114,6 +119,10 @@ impl ReportableError for DbError {
         match &self {
             #[cfg(feature = "bigtable")]
             DbError::BTError(e) => e.extras(),
+            DbError::Backoff(e) => {
+                vec![("raw", e.to_string())]
+            }
+            DbError::Integrity(_, Some(row)) => vec![("row", row.clone())],
             _ => vec![],
         }
     }

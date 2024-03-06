@@ -13,7 +13,7 @@ use crate::db::DbSettings;
 use super::bigtable_client::error;
 
 const MAX_MESSAGE_LEN: i32 = 1 << 28; // 268,435,456 bytes
-const DEFAULT_GRPC_PORT: u16 = 8086;
+const DEFAULT_GRPC_PORT: u16 = 443;
 
 /// The pool of BigTable Clients.
 /// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
@@ -87,25 +87,27 @@ impl BigTablePool {
         debug!("🉑 connection string {}", &connection);
 
         // Construct a new manager and put them in a pool for handling future requests.
-        let manager =
-            BigtableClientManager::new(&bt_settings, settings.dsn.clone(), connection.clone())?;
+        let manager = BigtableClientManager::new(
+            &bt_settings,
+            settings.dsn.clone(),
+            connection.clone(),
+            metrics.clone(),
+        )?;
         let mut config = PoolConfig::default();
         if let Some(size) = bt_settings.database_pool_max_size {
             debug!("🏊 Setting pool max size {}", &size);
             config.max_size = size as usize;
         };
-        if !bt_settings.database_pool_connection_timeout.is_zero() {
-            debug!(
-                "🏊 Setting connection timeout to {} seconds",
-                &bt_settings.database_pool_connection_timeout.as_secs()
-            );
-            config.timeouts = Timeouts {
-                create: Some(bt_settings.database_pool_connection_timeout),
-                ..Default::default()
-            };
-        }
+        config.timeouts = Timeouts {
+            wait: bt_settings.database_pool_wait_timeout,
+            create: bt_settings.database_pool_create_timeout,
+            recycle: bt_settings.database_pool_recycle_timeout,
+        };
+        debug!("🏊 Timeouts: {:?}", &config.timeouts);
+
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
+            .runtime(deadpool::Runtime::Tokio1)
             .build()
             .map_err(|e| DbError::BTError(BigTableError::Pool(e.to_string())))?;
 
@@ -121,6 +123,7 @@ pub struct BigtableClientManager {
     settings: BigTableDbSettings,
     dsn: Option<String>,
     connection: String,
+    metrics: Arc<StatsdClient>,
 }
 
 impl BigtableClientManager {
@@ -128,11 +131,13 @@ impl BigtableClientManager {
         settings: &BigTableDbSettings,
         dsn: Option<String>,
         connection: String,
+        metrics: Arc<StatsdClient>,
     ) -> Result<Self, DbError> {
         Ok(Self {
             settings: settings.clone(),
             dsn,
             connection,
+            metrics,
         })
     }
 }
@@ -165,15 +170,15 @@ impl Manager for BigtableClientManager {
         client: &mut Self::Type,
         metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        if !self.settings.database_pool_connection_ttl.is_zero()
-            && Instant::now() - metrics.created > self.settings.database_pool_connection_ttl
-        {
-            debug!("🏊 Recycle requested (old).");
-            return Err(DbError::BTError(BigTableError::Recycle).into());
+        if let Some(timeout) = self.settings.database_pool_connection_ttl {
+            if Instant::now() - metrics.created > timeout {
+                debug!("🏊 Recycle requested (old).");
+                return Err(DbError::BTError(BigTableError::Recycle).into());
+            }
         }
-        if !self.settings.database_pool_max_idle.is_zero() {
+        if let Some(timeout) = self.settings.database_pool_max_idle {
             if let Some(recycled) = metrics.recycled {
-                if Instant::now() - recycled > self.settings.database_pool_max_idle {
+                if Instant::now() - recycled > timeout {
                     debug!("🏊 Recycle requested (idle).");
                     return Err(DbError::BTError(BigTableError::Recycle).into());
                 }
@@ -184,7 +189,7 @@ impl Manager for BigtableClientManager {
         // note, this changes to `blocks_in_conditions` for 1.76+
         #[allow(clippy::blocks_in_conditions)]
         if !client
-            .health_check(&self.settings.table_name)
+            .health_check(&self.settings.table_name, self.metrics.clone())
             .await
             .map_err(|e| {
                 debug!("🏊 Recycle requested (health). {:?}", e);
