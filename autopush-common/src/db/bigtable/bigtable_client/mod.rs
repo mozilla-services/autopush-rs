@@ -629,10 +629,14 @@ impl BigTableClientImpl {
         let Some((_, chidmessageid)) = row_key.split_once('#') else {
             return Err(DbError::Integrity(
                 "rows_to_notification expected row_key: uaid:chidmessageid ".to_owned(),
+                None,
             ));
         };
         let range_key = NotificationRecord::parse_chidmessageid(chidmessageid).map_err(|e| {
-            DbError::Integrity(format!("rows_to_notification expected chidmessageid: {e}"))
+            DbError::Integrity(
+                format!("rows_to_notification expected chidmessageid: {e}"),
+                None,
+            )
         })?;
 
         let mut notif = Notification {
@@ -839,9 +843,12 @@ impl DbClient for BigTableClientImpl {
 
         let connected_at_cell = match row.take_required_cell("connected_at") {
             Ok(cell) => cell,
-            Err(e) => {
+            Err(_) => {
                 if !row.cells.keys().all(|k| k.starts_with("chid:")) {
-                    return Err(e);
+                    return Err(DbError::Integrity(
+                        "Expected column: connected_at".to_owned(),
+                        Some(format!("{row:#?}")),
+                    ));
                 }
                 // Special case for:
                 // 1) A migration code bug caused some channels to be migrated
@@ -971,6 +978,7 @@ impl DbClient for BigTableClientImpl {
                 let Some((_, chid)) = cell.qualifier.split_once("chid:") else {
                     return Err(DbError::Integrity(
                         "get_channels expected: chid:<chid>".to_owned(),
+                        None,
                     ));
                 };
                 result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
@@ -1691,6 +1699,25 @@ mod tests {
         client.add_user(&user).await.unwrap();
         // get_user should have also cleaned up the chids
         assert!(client.get_channels(&uaid).await.unwrap().is_empty());
+
+        client.remove_user(&uaid).await.unwrap();
+    }
+
+    #[actix_rt::test]
+    async fn lingering_chid_w_version_record() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        client.remove_user(&uaid).await.unwrap();
+
+        client.add_channel(&uaid, &chid).await.unwrap();
+        assert!(client.remove_channel(&uaid, &chid).await.unwrap());
+
+        let e = client.get_user(&uaid).await.unwrap_err();
+        let DbError::Integrity(_, Some(row)) = e else {
+            panic!("Expected DbError::Integrity");
+        };
+        assert!(row.contains("version"));
 
         client.remove_user(&uaid).await.unwrap();
     }

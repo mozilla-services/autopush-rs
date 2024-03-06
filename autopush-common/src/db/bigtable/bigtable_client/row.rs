@@ -47,7 +47,7 @@ impl Row {
     /// Like [take_cell] but returns an Error when no cell is present
     pub fn take_required_cell(&mut self, column: &str) -> DbResult<Cell> {
         self.take_cell(column)
-            .ok_or_else(|| DbError::Integrity(format!("Expected column: {column}")))
+            .ok_or_else(|| DbError::Integrity(format!("Expected column: {column}"), None))
     }
 
     /// Add cells to a given family
