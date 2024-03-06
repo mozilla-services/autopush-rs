@@ -1,3 +1,13 @@
+<a name="1.70.10"></a>
+## 1.70.10 (2024-03-06)
+
+
+#### Features
+
+*   include tags/extras across the exception chain (#648) ([fb2b0ee7](https://github.com/mozilla-services/autopush-rs/commit/fb2b0ee770291e9347494110e733736f8e585844))
+
+
+
 <a name="1.70.9"></a>
 ## 1.70.9 (2024-02-27)
 
