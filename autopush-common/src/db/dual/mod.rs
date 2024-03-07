@@ -459,6 +459,10 @@ impl DbClient for DualClientImpl {
     fn name(&self) -> String {
         "Dual".to_owned()
     }
+
+    fn pool_status(&self) -> Option<deadpool::Status> {
+        self.primary.pool_status()
+    }
 }
 
 #[cfg(all(test, feature = "bigtable", feature = "dynamodb"))]

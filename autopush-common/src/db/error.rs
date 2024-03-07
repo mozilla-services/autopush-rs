@@ -75,7 +75,7 @@ pub enum DbError {
     Conditional,
 
     #[error("Database integrity error: {}", _0)]
-    Integrity(String),
+    Integrity(String, Option<String>),
 
     #[error("Unknown Database Error {0}")]
     General(String),
@@ -122,6 +122,7 @@ impl ReportableError for DbError {
             DbError::Backoff(e) => {
                 vec![("raw", e.to_string())]
             }
+            DbError::Integrity(_, Some(row)) => vec![("row", row.clone())],
             _ => vec![],
         }
     }
