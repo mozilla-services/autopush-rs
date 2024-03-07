@@ -7,7 +7,8 @@ import logging
 import os
 import random
 import signal
-import socket
+
+# import socket
 import string
 import subprocess
 import sys
@@ -30,25 +31,16 @@ from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.trial import unittest
 
-from .db import (
-    DynamoDBResource,
-    base64url_encode,
-    create_message_table_ddb,
-    get_router_table,
-)
+from .config import Config, DatabaseConfig
+from .db import base64url_encode
 from .push_test_client import ClientMessageType, PushTestClient
 
 app = bottle.Bottle()
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
-here_dir = os.path.abspath(os.path.dirname(__file__))
-tests_dir = os.path.dirname(here_dir)
-root_dir = os.path.dirname(tests_dir)
+config = Config()
 
-DDB_JAR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal.jar")
-DDB_LIB_DIR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal_lib")
-SETUP_BT_SH = os.path.join(root_dir, "scripts", "setup_bt.sh")
 DDB_PROCESS: subprocess.Popen | None = None
 BT_PROCESS: subprocess.Popen | None = None
 BT_DB_SETTINGS: str | None = None
@@ -72,7 +64,6 @@ CONNECTION_SETTINGS_PREFIX = os.environ.get("CONNECTION_SETTINGS_PREFIX", "autoc
 CN_SERVER: subprocess.Popen | None = None
 CN_MP_SERVER: subprocess.Popen | None = None
 EP_SERVER: subprocess.Popen | None = None
-MOCK_SERVER_THREAD = None
 CN_QUEUES: list = []
 EP_QUEUES: list = []
 STRICT_LOG_COUNTS = True
@@ -91,14 +82,14 @@ log_string = [f"{x}=trace" for x in modules]
 RUST_LOG = ",".join(log_string) + ",error"
 
 
-def get_free_port() -> int:
-    """Get free port."""
-    port: int
-    s = socket.socket(socket.AF_INET, type=socket.SOCK_STREAM)
-    s.bind(("localhost", 0))
-    address, port = s.getsockname()
-    s.close()
-    return port
+# def get_free_port() -> int:
+#     """Get free port."""
+#     port: int
+#     s = socket.socket(socket.AF_INET, type=socket.SOCK_STREAM)
+#     s.bind(("localhost", 0))
+#     address, port = s.getsockname()
+#     s.close()
+#     return port
 
 
 """Try reading the database settings from the environment
@@ -128,67 +119,12 @@ def get_db_settings() -> str | dict[str, str | int | float] | None:
     )
 
 
-MOCK_SERVER_PORT: Any = get_free_port()
+MOCK_SERVER_PORT: Any = Config.get_free_port()
+MOCK_SERVER_THREAD = None
 MOCK_MP_SERVICES: dict = {}
 MOCK_MP_TOKEN: str = "Bearer {}".format(uuid.uuid4().hex)
 MOCK_MP_POLLED: Event = Event()
 MOCK_SENTRY_QUEUE: Queue = Queue()
-
-"""Connection Server Config:
-For local test debugging, set `AUTOPUSH_CN_CONFIG=_url_` to override
-creation of the local server.
-"""
-CONNECTION_CONFIG: dict[str, Any] = dict(
-    hostname="localhost",
-    port=CONNECTION_PORT,
-    endpoint_hostname="localhost",
-    endpoint_port=ENDPOINT_PORT,
-    router_port=ROUTER_PORT,
-    endpoint_scheme="http",
-    router_tablename=ROUTER_TABLE,
-    message_tablename=MESSAGE_TABLE,
-    crypto_key="[{}]".format(CRYPTO_KEY),
-    auto_ping_interval=30.0,
-    auto_ping_timeout=10.0,
-    close_handshake_timeout=5,
-    max_connections=5000,
-    human_logs="true",
-    msg_limit=MSG_LIMIT,
-    # new autoconnect
-    db_dsn=os.environ.get("DB_DSN", "http://127.0.0.1:8000"),
-    db_settings=get_db_settings(),
-)
-
-"""Connection Megaphone Config:
-For local test debugging, set `AUTOPUSH_MP_CONFIG=_url_` to override
-creation of the local server.
-"""
-MEGAPHONE_CONFIG: dict[str, str | int | float | None] = copy.deepcopy(CONNECTION_CONFIG)
-MEGAPHONE_CONFIG.update(
-    port=MP_CONNECTION_PORT,
-    endpoint_port=ENDPOINT_PORT,
-    router_port=MP_ROUTER_PORT,
-    auto_ping_interval=0.5,
-    auto_ping_timeout=10.0,
-    close_handshake_timeout=5,
-    max_connections=5000,
-    megaphone_api_url="http://localhost:{port}/v1/broadcasts".format(port=MOCK_SERVER_PORT),
-    megaphone_api_token=MOCK_MP_TOKEN,
-    megaphone_poll_interval=1,
-)
-
-"""Endpoint Server Config:
-For local test debugging, set `AUTOPUSH_EP_CONFIG=_url_` to override
-creation of the local server.
-"""
-ENDPOINT_CONFIG = dict(
-    host="localhost",
-    port=ENDPOINT_PORT,
-    router_table_name=ROUTER_TABLE,
-    message_table_name=MESSAGE_TABLE,
-    human_logs="true",
-    crypto_keys="[{}]".format(CRYPTO_KEY),
-)
 
 
 def _get_vapid(
@@ -325,14 +261,14 @@ def get_rust_binary_path(binary):
     """
     global STRICT_LOG_COUNTS
 
-    rust_bin = root_dir + "/target/release/{}".format(binary)
+    rust_bin = f"{config.ROOT_DIR}/target/release/{binary}"
     possible_paths = [
         "/target/debug/{}".format(binary),
         "/{0}/target/release/{0}".format(binary),
         "/{0}/target/debug/{0}".format(binary),
     ]
     while possible_paths and not os.path.exists(rust_bin):  # pragma: nocover
-        rust_bin = root_dir + possible_paths.pop(0)
+        rust_bin = f"{config.ROOT_DIR}{possible_paths.pop(0)}"
 
     if "release" not in rust_bin:
         # disable checks for chatty debug mode binaries
@@ -341,88 +277,91 @@ def get_rust_binary_path(binary):
     return rust_bin
 
 
-def write_config_to_env(config, prefix):
+def write_config_to_env(config: dict[str, Any], prefix: str):
     """Write configurations to application read environment variables."""
     for key, val in config.items():
         new_key = prefix + key
-        log.debug("✍ config {} => {}".format(new_key, val))
+        log.debug(f"✍ config {new_key} => {val}")
         os.environ[new_key.upper()] = str(val)
 
 
-def capture_output_to_queue(output_stream):
+def capture_output_to_queue(output_stream) -> Queue:
     """Capture output to log queue."""
-    log_queue = Queue()
-    t = Thread(target=enqueue_output, args=(output_stream, log_queue))
-    t.daemon = True  # thread dies with the program
-    t.start()
+    log_queue: Queue = Queue()
+    thread = Thread(target=enqueue_output, args=(output_stream, log_queue))
+    thread.daemon = True  # thread dies with the program
+    thread.start()
     return log_queue
 
 
-def setup_bt():
-    """Set up BigTable emulator."""
-    global BT_PROCESS, BT_DB_SETTINGS
-    log.debug("🐍🟢 Starting bigtable emulator")
-    # All calls to subprocess module for setup. Not passing untrusted input.
-    # Will look at future replacement when moving to Docker.
-    # https://bandit.readthedocs.io/en/latest/plugins/b603_subprocess_without_shell_equals_true.html
-    BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))  # nosec
-    os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
-    try:
-        BT_DB_SETTINGS = os.environ.get(
-            "BT_DB_SETTINGS",
-            json.dumps(
-                {
-                    "table_name": "projects/test/instances/test/tables/autopush",
-                }
-            ),
-        )
-        # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
-        # using a Table Name of "projects/test/instances/test/tables/autopush"
-        log.debug("🐍🟢 Setting up bigtable")
-        vv = subprocess.call([SETUP_BT_SH])  # nosec
-        log.debug(vv)
-    except Exception as e:
-        log.error("Bigtable Setup Error {}", e)
-        raise
+"""Connection Server Config:
+For local test debugging, set `AUTOPUSH_CN_CONFIG=_url_` to override
+creation of the local server.
+"""
+CONNECTION_CONFIG: dict[str, Any] = dict(
+    hostname="localhost",
+    port=CONNECTION_PORT,
+    endpoint_hostname="localhost",
+    endpoint_port=ENDPOINT_PORT,
+    router_port=ROUTER_PORT,
+    endpoint_scheme="http",
+    router_tablename=ROUTER_TABLE,
+    message_tablename=MESSAGE_TABLE,
+    crypto_key=f"[{CRYPTO_KEY}]",
+    auto_ping_interval=30.0,
+    auto_ping_timeout=10.0,
+    close_handshake_timeout=5,
+    max_connections=5000,
+    human_logs="true",
+    msg_limit=MSG_LIMIT,
+    # new autoconnect
+    db_dsn=os.getenv("DB_DSN", "http://127.0.0.1:8000"),
+    db_settings=DatabaseConfig.get_db_settings(),
+)
+
+"""Connection Megaphone Config:
+For local test debugging, set `AUTOPUSH_MP_CONFIG=_url_` to override
+creation of the local server.
+"""
+MEGAPHONE_CONFIG: dict[str, str | int | float | None] = copy.deepcopy(CONNECTION_CONFIG)
+MEGAPHONE_CONFIG.update(
+    port=MP_CONNECTION_PORT,
+    endpoint_port=ENDPOINT_PORT,
+    router_port=MP_ROUTER_PORT,
+    auto_ping_interval=0.5,
+    auto_ping_timeout=10.0,
+    close_handshake_timeout=5,
+    max_connections=5000,
+    megaphone_api_url=f"http://localhost:{MOCK_SERVER_PORT}/v1/broadcasts",
+    megaphone_api_token=MOCK_MP_TOKEN,
+    megaphone_poll_interval=1,
+)
+
+"""Endpoint Server Config:
+For local test debugging, set `AUTOPUSH_EP_CONFIG=_url_` to override
+creation of the local server.
+"""
+ENDPOINT_CONFIG = dict(
+    host="localhost",
+    port=ENDPOINT_PORT,
+    router_table_name=ROUTER_TABLE,
+    message_table_name=MESSAGE_TABLE,
+    human_logs="true",
+    crypto_keys=f"[{CRYPTO_KEY}]",
+)
 
 
-def setup_dynamodb():
-    """Set up DynamoDB emulator."""
-    global DDB_PROCESS
-
-    log.debug("🐍🟢 Starting dynamodb")
-    if os.getenv("AWS_LOCAL_DYNAMODB") is None:
-        cmd = " ".join(
-            [
-                "java",
-                "-Djava.library.path=%s" % DDB_LIB_DIR,
-                "-jar",
-                DDB_JAR,
-                "-sharedDb",
-                "-inMemory",
-            ]
-        )
-        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
-        os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
-    else:
-        print("Using existing DynamoDB instance")
-
-    # Setup the necessary tables
-    boto_resource = DynamoDBResource()
-    create_message_table_ddb(boto_resource, MESSAGE_TABLE)
-    get_router_table(boto_resource, ROUTER_TABLE)
-
-
-def setup_mock_server():
+def setup_mock_server(app_target: bottle.Bottle, mock_server_port: int):
     """Set up mock server."""
     global MOCK_SERVER_THREAD
-
-    MOCK_SERVER_THREAD = Thread(target=app.run, kwargs=dict(port=MOCK_SERVER_PORT, debug=True))
+    MOCK_SERVER_THREAD = Thread(
+        target=app_target.run, kwargs=dict(port=mock_server_port, debug=True)
+    )
     MOCK_SERVER_THREAD.daemon = True
     MOCK_SERVER_THREAD.start()
 
-    # Sentry API mock
-    os.environ["SENTRY_DSN"] = "http://foo:bar@localhost:{}/1".format(MOCK_SERVER_PORT)
+    # Sentry API Mock
+    os.environ["SENTRY_DSN"] = f"http://foo:bar@localhost:{mock_server_port}/1"
 
 
 def setup_connection_server(connection_binary):
@@ -439,11 +378,11 @@ def setup_connection_server(connection_binary):
         CONNECTION_CONFIG["hostname"] = parsed.hostname
         CONNECTION_CONFIG["port"] = parsed.port
         CONNECTION_CONFIG["endpoint_scheme"] = parsed.scheme
-        write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
+        Config.write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
         log.debug("Using existing Connection server")
         return
     else:
-        write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
+        Config.write_config_to_env(CONNECTION_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
     run_args = os.getenv("RUN_ARGS")
     if run_args is not None:
@@ -478,11 +417,11 @@ def setup_megaphone_server(connection_binary):
         if url is not None:
             parsed = urlparse(url)
             MEGAPHONE_CONFIG["endpoint_port"] = parsed.port
-        write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
+        Config.write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
         log.debug("Using existing Megaphone server")
         return
     else:
-        write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
+        Config.write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
     log.debug("🐍🟢 Starting Megaphone server: {}".format(" ".join(cmd)))
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
@@ -508,7 +447,7 @@ def setup_endpoint_server():
         log.debug("Using existing Endpoint server")
         return
     else:
-        write_config_to_env(ENDPOINT_CONFIG, "autoend__")
+        Config.write_config_to_env(ENDPOINT_CONFIG, "autoend__")
 
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
@@ -533,27 +472,28 @@ def setup_module():
     """Set up module including BigTable or Dynamo
     and connection, endpoint and megaphone servers.
     """
-    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, STRICT_LOG_COUNTS, RUST_LOG
-
+    global CN_SERVER, CN_QUEUES, CN_MP_SERVER, STRICT_LOG_COUNTS, RUST_LOG
     if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
         raise SkipTest("Skipping integration tests")
 
     for name in ("boto", "boto3", "botocore"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
-
+    # import pdb
+    # pdb.set_trace()
+    db_config = DatabaseConfig()
     if CONNECTION_CONFIG.get("db_dsn").startswith("grpc"):
         log.debug("Setting up BigTable")
-        setup_bt()
+        config.BT_PROCESS = db_config.setup_bt()
     elif CONNECTION_CONFIG.get("db_dsn").startswith("dual"):
-        setup_bt()
-        setup_dynamodb()
+        config.BT_PROCESS = db_config.setup_bt()
+        config.DDB_PROCESS = db_config.setup_dynamodb()
     else:
-        setup_dynamodb()
+        config.DDB_PROCESS = db_config.setup_dynamodb()
 
     pool = reactor.getThreadPool()
     pool.adjustPoolsize(minthreads=pool.max)
 
-    setup_mock_server()
+    setup_mock_server(app_target=app, mock_server_port=MOCK_SERVER_PORT)
 
     log.debug(f"🐍🟢 Rust Log: {RUST_LOG}")
     os.environ["RUST_LOG"] = RUST_LOG
@@ -566,14 +506,14 @@ def setup_module():
 
 def teardown_module():
     """Teardown module for dynamo, bigtable, and servers."""
-    if DDB_PROCESS:
+    if config.DDB_PROCESS:
         os.unsetenv("AWS_LOCAL_DYNAMODB")
         log.debug("🐍🔴 Stopping dynamodb")
-        kill_process(DDB_PROCESS)
-    if BT_PROCESS:
+        kill_process(config.DDB_PROCESS)
+    if config.BT_PROCESS:
         os.unsetenv("BIGTABLE_EMULATOR_HOST")
         log.debug("🐍🔴 Stopping bigtable")
-        kill_process(BT_PROCESS)
+        kill_process(config.BT_PROCESS)
     log.debug("🐍🔴 Stopping connection server")
     kill_process(CN_SERVER)
     log.debug("🐍🔴 Stopping megaphone server")
@@ -631,6 +571,7 @@ class TestRustWebPush(unittest.TestCase):
     @max_logs(conn=4)
     def test_sentry_output_autoconnect(self):
         """Test sentry output for autoconnect."""
+        global MOCK_SENTRY_QUEUE
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
