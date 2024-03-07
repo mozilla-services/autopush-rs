@@ -1,3 +1,13 @@
+<a name="1.70.11"></a>
+## 1.70.11 (2024-03-07)
+
+
+#### Bug Fixes
+
+*   don't skip DbError in the ReportableError chain (#649) ([c9b97d13](https://github.com/mozilla-services/autopush-rs/commit/c9b97d13e20cfaa9a9caf4b9bc4620469cc166f9))
+
+
+
 <a name="1.70.10"></a>
 ## 1.70.10 (2024-03-06)
 
