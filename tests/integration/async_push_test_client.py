@@ -233,31 +233,27 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         else:
             return resp
 
-    def get_notification(self, timeout=1):
+    async def get_notification(self, timeout=1):
         """Get notification."""
         if not self.ws:
             raise WebSocketException("WebSocket client not available as expected")
 
-        orig_timeout = self.ws.time
-        self.ws.settimeout(timeout)
         try:
-            d = self.ws.recv()
-            log.debug(f"Recv: {d}")
+            async with asyncio.timeout(timeout):
+                d = await self.ws.recv()
+            log.debug(f"Recv: {d!r}")
             return json.loads(d)
         except Exception:
             return None
-        finally:
-            self.ws.settimeout(orig_timeout)
 
-    def get_broadcast(self, timeout=1):  # pragma: no cover
+    async def get_broadcast(self, timeout=1):  # pragma: no cover
         """Get broadcast."""
         if not self.ws:
             raise WebSocketException("WebSocket client not available as expected")
 
-        orig_timeout = self.ws.gettimeout()
-        self.ws.settimeout(timeout)
         try:
-            d = self.ws.recv()
+            async with asyncio.timeout(timeout):
+                d = await self.ws.recv()
             log.debug(f"Recv: {d}")
             result = json.loads(d)
             # ASK JR
@@ -266,8 +262,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         except WebSocketException as ex:  # pragma: no cover
             log.error(f"Error: {ex}")
             return None
-        finally:
-            self.ws.settimeout(orig_timeout)
 
     async def ping(self):
         """Test ping."""
