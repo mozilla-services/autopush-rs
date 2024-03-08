@@ -205,9 +205,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
                 }
             )
         if vapid:
-            headers.update({"Authorization": f"Bearer {vapid.get('auth')}".rstrip()})
+            headers.update({"Authorization": "Bearer " + vapid.get("auth")})
             ckey = 'p256ecdsa="' + vapid.get("crypto-key") + '"'
-            headers.update({"Crypto-Key": headers.get("Crypto-Key", "") + ";" + ckey})
+            headers.update({"Authorization": f"Bearer {vapid.get('auth')}".rstrip()})
         if topic:
             headers["Topic"] = topic
         body = data or ""
