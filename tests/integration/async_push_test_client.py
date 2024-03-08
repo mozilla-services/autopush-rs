@@ -1,8 +1,8 @@
 """Module containing Test Client for autopush-rs integration tests."""
+import asyncio
 import json
 import logging
 import random
-import time
 import uuid
 from enum import Enum
 from typing import Any
@@ -160,7 +160,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug(f"Recv: {result}")
         return result
 
-    def delete_notification(self, channel, message=None, status=204) -> httpx.Response:
+    async def delete_notification(self, channel, message=None, status=204) -> httpx.Response:
         """Delete notification."""
         messages = self.messages[channel]
         if not message:
@@ -168,10 +168,11 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         log.debug(f"Delete: {message}")
         url = urlparse(message)
-        resp = httpx.delete(url=url.geturl(), timeout=30)
+        async with httpx.AsyncClient() as httpx_client:
+            resp = await httpx_client.delete(url=url.geturl(), timeout=30)
         return resp
 
-    def send_notification(
+    async def send_notification(
         self,
         channel=None,
         version=None,
@@ -215,14 +216,14 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         method: str = "POST"
         log.debug(f"{method} body: {body}")
         log.debug(f"  headers: {headers}")
-        resp = httpx.request(method=method, url=url.geturl(), content=body, headers=headers)
+        async with httpx.AsyncClient() as httpx_client:
+            resp = await httpx_client.request(
+                method=method, url=url.geturl(), content=body, headers=headers
+            )
         log.debug(f"{method} Response ({resp.status_code}): {resp.text}")
         assert resp.status_code == status, f"Expected {status}, got {resp.status_code}"
         self.notif_response = resp
         location = resp.headers.get("Location", None)
-        import pdb
-
-        pdb.set_trace()
         log.debug(f"Response Headers: {resp.headers}")
         if status >= 200 and status < 300:
             assert location is not None
@@ -310,9 +311,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         self.ws.close()
 
-    def sleep(self, duration: int) -> None:  # pragma: no cover
+    async def sleep(self, duration: int) -> None:  # pragma: no cover
         """Sleep wrapper function."""
-        time.sleep(duration)
+        await asyncio.sleep(duration)
 
     def send_bad_data(self) -> None:
         """Send `bad-data` as a string. Used in determining Sentry output
@@ -322,13 +323,13 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             raise Exception("WebSocket client not available as expected.")
         self.ws.send("bad-data")
 
-    def wait_for(self, func):
+    async def wait_for(self, func) -> None:
         """Wait several seconds for a function to return True"""
         # This function currently not used for anything so may be removable.
         # However, it may have had historic value when dealing with latency.
         times = 0
         while not func():  # pragma: no cover
-            time.sleep(1)
+            await asyncio.sleep(1)
             times += 1
             if times > 9:  # pragma: no cover
                 break
