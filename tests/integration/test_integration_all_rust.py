@@ -21,8 +21,8 @@ from urllib.parse import urlparse
 
 import bottle
 import ecdsa
+import httpx
 import psutil
-import requests
 import twisted.internet.base
 from cryptography.fernet import Fernet
 from jose import jws
@@ -642,7 +642,7 @@ class TestRustWebPush(unittest.TestCase):
         yield self.shut_down(client)
 
         # LogCheck does throw an error every time
-        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT), timeout=30)
+        httpx.get(f"http://localhost:{CONNECTION_PORT}/v1/err/crit", timeout=30)
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # new autoconnect emits 2 events
         try:
@@ -663,7 +663,7 @@ class TestRustWebPush(unittest.TestCase):
         endpoint = self.host_endpoint(client)
         yield self.shut_down(client)
 
-        requests.get("{}/__error__".format(endpoint), timeout=30)
+        httpx.get(f"{endpoint}/__error__", timeout=30)
         # 2 events excpted: 1 from a panic and 1 from a returned Error
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
@@ -681,8 +681,8 @@ class TestRustWebPush(unittest.TestCase):
             return
         ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
         try:
-            requests.get(ws_url, timeout=30)
-        except requests.exceptions.ConnectionError:
+            httpx.get(ws_url, timeout=30)
+        except httpx.ConnectError:
             pass
         try:
             data = MOCK_SENTRY_QUEUE.get(timeout=1)
@@ -1379,13 +1379,13 @@ class TestRustWebPush(unittest.TestCase):
             url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
             # First ensure the endpoint we're testing for on the public port exists where
             # we expect it on the internal ROUTER_PORT
-            requests.put(url, timeout=30).raise_for_status()
+            httpx.put(url, timeout=30).raise_for_status()
 
         try:
-            requests.put(parsed.geturl(), timeout=30).raise_for_status()
-        except requests.exceptions.ConnectionError:
+            httpx.put(parsed.geturl(), timeout=30).raise_for_status()
+        except httpx.ConnectError:
             pass
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPError as e:
             assert e.response.status_code == 404
         else:
             assert False
