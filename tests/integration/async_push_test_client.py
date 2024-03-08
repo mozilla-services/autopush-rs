@@ -1,5 +1,4 @@
 """Module containing Test Client for autopush-rs integration tests."""
-import httpx
 import json
 import logging
 import random
@@ -9,6 +8,7 @@ from enum import Enum
 from typing import Any
 from urllib.parse import urlparse
 
+import httpx
 import websocket
 from twisted.internet.threads import deferToThread
 
@@ -38,7 +38,7 @@ class PushTestClient:
         self.ws: websocket.WebSocket | None = None
         self.use_webpush: bool = True
         self.channels: dict[str, str] = {}
-        self.messages: dict[str, str] = {}
+        self.messages: dict[str, list[str]] = {}
         self.notif_response: httpx.Response | None = None
         self._crypto_key: str = """\
 keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
@@ -175,15 +175,16 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self,
         channel=None,
         version=None,
-        data=None,
-        use_header=True,
-        status=None,
-        ttl=200,
-        timeout=0.2,
-        vapid=None,
-        endpoint=None,
-        topic=None,
-        headers=None,
+        data: str | None = None,
+        use_header: bool = True,
+        status: int = 201,
+        # 202 status reserved for yet to be implemented push w/ reciept.
+        ttl: int = 200,
+        timeout: float | int = 0.2,
+        vapid: dict = {},
+        endpoint: str | None = None,
+        topic: str | None = None,
+        headers: dict = {},
     ):
         """Send notification."""
         if not channel:
@@ -194,7 +195,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         headers = {}
         if ttl is not None:
-            headers = {"TTL": str(ttl)}
+            headers.update({"TTL": str(ttl)})
         if use_header:
             headers.update(
                 {
@@ -205,16 +206,13 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
                 }
             )
         if vapid:
-            headers.update({"Authorization": "Bearer " + vapid.get("auth")})
-            ckey = 'p256ecdsa="' + vapid.get("crypto-key") + '"'
             headers.update({"Authorization": f"Bearer {vapid.get('auth')}".rstrip()})
+            ckey: str = f'p256ecdsa="{vapid.get("crypto-key")}"'
+            headers.update({"Crypto-Key": f"{headers.get('Crypto-Key', '')};{ckey}"})
         if topic:
             headers["Topic"] = topic
-        body = data or ""
-        method = "POST"
-        # 202 status reserved for yet to be implemented push w/ reciept.
-        status = status or 201
-
+        body: str = data or ""
+        method: str = "POST"
         log.debug(f"{method} body: {body}")
         log.debug(f"  headers: {headers}")
         resp = httpx.request(method=method, url=url.geturl(), content=body, headers=headers)
@@ -222,6 +220,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         assert resp.status_code == status, f"Expected {status}, got {resp.status_code}"
         self.notif_response = resp
         location = resp.headers.get("Location", None)
+        import pdb
+
+        pdb.set_trace()
         log.debug(f"Response Headers: {resp.headers}")
         if status >= 200 and status < 300:
             assert location is not None
