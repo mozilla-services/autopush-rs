@@ -161,7 +161,10 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return result
 
     def delete_notification(self, channel, message=None, status=204) -> httpx.Response:
-        """Delete notification."""
+        """Sender (non-client) notification delete.
+        From perspective of sender, not the client. Implements HTTP client to interact with
+        notification.
+        """
         messages = self.messages[channel]
         if not message:
             message = random.choice(messages)
@@ -186,7 +189,11 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         topic: str | None = None,
         headers: dict = {},
     ):
-        """Send notification."""
+        """Sender (not-client) sent notification.
+        Not part of responsibility of client but a subscribed sender.
+        Calling from PushTestClient provides introspection of values in
+        both client interface and the sender.
+        """
         if not channel:
             channel = random.choice(list(self.channels.keys()))
 
@@ -232,14 +239,20 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
                 self.messages[channel].append(location)
             else:
                 self.messages[channel] = [location]
-        # Pull the notification if connected
+        # Pull the sent notification immediately if connected.
+        # Calls `get_notification` to get response from websocket.
         if self.ws and self.ws.connected:
             return object.__getattribute__(self, "get_notification")(timeout)
         else:
             return resp
 
     def get_notification(self, timeout=1):
-        """Get notification."""
+        """Get most recent notification from websocket server.
+        Typically called after a `send_notification` is sent from client to server.
+        Method to recieve response from websocket.
+
+        Includes ability to define a timeout to simulate latency.
+        """
         if not self.ws:
             raise Exception("WebSocket client not available as expected")
 
@@ -265,8 +278,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             d = self.ws.recv()
             log.debug(f"Recv: {d}")
             result = json.loads(d)
-            # ASK JR
-            # assert result.get("messageType") == ClientMessageType.BROADCAST.value
+            assert result.get("messageType") == ClientMessageType.BROADCAST.value
             return result
         except Exception as ex:  # pragma: no cover
             log.error(f"Error: {ex}")
@@ -317,6 +329,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         """
         if not self.ws:
             raise Exception("WebSocket client not available as expected.")
+
         self.ws.send("bad-data")
 
     def wait_for(self, func):

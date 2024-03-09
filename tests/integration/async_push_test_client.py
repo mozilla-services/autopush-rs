@@ -152,7 +152,10 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         return result
 
     async def delete_notification(self, channel, message=None, status=204) -> httpx.Response:
-        """Delete notification."""
+        """Sender (non-client) notification delete.
+        From perspective of sender, not the client. Implements HTTP client to interact with
+        notification.
+        """
         messages = self.messages[channel]
         if not message:
             message = random.choice(messages)
@@ -178,7 +181,11 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         topic: str | None = None,
         headers: dict = {},
     ):
-        """Send notification."""
+        """Sender (not-client) sent notification.
+        Not part of responsibility of client but a subscribed sender.
+        Calling from PushTestClient provides introspection of values in
+        both client interface and the sender.
+        """
         if not channel:
             channel = random.choice(list(self.channels.keys()))
 
@@ -227,14 +234,20 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
                 self.messages[channel].append(location)
             else:
                 self.messages[channel] = [location]
-        # Pull the notification if connected
+        # Pull the sent notification immediately if connected.
+        # Calls `get_notification` to get response from websocket.
         if self.ws and self.ws.is_client:  # check back on this after integration
             return object.__getattribute__(self, "get_notification")(timeout)
         else:
             return resp
 
     async def get_notification(self, timeout=1):
-        """Get notification."""
+        """Get most recent notification from websocket server.
+        Typically called after a `send_notification` is sent from client to server.
+        Method to recieve response from websocket.
+
+        Includes ability to define a timeout to simulate latency.
+        """
         if not self.ws:
             raise WebSocketException("WebSocket client not available as expected")
 
@@ -256,15 +269,14 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
                 d = await self.ws.recv()
             log.debug(f"Recv: {d}")
             result = json.loads(d)
-            # ASK JR
-            # assert result.get("messageType") == ClientMessageType.BROADCAST.value
+            assert result.get("messageType") == ClientMessageType.BROADCAST.value
             return result
         except WebSocketException as ex:  # pragma: no cover
             log.error(f"Error: {ex}")
             return None
 
     async def ping(self):
-        """Test ping."""
+        """Test websocket ping."""
         if not self.ws:
             raise Exception("WebSocket client not available as expected.")
 
@@ -305,10 +317,11 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         """
         if not self.ws:
             raise WebSocketException("WebSocket client not available as expected.")
+
         await self.ws.send("bad-data")
 
     async def wait_for(self, func) -> None:
-        """Wait several seconds for a function to return True"""
+        """Wait several seconds for a function to return True."""
         # This function currently not used for anything so may be removable.
         # However, it may have had historic value when dealing with latency.
         times = 0
