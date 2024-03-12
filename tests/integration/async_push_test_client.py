@@ -252,8 +252,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             raise WebSocketException("WebSocket client not available as expected")
 
         try:
-            async with asyncio.timeout(timeout):
-                d = await self.ws.recv()
+            d = await asyncio.wait_for(self.ws.recv(), timeout)
             log.debug(f"Recv: {d!r}")
             return json.loads(d)
         except Exception:
@@ -265,8 +264,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             raise WebSocketException("WebSocket client not available as expected")
 
         try:
-            async with asyncio.timeout(timeout):
-                d = await self.ws.recv()
+            d = await asyncio.wait_for(self.ws.recv(), timeout)
             log.debug(f"Recv: {d}")
             result = json.loads(d)
             assert result.get("messageType") == ClientMessageType.BROADCAST.value
