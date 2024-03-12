@@ -81,7 +81,9 @@ impl AppState {
             StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
-                Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
+                let client = BigTableClientImpl::new(metrics.clone(), &db_settings)?;
+                client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
             }
             #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
             StorageType::Dual => Box::new(DualClientImpl::new(metrics.clone(), &db_settings)?),

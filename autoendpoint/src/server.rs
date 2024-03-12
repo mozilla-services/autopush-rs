@@ -75,7 +75,9 @@ impl Server {
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 debug!("Using BigTable");
-                Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
+                let client = BigTableClientImpl::new(metrics.clone(), &db_settings)?;
+                client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
             }
             #[cfg(all(feature = "bigtable", feature = "dual"))]
             StorageType::Dual => Box::new(DualClientImpl::new(metrics.clone(), &db_settings)?),
