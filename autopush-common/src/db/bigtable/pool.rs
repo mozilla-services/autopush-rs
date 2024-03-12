@@ -1,9 +1,13 @@
-use std::time::Instant;
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
+use actix_web::rt;
 use async_trait::async_trait;
 use cadence::StatsdClient;
-use deadpool::managed::{Manager, PoolConfig, Timeouts};
+use deadpool::managed::{Manager, PoolConfig, QueueMode, Timeouts};
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 
 use crate::db::bigtable::{bigtable_client::BigtableDb, BigTableDbSettings, BigTableError};
@@ -93,7 +97,12 @@ impl BigTablePool {
             connection.clone(),
             metrics.clone(),
         )?;
-        let mut config = PoolConfig::default();
+        let mut config = PoolConfig {
+            // Prefer LIFO to allow the sweeper task to evict least frequently
+            // used connections
+            queue_mode: QueueMode::Lifo,
+            ..Default::default()
+        };
         if let Some(size) = bt_settings.database_pool_max_size {
             debug!("🏊 Setting pool max size {}", &size);
             config.max_size = size as usize;
@@ -116,6 +125,24 @@ impl BigTablePool {
             _metrics: metrics.clone(),
         })
     }
+
+    /// Spawn a task to periodically evict idle connections
+    pub fn spawn_sweeper(&self, interval: Duration) {
+        let Some(max_idle) = self.pool.manager().settings.database_pool_max_idle else {
+            return;
+        };
+        let pool = self.pool.clone();
+        rt::spawn(async move {
+            loop {
+                sweeper(&pool, max_idle);
+                rt::time::sleep(interval).await;
+            }
+        });
+    }
+}
+
+fn sweeper(pool: &deadpool::managed::Pool<BigtableClientManager>, max_idle: Duration) {
+    pool.retain(|_, metrics| metrics.last_used() < max_idle);
 }
 
 /// BigTable Pool Manager. This contains everything needed to create a new connection.

@@ -305,6 +305,11 @@ impl BigTableClientImpl {
         })
     }
 
+    /// Spawn a task to periodically evict idle connections
+    pub fn spawn_sweeper(&self, interval: Duration) {
+        self.pool.spawn_sweeper(interval);
+    }
+
     /// Return a ReadRowsRequest for a given row key
     fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
         read_row_request(&self.settings.table_name, row_key)
