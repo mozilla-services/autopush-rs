@@ -1,14 +1,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-FROM pypy:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 LABEL org.opencontainers.image.authors="contextual-services-team@mozilla.com"
 
 # Add gcc since there are no wheels for some packages for arm64/aarch64
 # (g++/make for gevent on pypy)
 RUN apt-get update && apt-get install -y git && \
-  apt install -y --no-install-recommends gcc g++ make python3-dev
+  apt install -y --no-install-recommends build-essential python3-dev
 
 ENV LANG=C.UTF-8
 ENV PYTHONUNBUFFERED=1
