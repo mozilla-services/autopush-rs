@@ -1,3 +1,14 @@
+<a name="1.71.0"></a>
+## 1.71.0 (2024-03-13)
+
+
+#### Features
+
+*   further special case another form of an incomplete router record (#655) ([396c7b04](https://github.com/mozilla-services/autopush-rs/commit/396c7b0497e66cd01079226cccd99f3dfe899196))
+*   evict idle connections from bigtable's db pool (#654) ([70b1e7b2](https://github.com/mozilla-services/autopush-rs/commit/70b1e7b2d224e18fb29e81b4f6109be8c4cb82ac))
+
+
+
 <a name="1.70.11"></a>
 ## 1.70.11 (2024-03-07)
 
