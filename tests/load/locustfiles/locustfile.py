@@ -3,13 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import base64
 import json
 import logging
 import random
 import string
 import time
 import uuid
+from hashlib import sha1
 from json import JSONDecodeError
 from logging import Logger
 from typing import Any, TypeAlias
@@ -72,9 +72,9 @@ class AutopushUser(FastHttpUser):
         super().__init__(environment)
         self.channels: dict[str, str] = {}
         self.hello_record: HelloRecord | None = None
-        self.notification_records: list[NotificationRecord] = []
-        self.register_records: list[RegisterRecord] = []
-        self.unregister_records: list[RegisterRecord] = []
+        self.notification_records: dict[bytes, NotificationRecord] = {}
+        self.register_records: dict[str, RegisterRecord] = {}
+        self.unregister_records: dict[str, RegisterRecord] = {}
         self.uaid: str = ""
         self.ws: WebSocketApp | None = None
         self.ws_greenlet: Greenlet | None = None
@@ -231,7 +231,7 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
-        self.notification_records.append(record)
+        self.notification_records[sha1(data.encode()).digest()] = record  # nosec
 
         with self.client.post(
             url=endpoint_url,
@@ -280,26 +280,19 @@ class AutopushUser(FastHttpUser):
                 case "notification":
                     message = NotificationMessage(**message_dict)
                     message_data: str = message.data
-                    decode_data: str = base64.urlsafe_b64decode(message_data + "===").decode(
-                        "utf8"
-                    )
-                    record = next(
-                        (r for r in self.notification_records if r.data == decode_data), None
+                    # scan through the notification records to see
+                    # if this matches a record we sent.
+                    record = self.notification_records.get(
+                        sha1(message_data.encode()).digest(), None  # nosec
                     )
                 case "register":
                     message = RegisterMessage(**message_dict)
                     register_chid: str = message.channelID
-                    record = next(
-                        (r for r in self.register_records if r.channel_id == register_chid),
-                        None,
-                    )
+                    record = self.register_records.get(register_chid, None)
                 case "unregister":
                     message = UnregisterMessage(**message_dict)
                     unregister_chid: str = message.channelID
-                    record = next(
-                        (r for r in self.unregister_records if r.channel_id == unregister_chid),
-                        None,
-                    )
+                    record = self.unregister_records.get(unregister_chid)
                 case _:
                     exception = f"Unexpected data was received. Data: {data}"
 
@@ -389,7 +382,7 @@ class AutopushUser(FastHttpUser):
         message_type: str = "register"
         data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
         record = RegisterRecord(send_time=time.perf_counter(), channel_id=channel_id)
-        self.register_records.append(record)
+        self.register_records[channel_id] = record
         self.send(ws, message_type, data)
 
     def send_unregister(self, ws: WebSocketApp, channel_id: str) -> None:
@@ -408,7 +401,7 @@ class AutopushUser(FastHttpUser):
         message_type: str = "unregister"
         data: dict[str, Any] = dict(messageType=message_type, channelID=channel_id)
         record = RegisterRecord(send_time=time.perf_counter(), channel_id=channel_id)
-        self.unregister_records.append(record)
+        self.unregister_records[channel_id] = record
         self.send(ws, message_type, data)
 
     def send(self, ws: WebSocket | WebSocketApp, message_type: str, data: dict[str, Any]) -> None:
