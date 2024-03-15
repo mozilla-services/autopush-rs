@@ -176,7 +176,7 @@ fn get_instance_name(table_name: &str) -> Result<String, DbError> {
             "Invalid table name specified. Cannot parse instance".to_owned(),
         ));
     }
-    return Ok(parts[0..4].join("/"));
+    Ok(parts[0..4].join("/"))
 }
 
 impl fmt::Debug for BigtableClientManager {
