@@ -19,3 +19,6 @@ pub mod test_support;
 
 #[macro_use]
 pub mod util;
+
+#[cfg(test)]
+pub mod test_tools;
