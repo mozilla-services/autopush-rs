@@ -5,6 +5,7 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
+#[cfg(feature = "adm")]
 use crate::routers::adm::settings::AdmSettings;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
@@ -42,6 +43,7 @@ pub struct Settings {
 
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
+    #[cfg(feature = "adm")]
     pub adm: AdmSettings,
 }
 
@@ -71,6 +73,7 @@ impl Default for Settings {
             statsd_label: "autoendpoint".to_string(),
             fcm: FcmSettings::default(),
             apns: ApnsSettings::default(),
+            #[cfg(feature = "adm")]
             adm: AdmSettings::default(),
         }
     }
