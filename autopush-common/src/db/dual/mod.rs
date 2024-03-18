@@ -6,8 +6,7 @@
 //!
 //! This requires both the `dynamodb` and `bigtable` features.
 //!
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient, Timed};
@@ -113,6 +112,11 @@ impl DualClientImpl {
             write_to_secondary: db_settings.write_to_secondary,
             metrics,
         })
+    }
+
+    /// Spawn a task to periodically evict idle Bigtable connections
+    pub fn spawn_sweeper(&self, interval: Duration) {
+        self.primary.spawn_sweeper(interval);
     }
 }
 

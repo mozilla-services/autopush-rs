@@ -80,7 +80,11 @@ impl Server {
                 Box::new(client)
             }
             #[cfg(all(feature = "bigtable", feature = "dual"))]
-            StorageType::Dual => Box::new(DualClientImpl::new(metrics.clone(), &db_settings)?),
+            StorageType::Dual => {
+                let client = DualClientImpl::new(metrics.clone(), &db_settings)?;
+                client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
+            }
             _ => {
                 debug!("No idea what {:?} is", &db_settings.dsn);
                 return Err(ApiErrorKind::General(
