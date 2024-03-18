@@ -84,6 +84,8 @@ pub struct BigTableDbSettings {
     pub retry_count: usize,
 }
 
+// Used by test, but we don't want available for release.
+#[allow(clippy::derivable_impls)]
 #[cfg(test)]
 impl Default for BigTableDbSettings {
     fn default() -> Self {
