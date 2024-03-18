@@ -150,6 +150,8 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => StatusCode::IM_A_TEAPOT,
 
+            ApiErrorKind::Database(DbError::Backoff(_)) => StatusCode::SERVICE_UNAVAILABLE,
+
             ApiErrorKind::General(_)
             | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
@@ -335,7 +337,7 @@ impl ReportableError for ApiError {
     fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
         match &self.kind {
             ApiErrorKind::EndpointUrl(e) => Some(e),
-            ApiErrorKind::Database(e) => e.reportable_source(),
+            ApiErrorKind::Database(e) => Some(e),
             _ => None,
         }
     }
@@ -384,4 +386,22 @@ fn errno_from_validation_errors(e: &ValidationErrors) -> Option<usize> {
             }
         })
         .next()
+}
+
+#[cfg(test)]
+mod tests {
+    use autopush_common::{db::error::DbError, sentry::event_from_error};
+
+    use super::{ApiError, ApiErrorKind};
+
+    #[test]
+    fn sentry_event_with_extras() {
+        let dbe = DbError::Integrity("foo".to_owned(), Some("bar".to_owned()));
+        let e: ApiError = ApiErrorKind::Database(dbe).into();
+        let event = event_from_error(&e);
+        assert_eq!(event.exception.len(), 2);
+        assert_eq!(event.exception[0].ty, "Integrity");
+        assert_eq!(event.exception[1].ty, "ApiError");
+        assert_eq!(event.extra.get("row"), Some(&"bar".into()));
+    }
 }

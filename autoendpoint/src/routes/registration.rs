@@ -84,8 +84,9 @@ pub async fn unregister_user_route(
     path_args: RegistrationPathArgsWithUaid,
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
-    debug!("🌍 Unregistering UAID {}", path_args.uaid);
-    app_state.db.remove_user(&path_args.uaid).await?;
+    let uaid = path_args.user.uaid;
+    debug!("🌍 Unregistering UAID {uaid}");
+    app_state.db.remove_user(&uaid).await?;
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -98,29 +99,28 @@ pub async fn update_token_route(
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     // Re-register with router
-    debug!(
-        "🌍 Updating the token of UAID {} with the {} router",
-        path_args.uaid, path_args.router_type
-    );
+    let RegistrationPathArgsWithUaid {
+        router_type,
+        app_id,
+        mut user,
+    } = path_args;
+    let uaid = user.uaid;
+    debug!("🌍 Updating the token of UAID {uaid} with the {router_type} router");
     trace!("token = {}", router_data_input.token);
     let router = routers.get(path_args.router_type);
-    let router_data = router.register(&router_data_input, &path_args.app_id)?;
+    let router_data = router.register(&router_data_input, &app_id)?;
 
     // Update the user in the database
-    let user = User {
-        uaid: path_args.uaid,
-        router_type: path_args.router_type.to_string(),
-        router_data: Some(router_data),
-        ..Default::default()
-    };
-    trace!("🌍 Updating user with UAID {}", user.uaid);
-    trace!("🌍 user = {:?}", user);
-    if !app_state.db.update_user(&user).await? {
+    user.router_type = path_args.router_type.to_string();
+    user.router_data = Some(router_data);
+    trace!("🌍 Updating user with UAID {uaid}");
+    trace!("🌍 user = {user:?}");
+    if !app_state.db.update_user(&mut user).await? {
         // Unlikely to occur on mobile records
         return Err(ApiErrorKind::General("Conditional update failed".to_owned()).into());
     }
 
-    trace!("🌍 Finished updating token for UAID {}", user.uaid);
+    trace!("🌍 Finished updating token for UAID {uaid}");
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -132,26 +132,24 @@ pub async fn new_channel_route(
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     // Add the channel
-    debug!("🌍 Adding a channel to UAID {}", path_args.uaid);
+    let uaid = path_args.user.uaid;
+    debug!("🌍 Adding a channel to UAID {uaid}");
     let channel_data = channel_data.map(Json::into_inner).unwrap_or_default();
     let channel_id = channel_data.channel_id.unwrap_or_else(Uuid::new_v4);
-    trace!("🌍 channel_id = {}", channel_id);
-    app_state
-        .db
-        .add_channel(&path_args.uaid, &channel_id)
-        .await?;
+    trace!("🌍 channel_id = {channel_id}");
+    app_state.db.add_channel(&uaid, &channel_id).await?;
 
     // Make the endpoint URL
     trace!("🌍 Creating endpoint for the new channel");
     let endpoint_url = make_endpoint(
-        &path_args.uaid,
+        &uaid,
         &channel_id,
         channel_data.key.as_deref(),
         app_state.settings.endpoint_url().as_str(),
         &app_state.fernet,
     )
     .map_err(ApiErrorKind::EndpointUrl)?;
-    trace!("endpoint = {}", endpoint_url);
+    trace!("endpoint = {endpoint_url}");
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "channelID": channel_id,
@@ -165,11 +163,12 @@ pub async fn get_channels_route(
     path_args: RegistrationPathArgsWithUaid,
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
-    debug!("🌍 Getting channel IDs for UAID {}", path_args.uaid);
-    let channel_ids = app_state.db.get_channels(&path_args.uaid).await?;
+    let uaid = path_args.user.uaid;
+    debug!("🌍 Getting channel IDs for UAID {uaid}");
+    let channel_ids = app_state.db.get_channels(&uaid).await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "uaid": path_args.uaid,
+        "uaid": uaid,
         "channelIDs": channel_ids
     })))
 }
@@ -187,17 +186,11 @@ pub async fn unregister_channel_route(
         .expect("{chid} must be part of the path")
         .parse::<Uuid>()
         .map_err(|_| ApiErrorKind::NoSubscription)?;
-
-    debug!(
-        "🌍 Unregistering CHID {} for UAID {}",
-        channel_id, path_args.uaid
-    );
+    let uaid = path_args.user.uaid;
+    debug!("🌍 Unregistering CHID {channel_id} for UAID {uaid}");
 
     incr_metric("ua.command.unregister", &app_state.metrics, &request);
-    let channel_did_exist = app_state
-        .db
-        .remove_channel(&path_args.uaid, &channel_id)
-        .await?;
+    let channel_did_exist = app_state.db.remove_channel(&uaid, &channel_id).await?;
 
     if channel_did_exist {
         Ok(HttpResponse::Ok().finish())

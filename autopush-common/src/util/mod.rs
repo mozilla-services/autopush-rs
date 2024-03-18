@@ -50,3 +50,13 @@ where
     let seconds: u32 = Deserialize::deserialize(deserializer)?;
     Ok(Duration::from_secs(seconds.into()))
 }
+
+pub fn deserialize_opt_u32_to_duration<'de, D>(
+    deserializer: D,
+) -> Result<Option<Duration>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let seconds: Option<u32> = Deserialize::deserialize(deserializer)?;
+    Ok(seconds.map(|v| Duration::from_secs(v.into())))
+}

@@ -133,7 +133,7 @@ impl UnidentifiedClient {
                     }
                     user.connected_at = connected_at;
                     user.set_last_connect();
-                    if !self.app_state.db.update_user(&user).await? {
+                    if !self.app_state.db.update_user(&mut user).await? {
                         let _ = self.app_state.metrics.incr("ua.already_connected");
                         return Err(SMErrorKind::AlreadyConnected.into());
                     }

@@ -20,7 +20,7 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).add_user(user).await
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<bool> {
+    async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         Arc::as_ref(self).update_user(user).await
     }
 
@@ -53,9 +53,10 @@ impl DbClient for Arc<MockDbClient> {
         uaid: &Uuid,
         node_id: &str,
         connected_at: u64,
+        version: &Option<Uuid>,
     ) -> DbResult<bool> {
         Arc::as_ref(self)
-            .remove_node_id(uaid, node_id, connected_at)
+            .remove_node_id(uaid, node_id, connected_at, version)
             .await
     }
 

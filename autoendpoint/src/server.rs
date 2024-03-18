@@ -7,19 +7,18 @@ use actix_cors::Cors;
 use actix_web::{
     dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data, App, HttpServer,
 };
-#[cfg(feature = "bigtable")]
-use autopush_common::db::bigtable::BigTableClientImpl;
-#[cfg(feature = "dual")]
-use autopush_common::db::dual::DualClientImpl;
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
 
+#[cfg(feature = "bigtable")]
+use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(feature = "dual")]
+use autopush_common::db::dual::DualClientImpl;
 #[cfg(feature = "dynamodb")]
 use autopush_common::db::dynamodb::DdbClientImpl;
-
 use autopush_common::{
-    db::{client::DbClient, DbSettings, StorageType},
+    db::{client::DbClient, spawn_pool_periodic_reporter, DbSettings, StorageType},
     middleware::sentry::SentryWrapper,
 };
 
@@ -76,7 +75,9 @@ impl Server {
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 debug!("Using BigTable");
-                Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
+                let client = BigTableClientImpl::new(metrics.clone(), &db_settings)?;
+                client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
             }
             #[cfg(all(feature = "bigtable", feature = "dual"))]
             StorageType::Dual => Box::new(DualClientImpl::new(metrics.clone(), &db_settings)?),
@@ -129,6 +130,12 @@ impl Server {
             apns_router,
             adm_router,
         };
+
+        spawn_pool_periodic_reporter(
+            Duration::from_secs(10),
+            app_state.db.clone(),
+            app_state.metrics.clone(),
+        );
 
         let server = HttpServer::new(move || {
             // These have a bad habit of being reset. Specify them explicitly.

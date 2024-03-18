@@ -1,5 +1,7 @@
 use backtrace::Backtrace;
+#[cfg(feature = "dynamodb")]
 use rusoto_core::RusotoError;
+#[cfg(feature = "dynamodb")]
 use rusoto_dynamodb::{
     BatchWriteItemError, DeleteItemError, DescribeTableError, GetItemError, PutItemError,
     QueryError, UpdateItemError,
@@ -14,27 +16,35 @@ pub type DbResult<T> = Result<T, DbError>;
 
 #[derive(Debug, Error)]
 pub enum DbError {
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing GetItem")]
     DdbGetItem(#[from] RusotoError<GetItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing UpdateItem")]
     DdbUpdateItem(#[from] RusotoError<UpdateItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing PutItem")]
     DdbPutItem(#[from] RusotoError<PutItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing DeleteItem")]
     DdbDeleteItem(#[from] RusotoError<DeleteItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing BatchWriteItem")]
     DdbBatchWriteItem(#[from] RusotoError<BatchWriteItemError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing DescribeTable")]
     DdbDescribeTable(#[from] RusotoError<DescribeTableError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Database error while performing Query")]
     DdbQuery(#[from] RusotoError<QueryError>),
 
+    #[cfg(feature = "dynamodb")]
     #[error("Error while performing DynamoDB (de)serialization: {0}")]
     DdbSerialization(#[from] serde_dynamodb::Error),
 
@@ -65,10 +75,14 @@ pub enum DbError {
     Conditional,
 
     #[error("Database integrity error: {}", _0)]
-    Integrity(String),
+    Integrity(String, Option<String>),
 
     #[error("Unknown Database Error {0}")]
     General(String),
+
+    // Return a 503 error
+    #[error("Process pending, please wait.")]
+    Backoff(String),
 }
 
 impl ReportableError for DbError {
@@ -96,6 +110,7 @@ impl ReportableError for DbError {
         match &self {
             #[cfg(feature = "bigtable")]
             DbError::BTError(e) => e.metric_label(),
+            DbError::Backoff(_) => Some("storage.error.backoff"),
             _ => None,
         }
     }
@@ -104,6 +119,10 @@ impl ReportableError for DbError {
         match &self {
             #[cfg(feature = "bigtable")]
             DbError::BTError(e) => e.extras(),
+            DbError::Backoff(e) => {
+                vec![("raw", e.to_string())]
+            }
+            DbError::Integrity(_, Some(row)) => vec![("row", row.clone())],
             _ => vec![],
         }
     }
