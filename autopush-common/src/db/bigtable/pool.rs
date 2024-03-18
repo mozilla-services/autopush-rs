@@ -169,16 +169,6 @@ impl BigtableClientManager {
     }
 }
 
-fn get_instance_name(table_name: &str) -> Result<String, DbError> {
-    let parts: Vec<&str> = table_name.split('/').collect();
-    if parts.len() < 4 || parts[0] != "projects" || parts[2] != "instances" {
-        return Err(DbError::General(
-            "Invalid table name specified. Cannot parse instance".to_owned(),
-        ));
-    }
-    Ok(parts[0..4].join("/"))
-}
-
 impl fmt::Debug for BigtableClientManager {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("deadpool::BtClientManager")
@@ -198,8 +188,8 @@ impl Manager for BigtableClientManager {
         debug!("🏊 Create a new pool entry.");
         let entry = BigtableDb::new(
             self.get_channel()?,
-            &self.settings.metadata()?,
-            &get_instance_name(&self.settings.table_name)?,
+            &self.settings.health_metadata()?,
+            &self.settings.get_instance_name()?,
         );
         debug!("🏊 Bigtable connection acquired");
         Ok(entry)
@@ -278,16 +268,4 @@ impl BigtableClientManager {
         }
         Ok(chan)
     }
-}
-
-#[test]
-fn test_get_instance() -> Result<(), DbError> {
-    let res = get_instance_name("projects/foo/instances/bar/tables/gorp")?;
-    assert_eq!(res.as_str(), "projects/foo/instances/bar");
-
-    assert!(get_instance_name("projects/foo/").is_err());
-    assert!(get_instance_name("protect/foo/instances/bar/tables/gorp").is_err());
-    assert!(get_instance_name("project/foo/instance/bar/tables/gorp").is_err());
-
-    Ok(())
 }

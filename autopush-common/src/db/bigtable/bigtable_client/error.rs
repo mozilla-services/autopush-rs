@@ -115,6 +115,9 @@ pub enum BigTableError {
     /// General Pool builder errors.
     #[error("Pool Error: {0}")]
     Pool(String),
+
+    #[error("BigTable config error: {0}")]
+    Config(String),
 }
 
 impl ReportableError for BigTableError {
@@ -144,6 +147,7 @@ impl ReportableError for BigTableError {
             BigTableError::Recycle => "storage.bigtable.error.recycle",
             BigTableError::Pool(_) => "storage.bigtable.error.pool",
             BigTableError::GRPC(_) => "storage.bigtable.error.grpc",
+            BigTableError::Config(_) => "storage.bigtable.error.config",
         };
         Some(err)
     }

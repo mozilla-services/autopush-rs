@@ -761,15 +761,15 @@ impl BigTableClientImpl {
 #[derive(Clone)]
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
-    pub(super) metadata: Metadata,
+    pub(super) health_metadata: Metadata,
     instance_name: String,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel, metadata: &Metadata, instance_name: &str) -> Self {
+    pub fn new(channel: Channel, health_metadata: &Metadata, instance_name: &str) -> Self {
         Self {
             conn: BigtableClient::new(channel),
-            metadata: metadata.clone(),
+            health_metadata: health_metadata.clone(),
             instance_name: instance_name.to_owned(),
         }
     }
@@ -791,7 +791,7 @@ impl BigtableDb {
             .retry_if(
                 || async {
                     self.conn
-                        .ping_and_warm_opt(&req, call_opts(self.metadata.clone()))
+                        .ping_and_warm_opt(&req, call_opts(self.health_metadata.clone()))
                 },
                 retryable_error(metrics.clone()),
             )
