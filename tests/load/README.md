@@ -64,10 +64,10 @@ make load
 * Set up the load test parameters:
     * ShapeClass: Default
     * Number of users: 1
-    * Spawn rate: 1
+    * Ramp up: 1
     * Host: 'wss://autoconnect.stage.mozaws.net'
     * Duration (Optional): 10m
-* Select "Start Swarming"
+* Select "Start Swarm"
 
 #### 2. Stop Load Test
 
@@ -94,23 +94,13 @@ make load-clean
 
 Follow the steps bellow to execute the distributed load tests on GCP:
 
-### Calibration
-
-Following the addition of new features, such as a Locust Task or Locust User, it may be necessary
-to re-establish the recommended parameters of a performance test.
-
-| Parameter         | Description                                                                                                                                                                                                      |
-|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [WAIT TIME][13]   | - Changing this cadence will increase or decrease the number of channel subscriptions and notifications sent by an AutopushUser. <br/>- This value can be set in the Locust UI.                                  |
-| [TASK WEIGHT][14] | - Changing this weight impacts the probability of a task being chosen for execution. <br/>- This value is hardcoded in the task decorators of the AutopushUser class.                                            |
-| USERS PER WORKER  | - This value should be set to the maximum number of users a Locust worker can support given CPU and memory constraints. <br/>- This value is hardcoded in the AutopushLoadTestShape class.                       |
-| LOCUST WORKERS    | - This value is derived by dividing the total number of users needed for the performance test by the 'USERS PER WORKER'. <br>- This value is hardcoded in the AutopushLoadTestShape and the setup_k8s.sh script. |
-
 ### Setup Environment
 
 #### 1. Start a GCP Cloud Shell
 
 The load tests can be executed from the [contextual-services-test-eng cloud shell][15].
+If executing a load test for the first time, the git autopush repository will need to
+be cloned locally.
 
 #### 2. Configure the Bash Script
 
@@ -153,17 +143,15 @@ The load tests can be executed from the [contextual-services-test-eng cloud shel
 #### 1. Start Load Test
 
 * In a browser navigate to `http://$EXTERNAL_IP:8089`
-
   This url can be generated via command
   ```bash
   EXTERNAL_IP=$(kubectl get svc locust-master -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
   echo http://$EXTERNAL_IP:8089
   ```
-
 * Set up the load test parameters:
     * ShapeClass: 'AutopushLoadTestShape'
     * Host: 'wss://autoconnect.stage.mozaws.net'
-* Select "Start Swarming"
+* Select "Start Swarm"
 
 #### 2. Stop Load Test
 
@@ -195,7 +183,8 @@ the load test will stop automatically.
 
 * Results should be recorded in the [Autopush Load Test Spreadsheet][3]
 * Optionally, the Locust reports can be saved and linked in the spreadsheet:
-    * Download the results via the Locust UI or via command:
+    * Download the results via the Locust UI, under the 'Charts' and 'Download Data' 
+      tabs or via command:
         ```bash
         kubectl cp <master-pod-name>:/home/locust/autopush_stats.csv autopush_stats.csv
         kubectl cp <master-pod-name>:/home/locust/autopush_exceptions.csv autopush_exceptions.csv
@@ -208,6 +197,128 @@ the load test will stop automatically.
         ```
     * Upload the files to the [ConServ][4] drive and record the links in the
       spreadsheet
+
+### Clean-up Environment
+
+#### 1. Delete the GCP Cluster
+
+Execute the `setup_k8s.sh` file from the root directory and select the **delete** option
+
+```shell
+./tests/load/setup_k8s.sh
+```
+
+## Calibration
+
+Following the addition of new features, such as a Locust Task or Locust User, or environmental 
+changes, such as node size it may be necessary to re-establish the recommended parameters of a 
+performance test.
+
+| Parameter         | Description                                                                                                                                                                                                      |
+|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [WAIT TIME][13]   | - Changing this cadence will increase or decrease the number of channel subscriptions and notifications sent by an AutopushUser. <br/>- This value can be set in the Locust UI.                                  |
+| [TASK WEIGHT][14] | - Changing this weight impacts the probability of a task being chosen for execution. <br/>- This value is hardcoded in the task decorators of the AutopushUser class.                                            |
+| USERS_PER_WORKER  | - This value should be set to the maximum number of users a Locust worker can support given CPU and memory constraints. <br/>- This value is hardcoded in the AutopushLoadTestShape class.                       |
+| WORKER_COUNT      | - This value is derived by dividing the total number of users needed for the performance test by the 'USERS_PER_WORKER'. <br>- This value is hardcoded in the AutopushLoadTestShape and the setup_k8s.sh script. |
+
+## Calibrating for USERS_PER_WORKER
+
+This process is used to determine the number of users that a Locust worker can support.
+
+### Setup Environment
+
+#### 1. Start a GCP Cloud Shell
+
+The load tests can be executed from the [contextual-services-test-eng cloud shell][15].
+If executing a load test for the first time, the git autopush repository will need to
+be cloned locally.
+
+#### 2. Configure the Bash Script
+
+* The `setup_k8s.sh` file, located in the `tests\load` directory, contains
+  shell commands to **create** a GKE cluster, **setup** an existing GKE cluster or
+  **delete** a GKE cluster
+    * Execute the following from the root directory, to make the file executable:
+      ```shell
+      chmod +x tests/load/setup_k8s.sh
+      ```
+
+#### 3. Create the GCP Cluster
+
+* In the `setup_k8s.sh` script, modify the `WORKER_COUNT` variable to equal `1`
+* Execute the `setup_k8s.sh` file from the root directory and select the **create** 
+  option, in order to initiate the process of creating a cluster, setting up the env 
+  variables and building the docker image
+  ```shell
+  ./tests/load/setup_k8s.sh
+  ```
+* The cluster creation process will take some time. It is considered complete, once
+  an external IP is assigned to the `locust_master` node. Monitor the assignment via
+  a watch loop:
+  ```bash
+  kubectl get svc locust-master --watch
+  ```
+
+### Calibrate 
+
+Repeat steps 1 to 3, using a process of elimination to determine the maximum 
+USERS_PER_WORKER. The load tests are considered optimized when CPU and memory resources
+are maximally utilized. This step is meant to determine the maximum user count that a
+node can accommodate by observing CPU and memory usage while steadily increasing or
+decreasing the user count.
+
+#### 1. Start Load Test
+
+* In a browser navigate to `http://$EXTERNAL_IP:8089`
+  This url can be generated via command
+  ```bash
+  EXTERNAL_IP=$(kubectl get svc locust-master -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+  echo http://$EXTERNAL_IP:8089
+  ```
+* Set up the load test parameters:
+    * ShapeClass: Default
+    * UserClasses: StoredNotifAutopushUser (This is considered the more resource hungry user)
+    * Number of users: USERS_PER_WORKER (Consult the [Autopush Load Test Spreadsheet][3] to determine a starting point)
+    * Ramp up: RAMP_UP (RAMP_UP = 600/USERS_PER_WORKER)
+    * Host: 'wss://autoconnect.stage.mozaws.net'
+    * Duration (Optional): 600s
+* Select "Start Swarm"
+
+#### 2. Stop Load Test
+
+Select the 'Stop' button in the top right hand corner of the Locust UI, after the
+desired test duration has elapsed. If the 'Run time' or 'Duration' is set in step 1,
+the load test will stop automatically.
+
+#### 3. Analyse Results
+
+**CPU and Memory Resource Graphs**
+
+* CPU and Memory usage should be less than 90% of the available capacity
+    * CPU and Memory Resources can be observed in 
+      [Google Cloud > Kubernetes Engine > Workloads][18]
+
+**Log Errors or Warnings**
+
+* Locust will emit errors or warnings if high CPU or memory usage occurs during the 
+  execution of a load test. The presence of these logs is a strong indication that the 
+  USERS_PER_WORKER count is too high
+    * Errors and Warnings emitted while Locust is stopping can be ignored. This can be 
+      caused by disconnecting too many websockets at once, which doesn't happen in 
+      production because of the use of Shape classes
+
+#### 4. Report Results
+
+* See [Distributed GCP Execution - Report Results](#4-report-results-1)
+* Only client-side measures, provided by Locust, are available for local execution
+
+#### 5. Update Shape and Script Values
+
+* WORKER_COUNT = MAX_USERS/USERS_PER_WORKER
+    * If MAX_USERS is unknown, calibrate to determine WORKER_COUNT 
+* Update the USERS_PER_WORKER and WORKER_COUNT values in the following files:
+    * \tests\load\locustfiles\load.py
+    * \tests\load\setup_k8s.sh
 
 ### Clean-up Environment
 
@@ -236,5 +347,4 @@ Execute the `setup_k8s.sh` file from the root directory and select the **delete*
 [15]: https://console.cloud.google.com/home/dashboard?q=search&referrer=search&project=spheric-keel-331521&cloudshell=false
 [16]: https://console.cloud.google.com/gcr/images/spheric-keel-331521/global/locust-autopush?project=spheric-keel-331521
 [17]: https://earthangel-b40313e5.influxcloud.net/d/do4mmwcVz/autopush-gcp?orgId=1&refresh=1m
-
-
+[18]: https://console.cloud.google.com/kubernetes/list/overview?cloudshell=false&project=spheric-keel-331521
