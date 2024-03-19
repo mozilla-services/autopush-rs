@@ -84,6 +84,28 @@ pub struct BigTableDbSettings {
     pub retry_count: usize,
 }
 
+// Used by test, but we don't want available for release.
+#[allow(clippy::derivable_impls)]
+#[cfg(test)]
+impl Default for BigTableDbSettings {
+    fn default() -> Self {
+        Self {
+            table_name: Default::default(),
+            router_family: Default::default(),
+            message_family: Default::default(),
+            message_topic_family: Default::default(),
+            database_pool_max_size: Default::default(),
+            database_pool_create_timeout: Default::default(),
+            database_pool_wait_timeout: Default::default(),
+            database_pool_recycle_timeout: Default::default(),
+            database_pool_connection_ttl: Default::default(),
+            database_pool_max_idle: Default::default(),
+            route_to_leader: Default::default(),
+            retry_count: Default::default(),
+        }
+    }
+}
+
 impl BigTableDbSettings {
     pub fn metadata(&self) -> Result<Metadata, BigTableError> {
         MetadataBuilder::with_prefix(&self.table_name)
@@ -93,13 +115,20 @@ impl BigTableDbSettings {
             .map_err(BigTableError::GRPC)
     }
 
+    pub fn health_metadata(&self) -> Result<Metadata, BigTableError> {
+        MetadataBuilder::with_prefix(&self.table_name)
+            .routing_param("name", &self.get_instance_name()?)
+            .route_to_leader(self.route_to_leader)
+            .build()
+            .map_err(BigTableError::GRPC)
+    }
+
     pub fn admin_metadata(&self) -> Result<Metadata, BigTableError> {
         // Admin calls use a slightly different routing param and a truncated prefix
         // See https://github.com/googleapis/google-cloud-cpp/issues/190#issuecomment-370520185
         let Some(admin_prefix) = self.table_name.split_once("/tables/").map(|v| v.0) else {
-            return Err(BigTableError::Admin(
+            return Err(BigTableError::Config(
                 "Invalid table name specified".to_owned(),
-                None,
             ));
         };
         MetadataBuilder::with_prefix(admin_prefix)
@@ -107,6 +136,16 @@ impl BigTableDbSettings {
             .route_to_leader(self.route_to_leader)
             .build()
             .map_err(BigTableError::GRPC)
+    }
+
+    pub fn get_instance_name(&self) -> Result<String, BigTableError> {
+        let parts: Vec<&str> = self.table_name.split('/').collect();
+        if parts.len() < 4 || parts[0] != "projects" || parts[2] != "instances" {
+            return Err(BigTableError::Config(
+                "Invalid table name specified. Cannot parse instance".to_owned(),
+            ));
+        }
+        Ok(parts[0..4].join("/"))
     }
 }
 
@@ -136,6 +175,35 @@ mod tests {
             settings.database_pool_create_timeout,
             Some(std::time::Duration::from_secs(123))
         );
+        Ok(())
+    }
+    #[test]
+    fn test_get_instance() -> Result<(), super::BigTableError> {
+        let settings = super::BigTableDbSettings {
+            table_name: "projects/foo/instances/bar/tables/gorp".to_owned(),
+            ..Default::default()
+        };
+        let res = settings.get_instance_name()?;
+        assert_eq!(res.as_str(), "projects/foo/instances/bar");
+
+        let settings = super::BigTableDbSettings {
+            table_name: "projects/foo/".to_owned(),
+            ..Default::default()
+        };
+        assert!(settings.get_instance_name().is_err());
+
+        let settings = super::BigTableDbSettings {
+            table_name: "protect/foo/instances/bar/tables/gorp".to_owned(),
+            ..Default::default()
+        };
+        assert!(settings.get_instance_name().is_err());
+
+        let settings = super::BigTableDbSettings {
+            table_name: "project/foo/instance/bar/tables/gorp".to_owned(),
+            ..Default::default()
+        };
+        assert!(settings.get_instance_name().is_err());
+
         Ok(())
     }
 }

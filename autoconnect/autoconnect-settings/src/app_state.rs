@@ -86,7 +86,11 @@ impl AppState {
                 Box::new(client)
             }
             #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-            StorageType::Dual => Box::new(DualClientImpl::new(metrics.clone(), &db_settings)?),
+            StorageType::Dual => {
+                let client = DualClientImpl::new(metrics.clone(), &db_settings)?;
+                client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
+            }
             _ => panic!(
                 "Invalid Storage type {:?}. Check {}__DB_DSN.",
                 storage_type,
