@@ -1,3 +1,19 @@
+<a name="1.71.1"></a>
+## 1.71.1 (2024-03-19)
+
+
+#### Features
+
+*   introduce end_median for dual. (#663) ([38d6a6d1](https://github.com/mozilla-services/autopush-rs/commit/38d6a6d134a2a6f039b3126e1c7ec7c79c1c3c36))
+*   Switch to lighter weight health check (#662) ([133bcb53](https://github.com/mozilla-services/autopush-rs/commit/133bcb534070920f0db6192435f0d30016791e77))
+*   Swtich to lighter weight health check ([bed0f7f4](https://github.com/mozilla-services/autopush-rs/commit/bed0f7f42aa6439e6b5dec3a13749f0090bd3406))
+
+#### Bug Fixes
+
+*   dual mode needs its own spawn_sweeper (#658) ([1b4d5a9a](https://github.com/mozilla-services/autopush-rs/commit/1b4d5a9afa2535f0b7c9edd19756efe4b5f16622))
+
+
+
 <a name="1.71.0"></a>
 ## 1.71.0 (2024-03-13)
 
