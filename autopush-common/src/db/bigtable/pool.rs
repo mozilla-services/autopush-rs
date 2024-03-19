@@ -186,7 +186,11 @@ impl Manager for BigtableClientManager {
     /// `BigtableClient` is the most atomic we can go.
     async fn create(&self) -> Result<BigtableDb, DbError> {
         debug!("🏊 Create a new pool entry.");
-        let entry = BigtableDb::new(self.get_channel()?, &self.settings.metadata()?);
+        let entry = BigtableDb::new(
+            self.get_channel()?,
+            &self.settings.health_metadata()?,
+            &self.settings.get_instance_name()?,
+        );
         debug!("🏊 Bigtable connection acquired");
         Ok(entry)
     }
@@ -216,7 +220,7 @@ impl Manager for BigtableClientManager {
         // note, this changes to `blocks_in_conditions` for 1.76+
         #[allow(clippy::blocks_in_conditions)]
         if !client
-            .health_check(&self.settings.table_name, self.metrics.clone())
+            .health_check(self.metrics.clone())
             .await
             .map_err(|e| {
                 debug!("🏊 Recycle requested (health). {:?}", e);
