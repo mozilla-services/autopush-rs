@@ -11,7 +11,7 @@ use cadence::{CountedExt, StatsdClient};
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
-use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
+use google_cloud_rust_raw::bigtable::v2::bigtable::{PingAndWarmRequest, ReadRowsRequest};
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
@@ -761,49 +761,47 @@ impl BigTableClientImpl {
 #[derive(Clone)]
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
-    pub(super) metadata: Metadata,
+    pub(super) health_metadata: Metadata,
+    instance_name: String,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel, metadata: &Metadata) -> Self {
+    pub fn new(channel: Channel, health_metadata: &Metadata, instance_name: &str) -> Self {
         Self {
             conn: BigtableClient::new(channel),
-            metadata: metadata.clone(),
+            health_metadata: health_metadata.clone(),
+            instance_name: instance_name.to_owned(),
         }
     }
-
     /// Perform a simple connectivity check. This should return no actual results
     /// but should verify that the connection is valid. We use this for the
     /// Recycle check as well, so it has to be fairly low in the implementation
     /// stack.
     ///
-    pub async fn health_check(
-        &mut self,
-        table_name: &str,
-        metrics: Arc<StatsdClient>,
-    ) -> DbResult<bool> {
-        // Create a request that is GRPC valid, but does not point to a valid row.
-        let mut req = read_row_request(table_name, "NOT FOUND");
-        let mut filter = data::RowFilter::default();
-        filter.set_block_all_filter(true);
-        req.set_filter(filter);
-
-        let r = retry_policy(RETRY_COUNT)
+    /// "instance_name" is the "projects/{project}/instances/{instance}" portion of
+    /// the tablename.
+    ///
+    pub async fn health_check(&mut self, metrics: Arc<StatsdClient>) -> DbResult<bool> {
+        let req = PingAndWarmRequest {
+            name: self.instance_name.clone(),
+            ..Default::default()
+        };
+        // PingAndWarmResponse does not implement a stream since it does not return data.
+        let _r = retry_policy(RETRY_COUNT)
             .retry_if(
                 || async {
                     self.conn
-                        .read_rows_opt(&req, call_opts(self.metadata.clone()))
+                        .ping_and_warm_opt(&req, call_opts(self.health_metadata.clone()))
                 },
                 retryable_error(metrics.clone()),
             )
             .await
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
-        let (v, _stream) = r.into_future().await;
         // Since this should return no rows (with the row key set to a value that shouldn't exist)
         // the first component of the tuple should be None.
         debug!("🉑 health check");
-        Ok(v.is_none())
+        Ok(true)
     }
 }
 
@@ -1321,7 +1319,7 @@ impl DbClient for BigTableClientImpl {
         self.pool
             .get()
             .await?
-            .health_check(&self.settings.table_name, self.metrics.clone())
+            .health_check(self.metrics.clone())
             .await
     }
 
