@@ -131,6 +131,10 @@ impl DualClientImpl {
                 "median",
                 &median.map_or_else(|| "None".to_owned(), |m| m.to_string()),
             )
+            .with_tag(
+                "end_median",
+                &end_median.map_or_else(|| "None".to_owned(), |m| m.to_string()),
+            )
             .send();
         Ok(Self {
             primary,
