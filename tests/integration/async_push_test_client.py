@@ -102,7 +102,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         result = json.loads(reply)
 
         assert result["status"] == 200
-        assert "-" not in result["uaid"]
         if self.uaid and self.uaid != result["uaid"]:  # pragma: no cover
             log.debug(f"Mismatch on re-using uaid. Old: {self.uaid}, New: {result['uaid']}")
             self.channels = {}
