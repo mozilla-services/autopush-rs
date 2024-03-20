@@ -119,7 +119,7 @@ functionality as SSH is not supported in this environment.
   option, in order to initiate the process of creating a cluster, setting up the env 
   variables and building the docker image
   ```shell
-  ./tests/load/setup_k8s.sh
+  ./tests/load/setup_k8s.sh create
   ```
   **Note:** Locust requires CPU affinity to execute most efficiently and can only make 
   use of a single core at a time. Warnings will be logged if CPU usage exceeds 90%.
@@ -206,7 +206,7 @@ the load test will stop automatically.
 Execute the `setup_k8s.sh` file from the root directory and select the **delete** option
 
 ```shell
-./tests/load/setup_k8s.sh
+./tests/load/setup_k8s.sh delete
 ```
 
 ## Calibration
@@ -252,7 +252,7 @@ be cloned locally.
   option, in order to initiate the process of creating a cluster, setting up the env 
   variables and building the docker image
   ```shell
-  ./tests/load/setup_k8s.sh
+  ./tests/load/setup_k8s.sh create
   ```
 * The cluster creation process will take some time. It is considered complete, once
   an external IP is assigned to the `locust_master` node. Monitor the assignment via
@@ -331,7 +331,7 @@ the load test will stop automatically.
 Execute the `setup_k8s.sh` file from the root directory and select the **delete** option
 
 ```shell
-./tests/load/setup_k8s.sh
+./tests/load/setup_k8s.sh delete
 ```
 
 [1]: https://locust.io/
