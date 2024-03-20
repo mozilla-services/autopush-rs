@@ -337,7 +337,7 @@ Execute the `setup_k8s.sh` file from the root directory and select the **delete*
 [1]: https://locust.io/
 [2]: https://miro.com/app/board/uXjVMx-kx9Q=/
 [3]: https://docs.google.com/spreadsheets/d/1-nF8zR98IiLZlwP0ISwOB8cWRs74tJGM1PpgDSWdayE/edit#gid=0
-[4]: https://drive.google.com/drive/folders/13a-9DZXmeoJw4sLlo56tLwtnRXoKauHO
+[4]: https://drive.google.com/drive/folders/1LgucOMp1E1ptOyK19ohqiGeCMJmgf0px
 [5]: https://python-poetry.org/docs/#installation
 [6]: https://github.com/pyenv/pyenv#installation
 [7]: https://github.com/pyenv/pyenv-virtualenv#installation
