@@ -100,7 +100,8 @@ Follow the steps bellow to execute the distributed load tests on GCP:
 
 The load tests can be executed from the [contextual-services-test-eng cloud shell][15].
 If executing a load test for the first time, the git autopush repository will need to
-be cloned locally into the root directory of the machine. Use the HTTPS git clone functionality as SSH is not supported in this environment.
+be cloned locally into the root directory of the machine. Use the HTTPS git clone
+functionality as SSH is not supported in this environment.
 
 #### 2. Configure the Bash Script
 
@@ -210,9 +211,10 @@ Execute the `setup_k8s.sh` file from the root directory and select the **delete*
 
 ## Calibration
 
-Following the addition of new features, such as a Locust Task or Locust User, or environmental 
-changes, such as node size or the upgrade of a major dependency like the python version image, it may be necessary to re-establish the recommended parameters of a 
-performance test.
+Following the addition of new features, such as a Locust Task or Locust User, or
+environmental changes, such as node size or the upgrade of a major dependency like the
+python version image, it may be necessary to re-establish the recommended parameters of
+the performance test.
 
 | Parameter         | Description                                                                                                                                                                                                      |
 |-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -261,11 +263,13 @@ be cloned locally.
 
 ### Calibrate 
 
-Repeat steps 1 to 3, using a process of elimination to determine the maximum 
-`USERS_PER_WORKER`. The load tests are considered optimized when CPU and memory resources
-are maximally utilized. This step is meant to determine the maximum user count that a
-node can accommodate by observing CPU and memory usage while steadily increasing or
-decreasing the user count. You can monitor the CPU percentage in the Locust UI but also in the Kubernetes engine Workloads tab where both memory and CPU are visualized on charts. 
+Repeat steps 1 to 3, using a process of elimination, such as the bisection method, to
+determine the maximum `USERS_PER_WORKER`. The load tests are considered optimized when
+CPU and memory resources are maximally utilized. This step is meant to determine the
+maximum user count that a node can accommodate by observing CPU and memory usage while
+steadily increasing or decreasing the user count. You can monitor the CPU percentage in
+the Locust UI but also in the Kubernetes engine Workloads tab where both memory and CPU
+are visualized on charts. 
 
 #### 1. Start Load Test
 
