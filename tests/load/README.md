@@ -100,7 +100,7 @@ Follow the steps bellow to execute the distributed load tests on GCP:
 
 The load tests can be executed from the [contextual-services-test-eng cloud shell][15].
 If executing a load test for the first time, the git autopush repository will need to
-be cloned locally.
+be cloned locally into the root directory of the machine. Use the HTTPS git clone functionality as SSH is not supported in this environment.
 
 #### 2. Configure the Bash Script
 
@@ -211,15 +211,15 @@ Execute the `setup_k8s.sh` file from the root directory and select the **delete*
 ## Calibration
 
 Following the addition of new features, such as a Locust Task or Locust User, or environmental 
-changes, such as node size it may be necessary to re-establish the recommended parameters of a 
+changes, such as node size or the upgrade of a major dependency like the python version image, it may be necessary to re-establish the recommended parameters of a 
 performance test.
 
 | Parameter         | Description                                                                                                                                                                                                      |
 |-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | [WAIT TIME][13]   | - Changing this cadence will increase or decrease the number of channel subscriptions and notifications sent by an AutopushUser. <br/>- This value can be set in the Locust UI.                                  |
 | [TASK WEIGHT][14] | - Changing this weight impacts the probability of a task being chosen for execution. <br/>- This value is hardcoded in the task decorators of the AutopushUser class.                                            |
-| USERS_PER_WORKER  | - This value should be set to the maximum number of users a Locust worker can support given CPU and memory constraints. <br/>- This value is hardcoded in the AutopushLoadTestShape class.                       |
-| WORKER_COUNT      | - This value is derived by dividing the total number of users needed for the performance test by the 'USERS_PER_WORKER'. <br>- This value is hardcoded in the AutopushLoadTestShape and the setup_k8s.sh script. |
+| `USERS_PER_WORKER`  | - This value should be set to the maximum number of users a Locust worker can support given CPU and memory constraints. <br/>- This value is hardcoded in the AutopushLoadTestShape class.                       |
+| `WORKER_COUNT`      | - This value is derived by dividing the total number of users needed for the performance test by the `USERS_PER_WORKER`. <br>- This value is hardcoded in the AutopushLoadTestShape and the setup_k8s.sh script. |
 
 ## Calibrating for USERS_PER_WORKER
 
@@ -262,10 +262,10 @@ be cloned locally.
 ### Calibrate 
 
 Repeat steps 1 to 3, using a process of elimination to determine the maximum 
-USERS_PER_WORKER. The load tests are considered optimized when CPU and memory resources
+`USERS_PER_WORKER`. The load tests are considered optimized when CPU and memory resources
 are maximally utilized. This step is meant to determine the maximum user count that a
 node can accommodate by observing CPU and memory usage while steadily increasing or
-decreasing the user count.
+decreasing the user count. You can monitor the CPU percentage in the Locust UI but also in the Kubernetes engine Workloads tab where both memory and CPU are visualized on charts. 
 
 #### 1. Start Load Test
 
@@ -280,7 +280,7 @@ decreasing the user count.
     * UserClasses: StoredNotifAutopushUser (This is considered the more resource hungry user)
     * Number of users: USERS_PER_WORKER (Consult the [Autopush Load Test Spreadsheet][3] to determine a starting point)
     * Ramp up: RAMP_UP (RAMP_UP = 600/USERS_PER_WORKER)
-    * Host: 'wss://autoconnect.stage.mozaws.net'
+    * Host: `wss://autoconnect.stage.mozaws.net`
     * Duration (Optional): 600s
 * Select "Start Swarm"
 
@@ -302,7 +302,7 @@ the load test will stop automatically.
 
 * Locust will emit errors or warnings if high CPU or memory usage occurs during the 
   execution of a load test. The presence of these logs is a strong indication that the 
-  USERS_PER_WORKER count is too high
+  `USERS_PER_WORKER` count is too high
     * Errors and Warnings emitted while Locust is stopping can be ignored. This can be 
       caused by disconnecting too many websockets at once, which doesn't happen in 
       production because of the use of Shape classes
@@ -314,10 +314,10 @@ the load test will stop automatically.
 
 #### 5. Update Shape and Script Values
 
-* WORKER_COUNT = MAX_USERS/USERS_PER_WORKER
-    * If MAX_USERS is unknown, calibrate to determine WORKER_COUNT 
-* Update the USERS_PER_WORKER and WORKER_COUNT values in the following files:
-    * \tests\load\locustfiles\load.py
+* `WORKER_COUNT = MAX_USERS/USERS_PER_WORKER`
+    * If `MAX_USERS` is unknown, calibrate to determine `WORKER_COUNT` 
+* Update the `USERS_PER_WORKER` and `WORKER_COUNT` values in the following files:
+    * `\tests\load\locustfiles\load.py`
     * \tests\load\setup_k8s.sh
 
 ### Clean-up Environment
