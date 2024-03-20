@@ -51,6 +51,7 @@ license = "Mozilla Public License Version 2.0"
 [tool.poetry.dependencies]
 python = "^3.12"
 websocket-client = "^1.7.0"
+websockets = "^12.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.0"
@@ -75,6 +76,8 @@ python-jose = "^3.3.0"
 requests = "^2.31.0"
 twisted = "^23.10.0"
 types-requests = "^2.31.0.10"
+pytest-asyncio = "^0.23.5.post1"
+httpx = "^0.27.0"
 
 [tool.poetry.group.load.dependencies]
 locust = "^2.20.0"
