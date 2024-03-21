@@ -226,7 +226,7 @@ impl WebPushRouter {
     ) -> RouterResponse {
         self.metrics
             .count_with_tags(
-                "notification.message_data",
+                "notification.message_source",
                 notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
             )
             .with_tag("destination", destination_tag)
