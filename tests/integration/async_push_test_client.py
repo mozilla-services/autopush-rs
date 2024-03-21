@@ -236,7 +236,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         # Pull the sent notification immediately if connected.
         # Calls `get_notification` to get response from websocket.
         if self.ws and self.ws.is_client:  # check back on this after integration
-            return object.__getattribute__(self, "get_notification")(timeout)
+            res = await object.__getattribute__(self, "get_notification")(timeout)
+            return res
         else:
             return resp
 
