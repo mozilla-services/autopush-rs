@@ -46,6 +46,8 @@ pub async fn hello_new_user() {
     let msg = json_msg(&mut framed).await;
     assert_eq!(msg["messageType"], "hello");
     assert_eq!(msg["status"], 200);
+    // Ensure that the outbound response to the client includes the
+    // `use_webpush` flag set to `true`
     assert_eq!(msg["use_webpush"], true);
     assert!(msg["uaid"].is_string());
     assert!(msg["broadcasts"].is_object());
