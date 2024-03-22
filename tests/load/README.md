@@ -314,7 +314,6 @@ the load test will stop automatically.
 #### 4. Report Results
 
 * See [Distributed GCP Execution - Report Results](#4-report-results-1)
-* Only client-side measures, provided by Locust, are available for local execution
 
 #### 5. Update Shape and Script Values
 
@@ -328,11 +327,75 @@ the load test will stop automatically.
 
 #### 1. Delete the GCP Cluster
 
-Execute the `setup_k8s.sh` file from the root directory and select the **delete** option
+* See [Distributed GCP Execution - Clean-up Environment](#clean-up-environment)
 
-```shell
-./tests/load/setup_k8s.sh delete
-```
+## Calibrating for WORKER_COUNT
+
+This process is used to determine the number of Locust workers required in order to
+generate sufficient load for a test given a SHAPE_CLASS.
+
+### Setup Environment
+
+* See [Distributed GCP Execution - Setup Environment](#setup-environment-1)
+* Note that in the `setup_k8s.sh` the maximum number of nodes is set using the
+  `total-max-nodes` google cloud option. It may need to be increased if the number of
+  workers can't be supported by the cluster.
+
+### Calibrate
+
+Repeat steps 1 to 4, using a process of elimination, such as the bisection method, to
+determine the maximum `WORKER_COUNT`. The tests are considered optimized when they
+generate the minimum load required to cause node scaling in the the autopush Stage
+environment. You can monitor the autopush pod counts on [Grafana][17].
+
+#### 1. Update Shape and Script Values
+
+* Update the `WORKER_COUNT` values in the following files:
+    * `\tests\load\locustfiles\load.py`
+    * \tests\load\setup_k8s.sh
+* Using Git, commit the changes locally
+
+#### 2. Start Load Test
+
+* In a browser navigate to `http://$EXTERNAL_IP:8089`
+  This url can be generated via command
+  ```bash
+  EXTERNAL_IP=$(kubectl get svc locust-master -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+  echo http://$EXTERNAL_IP:8089
+  ```
+* Set up the load test parameters:
+    * ShapeClass: SHAPE_CLASS
+    * Host: 'wss://autoconnect.stage.mozaws.net'
+* Select "Start Swarm"
+
+#### 3. Stop Load Test
+
+Select the 'Stop' button in the top right hand corner of the Locust UI, after the
+desired test duration has elapsed. If the 'Run time', 'Duration' or 'ShapeClass' is set
+are set in step 1, the load test will stop automatically.
+
+#### 4. Analyse Results
+
+**Stage Environment Pod Counts**
+
+* The 'Autoendpoint Pod Count' or 'Autoconnect Pod Count' should demonstrate scaling
+  during the execution of the load test
+  * The pod counts can be observed in [Grafana][17]
+
+**CPU and Memory Resources**
+
+* CPU and Memory usage should be less than 90% of the available capacity in the cluster
+    * CPU and Memory Resources can be observed in 
+      [Google Cloud > Kubernetes Engine > Workloads][18]
+
+#### 5. Report Results
+
+* See [Distributed GCP Execution - Report Results](#4-report-results)
+
+### Clean-up Environment
+
+* See [Distributed GCP Execution - Clean-up Environment](#clean-up-environment)
+
 
 [1]: https://locust.io/
 [2]: https://miro.com/app/board/uXjVMx-kx9Q=/
