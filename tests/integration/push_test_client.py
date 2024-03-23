@@ -1,4 +1,5 @@
 """Module containing Test Client for autopush-rs integration tests."""
+
 import json
 import logging
 import random
