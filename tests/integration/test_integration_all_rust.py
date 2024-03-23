@@ -25,7 +25,9 @@ import httpx
 import psutil
 import pytest
 import twisted.internet.base
+import uvicorn
 from cryptography.fernet import Fernet
+from fastapi import FastAPI, Request
 from jose import jws
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -40,7 +42,8 @@ from .db import (
 )
 from .push_test_client import ClientMessageType, PushTestClient
 
-app = bottle.Bottle()
+# app = bottle.Bottle()
+app2 = FastAPI()
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
@@ -293,18 +296,36 @@ def max_logs(endpoint=None, conn=None):
     return max_logs_decorator
 
 
-@app.get("/v1/broadcasts")
-def broadcast_handler():
+# @app.get("/v1/broadcasts")
+# def broadcast_handler():
+#     """Broadcast handler setup."""
+#     assert bottle.request.headers["Authorization"] == MOCK_MP_TOKEN
+#     MOCK_MP_POLLED.set()
+#     return dict(broadcasts=MOCK_MP_SERVICES)
+
+
+# @app.post("/api/1/envelope/")
+# def sentry_handler() -> dict[str, str]:
+#     """Sentry handler configuration."""
+#     headers, item_headers, payload = bottle.request.body.read().splitlines()
+#     MOCK_SENTRY_QUEUE.put(json.loads(payload))
+#     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
+
+
+# ********************************
+@app2.get("/v1/broadcasts")
+async def broadcast_handler(request: Request):
     """Broadcast handler setup."""
-    assert bottle.request.headers["Authorization"] == MOCK_MP_TOKEN
+    assert request.headers["Authorization"] == MOCK_MP_TOKEN
     MOCK_MP_POLLED.set()
     return dict(broadcasts=MOCK_MP_SERVICES)
 
 
-@app.post("/api/1/envelope/")
-def sentry_handler() -> dict[str, str]:
+@app2.post("/api/1/envelope/")
+async def sentry_handler(request: Request) -> dict[str, str]:
     """Sentry handler configuration."""
-    headers, item_headers, payload = bottle.request.body.read().splitlines()
+    # headers, item_headers, payload = bottle.request.body.read().splitlines()
+    _headers, _item_headers, payload = (await request.body()).splitlines()
     MOCK_SENTRY_QUEUE.put(json.loads(payload))
     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
 
@@ -414,12 +435,14 @@ def setup_dynamodb():
     create_message_table_ddb(boto_resource, MESSAGE_TABLE)
     get_router_table(boto_resource, ROUTER_TABLE)
 
+def run_fastapi_app(host, port):
+    uvicorn.run(app2, host=host, port=port)
 
 def setup_mock_server():
     """Set up mock server."""
     global MOCK_SERVER_THREAD
 
-    MOCK_SERVER_THREAD = Thread(target=app.run, kwargs=dict(port=MOCK_SERVER_PORT, debug=True))
+    MOCK_SERVER_THREAD = Thread(target=run_fastapi_app, kwargs=dict(host="localhost", port=MOCK_SERVER_PORT))
     MOCK_SERVER_THREAD.daemon = True
     MOCK_SERVER_THREAD.start()
 
