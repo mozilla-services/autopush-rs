@@ -41,6 +41,9 @@ add-select = ["D212"]
 # D400 First line should end with a period, doesn't work when sentence spans 2 lines
 add-ignore = ["D105","D107","D203", "D205", "D400"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [tool.poetry]
 name = "tests"
 version = "0.1.0"
