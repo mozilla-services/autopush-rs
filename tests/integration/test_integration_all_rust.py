@@ -19,7 +19,6 @@ from typing import Any
 from unittest import SkipTest
 from urllib.parse import urlparse
 
-import bottle
 import ecdsa
 import httpx
 import psutil
@@ -39,8 +38,7 @@ from .db import (
     get_router_table,
 )
 
-# app = bottle.Bottle()
-app2 = FastAPI()
+app = FastAPI()
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
@@ -293,24 +291,7 @@ def max_logs(endpoint=None, conn=None):
     return max_logs_decorator
 
 
-# @app.get("/v1/broadcasts")
-# def broadcast_handler():
-#     """Broadcast handler setup."""
-#     assert bottle.request.headers["Authorization"] == MOCK_MP_TOKEN
-#     MOCK_MP_POLLED.set()
-#     return dict(broadcasts=MOCK_MP_SERVICES)
-
-
-# @app.post("/api/1/envelope/")
-# def sentry_handler() -> dict[str, str]:
-#     """Sentry handler configuration."""
-#     headers, item_headers, payload = bottle.request.body.read().splitlines()
-#     MOCK_SENTRY_QUEUE.put(json.loads(payload))
-#     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
-
-
-# ********************************
-@app2.get("/v1/broadcasts")
+@app.get("/v1/broadcasts")
 async def broadcast_handler(request: Request):
     """Broadcast handler setup."""
     assert request.headers["Authorization"] == MOCK_MP_TOKEN
@@ -318,10 +299,9 @@ async def broadcast_handler(request: Request):
     return dict(broadcasts=MOCK_MP_SERVICES)
 
 
-@app2.post("/api/1/envelope/")
+@app.post("/api/1/envelope/")
 async def sentry_handler(request: Request) -> dict[str, str]:
     """Sentry handler configuration."""
-    # headers, item_headers, payload = bottle.request.body.read().splitlines()
     _headers, _item_headers, payload = (await request.body()).splitlines()
     MOCK_SENTRY_QUEUE.put(json.loads(payload))
     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
@@ -432,14 +412,19 @@ def setup_dynamodb():
     create_message_table_ddb(boto_resource, MESSAGE_TABLE)
     get_router_table(boto_resource, ROUTER_TABLE)
 
+
 def run_fastapi_app(host, port):
-    uvicorn.run(app2, host=host, port=port)
+    """Run FastAPI app with uvicorn."""
+    uvicorn.run(app, host=host, port=port)
+
 
 def setup_mock_server():
     """Set up mock server."""
     global MOCK_SERVER_THREAD
 
-    MOCK_SERVER_THREAD = Thread(target=run_fastapi_app, kwargs=dict(host="localhost", port=MOCK_SERVER_PORT))
+    MOCK_SERVER_THREAD = Thread(
+        target=run_fastapi_app, kwargs=dict(host="localhost", port=MOCK_SERVER_PORT)
+    )
     MOCK_SERVER_THREAD.daemon = True
     MOCK_SERVER_THREAD.start()
 
