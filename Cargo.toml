@@ -30,22 +30,22 @@ edition = "2021"
 # remain a goal for the overall refactor.
 
 actix = "0.13"
-actix-cors = "0.6"
+actix-cors = "0.7"
 actix-http = "3.2"
 actix-rt = "2.7"
 actix-test = "0.1"
 actix-web = "4.2"
 actix-ws = "0.2"
 backtrace = "0.3"
-base64 = "0.21"
+base64 = "0.22"
 bytes = "1.4"
 bytestring = "1.2"
-cadence = "0.29"
+cadence = "1.2"
 chrono = "0.4"
-config = "0.13"
+config = "0.14"
 ctor = "0.2"
 docopt = "1.1"
-env_logger = "0.10"
+env_logger = "0.11"
 fernet = "0.2.0"
 futures = { version = "0.3", features = ["compat"] }
 futures-util = { version = "0.3", features = [
@@ -57,18 +57,18 @@ futures-util = { version = "0.3", features = [
 futures-locks = "0.7"
 hex = "0.4.2"
 httparse = "1.3"
-hyper = "0.14"
+hyper = "1.2"
 lazy_static = "1.4"
 log = { version = "0.4", features = [
   "max_level_debug",
   "release_max_level_info",
 ] }
-mockall = "0.11"
+mockall = "0.12"
 mozsvc-common = "0.2"
 openssl = { version = "0.10" }
 rand = "0.8"
 regex = "1.4"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
 rusoto_core = { version = "0.47", default-features = false, features = [
   "rustls",
 ] } # locked by serde_dynamodb 0.9

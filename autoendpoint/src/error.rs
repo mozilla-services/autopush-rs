@@ -12,8 +12,8 @@ use actix_web::{
     HttpResponse, Result,
 };
 // Sentry uses the backtrace crate, not std::backtrace.
+use actix_http::header;
 use backtrace::Backtrace;
-use reqwest::header;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
