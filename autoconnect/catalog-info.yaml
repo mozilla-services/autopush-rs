@@ -1,0 +1,13 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: autoconnect
+  description: Mozilla's Web Push User Agent Client
+spec:
+  type: service
+  lifecycle: production
+  owner: push-admin@mozilla.com
+  system: sync-ecosystem
+  dependsOn:
+    - google-cloud-rust/googleapis-raw/gcp-bigtable
+
