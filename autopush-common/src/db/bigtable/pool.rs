@@ -189,7 +189,7 @@ impl Manager for BigtableClientManager {
         let entry = BigtableDb::new(
             self.get_channel()?,
             &self.settings.health_metadata()?,
-            &self.settings.get_instance_name()?,
+            &self.settings.table_name,
         );
         debug!("🏊 Bigtable connection acquired");
         Ok(entry)
