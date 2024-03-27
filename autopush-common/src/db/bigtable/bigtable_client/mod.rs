@@ -779,7 +779,10 @@ impl BigtableDb {
     /// stack.
     ///
     ///
-    pub async fn health_check(&mut self, metrics: Arc<StatsdClient>) -> DbResult<bool> {
+    pub async fn health_check(
+        &mut self,
+        metrics: Arc<StatsdClient>,
+    ) -> Result<bool, error::BigTableError> {
         // It is recommended that we pick a random key to perform the health check. Selecting
         // a single key for all health checks causes a "hot tablet" to arise. The `PingAndWarm`
         // is intended to be used prior to large updates and is not recommended for use in
@@ -800,7 +803,7 @@ impl BigtableDb {
                 retryable_error(metrics.clone()),
             )
             .await
-            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
+            .map_err(error::BigTableError::Read)?;
 
         debug!("🉑 health check");
         Ok(true)
@@ -1318,11 +1321,12 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        self.pool
+        Ok(self
+            .pool
             .get()
             .await?
             .health_check(self.metrics.clone())
-            .await
+            .await?)
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up
