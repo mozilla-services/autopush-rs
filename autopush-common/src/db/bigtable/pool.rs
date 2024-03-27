@@ -159,7 +159,7 @@ impl BigtableClientManager {
         dsn: Option<String>,
         connection: String,
         metrics: Arc<StatsdClient>,
-    ) -> Result<Self, DbError> {
+    ) -> Result<Self, BigTableError> {
         Ok(Self {
             settings: settings.clone(),
             dsn,
@@ -179,12 +179,12 @@ impl fmt::Debug for BigtableClientManager {
 
 #[async_trait]
 impl Manager for BigtableClientManager {
-    type Error = DbError;
+    type Error = BigTableError;
     type Type = BigtableDb;
 
     /// Create a new Bigtable Client with it's own channel.
     /// `BigtableClient` is the most atomic we can go.
-    async fn create(&self) -> Result<BigtableDb, DbError> {
+    async fn create(&self) -> Result<BigtableDb, Self::Error> {
         debug!("🏊 Create a new pool entry.");
         let entry = BigtableDb::new(
             self.get_channel()?,
@@ -204,14 +204,14 @@ impl Manager for BigtableClientManager {
         if let Some(timeout) = self.settings.database_pool_connection_ttl {
             if Instant::now() - metrics.created > timeout {
                 debug!("🏊 Recycle requested (old).");
-                return Err(DbError::BTError(BigTableError::Recycle).into());
+                return Err(BigTableError::Recycle.into());
             }
         }
         if let Some(timeout) = self.settings.database_pool_max_idle {
             if let Some(recycled) = metrics.recycled {
                 if Instant::now() - recycled > timeout {
                     debug!("🏊 Recycle requested (idle).");
-                    return Err(DbError::BTError(BigTableError::Recycle).into());
+                    return Err(BigTableError::Recycle.into());
                 }
             }
         }
@@ -224,11 +224,11 @@ impl Manager for BigtableClientManager {
             .await
             .map_err(|e| {
                 debug!("🏊 Recycle requested (health). {:?}", e);
-                DbError::BTError(BigTableError::Recycle)
+                BigTableError::Recycle
             })?
         {
             debug!("🏊 Health check failed");
-            return Err(DbError::BTError(BigTableError::Recycle).into());
+            return Err(BigTableError::Recycle.into());
         }
 
         // Bigtable does not offer a simple health check. A read or write operation would
