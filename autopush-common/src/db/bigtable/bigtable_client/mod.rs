@@ -781,7 +781,10 @@ impl BigtableDb {
     /// "instance_name" is the "projects/{project}/instances/{instance}" portion of
     /// the tablename.
     ///
-    pub async fn health_check(&mut self, metrics: Arc<StatsdClient>) -> DbResult<bool> {
+    pub async fn health_check(
+        &mut self,
+        metrics: Arc<StatsdClient>,
+    ) -> Result<bool, error::BigTableError> {
         let req = PingAndWarmRequest {
             name: self.instance_name.clone(),
             ..Default::default()
@@ -796,7 +799,7 @@ impl BigtableDb {
                 retryable_error(metrics.clone()),
             )
             .await
-            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
+            .map_err(error::BigTableError::Read)?;
 
         // Since this should return no rows (with the row key set to a value that shouldn't exist)
         // the first component of the tuple should be None.
@@ -1316,11 +1319,12 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        self.pool
+        Ok(self
+            .pool
             .get()
             .await?
             .health_check(self.metrics.clone())
-            .await
+            .await?)
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up

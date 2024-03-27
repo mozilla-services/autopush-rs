@@ -7,7 +7,7 @@ use std::{
 use actix_web::rt;
 use async_trait::async_trait;
 use cadence::StatsdClient;
-use deadpool::managed::{Manager, PoolConfig, QueueMode, Timeouts};
+use deadpool::managed::{Manager, PoolConfig, QueueMode, RecycleError, Timeouts};
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 
 use crate::db::bigtable::{bigtable_client::BigtableDb, BigTableDbSettings, BigTableError};
@@ -48,7 +48,7 @@ impl BigTablePool {
             .pool
             .get()
             .await
-            .map_err(|e| error::BigTableError::Pool(e.to_string()))?;
+            .map_err(|e| error::BigTableError::Pool(Box::new(e)))?;
         debug!("🉑 Got db from pool");
         Ok(obj)
     }
@@ -118,7 +118,7 @@ impl BigTablePool {
             .config(config)
             .runtime(deadpool::Runtime::Tokio1)
             .build()
-            .map_err(|e| DbError::BTError(BigTableError::Pool(e.to_string())))?;
+            .map_err(|e| DbError::BTError(BigTableError::Config(e.to_string())))?;
 
         Ok(Self {
             pool,
@@ -204,35 +204,26 @@ impl Manager for BigtableClientManager {
         if let Some(timeout) = self.settings.database_pool_connection_ttl {
             if Instant::now() - metrics.created > timeout {
                 debug!("🏊 Recycle requested (old).");
-                return Err(BigTableError::Recycle.into());
+                return Err(RecycleError::Message("Connection too old".to_owned()));
             }
         }
         if let Some(timeout) = self.settings.database_pool_max_idle {
             if let Some(recycled) = metrics.recycled {
                 if Instant::now() - recycled > timeout {
                     debug!("🏊 Recycle requested (idle).");
-                    return Err(BigTableError::Recycle.into());
+                    return Err(RecycleError::Message("Connection too idle".to_owned()));
                 }
             }
         }
 
-        // Clippy 0.1.73 complains about the `.map_err` being hard to read.
-        // note, this changes to `blocks_in_conditions` for 1.76+
-        #[allow(clippy::blocks_in_conditions)]
         if !client
             .health_check(self.metrics.clone())
             .await
-            .map_err(|e| {
-                debug!("🏊 Recycle requested (health). {:?}", e);
-                BigTableError::Recycle
-            })?
+            .inspect_err(|e| debug!("🏊 Recycle requested (health). {:?}", e))?
         {
             debug!("🏊 Health check failed");
-            return Err(BigTableError::Recycle.into());
+            return Err(RecycleError::Message("Health check failed".to_owned()));
         }
-
-        // Bigtable does not offer a simple health check. A read or write operation would
-        // need to be performed.
 
         Ok(())
     }
@@ -256,14 +247,9 @@ impl BigtableClientManager {
         {
             debug!("🉑 Using emulator");
         } else {
-            chan = chan.set_credentials(ChannelCredentials::google_default_credentials().map_err(
-                |e| {
-                    BigTableError::Admin(
-                        "Could not set credentials".to_owned(),
-                        Some(e.to_string()),
-                    )
-                },
-            )?);
+            chan = chan.set_credentials(
+                ChannelCredentials::google_default_credentials().map_err(BigTableError::GRPC)?,
+            );
             debug!("🉑 Using real");
         }
         Ok(chan)

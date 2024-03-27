@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 use backtrace::Backtrace;
+use deadpool::managed::PoolError;
 use thiserror::Error;
 
 use crate::errors::ReportableError;
@@ -109,12 +110,9 @@ pub enum BigTableError {
     #[error("BigTable Admin Error: {0}")]
     Admin(String, Option<String>),
 
-    #[error("Bigtable Recycle request")]
-    Recycle,
-
     /// General Pool builder errors.
     #[error("Pool Error: {0}")]
-    Pool(String),
+    Pool(Box<PoolError<BigTableError>>),
 
     #[error("BigTable config error: {0}")]
     Config(String),
@@ -144,7 +142,6 @@ impl ReportableError for BigTableError {
             BigTableError::Status(_, _) => "storage.bigtable.error.status",
             BigTableError::WriteTime(_) => "storage.bigtable.error.writetime",
             BigTableError::Admin(_, _) => "storage.bigtable.error.admin",
-            BigTableError::Recycle => "storage.bigtable.error.recycle",
             BigTableError::Pool(_) => "storage.bigtable.error.pool",
             BigTableError::GRPC(_) => "storage.bigtable.error.grpc",
             BigTableError::Config(_) => "storage.bigtable.error.config",
@@ -170,7 +167,7 @@ impl ReportableError for BigTableError {
                 };
                 x
             }
-            BigTableError::Pool(s) => vec![("error", s.to_owned())],
+            BigTableError::Pool(e) => vec![("error", e.to_string())],
             _ => vec![],
         }
     }
