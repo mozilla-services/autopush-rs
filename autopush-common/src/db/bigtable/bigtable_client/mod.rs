@@ -778,8 +778,6 @@ impl BigtableDb {
     /// Recycle check as well, so it has to be fairly low in the implementation
     /// stack.
     ///
-    /// "instance_name" is the "projects/{project}/instances/{instance}" portion of
-    /// the tablename.
     ///
     pub async fn health_check(&mut self, metrics: Arc<StatsdClient>) -> DbResult<bool> {
         // It is recommended that we pick a random key to perform the health check. Selecting
@@ -804,7 +802,6 @@ impl BigtableDb {
             .await
             .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
 
-        // Since this may return no rows, the first component of the tuple should be None.
         debug!("🉑 health check");
         Ok(true)
     }
