@@ -597,15 +597,15 @@ class TestRustWebPush:
     def host_endpoint(self, client):
         """Return host endpoint."""
         parsed = urlparse(list(client.channels.values())[0])
-        return "{}://{}".format(parsed.scheme, parsed.netloc)
+        return f"{parsed.scheme}://{parsed.netloc}"
 
     @pytest.mark.asyncio
     async def quick_register(self):
         """Perform a connection initialization, which includes a new connection,
         `hello`, and channel registration.
         """
-        log.debug("🐍#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
-        client = AsyncPushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
+        log.debug(f"🐍#### Connecting to ws://localhost:{CONNECTION_PORT}/")
+        client = AsyncPushTestClient(f"ws://localhost:{CONNECTION_PORT}/")
         await client.connect()
         await client.hello()
         await client.register()
@@ -620,7 +620,7 @@ class TestRustWebPush:
 
     @property
     def _ws_url(self):
-        return "ws://localhost:{}/".format(CONNECTION_PORT)
+        return f"ws://localhost:{CONNECTION_PORT}/"
 
     @max_logs(conn=4)
     @pytest.mark.asyncio
@@ -1015,7 +1015,7 @@ class TestRustWebPush:
         result = await client.get_notification(timeout=0.5)
         assert result != {}
         assert result["data"] in map(base64url_encode, [data, data2])
-        log.debug("🟩🟩 Result:: {}".format(result["data"]))
+        log.debug(f"🟩🟩 Result:: {result['data']}")
         result2 = await client.get_notification()
         assert result2 != {}
         assert result2["data"] in map(base64url_encode, [data, data2])
@@ -1109,7 +1109,7 @@ class TestRustWebPush:
         client = await self.quick_register()
         await client.disconnect()
         for x in range(0, 12):
-            prefix = base64.urlsafe_b64decode("{:04d}".format(x))
+            prefix = base64.urlsafe_b64decode(f"{x:04d}")
             await client.send_notification(data=prefix + data, ttl=1, status=201)
 
         await client.send_notification(data=data2, status=201)
@@ -1288,14 +1288,14 @@ class TestRustWebPush:
         """Test getting a locked subscription with a valid VAPID public key."""
         private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
         claims = {
-            "aud": "http://localhost:{}".format(ENDPOINT_PORT),
+            "aud": f"http://localhost:{ENDPOINT_PORT}",
             "exp": int(time.time()) + 86400,
             "sub": "a@example.com",
         }
         vapid = _get_vapid(private_key, claims)
         pk_hex = vapid["crypto-key"]
         chid = str(uuid.uuid4())
-        client = AsyncPushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
+        client = AsyncPushTestClient(f"ws://localhost:{CONNECTION_PORT}/")
         await client.connect()
         await client.hello()
         await client.register(channel_id=chid, key=pk_hex)
@@ -1315,7 +1315,7 @@ class TestRustWebPush:
     async def test_with_bad_key(self):
         """Test that a message registration request with bad VAPID public key is rejected."""
         chid = str(uuid.uuid4())
-        client = AsyncPushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
+        client = AsyncPushTestClient(f"ws://localhost:{CONNECTION_PORT}/")
         await client.connect()
         await client.hello()
         result = await client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
