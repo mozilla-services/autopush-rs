@@ -637,7 +637,9 @@ class TestRustWebPush:
         await self.shut_down(client)
 
         # LogCheck does throw an error every time
-        httpx.get(f"http://localhost:{CONNECTION_PORT}/v1/err/crit", timeout=30)
+        async with httpx.AsyncClient() as client:
+            await client.get(f"http://localhost:{CONNECTION_PORT}/v1/err/crit", timeout=30)
+
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # new autoconnect emits 2 events
         try:
@@ -657,8 +659,8 @@ class TestRustWebPush:
         client = await self.quick_register()
         endpoint = self.host_endpoint(client)
         await self.shut_down(client)
-
-        httpx.get(f"{endpoint}/__error__", timeout=30)
+        async with httpx.AsyncClient() as client:
+            await client.get(f"{endpoint}/__error__", timeout=30)
         # 2 events excpted: 1 from a panic and 1 from a returned Error
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
@@ -676,7 +678,8 @@ class TestRustWebPush:
             return
         ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
         try:
-            httpx.get(ws_url, timeout=30)
+            async with httpx.AsyncClient() as client:
+                await client.get(ws_url, timeout=30)
         except httpx.ConnectError:
             pass
         try:
@@ -1374,10 +1377,14 @@ class TestRustWebPush:
             url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
             # First ensure the endpoint we're testing for on the public port exists where
             # we expect it on the internal ROUTER_PORT
-            httpx.put(url, timeout=30).raise_for_status()
+            async with httpx.AsyncClient() as client:
+                res = await client.put(url, timeout=30)
+                res.raise_for_status()
 
         try:
-            httpx.put(parsed.geturl(), timeout=30).raise_for_status()
+            async with httpx.AsyncClient() as client:
+                res = await client.put(parsed.geturl(), timeout=30)
+                res.raise_for_status()
         except httpx.ConnectError:
             pass
         except httpx.HTTPError as e:
