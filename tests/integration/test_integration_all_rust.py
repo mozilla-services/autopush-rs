@@ -637,8 +637,8 @@ class TestRustWebPush:
         await self.shut_down(client)
 
         # LogCheck does throw an error every time
-        async with httpx.AsyncClient() as client:
-            await client.get(f"http://localhost:{CONNECTION_PORT}/v1/err/crit", timeout=30)
+        async with httpx.AsyncClient() as httpx_client:
+            await httpx_client.get(f"http://localhost:{CONNECTION_PORT}/v1/err/crit", timeout=30)
 
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # new autoconnect emits 2 events
@@ -659,15 +659,16 @@ class TestRustWebPush:
         client = await self.quick_register()
         endpoint = self.host_endpoint(client)
         await self.shut_down(client)
-        async with httpx.AsyncClient() as client:
-            await client.get(f"{endpoint}/__error__", timeout=30)
+        async with httpx.AsyncClient() as httpx_client:
+            await httpx_client.get(f"{endpoint}/__error__", timeout=30)
         # 2 events excpted: 1 from a panic and 1 from a returned Error
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
-        event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
+        event2 = MOCK_SENTRY_QUEUE.get(timeout=5)
         values = (
             event1["exception"]["values"][0]["value"],
             event2["exception"]["values"][0]["value"],
         )
+        assert "ERROR:Success" in values
         assert sorted(values) == ["ERROR:Success", "LogCheck"]
 
     @max_logs(conn=4)
@@ -678,8 +679,8 @@ class TestRustWebPush:
             return
         ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
         try:
-            async with httpx.AsyncClient() as client:
-                await client.get(ws_url, timeout=30)
+            async with httpx.AsyncClient() as httpx_client:
+                await httpx_client.get(ws_url, timeout=30)
         except httpx.ConnectError:
             pass
         try:
@@ -1377,13 +1378,13 @@ class TestRustWebPush:
             url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
             # First ensure the endpoint we're testing for on the public port exists where
             # we expect it on the internal ROUTER_PORT
-            async with httpx.AsyncClient() as client:
-                res = await client.put(url, timeout=30)
+            async with httpx.AsyncClient() as httpx_client:
+                res = await httpx_client.put(url, timeout=30)
                 res.raise_for_status()
 
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.put(parsed.geturl(), timeout=30)
+            async with httpx.AsyncClient() as httpx_client:
+                res = await httpx_client.put(parsed.geturl(), timeout=30)
                 res.raise_for_status()
         except httpx.ConnectError:
             pass
