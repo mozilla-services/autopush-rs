@@ -684,7 +684,7 @@ class TestRustWebPush:
         except httpx.ConnectError:
             pass
         try:
-            data = MOCK_SENTRY_QUEUE.get(timeout=1)
+            data = MOCK_SENTRY_QUEUE.get(timeout=5)
             assert not data
         except Empty:
             pass
