@@ -1,5 +1,38 @@
 # Testing
 
+## Test Strategy
+
+Autopush is tested using a combination of functional, integration, and performance tests.
+
+Unit tests are written in the same Rust module as the code they are testing. Integration and Load Test code are in the `tests/` directory.
+
+Presently, the Autopush test strategy does not require a minimum test coverage percentage for unit and integration tests. However, it is the goal that the service eventually have defined minimum coverage.
+Load tests should not go below a minimum performance threshold.
+
+Test documentation resides in this document [/testing/][test_docs_dir] directory.
+
+The functional test strategy is three-tiered, composed of: 
+
+- [unit][unit_tests] - [documentation][unit_tests_docs]
+- [integration][integration_tests] - [documentation][integration_tests_docs]
+- [load][load_tests] - [documentation][load_tests_docs]
+
+See the documentation in each given test area for specific details on running and maintaining tests.
+
+[unit_tests_docs]: ./testing.md#unit-tests
+[integration_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/tests/integration
+[integration_tests_docs]: ./testing.md#integration-tests
+[load_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/tests/load
+[load_tests_docs]: https://github.com/mozilla-services/autopush-rs/blob/master/tests/load/README.md
+
+## Unit Tests
+Unit tests allow for testing individual components of code in isolation to ensure they function as expected. Rust's built-in support for writing and running unit tests use the `#[cfg(test)]` attribute and the `#[test]` attribute.
+
+### Running Unit Tests
+Run Rust unit tests with the `cargo test` comand from the root of the directory.
+
+## Integration Tests
+
 ## Testing Configuration
 
 When testing, it's important to reduce the number of potential conflicts
