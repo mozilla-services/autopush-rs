@@ -634,7 +634,7 @@ class TestRustWebPush:
         await client.connect()
         await client.hello()
         await client.send_bad_data()
-        await self.shut_down(client)
+        await client.disconnect()
 
         # LogCheck does throw an error every time
         async with httpx.AsyncClient() as httpx_client:
