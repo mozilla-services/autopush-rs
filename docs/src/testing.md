@@ -28,8 +28,23 @@ See the documentation in each given test area for specific details on running an
 ## Unit Tests
 Unit tests allow for testing individual components of code in isolation to ensure they function as expected. Rust's built-in support for writing and running unit tests use the `#[cfg(test)]` attribute and the `#[test]` attribute.
 
+### Best Practices
+- Test functions are regular Rust functions annotated with the `#[test]` attribute.
+- Test functions should be written in the same module as the code they are testing.
+- Test functions should be named in a manner that describes the behavior being tested. 
+Ex. 
+```Rust
+    #[test]
+    fn test_broadcast_change_tracker()
+```
+- The use of assertion macros is encouraged. This includes, but is not limited to:
+`assert_eq!(actual, expected)`, `assert_ne!(actual, expected)`, `assert!(<condition>)`.
+- You should group related tests into modules using the `mod` keyword. Furthermore, test modules can be nested to organize tests in a hierarchy.
+
 ### Running Unit Tests
 Run Rust unit tests with the `cargo test` comand from the root of the directory.
+
+To run a specific test, provide the function name to `cargo test`. Ex. `cargo test test_function_name`.
 
 ## Integration Tests
 
