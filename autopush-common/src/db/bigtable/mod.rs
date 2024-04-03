@@ -115,12 +115,9 @@ impl BigTableDbSettings {
             .map_err(BigTableError::GRPC)
     }
 
+    // Health may require a different metadata declaration.
     pub fn health_metadata(&self) -> Result<Metadata, BigTableError> {
-        MetadataBuilder::with_prefix(&self.table_name)
-            .routing_param("name", &self.get_instance_name()?)
-            .route_to_leader(self.route_to_leader)
-            .build()
-            .map_err(BigTableError::GRPC)
+        self.metadata()
     }
 
     pub fn admin_metadata(&self) -> Result<Metadata, BigTableError> {
