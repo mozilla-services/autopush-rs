@@ -469,8 +469,10 @@ impl Router for ApnsRouter {
             .collect();
 
         // Check size limit
-        let payload_json =
-            PayloadLike::to_json_string(&payload.clone()).map_err(ApnsError::SizeLimit)?;
+        let payload_json = payload
+            .clone()
+            .to_json_string()
+            .map_err(ApnsError::SizeLimit)?;
         message_size_check(payload_json.as_bytes(), self.settings.max_data)?;
 
         // Send to APNS
