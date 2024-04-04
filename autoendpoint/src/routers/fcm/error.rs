@@ -1,6 +1,6 @@
 use crate::error::ApiErrorKind;
 use crate::routers::RouterError;
-use actix_web::http::StatusCode;
+use reqwest::StatusCode;
 
 /// Errors that may occur in the Firebase Cloud Messaging router
 #[derive(thiserror::Error, Debug)]

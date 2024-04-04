@@ -233,7 +233,7 @@ impl WebPushRouter {
             .send();
 
         RouterResponse {
-            status,
+            status: actix_http::StatusCode::from_u16(status.as_u16()).unwrap_or_default(),
             headers: {
                 let mut map = HashMap::new();
                 map.insert(
