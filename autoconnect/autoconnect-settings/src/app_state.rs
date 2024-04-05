@@ -51,7 +51,9 @@ impl AppState {
         let fernets: Vec<Fernet> = crypto_key
             .split(',')
             .map(|s| s.trim().to_string())
-            .map(|key| Fernet::new(&key)._or_else(|| panic!("Invalid {ENV_PREFIX}_CRYPTO_KEY")))
+            .map(|key| {
+                Fernet::new(&key).unwrap_or_else(|| panic!("Invalid {ENV_PREFIX}_CRYPTO_KEY"))
+            })
             .collect();
         let fernet = MultiFernet::new(fernets);
         let metrics = autopush_common::metrics::builder(
