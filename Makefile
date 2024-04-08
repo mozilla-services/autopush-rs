@@ -99,11 +99,8 @@ load-clean:
       down
 	docker rmi locust
 
-.PHONY: doc
-doc:  ##  Generate autopush docs via mdBook
+.PHONY: doc-prev
+doc-prev:  ##  Generate live preview of autopush docs via browser
 	mdbook clean docs/
 	mdbook build docs/
-
-.PHONY: doc-prev
-doc-prev:  ##  Preview autopush docs via the default browser
 	mdbook serve docs/ --open
