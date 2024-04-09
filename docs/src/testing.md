@@ -74,7 +74,7 @@ In some instances after making test changes, the test client can potentially han
 ```shell
 $ ps -fA | grep autopush
 # any result other than grep operation is dangling
-$ kill -s KILL 83573 <other PID>
+$ kill -s KILL <PID>
 ```
 
 ## Firefox Testing
