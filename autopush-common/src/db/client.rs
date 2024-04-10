@@ -30,7 +30,7 @@ pub trait DbClient: Send + Sync {
     /// update will not occur if the user does not already exist, has a
     /// different router type, or has a newer `connected_at` timestamp.
     // TODO: make the bool a #[must_use]
-    async fn update_user(&self, user: &User) -> DbResult<bool>;
+    async fn update_user(&self, user: &mut User) -> DbResult<bool>;
 
     /// Read a user from the database
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>>;
@@ -53,8 +53,13 @@ pub trait DbClient: Send + Sync {
     /// Remove the node ID from a user in the router table. Returns whether the
     /// removal occurred. The node ID will only be removed if `connected_at`
     /// matches up with the item's `connected_at`.
-    async fn remove_node_id(&self, uaid: &Uuid, node_id: &str, connected_at: u64)
-        -> DbResult<bool>;
+    async fn remove_node_id(
+        &self,
+        uaid: &Uuid,
+        node_id: &str,
+        connected_at: u64,
+        version: &Option<Uuid>,
+    ) -> DbResult<bool>;
 
     /// Save a message to the message table
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()>;
@@ -104,12 +109,17 @@ pub trait DbClient: Send + Sync {
     #[allow(clippy::needless_lifetimes)]
     fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
-    fn box_clone(&self) -> Box<dyn DbClient>;
-
     /// Provide the module name.
     /// This was added for simple dual mode testing, but may be useful in
     /// other situations.
     fn name(&self) -> String;
+
+    /// Return the current deadpool Status (if using deadpool)
+    fn pool_status(&self) -> Option<deadpool::Status> {
+        None
+    }
+
+    fn box_clone(&self) -> Box<dyn DbClient>;
 }
 
 impl Clone for Box<dyn DbClient> {

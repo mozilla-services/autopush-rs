@@ -197,7 +197,7 @@ impl WebPushRouter {
         self.metrics.incr("updates.client.host_gone").ok();
         let removed = self
             .db
-            .remove_node_id(&user.uaid, node_id, user.connected_at)
+            .remove_node_id(&user.uaid, node_id, user.connected_at, &user.version)
             .await?;
         if !removed {
             debug!("✉ The node id was not removed");
@@ -233,7 +233,7 @@ impl WebPushRouter {
             .send();
 
         RouterResponse {
-            status,
+            status: actix_http::StatusCode::from_u16(status.as_u16()).unwrap_or_default(),
             headers: {
                 let mut map = HashMap::new();
                 map.insert(

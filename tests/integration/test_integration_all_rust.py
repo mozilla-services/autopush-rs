@@ -1,6 +1,4 @@
-"""
-Rust Connection and Endpoint Node Integration Tests
-"""
+"""Rust Connection and Endpoint Node Integration Tests."""
 
 import base64
 import copy
@@ -23,23 +21,24 @@ from urllib.parse import urlparse
 
 import bottle
 import ecdsa
+import httpx
 import psutil
-import requests
+import pytest
 import twisted.internet.base
-import websocket
 from cryptography.fernet import Fernet
 from jose import jws
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet.threads import deferToThread
 from twisted.trial import unittest
 
+from .async_push_test_client import AsyncPushTestClient
 from .db import (
     DynamoDBResource,
     base64url_encode,
     create_message_table_ddb,
     get_router_table,
 )
+from .push_test_client import ClientMessageType, PushTestClient
 
 app = bottle.Bottle()
 logging.basicConfig(level=logging.DEBUG)
@@ -95,6 +94,7 @@ RUST_LOG = ",".join(log_string) + ",error"
 
 
 def get_free_port() -> int:
+    """Get free port."""
     port: int
     s = socket.socket(socket.AF_INET, type=socket.SOCK_STREAM)
     s.bind(("localhost", 0))
@@ -110,6 +110,7 @@ If that points to a file, read the settings from that file.
 
 
 def get_db_settings() -> str | dict[str, str | int | float] | None:
+    """Get database settings."""
     env_var = os.environ.get("DB_SETTINGS")
     if env_var:
         if os.path.isfile(env_var):
@@ -192,254 +193,14 @@ ENDPOINT_CONFIG = dict(
 )
 
 
-class Client(object):
-    """Test Client"""
-
-    def __init__(self, url) -> None:
-        self.url: str = url
-        self.uaid: uuid.UUID | None = None
-        self.ws: websocket.WebSocket | None = None
-        self.use_webpush: bool = True
-        self.channels: dict[str, str] = {}
-        self.messages: dict[str, str] = {}
-        self.notif_response: requests.Response | None = None
-        self._crypto_key: str = """\
-keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
-"""
-        self.headers: dict[str, str] = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) "
-            "Gecko/20100101 Firefox/61.0"
-        }
-
-    def __getattribute__(self, name: str):
-        # Python fun to turn all functions into deferToThread functions
-        f = object.__getattribute__(self, name)
-        if name.startswith("__"):
-            return f
-
-        if callable(f):
-            return lambda *args, **kwargs: deferToThread(f, *args, **kwargs)
-        else:
-            return f
-
-    def connect(self, connection_port: int | None = None):
-        url = self.url
-        if connection_port:  # pragma: nocover
-            url = "ws://localhost:{}/".format(connection_port)
-        self.ws = websocket.create_connection(url, header=self.headers)
-        return self.ws.connected if self.ws else None
-
-    def hello(self, uaid: str | None = None, services: list[str] | None = None):
-        if not self.ws:
-            raise Exception("WebSocket client not available as expected")
-
-        if self.channels:
-            chans = list(self.channels.keys())
-        else:
-            chans = []
-        hello_dict: dict[str, Any] = dict(messageType="hello", use_webpush=True, channelIDs=chans)
-        if uaid or self.uaid:
-            hello_dict["uaid"] = uaid or self.uaid
-        if services:  # pragma: nocover
-            hello_dict["broadcasts"] = services
-        msg = json.dumps(hello_dict)
-        log.debug("Send: %s", msg)
-        self.ws.send(msg)
-        reply = self.ws.recv()
-        log.debug(f"Recv: {reply!r} ({len(reply)})")
-        result = json.loads(reply)
-        assert result["status"] == 200
-        assert "-" not in result["uaid"]
-        if self.uaid and self.uaid != result["uaid"]:  # pragma: nocover
-            log.debug(
-                "Mismatch on re-using uaid. Old: %s, New: %s",
-                self.uaid,
-                result["uaid"],
-            )
-            self.channels = {}
-        self.uaid = result["uaid"]
-        return result
-
-    def broadcast_subscribe(self, services: list[str]):
-        if not self.ws:
-            raise Exception("WebSocket client not available as expected")
-
-        msg = json.dumps(dict(messageType="broadcast_subscribe", broadcasts=services))
-        log.debug("Send: %s", msg)
-        self.ws.send(msg)
-
-    def register(self, chid: str | None = None, key=None, status=200):
-        if not self.ws:
-            raise Exception("WebSocket client not available as expected")
-
-        chid = chid or str(uuid.uuid4())
-        msg = json.dumps(dict(messageType="register", channelID=chid, key=key))
-        log.debug("Send: %s", msg)
-        self.ws.send(msg)
-        rcv = self.ws.recv()
-        result = json.loads(rcv)
-        log.debug("Recv: %s", result)
-        assert result["status"] == status
-        assert result["channelID"] == chid
-        if status == 200:
-            self.channels[chid] = result["pushEndpoint"]
-        return result
-
-    def unregister(self, chid):
-        msg = json.dumps(dict(messageType="unregister", channelID=chid))
-        log.debug("Send: %s", msg)
-        self.ws.send(msg)
-        result = json.loads(self.ws.recv())
-        log.debug("Recv: %s", result)
-        return result
-
-    def delete_notification(self, channel, message=None, status=204):
-        messages = self.messages[channel]
-        if not message:
-            message = random.choice(messages)
-
-        log.debug("Delete: %s", message)
-        url = urlparse(message)
-        resp = requests.delete(url=url.geturl())
-        assert resp.status_code == status
-
-    def send_notification(
-        self,
-        channel=None,
-        version=None,
-        data=None,
-        use_header=True,
-        status=None,
-        ttl=200,
-        timeout=0.2,
-        vapid=None,
-        endpoint=None,
-        topic=None,
-        headers=None,
-    ):
-        if not channel:
-            channel = random.choice(list(self.channels.keys()))
-
-        endpoint = endpoint or self.channels[channel]
-        url = urlparse(endpoint)
-
-        headers = {}
-        if ttl is not None:
-            headers = {"TTL": str(ttl)}
-        if use_header:
-            headers.update(
-                {
-                    "Content-Type": "application/octet-stream",
-                    "Content-Encoding": "aesgcm",
-                    "Encryption": self._crypto_key,
-                    "Crypto-Key": 'keyid="a1"; dh="JcqK-OLkJZlJ3sJJWstJCA"',
-                }
-            )
-        if vapid:
-            headers.update({"Authorization": "Bearer " + vapid.get("auth")})
-            ckey = 'p256ecdsa="' + vapid.get("crypto-key") + '"'
-            headers.update({"Crypto-Key": headers.get("Crypto-Key", "") + ";" + ckey})
-        if topic:
-            headers["Topic"] = topic
-        body = data or ""
-        method = "POST"
-        # 202 status reserved for yet to be implemented push w/ reciept.
-        status = status or 201
-
-        log.debug("%s body: %s", method, body)
-        log.debug("  headers: %s", headers)
-        resp = requests.request(method=method, url=url.geturl(), data=body, headers=headers)
-        log.debug("%s Response (%s): %s", method, resp.status_code, resp.text)
-        assert resp.status_code == status, "Expected %d, got %d" % (
-            status,
-            resp.status_code,
-        )
-        self.notif_response = resp
-        location = resp.headers.get("Location", None)
-        log.debug("Response Headers: %s", resp.headers)
-        if status >= 200 and status < 300:
-            assert location is not None
-        if status == 201 and ttl is not None:
-            ttl_header = resp.headers.get("TTL")
-            assert ttl_header == str(ttl)
-        if ttl != 0 and status == 201:
-            assert location is not None
-            if channel in self.messages:
-                self.messages[channel].append(location)
-            else:
-                self.messages[channel] = [location]
-        # Pull the notification if connected
-        if self.ws and self.ws.connected:
-            return object.__getattribute__(self, "get_notification")(timeout)
-        else:
-            return resp
-
-    def get_notification(self, timeout=1):
-        orig_timeout = self.ws.gettimeout()
-        self.ws.settimeout(timeout)
-        try:
-            d = self.ws.recv()
-            log.debug("Recv: %s", d)
-            return json.loads(d)
-        except Exception:
-            return None
-        finally:
-            self.ws.settimeout(orig_timeout)
-
-    def get_broadcast(self, timeout=1):  # pragma: nocover
-        orig_timeout = self.ws.gettimeout()
-        self.ws.settimeout(timeout)
-        try:
-            d = self.ws.recv()
-            log.debug("Recv: %s", d)
-            result = json.loads(d)
-            assert result.get("messageType") == "broadcast"
-            return result
-        except Exception as ex:  # pragma: nocover
-            log.error("Error: {}".format(ex))
-            return None
-        finally:
-            self.ws.settimeout(orig_timeout)
-
-    def ping(self):
-        log.debug("Send: %s", "{}")
-        self.ws.send("{}")
-        result = self.ws.recv()
-        log.debug("Recv: %s", result)
-        assert result == "{}"
-        return result
-
-    def ack(self, channel, version):
-        msg = json.dumps(
-            dict(
-                messageType="ack",
-                updates=[dict(channelID=channel, version=version)],
-            )
-        )
-        log.debug("Send: %s", msg)
-        self.ws.send(msg)
-
-    def disconnect(self):
-        self.ws.close()
-
-    def sleep(self, duration: int):  # pragma: nocover
-        time.sleep(duration)
-
-    def wait_for(self, func):
-        """Waits several seconds for a function to return True"""
-        times = 0
-        while not func():  # pragma: nocover
-            time.sleep(1)
-            times += 1
-            if times > 9:  # pragma: nocover
-                break
-
-
 def _get_vapid(
     key: ecdsa.SigningKey | None = None,
     payload: dict[str, str | int] | None = None,
     endpoint: str | None = None,
 ) -> dict[str, str | bytes]:
+    """Get VAPID information, including the `Authorization` header string,
+    public and private keys.
+    """
     global CONNECTION_CONFIG
 
     if endpoint is None:
@@ -465,12 +226,14 @@ def _get_vapid(
 
 
 def enqueue_output(out, queue):
+    """Add lines from the out buffer to the provided queue."""
     for line in iter(out.readline, ""):
         queue.put(line)
     out.close()
 
 
 def print_lines_in_queues(queues, prefix):
+    """Print lines in queues to stdout."""
     for queue in queues:
         is_empty = False
         while not is_empty:
@@ -516,6 +279,8 @@ def max_logs(endpoint=None, conn=None):
     """
 
     def max_logs_decorator(func):
+        """Overwrite `max_endpoint_logs` with a given endpoint if it is specified."""
+
         def wrapper(self, *args, **kwargs):
             if endpoint is not None:
                 self.max_endpoint_logs = endpoint
@@ -530,24 +295,22 @@ def max_logs(endpoint=None, conn=None):
 
 @app.get("/v1/broadcasts")
 def broadcast_handler():
+    """Broadcast handler setup."""
     assert bottle.request.headers["Authorization"] == MOCK_MP_TOKEN
     MOCK_MP_POLLED.set()
     return dict(broadcasts=MOCK_MP_SERVICES)
 
 
 @app.post("/api/1/envelope/")
-def sentry_handler():
+def sentry_handler() -> dict[str, str]:
+    """Sentry handler configuration."""
     headers, item_headers, payload = bottle.request.body.read().splitlines()
     MOCK_SENTRY_QUEUE.put(json.loads(payload))
     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
 
 
-class CustomClient(Client):
-    def send_bad_data(self):
-        self.ws.send("bad-data")
-
-
 def kill_process(process):
+    """Kill child processes."""
     # This kinda sucks, but its the only way to nuke the child procs
     if process is None:
         return
@@ -559,6 +322,9 @@ def kill_process(process):
 
 
 def get_rust_binary_path(binary):
+    """Get path to pre-built Rust binary.
+    This presumes that the application has already been built with proper features.
+    """
     global STRICT_LOG_COUNTS
 
     rust_bin = root_dir + "/target/release/{}".format(binary)
@@ -578,6 +344,7 @@ def get_rust_binary_path(binary):
 
 
 def write_config_to_env(config, prefix):
+    """Write configurations to application read environment variables."""
     for key, val in config.items():
         new_key = prefix + key
         log.debug("✍ config {} => {}".format(new_key, val))
@@ -585,6 +352,7 @@ def write_config_to_env(config, prefix):
 
 
 def capture_output_to_queue(output_stream):
+    """Capture output to log queue."""
     log_queue = Queue()
     t = Thread(target=enqueue_output, args=(output_stream, log_queue))
     t.daemon = True  # thread dies with the program
@@ -593,9 +361,13 @@ def capture_output_to_queue(output_stream):
 
 
 def setup_bt():
+    """Set up BigTable emulator."""
     global BT_PROCESS, BT_DB_SETTINGS
     log.debug("🐍🟢 Starting bigtable emulator")
-    BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))
+    # All calls to subprocess module for setup. Not passing untrusted input.
+    # Will look at future replacement when moving to Docker.
+    # https://bandit.readthedocs.io/en/latest/plugins/b603_subprocess_without_shell_equals_true.html
+    BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))  # nosec
     os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
     try:
         BT_DB_SETTINGS = os.environ.get(
@@ -609,7 +381,7 @@ def setup_bt():
         # Note: This will produce an emulator that runs on DB_DSN="grpc://localhost:8086"
         # using a Table Name of "projects/test/instances/test/tables/autopush"
         log.debug("🐍🟢 Setting up bigtable")
-        vv = subprocess.call([SETUP_BT_SH])
+        vv = subprocess.call([SETUP_BT_SH])  # nosec
         log.debug(vv)
     except Exception as e:
         log.error("Bigtable Setup Error {}", e)
@@ -617,6 +389,7 @@ def setup_bt():
 
 
 def setup_dynamodb():
+    """Set up DynamoDB emulator."""
     global DDB_PROCESS
 
     log.debug("🐍🟢 Starting dynamodb")
@@ -631,7 +404,7 @@ def setup_dynamodb():
                 "-inMemory",
             ]
         )
-        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)
+        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
         os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
     else:
         print("Using existing DynamoDB instance")
@@ -643,6 +416,7 @@ def setup_dynamodb():
 
 
 def setup_mock_server():
+    """Set up mock server."""
     global MOCK_SERVER_THREAD
 
     MOCK_SERVER_THREAD = Thread(target=app.run, kwargs=dict(port=MOCK_SERVER_PORT, debug=True))
@@ -654,6 +428,7 @@ def setup_mock_server():
 
 
 def setup_connection_server(connection_binary):
+    """Set up connection server from config."""
     global CN_SERVER, BT_PROCESS, DDB_PROCESS
 
     # NOTE:
@@ -683,7 +458,7 @@ def setup_connection_server(connection_binary):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True,
-    )
+    )  # nosec
 
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(CN_SERVER.stdout)
@@ -692,6 +467,7 @@ def setup_connection_server(connection_binary):
 
 
 def setup_megaphone_server(connection_binary):
+    """Set up megaphone server from configuration."""
     global CN_MP_SERVER
 
     url = os.getenv("AUTOPUSH_MP_SERVER")
@@ -711,10 +487,11 @@ def setup_megaphone_server(connection_binary):
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
     log.debug("🐍🟢 Starting Megaphone server: {}".format(" ".join(cmd)))
-    CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)
+    CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
 
 
 def setup_endpoint_server():
+    """Set up endpoint server from configuration."""
     global CONNECTION_CONFIG, EP_SERVER, BT_PROCESS
 
     # Set up environment
@@ -746,7 +523,7 @@ def setup_endpoint_server():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True,
-    )
+    )  # nosec
 
     # Spin up the readers to dump the output from stdout/stderr
     out_q = capture_output_to_queue(EP_SERVER.stdout)
@@ -755,6 +532,9 @@ def setup_endpoint_server():
 
 
 def setup_module():
+    """Set up module including BigTable or Dynamo
+    and connection, endpoint and megaphone servers.
+    """
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, STRICT_LOG_COUNTS, RUST_LOG
 
     if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
@@ -787,6 +567,7 @@ def setup_module():
 
 
 def teardown_module():
+    """Teardown module for dynamo, bigtable, and servers."""
     if DDB_PROCESS:
         os.unsetenv("AWS_LOCAL_DYNAMODB")
         log.debug("🐍🔴 Stopping dynamodb")
@@ -804,6 +585,8 @@ def teardown_module():
 
 
 class TestRustWebPush(unittest.TestCase):
+    """Test class for Rust Web Push."""
+
     # Max log lines allowed to be emitted by each node type
     max_endpoint_logs = 8
     max_conn_logs = 3
@@ -813,18 +596,23 @@ class TestRustWebPush(unittest.TestCase):
     }
 
     def tearDown(self):
+        """Tear down and log processing."""
         process_logs(self)
         while not MOCK_SENTRY_QUEUE.empty():
             MOCK_SENTRY_QUEUE.get_nowait()
 
     def host_endpoint(self, client):
+        """Return host endpoint."""
         parsed = urlparse(list(client.channels.values())[0])
         return "{}://{}".format(parsed.scheme, parsed.netloc)
 
     @inlineCallbacks
     def quick_register(self):
+        """Perform a connection initialization, which includes a new connection,
+        `hello`, and channel registration.
+        """
         log.debug("🐍#### Connecting to ws://localhost:{}/".format(CONNECTION_PORT))
-        client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
+        client = PushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
         yield client.register()
@@ -833,6 +621,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def shut_down(self, client=None):
+        """Shut down client."""
         if client:
             yield client.disconnect()
 
@@ -843,18 +632,19 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_sentry_output_autoconnect(self):
+        """Test sentry output for autoconnect."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
         # Ensure bad data doesn't throw errors
-        client = CustomClient(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         yield client.hello()
         yield client.send_bad_data()
         yield self.shut_down(client)
 
         # LogCheck does throw an error every time
-        requests.get("http://localhost:{}/v1/err/crit".format(CONNECTION_PORT))
+        httpx.get(f"http://localhost:{CONNECTION_PORT}/v1/err/crit", timeout=30)
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # new autoconnect emits 2 events
         try:
@@ -866,6 +656,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=1)
     def test_sentry_output_autoendpoint(self):
+        """Test sentry output for autoendpoint."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
@@ -874,7 +665,7 @@ class TestRustWebPush(unittest.TestCase):
         endpoint = self.host_endpoint(client)
         yield self.shut_down(client)
 
-        requests.get("{}/__error__".format(endpoint))
+        httpx.get(f"{endpoint}/__error__", timeout=30)
         # 2 events excpted: 1 from a panic and 1 from a returned Error
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         event2 = MOCK_SENTRY_QUEUE.get(timeout=1)
@@ -886,13 +677,14 @@ class TestRustWebPush(unittest.TestCase):
 
     @max_logs(conn=4)
     def test_no_sentry_output(self):
+        """Test for no Sentry output."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
         ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
         try:
-            requests.get(ws_url)
-        except requests.exceptions.ConnectionError:
+            httpx.get(ws_url, timeout=30)
+        except httpx.ConnectError:
             pass
         try:
             data = MOCK_SENTRY_QUEUE.get(timeout=1)
@@ -902,7 +694,8 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_hello_echo(self):
-        client = Client(self._ws_url)
+        """Test hello echo."""
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello()
         assert result != {}
@@ -911,8 +704,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_hello_with_bad_prior_uaid(self):
+        """Test hello with bad prior uaid."""
         non_uaid = uuid.uuid4().hex
-        client = Client(self._ws_url)
+        client = PushTestClient(self._ws_url)
         yield client.connect()
         result = yield client.hello(uaid=non_uaid)
         assert result != {}
@@ -922,8 +716,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery(self):
+        """Test basic regular push message delivery."""
         data = str(uuid.uuid4())
-        client: Client = yield self.quick_register()
+        client: PushTestClient = yield self.quick_register()
         result = yield client.send_notification(data=data)
         # the following presumes that only `salt` is padded.
         clean_header = client._crypto_key.replace('"', "").rstrip("=")
@@ -934,6 +729,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_basic_delivery(self):
+        """Test basic topic push message delivery."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, topic="Inbox")
@@ -946,6 +742,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_replacement_delivery(self):
+        """Test that a topic push message replaces it's prior version."""
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -968,6 +765,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_topic_no_delivery_on_reconnect(self):
+        """Test that a topic message does not attempt to redeliver on reconnect."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -993,6 +791,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_vapid(self):
+        """Test delivery of a basic push message with a VAPID header."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload)
@@ -1006,6 +805,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid(self):
+        """Test basic delivery with invalid VAPID header."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
@@ -1015,6 +815,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_exp(self):
+        """Test basic delivery of a push message with invalid VAPID `exp` assertion."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1030,6 +831,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_auth(self):
+        """Test basic delivery with invalid VAPID auth."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1042,6 +844,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_signature(self):
+        """Test that a basic delivery with invalid VAPID signature fails."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(
@@ -1056,6 +859,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_basic_delivery_with_invalid_vapid_ckey(self):
+        """Test that basic delivery with invalid VAPID crypto-key fails."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
@@ -1065,6 +869,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_delivery_repeat_without_ack(self):
+        """Test that message delivery repeats if the client does not acknowledge messages."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1086,6 +891,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_repeat_delivery_with_disconnect_without_ack(self):
+        """Test that message delivery repeats if the client disconnects
+        without acknowledging the message.
+        """
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data)
@@ -1101,6 +909,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_multiple_delivery_repeat_without_ack(self):
+        """Test that the server will always try to deliver messages
+        until the client acknowledges them.
+        """
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
         client = yield self.quick_register()
@@ -1130,6 +941,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_topic_expired(self):
+        """Test that the server will not deliver a message topic that has expired."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1148,6 +960,11 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(conn=4)
     def test_multiple_delivery_with_single_ack(self):
+        """Test that the server provides the right unacknowledged messages
+        if the client only acknowledges one of the received messages.
+        Note: the `data` fields are constructed so that they return
+        `FirstMessage` and `OtherMessage`, which may be useful for debugging.
+        """
         data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
         data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
         client = yield self.quick_register()
@@ -1188,6 +1005,11 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_multiple_delivery_with_multiple_ack(self):
+        """Test that the server provides the no additional unacknowledged messages
+        if the client acknowledges both of the received messages.
+        Note: the `data` fields are constructed so that they return
+        `FirstMessage` and `OtherMessage`, which may be useful for debugging.
+        """
         data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "FirstMessage"
         data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "OtherMessage"
         client = yield self.quick_register()
@@ -1216,8 +1038,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_no_delivery_to_unregistered(self):
+        """Test that the server does not try to deliver to unregistered channel IDs."""
         data = str(uuid.uuid4())
-        client: Client = yield self.quick_register()
+        client: PushTestClient = yield self.quick_register()
         assert client.channels
         chan = list(client.channels.keys())[0]
 
@@ -1237,6 +1060,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_0_connected(self):
+        """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, ttl=0)
@@ -1250,6 +1074,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_0_not_connected(self):
+        """Test that a message with a TTL=0 and a recipient client that is not connected,
+        is not delivered when the client reconnects.
+        """
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1262,6 +1089,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_ttl_expired(self):
+        """Test that messages with a TTL that has expired are not delivered
+        to a recipient client.
+        """
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         yield client.disconnect()
@@ -1276,6 +1106,10 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=28)
     def test_ttl_batch_expired_and_good_one(self):
+        """Test that if a batch of messages are received while the recipient is offline,
+        only messages that have not expired are sent to the recipient.
+        This test checks if the latest pending message is not expired.
+        """
         data = str(uuid.uuid4()).encode()
         data2 = base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode()
         print(data2)
@@ -1303,6 +1137,10 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=28)
     def test_ttl_batch_partly_expired_and_good_one(self):
+        """Test that if a batch of messages are received while the recipient is offline,
+        only messages that have not expired are sent to the recipient.
+        This test checks if there is an equal mix of expired and unexpired messages.
+        """
         data = str(uuid.uuid4())
         data1 = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
@@ -1339,6 +1177,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_message_without_crypto_headers(self):
+        """Test that a message without crypto headers, but has data is not accepted."""
         data = str(uuid.uuid4())
         client = yield self.quick_register()
         result = yield client.send_notification(data=data, use_header=False, status=400)
@@ -1347,6 +1186,7 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_empty_message_without_crypto_headers(self):
+        """Test that a message without crypto headers, and does not have data, is accepted."""
         client = yield self.quick_register()
         result = yield client.send_notification(use_header=False)
         assert result is not None
@@ -1369,6 +1209,9 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_empty_message_with_crypto_headers(self):
+        """Test that an empty message with crypto headers does not send either `headers`
+        or `data` as part of the incoming websocket `notification` message.
+        """
         client = yield self.quick_register()
         result = yield client.send_notification()
         assert result is not None
@@ -1429,24 +1272,27 @@ class TestRustWebPush(unittest.TestCase):
     # cause Client.delete_notification to fail.
 
     # Skipping test for now.
-    """
+    # Note: dict_keys obj was not iterable, corrected by converting to iterable.
     @inlineCallbacks
     def test_delete_saved_notification(self):
+        """Test deleting a saved notification in client server."""
         client = yield self.quick_register()
         yield client.disconnect()
         assert client.channels
-        chan = client.channels.keys()[0]
+        chan = list(client.channels.keys())[0]
         yield client.send_notification()
-        yield client.delete_notification(chan, status=204)
+        status_code: int = 204
+        delete_resp = yield client.delete_notification(chan, status=status_code)
+        assert delete_resp.status_code == status_code
         yield client.connect()
         yield client.hello()
         result = yield client.get_notification()
         assert result is None
         yield self.shut_down(client)
-    # """
 
     @inlineCallbacks
     def test_with_key(self):
+        """Test getting a locked subscription with a valid VAPID public key."""
         private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
         claims = {
             "aud": "http://localhost:{}".format(ENDPOINT_PORT),
@@ -1456,10 +1302,10 @@ class TestRustWebPush(unittest.TestCase):
         vapid = _get_vapid(private_key, claims)
         pk_hex = vapid["crypto-key"]
         chid = str(uuid.uuid4())
-        client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
+        client = PushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
-        yield client.register(chid=chid, key=pk_hex)
+        yield client.register(channel_id=chid, key=pk_hex)
 
         # Send an update with a properly formatted key.
         yield client.send_notification(vapid=vapid)
@@ -1474,11 +1320,12 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_with_bad_key(self):
+        """Test that a message registration request with bad VAPID public key is rejected."""
         chid = str(uuid.uuid4())
-        client = Client("ws://localhost:{}/".format(CONNECTION_PORT))
+        client = PushTestClient("ws://localhost:{}/".format(CONNECTION_PORT))
         yield client.connect()
         yield client.hello()
-        result = yield client.register(chid=chid, key="af1883%&!@#*(", status=400)
+        result = yield client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
         assert result["status"] == 400
 
         yield self.shut_down(client)
@@ -1486,7 +1333,7 @@ class TestRustWebPush(unittest.TestCase):
     @inlineCallbacks
     @max_logs(endpoint=44)
     def test_msg_limit(self):
-        self.skipTest("known broken")
+        """Test that sent messages that are larger than our size limit are rejected."""
         client = yield self.quick_register()
         uaid = client.uaid
         yield client.disconnect()
@@ -1507,8 +1354,10 @@ class TestRustWebPush(unittest.TestCase):
 
     @inlineCallbacks
     def test_can_ping(self):
+        """Test that the client can send an active ping message and get a valid response."""
         client = yield self.quick_register()
-        yield client.ping()
+        result = yield client.ping()
+        assert result == "{}"
         assert client.ws.connected
         try:
             yield client.ping()
@@ -1532,54 +1381,60 @@ class TestRustWebPush(unittest.TestCase):
             url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
             # First ensure the endpoint we're testing for on the public port exists where
             # we expect it on the internal ROUTER_PORT
-            requests.put(url).raise_for_status()
+            httpx.put(url, timeout=30).raise_for_status()
 
         try:
-            requests.put(parsed.geturl()).raise_for_status()
-        except requests.exceptions.ConnectionError:
+            httpx.put(parsed.geturl(), timeout=30).raise_for_status()
+        except httpx.ConnectError:
             pass
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPError as e:
             assert e.response.status_code == 404
         else:
             assert False
 
 
-class TestRustWebPushBroadcast(unittest.TestCase):
+class TestRustWebPushBroadcast:
+    """Test class for Rust Web Push Broadcast."""
+
     max_endpoint_logs = 4
     max_conn_logs = 1
 
     def tearDown(self):
+        """Tear down."""
         process_logs(self)
 
-    @inlineCallbacks
-    def quick_register(self, connection_port=None):
+    @pytest.mark.asyncio
+    async def quick_register(self, connection_port=None):
+        """Connect and register client."""
         conn_port = connection_port or MP_CONNECTION_PORT
-        client = Client("ws://localhost:{}/".format(conn_port))
-        yield client.connect()
-        yield client.hello()
-        yield client.register()
+        client = AsyncPushTestClient(f"ws://localhost:{conn_port}/")
+        await client.connect()
+        await client.hello()
+        await client.register()
         returnValue(client)
 
-    @inlineCallbacks
-    def shut_down(self, client=None):
+    @pytest.mark.asyncio
+    async def shut_down(self, client=None):
+        """Shut down client connection."""
         if client:
-            yield client.disconnect()
+            await client.disconnect()
 
     @property
     def _ws_url(self):
-        return "ws://localhost:{}/".format(MP_CONNECTION_PORT)
+        return f"ws://localhost:{MP_CONNECTION_PORT}/"
 
-    @inlineCallbacks
-    def test_broadcast_update_on_connect(self):
+    @pytest.mark.asyncio
+    async def test_broadcast_update_on_connect(self):
+        """Test that the client receives any pending broadcast updates on connect."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0"}
-        client = Client(self._ws_url)
-        yield client.connect()
-        result = yield client.hello(services=old_ver)
+        client = AsyncPushTestClient(self._ws_url)
+        await client.connect()
+        result = await client.hello(services=old_ver)
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
@@ -1588,91 +1443,101 @@ class TestRustWebPushBroadcast(unittest.TestCase):
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
-        result = yield client.get_broadcast(2)
+        result = await client.get_broadcast(2)
+        assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
-        yield self.shut_down(client)
+        await self.shut_down(client)
 
-    @inlineCallbacks
-    def test_broadcast_update_on_connect_with_errors(self):
+    @pytest.mark.asyncio
+    async def test_broadcast_update_on_connect_with_errors(self):
+        """Test that the client can receive broadcast updates on connect
+        that may have produced internal errors.
+        """
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        client = Client(self._ws_url)
-        yield client.connect()
-        result = yield client.hello(services=old_ver)
+        client = AsyncPushTestClient(self._ws_url)
+        await client.connect()
+        result = await client.hello(services=old_ver)
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
-        yield self.shut_down(client)
+        await self.shut_down(client)
 
-    @inlineCallbacks
-    def test_broadcast_subscribe(self):
+    @pytest.mark.asyncio
+    async def test_broadcast_subscribe(self):
+        """Test that the client can subscribe to new broadcasts."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0"}
-        client = Client(self._ws_url)
-        yield client.connect()
-        result = yield client.hello()
+        client = AsyncPushTestClient(self._ws_url)
+        await client.connect()
+        result = await client.hello()
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
-        client.broadcast_subscribe(old_ver)
-        result = yield client.get_broadcast()
+        await client.broadcast_subscribe(old_ver)
+        result = await client.get_broadcast()
+        assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver1"
 
         MOCK_MP_SERVICES = {"kinto:123": "ver2"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
-        result = yield client.get_broadcast(2)
+        result = await client.get_broadcast(2)
+        assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
-        yield self.shut_down(client)
+        await self.shut_down(client)
 
-    @inlineCallbacks
-    def test_broadcast_subscribe_with_errors(self):
+    @pytest.mark.asyncio
+    async def test_broadcast_subscribe_with_errors(self):
+        """Test that broadcast returns expected errors."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        client = Client(self._ws_url)
-        yield client.connect()
-        result = yield client.hello()
+        client = AsyncPushTestClient(self._ws_url)
+        await client.connect()
+        result = await client.hello()
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
-        client.broadcast_subscribe(old_ver)
-        result = yield client.get_broadcast()
+        await client.broadcast_subscribe(old_ver)
+        result = await client.get_broadcast()
+        assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
 
-        yield self.shut_down(client)
+        await self.shut_down(client)
 
-    @inlineCallbacks
-    def test_broadcast_no_changes(self):
+    @pytest.mark.asyncio
+    async def test_broadcast_no_changes(self):
+        """Test to ensure there are no changes from broadcast."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver1"}
-        client = Client(self._ws_url)
-        yield client.connect()
-        result = yield client.hello(services=old_ver)
+        client = AsyncPushTestClient(self._ws_url)
+        await client.connect()
+        result = await client.hello(services=old_ver)
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
-        yield self.shut_down(client)
+        await self.shut_down(client)

@@ -148,7 +148,7 @@ impl Router for AdmRouter {
             );
             user.router_data = Some(router_data);
 
-            if !self.db.update_user(&user).await? {
+            if !self.db.update_user(&mut user).await? {
                 // Unlikely to occur on mobile records
                 return Err(ApiErrorKind::General("Conditional update failed".to_owned()).into());
             }

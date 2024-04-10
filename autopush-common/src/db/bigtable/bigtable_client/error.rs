@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 use backtrace::Backtrace;
+use deadpool::managed::{PoolError, TimeoutType};
 use thiserror::Error;
 
 use crate::errors::ReportableError;
@@ -98,6 +99,9 @@ pub enum BigTableError {
     #[error("Bigtable write error: {0}")]
     Write(#[source] grpcio::Error),
 
+    #[error("GRPC Error: {0}")]
+    GRPC(#[source] grpcio::Error),
+
     /// Return a GRPC status code and any message.
     /// See https://grpc.github.io/grpc/core/md_doc_statuscodes.html
     #[error("Bigtable status response: {0:?}")]
@@ -106,12 +110,16 @@ pub enum BigTableError {
     #[error("BigTable Admin Error: {0}")]
     Admin(String, Option<String>),
 
-    #[error("Bigtable Recycle request")]
-    Recycle,
-
-    /// General Pool builder errors.
+    /// General Pool errors
     #[error("Pool Error: {0}")]
-    Pool(String),
+    Pool(Box<PoolError<BigTableError>>),
+
+    /// Timeout occurred while getting a pooled connection
+    #[error("Pool Timeout: {0:?}")]
+    PoolTimeout(TimeoutType),
+
+    #[error("BigTable config error: {0}")]
+    Config(String),
 }
 
 impl ReportableError for BigTableError {
@@ -124,13 +132,15 @@ impl ReportableError for BigTableError {
     }
 
     fn is_sentry_event(&self) -> bool {
-        // eventually, only capture important errors
-        //matches!(&self, BigTableError::Admin(_, _))
-        true
+        #[allow(clippy::match_like_matches_macro)]
+        match self {
+            BigTableError::PoolTimeout(_) => false,
+            _ => true,
+        }
     }
 
     fn metric_label(&self) -> Option<&'static str> {
-        let err = match &self {
+        let err = match self {
             BigTableError::InvalidRowResponse(_) => "storage.bigtable.error.invalid_row_response",
             BigTableError::InvalidChunk(_) => "storage.bigtable.error.invalid_chunk",
             BigTableError::Read(_) => "storage.bigtable.error.read",
@@ -138,16 +148,27 @@ impl ReportableError for BigTableError {
             BigTableError::Status(_, _) => "storage.bigtable.error.status",
             BigTableError::WriteTime(_) => "storage.bigtable.error.writetime",
             BigTableError::Admin(_, _) => "storage.bigtable.error.admin",
-            BigTableError::Recycle => "storage.bigtable.error.recycle",
             BigTableError::Pool(_) => "storage.bigtable.error.pool",
+            BigTableError::PoolTimeout(_) => "storage.bigtable.error.pool_timeout",
+            BigTableError::GRPC(_) => "storage.bigtable.error.grpc",
+            BigTableError::Config(_) => "storage.bigtable.error.config",
         };
         Some(err)
     }
 
+    fn tags(&self) -> Vec<(&str, String)> {
+        #[allow(clippy::match_like_matches_macro)]
+        match self {
+            BigTableError::PoolTimeout(tt) => vec![("type", format!("{tt:?}").to_lowercase())],
+            _ => vec![],
+        }
+    }
+
     fn extras(&self) -> Vec<(&str, String)> {
-        match &self {
+        match self {
             BigTableError::InvalidRowResponse(s) => vec![("error", s.to_string())],
             BigTableError::InvalidChunk(s) => vec![("error", s.to_string())],
+            BigTableError::GRPC(s) => vec![("error", s.to_string())],
             BigTableError::Read(s) => vec![("error", s.to_string())],
             BigTableError::Write(s) => vec![("error", s.to_string())],
             BigTableError::Status(code, s) => {
@@ -161,7 +182,7 @@ impl ReportableError for BigTableError {
                 };
                 x
             }
-            BigTableError::Pool(s) => vec![("error", s.to_owned())],
+            BigTableError::Pool(e) => vec![("error", e.to_string())],
             _ => vec![],
         }
     }
