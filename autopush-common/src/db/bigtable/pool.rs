@@ -1,19 +1,21 @@
-use std::time::Instant;
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
+use actix_web::rt;
 use async_trait::async_trait;
 use cadence::StatsdClient;
-use deadpool::managed::{Manager, PoolConfig, Timeouts};
+use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, RecycleError, Timeouts};
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 
 use crate::db::bigtable::{bigtable_client::BigtableDb, BigTableDbSettings, BigTableError};
 use crate::db::error::{DbError, DbResult};
 use crate::db::DbSettings;
 
-use super::bigtable_client::error;
-
 const MAX_MESSAGE_LEN: i32 = 1 << 28; // 268,435,456 bytes
-const DEFAULT_GRPC_PORT: u16 = 8086;
+const DEFAULT_GRPC_PORT: u16 = 443;
 
 /// The pool of BigTable Clients.
 /// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
@@ -39,12 +41,12 @@ impl BigTablePool {
     /// Get a new managed object from the pool.
     pub async fn get(
         &self,
-    ) -> Result<deadpool::managed::Object<BigtableClientManager>, error::BigTableError> {
-        let obj = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| error::BigTableError::Pool(e.to_string()))?;
+    ) -> Result<deadpool::managed::Object<BigtableClientManager>, BigTableError> {
+        let obj = self.pool.get().await.map_err(|e| match e {
+            PoolError::Timeout(tt) => BigTableError::PoolTimeout(tt),
+            PoolError::Backend(e) => e,
+            e => BigTableError::Pool(Box::new(e)),
+        })?;
         debug!("🉑 Got db from pool");
         Ok(obj)
     }
@@ -87,33 +89,58 @@ impl BigTablePool {
         debug!("🉑 connection string {}", &connection);
 
         // Construct a new manager and put them in a pool for handling future requests.
-        let manager =
-            BigtableClientManager::new(&bt_settings, settings.dsn.clone(), connection.clone())?;
-        let mut config = PoolConfig::default();
+        let manager = BigtableClientManager::new(
+            &bt_settings,
+            settings.dsn.clone(),
+            connection.clone(),
+            metrics.clone(),
+        )?;
+        let mut config = PoolConfig {
+            // Prefer LIFO to allow the sweeper task to evict least frequently
+            // used connections
+            queue_mode: QueueMode::Lifo,
+            ..Default::default()
+        };
         if let Some(size) = bt_settings.database_pool_max_size {
             debug!("🏊 Setting pool max size {}", &size);
             config.max_size = size as usize;
         };
-        if !bt_settings.database_pool_connection_timeout.is_zero() {
-            debug!(
-                "🏊 Setting connection timeout to {} seconds",
-                &bt_settings.database_pool_connection_timeout.as_secs()
-            );
-            config.timeouts = Timeouts {
-                create: Some(bt_settings.database_pool_connection_timeout),
-                ..Default::default()
-            };
-        }
+        config.timeouts = Timeouts {
+            wait: bt_settings.database_pool_wait_timeout,
+            create: bt_settings.database_pool_create_timeout,
+            recycle: bt_settings.database_pool_recycle_timeout,
+        };
+        debug!("🏊 Timeouts: {:?}", &config.timeouts);
+
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
+            .runtime(deadpool::Runtime::Tokio1)
             .build()
-            .map_err(|e| DbError::BTError(BigTableError::Pool(e.to_string())))?;
+            .map_err(|e| DbError::BTError(BigTableError::Config(e.to_string())))?;
 
         Ok(Self {
             pool,
             _metrics: metrics.clone(),
         })
     }
+
+    /// Spawn a task to periodically evict idle connections
+    pub fn spawn_sweeper(&self, interval: Duration) {
+        let Some(max_idle) = self.pool.manager().settings.database_pool_max_idle else {
+            return;
+        };
+        let pool = self.pool.clone();
+        rt::spawn(async move {
+            loop {
+                sweeper(&pool, max_idle);
+                rt::time::sleep(interval).await;
+            }
+        });
+    }
+}
+
+fn sweeper(pool: &deadpool::managed::Pool<BigtableClientManager>, max_idle: Duration) {
+    pool.retain(|_, metrics| metrics.last_used() < max_idle);
 }
 
 /// BigTable Pool Manager. This contains everything needed to create a new connection.
@@ -121,6 +148,7 @@ pub struct BigtableClientManager {
     settings: BigTableDbSettings,
     dsn: Option<String>,
     connection: String,
+    metrics: Arc<StatsdClient>,
 }
 
 impl BigtableClientManager {
@@ -128,11 +156,13 @@ impl BigtableClientManager {
         settings: &BigTableDbSettings,
         dsn: Option<String>,
         connection: String,
-    ) -> Result<Self, DbError> {
+        metrics: Arc<StatsdClient>,
+    ) -> Result<Self, BigTableError> {
         Ok(Self {
             settings: settings.clone(),
             dsn,
             connection,
+            metrics,
         })
     }
 }
@@ -147,14 +177,18 @@ impl fmt::Debug for BigtableClientManager {
 
 #[async_trait]
 impl Manager for BigtableClientManager {
-    type Error = DbError;
+    type Error = BigTableError;
     type Type = BigtableDb;
 
     /// Create a new Bigtable Client with it's own channel.
     /// `BigtableClient` is the most atomic we can go.
-    async fn create(&self) -> Result<BigtableDb, DbError> {
+    async fn create(&self) -> Result<BigtableDb, Self::Error> {
         debug!("🏊 Create a new pool entry.");
-        let entry = BigtableDb::new(self.get_channel()?, &self.settings.metadata()?);
+        let entry = BigtableDb::new(
+            self.get_channel()?,
+            &self.settings.health_metadata()?,
+            &self.settings.table_name,
+        );
         debug!("🏊 Bigtable connection acquired");
         Ok(entry)
     }
@@ -165,38 +199,29 @@ impl Manager for BigtableClientManager {
         client: &mut Self::Type,
         metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        if !self.settings.database_pool_connection_ttl.is_zero()
-            && Instant::now() - metrics.created > self.settings.database_pool_connection_ttl
-        {
-            debug!("🏊 Recycle requested (old).");
-            return Err(DbError::BTError(BigTableError::Recycle).into());
+        if let Some(timeout) = self.settings.database_pool_connection_ttl {
+            if Instant::now() - metrics.created > timeout {
+                debug!("🏊 Recycle requested (old).");
+                return Err(RecycleError::Message("Connection too old".to_owned()));
+            }
         }
-        if !self.settings.database_pool_max_idle.is_zero() {
+        if let Some(timeout) = self.settings.database_pool_max_idle {
             if let Some(recycled) = metrics.recycled {
-                if Instant::now() - recycled > self.settings.database_pool_max_idle {
+                if Instant::now() - recycled > timeout {
                     debug!("🏊 Recycle requested (idle).");
-                    return Err(DbError::BTError(BigTableError::Recycle).into());
+                    return Err(RecycleError::Message("Connection too idle".to_owned()));
                 }
             }
         }
 
-        // Clippy 0.1.73 complains about the `.map_err` being hard to read.
-        // note, this changes to `blocks_in_conditions` for 1.76+
-        #[allow(clippy::blocks_in_conditions)]
         if !client
-            .health_check(&self.settings.table_name, &self.settings.profile_id)
+            .health_check(&self.metrics.clone(), &self.settings.profile_id)
             .await
-            .map_err(|e| {
-                debug!("🏊 Recycle requested (health). {:?}", e);
-                DbError::BTError(BigTableError::Recycle)
-            })?
+            .inspect_err(|e| debug!("🏊 Recycle requested (health). {:?}", e))?
         {
             debug!("🏊 Health check failed");
-            return Err(DbError::BTError(BigTableError::Recycle).into());
+            return Err(RecycleError::Message("Health check failed".to_owned()));
         }
-
-        // Bigtable does not offer a simple health check. A read or write operation would
-        // need to be performed.
 
         Ok(())
     }
@@ -220,14 +245,9 @@ impl BigtableClientManager {
         {
             debug!("🉑 Using emulator");
         } else {
-            chan = chan.set_credentials(ChannelCredentials::google_default_credentials().map_err(
-                |e| {
-                    BigTableError::Admin(
-                        "Could not set credentials".to_owned(),
-                        Some(e.to_string()),
-                    )
-                },
-            )?);
+            chan = chan.set_credentials(
+                ChannelCredentials::google_default_credentials().map_err(BigTableError::GRPC)?,
+            );
             debug!("🉑 Using real");
         }
         Ok(chan)

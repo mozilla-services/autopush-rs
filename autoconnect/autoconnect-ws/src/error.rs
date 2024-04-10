@@ -153,13 +153,13 @@ impl WSErrorKind {
 #[cfg(test)]
 mod tests {
     use autoconnect_ws_sm::__test_sm_reqwest_error;
-    use autopush_common::sentry::event_from_error;
+    use autopush_common::{db::error::DbError, sentry::event_from_error};
 
     use super::{WSError, WSErrorKind};
 
     #[actix_web::test]
     async fn sentry_event() {
-        // A chain of errors: SMError -> WSError -> reqwest::Error -> BadScheme
+        // A chain of errors: WSError -> SMError -> reqwest::Error -> BadScheme
         let e: WSError = WSErrorKind::SM(__test_sm_reqwest_error().await).into();
         let event = event_from_error(&e);
         assert_eq!(event.exception.len(), 4);
@@ -175,5 +175,18 @@ mod tests {
         // WSError
         assert_eq!(event.exception[3].ty, "WSError");
         assert_eq!(event.exception[3].stacktrace, None);
+    }
+
+    #[test]
+    fn sentry_event_with_extras() {
+        // A chain of errors: WSError -> SMError -> ac::DbError
+        let dbe = DbError::Integrity("foo".to_owned(), Some("bar".to_owned()));
+        let e: WSError = WSErrorKind::SM(dbe.into()).into();
+        let event = event_from_error(&e);
+        assert_eq!(event.exception.len(), 3);
+        assert_eq!(event.exception[0].ty, "Integrity");
+        assert_eq!(event.exception[1].ty, "SMError");
+        assert_eq!(event.exception[2].ty, "WSError");
+        assert_eq!(event.extra.get("row"), Some(&"bar".into()));
     }
 }

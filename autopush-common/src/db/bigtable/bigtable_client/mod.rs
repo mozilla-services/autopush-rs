@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use again::RetryPolicy;
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
 use futures_util::StreamExt;
@@ -14,7 +15,7 @@ use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use grpcio::{Channel, Metadata};
+use grpcio::{Channel, Metadata, RpcStatus, RpcStatusCode};
 use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
@@ -50,6 +51,8 @@ pub type FamilyId = String;
 const ROUTER_FAMILY: &str = "router";
 const MESSAGE_FAMILY: &str = "message"; // The default family for messages
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
+
+pub(crate) const RETRY_COUNT: usize = 5;
 
 /// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
 // TODO:Should we create something similar for ChannelID?
@@ -198,6 +201,92 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     })
 }
 
+pub fn retry_policy(max: usize) -> RetryPolicy {
+    RetryPolicy::default()
+        .with_max_retries(max)
+        .with_jitter(true)
+}
+
+fn retryable_internal_error(status: &RpcStatus) -> bool {
+    match status.code() {
+        RpcStatusCode::UNKNOWN => {
+            "error occurred when fetching oauth2 token." == status.message().to_ascii_lowercase()
+        }
+        RpcStatusCode::INTERNAL => [
+            "rst_stream",
+            "rst stream",
+            "received unexpected eos on data frame from server",
+        ]
+        .contains(&status.message().to_lowercase().as_str()),
+        RpcStatusCode::UNAVAILABLE | RpcStatusCode::DEADLINE_EXCEEDED => true,
+        _ => false,
+    }
+}
+
+pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
+    let mut metric = metrics
+        .incr_with_tags("database.retry")
+        .with_tag("error", err_type)
+        .with_tag("type", "bigtable");
+    if let Some(code) = code {
+        metric = metric.with_tag("code", code);
+    }
+    metric.send();
+}
+
+pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) -> bool {
+    move |err| {
+        debug!("🉑 Checking error...{err}");
+        match err {
+            grpcio::Error::RpcFailure(status) => {
+                info!("GRPC Failure :{:?}", status);
+                let retry = retryable_internal_error(status);
+                if retry {
+                    metric(&metrics, "RpcFailure", Some(&status.code().to_string()));
+                }
+                retry
+            }
+            grpcio::Error::BindFail(_) => {
+                metric(&metrics, "BindFail", None);
+                true
+            }
+            // The parameter here is a [grpcio_sys::grpc_call_error] enum
+            // Not all of these are retryable.
+            grpcio::Error::CallFailure(grpc_call_status) => {
+                let retry = grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR;
+                if retry {
+                    metric(
+                        &metrics,
+                        "CallFailure",
+                        Some(&format!("{:?}", grpc_call_status)),
+                    );
+                }
+                retry
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Determine if a router record is "incomplete" (doesn't include [User]
+/// columns):
+///
+/// They can be incomplete for a couple reasons:
+///
+/// 1) A migration code bug caused a few incomplete migrations where
+/// `add_channels` and `increment_storage` calls occurred when the migration's
+/// initial `add_user` was never completed:
+/// https://github.com/mozilla-services/autopush-rs/pull/640
+///
+/// 2) When router TTLs are eventually enabled: `add_channel` and
+/// `increment_storage` can write cells with later expiry times than the other
+/// router cells
+fn is_incomplete_router_record(cells: &HashMap<String, Vec<cell::Cell>>) -> bool {
+    cells
+        .keys()
+        .all(|k| ["current_timestamp", "version"].contains(&k.as_str()) || k.starts_with("chid:"))
+}
+
 fn call_opts(metadata: Metadata) -> ::grpcio::CallOption {
     ::grpcio::CallOption::default().headers(metadata)
 }
@@ -246,6 +335,11 @@ impl BigTableClientImpl {
         })
     }
 
+    /// Spawn a task to periodically evict idle connections
+    pub fn spawn_sweeper(&self, interval: Duration) {
+        self.pool.spawn_sweeper(interval);
+    }
+
     /// Return a ReadRowsRequest for a given row key
     fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
         read_row_request(
@@ -279,10 +373,15 @@ impl BigTableClientImpl {
         req: bigtable::MutateRowRequest,
     ) -> Result<(), error::BigTableError> {
         let bigtable = self.pool.get().await?;
-        bigtable
-            .conn
-            .mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
-            .map_err(error::BigTableError::Write)?
+        retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async {
+                    bigtable
+                        .conn
+                        .mutate_row_opt(&req, call_opts(self.metadata.clone()))
+                },
+                retryable_error(self.metrics.clone()),
+            )
             .await
             .map_err(error::BigTableError::Write)?;
         Ok(())
@@ -296,9 +395,16 @@ impl BigTableClientImpl {
     ) -> Result<(), error::BigTableError> {
         let bigtable = self.pool.get().await?;
         // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
-        let resp = bigtable
-            .conn
-            .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
+        let resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async {
+                    bigtable
+                        .conn
+                        .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
+                },
+                retryable_error(self.metrics.clone()),
+            )
+            .await
             .map_err(error::BigTableError::Write)?;
 
         // Scan the returned stream looking for errors.
@@ -360,9 +466,16 @@ impl BigTableClientImpl {
         req: ReadRowsRequest,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         let bigtable = self.pool.get().await?;
-        let resp = bigtable
-            .conn
-            .read_rows_opt(&req, call_opts(self.metadata.clone()))
+        let resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async {
+                    bigtable
+                        .conn
+                        .read_rows_opt(&req, call_opts(self.metadata.clone()))
+                },
+                retryable_error(self.metrics.clone()),
+            )
+            .await
             .map_err(error::BigTableError::Read)?;
         merge::RowMerger::process_chunks(resp).await
     }
@@ -439,10 +552,17 @@ impl BigTableClientImpl {
         req: bigtable::CheckAndMutateRowRequest,
     ) -> Result<bool, error::BigTableError> {
         let bigtable = self.pool.get().await?;
-        let resp = bigtable
-            .conn
-            .check_and_mutate_row_async_opt(&req, call_opts(self.metadata.clone()))
-            .map_err(error::BigTableError::Write)?
+        let resp = retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async {
+                    // Note: check_and_mutate_row_async may return before the row
+                    // is written, which can cause race conditions for reads
+                    bigtable
+                        .conn
+                        .check_and_mutate_row_opt(&req, call_opts(self.metadata.clone()))
+                },
+                retryable_error(self.metrics.clone()),
+            )
             .await
             .map_err(error::BigTableError::Write)?;
         debug!("🉑 Predicate Matched: {}", &resp.get_predicate_matched(),);
@@ -550,10 +670,14 @@ impl BigTableClientImpl {
         let Some((_, chidmessageid)) = row_key.split_once('#') else {
             return Err(DbError::Integrity(
                 "rows_to_notification expected row_key: uaid:chidmessageid ".to_owned(),
+                None,
             ));
         };
         let range_key = NotificationRecord::parse_chidmessageid(chidmessageid).map_err(|e| {
-            DbError::Integrity(format!("rows_to_notification expected chidmessageid: {e}"))
+            DbError::Integrity(
+                format!("rows_to_notification expected chidmessageid: {e}"),
+                None,
+            )
         })?;
 
         let mut notif = Notification {
@@ -654,39 +778,53 @@ impl BigTableClientImpl {
 #[derive(Clone)]
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
-    pub(super) metadata: Metadata,
+    pub(super) health_metadata: Metadata,
+    table_name: String,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel, metadata: &Metadata) -> Self {
+    pub fn new(channel: Channel, health_metadata: &Metadata, table_name: &str) -> Self {
         Self {
             conn: BigtableClient::new(channel),
-            metadata: metadata.clone(),
+            health_metadata: health_metadata.clone(),
+            table_name: table_name.to_owned(),
         }
     }
-
     /// Perform a simple connectivity check. This should return no actual results
     /// but should verify that the connection is valid. We use this for the
     /// Recycle check as well, so it has to be fairly low in the implementation
     /// stack.
     ///
-    pub async fn health_check(&mut self, table_name: &str, profile_id: &str) -> DbResult<bool> {
-        // Create a request that is GRPC valid, but does not point to a valid row.
-        let mut req = read_row_request(table_name, profile_id, "NOT FOUND");
+    ///
+    pub async fn health_check(
+        &mut self,
+        metrics: &Arc<StatsdClient>,
+        app_profile_id: &str,
+    ) -> Result<bool, error::BigTableError> {
+        // It is recommended that we pick a random key to perform the health check. Selecting
+        // a single key for all health checks causes a "hot tablet" to arise. The `PingAndWarm`
+        // is intended to be used prior to large updates and is not recommended for use in
+        // health checks.
+        // This health check is to see if the database is present, the response is not important
+        // other than it does not return an error.
+        let random_uaid = Uuid::new_v4().simple().to_string();
+        let mut req = read_row_request(&self.table_name, app_profile_id, &random_uaid);
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
+        let _r = retry_policy(RETRY_COUNT)
+            .retry_if(
+                || async {
+                    self.conn
+                        .read_rows_opt(&req, call_opts(self.health_metadata.clone()))
+                },
+                retryable_error(metrics.clone()),
+            )
+            .await
+            .map_err(error::BigTableError::Read)?;
 
-        let r = self
-            .conn
-            .read_rows_opt(&req, call_opts(self.metadata.clone()))
-            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
-
-        let (v, _stream) = r.into_future().await;
-        // Since this should return no rows (with the row key set to a value that shouldn't exist)
-        // the first component of the tuple should be None.
         debug!("🉑 health check");
-        Ok(v.is_none())
+        Ok(true)
     }
 }
 
@@ -747,12 +885,33 @@ impl DbClient for BigTableClientImpl {
         };
 
         trace!("🉑 Found a record for {}", row_key);
+
+        let connected_at_cell = match row.take_required_cell("connected_at") {
+            Ok(cell) => cell,
+            Err(_) => {
+                if !is_incomplete_router_record(&row.cells) {
+                    return Err(DbError::Integrity(
+                        "Expected column: connected_at".to_owned(),
+                        Some(format!("{row:#?}")),
+                    ));
+                }
+                // Special case incomplete records: they're equivalent to no
+                // user exists. Incompletes caused by the migration bug in #640
+                // will have their migration re-triggered by returning None:
+                // https://github.com/mozilla-services/autopush-rs/pull/640
+                trace!("🉑 Dropping an incomplete user record for {}", row_key);
+                self.metrics
+                    .incr_with_tags("database.drop_user")
+                    .with_tag("reason", "incomplete_record")
+                    .send();
+                self.remove_user(uaid).await?;
+                return Ok(None);
+            }
+        };
+
         let mut result = User {
             uaid: *uaid,
-            connected_at: to_u64(
-                row.take_required_cell("connected_at")?.value,
-                "connected_at",
-            )?,
+            connected_at: to_u64(connected_at_cell.value, "connected_at")?,
             router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
             record_version: Some(to_u64(
                 row.take_required_cell("record_version")?.value,
@@ -861,6 +1020,7 @@ impl DbClient for BigTableClientImpl {
                 let Some((_, chid)) = cell.qualifier.split_once("chid:") else {
                     return Err(DbError::Integrity(
                         "get_channels expected: chid:<chid>".to_owned(),
+                        None,
                     ));
                 };
                 result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
@@ -1181,11 +1341,12 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        self.pool
+        Ok(self
+            .pool
             .get()
             .await?
-            .health_check(&self.settings.table_name, &self.settings.profile_id)
-            .await
+            .health_check(&self.metrics.clone(), &self.settings.profile_id)
+            .await?)
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up
@@ -1211,6 +1372,10 @@ impl DbClient for BigTableClientImpl {
 
     fn name(&self) -> String {
         "Bigtable".to_owned()
+    }
+
+    fn pool_status(&self) -> Option<deadpool::Status> {
+        Some(self.pool.pool.status())
     }
 }
 
@@ -1554,6 +1719,60 @@ mod tests {
         assert_ne!(user.version, fetched.version);
         // should now fail w/ a stale version
         assert!(!client.update_user(&mut user).await.unwrap());
+
+        client.remove_user(&uaid).await.unwrap();
+    }
+
+    #[actix_rt::test]
+    async fn lingering_chid_record() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let user = User {
+            uaid,
+            ..Default::default()
+        };
+        client.remove_user(&uaid).await.unwrap();
+
+        // add_channel doesn't check for the existence of a user
+        client.add_channel(&uaid, &chid).await.unwrap();
+
+        // w/ chid records in the router row, get_user should treat
+        // this as the user not existing
+        assert!(client.get_user(&uaid).await.unwrap().is_none());
+
+        client.add_user(&user).await.unwrap();
+        // get_user should have also cleaned up the chids
+        assert!(client.get_channels(&uaid).await.unwrap().is_empty());
+
+        client.remove_user(&uaid).await.unwrap();
+    }
+
+    #[actix_rt::test]
+    async fn lingering_current_timestamp() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        client.remove_user(&uaid).await.unwrap();
+
+        client
+            .increment_storage(&uaid, ms_since_epoch())
+            .await
+            .unwrap();
+        assert!(client.get_user(&uaid).await.unwrap().is_none());
+
+        client.remove_user(&uaid).await.unwrap();
+    }
+
+    #[actix_rt::test]
+    async fn lingering_chid_w_version_record() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        client.remove_user(&uaid).await.unwrap();
+
+        client.add_channel(&uaid, &chid).await.unwrap();
+        assert!(client.remove_channel(&uaid, &chid).await.unwrap());
+        assert!(client.get_user(&uaid).await.unwrap().is_none());
 
         client.remove_user(&uaid).await.unwrap();
     }

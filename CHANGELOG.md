@@ -1,3 +1,46 @@
+<a name="1.70.11"></a>
+## 1.70.11 (2024-03-07)
+
+
+#### Bug Fixes
+
+*   don't skip DbError in the ReportableError chain (#649) ([c9b97d13](https://github.com/mozilla-services/autopush-rs/commit/c9b97d13e20cfaa9a9caf4b9bc4620469cc166f9))
+
+
+
+<a name="1.70.10"></a>
+## 1.70.10 (2024-03-06)
+
+
+#### Features
+
+*   include tags/extras across the exception chain (#648) ([fb2b0ee7](https://github.com/mozilla-services/autopush-rs/commit/fb2b0ee770291e9347494110e733736f8e585844))
+
+
+
+<a name="1.70.9"></a>
+## 1.70.9 (2024-02-27)
+
+
+#### Features
+
+*   Make bigtable calls retryable (#591) ([12dd7b41](https://github.com/mozilla-services/autopush-rs/commit/12dd7b41e44c5dfdf58eceee4a8a14e8f9e0fcf7))
+*   special case "chid-only" records (#646) ([5ab83fb8](https://github.com/mozilla-services/autopush-rs/commit/5ab83fb832383d5d7889d27edcd80ec7159afb60))
+*   report db pool metrics (#644) ([93d4cd38](https://github.com/mozilla-services/autopush-rs/commit/93d4cd38a5ecd4a8428ad3f93cb2a910521769cd))
+*   Add timeouts for bigtable operations (#611) ([34964235](https://github.com/mozilla-services/autopush-rs/commit/349642355656a407be9edab089c18a6491332c49))
+
+
+
+<a name="1.70.8"></a>
+## 1.70.8 (2024-02-26)
+
+
+#### Bug Fixes
+
+*   don't ignore add_user errors (#640) ([6a91bce5](https://github.com/mozilla-services/autopush-rs/commit/6a91bce5525b019e904d5ec7c4f025b5b2e917a7))
+
+
+
 <a name="1.70.7"></a>
 ## 1.70.7 (2024-02-22)
 
