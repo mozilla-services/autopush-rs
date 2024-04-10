@@ -108,8 +108,6 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
-    #[error(transparent)]
-    DbError(#[from] crate::db::error::DbError),
     #[error("Error while validating token")]
     TokenHashValidation(#[source] openssl::error::ErrorStack),
     #[error("Error while creating secret")]
@@ -163,10 +161,6 @@ impl ApcErrorKind {
             Self::PongTimeout | Self::ExcessivePing => false,
             // Non-actionable Endpoint errors
             Self::PayloadError(_) => false,
-            #[cfg(feature = "bigtable")]
-            Self::DbError(crate::db::error::DbError::BTError(
-                crate::db::bigtable::BigTableError::Recycle,
-            )) => false,
             _ => true,
         }
     }
@@ -177,8 +171,6 @@ impl ApcErrorKind {
             Self::PongTimeout => Some("pong_timeout"),
             Self::ExcessivePing => Some("excessive_ping"),
             Self::PayloadError(_) => Some("payload"),
-            #[cfg(feature = "bigtable")]
-            Self::DbError(e) => e.metric_label(),
             _ => None,
         }
     }
@@ -218,10 +210,7 @@ pub trait ReportableError: std::error::Error {
 
 impl ReportableError for ApcError {
     fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
-        match &self.kind {
-            ApcErrorKind::DbError(e) => Some(e),
-            _ => None,
-        }
+        None
     }
     fn backtrace(&self) -> Option<&Backtrace> {
         Some(&self.backtrace)

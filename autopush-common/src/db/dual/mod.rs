@@ -6,11 +6,10 @@
 //!
 //! This requires both the `dynamodb` and `bigtable` features.
 //!
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use cadence::{CountedExt, StatsdClient};
+use cadence::{CountedExt, StatsdClient, Timed};
 use serde::Deserialize;
 use serde_json::from_str;
 use uuid::Uuid;
@@ -37,6 +36,8 @@ pub struct DualClientImpl {
     /// Hex value to use to specify the first byte of the median offset.
     /// e.g. "0a" will start from include all UUIDs upto and including "0a"
     median: Option<u8>,
+    /// Ending octet to use for more distributed account migration
+    end_median: Option<u8>,
     metrics: Arc<StatsdClient>,
 }
 
@@ -54,10 +55,15 @@ pub struct DualDbSettings {
     /// as well as account and channel additions/deletions.
     #[serde(default = "default_true")]
     write_to_secondary: bool,
-    /// Hex value to use to specify the first byte of the median offset.
+    /// Hex value to specify the first byte of the median offset.
     /// e.g. "0a" will start from include all UUIDs upto and including "0a"
     #[serde(default)]
     median: Option<String>,
+    /// Hex value to specify the last byte of the median offset to include.
+    /// this value is "OR"ed withe "median" to produce a more distributed set of
+    /// uaids to migrate
+    #[serde(default)]
+    end_median: Option<String>,
 }
 
 impl DualClientImpl {
@@ -96,6 +102,25 @@ impl DualClientImpl {
         } else {
             None
         };
+        // determine which uaids to move based on the last byte of their UAID.
+        // This should reduce the hot table problem.
+        let end_median = if let Some(end_median) = db_settings.end_median {
+            let end_median = hex::decode(end_median).map_err(|e| {
+                DbError::General(format!(
+                    "Could not parse end_median string. Please use a valid Hex identifier: {:?}",
+                    e,
+                ))
+            })?[0];
+            debug!(
+                "⚖ Setting end_median to {:02} ({})",
+                hex::encode([end_median]),
+                &end_median
+            );
+            Some(end_median)
+        } else {
+            None
+        };
+
         let primary = BigTableClientImpl::new(metrics.clone(), &db_settings.primary)?;
         let secondary = DdbClientImpl::new(metrics.clone(), &db_settings.secondary)?;
         debug!("⚖ Got primary and secondary");
@@ -105,33 +130,50 @@ impl DualClientImpl {
                 "median",
                 &median.map_or_else(|| "None".to_owned(), |m| m.to_string()),
             )
+            .with_tag(
+                "end_median",
+                &end_median.map_or_else(|| "None".to_owned(), |m| m.to_string()),
+            )
             .send();
         Ok(Self {
             primary,
             secondary: secondary.clone(),
             median,
+            end_median,
             write_to_secondary: db_settings.write_to_secondary,
             metrics,
         })
+    }
+
+    /// Spawn a task to periodically evict idle Bigtable connections
+    pub fn spawn_sweeper(&self, interval: Duration) {
+        self.primary.spawn_sweeper(interval);
     }
 }
 
 /// Wrapper functions to allow us to change which data store system actually manages the
 /// user allocation routing table.
 impl DualClientImpl {
+    fn should_migrate(&self, uaid: &Uuid) -> bool {
+        let bytes = uaid.as_bytes();
+        let mut result: bool = false;
+        if let Some(median) = self.median {
+            result |= bytes.first() <= Some(&median);
+        };
+        if let Some(end_median) = self.end_median {
+            result |= bytes.last() <= Some(&end_median);
+        }
+        result
+    }
     /// Route and assign a user to the appropriate back end based on the defined
     /// allowance
     /// Returns the dbclient to use and whether or not it's the primary database.
     async fn allot<'a>(&'a self, uaid: &Uuid) -> DbResult<(Box<&'a dyn DbClient>, bool)> {
-        let target: (Box<&'a dyn DbClient>, bool) = if let Some(median) = self.median {
-            if uaid.as_bytes()[0] <= median {
-                debug!("⚖ Routing user to Bigtable");
-                (Box::new(&self.primary), true)
-            } else {
-                (Box::new(&self.secondary), false)
-            }
-        } else {
+        let target: (Box<&'a dyn DbClient>, bool) = if self.should_migrate(uaid) {
+            debug!("⚖ Routing user to Bigtable");
             (Box::new(&self.primary), true)
+        } else {
+            (Box::new(&self.secondary), false)
         };
         debug!("⚖ alloting to {}", target.0.name());
         Ok(target)
@@ -182,6 +224,7 @@ impl DbClient for DualClientImpl {
             Ok(None) => {
                 if is_primary {
                     // The user wasn't in the current primary, so fetch them from the secondary.
+                    let start = std::time::Instant::now();
                     if let Ok(Some(mut user)) = self.secondary.get_user(uaid).await {
                         // copy the user record over to the new data store.
                         debug!("⚖ Found user record in secondary, moving to primary");
@@ -189,7 +232,25 @@ impl DbClient for DualClientImpl {
                         // for Bigtable
                         debug_assert!(user.version.is_none());
                         user.version = Some(Uuid::new_v4());
-                        self.primary.add_user(&user).await?;
+                        if let Err(e) = self.primary.add_user(&user).await {
+                            if !matches!(e, DbError::Conditional) {
+                                return Err(e);
+                            }
+                            // User is being migrated underneath us.  Try
+                            // fetching the record from primary again, and back
+                            // off if still not there.
+                            let user = self.primary.get_user(uaid).await?;
+                            // Possibly a higher number of these occur than
+                            // expected, so sanity check that a user now exists
+                            self.metrics
+                                .incr_with_tags("database.already_migrated")
+                                .with_tag("exists", &user.is_some().to_string())
+                                .send();
+                            if user.is_none() {
+                                return Err(DbError::Backoff("Move in progress".to_owned()));
+                            };
+                            return Ok(user);
+                        };
                         self.metrics.incr_with_tags("database.migrate").send();
                         let channels = self.secondary.get_channels(uaid).await?;
                         if !channels.is_empty() {
@@ -197,6 +258,12 @@ impl DbClient for DualClientImpl {
                             // user.version is still valid
                             self.primary.add_channels(uaid, channels).await?;
                         }
+                        self.metrics
+                            .time_with_tags(
+                                "database.migrate.time",
+                                (std::time::Instant::now() - start).as_millis() as u64,
+                            )
+                            .send();
                         return Ok(Some(user));
                     }
                 }
@@ -434,6 +501,10 @@ impl DbClient for DualClientImpl {
     fn name(&self) -> String {
         "Dual".to_owned()
     }
+
+    fn pool_status(&self) -> Option<deadpool::Status> {
+        self.primary.pool_status()
+    }
 }
 
 #[cfg(all(test, feature = "bigtable", feature = "dynamodb"))]
@@ -443,7 +514,7 @@ mod test {
     use serde_json::json;
     use std::str::FromStr;
 
-    fn test_args(median: Option<&str>) -> String {
+    fn test_args(median: Option<&str>, end_median: Option<&str>) -> String {
         json!({
             "primary": {
                 "dsn": "grpc://bigtable.googleapis.com",  // Note that this is the general endpoint.
@@ -461,6 +532,7 @@ mod test {
                 }).to_string(),
             },
             "median": median.to_owned(),
+            "end_median": end_median.to_owned(),
             "write_to_secondary": false,
         })
         .to_string()
@@ -470,7 +542,7 @@ mod test {
     /// documentation for how the db_settings argument should be structured
     #[test]
     fn arg_parsing() -> DbResult<()> {
-        let arg_str = test_args(None);
+        let arg_str = test_args(None, None);
         // the output string looks like:
         /*
         "{\"primary\":{\"db_settings\":\"{\\\"message_family\\\":\\\"message\\\",\\\"router_family\\\":\\\"router\\\",\\\"table_name\\\":\\\"projects/some-project/instances/some-instance/tables/some-table\\\"}\",\"dsn\":\"grpc://bigtable.googleapis.com\"},\"secondary\":{\"db_settings\":\"{\\\"message_table\\\":\\\"test_message\\\",\\\"router_table\\\":\\\"test_router\\\"}\",\"dsn\":\"http://localhost:8000/\"}}"
@@ -498,7 +570,7 @@ mod test {
 
     #[actix_rt::test]
     async fn allocation() -> DbResult<()> {
-        let arg_str = test_args(Some("0A"));
+        let arg_str = test_args(Some("0A"), Some("88"));
         let metrics = Arc::new(StatsdClient::builder("", NopMetricSink).build());
         let dual_settings = DbSettings {
             dsn: Some("dual".to_owned()),
@@ -506,16 +578,24 @@ mod test {
         };
         let dual = DualClientImpl::new(metrics, &dual_settings)?;
 
-        // Should be included.
-        let low_uaid = Uuid::from_str("04DDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
-        // Should be excluded.
-        let hi_uaid = Uuid::from_str("0BDDDDDD-2040-4b4d-be3d-a340fc2d15a6").unwrap();
+        // Should be included (Note: high end median)
+        let low_uaid = Uuid::from_str("04DDDDDD-1234-1234-1234-0000000000CC").unwrap();
         let (result, is_primary) = dual.allot(&low_uaid).await?;
         assert_eq!(result.name(), dual.primary.name());
         assert!(is_primary);
+
+        // Should be excluded (Note: high end_median)
+        let hi_uaid = Uuid::from_str("0BDDDDDD-1234-1234-1234-0000000000CC").unwrap();
         let (result, is_primary) = dual.allot(&hi_uaid).await?;
         assert_eq!(result.name(), dual.secondary.name());
         assert!(!is_primary);
+
+        // Should be included (Note: high median with low end median)
+        let hi_end_uaid = Uuid::from_str("0BDDDDDD-1234-1234-1234-000000000080").unwrap();
+        let (result, is_primary) = dual.allot(&hi_end_uaid).await?;
+        assert_eq!(result.name(), dual.primary.name());
+        assert!(is_primary);
+
         Ok(())
     }
 }

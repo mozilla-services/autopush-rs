@@ -120,7 +120,7 @@ impl RouterError {
         match self {
             RouterError::Adm(e) => e.status(),
             RouterError::Apns(e) => e.status(),
-            RouterError::Fcm(e) => e.status(),
+            RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
 
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
 
