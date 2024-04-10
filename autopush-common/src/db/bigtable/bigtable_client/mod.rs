@@ -202,15 +202,15 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
         .with_jitter(true)
 }
 
-fn retriable_internal_error(status: &RpcStatus) -> bool {
+fn retryable_internal_error(status: &RpcStatus) -> bool {
     match status.code() {
         RpcStatusCode::UNKNOWN => {
-            "error occurred when fetching oauth2 token" == status.message().to_ascii_lowercase()
+            "error occurred when fetching oauth2 token." == status.message().to_ascii_lowercase()
         }
         RpcStatusCode::INTERNAL => [
             "rst_stream",
             "rst stream",
-            "received unexpected eos on data from from server",
+            "received unexpected eos on data frame from server",
         ]
         .contains(&status.message().to_lowercase().as_str()),
         RpcStatusCode::UNAVAILABLE | RpcStatusCode::DEADLINE_EXCEEDED => true,
@@ -235,22 +235,28 @@ pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) ->
         match err {
             grpcio::Error::RpcFailure(status) => {
                 info!("GRPC Failure :{:?}", status);
-                metric(&metrics, "RpcFailure", Some(&status.code().to_string()));
-                retriable_internal_error(status)
+                let retry = retryable_internal_error(status);
+                if retry {
+                    metric(&metrics, "RpcFailure", Some(&status.code().to_string()));
+                }
+                retry
             }
             grpcio::Error::BindFail(_) => {
                 metric(&metrics, "BindFail", None);
                 true
             }
             // The parameter here is a [grpcio_sys::grpc_call_error] enum
-            // Not all of these are retriable.
+            // Not all of these are retryable.
             grpcio::Error::CallFailure(grpc_call_status) => {
-                metric(
-                    &metrics,
-                    "CallFailure",
-                    Some(&format!("{:?}", grpc_call_status)),
-                );
-                grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR
+                let retry = grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR;
+                if retry {
+                    metric(
+                        &metrics,
+                        "CallFailure",
+                        Some(&format!("{:?}", grpc_call_status)),
+                    );
+                }
+                retry
             }
             _ => false,
         }
