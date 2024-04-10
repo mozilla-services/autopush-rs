@@ -9,9 +9,10 @@ use crate::routers::common::{
     build_message_data, incr_error_metric, incr_success_metrics, message_size_check,
 };
 use crate::routers::{Router, RouterError, RouterResponse};
-use a2::request::payload::Payload;
 use a2::{
-    self, DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
+    self,
+    request::payload::{Payload, PayloadLike},
+    DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
     Response,
 };
 use actix_web::http::StatusCode;

@@ -21,7 +21,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 async-trait = "0.1"
-strum = { version = "0.24", features = ["derive"] }
+strum = { version = "0.26", features = ["derive"] }
 
 autoconnect_common.workspace = true
 autoconnect_settings.workspace = true

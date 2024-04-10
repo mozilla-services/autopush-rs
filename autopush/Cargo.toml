@@ -39,7 +39,7 @@ uuid.workspace = true
 autopush_common = { path = "../autopush-common", features = ["dynamodb"] }
 bytes = "0.4"                                                              # XXX: pin to < 0.5 for hyper 0.12
 crossbeam-channel = "0.5"
-env_logger = "0.9"
+env_logger = "0.11"
 thiserror = "1.0"
 futures = "0.1.29"                                                         # XXX: pin to 0.1 until likely hyper 0.13
 futures-backoff = "0.1.0"
