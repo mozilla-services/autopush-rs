@@ -97,7 +97,7 @@ echo "==================== The script is used to create & delete the GKE cluster
 echo "==================== Do you want to create or setup the existing or delete GKE cluster? Select ${BOLD}create or delete or setup ${NORM}"
 while :
 do
-    read response
+    response=${1:-${COMMAND:-$(read r; echo $r)}}
     case $response in
         create) #Setup Kubernetes Cluster
             echo -e "==================== Creating the GKE cluster "

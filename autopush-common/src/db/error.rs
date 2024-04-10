@@ -61,14 +61,10 @@ pub enum DbError {
     TableStatusUnknown,
 
     #[cfg(feature = "bigtable")]
-    #[error("BigTable error {0}")]
+    #[error("BigTable error: {0}")]
     BTError(#[from] BigTableError),
 
-    /*
-    #[error("Postgres error")]
-    PgError(#[from] PgError),
-    */
-    #[error("Connection failure {0}")]
+    #[error("Connection failure: {0}")]
     ConnectionError(String),
 
     #[error("The conditional request failed")]
@@ -77,7 +73,7 @@ pub enum DbError {
     #[error("Database integrity error: {}", _0)]
     Integrity(String, Option<String>),
 
-    #[error("Unknown Database Error {0}")]
+    #[error("Unknown Database Error: {0}")]
     General(String),
 
     // Return a 503 error

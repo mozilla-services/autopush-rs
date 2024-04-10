@@ -98,3 +98,9 @@ load-clean:
       -p autopush-rs-load-tests \
       down
 	docker rmi locust
+
+.PHONY: doc-prev
+doc-prev:  ##  Generate live preview of autopush docs via browser
+	mdbook clean docs/
+	mdbook build docs/
+	mdbook serve docs/ --open
