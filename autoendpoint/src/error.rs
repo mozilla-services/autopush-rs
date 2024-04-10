@@ -1,5 +1,4 @@
 //! Error types and transformations
-// TODO: Collpase these into `autopush_common::error`
 
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
@@ -12,8 +11,8 @@ use actix_web::{
     HttpResponse, Result,
 };
 // Sentry uses the backtrace crate, not std::backtrace.
+use actix_http::header;
 use backtrace::Backtrace;
-use reqwest::header;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
@@ -81,6 +80,9 @@ pub enum ApiErrorKind {
 
     #[error("Database error: {0}")]
     Database(#[from] DbError),
+
+    #[error("Conditional database operation failed: {0}")]
+    Conditional(String),
 
     #[error("Invalid token")]
     InvalidToken,
@@ -150,7 +152,9 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => StatusCode::IM_A_TEAPOT,
 
-            ApiErrorKind::Database(DbError::Backoff(_)) => StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorKind::Database(DbError::Backoff(_)) | ApiErrorKind::Conditional(_) => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
 
             ApiErrorKind::General(_)
             | ApiErrorKind::Io(_)
@@ -192,6 +196,7 @@ impl ApiErrorKind {
             ApiErrorKind::Io(_) => "io",
             ApiErrorKind::Metrics(_) => "metrics",
             ApiErrorKind::Database(_) => "database",
+            ApiErrorKind::Conditional(_) => "conditional",
             ApiErrorKind::EndpointUrl(_) => "endpoint_url",
             ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
         })
@@ -202,22 +207,21 @@ impl ApiErrorKind {
         match self {
             // ignore selected validation errors.
             ApiErrorKind::Router(e) => e.is_sentry_event(),
-            _ => !matches!(
-                self,
-                // Ignore common webpush errors
-                ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
-                // Ignore common VAPID erros
-                ApiErrorKind::VapidError(_)
+            // Ignore common webpush errors
+            ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
+            // Ignore common VAPID erros
+            ApiErrorKind::VapidError(_)
                 | ApiErrorKind::Jwt(_)
                 | ApiErrorKind::TokenHashValidation(_)
                 | ApiErrorKind::InvalidAuthentication
                 | ApiErrorKind::InvalidLocalAuth(_) |
-                // Ignore missing or invalid user errors
-                ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
-                // Ignore oversized payload.
-                ApiErrorKind::PayloadError(_) |
-                ApiErrorKind::Validation(_),
-            ),
+            // Ignore missing or invalid user errors
+            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
+            // Ignore oversized payload.
+            ApiErrorKind::PayloadError(_) |
+            ApiErrorKind::Validation(_) |
+            ApiErrorKind::Conditional(_) => false,
+            _ => true,
         }
     }
 
@@ -259,6 +263,7 @@ impl ApiErrorKind {
             | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
+            | ApiErrorKind::Conditional(_)
             | ApiErrorKind::PayloadError(_)
             | ApiErrorKind::InvalidRouterToken
             | ApiErrorKind::RegistrationSecretHash(_)
@@ -337,7 +342,7 @@ impl ReportableError for ApiError {
     fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
         match &self.kind {
             ApiErrorKind::EndpointUrl(e) => Some(e),
-            ApiErrorKind::Database(e) => e.reportable_source(),
+            ApiErrorKind::Database(e) => Some(e),
             _ => None,
         }
     }
@@ -386,4 +391,22 @@ fn errno_from_validation_errors(e: &ValidationErrors) -> Option<usize> {
             }
         })
         .next()
+}
+
+#[cfg(test)]
+mod tests {
+    use autopush_common::{db::error::DbError, sentry::event_from_error};
+
+    use super::{ApiError, ApiErrorKind};
+
+    #[test]
+    fn sentry_event_with_extras() {
+        let dbe = DbError::Integrity("foo".to_owned(), Some("bar".to_owned()));
+        let e: ApiError = ApiErrorKind::Database(dbe).into();
+        let event = event_from_error(&e);
+        assert_eq!(event.exception.len(), 2);
+        assert_eq!(event.exception[0].ty, "Integrity");
+        assert_eq!(event.exception[1].ty, "ApiError");
+        assert_eq!(event.extra.get("row"), Some(&"bar".into()));
+    }
 }
