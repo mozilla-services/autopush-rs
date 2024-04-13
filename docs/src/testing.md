@@ -61,13 +61,7 @@ There are a few configuration steps required to run the Python integration tests
 
 ```bash
 BIGTABLE_EMULATOR_HOST=localhost:8086 \
-cbt -project test -instance test createtable autopush && \
-cbt -project test -instance test createfamily autopush message && \
-cbt -project test -instance test createfamily autopush message_topic && \
-cbt -project test -instance test createfamily autopush router && \
-cbt -project test -instance test setgcpolicy autopush message maxage=1s && \
-cbt -project test -instance test setgcpolicy autopush router maxversions=1 && \
-cbt -project test -instance test setgcpolicy autopush message_topic maxversions=1 and maxage=1s
+scripts/setup_bt.sh
 ```
 
 4. Create Python virtual environment. It is recommended to use `pyenv virtualenv`:
