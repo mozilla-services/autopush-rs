@@ -588,11 +588,17 @@ class TestRustWebPush:
         "sub": "mailto:admin@example.com",
     }
 
+    @staticmethod
+    def clear_sentry_queue():
+        """Clear any values present in Sentry queue."""
+        while not MOCK_SENTRY_QUEUE.empty():
+            MOCK_SENTRY_QUEUE.get_nowait()
+        return
+
     def tearDown(self):
         """Tear down and log processing."""
         process_logs(self)
-        while not MOCK_SENTRY_QUEUE.empty():
-            MOCK_SENTRY_QUEUE.get_nowait()
+        TestRustWebPush.clear_sentry_queue()
 
     def host_endpoint(self, client):
         """Return host endpoint."""
@@ -677,12 +683,16 @@ class TestRustWebPush:
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
+
+        TestRustWebPush.clear_sentry_queue()
         ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
+
         try:
             async with httpx.AsyncClient() as httpx_client:
                 await httpx_client.get(ws_url, timeout=30)
         except httpx.ConnectError:
             pass
+
         try:
             data = MOCK_SENTRY_QUEUE.get(timeout=5)
             assert not data
