@@ -179,6 +179,7 @@ impl fmt::Debug for BigtableClientManager {
 impl Manager for BigtableClientManager {
     type Error = BigTableError;
     type Type = BigtableDb;
+    // TODO: Deadpool 0.11+ introduces new lifetime constratints.
 
     /// Create a new Bigtable Client with it's own channel.
     /// `BigtableClient` is the most atomic we can go.

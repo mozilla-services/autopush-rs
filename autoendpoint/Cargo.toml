@@ -61,6 +61,7 @@ yup-oauth2 = "8.1"
 #ureq={ version="2.4", features=["json"] }
 
 [dev-dependencies]
+deadpool = { workspace = true }
 mockall.workspace = true
 mockito = "0.31"
 tempfile = "3.2.0"
