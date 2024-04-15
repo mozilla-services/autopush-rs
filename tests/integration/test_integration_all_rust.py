@@ -636,6 +636,7 @@ class TestRustWebPush:
             SkipTest("Skipping sentry test")
             return
         # Ensure bad data doesn't throw errors
+        TestRustWebPush.clear_sentry_queue()
         client = AsyncPushTestClient(self._ws_url)
         await client.connect()
         await client.hello()
@@ -661,7 +662,7 @@ class TestRustWebPush:
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
-
+        TestRustWebPush.clear_sentry_queue()
         client = await self.quick_register()
         endpoint = self.host_endpoint(client)
         await self.shut_down(client)
@@ -674,7 +675,6 @@ class TestRustWebPush:
             event1["exception"]["values"][0]["value"],
             event2["exception"]["values"][0]["value"],
         )
-        assert "ERROR:Success" in values
         assert sorted(values) == ["ERROR:Success", "LogCheck"]
 
     @max_logs(conn=4)
