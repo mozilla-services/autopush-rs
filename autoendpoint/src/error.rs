@@ -194,9 +194,9 @@ impl ApiErrorKind {
             ApiErrorKind::General(_) => "general",
             ApiErrorKind::Io(_) => "io",
             ApiErrorKind::Metrics(_) => "metrics",
-            ApiErrorKind::Database(e) => e.metric_label().unwrap_or("database"),
+            ApiErrorKind::Database(e) => return e.metric_label(),
             ApiErrorKind::Conditional(_) => "conditional",
-            ApiErrorKind::EndpointUrl(e) => e.metric_label().unwrap_or("endpoint_url"),
+            ApiErrorKind::EndpointUrl(e) => return e.metric_label(),
             ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
         })
     }
