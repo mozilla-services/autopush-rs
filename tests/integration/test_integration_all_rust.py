@@ -599,6 +599,7 @@ class TestRustWebPush:
         """Clear any values present in Sentry queue."""
         while not MOCK_SENTRY_QUEUE.empty():
             MOCK_SENTRY_QUEUE.get_nowait()
+        print("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
         return
 
     def tearDown(self):
@@ -638,6 +639,7 @@ class TestRustWebPush:
     @pytest.mark.asyncio
     async def test_sentry_output_autoconnect(self):
         """Test sentry output for autoconnect."""
+        print("ZZZZZZZZZZZZZZZZZZZZOUTPUT_AUTOCONNECT")
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
@@ -656,15 +658,17 @@ class TestRustWebPush:
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # new autoconnect emits 2 events
         try:
-            MOCK_SENTRY_QUEUE.get(timeout=1)
+            MOCK_SENTRY_QUEUE.get(timeout=5)
         except Empty:
             pass
         assert event1["exception"]["values"][0]["value"] == "LogCheck"
+        print(">ZZZZZZZZZZZZZZZZZZZZOUTPUT_AUTOCONNECT")
 
     @max_logs(endpoint=1)
     @pytest.mark.asyncio
     async def test_sentry_output_autoendpoint(self):
         """Test sentry output for autoendpoint."""
+        print("ZZZZZZZZZZZZZZZZZZZZOUTPUT_AUTOENDPOINT")
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
