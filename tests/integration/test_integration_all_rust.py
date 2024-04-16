@@ -1,5 +1,6 @@
 """Rust Connection and Endpoint Node Integration Tests."""
 
+import asyncio
 import base64
 import copy
 import json
@@ -25,6 +26,7 @@ import httpx
 import psutil
 import pytest
 import twisted.internet.base
+import websockets
 from cryptography.fernet import Fernet
 from jose import jws
 
@@ -1359,21 +1361,34 @@ class TestRustWebPush:
         assert client.uaid != uaid
         await self.shut_down(client)
 
-    # @pytest.mark.asyncio
-    # async def test_can_ping(self):
-    #     """Test that the client can send an active ping message and get a valid response."""
-    #     client = await self.quick_register()
-    #     result = await client.ping()
-    #     assert result == "{}"
-    #     assert client.ws.open
-    #     try:
-    #         await client.ping()
-    #     except AssertionError:
-    #         # pinging too quickly should disconnect without a valid ping
-    #         # repsonse
-    #         pass
-    #     assert not client.ws.open
-    #     await self.shut_down(client)
+    @pytest.mark.asyncio
+    async def test_can_moz_ping(self):
+        """Test that the client can send a small ping message and get a valid response."""
+        client = await self.quick_register()
+        result = await client.moz_ping()
+        assert result == "{}"
+        assert client.ws.open
+        try:
+            await client.moz_ping()
+        except websockets.exceptions.ConnectionClosedError:
+            # pinging too quickly should disconnect without a valid ping
+            # repsonse
+            pass
+        assert not client.ws.open
+        await self.shut_down(client)
+
+    @pytest.mark.asyncio
+    async def test_ws_ping(self):
+        """Test that the client can send a ping and get expected
+        future that returns the expected float latency value.
+        """
+        client = await self.quick_register()
+        result = await client.ping()
+        assert type(result) is asyncio.Future
+        completed_fut = await result
+        assert type(completed_fut) is float
+        assert client.ws.open
+        await self.shut_down(client)
 
     @pytest.mark.asyncio
     async def test_internal_endpoints(self):
