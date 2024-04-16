@@ -302,8 +302,12 @@ def broadcast_handler():
 @app.post("/api/1/envelope/")
 def sentry_handler() -> dict[str, str]:
     """Sentry handler configuration."""
+    from pprint import pprint
     headers, item_headers, payload = bottle.request.body.read().splitlines()
-    MOCK_SENTRY_QUEUE.put(json.loads(payload))
+    print("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ")
+    js = json.loads(payload)
+    pprint(js)
+    MOCK_SENTRY_QUEUE.put(js)
     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
 
 
