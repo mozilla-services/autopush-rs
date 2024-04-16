@@ -670,14 +670,14 @@ class TestRustWebPush:
         await self.shut_down(client)
         async with httpx.AsyncClient() as httpx_client:
             await httpx_client.get(f"{endpoint}/__error__", timeout=30)
-        # 2 events excpted: 1 from a panic and 1 from a returned Error
-        event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
-        event2 = MOCK_SENTRY_QUEUE.get(timeout=5)
-        values = (
-            event1["exception"]["values"][0]["value"],
-            event2["exception"]["values"][0]["value"],
-        )
-        assert sorted(values) == ["ERROR:Success", "LogCheck"]
+            # 2 events excpted: 1 from a panic and 1 from a returned Error
+            event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
+            event2 = MOCK_SENTRY_QUEUE.get(timeout=5)
+            values = (
+                event1["exception"]["values"][0]["value"],
+                event2["exception"]["values"][0]["value"],
+            )
+            assert sorted(values) == ["ERROR:Success", "LogCheck"]
 
     @max_logs(conn=4)
     async def test_no_sentry_output(self):
