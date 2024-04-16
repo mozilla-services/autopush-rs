@@ -690,6 +690,9 @@ class TestRustWebPush:
     @max_logs(conn=4)
     async def test_no_sentry_output(self):
         """Test for no Sentry output."""
+        # NOTE: This test is ordered to run first to avoid possible race conditions that
+        # were observed when the test runs in CI. Use of pytest-order library to
+        # explicitly define order so this test runs first.
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
