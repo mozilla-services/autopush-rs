@@ -44,7 +44,7 @@ integration-test:
 	$(POETRY) install --without dev,load --no-root
 		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
-		-v $(PYTEST_ARGS)
+		-k sentry -v $(PYTEST_ARGS)
 
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code
