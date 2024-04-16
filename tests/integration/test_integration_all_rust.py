@@ -692,12 +692,10 @@ class TestRustWebPush:
         try:
             async with httpx.AsyncClient() as httpx_client:
                 await httpx_client.get(ws_url, timeout=30)
+                data = MOCK_SENTRY_QUEUE.get(timeout=5)
+                assert not data
         except httpx.ConnectError:
             pass
-
-        try:
-            data = MOCK_SENTRY_QUEUE.get(timeout=5)
-            assert not data
         except Empty:
             pass
 
