@@ -80,6 +80,7 @@ requests = "^2.31.0"
 twisted = "^23.10.0"
 types-requests = "^2.31.0.10"
 pytest-asyncio = "^0.23.5.post1"
+pytest-order = "^1.2.1" 
 httpx = "^0.27.0"
 
 [tool.poetry.group.load.dependencies]
