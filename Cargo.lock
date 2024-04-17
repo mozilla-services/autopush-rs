@@ -719,6 +719,7 @@ dependencies = [
  "bytebuffer",
  "cadence",
  "config",
+ "deadpool",
  "docopt",
  "fernet",
  "futures 0.3.30",

@@ -29,6 +29,7 @@ edition = "2021"
 # there are some lingering code interdependencies that prevent that, but it should
 # remain a goal for the overall refactor.
 
+deadpool = { version = "0.10", features = ["managed", "rt_tokio_1"] }
 actix = "0.13"
 actix-cors = "0.7"
 actix-http = "3.2"
