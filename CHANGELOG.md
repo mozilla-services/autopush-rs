@@ -1,3 +1,38 @@
+<a name="1.71.2"></a>
+## 1.71.2 (2024-04-17)
+
+
+#### Bug Fixes
+
+*   a couple retry logic error messages were incorrect (#676) ([6cb6549b](https://github.com/mozilla-services/autopush-rs/commit/6cb6549b087a3ff44262cd796e45ec50d231cd37))
+
+#### Features
+
+*   Ensure that status and labels are propagated for DB errors (#679) ([5a1f2099](https://github.com/mozilla-services/autopush-rs/commit/5a1f20997ad1705c6ded3ace02f6f1a1be5a70ef))
+*   emit pool timeouts/conditional failures as metrics (not sentry) (#671) ([b4f01af8](https://github.com/mozilla-services/autopush-rs/commit/b4f01af8f68b157a39ec3bf4bfa2778f283652c0))
+*   Switch to randomized UAID for health check (#670) ([06093787](https://github.com/mozilla-services/autopush-rs/commit/060937875b34695d8c2be39425c35a1b71e007aa))
+
+#### Test
+
+* **load:**  Document the process for calibrating users per worker  (#661) ([c89627fd](https://github.com/mozilla-services/autopush-rs/commit/c89627fdad2708613acd59f480d44913f074b6a5))
+
+#### Doc
+
+* **load:**  Document the process for calibrating worker count (#666) ([de752ec4](https://github.com/mozilla-services/autopush-rs/commit/de752ec4e118c7218c461d9c2488529fc71f8a04))
+
+#### Refactor
+
+*   add initial async features for client (#653) ([22f058e6](https://github.com/mozilla-services/autopush-rs/commit/22f058e6b9d41b6a30b8ffb1aaaed1979d94c2da))
+
+#### Chore
+
+* **deps-dev:**
+  *  bump cryptography from 42.0.2 to 42.0.4 in /tests (#630) ([967465b2](https://github.com/mozilla-services/autopush-rs/commit/967465b22429fea77db9a6323f31055f269a4276))
+  *  bump idna from 3.6 to 3.7 in /tests (#678) ([0672bba4](https://github.com/mozilla-services/autopush-rs/commit/0672bba4e61b47e7143190a6765b4cfb9c7a6be6))
+  *  bump idna from 3.6 to 3.7 in /tests ([e8234982](https://github.com/mozilla-services/autopush-rs/commit/e8234982d44af22562b018d58e6661bd6bcd8f60))
+
+
+
 <a name="1.71.1"></a>
 ## 1.71.1 (2024-03-19)
 
