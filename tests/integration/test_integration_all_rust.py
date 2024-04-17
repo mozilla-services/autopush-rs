@@ -652,7 +652,7 @@ class TestRustWebPush:
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # new autoconnect emits 2 events
         try:
-            MOCK_SENTRY_QUEUE.get(timeout=1)
+            MOCK_SENTRY_QUEUE.get(timeout=5)
         except Empty:
             pass
         assert event1["exception"]["values"][0]["value"] == "LogCheck"
@@ -684,6 +684,7 @@ class TestRustWebPush:
         # Establishing a single check for "LogCheck" as sufficent guarantee,
         # since Sentry is capturing emission
         assert "LogCheck" in values
+        assert sorted(values) == ["ERROR:Success", "LogCheck"]
 
     @pytest.mark.order(1)
     @pytest.mark.asyncio
