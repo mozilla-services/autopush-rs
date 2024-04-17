@@ -650,6 +650,12 @@ class TestRustWebPush:
             await httpx_client.get(f"http://localhost:{CONNECTION_PORT}/v1/err/crit", timeout=30)
 
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
+        # NOTE: this timeout increased to 5 seconds as was yielding
+        # errors in CI due to potential race condition and lingering
+        # artifact in the MOCK_SENTRY_QUEUE. It could cause test_sentry_output_autoendpoint
+        # to have two LogCheck entires and test_no_sentry_output would have data
+        # when it should not.
+
         # new autoconnect emits 2 events
         try:
             MOCK_SENTRY_QUEUE.get(timeout=5)
