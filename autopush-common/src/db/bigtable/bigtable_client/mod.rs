@@ -11,7 +11,7 @@ use cadence::{CountedExt, StatsdClient};
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
-use google_cloud_rust_raw::bigtable::v2::bigtable::{PingAndWarmRequest, ReadRowsRequest};
+use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
 use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
 use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
 use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
@@ -202,15 +202,15 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
         .with_jitter(true)
 }
 
-fn retriable_internal_error(status: &RpcStatus) -> bool {
+fn retryable_internal_error(status: &RpcStatus) -> bool {
     match status.code() {
         RpcStatusCode::UNKNOWN => {
-            "error occurred when fetching oauth2 token" == status.message().to_ascii_lowercase()
+            "error occurred when fetching oauth2 token." == status.message().to_ascii_lowercase()
         }
         RpcStatusCode::INTERNAL => [
             "rst_stream",
             "rst stream",
-            "received unexpected eos on data from from server",
+            "received unexpected eos on data frame from server",
         ]
         .contains(&status.message().to_lowercase().as_str()),
         RpcStatusCode::UNAVAILABLE | RpcStatusCode::DEADLINE_EXCEEDED => true,
@@ -235,22 +235,28 @@ pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) ->
         match err {
             grpcio::Error::RpcFailure(status) => {
                 info!("GRPC Failure :{:?}", status);
-                metric(&metrics, "RpcFailure", Some(&status.code().to_string()));
-                retriable_internal_error(status)
+                let retry = retryable_internal_error(status);
+                if retry {
+                    metric(&metrics, "RpcFailure", Some(&status.code().to_string()));
+                }
+                retry
             }
             grpcio::Error::BindFail(_) => {
                 metric(&metrics, "BindFail", None);
                 true
             }
             // The parameter here is a [grpcio_sys::grpc_call_error] enum
-            // Not all of these are retriable.
+            // Not all of these are retryable.
             grpcio::Error::CallFailure(grpc_call_status) => {
-                metric(
-                    &metrics,
-                    "CallFailure",
-                    Some(&format!("{:?}", grpc_call_status)),
-                );
-                grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR
+                let retry = grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR;
+                if retry {
+                    metric(
+                        &metrics,
+                        "CallFailure",
+                        Some(&format!("{:?}", grpc_call_status)),
+                    );
+                }
+                retry
             }
             _ => false,
         }
@@ -762,15 +768,15 @@ impl BigTableClientImpl {
 pub struct BigtableDb {
     pub(super) conn: BigtableClient,
     pub(super) health_metadata: Metadata,
-    instance_name: String,
+    table_name: String,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel, health_metadata: &Metadata, instance_name: &str) -> Self {
+    pub fn new(channel: Channel, health_metadata: &Metadata, table_name: &str) -> Self {
         Self {
             conn: BigtableClient::new(channel),
             health_metadata: health_metadata.clone(),
-            instance_name: instance_name.to_owned(),
+            table_name: table_name.to_owned(),
         }
     }
     /// Perform a simple connectivity check. This should return no actual results
@@ -778,28 +784,33 @@ impl BigtableDb {
     /// Recycle check as well, so it has to be fairly low in the implementation
     /// stack.
     ///
-    /// "instance_name" is the "projects/{project}/instances/{instance}" portion of
-    /// the tablename.
     ///
-    pub async fn health_check(&mut self, metrics: Arc<StatsdClient>) -> DbResult<bool> {
-        let req = PingAndWarmRequest {
-            name: self.instance_name.clone(),
-            ..Default::default()
-        };
-        // PingAndWarmResponse does not implement a stream since it does not return data.
+    pub async fn health_check(
+        &mut self,
+        metrics: Arc<StatsdClient>,
+    ) -> Result<bool, error::BigTableError> {
+        // It is recommended that we pick a random key to perform the health check. Selecting
+        // a single key for all health checks causes a "hot tablet" to arise. The `PingAndWarm`
+        // is intended to be used prior to large updates and is not recommended for use in
+        // health checks.
+        // This health check is to see if the database is present, the response is not important
+        // other than it does not return an error.
+        let random_uaid = Uuid::new_v4().simple().to_string();
+        let mut req = read_row_request(&self.table_name, &random_uaid);
+        let mut filter = data::RowFilter::default();
+        filter.set_block_all_filter(true);
+        req.set_filter(filter);
         let _r = retry_policy(RETRY_COUNT)
             .retry_if(
                 || async {
                     self.conn
-                        .ping_and_warm_opt(&req, call_opts(self.health_metadata.clone()))
+                        .read_rows_opt(&req, call_opts(self.health_metadata.clone()))
                 },
                 retryable_error(metrics.clone()),
             )
             .await
-            .map_err(|e| DbError::General(format!("BigTable connectivity error: {:?}", e)))?;
+            .map_err(error::BigTableError::Read)?;
 
-        // Since this should return no rows (with the row key set to a value that shouldn't exist)
-        // the first component of the tuple should be None.
         debug!("🉑 health check");
         Ok(true)
     }
@@ -1316,11 +1327,12 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        self.pool
+        Ok(self
+            .pool
             .get()
             .await?
             .health_check(self.metrics.clone())
-            .await
+            .await?)
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up

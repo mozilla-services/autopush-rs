@@ -33,7 +33,7 @@ pub struct NotificationHeaders {
             code = "113"
         ),
         regex(
-            path = "VALID_BASE64_URL",
+            path = *VALID_BASE64_URL,
             message = "Topic must be URL and Filename safe Base64 alphabet",
             code = "113"
         )
@@ -273,7 +273,7 @@ mod tests {
                     "code": "114",
                     "message": "TTL must be greater than 0",
                     "params": {
-                        "min": 0.0,
+                        "min": 0,
                         "value": -1
                     }
                 }]
