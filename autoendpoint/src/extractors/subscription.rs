@@ -1,18 +1,16 @@
 use std::borrow::Cow;
-use std::fmt;
 use std::str::FromStr;
 
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
 use autopush_common::{
     db::User,
     tags::Tags,
-    util::{b64_decode_std, b64_decode_url, sec_since_epoch},
+    util::{b64_decode_std, b64_decode_url, sec_since_epoch, ONE_DAY_IN_SECONDS},
 };
 use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
-use serde::{Deserialize, Serialize};
 use url::Url;
 use uuid::Uuid;
 
@@ -23,12 +21,10 @@ use crate::extractors::{
 };
 use crate::headers::{
     crypto_key::CryptoKeyHeader,
-    vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
+    vapid::{VapidClaims, VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
 };
 use crate::metrics::Metrics;
 use crate::server::AppState;
-
-const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 #[derive(Clone, Debug)]
@@ -38,32 +34,6 @@ pub struct Subscription {
     pub vapid: Option<VapidHeaderWithKey>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VapidClaims {
-    exp: u64,
-    aud: String,
-    sub: String,
-}
-
-impl Default for VapidClaims {
-    fn default() -> Self {
-        Self {
-            exp: sec_since_epoch() + ONE_DAY_IN_SECONDS,
-            aud: "No audience".to_owned(),
-            sub: "No sub".to_owned(),
-        }
-    }
-}
-
-impl fmt::Display for VapidClaims {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("VapidClaims")
-            .field("exp", &self.exp)
-            .field("aud", &self.aud)
-            .field("sub", &self.sub)
-            .finish()
-    }
-}
 impl FromRequest for Subscription {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;

@@ -1,5 +1,6 @@
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
+use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
 use autopush_common::db::client::DbClient;
@@ -44,7 +45,12 @@ pub async fn handle_error(
     platform: &str,
     app_id: &str,
     uaid: Uuid,
+    vapid: Option<VapidHeaderWithKey>,
 ) -> ApiError {
+    // If we have a `sub` from the provider, append it to the extras.
+    if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
+        error.extras().append(&mut [("sub", claims.sub)].to_vec());
+    };
     match &error {
         RouterError::Authentication => {
             error!("Bridge authentication error");

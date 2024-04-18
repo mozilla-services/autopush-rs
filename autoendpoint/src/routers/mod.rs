@@ -84,7 +84,7 @@ pub enum RouterError {
     Fcm(#[from] FcmError),
 
     #[error("Database error while saving notification")]
-    SaveDb(#[source] DbError),
+    SaveDb(#[source] DbError, Option<String>),
 
     #[error("User was deleted during routing")]
     UserWasDeleted,
@@ -122,7 +122,7 @@ impl RouterError {
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
 
-            RouterError::SaveDb(e) => e.status(),
+            RouterError::SaveDb(e, _) => e.status(),
 
             RouterError::UserWasDeleted | RouterError::NotFound => StatusCode::GONE,
 
@@ -149,7 +149,7 @@ impl RouterError {
 
             RouterError::NotFound => Some(106),
 
-            RouterError::SaveDb(_) => Some(201),
+            RouterError::SaveDb(_, _) => Some(201),
 
             RouterError::Authentication => Some(901),
 
@@ -178,7 +178,7 @@ impl RouterError {
                 "notification.bridge.error.fcm.badappid"
             }
             RouterError::TooMuchData(_) => "notification.bridge.error.too_much_data",
-            RouterError::SaveDb(e) => e.metric_label().unwrap_or_default(),
+            RouterError::SaveDb(e, _) => e.metric_label().unwrap_or_default(),
             _ => "",
         };
         if !err.is_empty() {
@@ -202,7 +202,7 @@ impl RouterError {
             | RouterError::RequestTimeout
             | RouterError::TooMuchData(_)
             | RouterError::Upstream { .. } => false,
-            RouterError::SaveDb(e) => e.is_sentry_event(),
+            RouterError::SaveDb(e, _) => e.is_sentry_event(),
             _ => true,
         }
     }
@@ -210,7 +210,13 @@ impl RouterError {
     pub fn extras(&self) -> Vec<(&str, String)> {
         match self {
             RouterError::Fcm(e) => e.extras(),
-            RouterError::SaveDb(e) => e.extras(),
+            RouterError::SaveDb(e, sub) => {
+                let mut extras = e.extras();
+                if let Some(sub) = sub {
+                    extras.append(&mut vec![("sub", sub.clone())]);
+                };
+                extras
+            }
             _ => vec![],
         }
     }

@@ -188,7 +188,18 @@ impl WebPushRouter {
                 notification.clone().into(),
             )
             .await
-            .map_err(|e| ApiErrorKind::Router(RouterError::SaveDb(e)).into())
+            .map_err(|e| {
+                ApiErrorKind::Router(RouterError::SaveDb(
+                    e,
+                    // try to extract the `sub` from the VAPID clamis.
+                    notification
+                        .subscription
+                        .vapid
+                        .as_ref()
+                        .map(|vapid| vapid.vapid.claims().map(|c| c.sub).unwrap_or_default()),
+                ))
+                .into()
+            })
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer
