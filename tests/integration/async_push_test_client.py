@@ -237,8 +237,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         # Pull the sent notification immediately if connected.
         # Calls `get_notification` to get response from websocket.
         if self.ws and self.ws.is_client:  # check back on this after integration
-            res = await object.__getattribute__(self, "get_notification")(timeout)
-            return res
+            return await object.__getattribute__(self, "get_notification")(timeout)
         else:
             return resp
 
@@ -293,8 +292,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             raise Exception("WebSocket client not available as expected.")
 
         log.debug("Sending Ping")
-        ping_future = await self.ws.ping()
-        return ping_future
+        return await self.ws.ping()
 
     async def ack(self, channel, version) -> None:
         """Acknowledge message send."""

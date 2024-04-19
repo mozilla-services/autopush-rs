@@ -591,11 +591,10 @@ class TestRustWebPush:
     }
 
     @staticmethod
-    def clear_sentry_queue():
+    def clear_sentry_queue() -> None:
         """Clear any values present in Sentry queue."""
         while not MOCK_SENTRY_QUEUE.empty():
             MOCK_SENTRY_QUEUE.get_nowait()
-        return
 
     def tearDown(self):
         """Tear down and log processing."""
@@ -607,7 +606,6 @@ class TestRustWebPush:
         parsed = urlparse(list(client.channels.values())[0])
         return f"{parsed.scheme}://{parsed.netloc}"
 
-    @pytest.mark.asyncio
     async def quick_register(self):
         """Perform a connection initialization, which includes a new connection,
         `hello`, and channel registration.
@@ -620,7 +618,6 @@ class TestRustWebPush:
         log.debug("🐍 Connected")
         return client
 
-    @pytest.mark.asyncio
     async def shut_down(self, client=None):
         """Shut down client."""
         if client:
@@ -638,7 +635,6 @@ class TestRustWebPush:
             SkipTest("Skipping sentry test")
             return
         # Ensure bad data doesn't throw errors
-        TestRustWebPush.clear_sentry_queue()
         client = AsyncPushTestClient(self._ws_url)
         await client.connect()
         await client.hello()
@@ -670,7 +666,6 @@ class TestRustWebPush:
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
-        TestRustWebPush.clear_sentry_queue()
         client = await self.quick_register()
         endpoint = self.host_endpoint(client)
         await self.shut_down(client)
@@ -692,7 +687,6 @@ class TestRustWebPush:
         assert "LogCheck" in values
         assert sorted(values) == ["ERROR:Success", "LogCheck"]
 
-    @pytest.mark.order(1)
     @pytest.mark.asyncio
     @max_logs(conn=4)
     async def test_no_sentry_output(self):
@@ -704,7 +698,6 @@ class TestRustWebPush:
             SkipTest("Skipping sentry test")
             return
 
-        TestRustWebPush.clear_sentry_queue()
         ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
 
         try:
@@ -1395,13 +1388,13 @@ class TestRustWebPush:
 
     @pytest.mark.asyncio
     async def test_ws_ping(self):
-        """Test that the client can send a ping and get expected
-        future that returns the expected float latency value.
+        """Test that the client can send a ping, await expected pong response,
+        and verify completed future returns a float representing latency.
         """
         client = await self.quick_register()
-        result = await client.ping()
-        assert type(result) is asyncio.Future
-        completed_fut = await result
+        pong_waiter = await client.ping()
+        assert type(pong_waiter) is asyncio.Future
+        completed_fut = await pong_waiter
         assert type(completed_fut) is float
         assert client.ws.open
         await self.shut_down(client)
