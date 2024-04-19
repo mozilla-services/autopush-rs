@@ -1,4 +1,5 @@
 """Module containing Test Client for autopush-rs integration tests."""
+
 import asyncio
 import json
 import logging
@@ -236,7 +237,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         # Pull the sent notification immediately if connected.
         # Calls `get_notification` to get response from websocket.
         if self.ws and self.ws.is_client:  # check back on this after integration
-            return object.__getattribute__(self, "get_notification")(timeout)
+            return await object.__getattribute__(self, "get_notification")(timeout)
         else:
             return resp
 
@@ -272,13 +273,13 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             log.error(f"Error: {ex}")
             return None
 
-    async def ping(self):
-        """Test websocket ping."""
+    async def moz_ping(self):
+        """Send a very small message and await response."""
         if not self.ws:
             raise Exception("WebSocket client not available as expected.")
 
         log.debug("Send: {}")
-        await self.ws.ping("{}")
+        await self.ws.send("{}")
         result = await self.ws.recv()
         log.debug(f"Recv: {result}")
         return result
