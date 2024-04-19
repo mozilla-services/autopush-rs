@@ -122,7 +122,7 @@ impl RouterError {
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
 
-            RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
+            RouterError::SaveDb(e) => e.status(),
 
             RouterError::UserWasDeleted | RouterError::NotFound => StatusCode::GONE,
 
@@ -192,6 +192,7 @@ impl ReportableError for RouterError {
             | RouterError::RequestTimeout
             | RouterError::TooMuchData(_)
             | RouterError::Upstream { .. } => false,
+            RouterError::SaveDb(e) => e.is_sentry_event(),
             _ => true,
         }
     }
@@ -213,9 +214,9 @@ impl ReportableError for RouterError {
 
     fn extras(&self) -> Vec<(&str, String)> {
         match &self {
-            RouterError::SaveDb(e) => e.extras(),
             RouterError::Apns(e) => e.extras(),
             RouterError::Fcm(e) => e.extras(),
+            RouterError::SaveDb(e) => e.extras(),
             _ => vec![],
         }
     }
