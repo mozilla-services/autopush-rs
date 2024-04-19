@@ -423,7 +423,7 @@ def setup_mock_server():
     global MOCK_SERVER_THREAD
 
     MOCK_SERVER_THREAD = Thread(
-        target=run_fastapi_app, kwargs=dict(host="localhost", port=MOCK_SERVER_PORT)
+        target=run_fastapi_app, kwargs=dict(host="127.0.0.1", port=MOCK_SERVER_PORT)
     )
     MOCK_SERVER_THREAD.daemon = True
     MOCK_SERVER_THREAD.start()
