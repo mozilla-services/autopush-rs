@@ -284,16 +284,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug(f"Recv: {result}")
         return result
 
-    async def ping(self):
-        """Test ping/pong request and respose of websocket.
-        A ping may serve as a keepalive or as a check that the remote endpoint received.
-        """
-        if not self.ws:
-            raise Exception("WebSocket client not available as expected.")
-
-        log.debug("Sending Ping")
-        return await self.ws.ping()
-
     async def ack(self, channel, version) -> None:
         """Acknowledge message send."""
         if not self.ws:

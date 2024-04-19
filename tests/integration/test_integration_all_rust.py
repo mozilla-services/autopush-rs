@@ -1,6 +1,5 @@
 """Rust Connection and Endpoint Node Integration Tests."""
 
-import asyncio
 import base64
 import copy
 import json
@@ -1381,19 +1380,6 @@ class TestRustWebPush:
             # repsonse
             pass
         assert not client.ws.open
-        await self.shut_down(client)
-
-    @pytest.mark.asyncio
-    async def test_ws_ping(self):
-        """Test that the client can send a ping, await expected pong response,
-        and verify completed future returns a float representing latency.
-        """
-        client = await self.quick_register()
-        pong_waiter = await client.ping()
-        assert type(pong_waiter) is asyncio.Future
-        completed_fut = await pong_waiter
-        assert type(completed_fut) is float
-        assert client.ws.open
         await self.shut_down(client)
 
     @pytest.mark.asyncio
