@@ -71,7 +71,11 @@ impl ReportableError for SMError {
 
     fn metric_label(&self) -> Option<&'static str> {
         // TODO:
-        None
+        match &self.kind {
+            SMErrorKind::Database(e) => e.metric_label(),
+            SMErrorKind::MakeEndpoint(e) => e.metric_label(),
+            _ => None,
+        }
     }
 }
 
@@ -108,13 +112,12 @@ pub enum SMErrorKind {
 impl SMErrorKind {
     /// Whether this error is reported to Sentry
     fn is_sentry_event(&self) -> bool {
-        matches!(
-            self,
-            SMErrorKind::Database(_)
-                | SMErrorKind::Internal(_)
-                | SMErrorKind::Reqwest(_)
-                | SMErrorKind::MakeEndpoint(_)
-        )
+        match self {
+            SMErrorKind::Database(e) => e.is_sentry_event(),
+            SMErrorKind::MakeEndpoint(e) => e.is_sentry_event(),
+            SMErrorKind::Reqwest(_) | SMErrorKind::Internal(_) => true,
+            _ => false,
+        }
     }
 
     /// Whether this variant has a `Backtrace` captured
