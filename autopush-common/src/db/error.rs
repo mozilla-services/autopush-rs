@@ -1,3 +1,5 @@
+use actix_web::http::StatusCode;
+
 use backtrace::Backtrace;
 #[cfg(feature = "dynamodb")]
 use rusoto_core::RusotoError;
@@ -79,6 +81,17 @@ pub enum DbError {
     // Return a 503 error
     #[error("Process pending, please wait.")]
     Backoff(String),
+}
+
+impl DbError {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            #[cfg(feature = "bigtable")]
+            Self::BTError(e) => e.status(),
+            Self::Backoff(_) => StatusCode::SERVICE_UNAVAILABLE,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 }
 
 impl ReportableError for DbError {

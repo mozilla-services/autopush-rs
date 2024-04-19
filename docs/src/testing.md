@@ -18,17 +18,22 @@ The functional test strategy is three-tiered, composed of:
 See the documentation in each given test area for specific details on running and maintaining tests.
 
 ## Unit Tests
+
 Unit tests allow for testing individual components of code in isolation to ensure they function as expected. Rust's built-in support for writing and running unit tests use the `#[cfg(test)]` attribute and the `#[test]` attribute.
 
 ### Best Practices
+
 - Test functions are regular Rust functions annotated with the `#[test]` attribute.
 - Test functions should be written in the same module as the code they are testing.
-- Test functions should be named in a manner that describes the behavior being tested. 
-Ex. 
+- Test functions should be named in a manner that describes the behavior being tested.
+
+For example:
+
 ```Rust
     #[test]
     fn test_broadcast_change_tracker()
 ```
+
 - The use of assertion macros is encouraged. This includes, but is not limited to:
 `assert_eq!(actual, expected)`, `assert_ne!(actual, expected)`, `assert!(<condition>)`.
 - You should group related tests into modules using the `mod` keyword. Furthermore, test modules can be nested to organize tests in a hierarchy.
@@ -45,12 +50,22 @@ The autopush-rs tests are written in Python and located in the [integration test
 All dependencies are maintained by Poetry and defined in the `tests/pyproject.toml` file.  
 
 There are a few configuration steps required to run the Python integration tests:
-1. Depending on your operating system, ensure you have `cmake` and `openssl` installed. If using MacOS, for example, you can use `brew install cmake openssl`. 
+
+1. Depending on your operating system, ensure you have `cmake` and `openssl` installed. If using MacOS, for example, you can use `brew install cmake openssl`.
 2. Build Autopush-rs: from the root directory, execute `cargo build`
-3. Setup Local DynamoDB server: 
-- Download and unpack DynamoDB local v1.x in `tests/integration/ddb` from [AWS download link here][dynamo_deps].
-- Run the following in a seperate terminal instance: `java -Djava.library.path=./ddb/DynamoDBLocal_lib -jar ./ddb/DynamoDBLocal.jar -sharedDb -inMemory`
+3. Setup Local Bigtable emulator:
+
+- Install the [Google Cloud CLI](https://cloud.google.com/sdk/gcloud)
+- Install and run the [Google Bigtable Emulator](https://cloud.google.com/bigtable/docs/emulator)
+- Configure the Bigtable emulator by running the following shell script: (***Note***, this will create a project and instance both named `test`, meaning that the tablename will be `projects/test/instances/test/tables/autopush`)
+
+```bash
+BIGTABLE_EMULATOR_HOST=localhost:8086 \
+scripts/setup_bt.sh
+```
+
 4. Create Python virtual environment. It is recommended to use `pyenv virtualenv`:
+
 ```shell
 $ pyenv virtualenv
 $ pyenv install 3.12 # install matching version currently used
@@ -58,10 +73,11 @@ $ pyenv virtualenv 3.12 push-312 # you can name this whatever you like
 $ pyenv local push-312 # sets this venv to activate when entering dir
 $ pyenv activate push-312
 ```
+
 5. Run `poetry install` to install all dependencies for testing.
 
 ### Running Integration Tests
-To run the integration tests, simply run `make integration-tests` from your terminal at the root of the project. 
+To run the integration tests, simply run `make integration-tests` from your terminal at the root of the project.
 
 You can alter the verbosity and logging output by adding command line flags to the `PYTEST_ARGS ?=` variable in the root project Makefile. For example, for greater verbosity and stdout printing, add `-vv -s`.
 
