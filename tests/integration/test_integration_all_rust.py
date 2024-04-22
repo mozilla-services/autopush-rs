@@ -172,7 +172,7 @@ MEGAPHONE_CONFIG.update(
     auto_ping_timeout=10.0,
     close_handshake_timeout=5,
     max_connections=5000,
-    megaphone_api_url="http://127.0.0.1:{port}/v1/broadcasts".format(port=MOCK_SERVER_PORT),
+    megaphone_api_url=f"http://127.0.0.1:{MOCK_SERVER_PORT}/v1/broadcasts/",
     megaphone_api_token=MOCK_MP_TOKEN,
     megaphone_poll_interval=1,
 )
@@ -291,7 +291,7 @@ def max_logs(endpoint=None, conn=None):
     return max_logs_decorator
 
 
-@app.get("/v1/broadcasts")
+@app.get("/v1/broadcasts/")
 async def broadcast_handler(request: Request):
     """Broadcast handler setup."""
     assert request.headers["Authorization"] == MOCK_MP_TOKEN
@@ -429,7 +429,7 @@ def setup_mock_server():
     MOCK_SERVER_THREAD.start()
 
     # Sentry API mock
-    os.environ["SENTRY_DSN"] = "http://foo:bar@127.0.0.1:{}/1".format(MOCK_SERVER_PORT)
+    os.environ["SENTRY_DSN"] = f"http://foo:bar@127.0.0.1:{MOCK_SERVER_PORT}/1"
 
 
 def setup_connection_server(connection_binary):

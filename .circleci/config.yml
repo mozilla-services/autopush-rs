@@ -98,7 +98,7 @@ jobs:
     resource_class: xlarge
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
-      AWS_LOCAL_DYNAMODB: http://localhost:8000
+      AWS_LOCAL_DYNAMODB: http://127.0.0.1:8000
     steps:
       - checkout
       # Need to download the poetry.lock files so we can use their
