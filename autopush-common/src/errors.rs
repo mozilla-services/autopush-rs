@@ -108,8 +108,6 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
-    #[error(transparent)]
-    DbError(#[from] crate::db::error::DbError),
     #[error("Error while validating token")]
     TokenHashValidation(#[source] openssl::error::ErrorStack),
     #[error("Error while creating secret")]
@@ -163,10 +161,6 @@ impl ApcErrorKind {
             Self::PongTimeout | Self::ExcessivePing => false,
             // Non-actionable Endpoint errors
             Self::PayloadError(_) => false,
-            #[cfg(feature = "bigtable")]
-            Self::DbError(crate::db::error::DbError::BTError(
-                crate::db::bigtable::BigTableError::Recycle,
-            )) => false,
             _ => true,
         }
     }
@@ -177,10 +171,6 @@ impl ApcErrorKind {
             Self::PongTimeout => "pong_timeout",
             Self::ExcessivePing => "excessive_ping",
             Self::PayloadError(_) => "payload",
-            #[cfg(feature = "bigtable")]
-            Self::DbError(crate::db::error::DbError::BTError(
-                crate::db::bigtable::BigTableError::Recycle,
-            )) => "bt_recycle",
             _ => return None,
         };
         Some(label)

@@ -1,5 +1,4 @@
 //! Error types and transformations
-// TODO: Collpase these into `autopush_common::error`
 
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
@@ -12,8 +11,8 @@ use actix_web::{
     HttpResponse, Result,
 };
 // Sentry uses the backtrace crate, not std::backtrace.
+use actix_http::header;
 use backtrace::Backtrace;
-use reqwest::header;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
@@ -81,6 +80,9 @@ pub enum ApiErrorKind {
 
     #[error("Database error: {0}")]
     Database(#[from] DbError),
+
+    #[error("Conditional database operation failed: {0}")]
+    Conditional(String),
 
     #[error("Invalid token")]
     InvalidToken,
@@ -150,12 +152,13 @@ impl ApiErrorKind {
 
             ApiErrorKind::LogCheck => StatusCode::IM_A_TEAPOT,
 
-            ApiErrorKind::Database(DbError::Backoff(_)) => StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorKind::Conditional(_) => StatusCode::SERVICE_UNAVAILABLE,
+
+            ApiErrorKind::Database(e) => e.status(),
 
             ApiErrorKind::General(_)
             | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
-            | ApiErrorKind::Database(_)
             | ApiErrorKind::EndpointUrl(_)
             | ApiErrorKind::RegistrationSecretHash(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -191,8 +194,9 @@ impl ApiErrorKind {
             ApiErrorKind::General(_) => "general",
             ApiErrorKind::Io(_) => "io",
             ApiErrorKind::Metrics(_) => "metrics",
-            ApiErrorKind::Database(_) => "database",
-            ApiErrorKind::EndpointUrl(_) => "endpoint_url",
+            ApiErrorKind::Database(e) => return e.metric_label(),
+            ApiErrorKind::Conditional(_) => "conditional",
+            ApiErrorKind::EndpointUrl(e) => return e.metric_label(),
             ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
         })
     }
@@ -202,22 +206,22 @@ impl ApiErrorKind {
         match self {
             // ignore selected validation errors.
             ApiErrorKind::Router(e) => e.is_sentry_event(),
-            _ => !matches!(
-                self,
-                // Ignore common webpush errors
-                ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
-                // Ignore common VAPID erros
-                ApiErrorKind::VapidError(_)
+            ApiErrorKind::Database(e) => e.is_sentry_event(),
+            // Ignore common webpush errors
+            ApiErrorKind::NoTTL | ApiErrorKind::InvalidEncryption(_) |
+            // Ignore common VAPID erros
+            ApiErrorKind::VapidError(_)
                 | ApiErrorKind::Jwt(_)
                 | ApiErrorKind::TokenHashValidation(_)
                 | ApiErrorKind::InvalidAuthentication
                 | ApiErrorKind::InvalidLocalAuth(_) |
-                // Ignore missing or invalid user errors
-                ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
-                // Ignore oversized payload.
-                ApiErrorKind::PayloadError(_) |
-                ApiErrorKind::Validation(_),
-            ),
+            // Ignore missing or invalid user errors
+            ApiErrorKind::NoUser | ApiErrorKind::NoSubscription |
+            // Ignore oversized payload.
+            ApiErrorKind::PayloadError(_) |
+            ApiErrorKind::Validation(_) |
+            ApiErrorKind::Conditional(_) => false,
+            _ => true,
         }
     }
 
@@ -259,6 +263,7 @@ impl ApiErrorKind {
             | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::Database(_)
+            | ApiErrorKind::Conditional(_)
             | ApiErrorKind::PayloadError(_)
             | ApiErrorKind::InvalidRouterToken
             | ApiErrorKind::RegistrationSecretHash(_)
@@ -403,5 +408,27 @@ mod tests {
         assert_eq!(event.exception[0].ty, "Integrity");
         assert_eq!(event.exception[1].ty, "ApiError");
         assert_eq!(event.extra.get("row"), Some(&"bar".into()));
+    }
+
+    /// Ensure that Pool error metric labels are specified and that they return a 503 status code.
+    #[cfg(feature = "bigtable")]
+    #[test]
+    fn test_label_for_metrics() {
+        // specifically test for a timeout on pool entry creation.
+        let e: ApiError = ApiErrorKind::Database(DbError::BTError(
+            autopush_common::db::bigtable::BigTableError::PoolTimeout(
+                deadpool::managed::TimeoutType::Create,
+            ),
+        ))
+        .into();
+
+        // Remember, `autoendpoint` is prefixed to this metric label.
+        assert_eq!(
+            e.kind.metric_label(),
+            Some("storage.bigtable.error.pool_timeout")
+        );
+
+        // "Retry-After" is applied on any 503 response (See ApiError::error_response)
+        assert_eq!(e.kind.status(), actix_http::StatusCode::SERVICE_UNAVAILABLE)
     }
 }
