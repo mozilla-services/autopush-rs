@@ -415,7 +415,7 @@ def setup_dynamodb():
 
 def run_fastapi_app(host, port):
     """Run FastAPI app with uvicorn."""
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=host, port=port, log_level="debug")
 
 
 def setup_mock_server():
@@ -1456,9 +1456,36 @@ class TestRustWebPushBroadcast:
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
+        log.critical("MEGA")
+        log.critical(MEGAPHONE_CONFIG)
+        log.critical(MEGAPHONE_CONFIG.get("hostname"))
+        log.critical(MEGAPHONE_CONFIG.get("port"))
+        log.critical(MEGAPHONE_CONFIG.get("endpoint_scheme"))
+        log.critical(f"MOCK SERVER PORT: {MOCK_SERVER_PORT}")
+        print("MEGA")
+        print(MEGAPHONE_CONFIG)
+        print(MEGAPHONE_CONFIG.get("hostname"))
+        print(MEGAPHONE_CONFIG.get("port"))
+        print(MEGAPHONE_CONFIG.get("endpoint_scheme"))
 
         old_ver = {"kinto:123": "ver0"}
         client = AsyncPushTestClient(self._ws_url)
+        log.critical("CLIENT")
+        log.critical(client)
+        print("CLIENT")
+        print(client)
+        print(f"url: {client.url}")
+        print(f"uaid: {client.uaid}")
+        print(f"ws: {client.ws}")
+        print(f"ws: {dir(client.ws)}")
+        print(f"messages: {client.messages}")
+        log.critical(client.url)
+        log.critical(client.uaid)
+        log.critical(client.ws)
+        log.critical(dir(client.ws))
+        log.critical(client.messages)
+
+
         await client.connect()
         result = await client.hello(services=old_ver)
         assert result != {}
