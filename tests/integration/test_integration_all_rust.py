@@ -634,6 +634,10 @@ class TestRustWebPush:
     def _ws_url(self):
         return f"ws://127.0.0.1:{CONNECTION_PORT}/"
 
+    @property
+    def _ws_url_mp(self):
+        return f"ws://127.0.0.1:{MP_CONNECTION_PORT}/"
+
     @pytest.mark.asyncio
     @max_logs(conn=4)
     async def test_sentry_output_autoconnect(self):
@@ -1418,38 +1422,8 @@ class TestRustWebPush:
         else:
             assert False
 
-
-class TestRustWebPushBroadcast:
-    """Test class for Rust Web Push Broadcast."""
-
-    max_endpoint_logs = 4
-    max_conn_logs = 1
-
-    def tearDown(self):
-        """Tear down."""
-        process_logs(self)
-
     @pytest.mark.asyncio
-    async def quick_register(self, connection_port=None):
-        """Connect and register client."""
-        conn_port = connection_port or MP_CONNECTION_PORT
-        client = AsyncPushTestClient(f"ws://127.0.0.1:{conn_port}/")
-        await client.connect()
-        await client.hello()
-        await client.register()
-        return client
-
-    @pytest.mark.asyncio
-    async def shut_down(self, client=None):
-        """Shut down client connection."""
-        if client:
-            await client.disconnect()
-
-    @property
-    def _ws_url(self):
-        return f"ws://127.0.0.1:{MP_CONNECTION_PORT}/"
-
-    @pytest.mark.asyncio
+    @max_logs(endpoint=4, conn=1)
     async def test_broadcast_update_on_connect(self):
         """Test that the client receives any pending broadcast updates on connect."""
         global MOCK_MP_SERVICES
@@ -1469,7 +1443,7 @@ class TestRustWebPushBroadcast:
         print(MEGAPHONE_CONFIG.get("endpoint_scheme"))
 
         old_ver = {"kinto:123": "ver0"}
-        client = AsyncPushTestClient(self._ws_url)
+        client = AsyncPushTestClient(self._ws_url_mp)
         log.critical("CLIENT")
         log.critical(client)
         print("CLIENT")
@@ -1485,7 +1459,6 @@ class TestRustWebPushBroadcast:
         log.critical(dir(client.ws))
         log.critical(client.messages)
 
-
         await client.connect()
         result = await client.hello(services=old_ver)
         assert result != {}
@@ -1503,6 +1476,7 @@ class TestRustWebPushBroadcast:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
+    @max_logs(endpoint=4, conn=1)
     async def test_broadcast_update_on_connect_with_errors(self):
         """Test that the client can receive broadcast updates on connect
         that may have produced internal errors.
@@ -1513,7 +1487,7 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        client = AsyncPushTestClient(self._ws_url)
+        client = AsyncPushTestClient(self._ws_url_mp)
         await client.connect()
         result = await client.hello(services=old_ver)
         assert result != {}
@@ -1523,6 +1497,7 @@ class TestRustWebPushBroadcast:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
+    @max_logs(endpoint=4, conn=1)
     async def test_broadcast_subscribe(self):
         """Test that the client can subscribe to new broadcasts."""
         global MOCK_MP_SERVICES
@@ -1531,7 +1506,7 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0"}
-        client = AsyncPushTestClient(self._ws_url)
+        client = AsyncPushTestClient(self._ws_url_mp)
         await client.connect()
         result = await client.hello()
         assert result != {}
@@ -1554,6 +1529,7 @@ class TestRustWebPushBroadcast:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
+    @max_logs(endpoint=4, conn=1)
     async def test_broadcast_subscribe_with_errors(self):
         """Test that broadcast returns expected errors."""
         global MOCK_MP_SERVICES
@@ -1562,7 +1538,7 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        client = AsyncPushTestClient(self._ws_url)
+        client = AsyncPushTestClient(self._ws_url_mp)
         await client.connect()
         result = await client.hello()
         assert result != {}
@@ -1578,6 +1554,7 @@ class TestRustWebPushBroadcast:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
+    @max_logs(endpoint=4, conn=1)
     async def test_broadcast_no_changes(self):
         """Test to ensure there are no changes from broadcast."""
         global MOCK_MP_SERVICES
@@ -1586,7 +1563,7 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver1"}
-        client = AsyncPushTestClient(self._ws_url)
+        client = AsyncPushTestClient(self._ws_url_mp)
         await client.connect()
         result = await client.hello(services=old_ver)
         assert result != {}
