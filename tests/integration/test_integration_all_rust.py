@@ -558,6 +558,9 @@ def setup_module():
         setup_dynamodb()
 
     setup_mock_server()
+
+    # NOTE: This sleep is required to ensure that autopush does not ping the Megaphone
+    # v1/broadcasts endpoint before it is ready.
     time.sleep(1)
 
     log.debug(f"🐍🟢 Rust Log: {RUST_LOG}")
