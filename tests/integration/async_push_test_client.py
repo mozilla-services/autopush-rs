@@ -50,7 +50,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         }
 
     async def connect(self, connection_port: int | None = None) -> None:
-        """Establish a websocket connection to localhost at the provided `connection_port`.
+        """Establish a websocket connection to localhost (127.0.0.1) at provided `connection_port`.
 
         Parameters
         ----------
