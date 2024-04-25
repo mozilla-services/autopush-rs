@@ -587,6 +587,50 @@ def teardown_module():
     kill_process(EP_SERVER)
 
 
+@pytest.fixture(name="ws_url")
+def fixture_ws_url() -> str:
+    """Return defined url for websocket connection."""
+    return f"ws://localhost:{CONNECTION_PORT}/"
+
+
+@pytest.fixture(name="megaphone_ws_url")
+def fixture_megaphone_ws_url() -> str:
+    """Return websocket url for megaphone broadcast testing."""
+    return f"ws://localhost:{MP_CONNECTION_PORT}/"
+
+
+@pytest.fixture(name="test_client")
+def fixture_test_client(ws_url) -> AsyncPushTestClient:
+    """Return a push test client for use within tests."""
+    return AsyncPushTestClient(ws_url)
+
+
+@pytest.fixture(name="vapid_payload", scope="function")
+def fixture_vapid_payload() -> dict[str, int | str]:
+    """Return a test fixture of a vapid payload."""
+    return {
+        "exp": int(time.time()) + 86400,
+        "sub": "mailto:admin@example.com",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.fixture(name="initialized_test_client")
+async def fixture_initialized_test_client():
+    """Perform a connection initialization, which includes a new connection,
+    `hello`, and channel registration.
+    """
+    log.debug(f"🐍#### Connecting to ws://localhost:{CONNECTION_PORT}/")
+    client = AsyncPushTestClient(f"ws://localhost:{CONNECTION_PORT}/")
+    await client.connect()
+    await client.hello()
+    await client.register()
+    log.debug("🐍 Test Client Connected")
+    yield client
+    await client.disconnect()
+    log.debug("🐍 Test Client Disconnected")
+
+
 class TestRustWebPush:
     """Test class for Rust Web Push."""
 
