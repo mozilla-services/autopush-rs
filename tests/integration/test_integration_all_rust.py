@@ -599,12 +599,6 @@ def fixture_megaphone_ws_url() -> str:
     return f"ws://localhost:{MP_CONNECTION_PORT}/"
 
 
-@pytest.fixture(name="test_client")
-def fixture_test_client(ws_url) -> AsyncPushTestClient:
-    """Return a push test client for use within tests."""
-    return AsyncPushTestClient(ws_url)
-
-
 @pytest.fixture(name="vapid_payload", scope="function")
 def fixture_vapid_payload() -> dict[str, int | str]:
     """Return a test fixture of a vapid payload."""
@@ -612,6 +606,25 @@ def fixture_vapid_payload() -> dict[str, int | str]:
         "exp": int(time.time()) + 86400,
         "sub": "mailto:admin@example.com",
     }
+
+
+@pytest.fixture(name="clear_sentry_queue", autouse=True, scope="function")
+def fixture_clear_sentry_queue() -> None:
+    """Clear any values present in Sentry queue."""
+    while not MOCK_SENTRY_QUEUE.empty():
+        MOCK_SENTRY_QUEUE.get_nowait()
+
+
+@pytest.fixture(name="test_client")
+def fixture_test_client():
+    """Return a push test client for use within tests that can have
+    a custom websocket url passed in to initialize.
+    """
+
+    def _test_client(ws_url):
+        return AsyncPushTestClient(ws_url)
+
+    return _test_client
 
 
 @pytest.mark.asyncio
@@ -642,16 +655,9 @@ class TestRustWebPush:
         "sub": "mailto:admin@example.com",
     }
 
-    @staticmethod
-    def clear_sentry_queue() -> None:
-        """Clear any values present in Sentry queue."""
-        while not MOCK_SENTRY_QUEUE.empty():
-            MOCK_SENTRY_QUEUE.get_nowait()
-
     def tearDown(self):
         """Tear down and log processing."""
         process_logs(self)
-        TestRustWebPush.clear_sentry_queue()
 
     def host_endpoint(self, client):
         """Return host endpoint."""
