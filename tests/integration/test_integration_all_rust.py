@@ -628,7 +628,7 @@ def fixture_test_client():
 
 
 @pytest.mark.asyncio
-@pytest.fixture(name="initialized_test_client")
+@pytest.fixture(name="initialized_test_client", autouse=True, scope="function")
 async def fixture_initialized_test_client():
     """Perform a connection initialization, which includes a new connection,
     `hello`, and channel registration.
@@ -658,11 +658,6 @@ class TestRustWebPush:
     def tearDown(self):
         """Tear down and log processing."""
         process_logs(self)
-
-    def host_endpoint(self, client):
-        """Return host endpoint."""
-        parsed = urlparse(list(client.channels.values())[0])
-        return f"{parsed.scheme}://{parsed.netloc}"
 
     async def quick_register(self):
         """Perform a connection initialization, which includes a new connection,
@@ -725,7 +720,7 @@ class TestRustWebPush:
             SkipTest("Skipping sentry test")
             return
         client = await self.quick_register()
-        endpoint = self.host_endpoint(client)
+        endpoint = client.get_host_client_endpoint()
         await self.shut_down(client)
         async with httpx.AsyncClient() as httpx_client:
             await httpx_client.get(f"{endpoint}/__error__", timeout=5)
@@ -881,7 +876,9 @@ class TestRustWebPush:
         """Test basic delivery with invalid VAPID header."""
         data = str(uuid.uuid4())
         client = await self.quick_register()
-        vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
+        vapid_info = _get_vapid(
+            payload=self.vapid_payload, endpoint=client.get_host_client_endpoint()
+        )
         vapid_info["crypto-key"] = "invalid"
         await client.send_notification(data=data, vapid=vapid_info, status=401)
         await self.shut_down(client)
@@ -893,7 +890,7 @@ class TestRustWebPush:
         client = await self.quick_register()
         vapid_info = _get_vapid(
             payload={
-                "aud": self.host_endpoint(client),
+                "aud": client.get_host_client_endpoint(),
                 "exp": "@",
                 "sub": "mailto:admin@example.com",
             }
@@ -909,7 +906,7 @@ class TestRustWebPush:
         client = await self.quick_register()
         vapid_info = _get_vapid(
             payload=self.vapid_payload,
-            endpoint=self.host_endpoint(client),
+            endpoint=client.get_host_client_endpoint(),
         )
         vapid_info["auth"] = ""
         await client.send_notification(data=data, vapid=vapid_info, status=401)
@@ -922,7 +919,7 @@ class TestRustWebPush:
         client = await self.quick_register()
         vapid_info = _get_vapid(
             payload={
-                "aud": self.host_endpoint(client),
+                "aud": client.get_host_client_endpoint(),
                 "sub": "mailto:admin@example.com",
             }
         )
@@ -935,7 +932,9 @@ class TestRustWebPush:
         """Test that basic delivery with invalid VAPID crypto-key fails."""
         data = str(uuid.uuid4())
         client = await self.quick_register()
-        vapid_info = _get_vapid(payload=self.vapid_payload, endpoint=self.host_endpoint(client))
+        vapid_info = _get_vapid(
+            payload=self.vapid_payload, endpoint=client.get_host_client_endpoint()
+        )
         vapid_info["crypto-key"] = "invalid|"
         await client.send_notification(data=data, vapid=vapid_info, status=401)
         await self.shut_down(client)

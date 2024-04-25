@@ -77,6 +77,11 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug(f"Send: {payload}")
         await self.ws.send(payload)
 
+    def get_host_client_endpoint(self) -> str:
+        """Return host endpoint from client."""
+        parsed = urlparse(list(self.channels.values())[0])
+        return f"{parsed.scheme}://{parsed.netloc}"
+
     async def hello(self, uaid: str | None = None, services: list[str] | None = None):
         """Hello verification."""
         if not self.ws:
