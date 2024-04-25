@@ -186,17 +186,6 @@ urllib3 = {version = ">=1.25.4,<2.2.0 || >2.2.0,<3", markers = "python_version >
 crt = ["awscrt (==0.20.9)"]
 
 [[package]]
-name = "bottle"
-version = "0.12.25"
-description = "Fast and simple WSGI-framework for small web-applications."
-optional = false
-python-versions = "*"
-files = [
-    {file = "bottle-0.12.25-py3-none-any.whl", hash = "sha256:d6f15f9d422670b7c073d63bd8d287b135388da187a0f3e3c19293626ce034ea"},
-    {file = "bottle-0.12.25.tar.gz", hash = "sha256:e1a9c94970ae6d710b3fb4526294dfeb86f2cb4a81eff3a4b98dc40fb0e5e021"},
-]
-
-[[package]]
 name = "brotli"
 version = "1.1.0"
 description = "Python bindings for the Brotli compression library"
@@ -2574,4 +2563,4 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "b9d9ebe800b109d11ab95f89a676fd8183fe31bdd67c5c0a67be92b927e4990a"
+content-hash = "9f407f578eb2e9effcd782270a29936a585e7c92b637e7b1aa143f9b47930dab"
