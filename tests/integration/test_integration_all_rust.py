@@ -615,35 +615,39 @@ def fixture_clear_sentry_queue() -> None:
         MOCK_SENTRY_QUEUE.get_nowait()
 
 
-@pytest.fixture(name="test_client")
-def fixture_test_client():
+@pytest.fixture(name="ws_config")
+def fixture_ws_config():
+    """Return collection of configuration values."""
+    return {"connection_port": 9150}
+
+
+@pytest.fixture(name="test_client", scope="function")
+def fixture_test_client(ws_url):
     """Return a push test client for use within tests that can have
     a custom websocket url passed in to initialize.
     """
-
-    def _test_client(ws_url):
-        return AsyncPushTestClient(ws_url)
-
-    return _test_client
+    return AsyncPushTestClient(ws_url)
 
 
-@pytest.mark.asyncio
-@pytest.fixture(name="initialized_test_client", autouse=True, scope="function")
-async def fixture_initialized_test_client():
+@pytest.fixture(name="registered_test_client", scope="function")
+async def fixture_registered_test_client(ws_config):
     """Perform a connection initialization, which includes a new connection,
     `hello`, and channel registration.
     """
-    log.debug(f"🐍#### Connecting to ws://localhost:{CONNECTION_PORT}/")
-    client = AsyncPushTestClient(f"ws://localhost:{CONNECTION_PORT}/")
+    log.debug(f"🐍#### Connecting to ws://localhost:{ws_config['connection_port']}/")
+    print(f"🐍#### Connecting to ws://localhost:{ws_config['connection_port']}/")
+    client = AsyncPushTestClient(f"ws://localhost:{ws_config['connection_port']}/")
     await client.connect()
     await client.hello()
     await client.register()
-    log.debug("🐍 Test Client Connected")
+    log.debug("🐍 Test Client Connected and Registered")
     yield client
     await client.disconnect()
     log.debug("🐍 Test Client Disconnected")
+    print("🐍 Test Client Disconnected")
 
 
+@pytest.mark.usefixtures("registered_test_client", "test_client")
 class TestRustWebPush:
     """Test class for Rust Web Push."""
 
@@ -761,74 +765,66 @@ class TestRustWebPush:
             pass
 
     @pytest.mark.asyncio
-    async def test_hello_echo(self):
+    async def test_hello_echo(self, test_client):
         """Test hello echo."""
-        client = AsyncPushTestClient(self._ws_url)
-        await client.connect()
-        result = await client.hello()
+        await test_client.connect()
+        result = await test_client.hello()
         assert result != {}
         assert result["use_webpush"] is True
-        await self.shut_down(client)
+        await test_client.disconnect()
 
     @pytest.mark.asyncio
-    async def test_hello_with_bad_prior_uaid(self):
+    async def test_hello_with_bad_prior_uaid(self, test_client):
         """Test hello with bad prior uaid."""
         non_uaid = uuid.uuid4().hex
-        client = AsyncPushTestClient(self._ws_url)
-        await client.connect()
-        result = await client.hello(uaid=non_uaid)
+        await test_client.connect()
+        result = await test_client.hello(uaid=non_uaid)
         assert result != {}
         assert result["uaid"] != non_uaid
         assert result["use_webpush"] is True
-        await self.shut_down(client)
+        await test_client.disconnect()
 
     @pytest.mark.asyncio
-    async def test_basic_delivery(self):
+    async def test_basic_delivery(self, registered_test_client):
         """Test basic regular push message delivery."""
         data = str(uuid.uuid4())
-        client: AsyncPushTestClient = await self.quick_register()
-        result = await client.send_notification(data=data)
+        result = await registered_test_client.send_notification(data=data)
         # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace('"', "").rstrip("=")
+        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
         assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(bytes(data, "utf-8"))
         assert result["messageType"] == "notification"
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_topic_basic_delivery(self):
+    async def test_topic_basic_delivery(self, registered_test_client):
         """Test basic topic push message delivery."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
-        result = await client.send_notification(data=data, topic="Inbox")
+        result = await registered_test_client.send_notification(data=data, topic="Inbox")
         # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace('"', "").rstrip("=")
+        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
         assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_topic_replacement_delivery(self):
+    async def test_topic_replacement_delivery(self, registered_test_client):
         """Test that a topic push message replaces it's prior version."""
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
-        client = await self.quick_register()
-        await client.disconnect()
-        await client.send_notification(data=data, topic="Inbox", status=201)
-        await client.send_notification(data=data2, topic="Inbox", status=201)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification()
+        await registered_test_client.disconnect()
+        await registered_test_client.send_notification(data=data, topic="Inbox", status=201)
+        await registered_test_client.send_notification(data=data2, topic="Inbox", status=201)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification()
         log.debug("get_notification result:", result)
         # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace('"', "").rstrip("=")
+        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
         assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data2)
         assert result["messageType"] == "notification"
-        result = await client.get_notification()
+        result = await registered_test_client.get_notification()
         assert result is None
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
     @max_logs(conn=4)
@@ -858,18 +854,16 @@ class TestRustWebPush:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_vapid(self):
+    async def test_basic_delivery_with_vapid(self, registered_test_client):
         """Test delivery of a basic push message with a VAPID header."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
         vapid_info = _get_vapid(payload=self.vapid_payload)
-        result = await client.send_notification(data=data, vapid=vapid_info)
+        result = await registered_test_client.send_notification(data=data, vapid=vapid_info)
         # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace('"', "").rstrip("=")
+        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
         assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
     async def test_basic_delivery_with_invalid_vapid(self):
@@ -884,150 +878,134 @@ class TestRustWebPush:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_invalid_vapid_exp(self):
+    async def test_basic_delivery_with_invalid_vapid_exp(self, registered_test_client):
         """Test basic delivery of a push message with invalid VAPID `exp` assertion."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
         vapid_info = _get_vapid(
             payload={
-                "aud": client.get_host_client_endpoint(),
+                "aud": registered_test_client.get_host_client_endpoint(),
                 "exp": "@",
                 "sub": "mailto:admin@example.com",
             }
         )
         vapid_info["crypto-key"] = "invalid"
-        await client.send_notification(data=data, vapid=vapid_info, status=401)
-        await self.shut_down(client)
+        await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_invalid_vapid_auth(self):
+    async def test_basic_delivery_with_invalid_vapid_auth(self, registered_test_client):
         """Test basic delivery with invalid VAPID auth."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
         vapid_info = _get_vapid(
             payload=self.vapid_payload,
-            endpoint=client.get_host_client_endpoint(),
+            endpoint=registered_test_client.get_host_client_endpoint(),
         )
         vapid_info["auth"] = ""
-        await client.send_notification(data=data, vapid=vapid_info, status=401)
-        await self.shut_down(client)
+        await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_invalid_signature(self):
+    async def test_basic_delivery_with_invalid_signature(self, registered_test_client):
         """Test that a basic delivery with invalid VAPID signature fails."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
         vapid_info = _get_vapid(
             payload={
-                "aud": client.get_host_client_endpoint(),
+                "aud": registered_test_client.get_host_client_endpoint(),
                 "sub": "mailto:admin@example.com",
             }
         )
-        vapid_info["auth"] = vapid_info["auth"][:-3] + "bad"
-        await client.send_notification(data=data, vapid=vapid_info, status=401)
-        await self.shut_down(client)
+        vapid_info["auth"] = f"{vapid_info['auth'][:-3]}bad"
+        await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_invalid_vapid_ckey(self):
+    async def test_basic_delivery_with_invalid_vapid_ckey(self, registered_test_client):
         """Test that basic delivery with invalid VAPID crypto-key fails."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
         vapid_info = _get_vapid(
-            payload=self.vapid_payload, endpoint=client.get_host_client_endpoint()
+            payload=self.vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
         )
         vapid_info["crypto-key"] = "invalid|"
-        await client.send_notification(data=data, vapid=vapid_info, status=401)
-        await self.shut_down(client)
+        await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
     @pytest.mark.asyncio
-    async def test_delivery_repeat_without_ack(self):
+    async def test_delivery_repeat_without_ack(self, registered_test_client):
         """Test that message delivery repeats if the client does not acknowledge messages."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
-        await client.disconnect()
-        assert client.channels
-        await client.send_notification(data=data, status=201)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification()
+        await registered_test_client.disconnect()
+        assert registered_test_client.channels
+        await registered_test_client.send_notification(data=data, status=201)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification()
         assert result is not None
         assert result["data"] == base64url_encode(data)
 
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification()
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification()
         assert result != {}
         assert result["data"] == base64url_encode(data)
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_repeat_delivery_with_disconnect_without_ack(self):
+    async def test_repeat_delivery_with_disconnect_without_ack(self, registered_test_client):
         """Test that message delivery repeats if the client disconnects
         without acknowledging the message.
         """
         data = str(uuid.uuid4())
-        client = await self.quick_register()
-        result = await client.send_notification(data=data)
+        result = await registered_test_client.send_notification(data=data)
         assert result != {}
         assert result["data"] == base64url_encode(data)
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification()
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification()
         assert result != {}
         assert result["data"] == base64url_encode(data)
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_multiple_delivery_repeat_without_ack(self):
+    async def test_multiple_delivery_repeat_without_ack(self, registered_test_client):
         """Test that the server will always try to deliver messages
         until the client acknowledges them.
         """
         data = str(uuid.uuid4())
         data2 = str(uuid.uuid4())
-        client = await self.quick_register()
-        await client.disconnect()
-        assert client.channels
-        await client.send_notification(data=data, status=201)
-        await client.send_notification(data=data2, status=201)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification()
+        await registered_test_client.disconnect()
+        assert registered_test_client.channels
+        await registered_test_client.send_notification(data=data, status=201)
+        await registered_test_client.send_notification(data=data2, status=201)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification()
         assert result != {}
         assert result["data"] in map(base64url_encode, [data, data2])
-        result = await client.get_notification()
+        result = await registered_test_client.get_notification()
         assert result != {}
         assert result["data"] in map(base64url_encode, [data, data2])
 
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification()
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification()
         assert result != {}
         assert result["data"] in map(base64url_encode, [data, data2])
-        result = await client.get_notification()
+        result = await registered_test_client.get_notification()
         assert result != {}
         assert result["data"] in map(base64url_encode, [data, data2])
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_topic_expired(self):
+    async def test_topic_expired(self, registered_test_client):
         """Test that the server will not deliver a message topic that has expired."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
-        await client.disconnect()
-        assert client.channels
-        await client.send_notification(data=data, ttl=1, topic="test", status=201)
-        await client.sleep(2)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=0.5)
+        await registered_test_client.disconnect()
+        assert registered_test_client.channels
+        await registered_test_client.send_notification(data=data, ttl=1, topic="test", status=201)
+        await registered_test_client.sleep(2)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
-        result = await client.send_notification(data=data, topic="test")
+        result = await registered_test_client.send_notification(data=data, topic="test")
         assert result != {}
         assert result["data"] == base64url_encode(data)
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
     @max_logs(conn=4)
@@ -1076,7 +1054,7 @@ class TestRustWebPush:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_multiple_delivery_with_multiple_ack(self):
+    async def test_multiple_delivery_with_multiple_ack(self, registered_test_client):
         """Test that the server provides the no additional unacknowledged messages
         if the client acknowledges both of the received messages.
         Note: the `data` fields are constructed so that they return
@@ -1084,96 +1062,87 @@ class TestRustWebPush:
         """
         data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "FirstMessage"
         data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()  # "OtherMessage"
-        client = await self.quick_register()
-        await client.disconnect()
-        assert client.channels
-        await client.send_notification(data=data, status=201)
-        await client.send_notification(data=data2, status=201)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=0.5)
+        await registered_test_client.disconnect()
+        assert registered_test_client.channels
+        await registered_test_client.send_notification(data=data, status=201)
+        await registered_test_client.send_notification(data=data2, status=201)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result != {}
         assert result["data"] in map(base64url_encode, [data, data2])
         log.debug(f"🟩🟩 Result:: {result['data']}")
-        result2 = await client.get_notification()
+        result2 = await registered_test_client.get_notification()
         assert result2 != {}
         assert result2["data"] in map(base64url_encode, [data, data2])
-        await client.ack(result2["channelID"], result2["version"])
-        await client.ack(result["channelID"], result["version"])
+        await registered_test_client.ack(result2["channelID"], result2["version"])
+        await registered_test_client.ack(result["channelID"], result["version"])
 
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=0.5)
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_no_delivery_to_unregistered(self):
+    async def test_no_delivery_to_unregistered(self, registered_test_client):
         """Test that the server does not try to deliver to unregistered channel IDs."""
         data = str(uuid.uuid4())
-        client: AsyncPushTestClient = await self.quick_register()
-        assert client.channels
-        chan = list(client.channels.keys())[0]
+        assert registered_test_client.channels
+        chan = list(registered_test_client.channels.keys())[0]
 
-        result = await client.send_notification(data=data)
+        result = await registered_test_client.send_notification(data=data)
         assert result["channelID"] == chan
         assert result["data"] == base64url_encode(data)
-        await client.ack(result["channelID"], result["version"])
+        await registered_test_client.ack(result["channelID"], result["version"])
 
-        await client.unregister(chan)
-        result = await client.send_notification(data=data, status=410)
+        await registered_test_client.unregister(chan)
+        result = await registered_test_client.send_notification(data=data, status=410)
 
         # Verify cache-control
-        assert client.notif_response.headers.get("Cache-Control") == "max-age=86400"
-
+        assert (
+            registered_test_client.notif_response.headers.get("Cache-Control") == "max-age=86400"
+        )
         assert result is None
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_ttl_0_connected(self):
+    async def test_ttl_0_connected(self, registered_test_client):
         """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
-        result = await client.send_notification(data=data, ttl=0)
+        result = await registered_test_client.send_notification(data=data, ttl=0)
         assert result is not None
         # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace('"', "").rstrip("=")
+        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
         assert result["headers"]["encryption"] == clean_header
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_ttl_0_not_connected(self):
+    async def test_ttl_0_not_connected(self, registered_test_client):
         """Test that a message with a TTL=0 and a recipient client that is not connected,
         is not delivered when the client reconnects.
         """
         data = str(uuid.uuid4())
-        client = await self.quick_register()
-        await client.disconnect()
-        await client.send_notification(data=data, ttl=0, status=201)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=0.5)
+        await registered_test_client.disconnect()
+        await registered_test_client.send_notification(data=data, ttl=0, status=201)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_ttl_expired(self):
+    async def test_ttl_expired(self, registered_test_client):
         """Test that messages with a TTL that has expired are not delivered
         to a recipient client.
         """
         data = str(uuid.uuid4())
-        client = await self.quick_register()
-        await client.disconnect()
-        await client.send_notification(data=data, ttl=1, status=201)
+        await registered_test_client.disconnect()
+        await registered_test_client.send_notification(data=data, ttl=1, status=201)
         time.sleep(1)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=0.5)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
     @max_logs(endpoint=28)
@@ -1441,11 +1410,12 @@ class TestRustWebPush:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_internal_endpoints(self):
+    async def test_internal_endpoints(self, registered_test_client):
         """Ensure an internal router endpoint isn't exposed on the public CONNECTION_PORT"""
-        client = await self.quick_register()
         parsed = (
-            urlparse(self._ws_url)._replace(scheme="http")._replace(path=f"/notif/{client.uaid}")
+            urlparse(self._ws_url)
+            ._replace(scheme="http")
+            ._replace(path=f"/notif/{registered_test_client.uaid}")
         )
 
         # We can't determine an AUTOPUSH_CN_SERVER's ROUTER_PORT
@@ -1469,6 +1439,7 @@ class TestRustWebPush:
             assert False
 
 
+@pytest.mark.usefixtures("registered_test_client", "test_client")
 class TestRustWebPushBroadcast:
     """Test class for Rust Web Push Broadcast."""
 
