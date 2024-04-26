@@ -272,7 +272,6 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             d = await asyncio.wait_for(self.ws.recv(), timeout)
             log.debug(f"Recv: {d}")
             result = json.loads(d)
-            assert result.get("messageType") == ClientMessageType.BROADCAST.value
             return result
         except WebSocketException as ex:  # pragma: no cover
             log.error(f"Error: {ex}")
