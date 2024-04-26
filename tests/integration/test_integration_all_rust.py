@@ -1,5 +1,6 @@
 """Rust Connection and Endpoint Node Integration Tests."""
 
+import asyncio
 import base64
 import copy
 import json
@@ -1138,7 +1139,7 @@ class TestRustWebPush:
         data = str(uuid.uuid4())
         await registered_test_client.disconnect()
         await registered_test_client.send_notification(data=data, ttl=1, status=201)
-        time.sleep(1)
+        await asyncio.sleep(1)
         await registered_test_client.connect()
         await registered_test_client.hello()
         result = await registered_test_client.get_notification(timeout=0.5)
@@ -1161,7 +1162,7 @@ class TestRustWebPush:
             await client.send_notification(data=prefix + data, ttl=1, status=201)
 
         await client.send_notification(data=data2, status=201)
-        time.sleep(1)
+        await asyncio.sleep(1)
         await client.connect()
         await client.hello()
         result = await client.get_notification(timeout=4)
@@ -1194,7 +1195,7 @@ class TestRustWebPush:
             await client.send_notification(data=data1, ttl=1, status=201)
 
         await client.send_notification(data=data2, status=201)
-        time.sleep(1)
+        await asyncio.sleep(1)
         await client.connect()
         await client.hello()
 
