@@ -594,13 +594,13 @@ def fixture_ws_url() -> str:
     return f"ws://localhost:{CONNECTION_PORT}/"
 
 
-@pytest.fixture(name="megaphone_ws_url")
-def fixture_megaphone_ws_url() -> str:
+@pytest.fixture(name="broadcast_ws_url")
+def fixture_broadcast_ws_url() -> str:
     """Return websocket url for megaphone broadcast testing."""
     return f"ws://localhost:{MP_CONNECTION_PORT}/"
 
 
-@pytest.fixture(name="vapid_payload", scope="function")
+@pytest.fixture(name="vapid_payload", scope="session")
 def fixture_vapid_payload() -> dict[str, int | str]:
     """Return a test fixture of a vapid payload."""
     return {
@@ -610,8 +610,11 @@ def fixture_vapid_payload() -> dict[str, int | str]:
 
 
 @pytest.fixture(name="clear_sentry_queue", autouse=True, scope="function")
-def fixture_clear_sentry_queue() -> None:
-    """Clear any values present in Sentry queue."""
+def fixture_clear_sentry_queue():
+    """Clear any values present in Sentry queue.
+    Scoped to run automatically after each test function.
+    """
+    yield
     while not MOCK_SENTRY_QUEUE.empty():
         MOCK_SENTRY_QUEUE.get_nowait()
 
@@ -623,11 +626,22 @@ def fixture_ws_config():
 
 
 @pytest.fixture(name="test_client", scope="function")
-def fixture_test_client(ws_url):
+async def fixture_test_client(ws_url):
     """Return a push test client for use within tests that can have
     a custom websocket url passed in to initialize.
     """
-    return AsyncPushTestClient(ws_url)
+    client = AsyncPushTestClient(ws_url)
+    return client
+
+
+@pytest.fixture(name="test_client_broadcast", scope="function")
+async def fixture_test_client_broadcast(broadcast_ws_url):
+    """Return a push test client for use within tests that can have
+    a custom websocket url passed in to initialize.
+    """
+    client = AsyncPushTestClient(broadcast_ws_url)
+    yield client
+    await client.disconnect()
 
 
 @pytest.fixture(name="registered_test_client", scope="function")
@@ -855,10 +869,10 @@ class TestRustWebPush:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_vapid(self, registered_test_client):
+    async def test_basic_delivery_with_vapid(self, registered_test_client, vapid_payload):
         """Test delivery of a basic push message with a VAPID header."""
         data = str(uuid.uuid4())
-        vapid_info = _get_vapid(payload=self.vapid_payload)
+        vapid_info = _get_vapid(payload=vapid_payload)
         result = await registered_test_client.send_notification(data=data, vapid=vapid_info)
         # the following presumes that only `salt` is padded.
         clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
@@ -867,16 +881,14 @@ class TestRustWebPush:
         assert result["messageType"] == "notification"
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_invalid_vapid(self):
+    async def test_basic_delivery_with_invalid_vapid(self, registered_test_client, vapid_payload):
         """Test basic delivery with invalid VAPID header."""
         data = str(uuid.uuid4())
-        client = await self.quick_register()
         vapid_info = _get_vapid(
-            payload=self.vapid_payload, endpoint=client.get_host_client_endpoint()
+            payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
         )
         vapid_info["crypto-key"] = "invalid"
-        await client.send_notification(data=data, vapid=vapid_info, status=401)
-        await self.shut_down(client)
+        await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
     @pytest.mark.asyncio
     async def test_basic_delivery_with_invalid_vapid_exp(self, registered_test_client):
@@ -893,11 +905,13 @@ class TestRustWebPush:
         await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_invalid_vapid_auth(self, registered_test_client):
+    async def test_basic_delivery_with_invalid_vapid_auth(
+        self, registered_test_client, vapid_payload
+    ):
         """Test basic delivery with invalid VAPID auth."""
         data = str(uuid.uuid4())
         vapid_info = _get_vapid(
-            payload=self.vapid_payload,
+            payload=vapid_payload,
             endpoint=registered_test_client.get_host_client_endpoint(),
         )
         vapid_info["auth"] = ""
@@ -917,11 +931,13 @@ class TestRustWebPush:
         await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
     @pytest.mark.asyncio
-    async def test_basic_delivery_with_invalid_vapid_ckey(self, registered_test_client):
+    async def test_basic_delivery_with_invalid_vapid_ckey(
+        self, registered_test_client, vapid_payload
+    ):
         """Test that basic delivery with invalid VAPID crypto-key fails."""
         data = str(uuid.uuid4())
         vapid_info = _get_vapid(
-            payload=self.vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
+            payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
         )
         vapid_info["crypto-key"] = "invalid|"
         await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
@@ -1316,24 +1332,22 @@ class TestRustWebPush:
     # Skipping test for now.
     # Note: dict_keys obj was not iterable, corrected by converting to iterable.
     @pytest.mark.asyncio
-    async def test_delete_saved_notification(self):
+    async def test_delete_saved_notification(self, registered_test_client):
         """Test deleting a saved notification in client server."""
-        client = await self.quick_register()
-        await client.disconnect()
-        assert client.channels
-        chan = list(client.channels.keys())[0]
-        await client.send_notification()
+        await registered_test_client.disconnect()
+        assert registered_test_client.channels
+        chan = list(registered_test_client.channels.keys())[0]
+        await registered_test_client.send_notification()
         status_code: int = 204
-        delete_resp = await client.delete_notification(chan, status=status_code)
+        delete_resp = await registered_test_client.delete_notification(chan, status=status_code)
         assert delete_resp.status_code == status_code
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification()
         assert result is None
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_with_key(self):
+    async def test_with_key(self, test_client):
         """Test getting a locked subscription with a valid VAPID public key."""
         private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
         claims = {
@@ -1344,33 +1358,27 @@ class TestRustWebPush:
         vapid = _get_vapid(private_key, claims)
         pk_hex = vapid["crypto-key"]
         chid = str(uuid.uuid4())
-        client = AsyncPushTestClient(f"ws://127.0.0.1:{CONNECTION_PORT}/")
-        await client.connect()
-        await client.hello()
-        await client.register(channel_id=chid, key=pk_hex)
+        await test_client.connect()
+        await test_client.hello()
+        await test_client.register(channel_id=chid, key=pk_hex)
 
         # Send an update with a properly formatted key.
-        await client.send_notification(vapid=vapid)
+        await test_client.send_notification(vapid=vapid)
 
         # now try an invalid key.
         new_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
         vapid = _get_vapid(new_key, claims)
 
-        await client.send_notification(vapid=vapid, status=401)
-
-        await self.shut_down(client)
+        await test_client.send_notification(vapid=vapid, status=401)
 
     @pytest.mark.asyncio
-    async def test_with_bad_key(self):
+    async def test_with_bad_key(self, test_client):
         """Test that a message registration request with bad VAPID public key is rejected."""
         chid = str(uuid.uuid4())
-        client = AsyncPushTestClient(f"ws://127.0.0.1:{CONNECTION_PORT}/")
-        await client.connect()
-        await client.hello()
-        result = await client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
+        await test_client.connect()
+        await test_client.hello()
+        result = await test_client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
         assert result["status"] == 400
-
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
     @max_logs(endpoint=44)
@@ -1395,20 +1403,18 @@ class TestRustWebPush:
         await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_can_moz_ping(self):
+    async def test_can_moz_ping(self, registered_test_client):
         """Test that the client can send a small ping message and get a valid response."""
-        client = await self.quick_register()
-        result = await client.moz_ping()
+        result = await registered_test_client.moz_ping()
         assert result == "{}"
-        assert client.ws.open
+        assert registered_test_client.ws.open
         try:
-            await client.moz_ping()
+            await registered_test_client.moz_ping()
         except websockets.exceptions.ConnectionClosedError:
             # pinging too quickly should disconnect without a valid ping
             # repsonse
             pass
-        assert not client.ws.open
-        await self.shut_down(client)
+        assert not registered_test_client.ws.open
 
     @pytest.mark.asyncio
     async def test_internal_endpoints(self, registered_test_client):
@@ -1440,7 +1446,7 @@ class TestRustWebPush:
             assert False
 
 
-@pytest.mark.usefixtures("registered_test_client", "test_client")
+@pytest.mark.usefixtures("test_client_broadcast")
 class TestRustWebPushBroadcast:
     """Test class for Rust Web Push Broadcast."""
 
@@ -1452,36 +1458,15 @@ class TestRustWebPushBroadcast:
         process_logs(self)
 
     @pytest.mark.asyncio
-    async def quick_register(self, connection_port=None):
-        """Connect and register client."""
-        conn_port = connection_port or MP_CONNECTION_PORT
-        client = AsyncPushTestClient(f"ws://127.0.0.1:{conn_port}/")
-        await client.connect()
-        await client.hello()
-        await client.register()
-        return client
-
-    @pytest.mark.asyncio
-    async def shut_down(self, client=None):
-        """Shut down client connection."""
-        if client:
-            await client.disconnect()
-
-    @property
-    def _ws_url(self):
-        return f"ws://127.0.0.1:{MP_CONNECTION_PORT}/"
-
-    @pytest.mark.asyncio
-    async def test_broadcast_update_on_connect(self):
+    async def test_broadcast_update_on_connect(self, test_client_broadcast):
         """Test that the client receives any pending broadcast updates on connect."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
         old_ver = {"kinto:123": "ver0"}
-        client = AsyncPushTestClient(self._ws_url)
-        await client.connect()
-        result = await client.hello(services=old_ver)
+        await test_client_broadcast.connect()
+        result = await test_client_broadcast.hello(services=old_ver)
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
@@ -1490,14 +1475,12 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
-        result = await client.get_broadcast(2)
+        result = await test_client_broadcast.get_broadcast(2)
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
-        await self.shut_down(client)
-
     @pytest.mark.asyncio
-    async def test_broadcast_update_on_connect_with_errors(self):
+    async def test_broadcast_update_on_connect_with_errors(self, test_client_broadcast):
         """Test that the client can receive broadcast updates on connect
         that may have produced internal errors.
         """
@@ -1507,17 +1490,15 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        client = AsyncPushTestClient(self._ws_url)
-        await client.connect()
-        result = await client.hello(services=old_ver)
+        await test_client_broadcast.connect()
+        result = await test_client_broadcast.hello(services=old_ver)
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
-        await self.shut_down(client)
 
     @pytest.mark.asyncio
-    async def test_broadcast_subscribe(self):
+    async def test_broadcast_subscribe(self, test_client_broadcast):
         """Test that the client can subscribe to new broadcasts."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1525,15 +1506,14 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0"}
-        client = AsyncPushTestClient(self._ws_url)
-        await client.connect()
-        result = await client.hello()
+        await test_client_broadcast.connect()
+        result = await test_client_broadcast.hello()
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
-        await client.broadcast_subscribe(old_ver)
-        result = await client.get_broadcast()
+        await test_client_broadcast.broadcast_subscribe(old_ver)
+        result = await test_client_broadcast.get_broadcast()
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver1"
 
@@ -1541,14 +1521,12 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
 
-        result = await client.get_broadcast(2)
+        result = await test_client_broadcast.get_broadcast(2)
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
-        await self.shut_down(client)
-
     @pytest.mark.asyncio
-    async def test_broadcast_subscribe_with_errors(self):
+    async def test_broadcast_subscribe_with_errors(self, test_client_broadcast):
         """Test that broadcast returns expected errors."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1556,23 +1534,20 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        client = AsyncPushTestClient(self._ws_url)
-        await client.connect()
-        result = await client.hello()
+        await test_client_broadcast.connect()
+        result = await test_client_broadcast.hello()
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
 
-        await client.broadcast_subscribe(old_ver)
-        result = await client.get_broadcast()
+        await test_client_broadcast.broadcast_subscribe(old_ver)
+        result = await test_client_broadcast.get_broadcast()
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
 
-        await self.shut_down(client)
-
     @pytest.mark.asyncio
-    async def test_broadcast_no_changes(self):
+    async def test_broadcast_no_changes(self, test_client_broadcast):
         """Test to ensure there are no changes from broadcast."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1580,11 +1555,8 @@ class TestRustWebPushBroadcast:
         MOCK_MP_POLLED.wait(timeout=5)
 
         old_ver = {"kinto:123": "ver1"}
-        client = AsyncPushTestClient(self._ws_url)
-        await client.connect()
-        result = await client.hello(services=old_ver)
+        await test_client_broadcast.connect()
+        result = await test_client_broadcast.hello(services=old_ver)
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
-
-        await self.shut_down(client)
