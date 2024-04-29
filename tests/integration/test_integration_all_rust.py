@@ -19,14 +19,15 @@ from typing import Any
 from unittest import SkipTest
 from urllib.parse import urlparse
 
-import bottle
 import ecdsa
 import httpx
 import psutil
 import pytest
 import twisted.internet.base
+import uvicorn
 import websockets
 from cryptography.fernet import Fernet
+from fastapi import FastAPI, Request
 from jose import jws
 
 from .async_push_test_client import AsyncPushTestClient, ClientMessageType
@@ -37,7 +38,7 @@ from .db import (
     get_router_table,
 )
 
-app = bottle.Bottle()
+app = FastAPI()
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ def get_free_port() -> int:
     """Get free port."""
     port: int
     s = socket.socket(socket.AF_INET, type=socket.SOCK_STREAM)
-    s.bind(("localhost", 0))
+    s.bind(("127.0.0.1", 0))
     address, port = s.getsockname()
     s.close()
     return port
@@ -138,9 +139,9 @@ For local test debugging, set `AUTOPUSH_CN_CONFIG=_url_` to override
 creation of the local server.
 """
 CONNECTION_CONFIG: dict[str, Any] = dict(
-    hostname="localhost",
+    hostname="127.0.0.1",
     port=CONNECTION_PORT,
-    endpoint_hostname="localhost",
+    endpoint_hostname="127.0.0.1",
     endpoint_port=ENDPOINT_PORT,
     router_port=ROUTER_PORT,
     endpoint_scheme="http",
@@ -171,7 +172,7 @@ MEGAPHONE_CONFIG.update(
     auto_ping_timeout=10.0,
     close_handshake_timeout=5,
     max_connections=5000,
-    megaphone_api_url="http://localhost:{port}/v1/broadcasts".format(port=MOCK_SERVER_PORT),
+    megaphone_api_url=f"http://127.0.0.1:{MOCK_SERVER_PORT}/v1/broadcasts/",
     megaphone_api_token=MOCK_MP_TOKEN,
     megaphone_poll_interval=1,
 )
@@ -181,7 +182,7 @@ For local test debugging, set `AUTOPUSH_EP_CONFIG=_url_` to override
 creation of the local server.
 """
 ENDPOINT_CONFIG = dict(
-    host="localhost",
+    host="127.0.0.1",
     port=ENDPOINT_PORT,
     router_table_name=ROUTER_TABLE,
     message_table_name=MESSAGE_TABLE,
@@ -291,17 +292,17 @@ def max_logs(endpoint=None, conn=None):
 
 
 @app.get("/v1/broadcasts")
-def broadcast_handler():
+async def broadcast_handler(request: Request) -> dict[str, dict[str, str]]:
     """Broadcast handler setup."""
-    assert bottle.request.headers["Authorization"] == MOCK_MP_TOKEN
+    assert request.headers["Authorization"] == MOCK_MP_TOKEN
     MOCK_MP_POLLED.set()
     return dict(broadcasts=MOCK_MP_SERVICES)
 
 
 @app.post("/api/1/envelope/")
-def sentry_handler() -> dict[str, str]:
+async def sentry_handler(request: Request) -> dict[str, str]:
     """Sentry handler configuration."""
-    headers, item_headers, payload = bottle.request.body.read().splitlines()
+    _headers, _item_headers, payload = (await request.body()).splitlines()
     MOCK_SENTRY_QUEUE.put(json.loads(payload))
     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
 
@@ -365,7 +366,7 @@ def setup_bt():
     # Will look at future replacement when moving to Docker.
     # https://bandit.readthedocs.io/en/latest/plugins/b603_subprocess_without_shell_equals_true.html
     BT_PROCESS = subprocess.Popen("gcloud beta emulators bigtable start".split(" "))  # nosec
-    os.environ["BIGTABLE_EMULATOR_HOST"] = "localhost:8086"
+    os.environ["BIGTABLE_EMULATOR_HOST"] = "127.0.0.1:8086"
     try:
         BT_DB_SETTINGS = os.environ.get(
             "BT_DB_SETTINGS",
@@ -412,16 +413,23 @@ def setup_dynamodb():
     get_router_table(boto_resource, ROUTER_TABLE)
 
 
+def run_fastapi_app(host, port):
+    """Run FastAPI app with uvicorn."""
+    uvicorn.run(app, host=host, port=port, log_level="debug")
+
+
 def setup_mock_server():
     """Set up mock server."""
     global MOCK_SERVER_THREAD
 
-    MOCK_SERVER_THREAD = Thread(target=app.run, kwargs=dict(port=MOCK_SERVER_PORT, debug=True))
+    MOCK_SERVER_THREAD = Thread(
+        target=run_fastapi_app, kwargs=dict(host="127.0.0.1", port=MOCK_SERVER_PORT)
+    )
     MOCK_SERVER_THREAD.daemon = True
     MOCK_SERVER_THREAD.start()
 
     # Sentry API mock
-    os.environ["SENTRY_DSN"] = "http://foo:bar@localhost:{}/1".format(MOCK_SERVER_PORT)
+    os.environ["SENTRY_DSN"] = f"http://foo:bar@127.0.0.1:{MOCK_SERVER_PORT}/1"
 
 
 def setup_connection_server(connection_binary):
@@ -551,6 +559,10 @@ def setup_module():
 
     setup_mock_server()
 
+    # NOTE: This sleep is required to ensure that autopush does not ping the Megaphone
+    # v1/broadcasts endpoint before it is ready.
+    time.sleep(1)
+
     log.debug(f"🐍🟢 Rust Log: {RUST_LOG}")
     os.environ["RUST_LOG"] = RUST_LOG
     connection_binary = get_rust_binary_path(CONNECTION_BINARY)
@@ -609,8 +621,8 @@ class TestRustWebPush:
         """Perform a connection initialization, which includes a new connection,
         `hello`, and channel registration.
         """
-        log.debug(f"🐍#### Connecting to ws://localhost:{CONNECTION_PORT}/")
-        client = AsyncPushTestClient(f"ws://localhost:{CONNECTION_PORT}/")
+        log.debug(f"🐍#### Connecting to ws://127.0.0.1:{CONNECTION_PORT}/")
+        client = AsyncPushTestClient(f"ws://127.0.0.1:{CONNECTION_PORT}/")
         await client.connect()
         await client.hello()
         await client.register()
@@ -624,7 +636,7 @@ class TestRustWebPush:
 
     @property
     def _ws_url(self):
-        return f"ws://localhost:{CONNECTION_PORT}/"
+        return f"ws://127.0.0.1:{CONNECTION_PORT}/"
 
     @pytest.mark.asyncio
     @max_logs(conn=4)
@@ -642,7 +654,7 @@ class TestRustWebPush:
 
         # LogCheck does throw an error every time
         async with httpx.AsyncClient() as httpx_client:
-            await httpx_client.get(f"http://localhost:{CONNECTION_PORT}/v1/err/crit", timeout=30)
+            await httpx_client.get(f"http://127.0.0.1:{CONNECTION_PORT}/v1/err/crit", timeout=30)
 
         event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
         # NOTE: this timeout increased to 5 seconds as was yielding
@@ -1309,14 +1321,14 @@ class TestRustWebPush:
         """Test getting a locked subscription with a valid VAPID public key."""
         private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
         claims = {
-            "aud": f"http://localhost:{ENDPOINT_PORT}",
+            "aud": f"http://127.0.0.1:{ENDPOINT_PORT}",
             "exp": int(time.time()) + 86400,
             "sub": "a@example.com",
         }
         vapid = _get_vapid(private_key, claims)
         pk_hex = vapid["crypto-key"]
         chid = str(uuid.uuid4())
-        client = AsyncPushTestClient(f"ws://localhost:{CONNECTION_PORT}/")
+        client = AsyncPushTestClient(f"ws://127.0.0.1:{CONNECTION_PORT}/")
         await client.connect()
         await client.hello()
         await client.register(channel_id=chid, key=pk_hex)
@@ -1336,7 +1348,7 @@ class TestRustWebPush:
     async def test_with_bad_key(self):
         """Test that a message registration request with bad VAPID public key is rejected."""
         chid = str(uuid.uuid4())
-        client = AsyncPushTestClient(f"ws://localhost:{CONNECTION_PORT}/")
+        client = AsyncPushTestClient(f"ws://127.0.0.1:{CONNECTION_PORT}/")
         await client.connect()
         await client.hello()
         result = await client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
@@ -1425,7 +1437,7 @@ class TestRustWebPushBroadcast:
     async def quick_register(self, connection_port=None):
         """Connect and register client."""
         conn_port = connection_port or MP_CONNECTION_PORT
-        client = AsyncPushTestClient(f"ws://localhost:{conn_port}/")
+        client = AsyncPushTestClient(f"ws://127.0.0.1:{conn_port}/")
         await client.connect()
         await client.hello()
         await client.register()
@@ -1439,7 +1451,7 @@ class TestRustWebPushBroadcast:
 
     @property
     def _ws_url(self):
-        return f"ws://localhost:{MP_CONNECTION_PORT}/"
+        return f"ws://127.0.0.1:{MP_CONNECTION_PORT}/"
 
     @pytest.mark.asyncio
     async def test_broadcast_update_on_connect(self):
@@ -1448,7 +1460,6 @@ class TestRustWebPushBroadcast:
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
         MOCK_MP_POLLED.clear()
         MOCK_MP_POLLED.wait(timeout=5)
-
         old_ver = {"kinto:123": "ver0"}
         client = AsyncPushTestClient(self._ws_url)
         await client.connect()

@@ -29,6 +29,7 @@ scheme was adopted.
 ``VERSION`` is a 2-digit 0-padded number, starting at 01 for Topic messages.
 
 """
+
 from __future__ import absolute_import
 
 import base64
