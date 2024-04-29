@@ -703,7 +703,6 @@ class TestRustWebPush:
     def _ws_url(self):
         return f"ws://127.0.0.1:{CONNECTION_PORT}/"
 
-    @pytest.mark.asyncio
     @max_logs(conn=4)
     async def test_sentry_output_autoconnect(self):
         """Test sentry output for autoconnect."""
@@ -735,7 +734,6 @@ class TestRustWebPush:
             pass
         assert event1["exception"]["values"][0]["value"] == "LogCheck"
 
-    @pytest.mark.asyncio
     @max_logs(endpoint=1)
     async def test_sentry_output_autoendpoint(self):
         """Test sentry output for autoendpoint."""
@@ -763,7 +761,6 @@ class TestRustWebPush:
         assert "LogCheck" in values
         assert sorted(values) == ["ERROR:Success", "LogCheck"]
 
-    @pytest.mark.asyncio
     @max_logs(conn=4)
     async def test_no_sentry_output(self):
         """Test for no Sentry output."""
@@ -783,7 +780,6 @@ class TestRustWebPush:
         except Empty:
             pass
 
-    @pytest.mark.asyncio
     async def test_hello_echo(self, test_client):
         """Test hello echo."""
         await test_client.connect()
@@ -792,7 +788,6 @@ class TestRustWebPush:
         assert result["use_webpush"] is True
         await test_client.disconnect()
 
-    @pytest.mark.asyncio
     async def test_hello_with_bad_prior_uaid(self, test_client):
         """Test hello with bad prior uaid."""
         non_uaid = uuid.uuid4().hex
@@ -803,7 +798,6 @@ class TestRustWebPush:
         assert result["use_webpush"] is True
         await test_client.disconnect()
 
-    @pytest.mark.asyncio
     async def test_basic_delivery(self, registered_test_client):
         """Test basic regular push message delivery."""
         data = str(uuid.uuid4())
@@ -814,7 +808,6 @@ class TestRustWebPush:
         assert result["data"] == base64url_encode(bytes(data, "utf-8"))
         assert result["messageType"] == "notification"
 
-    @pytest.mark.asyncio
     async def test_topic_basic_delivery(self, registered_test_client):
         """Test basic topic push message delivery."""
         data = str(uuid.uuid4())
@@ -825,7 +818,6 @@ class TestRustWebPush:
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
 
-    @pytest.mark.asyncio
     async def test_topic_replacement_delivery(self, registered_test_client):
         """Test that a topic push message replaces it's prior version."""
         data = str(uuid.uuid4())
@@ -845,7 +837,6 @@ class TestRustWebPush:
         result = await registered_test_client.get_notification()
         assert result is None
 
-    @pytest.mark.asyncio
     @max_logs(conn=4)
     async def test_topic_no_delivery_on_reconnect(self):
         """Test that a topic message does not attempt to redeliver on reconnect."""
@@ -872,7 +863,6 @@ class TestRustWebPush:
         await client.hello()
         await self.shut_down(client)
 
-    @pytest.mark.asyncio
     async def test_basic_delivery_with_vapid(self, registered_test_client, vapid_payload):
         """Test delivery of a basic push message with a VAPID header."""
         data = str(uuid.uuid4())
@@ -884,7 +874,6 @@ class TestRustWebPush:
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
 
-    @pytest.mark.asyncio
     async def test_basic_delivery_with_invalid_vapid(self, registered_test_client, vapid_payload):
         """Test basic delivery with invalid VAPID header."""
         data = str(uuid.uuid4())
@@ -894,7 +883,6 @@ class TestRustWebPush:
         vapid_info["crypto-key"] = "invalid"
         await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
-    @pytest.mark.asyncio
     async def test_basic_delivery_with_invalid_vapid_exp(self, registered_test_client):
         """Test basic delivery of a push message with invalid VAPID `exp` assertion."""
         data = str(uuid.uuid4())
@@ -908,7 +896,6 @@ class TestRustWebPush:
         vapid_info["crypto-key"] = "invalid"
         await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
-    @pytest.mark.asyncio
     async def test_basic_delivery_with_invalid_vapid_auth(
         self, registered_test_client, vapid_payload
     ):
@@ -921,7 +908,6 @@ class TestRustWebPush:
         vapid_info["auth"] = ""
         await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
-    @pytest.mark.asyncio
     async def test_basic_delivery_with_invalid_signature(self, registered_test_client):
         """Test that a basic delivery with invalid VAPID signature fails."""
         data = str(uuid.uuid4())
@@ -934,7 +920,6 @@ class TestRustWebPush:
         vapid_info["auth"] = f"{vapid_info['auth'][:-3]}bad"
         await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
-    @pytest.mark.asyncio
     async def test_basic_delivery_with_invalid_vapid_ckey(
         self, registered_test_client, vapid_payload
     ):
@@ -946,7 +931,6 @@ class TestRustWebPush:
         vapid_info["crypto-key"] = "invalid|"
         await registered_test_client.send_notification(data=data, vapid=vapid_info, status=401)
 
-    @pytest.mark.asyncio
     async def test_delivery_repeat_without_ack(self, registered_test_client):
         """Test that message delivery repeats if the client does not acknowledge messages."""
         data = str(uuid.uuid4())
@@ -966,7 +950,6 @@ class TestRustWebPush:
         assert result != {}
         assert result["data"] == base64url_encode(data)
 
-    @pytest.mark.asyncio
     async def test_repeat_delivery_with_disconnect_without_ack(self, registered_test_client):
         """Test that message delivery repeats if the client disconnects
         without acknowledging the message.
@@ -982,7 +965,6 @@ class TestRustWebPush:
         assert result != {}
         assert result["data"] == base64url_encode(data)
 
-    @pytest.mark.asyncio
     async def test_multiple_delivery_repeat_without_ack(self, registered_test_client):
         """Test that the server will always try to deliver messages
         until the client acknowledges them.
@@ -1012,7 +994,6 @@ class TestRustWebPush:
         assert result != {}
         assert result["data"] in map(base64url_encode, [data, data2])
 
-    @pytest.mark.asyncio
     async def test_topic_expired(self, registered_test_client):
         """Test that the server will not deliver a message topic that has expired."""
         data = str(uuid.uuid4())
@@ -1028,7 +1009,6 @@ class TestRustWebPush:
         assert result != {}
         assert result["data"] == base64url_encode(data)
 
-    @pytest.mark.asyncio
     @max_logs(conn=4)
     async def test_multiple_delivery_with_single_ack(self):
         """Test that the server provides the right unacknowledged messages
@@ -1074,7 +1054,6 @@ class TestRustWebPush:
         assert result is None
         await self.shut_down(client)
 
-    @pytest.mark.asyncio
     async def test_multiple_delivery_with_multiple_ack(self, registered_test_client):
         """Test that the server provides the no additional unacknowledged messages
         if the client acknowledges both of the received messages.
@@ -1105,7 +1084,6 @@ class TestRustWebPush:
         result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
 
-    @pytest.mark.asyncio
     async def test_no_delivery_to_unregistered(self, registered_test_client):
         """Test that the server does not try to deliver to unregistered channel IDs."""
         data = str(uuid.uuid4())
@@ -1126,7 +1104,6 @@ class TestRustWebPush:
         )
         assert result is None
 
-    @pytest.mark.asyncio
     async def test_ttl_0_connected(self, registered_test_client):
         """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
         data = str(uuid.uuid4())
@@ -1138,7 +1115,6 @@ class TestRustWebPush:
         assert result["data"] == base64url_encode(data)
         assert result["messageType"] == "notification"
 
-    @pytest.mark.asyncio
     async def test_ttl_0_not_connected(self, registered_test_client):
         """Test that a message with a TTL=0 and a recipient client that is not connected,
         is not delivered when the client reconnects.
@@ -1151,7 +1127,6 @@ class TestRustWebPush:
         result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
 
-    @pytest.mark.asyncio
     async def test_ttl_expired(self, registered_test_client):
         """Test that messages with a TTL that has expired are not delivered
         to a recipient client.
@@ -1165,7 +1140,6 @@ class TestRustWebPush:
         result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
 
-    @pytest.mark.asyncio
     @max_logs(endpoint=28)
     async def test_ttl_batch_expired_and_good_one(self):
         """Test that if a batch of messages are received while the recipient is offline,
@@ -1196,7 +1170,6 @@ class TestRustWebPush:
         assert result is None
         await self.shut_down(client)
 
-    @pytest.mark.asyncio
     @max_logs(endpoint=28)
     async def test_ttl_batch_partly_expired_and_good_one(self):
         """Test that if a batch of messages are received while the recipient is offline,
@@ -1237,7 +1210,6 @@ class TestRustWebPush:
         assert result is None
         await self.shut_down(client)
 
-    @pytest.mark.asyncio
     async def test_message_without_crypto_headers(self):
         """Test that a message without crypto headers, but has data is not accepted."""
         data = str(uuid.uuid4())
@@ -1246,7 +1218,6 @@ class TestRustWebPush:
         assert result is None
         await self.shut_down(client)
 
-    @pytest.mark.asyncio
     async def test_empty_message_without_crypto_headers(self):
         """Test that a message without crypto headers, and does not have data, is accepted."""
         client = await self.quick_register()
@@ -1269,7 +1240,6 @@ class TestRustWebPush:
 
         await self.shut_down(client)
 
-    @pytest.mark.asyncio
     async def test_empty_message_with_crypto_headers(self):
         """Test that an empty message with crypto headers does not send either `headers`
         or `data` as part of the incoming websocket `notification` message.
@@ -1303,7 +1273,6 @@ class TestRustWebPush:
 
         await self.shut_down(client)
 
-    @pytest.mark.asyncio
     async def test_big_message(self):
         """Test that we accept a large message.
 
@@ -1335,7 +1304,6 @@ class TestRustWebPush:
 
     # Skipping test for now.
     # Note: dict_keys obj was not iterable, corrected by converting to iterable.
-    @pytest.mark.asyncio
     async def test_delete_saved_notification(self, registered_test_client):
         """Test deleting a saved notification in client server."""
         await registered_test_client.disconnect()
@@ -1350,7 +1318,6 @@ class TestRustWebPush:
         result = await registered_test_client.get_notification()
         assert result is None
 
-    @pytest.mark.asyncio
     async def test_with_key(self, test_client):
         """Test getting a locked subscription with a valid VAPID public key."""
         private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
@@ -1375,7 +1342,6 @@ class TestRustWebPush:
 
         await test_client.send_notification(vapid=vapid, status=401)
 
-    @pytest.mark.asyncio
     async def test_with_bad_key(self, test_client):
         """Test that a message registration request with bad VAPID public key is rejected."""
         chid = str(uuid.uuid4())
@@ -1384,7 +1350,6 @@ class TestRustWebPush:
         result = await test_client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
         assert result["status"] == 400
 
-    @pytest.mark.asyncio
     @max_logs(endpoint=44)
     async def test_msg_limit(self):
         """Test that sent messages that are larger than our size limit are rejected."""
@@ -1406,7 +1371,6 @@ class TestRustWebPush:
         assert client.uaid != uaid
         await self.shut_down(client)
 
-    @pytest.mark.asyncio
     async def test_can_moz_ping(self, registered_test_client):
         """Test that the client can send a small ping message and get a valid response."""
         result = await registered_test_client.moz_ping()
@@ -1420,7 +1384,6 @@ class TestRustWebPush:
             pass
         assert not registered_test_client.ws.open
 
-    @pytest.mark.asyncio
     async def test_internal_endpoints(self, registered_test_client):
         """Ensure an internal router endpoint isn't exposed on the public CONNECTION_PORT"""
         parsed = (
@@ -1461,7 +1424,6 @@ class TestRustWebPushBroadcast:
         """Tear down."""
         process_logs(self)
 
-    @pytest.mark.asyncio
     async def test_broadcast_update_on_connect(self, test_client_broadcast):
         """Test that the client receives any pending broadcast updates on connect."""
         global MOCK_MP_SERVICES
@@ -1483,7 +1445,6 @@ class TestRustWebPushBroadcast:
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
-    @pytest.mark.asyncio
     async def test_broadcast_update_on_connect_with_errors(self, test_client_broadcast):
         """Test that the client can receive broadcast updates on connect
         that may have produced internal errors.
@@ -1501,7 +1462,6 @@ class TestRustWebPushBroadcast:
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
 
-    @pytest.mark.asyncio
     async def test_broadcast_subscribe(self, test_client_broadcast):
         """Test that the client can subscribe to new broadcasts."""
         global MOCK_MP_SERVICES
@@ -1529,7 +1489,6 @@ class TestRustWebPushBroadcast:
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
 
-    @pytest.mark.asyncio
     async def test_broadcast_subscribe_with_errors(self, test_client_broadcast):
         """Test that broadcast returns expected errors."""
         global MOCK_MP_SERVICES
@@ -1550,7 +1509,6 @@ class TestRustWebPushBroadcast:
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
 
-    @pytest.mark.asyncio
     async def test_broadcast_no_changes(self, test_client_broadcast):
         """Test to ensure there are no changes from broadcast."""
         global MOCK_MP_SERVICES
