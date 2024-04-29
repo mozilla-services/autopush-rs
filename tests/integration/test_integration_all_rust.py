@@ -16,7 +16,7 @@ import time
 import uuid
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Any
+from typing import Any, Generator
 from unittest import SkipTest
 from urllib.parse import urlparse
 
@@ -534,9 +534,14 @@ def setup_endpoint_server():
     EP_QUEUES.extend([out_q, err_q])
 
 
-def setup_module():
-    """Set up module including BigTable or Dynamo
-    and connection, endpoint and megaphone servers.
+@pytest.fixture(autouse=True, scope="session")
+def setup_teardown() -> Generator:
+    """Set up and tear down test resources within module.
+
+    Setup: BigTable or Dynamo and connection, endpoint, mock and megaphone servers.
+
+    Using pytest fixtures for setup/teardown means anything prior to `yield` statement
+    executes at test creation and anything after `yield` is run after tests complete.
     """
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, STRICT_LOG_COUNTS, RUST_LOG
 
@@ -546,10 +551,10 @@ def setup_module():
     for name in ("boto", "boto3", "botocore"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
 
-    if CONNECTION_CONFIG.get("db_dsn").startswith("grpc"):
+    if CONNECTION_CONFIG.get("db_dsn", "").startswith("grpc"):
         log.debug("Setting up BigTable")
         setup_bt()
-    elif CONNECTION_CONFIG.get("db_dsn").startswith("dual"):
+    elif CONNECTION_CONFIG.get("db_dsn", "").startswith("dual"):
         setup_bt()
         setup_dynamodb()
     else:
@@ -569,9 +574,8 @@ def setup_module():
     setup_endpoint_server()
     time.sleep(2)
 
+    yield
 
-def teardown_module():
-    """Teardown module for dynamo, bigtable, and servers."""
     if DDB_PROCESS:
         os.unsetenv("AWS_LOCAL_DYNAMODB")
         log.debug("🐍🔴 Stopping dynamodb")
