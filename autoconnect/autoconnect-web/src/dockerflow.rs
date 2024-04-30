@@ -26,10 +26,8 @@ pub fn config(config: &mut web::ServiceConfig) {
 }
 
 /// Handle the `/health` and `/__heartbeat__` routes
-// note, this changes to `blocks_in_conditions` for 1.76+
-#[allow(clippy::blocks_in_conditions)]
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
-    let status = if state
+    let healthy = state
         .db
         .health_check()
         .await
@@ -37,15 +35,9 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
             error!("Autoconnect Health Error: {:?}", e);
             e
         })
-        .is_ok()
-    {
-        "OK"
-    } else {
-        "ERROR"
-    };
-    //TODO: query local state and report results
+        .is_ok();
     Json(json!({
-        "status": status,
+        "status": if healthy { "OK" } else { "ERROR" },
         "version": env!("CARGO_PKG_VERSION"),
     }))
 }
