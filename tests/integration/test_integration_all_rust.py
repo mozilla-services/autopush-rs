@@ -17,7 +17,6 @@ import uuid
 from queue import Empty, Queue
 from threading import Event, Thread
 from typing import Any, Generator
-from unittest import SkipTest
 from urllib.parse import urlparse
 
 import ecdsa
@@ -534,7 +533,8 @@ def setup_teardown() -> Generator:
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, STRICT_LOG_COUNTS, RUST_LOG
 
     if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
-        raise SkipTest("Skipping integration tests")
+        log.debug("Skipping integration tests")
+        pytest.skip("Skipping integration tests", allow_module_level=True)
 
     for name in ("boto", "boto3", "botocore"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
@@ -659,8 +659,8 @@ async def test_sentry_output_autoconnect(
 ) -> None:
     """Test sentry output for autoconnect."""
     if os.getenv("SKIP_SENTRY"):
-        SkipTest("Skipping sentry test")
-        return
+        log.debug("Skipping test_sentry_output_autoconnect")
+        pytest.skip("Skipping test_sentry_output_autoconnect")
     # Ensure bad data doesn't throw errors
     await test_client.connect()
     await test_client.hello()
@@ -693,8 +693,8 @@ async def test_sentry_output_autoendpoint(
 ) -> None:
     """Test sentry output for autoendpoint."""
     if os.getenv("SKIP_SENTRY"):
-        SkipTest("Skipping sentry test")
-        return
+        log.debug("Skipping test_sentry_output_autoendpoint")
+        pytest.skip("Skipping test_sentry_output_autoendpoint")
     endpoint = registered_test_client.get_host_client_endpoint()
     await registered_test_client.disconnect()
     async with httpx.AsyncClient() as httpx_client:
@@ -720,8 +720,8 @@ async def test_sentry_output_autoendpoint(
 async def test_no_sentry_output(ws_url: str, process_logs_autouse) -> None:
     """Test for no Sentry output."""
     if os.getenv("SKIP_SENTRY"):
-        SkipTest("Skipping sentry test")
-        return
+        log.debug("Skipping test_no_sentry_output")
+        pytest.skip("Skipping test_no_sentry_output")
 
     ws_url = urlparse(ws_url)._replace(scheme="http").geturl()
 
