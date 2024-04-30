@@ -276,9 +276,12 @@ def fixture_process_logs_autouse():
     """
 
     def _process_logs(max_endpoint_logs=8, max_conn_logs=3):
+        # max_endpoint_logs and max_conn_logs are max log lines
+        # allowed to be emitted by each node type
         conn_count = sum(queue.qsize() for queue in CN_QUEUES)
         endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
-
+        import pdb
+        pdb.set_trace()
         print_lines_in_queues(CN_QUEUES, f"{CONNECTION_BINARY.upper()}: ")
         print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
 
@@ -696,984 +699,985 @@ async def fixture_registered_test_client(ws_config):
     print("🐍 Test Client Disconnected")
 
 
-@pytest.mark.usefixtures("registered_test_client", "test_client", "process_logs_autouse")
-class TestRustWebPush:
-    """Test class for Rust Web Push."""
+# @pytest.mark.usefixtures("registered_test_client", "test_client", "process_logs_autouse")
+# class TestRustWebPush:
+#     """Test class for Rust Web Push."""
 
-    # Max log lines allowed to be emitted by each node type
-    # max_endpoint_logs = 8
-    # max_conn_logs = 3
-    vapid_payload = {
-        "exp": int(time.time()) + 86400,
-        "sub": "mailto:admin@example.com",
-    }
 
-    def tearDown(self):
-        """Tear down and log processing."""
-        process_logs(self)
+# max_endpoint_logs = 8
+# max_conn_logs = 3
+# vapid_payload = {
+#     "exp": int(time.time()) + 86400,
+#     "sub": "mailto:admin@example.com",
+# }
 
-    async def quick_register(self):
-        """Perform a connection initialization, which includes a new connection,
-        `hello`, and channel registration.
-        """
-        log.debug(f"🐍#### Connecting to ws://127.0.0.1:{CONNECTION_PORT}/")
-        client = AsyncPushTestClient(f"ws://127.0.0.1:{CONNECTION_PORT}/")
-        await client.connect()
-        await client.hello()
-        await client.register()
-        log.debug("🐍 Connected")
-        return client
+# def tearDown(self):
+#     """Tear down and log processing."""
+#     process_logs(self)
 
-    async def shut_down(self, client=None):
-        """Shut down client."""
-        if client:
-            await client.disconnect()
+# async def quick_register(self):
+#     """Perform a connection initialization, which includes a new connection,
+#     `hello`, and channel registration.
+#     """
+#     log.debug(f"🐍#### Connecting to ws://127.0.0.1:{CONNECTION_PORT}/")
+#     client = AsyncPushTestClient(f"ws://127.0.0.1:{CONNECTION_PORT}/")
+#     await client.connect()
+#     await client.hello()
+#     await client.register()
+#     log.debug("🐍 Connected")
+#     return client
 
-    @property
-    def _ws_url(self):
-        return f"ws://127.0.0.1:{CONNECTION_PORT}/"
+# async def shut_down(self, client=None):
+#     """Shut down client."""
+#     if client:
+#         await client.disconnect()
 
-    # @max_logs(conn=4)
-    async def test_sentry_output_autoconnect(
-        self, test_client: AsyncPushTestClient, process_logs_autouse
-    ) -> None:
-        """Test sentry output for autoconnect."""
-        if os.getenv("SKIP_SENTRY"):
-            SkipTest("Skipping sentry test")
-            return
-        # Ensure bad data doesn't throw errors
-        await test_client.connect()
-        await test_client.hello()
-        await test_client.send_bad_data()
-        await test_client.disconnect()
+# @property
+# def _ws_url(self):
+#     return f"ws://127.0.0.1:{CONNECTION_PORT}/"
 
-        # LogCheck does throw an error every time
+
+# @max_logs(conn=4)
+async def test_sentry_output_autoconnect(
+    test_client: AsyncPushTestClient, process_logs_autouse
+) -> None:
+    """Test sentry output for autoconnect."""
+    if os.getenv("SKIP_SENTRY"):
+        SkipTest("Skipping sentry test")
+        return
+    # Ensure bad data doesn't throw errors
+    await test_client.connect()
+    await test_client.hello()
+    await test_client.send_bad_data()
+    await test_client.disconnect()
+
+    # LogCheck does throw an error every time
+    async with httpx.AsyncClient() as httpx_client:
+        await httpx_client.get(f"http://127.0.0.1:{CONNECTION_PORT}/v1/err/crit", timeout=30)
+
+    event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
+    # NOTE: this timeout increased to 5 seconds as was yielding
+    # errors in CI due to potential race condition and lingering
+    # artifact in the MOCK_SENTRY_QUEUE. It could cause test_sentry_output_autoendpoint
+    # to have two LogCheck entires and test_no_sentry_output would have data
+    # when it should not.
+
+    # new autoconnect emits 2 events
+    try:
+        MOCK_SENTRY_QUEUE.get(timeout=5)
+    except Empty:
+        pass
+    assert event1["exception"]["values"][0]["value"] == "LogCheck"
+
+    process_logs_autouse(max_conn_logs=4)
+
+
+# @max_logs(endpoint=1)
+async def test_sentry_output_autoendpoint(
+    registered_test_client: AsyncPushTestClient, process_logs_autouse
+) -> None:
+    """Test sentry output for autoendpoint."""
+    if os.getenv("SKIP_SENTRY"):
+        SkipTest("Skipping sentry test")
+        return
+    endpoint = registered_test_client.get_host_client_endpoint()
+    await registered_test_client.disconnect()
+    async with httpx.AsyncClient() as httpx_client:
+        await httpx_client.get(f"{endpoint}/__error__", timeout=5)
+        # 2 events excpted: 1 from a panic and 1 from a returned Error
+
+    event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
+    event2 = MOCK_SENTRY_QUEUE.get(timeout=5)
+    values = (
+        event1["exception"]["values"][0]["value"],
+        event2["exception"]["values"][0]["value"],
+    )
+    # "ERROR:Success" & "LogCheck" are the commonly expected values.
+    # When updating to async/await, noted cases in CI where only LogCheck
+    # occured, likely due to a race condition.
+    # Establishing a single check for "LogCheck" as sufficent guarantee,
+    # since Sentry is capturing emission
+    assert "LogCheck" in values
+    assert sorted(values) == ["ERROR:Success", "LogCheck"]
+    process_logs_autouse(max_endpoint_logs=1)
+
+
+# @max_logs(conn=4)
+async def test_no_sentry_output(ws_url: str, process_logs_autouse) -> None:
+    """Test for no Sentry output."""
+    if os.getenv("SKIP_SENTRY"):
+        SkipTest("Skipping sentry test")
+        return
+
+    ws_url = urlparse(ws_url)._replace(scheme="http").geturl()
+
+    try:
         async with httpx.AsyncClient() as httpx_client:
-            await httpx_client.get(f"http://127.0.0.1:{CONNECTION_PORT}/v1/err/crit", timeout=30)
+            await httpx_client.get(ws_url, timeout=30)
+            data = MOCK_SENTRY_QUEUE.get(timeout=5)
+            assert not data
+    except httpx.ConnectError:
+        pass
+    except Empty:
+        pass
+    process_logs_autouse(max_conn_logs=4)
 
-        event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
-        # NOTE: this timeout increased to 5 seconds as was yielding
-        # errors in CI due to potential race condition and lingering
-        # artifact in the MOCK_SENTRY_QUEUE. It could cause test_sentry_output_autoendpoint
-        # to have two LogCheck entires and test_no_sentry_output would have data
-        # when it should not.
 
-        # new autoconnect emits 2 events
-        try:
-            MOCK_SENTRY_QUEUE.get(timeout=5)
-        except Empty:
-            pass
-        assert event1["exception"]["values"][0]["value"] == "LogCheck"
+async def test_hello_echo(test_client) -> None:
+    """Test hello echo."""
+    await test_client.connect()
+    result = await test_client.hello()
+    assert result != {}
+    assert result["use_webpush"] is True
+    await test_client.disconnect()
 
-        process_logs_autouse(max_conn_logs=4)
 
-    # @max_logs(endpoint=1)
-    async def test_sentry_output_autoendpoint(
-        self, registered_test_client: AsyncPushTestClient, process_logs_autouse
-    ) -> None:
-        """Test sentry output for autoendpoint."""
-        if os.getenv("SKIP_SENTRY"):
-            SkipTest("Skipping sentry test")
-            return
-        endpoint = registered_test_client.get_host_client_endpoint()
-        await registered_test_client.disconnect()
-        async with httpx.AsyncClient() as httpx_client:
-            await httpx_client.get(f"{endpoint}/__error__", timeout=5)
-            # 2 events excpted: 1 from a panic and 1 from a returned Error
+@pytest.mark.parametrize("non_uaid", [uuid.uuid4().hex])
+async def test_hello_with_bad_prior_uaid(test_client: AsyncPushTestClient, non_uaid: str) -> None:
+    """Test hello with bad prior uaid."""
+    await test_client.connect()
+    result = await test_client.hello(uaid=non_uaid)
+    assert result != {}
+    assert result["uaid"] != non_uaid
+    assert result["use_webpush"] is True
+    await test_client.disconnect()
 
-        event1 = MOCK_SENTRY_QUEUE.get(timeout=5)
-        event2 = MOCK_SENTRY_QUEUE.get(timeout=5)
-        values = (
-            event1["exception"]["values"][0]["value"],
-            event2["exception"]["values"][0]["value"],
-        )
-        # "ERROR:Success" & "LogCheck" are the commonly expected values.
-        # When updating to async/await, noted cases in CI where only LogCheck
-        # occured, likely due to a race condition.
-        # Establishing a single check for "LogCheck" as sufficent guarantee,
-        # since Sentry is capturing emission
-        assert "LogCheck" in values
-        assert sorted(values) == ["ERROR:Success", "LogCheck"]
-        process_logs_autouse(max_endpoint_logs=1)
 
-    # @max_logs(conn=4)
-    async def test_no_sentry_output(self, process_logs_autouse) -> None:
-        """Test for no Sentry output."""
-        if os.getenv("SKIP_SENTRY"):
-            SkipTest("Skipping sentry test")
-            return
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_basic_delivery(registered_test_client: AsyncPushTestClient, uuid_data: str) -> None:
+    """Test basic regular push message delivery."""
+    result = await registered_test_client.send_notification(data=uuid_data)
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(bytes(uuid_data, "utf-8"))
+    assert result["messageType"] == "notification"
 
-        ws_url = urlparse(self._ws_url)._replace(scheme="http").geturl()
 
-        try:
-            async with httpx.AsyncClient() as httpx_client:
-                await httpx_client.get(ws_url, timeout=30)
-                data = MOCK_SENTRY_QUEUE.get(timeout=5)
-                assert not data
-        except httpx.ConnectError:
-            pass
-        except Empty:
-            pass
-        process_logs_autouse(max_conn_logs=4)
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_topic_basic_delivery(
+    registered_test_client: AsyncPushTestClient, uuid_data: str
+) -> None:
+    """Test basic topic push message delivery."""
+    result = await registered_test_client.send_notification(data=uuid_data, topic="Inbox")
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == "notification"
 
-    async def test_hello_echo(self, test_client) -> None:
-        """Test hello echo."""
-        await test_client.connect()
-        result = await test_client.hello()
-        assert result != {}
-        assert result["use_webpush"] is True
-        await test_client.disconnect()
 
-    @pytest.mark.parametrize("non_uaid", [uuid.uuid4().hex])
-    async def test_hello_with_bad_prior_uaid(
-        self, test_client: AsyncPushTestClient, non_uaid: str
-    ) -> None:
-        """Test hello with bad prior uaid."""
-        await test_client.connect()
-        result = await test_client.hello(uaid=non_uaid)
-        assert result != {}
-        assert result["uaid"] != non_uaid
-        assert result["use_webpush"] is True
-        await test_client.disconnect()
+@pytest.mark.parametrize(["uuid_data_1", "uuid_data_2"], [(str(uuid.uuid4()), str(uuid.uuid4()))])
+async def test_topic_replacement_delivery(
+    registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
+) -> None:
+    """Test that a topic push message replaces it's prior version."""
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(data=uuid_data_1, topic="Inbox", status=201)
+    await registered_test_client.send_notification(data=uuid_data_2, topic="Inbox", status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    log.debug("get_notification result:", result)
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data_2)
+    assert result["messageType"] == "notification"
+    result = await registered_test_client.get_notification()
+    assert result is None
 
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_basic_delivery(
-        self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ) -> None:
-        """Test basic regular push message delivery."""
-        result = await registered_test_client.send_notification(data=uuid_data)
-        # the following presumes that only `salt` is padded.
-        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(bytes(uuid_data, "utf-8"))
-        assert result["messageType"] == "notification"
 
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_topic_basic_delivery(
-        self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ) -> None:
-        """Test basic topic push message delivery."""
-        result = await registered_test_client.send_notification(data=uuid_data, topic="Inbox")
-        # the following presumes that only `salt` is padded.
-        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(uuid_data)
-        assert result["messageType"] == "notification"
+# @max_logs(conn=4)
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_topic_no_delivery_on_reconnect(
+    registered_test_client: AsyncPushTestClient,
+    uuid_data: str,
+    process_logs_autouse,
+) -> None:
+    """Test that a topic message does not attempt to redeliver on reconnect."""
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(data=uuid_data, topic="Inbox", status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=10)
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == "notification"
+    await registered_test_client.ack(result["channelID"], result["version"])
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    assert result is None
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    process_logs_autouse(max_conn_logs=4)
 
-    @pytest.mark.parametrize(
-        ["uuid_data_1", "uuid_data_2"], [(str(uuid.uuid4()), str(uuid.uuid4()))]
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_basic_delivery_with_vapid(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+    uuid_data: str,
+):
+    """Test delivery of a basic push message with a VAPID header."""
+    vapid_info = _get_vapid(payload=vapid_payload)
+    result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == "notification"
+
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_basic_delivery_with_invalid_vapid(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+    uuid_data: str,
+):
+    """Test basic delivery with invalid VAPID header."""
+    vapid_info = _get_vapid(
+        payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
     )
-    async def test_topic_replacement_delivery(
-        self, registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
-    ) -> None:
-        """Test that a topic push message replaces it's prior version."""
-        await registered_test_client.disconnect()
-        await registered_test_client.send_notification(data=uuid_data_1, topic="Inbox", status=201)
-        await registered_test_client.send_notification(data=uuid_data_2, topic="Inbox", status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        log.debug("get_notification result:", result)
-        # the following presumes that only `salt` is padded.
-        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(uuid_data_2)
-        assert result["messageType"] == "notification"
-        result = await registered_test_client.get_notification()
-        assert result is None
+    vapid_info["crypto-key"] = "invalid"
+    await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
-    # @max_logs(conn=4)
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_topic_no_delivery_on_reconnect(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        uuid_data: str,
-        process_logs_autouse,
-    ) -> None:
-        """Test that a topic message does not attempt to redeliver on reconnect."""
-        await registered_test_client.disconnect()
-        await registered_test_client.send_notification(data=uuid_data, topic="Inbox", status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=10)
-        # the following presumes that only `salt` is padded.
-        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(uuid_data)
-        assert result["messageType"] == "notification"
-        await registered_test_client.ack(result["channelID"], result["version"])
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        assert result is None
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        process_logs_autouse(max_conn_logs=4)
 
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_basic_delivery_with_vapid(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        vapid_payload: dict[str, int | str],
-        uuid_data: str,
-    ):
-        """Test delivery of a basic push message with a VAPID header."""
-        vapid_info = _get_vapid(payload=vapid_payload)
-        result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
-        # the following presumes that only `salt` is padded.
-        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(uuid_data)
-        assert result["messageType"] == "notification"
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_basic_delivery_with_invalid_vapid(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        vapid_payload: dict[str, int | str],
-        uuid_data: str,
-    ):
-        """Test basic delivery with invalid VAPID header."""
-        vapid_info = _get_vapid(
-            payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
-        )
-        vapid_info["crypto-key"] = "invalid"
-        await registered_test_client.send_notification(
-            data=uuid_data, vapid=vapid_info, status=401
-        )
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_basic_delivery_with_invalid_vapid_exp(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        uuid_data: str,
-    ):
-        """Test basic delivery of a push message with invalid VAPID `exp` assertion."""
-        vapid_info = _get_vapid(
-            payload={
-                "aud": registered_test_client.get_host_client_endpoint(),
-                "exp": "@",
-                "sub": "mailto:admin@example.com",
-            }
-        )
-        vapid_info["crypto-key"] = "invalid"
-        await registered_test_client.send_notification(
-            data=uuid_data, vapid=vapid_info, status=401
-        )
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_basic_delivery_with_invalid_vapid_auth(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        vapid_payload: dict[str, int | str],
-        uuid_data: str,
-    ):
-        """Test basic delivery with invalid VAPID auth."""
-        vapid_info = _get_vapid(
-            payload=vapid_payload,
-            endpoint=registered_test_client.get_host_client_endpoint(),
-        )
-        vapid_info["auth"] = ""
-        await registered_test_client.send_notification(
-            data=uuid_data, vapid=vapid_info, status=401
-        )
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_basic_delivery_with_invalid_signature(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        uuid_data: str,
-    ):
-        """Test that a basic delivery with invalid VAPID signature fails."""
-        vapid_info = _get_vapid(
-            payload={
-                "aud": registered_test_client.get_host_client_endpoint(),
-                "sub": "mailto:admin@example.com",
-            }
-        )
-        vapid_info["auth"] = f"{vapid_info['auth'][:-3]!r}bad"
-        await registered_test_client.send_notification(
-            data=uuid_data, vapid=vapid_info, status=401
-        )
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_basic_delivery_with_invalid_vapid_ckey(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        vapid_payload: dict[str, int | str],
-        uuid_data: str,
-    ):
-        """Test that basic delivery with invalid VAPID crypto-key fails."""
-        vapid_info = _get_vapid(
-            payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
-        )
-        vapid_info["crypto-key"] = "invalid|"
-        await registered_test_client.send_notification(
-            data=uuid_data, vapid=vapid_info, status=401
-        )
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_delivery_repeat_without_ack(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        uuid_data: str,
-    ):
-        """Test that message delivery repeats if the client does not acknowledge messages."""
-        await registered_test_client.disconnect()
-        assert registered_test_client.channels
-        await registered_test_client.send_notification(data=uuid_data, status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        assert result is not None
-        assert result["data"] == base64url_encode(uuid_data)
-
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        assert result != {}
-        assert result["data"] == base64url_encode(uuid_data)
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_repeat_delivery_with_disconnect_without_ack(
-        self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ):
-        """Test that message delivery repeats if the client disconnects
-        without acknowledging the message.
-        """
-        result = await registered_test_client.send_notification(data=uuid_data)
-        assert result != {}
-        assert result["data"] == base64url_encode(uuid_data)
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        assert result != {}
-        assert result["data"] == base64url_encode(uuid_data)
-
-    @pytest.mark.parametrize(
-        ["uuid_data_1", "uuid_data_2"], [(str(uuid.uuid4()), str(uuid.uuid4()))]
-    )
-    async def test_multiple_delivery_repeat_without_ack(
-        self, registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
-    ):
-        """Test that the server will always try to deliver messages
-        until the client acknowledges them.
-        """
-        await registered_test_client.disconnect()
-        assert registered_test_client.channels
-        await registered_test_client.send_notification(data=uuid_data_1, status=201)
-        await registered_test_client.send_notification(data=uuid_data_2, status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
-        result = await registered_test_client.get_notification()
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
-
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
-        result = await registered_test_client.get_notification()
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_topic_expired(
-        self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ):
-        """Test that the server will not deliver a message topic that has expired."""
-        await registered_test_client.disconnect()
-        assert registered_test_client.channels
-        await registered_test_client.send_notification(
-            data=uuid_data, ttl=1, topic="test", status=201
-        )
-        await registered_test_client.sleep(2)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result is None
-        result = await registered_test_client.send_notification(data=uuid_data, topic="test")
-        assert result != {}
-        assert result["data"] == base64url_encode(uuid_data)
-
-    # @max_logs(conn=4)
-    @pytest.mark.parametrize(
-        ["uuid_data_1", "uuid_data_2"],
-        [
-            (
-                b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # FirstMessage
-                b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # OtherMessage
-            )
-        ],
-    )
-    async def test_multiple_delivery_with_single_ack(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        uuid_data_1: str,
-        uuid_data_2: str,
-        process_logs_autouse,
-    ) -> None:
-        """Test that the server provides the right unacknowledged messages
-        if the client only acknowledges one of the received messages.
-        Note: the `data` fields are constructed so that they return
-        `FirstMessage` and `OtherMessage`, which may be useful for debugging.
-        """
-        await registered_test_client.disconnect()
-        assert registered_test_client.channels
-        await registered_test_client.send_notification(data=uuid_data_1, status=201)
-        await registered_test_client.send_notification(data=uuid_data_2, status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] == base64url_encode(uuid_data_1)
-        result2 = await registered_test_client.get_notification(timeout=0.5)
-        assert result2 != {}
-        assert result2["data"] == base64url_encode(uuid_data_2)
-        await registered_test_client.ack(result["channelID"], result["version"])
-
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] == base64url_encode(uuid_data_1)
-        assert result["messageType"] == "notification"
-        result2 = await registered_test_client.get_notification()
-        assert result2 != {}
-        assert result2["data"] == base64url_encode(uuid_data_2)
-        await registered_test_client.ack(result["channelID"], result["version"])
-        await registered_test_client.ack(result2["channelID"], result2["version"])
-
-        # Verify no messages are delivered
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result is None
-
-        process_logs_autouse(max_conn_logs=4)
-
-    @pytest.mark.parametrize(
-        ["uuid_data_1", "uuid_data_2"],
-        [
-            (
-                b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # FirstMessage
-                b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # OtherMessage
-            )
-        ],
-    )
-    async def test_multiple_delivery_with_multiple_ack(
-        self, registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
-    ):
-        """Test that the server provides the no additional unacknowledged messages
-        if the client acknowledges both of the received messages.
-        Note: the `data` fields are constructed so that they return
-        `FirstMessage` and `OtherMessage`, which may be useful for debugging.
-        """
-        await registered_test_client.disconnect()
-        assert registered_test_client.channels
-        await registered_test_client.send_notification(data=uuid_data_1, status=201)
-        await registered_test_client.send_notification(data=uuid_data_2, status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result != {}
-        assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
-        log.debug(f"🟩🟩 Result:: {result['data']}")
-        result2 = await registered_test_client.get_notification()
-        assert result2 != {}
-        assert result2["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
-        await registered_test_client.ack(result2["channelID"], result2["version"])
-        await registered_test_client.ack(result["channelID"], result["version"])
-
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result is None
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_no_delivery_to_unregistered(
-        self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ) -> None:
-        """Test that the server does not try to deliver to unregistered channel IDs."""
-        assert registered_test_client.channels
-        chan = list(registered_test_client.channels.keys())[0]
-
-        result = await registered_test_client.send_notification(data=uuid_data)
-        assert result["channelID"] == chan
-        assert result["data"] == base64url_encode(uuid_data)
-        await registered_test_client.ack(result["channelID"], result["version"])
-
-        await registered_test_client.unregister(chan)
-        result = await registered_test_client.send_notification(data=uuid_data, status=410)
-
-        # Verify cache-control
-        notif_response_headers = registered_test_client.notif_response.headers  # type: ignore
-        assert notif_response_headers.get("Cache-Control") == "max-age=86400"
-
-        assert result is None
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_ttl_0_connected(
-        self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ):
-        """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
-        result = await registered_test_client.send_notification(data=uuid_data, ttl=0)
-        assert result is not None
-        # the following presumes that only `salt` is padded.
-        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(uuid_data)
-        assert result["messageType"] == "notification"
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_ttl_0_not_connected(
-        self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ):
-        """Test that a message with a TTL=0 and a recipient client that is not connected,
-        is not delivered when the client reconnects.
-        """
-        await registered_test_client.disconnect()
-        await registered_test_client.send_notification(data=uuid_data, ttl=0, status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result is None
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_ttl_expired(self, registered_test_client: AsyncPushTestClient, uuid_data: str):
-        """Test that messages with a TTL that has expired are not delivered
-        to a recipient client.
-        """
-        await registered_test_client.disconnect()
-        await registered_test_client.send_notification(data=uuid_data, ttl=1, status=201)
-        await asyncio.sleep(1)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result is None
-
-    @pytest.mark.parametrize(
-        ["uuid_data_1", "uuid_data_2"],
-        [
-            (
-                str(uuid.uuid4()).encode(),
-                base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode(),
-            )
-        ],
-    )
-    async def test_ttl_batch_expired_and_good_one(
-        self,
-        registered_test_client,
-        uuid_data_1,
-        uuid_data_2,
-        process_logs_autouse,
-    ):
-        """Test that if a batch of messages are received while the recipient is offline,
-        only messages that have not expired are sent to the recipient.
-        This test checks if the latest pending message is not expired.
-        """
-        await registered_test_client.disconnect()
-        for x in range(0, 12):
-            prefix = base64.urlsafe_b64decode(f"{x:04d}")
-            await registered_test_client.send_notification(
-                data=prefix + uuid_data_1, ttl=1, status=201
-            )
-
-        await registered_test_client.send_notification(data=uuid_data_2, status=201)
-        await asyncio.sleep(1)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification(timeout=4)
-        assert result is not None
-        # the following presumes that only `salt` is padded.
-        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
-        assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(uuid_data_2)
-        assert result["messageType"] == "notification"
-        result = await registered_test_client.get_notification(timeout=0.5)
-        assert result is None
-        process_logs_autouse(max_endpoint_logs=28)
-
-    # @max_logs(endpoint=28)
-    @pytest.mark.parametrize(
-        ["uuid_data_1", "uuid_data_2", "uuid_data_3"],
-        [(str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()))],
-    )
-    async def test_ttl_batch_partly_expired_and_good_one(
-        self,
-        registered_test_client: AsyncPushTestClient,
-        uuid_data_1: str,
-        uuid_data_2: str,
-        uuid_data_3: str,
-        process_logs_autouse,
-    ):
-        """Test that if a batch of messages are received while the recipient is offline,
-        only messages that have not expired are sent to the recipient.
-        This test checks if there is an equal mix of expired and unexpired messages.
-        """
-        await registered_test_client.disconnect()
-        for x in range(0, 6):
-            await registered_test_client.send_notification(data=uuid_data_1, status=201)
-
-        for x in range(0, 6):
-            await registered_test_client.send_notification(data=uuid_data_2, ttl=1, status=201)
-
-        await registered_test_client.send_notification(data=uuid_data_3, status=201)
-        await asyncio.sleep(1)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-
-        # Pull out and ack the first
-        for x in range(0, 6):
-            result = await registered_test_client.get_notification(timeout=4)
-            assert result is not None
-            assert result["data"] == base64url_encode(uuid_data_1)
-            await registered_test_client.ack(result["channelID"], result["version"])
-
-        # Should have one more that is uuid_data_3, this will only arrive if the
-        # other six were acked as that hits the batch size
-        result = await registered_test_client.get_notification(timeout=4)
-        assert result is not None
-        assert result["data"] == base64url_encode(uuid_data_3)
-
-        # No more
-        result = await registered_test_client.get_notification()
-        assert result is None
-        process_logs_autouse(max_endpoint_logs=28)
-
-    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-    async def test_message_without_crypto_headers(
-        self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ):
-        """Test that a message without crypto headers, but has data is not accepted."""
-        result = await registered_test_client.send_notification(
-            data=uuid_data, use_header=False, status=400
-        )
-        assert result is None
-
-    async def test_empty_message_without_crypto_headers(
-        self, registered_test_client: AsyncPushTestClient
-    ):
-        """Test that a message without crypto headers, and does not have data, is accepted."""
-        result = await registered_test_client.send_notification(use_header=False)
-        assert result is not None
-        assert result["messageType"] == "notification"
-        assert "headers" not in result
-        assert "data" not in result
-        await registered_test_client.ack(result["channelID"], result["version"])
-
-        await registered_test_client.disconnect()
-        await registered_test_client.send_notification(use_header=False, status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        assert result is not None
-        assert "headers" not in result
-        assert "data" not in result
-        await registered_test_client.ack(result["channelID"], result["version"])
-
-    async def test_empty_message_with_crypto_headers(
-        self,
-        registered_test_client: AsyncPushTestClient,
-    ):
-        """Test that an empty message with crypto headers does not send either `headers`
-        or `data` as part of the incoming websocket `notification` message.
-        """
-        result = await registered_test_client.send_notification()
-        assert result is not None
-        assert result["messageType"] == "notification"
-        assert "headers" not in result
-        assert "data" not in result
-
-        result2 = await registered_test_client.send_notification()
-        # We shouldn't store headers for blank messages.
-        assert result2 is not None
-        assert result2["messageType"] == "notification"
-        assert "headers" not in result2
-        assert "data" not in result2
-
-        await registered_test_client.ack(result["channelID"], result["version"])
-        await registered_test_client.ack(result2["channelID"], result2["version"])
-
-        await registered_test_client.disconnect()
-        await registered_test_client.send_notification(status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result3 = await registered_test_client.get_notification()
-        assert result3 is not None
-        assert "headers" not in result3
-        assert "data" not in result3
-        await registered_test_client.ack(result3["channelID"], result3["version"])
-
-    async def test_big_message(self, registered_test_client):
-        """Test that we accept a large message.
-
-        Using pywebpush I encoded a 4096 block
-        of random data into a 4216b block. B64 encoding that produced a
-        block that was 5624 bytes long. We'll skip the binary bit for a
-        4216 block of "text" we then b64 encode to send.
-        """
-        import base64
-
-        bulk = "".join(
-            random.choice(string.ascii_letters + string.digits + string.punctuation)
-            for _ in range(0, 4216)
-        )
-        data = base64.urlsafe_b64encode(bytes(bulk, "utf-8"))
-        result = await registered_test_client.send_notification(data=data)
-        dd = result.get("data")
-        dh = base64.b64decode(dd + "==="[: len(dd) % 4])
-        assert dh == data
-
-    # Need to dig into this test a bit more. I'm not sure it's structured
-    # correctly since we resolved a bug about returning 202 v. 201, and
-    # it's using a dependent library to do the Client calls. In short,
-    # this test will fail in `send_notification()` because the response
-    # will be a 202 instead of 201, and Client.send_notification will
-    # fail to record the message into it's internal message array, which will
-    # cause Client.delete_notification to fail.
-
-    # Skipping test for now.
-    # Note: dict_keys obj was not iterable, corrected by converting to iterable.
-    async def test_delete_saved_notification(self, registered_test_client: AsyncPushTestClient):
-        """Test deleting a saved notification in client server."""
-        await registered_test_client.disconnect()
-        assert registered_test_client.channels
-        chan = list(registered_test_client.channels.keys())[0]
-        await registered_test_client.send_notification()
-        status_code: int = 204
-        delete_resp = await registered_test_client.delete_notification(chan, status=status_code)
-        assert delete_resp.status_code == status_code
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        result = await registered_test_client.get_notification()
-        assert result is None
-
-    async def test_with_key(self, test_client):
-        """Test getting a locked subscription with a valid VAPID public key."""
-        private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
-        claims = {
-            "aud": f"http://127.0.0.1:{ENDPOINT_PORT}",
-            "exp": int(time.time()) + 86400,
-            "sub": "a@example.com",
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_basic_delivery_with_invalid_vapid_exp(
+    registered_test_client: AsyncPushTestClient,
+    uuid_data: str,
+):
+    """Test basic delivery of a push message with invalid VAPID `exp` assertion."""
+    vapid_info = _get_vapid(
+        payload={
+            "aud": registered_test_client.get_host_client_endpoint(),
+            "exp": "@",
+            "sub": "mailto:admin@example.com",
         }
-        vapid = _get_vapid(private_key, claims)
-        pk_hex = vapid["crypto-key"]
-        chid = str(uuid.uuid4())
-        await test_client.connect()
-        await test_client.hello()
-        await test_client.register(channel_id=chid, key=pk_hex)
+    )
+    vapid_info["crypto-key"] = "invalid"
+    await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
-        # Send an update with a properly formatted key.
-        await test_client.send_notification(vapid=vapid)
 
-        # now try an invalid key.
-        new_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
-        vapid = _get_vapid(new_key, claims)
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_basic_delivery_with_invalid_vapid_auth(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+    uuid_data: str,
+):
+    """Test basic delivery with invalid VAPID auth."""
+    vapid_info = _get_vapid(
+        payload=vapid_payload,
+        endpoint=registered_test_client.get_host_client_endpoint(),
+    )
+    vapid_info["auth"] = ""
+    await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
-        await test_client.send_notification(vapid=vapid, status=401)
 
-    @pytest.mark.parametrize("chid", [str(uuid.uuid4())])
-    async def test_with_bad_key(self, test_client: AsyncPushTestClient, chid: str):
-        """Test that a message registration request with bad VAPID public key is rejected."""
-        await test_client.connect()
-        await test_client.hello()
-        result = await test_client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
-        assert result["status"] == 400
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_basic_delivery_with_invalid_signature(
+    registered_test_client: AsyncPushTestClient,
+    uuid_data: str,
+):
+    """Test that a basic delivery with invalid VAPID signature fails."""
+    vapid_info = _get_vapid(
+        payload={
+            "aud": registered_test_client.get_host_client_endpoint(),
+            "sub": "mailto:admin@example.com",
+        }
+    )
+    vapid_info["auth"] = f"{vapid_info['auth'][:-3]!r}bad"
+    await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
-    # @max_logs(endpoint=44)
-    async def test_msg_limit(
-        self, registered_test_client: AsyncPushTestClient, process_logs_autouse
-    ):
-        """Test that sent messages that are larger than our size limit are rejected."""
-        uaid = registered_test_client.uaid
-        await registered_test_client.disconnect()
-        for i in range(MSG_LIMIT + 1):
-            await registered_test_client.send_notification(status=201)
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        assert registered_test_client.uaid == uaid
-        for i in range(MSG_LIMIT):
-            result = await registered_test_client.get_notification()
-            assert result is not None, f"failed at {i}"
-            await registered_test_client.ack(result["channelID"], result["version"])
-        await registered_test_client.disconnect()
-        await registered_test_client.connect()
-        await registered_test_client.hello()
-        assert registered_test_client.uaid != uaid
-        process_logs_autouse(max_endpoint_logs=44)
 
-    async def test_can_moz_ping(self, registered_test_client) -> None:
-        """Test that the client can send a small ping message and get a valid response."""
-        result = await registered_test_client.moz_ping()
-        assert result == "{}"
-        assert registered_test_client.ws.open
-        try:
-            await registered_test_client.moz_ping()
-        except websockets.exceptions.ConnectionClosedError:
-            # pinging too quickly should disconnect without a valid ping
-            # repsonse
-            pass
-        assert not registered_test_client.ws.open
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_basic_delivery_with_invalid_vapid_ckey(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+    uuid_data: str,
+):
+    """Test that basic delivery with invalid VAPID crypto-key fails."""
+    vapid_info = _get_vapid(
+        payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
+    )
+    vapid_info["crypto-key"] = "invalid|"
+    await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
-    async def test_internal_endpoints(self, registered_test_client: AsyncPushTestClient) -> None:
-        """Ensure an internal router endpoint isn't exposed on the public CONNECTION_PORT"""
-        parsed = (
-            urlparse(self._ws_url)
-            ._replace(scheme="http")
-            ._replace(path=f"/notif/{registered_test_client.uaid}")
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_delivery_repeat_without_ack(
+    registered_test_client: AsyncPushTestClient,
+    uuid_data: str,
+):
+    """Test that message delivery repeats if the client does not acknowledge messages."""
+    await registered_test_client.disconnect()
+    assert registered_test_client.channels
+    await registered_test_client.send_notification(data=uuid_data, status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    assert result is not None
+    assert result["data"] == base64url_encode(uuid_data)
+
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    assert result != {}
+    assert result["data"] == base64url_encode(uuid_data)
+
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_repeat_delivery_with_disconnect_without_ack(
+    registered_test_client: AsyncPushTestClient, uuid_data: str
+):
+    """Test that message delivery repeats if the client disconnects
+    without acknowledging the message.
+    """
+    result = await registered_test_client.send_notification(data=uuid_data)
+    assert result != {}
+    assert result["data"] == base64url_encode(uuid_data)
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    assert result != {}
+    assert result["data"] == base64url_encode(uuid_data)
+
+
+@pytest.mark.parametrize(["uuid_data_1", "uuid_data_2"], [(str(uuid.uuid4()), str(uuid.uuid4()))])
+async def test_multiple_delivery_repeat_without_ack(
+    registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
+):
+    """Test that the server will always try to deliver messages
+    until the client acknowledges them.
+    """
+    await registered_test_client.disconnect()
+    assert registered_test_client.channels
+    await registered_test_client.send_notification(data=uuid_data_1, status=201)
+    await registered_test_client.send_notification(data=uuid_data_2, status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    assert result != {}
+    assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
+    result = await registered_test_client.get_notification()
+    assert result != {}
+    assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
+
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    assert result != {}
+    assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
+    result = await registered_test_client.get_notification()
+    assert result != {}
+    assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
+
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_topic_expired(registered_test_client: AsyncPushTestClient, uuid_data: str):
+    """Test that the server will not deliver a message topic that has expired."""
+    await registered_test_client.disconnect()
+    assert registered_test_client.channels
+    await registered_test_client.send_notification(data=uuid_data, ttl=1, topic="test", status=201)
+    await registered_test_client.sleep(2)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result is None
+    result = await registered_test_client.send_notification(data=uuid_data, topic="test")
+    assert result != {}
+    assert result["data"] == base64url_encode(uuid_data)
+
+
+# @max_logs(conn=4)
+@pytest.mark.parametrize(
+    ["uuid_data_1", "uuid_data_2"],
+    [
+        (
+            b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # FirstMessage
+            b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # OtherMessage
+        )
+    ],
+)
+async def test_multiple_delivery_with_single_ack(
+    registered_test_client: AsyncPushTestClient,
+    uuid_data_1: str,
+    uuid_data_2: str,
+    process_logs_autouse,
+) -> None:
+    """Test that the server provides the right unacknowledged messages
+    if the client only acknowledges one of the received messages.
+    Note: the `data` fields are constructed so that they return
+    `FirstMessage` and `OtherMessage`, which may be useful for debugging.
+    """
+    await registered_test_client.disconnect()
+    assert registered_test_client.channels
+    await registered_test_client.send_notification(data=uuid_data_1, status=201)
+    await registered_test_client.send_notification(data=uuid_data_2, status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result != {}
+    assert result["data"] == base64url_encode(uuid_data_1)
+    result2 = await registered_test_client.get_notification(timeout=0.5)
+    assert result2 != {}
+    assert result2["data"] == base64url_encode(uuid_data_2)
+    await registered_test_client.ack(result["channelID"], result["version"])
+
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result != {}
+    assert result["data"] == base64url_encode(uuid_data_1)
+    assert result["messageType"] == "notification"
+    result2 = await registered_test_client.get_notification()
+    assert result2 != {}
+    assert result2["data"] == base64url_encode(uuid_data_2)
+    await registered_test_client.ack(result["channelID"], result["version"])
+    await registered_test_client.ack(result2["channelID"], result2["version"])
+
+    # Verify no messages are delivered
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result is None
+
+    process_logs_autouse(max_conn_logs=4)
+
+
+@pytest.mark.parametrize(
+    ["uuid_data_1", "uuid_data_2"],
+    [
+        (
+            b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # FirstMessage
+            b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # OtherMessage
+        )
+    ],
+)
+async def test_multiple_delivery_with_multiple_ack(
+    registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
+):
+    """Test that the server provides the no additional unacknowledged messages
+    if the client acknowledges both of the received messages.
+    Note: the `data` fields are constructed so that they return
+    `FirstMessage` and `OtherMessage`, which may be useful for debugging.
+    """
+    await registered_test_client.disconnect()
+    assert registered_test_client.channels
+    await registered_test_client.send_notification(data=uuid_data_1, status=201)
+    await registered_test_client.send_notification(data=uuid_data_2, status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result != {}
+    assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
+    log.debug(f"🟩🟩 Result:: {result['data']}")
+    result2 = await registered_test_client.get_notification()
+    assert result2 != {}
+    assert result2["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
+    await registered_test_client.ack(result2["channelID"], result2["version"])
+    await registered_test_client.ack(result["channelID"], result["version"])
+
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result is None
+
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_no_delivery_to_unregistered(
+    registered_test_client: AsyncPushTestClient, uuid_data: str
+) -> None:
+    """Test that the server does not try to deliver to unregistered channel IDs."""
+    assert registered_test_client.channels
+    chan = list(registered_test_client.channels.keys())[0]
+
+    result = await registered_test_client.send_notification(data=uuid_data)
+    assert result["channelID"] == chan
+    assert result["data"] == base64url_encode(uuid_data)
+    await registered_test_client.ack(result["channelID"], result["version"])
+
+    await registered_test_client.unregister(chan)
+    result = await registered_test_client.send_notification(data=uuid_data, status=410)
+
+    # Verify cache-control
+    notif_response_headers = registered_test_client.notif_response.headers  # type: ignore
+    assert notif_response_headers.get("Cache-Control") == "max-age=86400"
+
+    assert result is None
+
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_ttl_0_connected(registered_test_client: AsyncPushTestClient, uuid_data: str):
+    """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
+    result = await registered_test_client.send_notification(data=uuid_data, ttl=0)
+    assert result is not None
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == "notification"
+
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_ttl_0_not_connected(registered_test_client: AsyncPushTestClient, uuid_data: str):
+    """Test that a message with a TTL=0 and a recipient client that is not connected,
+    is not delivered when the client reconnects.
+    """
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(data=uuid_data, ttl=0, status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result is None
+
+
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_ttl_expired(registered_test_client: AsyncPushTestClient, uuid_data: str):
+    """Test that messages with a TTL that has expired are not delivered
+    to a recipient client.
+    """
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(data=uuid_data, ttl=1, status=201)
+    await asyncio.sleep(1)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result is None
+
+
+@pytest.mark.parametrize(
+    ["uuid_data_1", "uuid_data_2"],
+    [
+        (
+            str(uuid.uuid4()).encode(),
+            base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode(),
+        )
+    ],
+)
+async def test_ttl_batch_expired_and_good_one(
+    registered_test_client,
+    uuid_data_1,
+    uuid_data_2,
+    process_logs_autouse,
+):
+    """Test that if a batch of messages are received while the recipient is offline,
+    only messages that have not expired are sent to the recipient.
+    This test checks if the latest pending message is not expired.
+    """
+    await registered_test_client.disconnect()
+    for x in range(0, 12):
+        prefix = base64.urlsafe_b64decode(f"{x:04d}")
+        await registered_test_client.send_notification(
+            data=prefix + uuid_data_1, ttl=1, status=201
         )
 
-        # We can't determine an AUTOPUSH_CN_SERVER's ROUTER_PORT
-        if not os.getenv("AUTOPUSH_CN_SERVER"):
-            url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
-            # First ensure the endpoint we're testing for on the public port exists where
-            # we expect it on the internal ROUTER_PORT
-            async with httpx.AsyncClient() as httpx_client:
-                res = await httpx_client.put(url, timeout=30)
-                res.raise_for_status()
-
-        try:
-            async with httpx.AsyncClient() as httpx_client:
-                res = await httpx_client.put(parsed.geturl(), timeout=30)
-                res.raise_for_status()
-        except httpx.ConnectError:
-            pass
-        except httpx.HTTPError as e:
-            assert e.response.status_code == 404
-        else:
-            assert False
+    await registered_test_client.send_notification(data=uuid_data_2, status=201)
+    await asyncio.sleep(1)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification(timeout=4)
+    assert result is not None
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data_2)
+    assert result["messageType"] == "notification"
+    result = await registered_test_client.get_notification(timeout=0.5)
+    assert result is None
+    process_logs_autouse(max_endpoint_logs=28)
 
 
-@pytest.mark.usefixtures("test_client_broadcast")
-class TestRustWebPushBroadcast:
-    """Test class for Rust Web Push Broadcast."""
+# @max_logs(endpoint=28)
+@pytest.mark.parametrize(
+    ["uuid_data_1", "uuid_data_2", "uuid_data_3"],
+    [(str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()))],
+)
+async def test_ttl_batch_partly_expired_and_good_one(
+    registered_test_client: AsyncPushTestClient,
+    uuid_data_1: str,
+    uuid_data_2: str,
+    uuid_data_3: str,
+    process_logs_autouse,
+):
+    """Test that if a batch of messages are received while the recipient is offline,
+    only messages that have not expired are sent to the recipient.
+    This test checks if there is an equal mix of expired and unexpired messages.
+    """
+    await registered_test_client.disconnect()
+    for x in range(0, 6):
+        await registered_test_client.send_notification(data=uuid_data_1, status=201)
 
-    max_endpoint_logs = 4
-    max_conn_logs = 1
+    for x in range(0, 6):
+        await registered_test_client.send_notification(data=uuid_data_2, ttl=1, status=201)
 
-    def tearDown(self):
-        """Tear down."""
-        process_logs(self)
+    await registered_test_client.send_notification(data=uuid_data_3, status=201)
+    await asyncio.sleep(1)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
 
-    async def test_broadcast_update_on_connect(
-        self, test_client_broadcast, process_logs_autouse
-    ) -> None:
-        """Test that the client receives any pending broadcast updates on connect."""
-        global MOCK_MP_SERVICES
-        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
-        MOCK_MP_POLLED.clear()
-        MOCK_MP_POLLED.wait(timeout=5)
-        old_ver = {"kinto:123": "ver0"}
-        await test_client_broadcast.connect()
-        result = await test_client_broadcast.hello(services=old_ver)
-        assert result != {}
-        assert result["use_webpush"] is True
-        assert result["broadcasts"]["kinto:123"] == "ver1"
+    # Pull out and ack the first
+    for x in range(0, 6):
+        result = await registered_test_client.get_notification(timeout=4)
+        assert result is not None
+        assert result["data"] == base64url_encode(uuid_data_1)
+        await registered_test_client.ack(result["channelID"], result["version"])
 
-        MOCK_MP_SERVICES = {"kinto:123": "ver2"}
-        MOCK_MP_POLLED.clear()
-        MOCK_MP_POLLED.wait(timeout=5)
+    # Should have one more that is uuid_data_3, this will only arrive if the
+    # other six were acked as that hits the batch size
+    result = await registered_test_client.get_notification(timeout=4)
+    assert result is not None
+    assert result["data"] == base64url_encode(uuid_data_3)
 
-        result = await test_client_broadcast.get_broadcast(2)
-        assert result.get("messageType") == ClientMessageType.BROADCAST.value
-        assert result["broadcasts"]["kinto:123"] == "ver2"
-        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+    # No more
+    result = await registered_test_client.get_notification()
+    assert result is None
+    process_logs_autouse(max_endpoint_logs=28)
 
-    async def test_broadcast_update_on_connect_with_errors(
-        self, test_client_broadcast, process_logs_autouse
-    ) -> None:
-        """Test that the client can receive broadcast updates on connect
-        that may have produced internal errors.
-        """
-        global MOCK_MP_SERVICES
-        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
-        MOCK_MP_POLLED.clear()
-        MOCK_MP_POLLED.wait(timeout=5)
 
-        old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        await test_client_broadcast.connect()
-        result = await test_client_broadcast.hello(services=old_ver)
-        assert result != {}
-        assert result["use_webpush"] is True
-        assert result["broadcasts"]["kinto:123"] == "ver1"
-        assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
-        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+async def test_message_without_crypto_headers(
+    registered_test_client: AsyncPushTestClient, uuid_data: str
+):
+    """Test that a message without crypto headers, but has data is not accepted."""
+    result = await registered_test_client.send_notification(
+        data=uuid_data, use_header=False, status=400
+    )
+    assert result is None
 
-    async def test_broadcast_subscribe(self, test_client_broadcast, process_logs_autouse) -> None:
-        """Test that the client can subscribe to new broadcasts."""
-        global MOCK_MP_SERVICES
-        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
-        MOCK_MP_POLLED.clear()
-        MOCK_MP_POLLED.wait(timeout=5)
 
-        old_ver = {"kinto:123": "ver0"}
-        await test_client_broadcast.connect()
-        result = await test_client_broadcast.hello()
-        assert result != {}
-        assert result["use_webpush"] is True
-        assert result["broadcasts"] == {}
+async def test_empty_message_without_crypto_headers(registered_test_client: AsyncPushTestClient):
+    """Test that a message without crypto headers, and does not have data, is accepted."""
+    result = await registered_test_client.send_notification(use_header=False)
+    assert result is not None
+    assert result["messageType"] == "notification"
+    assert "headers" not in result
+    assert "data" not in result
+    await registered_test_client.ack(result["channelID"], result["version"])
 
-        await test_client_broadcast.broadcast_subscribe(old_ver)
-        result = await test_client_broadcast.get_broadcast()
-        assert result.get("messageType") == ClientMessageType.BROADCAST.value
-        assert result["broadcasts"]["kinto:123"] == "ver1"
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(use_header=False, status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    assert result is not None
+    assert "headers" not in result
+    assert "data" not in result
+    await registered_test_client.ack(result["channelID"], result["version"])
 
-        MOCK_MP_SERVICES = {"kinto:123": "ver2"}
-        MOCK_MP_POLLED.clear()
-        MOCK_MP_POLLED.wait(timeout=5)
 
-        result = await test_client_broadcast.get_broadcast(2)
-        assert result.get("messageType") == ClientMessageType.BROADCAST.value
-        assert result["broadcasts"]["kinto:123"] == "ver2"
-        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+async def test_empty_message_with_crypto_headers(
+    registered_test_client: AsyncPushTestClient,
+):
+    """Test that an empty message with crypto headers does not send either `headers`
+    or `data` as part of the incoming websocket `notification` message.
+    """
+    result = await registered_test_client.send_notification()
+    assert result is not None
+    assert result["messageType"] == "notification"
+    assert "headers" not in result
+    assert "data" not in result
 
-    async def test_broadcast_subscribe_with_errors(
-        self, test_client_broadcast, process_logs_autouse
-    ) -> None:
-        """Test that broadcast returns expected errors."""
-        global MOCK_MP_SERVICES
-        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
-        MOCK_MP_POLLED.clear()
-        MOCK_MP_POLLED.wait(timeout=5)
+    result2 = await registered_test_client.send_notification()
+    # We shouldn't store headers for blank messages.
+    assert result2 is not None
+    assert result2["messageType"] == "notification"
+    assert "headers" not in result2
+    assert "data" not in result2
 
-        old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
-        await test_client_broadcast.connect()
-        result = await test_client_broadcast.hello()
-        assert result != {}
-        assert result["use_webpush"] is True
-        assert result["broadcasts"] == {}
+    await registered_test_client.ack(result["channelID"], result["version"])
+    await registered_test_client.ack(result2["channelID"], result2["version"])
 
-        await test_client_broadcast.broadcast_subscribe(old_ver)
-        result = await test_client_broadcast.get_broadcast()
-        assert result.get("messageType") == ClientMessageType.BROADCAST.value
-        assert result["broadcasts"]["kinto:123"] == "ver1"
-        assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
-        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result3 = await registered_test_client.get_notification()
+    assert result3 is not None
+    assert "headers" not in result3
+    assert "data" not in result3
+    await registered_test_client.ack(result3["channelID"], result3["version"])
 
-    async def test_broadcast_no_changes(self, test_client_broadcast, process_logs_autouse) -> None:
-        """Test to ensure there are no changes from broadcast."""
-        global MOCK_MP_SERVICES
-        MOCK_MP_SERVICES = {"kinto:123": "ver1"}
-        MOCK_MP_POLLED.clear()
-        MOCK_MP_POLLED.wait(timeout=5)
 
-        old_ver = {"kinto:123": "ver1"}
-        await test_client_broadcast.connect()
-        result = await test_client_broadcast.hello(services=old_ver)
-        assert result != {}
-        assert result["use_webpush"] is True
-        assert result["broadcasts"] == {}
-        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+async def test_big_message(registered_test_client):
+    """Test that we accept a large message.
+
+    Using pywebpush I encoded a 4096 block
+    of random data into a 4216b block. B64 encoding that produced a
+    block that was 5624 bytes long. We'll skip the binary bit for a
+    4216 block of "text" we then b64 encode to send.
+    """
+    import base64
+
+    bulk = "".join(
+        random.choice(string.ascii_letters + string.digits + string.punctuation)
+        for _ in range(0, 4216)
+    )
+    data = base64.urlsafe_b64encode(bytes(bulk, "utf-8"))
+    result = await registered_test_client.send_notification(data=data)
+    dd = result.get("data")
+    dh = base64.b64decode(dd + "==="[: len(dd) % 4])
+    assert dh == data
+
+
+# Need to dig into this test a bit more. I'm not sure it's structured
+# correctly since we resolved a bug about returning 202 v. 201, and
+# it's using a dependent library to do the Client calls. In short,
+# this test will fail in `send_notification()` because the response
+# will be a 202 instead of 201, and Client.send_notification will
+# fail to record the message into it's internal message array, which will
+# cause Client.delete_notification to fail.
+
+
+# Skipping test for now.
+# Note: dict_keys obj was not iterable, corrected by converting to iterable.
+async def test_delete_saved_notification(registered_test_client: AsyncPushTestClient):
+    """Test deleting a saved notification in client server."""
+    await registered_test_client.disconnect()
+    assert registered_test_client.channels
+    chan = list(registered_test_client.channels.keys())[0]
+    await registered_test_client.send_notification()
+    status_code: int = 204
+    delete_resp = await registered_test_client.delete_notification(chan, status=status_code)
+    assert delete_resp.status_code == status_code
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+    assert result is None
+
+
+async def test_with_key(test_client):
+    """Test getting a locked subscription with a valid VAPID public key."""
+    private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+    claims = {
+        "aud": f"http://127.0.0.1:{ENDPOINT_PORT}",
+        "exp": int(time.time()) + 86400,
+        "sub": "a@example.com",
+    }
+    vapid = _get_vapid(private_key, claims)
+    pk_hex = vapid["crypto-key"]
+    chid = str(uuid.uuid4())
+    await test_client.connect()
+    await test_client.hello()
+    await test_client.register(channel_id=chid, key=pk_hex)
+
+    # Send an update with a properly formatted key.
+    await test_client.send_notification(vapid=vapid)
+
+    # now try an invalid key.
+    new_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+    vapid = _get_vapid(new_key, claims)
+
+    await test_client.send_notification(vapid=vapid, status=401)
+
+
+@pytest.mark.parametrize("chid", [str(uuid.uuid4())])
+async def test_with_bad_key(test_client: AsyncPushTestClient, chid: str):
+    """Test that a message registration request with bad VAPID public key is rejected."""
+    await test_client.connect()
+    await test_client.hello()
+    result = await test_client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
+    assert result["status"] == 400
+
+
+# @max_logs(endpoint=44)
+async def test_msg_limit(registered_test_client: AsyncPushTestClient, process_logs_autouse):
+    """Test that sent messages that are larger than our size limit are rejected."""
+    uaid = registered_test_client.uaid
+    await registered_test_client.disconnect()
+    for i in range(MSG_LIMIT + 1):
+        await registered_test_client.send_notification(status=201)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    assert registered_test_client.uaid == uaid
+    for i in range(MSG_LIMIT):
+        result = await registered_test_client.get_notification()
+        assert result is not None, f"failed at {i}"
+        await registered_test_client.ack(result["channelID"], result["version"])
+    await registered_test_client.disconnect()
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    assert registered_test_client.uaid != uaid
+    process_logs_autouse(max_endpoint_logs=44)
+
+
+async def test_can_moz_ping(registered_test_client) -> None:
+    """Test that the client can send a small ping message and get a valid response."""
+    result = await registered_test_client.moz_ping()
+    assert result == "{}"
+    assert registered_test_client.ws.open
+    try:
+        await registered_test_client.moz_ping()
+    except websockets.exceptions.ConnectionClosedError:
+        # pinging too quickly should disconnect without a valid ping
+        # repsonse
+        pass
+    assert not registered_test_client.ws.open
+
+
+async def test_internal_endpoints(
+    ws_url: str, registered_test_client: AsyncPushTestClient
+) -> None:
+    """Ensure an internal router endpoint isn't exposed on the public CONNECTION_PORT"""
+    parsed = (
+        urlparse(ws_url)
+        ._replace(scheme="http")
+        ._replace(path=f"/notif/{registered_test_client.uaid}")
+    )
+
+    # We can't determine an AUTOPUSH_CN_SERVER's ROUTER_PORT
+    if not os.getenv("AUTOPUSH_CN_SERVER"):
+        url = parsed._replace(netloc=f"{parsed.hostname}:{ROUTER_PORT}").geturl()
+        # First ensure the endpoint we're testing for on the public port exists where
+        # we expect it on the internal ROUTER_PORT
+        async with httpx.AsyncClient() as httpx_client:
+            res = await httpx_client.put(url, timeout=30)
+            res.raise_for_status()
+
+    try:
+        async with httpx.AsyncClient() as httpx_client:
+            res = await httpx_client.put(parsed.geturl(), timeout=30)
+            res.raise_for_status()
+    except httpx.ConnectError:
+        pass
+    except httpx.HTTPError as e:
+        assert e.response.status_code == 404
+    else:
+        assert False
+
+
+# @pytest.mark.usefixtures("test_client_broadcast")
+# class TestRustWebPushBroadcast:
+#     """Test class for Rust Web Push Broadcast."""
+
+#     max_endpoint_logs = 4
+#     max_conn_logs = 1
+
+#     def tearDown(self):
+#         """Tear down."""
+#         process_logs(self)
+
+
+async def test_broadcast_update_on_connect(test_client_broadcast, process_logs_autouse) -> None:
+    """Test that the client receives any pending broadcast updates on connect."""
+    global MOCK_MP_SERVICES
+    MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+    MOCK_MP_POLLED.clear()
+    MOCK_MP_POLLED.wait(timeout=5)
+    old_ver = {"kinto:123": "ver0"}
+    await test_client_broadcast.connect()
+    result = await test_client_broadcast.hello(services=old_ver)
+    assert result != {}
+    assert result["use_webpush"] is True
+    assert result["broadcasts"]["kinto:123"] == "ver1"
+
+    MOCK_MP_SERVICES = {"kinto:123": "ver2"}
+    MOCK_MP_POLLED.clear()
+    MOCK_MP_POLLED.wait(timeout=5)
+
+    result = await test_client_broadcast.get_broadcast(2)
+    assert result.get("messageType") == ClientMessageType.BROADCAST.value
+    assert result["broadcasts"]["kinto:123"] == "ver2"
+    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+
+
+async def test_broadcast_update_on_connect_with_errors(
+    test_client_broadcast, process_logs_autouse
+) -> None:
+    """Test that the client can receive broadcast updates on connect
+    that may have produced internal errors.
+    """
+    global MOCK_MP_SERVICES
+    MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+    MOCK_MP_POLLED.clear()
+    MOCK_MP_POLLED.wait(timeout=5)
+
+    old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
+    await test_client_broadcast.connect()
+    result = await test_client_broadcast.hello(services=old_ver)
+    assert result != {}
+    assert result["use_webpush"] is True
+    assert result["broadcasts"]["kinto:123"] == "ver1"
+    assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
+    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+
+
+async def test_broadcast_subscribe(test_client_broadcast, process_logs_autouse) -> None:
+    """Test that the client can subscribe to new broadcasts."""
+    global MOCK_MP_SERVICES
+    MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+    MOCK_MP_POLLED.clear()
+    MOCK_MP_POLLED.wait(timeout=5)
+
+    old_ver = {"kinto:123": "ver0"}
+    await test_client_broadcast.connect()
+    result = await test_client_broadcast.hello()
+    assert result != {}
+    assert result["use_webpush"] is True
+    assert result["broadcasts"] == {}
+
+    await test_client_broadcast.broadcast_subscribe(old_ver)
+    result = await test_client_broadcast.get_broadcast()
+    assert result.get("messageType") == ClientMessageType.BROADCAST.value
+    assert result["broadcasts"]["kinto:123"] == "ver1"
+
+    MOCK_MP_SERVICES = {"kinto:123": "ver2"}
+    MOCK_MP_POLLED.clear()
+    MOCK_MP_POLLED.wait(timeout=5)
+
+    result = await test_client_broadcast.get_broadcast(2)
+    assert result.get("messageType") == ClientMessageType.BROADCAST.value
+    assert result["broadcasts"]["kinto:123"] == "ver2"
+    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+
+
+async def test_broadcast_subscribe_with_errors(
+    test_client_broadcast, process_logs_autouse
+) -> None:
+    """Test that broadcast returns expected errors."""
+    global MOCK_MP_SERVICES
+    MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+    MOCK_MP_POLLED.clear()
+    MOCK_MP_POLLED.wait(timeout=5)
+
+    old_ver = {"kinto:123": "ver0", "kinto:456": "ver1"}
+    await test_client_broadcast.connect()
+    result = await test_client_broadcast.hello()
+    assert result != {}
+    assert result["use_webpush"] is True
+    assert result["broadcasts"] == {}
+
+    await test_client_broadcast.broadcast_subscribe(old_ver)
+    result = await test_client_broadcast.get_broadcast()
+    assert result.get("messageType") == ClientMessageType.BROADCAST.value
+    assert result["broadcasts"]["kinto:123"] == "ver1"
+    assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
+    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
+
+
+async def test_broadcast_no_changes(test_client_broadcast, process_logs_autouse) -> None:
+    """Test to ensure there are no changes from broadcast."""
+    global MOCK_MP_SERVICES
+    MOCK_MP_SERVICES = {"kinto:123": "ver1"}
+    MOCK_MP_POLLED.clear()
+    MOCK_MP_POLLED.wait(timeout=5)
+
+    old_ver = {"kinto:123": "ver1"}
+    await test_client_broadcast.connect()
+    result = await test_client_broadcast.hello(services=old_ver)
+    assert result != {}
+    assert result["use_webpush"] is True
+    assert result["broadcasts"] == {}
+    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
