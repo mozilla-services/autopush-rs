@@ -267,6 +267,36 @@ def process_logs(testcase):
     assert conn_count <= testcase.max_conn_logs, msg.format(conn_count, testcase.max_conn_logs)
 
 
+@pytest.fixture(name="process_logs_autouse", autouse=True)
+def fixture_process_logs_autouse():
+    """Process (print) the testcase logs.
+    Default of max_endpoint_logs=8 & max_conn_logs=3 for standard tests.
+    Values are modified for specific test cases to accomodate specific outputs.
+    Broadcast tests are set to max_endpoint_logs=4 & max_conn_logs = 1.
+    """
+
+    def _process_logs(max_endpoint_logs=8, max_conn_logs=3):
+        conn_count = sum(queue.qsize() for queue in CN_QUEUES)
+        endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
+
+        print_lines_in_queues(CN_QUEUES, f"{CONNECTION_BINARY.upper()}: ")
+        print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
+
+        if not STRICT_LOG_COUNTS:
+            return
+
+        msg = "endpoint node emitted excessive log statements, count: {} > max: {}"
+        # Give an extra to endpoint for potential startup log messages
+        # (e.g. when running tests individually)
+        max_endpoint_logs += 1
+        assert endpoint_count <= max_endpoint_logs, msg.format(endpoint_count, max_endpoint_logs)
+
+        msg = "conn node emitted excessive log statements, count: {} > max: {}"
+        assert conn_count <= max_conn_logs, msg.format(conn_count, max_conn_logs)
+
+    return _process_logs  # Calls the inner function with default values
+
+
 def max_logs(endpoint=None, conn=None):
     """Adjust max_endpoint/conn_logs values for individual test cases.
 
@@ -666,13 +696,13 @@ async def fixture_registered_test_client(ws_config):
     print("🐍 Test Client Disconnected")
 
 
-@pytest.mark.usefixtures("registered_test_client", "test_client")
+@pytest.mark.usefixtures("registered_test_client", "test_client", "process_logs_autouse")
 class TestRustWebPush:
     """Test class for Rust Web Push."""
 
     # Max log lines allowed to be emitted by each node type
-    max_endpoint_logs = 8
-    max_conn_logs = 3
+    # max_endpoint_logs = 8
+    # max_conn_logs = 3
     vapid_payload = {
         "exp": int(time.time()) + 86400,
         "sub": "mailto:admin@example.com",
@@ -703,18 +733,19 @@ class TestRustWebPush:
     def _ws_url(self):
         return f"ws://127.0.0.1:{CONNECTION_PORT}/"
 
-    @max_logs(conn=4)
-    async def test_sentry_output_autoconnect(self):
+    # @max_logs(conn=4)
+    async def test_sentry_output_autoconnect(
+        self, test_client: AsyncPushTestClient, process_logs_autouse
+    ):
         """Test sentry output for autoconnect."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
         # Ensure bad data doesn't throw errors
-        client = AsyncPushTestClient(self._ws_url)
-        await client.connect()
-        await client.hello()
-        await client.send_bad_data()
-        await client.disconnect()
+        await test_client.connect()
+        await test_client.hello()
+        await test_client.send_bad_data()
+        await test_client.disconnect()
 
         # LogCheck does throw an error every time
         async with httpx.AsyncClient() as httpx_client:
@@ -734,15 +765,18 @@ class TestRustWebPush:
             pass
         assert event1["exception"]["values"][0]["value"] == "LogCheck"
 
-    @max_logs(endpoint=1)
-    async def test_sentry_output_autoendpoint(self):
+        process_logs_autouse(max_conn_logs=4)
+
+    # @max_logs(endpoint=1)
+    async def test_sentry_output_autoendpoint(
+        self, registered_test_client: AsyncPushTestClient, process_logs_autouse
+    ):
         """Test sentry output for autoendpoint."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
             return
-        client = await self.quick_register()
-        endpoint = client.get_host_client_endpoint()
-        await self.shut_down(client)
+        endpoint = registered_test_client.get_host_client_endpoint()
+        await registered_test_client.disconnect()
         async with httpx.AsyncClient() as httpx_client:
             await httpx_client.get(f"{endpoint}/__error__", timeout=5)
             # 2 events excpted: 1 from a panic and 1 from a returned Error
@@ -760,9 +794,10 @@ class TestRustWebPush:
         # since Sentry is capturing emission
         assert "LogCheck" in values
         assert sorted(values) == ["ERROR:Success", "LogCheck"]
+        process_logs_autouse(max_endpoint_logs=1)
 
-    @max_logs(conn=4)
-    async def test_no_sentry_output(self):
+    # @max_logs(conn=4)
+    async def test_no_sentry_output(self, process_logs_autouse):
         """Test for no Sentry output."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
@@ -779,6 +814,7 @@ class TestRustWebPush:
             pass
         except Empty:
             pass
+        process_logs_autouse(max_conn_logs=4)
 
     async def test_hello_echo(self, test_client):
         """Test hello echo."""
