@@ -280,8 +280,7 @@ def fixture_process_logs_autouse():
         # allowed to be emitted by each node type
         conn_count = sum(queue.qsize() for queue in CN_QUEUES)
         endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
-        import pdb
-        pdb.set_trace()
+
         print_lines_in_queues(CN_QUEUES, f"{CONNECTION_BINARY.upper()}: ")
         print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
 
@@ -699,45 +698,6 @@ async def fixture_registered_test_client(ws_config):
     print("🐍 Test Client Disconnected")
 
 
-# @pytest.mark.usefixtures("registered_test_client", "test_client", "process_logs_autouse")
-# class TestRustWebPush:
-#     """Test class for Rust Web Push."""
-
-
-# max_endpoint_logs = 8
-# max_conn_logs = 3
-# vapid_payload = {
-#     "exp": int(time.time()) + 86400,
-#     "sub": "mailto:admin@example.com",
-# }
-
-# def tearDown(self):
-#     """Tear down and log processing."""
-#     process_logs(self)
-
-# async def quick_register(self):
-#     """Perform a connection initialization, which includes a new connection,
-#     `hello`, and channel registration.
-#     """
-#     log.debug(f"🐍#### Connecting to ws://127.0.0.1:{CONNECTION_PORT}/")
-#     client = AsyncPushTestClient(f"ws://127.0.0.1:{CONNECTION_PORT}/")
-#     await client.connect()
-#     await client.hello()
-#     await client.register()
-#     log.debug("🐍 Connected")
-#     return client
-
-# async def shut_down(self, client=None):
-#     """Shut down client."""
-#     if client:
-#         await client.disconnect()
-
-# @property
-# def _ws_url(self):
-#     return f"ws://127.0.0.1:{CONNECTION_PORT}/"
-
-
-# @max_logs(conn=4)
 async def test_sentry_output_autoconnect(
     test_client: AsyncPushTestClient, process_logs_autouse
 ) -> None:
@@ -772,7 +732,6 @@ async def test_sentry_output_autoconnect(
     process_logs_autouse(max_conn_logs=4)
 
 
-# @max_logs(endpoint=1)
 async def test_sentry_output_autoendpoint(
     registered_test_client: AsyncPushTestClient, process_logs_autouse
 ) -> None:
@@ -802,7 +761,6 @@ async def test_sentry_output_autoendpoint(
     process_logs_autouse(max_endpoint_logs=1)
 
 
-# @max_logs(conn=4)
 async def test_no_sentry_output(ws_url: str, process_logs_autouse) -> None:
     """Test for no Sentry output."""
     if os.getenv("SKIP_SENTRY"):
@@ -888,7 +846,6 @@ async def test_topic_replacement_delivery(
     assert result is None
 
 
-# @max_logs(conn=4)
 @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_topic_no_delivery_on_reconnect(
     registered_test_client: AsyncPushTestClient,
@@ -1098,7 +1055,6 @@ async def test_topic_expired(registered_test_client: AsyncPushTestClient, uuid_d
     assert result["data"] == base64url_encode(uuid_data)
 
 
-# @max_logs(conn=4)
 @pytest.mark.parametrize(
     ["uuid_data_1", "uuid_data_2"],
     [
@@ -1300,7 +1256,6 @@ async def test_ttl_batch_expired_and_good_one(
     process_logs_autouse(max_endpoint_logs=28)
 
 
-# @max_logs(endpoint=28)
 @pytest.mark.parametrize(
     ["uuid_data_1", "uuid_data_2", "uuid_data_3"],
     [(str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()))],
@@ -1492,7 +1447,6 @@ async def test_with_bad_key(test_client: AsyncPushTestClient, chid: str):
     assert result["status"] == 400
 
 
-# @max_logs(endpoint=44)
 async def test_msg_limit(registered_test_client: AsyncPushTestClient, process_logs_autouse):
     """Test that sent messages that are larger than our size limit are rejected."""
     uaid = registered_test_client.uaid
@@ -1556,18 +1510,6 @@ async def test_internal_endpoints(
         assert e.response.status_code == 404
     else:
         assert False
-
-
-# @pytest.mark.usefixtures("test_client_broadcast")
-# class TestRustWebPushBroadcast:
-#     """Test class for Rust Web Push Broadcast."""
-
-#     max_endpoint_logs = 4
-#     max_conn_logs = 1
-
-#     def tearDown(self):
-#         """Tear down."""
-#         process_logs(self)
 
 
 async def test_broadcast_update_on_connect(test_client_broadcast, process_logs_autouse) -> None:
