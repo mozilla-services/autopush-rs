@@ -736,7 +736,7 @@ class TestRustWebPush:
     # @max_logs(conn=4)
     async def test_sentry_output_autoconnect(
         self, test_client: AsyncPushTestClient, process_logs_autouse
-    ):
+    ) -> None:
         """Test sentry output for autoconnect."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
@@ -770,7 +770,7 @@ class TestRustWebPush:
     # @max_logs(endpoint=1)
     async def test_sentry_output_autoendpoint(
         self, registered_test_client: AsyncPushTestClient, process_logs_autouse
-    ):
+    ) -> None:
         """Test sentry output for autoendpoint."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
@@ -797,7 +797,7 @@ class TestRustWebPush:
         process_logs_autouse(max_endpoint_logs=1)
 
     # @max_logs(conn=4)
-    async def test_no_sentry_output(self, process_logs_autouse):
+    async def test_no_sentry_output(self, process_logs_autouse) -> None:
         """Test for no Sentry output."""
         if os.getenv("SKIP_SENTRY"):
             SkipTest("Skipping sentry test")
@@ -816,7 +816,7 @@ class TestRustWebPush:
             pass
         process_logs_autouse(max_conn_logs=4)
 
-    async def test_hello_echo(self, test_client):
+    async def test_hello_echo(self, test_client) -> None:
         """Test hello echo."""
         await test_client.connect()
         result = await test_client.hello()
@@ -827,7 +827,7 @@ class TestRustWebPush:
     @pytest.mark.parametrize("non_uaid", [uuid.uuid4().hex])
     async def test_hello_with_bad_prior_uaid(
         self, test_client: AsyncPushTestClient, non_uaid: str
-    ):
+    ) -> None:
         """Test hello with bad prior uaid."""
         await test_client.connect()
         result = await test_client.hello(uaid=non_uaid)
@@ -839,7 +839,7 @@ class TestRustWebPush:
     @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
     async def test_basic_delivery(
         self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ):
+    ) -> None:
         """Test basic regular push message delivery."""
         result = await registered_test_client.send_notification(data=uuid_data)
         # the following presumes that only `salt` is padded.
@@ -851,7 +851,7 @@ class TestRustWebPush:
     @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
     async def test_topic_basic_delivery(
         self, registered_test_client: AsyncPushTestClient, uuid_data: str
-    ):
+    ) -> None:
         """Test basic topic push message delivery."""
         result = await registered_test_client.send_notification(data=uuid_data, topic="Inbox")
         # the following presumes that only `salt` is padded.
@@ -865,7 +865,7 @@ class TestRustWebPush:
     )
     async def test_topic_replacement_delivery(
         self, registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
-    ):
+    ) -> None:
         """Test that a topic push message replaces it's prior version."""
         await registered_test_client.disconnect()
         await registered_test_client.send_notification(data=uuid_data_1, topic="Inbox", status=201)
@@ -882,31 +882,35 @@ class TestRustWebPush:
         result = await registered_test_client.get_notification()
         assert result is None
 
-    @max_logs(conn=4)
-    async def test_topic_no_delivery_on_reconnect(self):
+    # @max_logs(conn=4)
+    @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
+    async def test_topic_no_delivery_on_reconnect(
+        self,
+        registered_test_client: AsyncPushTestClient,
+        uuid_data: str,
+        process_logs_autouse,
+    ) -> None:
         """Test that a topic message does not attempt to redeliver on reconnect."""
-        data = str(uuid.uuid4())
-        client = await self.quick_register()
-        await client.disconnect()
-        await client.send_notification(data=data, topic="Inbox", status=201)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=10)
+        await registered_test_client.disconnect()
+        await registered_test_client.send_notification(data=uuid_data, topic="Inbox", status=201)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=10)
         # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace('"', "").rstrip("=")
+        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
         assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(data)
+        assert result["data"] == base64url_encode(uuid_data)
         assert result["messageType"] == "notification"
-        await client.ack(result["channelID"], result["version"])
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification()
+        await registered_test_client.ack(result["channelID"], result["version"])
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification()
         assert result is None
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        await self.shut_down(client)
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        process_logs_autouse(max_conn_logs=4)
 
     @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
     async def test_basic_delivery_with_vapid(
