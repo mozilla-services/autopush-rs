@@ -1105,50 +1105,63 @@ class TestRustWebPush:
         assert result != {}
         assert result["data"] == base64url_encode(uuid_data)
 
-    @max_logs(conn=4)
-    async def test_multiple_delivery_with_single_ack(self):
+    # @max_logs(conn=4)
+    @pytest.mark.parametrize(
+        ["uuid_data_1", "uuid_data_2"],
+        [
+            (
+                b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # FirstMessage
+                b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # OtherMessage
+            )
+        ],
+    )
+    async def test_multiple_delivery_with_single_ack(
+        self,
+        registered_test_client: AsyncPushTestClient,
+        uuid_data_1: str,
+        uuid_data_2: str,
+        process_logs_autouse,
+    ) -> None:
         """Test that the server provides the right unacknowledged messages
         if the client only acknowledges one of the received messages.
         Note: the `data` fields are constructed so that they return
         `FirstMessage` and `OtherMessage`, which may be useful for debugging.
         """
-        data = b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
-        data2 = b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
-        client = await self.quick_register()
-        await client.disconnect()
-        assert client.channels
-        await client.send_notification(data=data, status=201)
-        await client.send_notification(data=data2, status=201)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=0.5)
+        await registered_test_client.disconnect()
+        assert registered_test_client.channels
+        await registered_test_client.send_notification(data=uuid_data_1, status=201)
+        await registered_test_client.send_notification(data=uuid_data_2, status=201)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result != {}
-        assert result["data"] == base64url_encode(data)
-        result2 = await client.get_notification(timeout=0.5)
+        assert result["data"] == base64url_encode(uuid_data_1)
+        result2 = await registered_test_client.get_notification(timeout=0.5)
         assert result2 != {}
-        assert result2["data"] == base64url_encode(data2)
-        await client.ack(result["channelID"], result["version"])
+        assert result2["data"] == base64url_encode(uuid_data_2)
+        await registered_test_client.ack(result["channelID"], result["version"])
 
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=0.5)
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result != {}
-        assert result["data"] == base64url_encode(data)
+        assert result["data"] == base64url_encode(uuid_data_1)
         assert result["messageType"] == "notification"
-        result2 = await client.get_notification()
+        result2 = await registered_test_client.get_notification()
         assert result2 != {}
-        assert result2["data"] == base64url_encode(data2)
-        await client.ack(result["channelID"], result["version"])
-        await client.ack(result2["channelID"], result2["version"])
+        assert result2["data"] == base64url_encode(uuid_data_2)
+        await registered_test_client.ack(result["channelID"], result["version"])
+        await registered_test_client.ack(result2["channelID"], result2["version"])
 
         # Verify no messages are delivered
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=0.5)
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
-        await self.shut_down(client)
+
+        process_logs_autouse(max_conn_logs=4)
 
     @pytest.mark.parametrize(
         ["uuid_data_1", "uuid_data_2"],
@@ -1251,75 +1264,94 @@ class TestRustWebPush:
         result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
 
-    @max_logs(endpoint=28)
-    async def test_ttl_batch_expired_and_good_one(self):
+    @pytest.mark.parametrize(
+        ["uuid_data_1", "uuid_data_2"],
+        [
+            (
+                str(uuid.uuid4()).encode(),
+                base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode(),
+            )
+        ],
+    )
+    async def test_ttl_batch_expired_and_good_one(
+        self,
+        registered_test_client,
+        uuid_data_1,
+        uuid_data_2,
+        process_logs_autouse,
+    ):
         """Test that if a batch of messages are received while the recipient is offline,
         only messages that have not expired are sent to the recipient.
         This test checks if the latest pending message is not expired.
         """
-        data = str(uuid.uuid4()).encode()
-        data2 = base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode()
-        print(data2)
-        client = await self.quick_register()
-        await client.disconnect()
+        await registered_test_client.disconnect()
         for x in range(0, 12):
             prefix = base64.urlsafe_b64decode(f"{x:04d}")
-            await client.send_notification(data=prefix + data, ttl=1, status=201)
+            await registered_test_client.send_notification(
+                data=prefix + uuid_data_1, ttl=1, status=201
+            )
 
-        await client.send_notification(data=data2, status=201)
+        await registered_test_client.send_notification(data=uuid_data_2, status=201)
         await asyncio.sleep(1)
-        await client.connect()
-        await client.hello()
-        result = await client.get_notification(timeout=4)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        result = await registered_test_client.get_notification(timeout=4)
         assert result is not None
         # the following presumes that only `salt` is padded.
-        clean_header = client._crypto_key.replace('"', "").rstrip("=")
+        clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
         assert result["headers"]["encryption"] == clean_header
-        assert result["data"] == base64url_encode(data2)
+        assert result["data"] == base64url_encode(uuid_data_2)
         assert result["messageType"] == "notification"
-        result = await client.get_notification(timeout=0.5)
+        result = await registered_test_client.get_notification(timeout=0.5)
         assert result is None
-        await self.shut_down(client)
+        process_logs_autouse(max_endpoint_logs=28)
 
-    @max_logs(endpoint=28)
-    async def test_ttl_batch_partly_expired_and_good_one(self):
+    # @max_logs(endpoint=28)
+    @pytest.mark.parametrize(
+        ["uuid_data_1", "uuid_data_2", "uuid_data_3"],
+        [(str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()))],
+    )
+    async def test_ttl_batch_partly_expired_and_good_one(
+        self,
+        registered_test_client: AsyncPushTestClient,
+        uuid_data_1: str,
+        uuid_data_2: str,
+        uuid_data_3: str,
+        process_logs_autouse,
+    ):
         """Test that if a batch of messages are received while the recipient is offline,
         only messages that have not expired are sent to the recipient.
         This test checks if there is an equal mix of expired and unexpired messages.
         """
-        data = str(uuid.uuid4())
-        data1 = str(uuid.uuid4())
-        data2 = str(uuid.uuid4())
-        client = await self.quick_register()
-        await client.disconnect()
+        await registered_test_client.disconnect()
         for x in range(0, 6):
-            await client.send_notification(data=data, status=201)
+            await registered_test_client.send_notification(data=uuid_data_1, status=201)
 
         for x in range(0, 6):
-            await client.send_notification(data=data1, ttl=1, status=201)
+            await registered_test_client.send_notification(data=uuid_data_2, ttl=1, status=201)
 
-        await client.send_notification(data=data2, status=201)
+        await registered_test_client.send_notification(data=uuid_data_3, status=201)
         await asyncio.sleep(1)
-        await client.connect()
-        await client.hello()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
 
         # Pull out and ack the first
         for x in range(0, 6):
-            result = await client.get_notification(timeout=4)
+            result = await registered_test_client.get_notification(timeout=4)
             assert result is not None
-            assert result["data"] == base64url_encode(data)
-            await client.ack(result["channelID"], result["version"])
+            assert result["data"] == base64url_encode(uuid_data_1)
+            await registered_test_client.ack(result["channelID"], result["version"])
 
-        # Should have one more that is data2, this will only arrive if the
+        # Should have one more that is uuid_data_3, this will only arrive if the
         # other six were acked as that hits the batch size
-        result = await client.get_notification(timeout=4)
+        result = await registered_test_client.get_notification(timeout=4)
         assert result is not None
-        assert result["data"] == base64url_encode(data2)
+        assert result["data"] == base64url_encode(uuid_data_3)
 
         # No more
-        result = await client.get_notification()
+        result = await registered_test_client.get_notification()
         assert result is None
-        await self.shut_down(client)
+        process_logs_autouse(max_endpoint_logs=28)
 
     @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
     async def test_message_without_crypto_headers(
@@ -1461,28 +1493,29 @@ class TestRustWebPush:
         result = await test_client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
         assert result["status"] == 400
 
-    @max_logs(endpoint=44)
-    async def test_msg_limit(self):
+    # @max_logs(endpoint=44)
+    async def test_msg_limit(
+        self, registered_test_client: AsyncPushTestClient, process_logs_autouse
+    ):
         """Test that sent messages that are larger than our size limit are rejected."""
-        client = await self.quick_register()
-        uaid = client.uaid
-        await client.disconnect()
+        uaid = registered_test_client.uaid
+        await registered_test_client.disconnect()
         for i in range(MSG_LIMIT + 1):
-            await client.send_notification(status=201)
-        await client.connect()
-        await client.hello()
-        assert client.uaid == uaid
+            await registered_test_client.send_notification(status=201)
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        assert registered_test_client.uaid == uaid
         for i in range(MSG_LIMIT):
-            result = await client.get_notification()
+            result = await registered_test_client.get_notification()
             assert result is not None, f"failed at {i}"
-            await client.ack(result["channelID"], result["version"])
-        await client.disconnect()
-        await client.connect()
-        await client.hello()
-        assert client.uaid != uaid
-        await self.shut_down(client)
+            await registered_test_client.ack(result["channelID"], result["version"])
+        await registered_test_client.disconnect()
+        await registered_test_client.connect()
+        await registered_test_client.hello()
+        assert registered_test_client.uaid != uaid
+        process_logs_autouse(max_endpoint_logs=44)
 
-    async def test_can_moz_ping(self, registered_test_client):
+    async def test_can_moz_ping(self, registered_test_client) -> None:
         """Test that the client can send a small ping message and get a valid response."""
         result = await registered_test_client.moz_ping()
         assert result == "{}"
@@ -1495,7 +1528,7 @@ class TestRustWebPush:
             pass
         assert not registered_test_client.ws.open
 
-    async def test_internal_endpoints(self, registered_test_client):
+    async def test_internal_endpoints(self, registered_test_client: AsyncPushTestClient) -> None:
         """Ensure an internal router endpoint isn't exposed on the public CONNECTION_PORT"""
         parsed = (
             urlparse(self._ws_url)
@@ -1535,7 +1568,9 @@ class TestRustWebPushBroadcast:
         """Tear down."""
         process_logs(self)
 
-    async def test_broadcast_update_on_connect(self, test_client_broadcast):
+    async def test_broadcast_update_on_connect(
+        self, test_client_broadcast, process_logs_autouse
+    ) -> None:
         """Test that the client receives any pending broadcast updates on connect."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1555,8 +1590,11 @@ class TestRustWebPushBroadcast:
         result = await test_client_broadcast.get_broadcast(2)
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
+        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
-    async def test_broadcast_update_on_connect_with_errors(self, test_client_broadcast):
+    async def test_broadcast_update_on_connect_with_errors(
+        self, test_client_broadcast, process_logs_autouse
+    ) -> None:
         """Test that the client can receive broadcast updates on connect
         that may have produced internal errors.
         """
@@ -1572,8 +1610,9 @@ class TestRustWebPushBroadcast:
         assert result["use_webpush"] is True
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
+        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
-    async def test_broadcast_subscribe(self, test_client_broadcast):
+    async def test_broadcast_subscribe(self, test_client_broadcast, process_logs_autouse) -> None:
         """Test that the client can subscribe to new broadcasts."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1599,8 +1638,11 @@ class TestRustWebPushBroadcast:
         result = await test_client_broadcast.get_broadcast(2)
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver2"
+        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
-    async def test_broadcast_subscribe_with_errors(self, test_client_broadcast):
+    async def test_broadcast_subscribe_with_errors(
+        self, test_client_broadcast, process_logs_autouse
+    ) -> None:
         """Test that broadcast returns expected errors."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1619,8 +1661,9 @@ class TestRustWebPushBroadcast:
         assert result.get("messageType") == ClientMessageType.BROADCAST.value
         assert result["broadcasts"]["kinto:123"] == "ver1"
         assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
+        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
-    async def test_broadcast_no_changes(self, test_client_broadcast):
+    async def test_broadcast_no_changes(self, test_client_broadcast, process_logs_autouse) -> None:
         """Test to ensure there are no changes from broadcast."""
         global MOCK_MP_SERVICES
         MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1633,3 +1676,4 @@ class TestRustWebPushBroadcast:
         assert result != {}
         assert result["use_webpush"] is True
         assert result["broadcasts"] == {}
+        process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
