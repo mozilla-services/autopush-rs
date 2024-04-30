@@ -241,38 +241,16 @@ def print_lines_in_queues(queues, prefix):
                 sys.stdout.write(prefix + line)
 
 
-def process_logs(testcase):
-    """Process (print) the testcase logs (in tearDown).
+@pytest.fixture(name="process_logs_autouse", autouse=True)
+def fixture_process_logs_autouse():
+    """Process (print) the testcase logs.
 
     Ensures a maximum level of logs allowed to be emitted when running
     w/ a `--release` mode connection/endpoint node
 
-    """
-    conn_count = sum(queue.qsize() for queue in CN_QUEUES)
-    endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
-
-    print_lines_in_queues(CN_QUEUES, f"{CONNECTION_BINARY.upper()}: ")
-    print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
-
-    if not STRICT_LOG_COUNTS:
-        return
-
-    msg = "endpoint node emitted excessive log statements, count: {} > max: {}"
-    # Give an extra to endpoint for potential startup log messages
-    # (e.g. when running tests individually)
-    max_endpoint_logs = testcase.max_endpoint_logs + 1
-    assert endpoint_count <= max_endpoint_logs, msg.format(endpoint_count, max_endpoint_logs)
-
-    msg = "conn node emitted excessive log statements, count: {} > max: {}"
-    assert conn_count <= testcase.max_conn_logs, msg.format(conn_count, testcase.max_conn_logs)
-
-
-@pytest.fixture(name="process_logs_autouse", autouse=True)
-def fixture_process_logs_autouse():
-    """Process (print) the testcase logs.
     Default of max_endpoint_logs=8 & max_conn_logs=3 for standard tests.
-    Values are modified for specific test cases to accomodate specific outputs.
     Broadcast tests are set to max_endpoint_logs=4 & max_conn_logs = 1.
+    Values are modified for specific test cases to accomodate specific outputs.
     """
 
     def _process_logs(max_endpoint_logs=8, max_conn_logs=3):
@@ -297,28 +275,6 @@ def fixture_process_logs_autouse():
         assert conn_count <= max_conn_logs, msg.format(conn_count, max_conn_logs)
 
     return _process_logs  # Calls the inner function with default values
-
-
-def max_logs(endpoint=None, conn=None):
-    """Adjust max_endpoint/conn_logs values for individual test cases.
-
-    They're utilized by the process_logs function
-
-    """
-
-    def max_logs_decorator(func):
-        """Overwrite `max_endpoint_logs` with a given endpoint if it is specified."""
-
-        async def wrapper(self, *args, **kwargs):
-            if endpoint is not None:
-                self.max_endpoint_logs = endpoint
-            if conn is not None:
-                self.max_conn_logs = conn
-            return await func(self, *args, **kwargs)
-
-        return wrapper
-
-    return max_logs_decorator
 
 
 @app.get("/v1/broadcasts")
