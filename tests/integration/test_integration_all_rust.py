@@ -240,7 +240,7 @@ def print_lines_in_queues(queues, prefix):
                 sys.stdout.write(prefix + line)
 
 
-@pytest.fixture(name="process_logs_autouse", autouse=True)
+@pytest.fixture(name="process_logs_autouse", autouse=True, scope="function")
 def fixture_process_logs_autouse():
     """Process (print) the testcase logs.
 
@@ -623,7 +623,10 @@ async def fixture_test_client(ws_url):
     a custom websocket url passed in to initialize.
     """
     client = AsyncPushTestClient(ws_url)
-    return client
+    yield client
+    if client.ws:
+        log.debug(f"🐍#### test client at {client.url} disconnected.")
+        await client.disconnect()
 
 
 @pytest.fixture(name="test_client_broadcast", scope="function")
@@ -642,7 +645,6 @@ async def fixture_registered_test_client(ws_config):
     `hello`, and channel registration.
     """
     log.debug(f"🐍#### Connecting to ws://localhost:{ws_config['connection_port']}/")
-    print(f"🐍#### Connecting to ws://localhost:{ws_config['connection_port']}/")
     client = AsyncPushTestClient(f"ws://localhost:{ws_config['connection_port']}/")
     await client.connect()
     await client.hello()
@@ -651,7 +653,6 @@ async def fixture_registered_test_client(ws_config):
     yield client
     await client.disconnect()
     log.debug("🐍 Test Client Disconnected")
-    print("🐍 Test Client Disconnected")
 
 
 async def test_sentry_output_autoconnect(
@@ -1394,12 +1395,12 @@ async def test_with_key(test_client):
     await test_client.send_notification(vapid=vapid, status=401)
 
 
-@pytest.mark.parametrize("chid", [str(uuid.uuid4())])
-async def test_with_bad_key(test_client: AsyncPushTestClient, chid: str):
+@pytest.mark.parametrize(["chid", "bad_key"], [(str(uuid.uuid4()), "af1883%&!@#*(")])
+async def test_with_bad_key(test_client: AsyncPushTestClient, chid: str, bad_key: str):
     """Test that a message registration request with bad VAPID public key is rejected."""
     await test_client.connect()
     await test_client.hello()
-    result = await test_client.register(channel_id=chid, key="af1883%&!@#*(", status=400)
+    result = await test_client.register(channel_id=chid, key=bad_key, status=400)
     assert result["status"] == 400
 
 
