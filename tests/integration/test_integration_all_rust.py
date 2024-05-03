@@ -580,13 +580,13 @@ def setup_teardown() -> Generator:
     kill_process(EP_SERVER)
 
 
-@pytest.fixture(name="ws_url")
+@pytest.fixture(name="ws_url", scope="session")
 def fixture_ws_url() -> str:
     """Return defined url for websocket connection."""
     return f"ws://localhost:{CONNECTION_PORT}/"
 
 
-@pytest.fixture(name="broadcast_ws_url")
+@pytest.fixture(name="broadcast_ws_url", scope="session")
 def fixture_broadcast_ws_url() -> str:
     """Return websocket url for megaphone broadcast testing."""
     return f"ws://localhost:{MP_CONNECTION_PORT}/"
@@ -611,7 +611,7 @@ def fixture_clear_sentry_queue():
         MOCK_SENTRY_QUEUE.get_nowait()
 
 
-@pytest.fixture(name="ws_config")
+@pytest.fixture(name="ws_config", scope="session")
 def fixture_ws_config():
     """Return collection of configuration values."""
     return {"connection_port": 9150}
