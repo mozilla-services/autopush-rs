@@ -23,7 +23,6 @@ import ecdsa
 import httpx
 import psutil
 import pytest
-import twisted.internet.base
 import uvicorn
 import websockets
 from cryptography.fernet import Fernet
@@ -52,8 +51,6 @@ SETUP_BT_SH = os.path.join(root_dir, "scripts", "setup_bt.sh")
 DDB_PROCESS: subprocess.Popen | None = None
 BT_PROCESS: subprocess.Popen | None = None
 BT_DB_SETTINGS: str | None = None
-
-twisted.internet.base.DelayedCall.debug = True
 
 ROUTER_TABLE = os.environ.get("ROUTER_TABLE", "router_int_test")
 MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
