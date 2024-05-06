@@ -82,7 +82,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         parsed = urlparse(list(self.channels.values())[0])
         return f"{parsed.scheme}://{parsed.netloc}"
 
-    async def hello(self, uaid: str | None = None, services: list[str] | None = None):
+    async def hello(self, uaid: str | None = None, services: dict[str, str] | None = None):
         """Hello verification."""
         if not self.ws:
             raise WebSocketException("WebSocket client not available as expected.")
@@ -114,7 +114,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.uaid = result["uaid"]
         return result
 
-    async def broadcast_subscribe(self, services: list[str]) -> None:
+    async def broadcast_subscribe(self, services: dict[str, str]) -> None:
         """Broadcast WebSocket subscribe."""
         if not self.ws:
             raise WebSocketException("WebSocket client not available as expected.")
@@ -175,7 +175,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self,
         channel=None,
         version=None,
-        data: str | None = None,
+        data: str | bytes | None = None,
         use_header: bool = True,
         status: int = 201,
         # 202 status reserved for yet to be implemented push w/ reciept.
@@ -215,9 +215,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             headers.update({"Crypto-Key": f"{headers.get('Crypto-Key', '')};{ckey}"})
         if topic:
             headers["Topic"] = topic
-        body: str = data or ""
+        body: str | bytes = data or ""
         method: str = "POST"
-        log.debug(f"{method} body: {body}")
+        log.debug(f"{method} body: {body!r}")
         log.debug(f"  headers: {headers}")
         async with httpx.AsyncClient() as httpx_client:
             resp = await httpx_client.request(

@@ -16,7 +16,7 @@ import time
 import uuid
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Any, Generator
+from typing import Any, AsyncGenerator, Generator
 from urllib.parse import urlparse
 
 import ecdsa
@@ -190,7 +190,7 @@ ENDPOINT_CONFIG = dict(
 
 def _get_vapid(
     key: ecdsa.SigningKey | None = None,
-    payload: dict[str, str | int] | None = None,
+    payload: dict[str, Any] | None = None,
     endpoint: str | None = None,
 ) -> dict[str, str | bytes]:
     """Get VAPID information, including the `Authorization` header string,
@@ -220,14 +220,14 @@ def _get_vapid(
     return {"auth": auth, "crypto-key": crypto_key, "key": key}
 
 
-def enqueue_output(out, queue):
+def enqueue_output(out, queue) -> None:
     """Add lines from the out buffer to the provided queue."""
     for line in iter(out.readline, ""):
         queue.put(line)
     out.close()
 
 
-def print_lines_in_queues(queues, prefix):
+def print_lines_in_queues(queues, prefix) -> None:
     """Print lines in queues to stdout."""
     for queue in queues:
         is_empty = False
@@ -249,7 +249,7 @@ def fixture_process_logs_autouse():
 
     Default of max_endpoint_logs=8 & max_conn_logs=3 for standard tests.
     Broadcast tests are set to max_endpoint_logs=4 & max_conn_logs = 1.
-    Values are modified for specific test cases to accomodate specific outputs.
+    Values are modified for specific test cases to accommodate specific outputs.
     """
 
     def _process_logs(max_endpoint_logs=8, max_conn_logs=3):
@@ -292,7 +292,7 @@ async def sentry_handler(request: Request) -> dict[str, str]:
     return {"id": "fc6d8c0c43fc4630ad850ee518f1b9d0"}
 
 
-def kill_process(process):
+def kill_process(process) -> None:
     """Kill child processes."""
     # This kinda sucks, but its the only way to nuke the child procs
     if process is None:
@@ -304,14 +304,14 @@ def kill_process(process):
     process.wait()
 
 
-def get_rust_binary_path(binary):
+def get_rust_binary_path(binary) -> str:
     """Get path to pre-built Rust binary.
     This presumes that the application has already been built with proper features.
     """
     global STRICT_LOG_COUNTS
 
-    rust_bin = root_dir + "/target/release/{}".format(binary)
-    possible_paths = [
+    rust_bin: str = root_dir + "/target/release/{}".format(binary)
+    possible_paths: list[str] = [
         "/target/debug/{}".format(binary),
         "/{0}/target/release/{0}".format(binary),
         "/{0}/target/debug/{0}".format(binary),
@@ -326,7 +326,7 @@ def get_rust_binary_path(binary):
     return rust_bin
 
 
-def write_config_to_env(config, prefix):
+def write_config_to_env(config, prefix) -> None:
     """Write configurations to application read environment variables."""
     for key, val in config.items():
         new_key = prefix + key
@@ -334,16 +334,16 @@ def write_config_to_env(config, prefix):
         os.environ[new_key.upper()] = str(val)
 
 
-def capture_output_to_queue(output_stream):
+def capture_output_to_queue(output_stream) -> Queue:
     """Capture output to log queue."""
-    log_queue = Queue()
+    log_queue: Queue = Queue()
     t = Thread(target=enqueue_output, args=(output_stream, log_queue))
     t.daemon = True  # thread dies with the program
     t.start()
     return log_queue
 
 
-def setup_bt():
+def setup_bt() -> None:
     """Set up BigTable emulator."""
     global BT_PROCESS, BT_DB_SETTINGS
     log.debug("🐍🟢 Starting bigtable emulator")
@@ -371,7 +371,7 @@ def setup_bt():
         raise
 
 
-def setup_dynamodb():
+def setup_dynamodb() -> None:
     """Set up DynamoDB emulator."""
     global DDB_PROCESS
 
@@ -398,12 +398,12 @@ def setup_dynamodb():
     get_router_table(boto_resource, ROUTER_TABLE)
 
 
-def run_fastapi_app(host, port):
+def run_fastapi_app(host, port) -> None:
     """Run FastAPI app with uvicorn."""
     uvicorn.run(app, host=host, port=port, log_level="debug")
 
 
-def setup_mock_server():
+def setup_mock_server() -> None:
     """Set up mock server."""
     global MOCK_SERVER_THREAD
 
@@ -417,7 +417,7 @@ def setup_mock_server():
     os.environ["SENTRY_DSN"] = f"http://foo:bar@127.0.0.1:{MOCK_SERVER_PORT}/1"
 
 
-def setup_connection_server(connection_binary):
+def setup_connection_server(connection_binary) -> None:
     """Set up connection server from config."""
     global CN_SERVER, BT_PROCESS, DDB_PROCESS
 
@@ -456,7 +456,7 @@ def setup_connection_server(connection_binary):
     CN_QUEUES.extend([out_q, err_q])
 
 
-def setup_megaphone_server(connection_binary):
+def setup_megaphone_server(connection_binary) -> None:
     """Set up megaphone server from configuration."""
     global CN_MP_SERVER
 
@@ -480,7 +480,7 @@ def setup_megaphone_server(connection_binary):
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
 
 
-def setup_endpoint_server():
+def setup_endpoint_server() -> None:
     """Set up endpoint server from configuration."""
     global CONNECTION_CONFIG, EP_SERVER, BT_PROCESS
 
@@ -526,9 +526,6 @@ def setup_teardown() -> Generator:
     """Set up and tear down test resources within module.
 
     Setup: BigTable or Dynamo and connection, endpoint, mock and megaphone servers.
-
-    Using pytest fixtures for setup/teardown means anything prior to `yield` statement
-    executes at test creation and anything after `yield` is run after tests complete.
     """
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, STRICT_LOG_COUNTS, RUST_LOG
 
@@ -602,7 +599,7 @@ def fixture_vapid_payload() -> dict[str, int | str]:
 
 
 @pytest.fixture(name="clear_sentry_queue", autouse=True, scope="function")
-def fixture_clear_sentry_queue():
+def fixture_clear_sentry_queue() -> Generator:
     """Clear any values present in Sentry queue.
     Scoped to run automatically after each test function.
     """
@@ -612,13 +609,13 @@ def fixture_clear_sentry_queue():
 
 
 @pytest.fixture(name="ws_config", scope="session")
-def fixture_ws_config():
+def fixture_ws_config() -> dict[str, int]:
     """Return collection of configuration values."""
     return {"connection_port": 9150}
 
 
 @pytest.fixture(name="test_client", scope="function")
-async def fixture_test_client(ws_url):
+async def fixture_test_client(ws_url) -> AsyncGenerator:
     """Return a push test client for use within tests that can have
     a custom websocket url passed in to initialize.
     """
@@ -630,7 +627,7 @@ async def fixture_test_client(ws_url):
 
 
 @pytest.fixture(name="test_client_broadcast", scope="function")
-async def fixture_test_client_broadcast(broadcast_ws_url):
+async def fixture_test_client_broadcast(broadcast_ws_url) -> AsyncGenerator:
     """Return a push test client for use within tests that can have
     a custom websocket url passed in to initialize.
     """
@@ -640,7 +637,7 @@ async def fixture_test_client_broadcast(broadcast_ws_url):
 
 
 @pytest.fixture(name="registered_test_client", scope="function")
-async def fixture_registered_test_client(ws_config):
+async def fixture_registered_test_client(ws_config) -> AsyncGenerator:
     """Perform a connection initialization, which includes a new connection,
     `hello`, and channel registration.
     """
@@ -738,13 +735,12 @@ async def test_no_sentry_output(ws_url: str, process_logs_autouse) -> None:
     process_logs_autouse(max_conn_logs=4)
 
 
-async def test_hello_echo(test_client) -> None:
+async def test_hello_echo(test_client: AsyncPushTestClient) -> None:
     """Test hello echo."""
     await test_client.connect()
     result = await test_client.hello()
     assert result != {}
     assert result["use_webpush"] is True
-    await test_client.disconnect()
 
 
 @pytest.mark.parametrize("non_uaid", [uuid.uuid4().hex])
@@ -755,7 +751,6 @@ async def test_hello_with_bad_prior_uaid(test_client: AsyncPushTestClient, non_u
     assert result != {}
     assert result["uaid"] != non_uaid
     assert result["use_webpush"] is True
-    await test_client.disconnect()
 
 
 @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
@@ -837,7 +832,7 @@ async def test_basic_delivery_with_vapid(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
     uuid_data: str,
-):
+) -> None:
     """Test delivery of a basic push message with a VAPID header."""
     vapid_info = _get_vapid(payload=vapid_payload)
     result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
@@ -853,7 +848,7 @@ async def test_basic_delivery_with_invalid_vapid(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
     uuid_data: str,
-):
+) -> None:
     """Test basic delivery with invalid VAPID header."""
     vapid_info = _get_vapid(
         payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
@@ -866,7 +861,7 @@ async def test_basic_delivery_with_invalid_vapid(
 async def test_basic_delivery_with_invalid_vapid_exp(
     registered_test_client: AsyncPushTestClient,
     uuid_data: str,
-):
+) -> None:
     """Test basic delivery of a push message with invalid VAPID `exp` assertion."""
     vapid_info = _get_vapid(
         payload={
@@ -884,7 +879,7 @@ async def test_basic_delivery_with_invalid_vapid_auth(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
     uuid_data: str,
-):
+) -> None:
     """Test basic delivery with invalid VAPID auth."""
     vapid_info = _get_vapid(
         payload=vapid_payload,
@@ -898,7 +893,7 @@ async def test_basic_delivery_with_invalid_vapid_auth(
 async def test_basic_delivery_with_invalid_signature(
     registered_test_client: AsyncPushTestClient,
     uuid_data: str,
-):
+) -> None:
     """Test that a basic delivery with invalid VAPID signature fails."""
     vapid_info = _get_vapid(
         payload={
@@ -915,7 +910,7 @@ async def test_basic_delivery_with_invalid_vapid_ckey(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
     uuid_data: str,
-):
+) -> None:
     """Test that basic delivery with invalid VAPID crypto-key fails."""
     vapid_info = _get_vapid(
         payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
@@ -928,7 +923,7 @@ async def test_basic_delivery_with_invalid_vapid_ckey(
 async def test_delivery_repeat_without_ack(
     registered_test_client: AsyncPushTestClient,
     uuid_data: str,
-):
+) -> None:
     """Test that message delivery repeats if the client does not acknowledge messages."""
     await registered_test_client.disconnect()
     assert registered_test_client.channels
@@ -950,7 +945,7 @@ async def test_delivery_repeat_without_ack(
 @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_repeat_delivery_with_disconnect_without_ack(
     registered_test_client: AsyncPushTestClient, uuid_data: str
-):
+) -> None:
     """Test that message delivery repeats if the client disconnects
     without acknowledging the message.
     """
@@ -968,7 +963,7 @@ async def test_repeat_delivery_with_disconnect_without_ack(
 @pytest.mark.parametrize(["uuid_data_1", "uuid_data_2"], [(str(uuid.uuid4()), str(uuid.uuid4()))])
 async def test_multiple_delivery_repeat_without_ack(
     registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
-):
+) -> None:
     """Test that the server will always try to deliver messages
     until the client acknowledges them.
     """
@@ -997,7 +992,7 @@ async def test_multiple_delivery_repeat_without_ack(
 
 
 @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_topic_expired(registered_test_client: AsyncPushTestClient, uuid_data: str):
+async def test_topic_expired(registered_test_client: AsyncPushTestClient, uuid_data: str) -> None:
     """Test that the server will not deliver a message topic that has expired."""
     await registered_test_client.disconnect()
     assert registered_test_client.channels
@@ -1080,7 +1075,7 @@ async def test_multiple_delivery_with_single_ack(
 )
 async def test_multiple_delivery_with_multiple_ack(
     registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
-):
+) -> None:
     """Test that the server provides the no additional unacknowledged messages
     if the client acknowledges both of the received messages.
     Note: the `data` fields are constructed so that they return
@@ -1133,7 +1128,9 @@ async def test_no_delivery_to_unregistered(
 
 
 @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_ttl_0_connected(registered_test_client: AsyncPushTestClient, uuid_data: str):
+async def test_ttl_0_connected(
+    registered_test_client: AsyncPushTestClient, uuid_data: str
+) -> None:
     """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
     result = await registered_test_client.send_notification(data=uuid_data, ttl=0)
     assert result is not None
@@ -1145,7 +1142,9 @@ async def test_ttl_0_connected(registered_test_client: AsyncPushTestClient, uuid
 
 
 @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_ttl_0_not_connected(registered_test_client: AsyncPushTestClient, uuid_data: str):
+async def test_ttl_0_not_connected(
+    registered_test_client: AsyncPushTestClient, uuid_data: str
+) -> None:
     """Test that a message with a TTL=0 and a recipient client that is not connected,
     is not delivered when the client reconnects.
     """
@@ -1158,7 +1157,7 @@ async def test_ttl_0_not_connected(registered_test_client: AsyncPushTestClient, 
 
 
 @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_ttl_expired(registered_test_client: AsyncPushTestClient, uuid_data: str):
+async def test_ttl_expired(registered_test_client: AsyncPushTestClient, uuid_data: str) -> None:
     """Test that messages with a TTL that has expired are not delivered
     to a recipient client.
     """
@@ -1181,11 +1180,11 @@ async def test_ttl_expired(registered_test_client: AsyncPushTestClient, uuid_dat
     ],
 )
 async def test_ttl_batch_expired_and_good_one(
-    registered_test_client,
-    uuid_data_1,
-    uuid_data_2,
+    registered_test_client: AsyncPushTestClient,
+    uuid_data_1: bytes,
+    uuid_data_2: bytes,
     process_logs_autouse,
-):
+) -> None:
     """Test that if a batch of messages are received while the recipient is offline,
     only messages that have not expired are sent to the recipient.
     This test checks if the latest pending message is not expired.
@@ -1223,7 +1222,7 @@ async def test_ttl_batch_partly_expired_and_good_one(
     uuid_data_2: str,
     uuid_data_3: str,
     process_logs_autouse,
-):
+) -> None:
     """Test that if a batch of messages are received while the recipient is offline,
     only messages that have not expired are sent to the recipient.
     This test checks if there is an equal mix of expired and unexpired messages.
@@ -1262,7 +1261,7 @@ async def test_ttl_batch_partly_expired_and_good_one(
 @pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_message_without_crypto_headers(
     registered_test_client: AsyncPushTestClient, uuid_data: str
-):
+) -> None:
     """Test that a message without crypto headers, but has data is not accepted."""
     result = await registered_test_client.send_notification(
         data=uuid_data, use_header=False, status=400
@@ -1270,7 +1269,9 @@ async def test_message_without_crypto_headers(
     assert result is None
 
 
-async def test_empty_message_without_crypto_headers(registered_test_client: AsyncPushTestClient):
+async def test_empty_message_without_crypto_headers(
+    registered_test_client: AsyncPushTestClient,
+) -> None:
     """Test that a message without crypto headers, and does not have data, is accepted."""
     result = await registered_test_client.send_notification(use_header=False)
     assert result is not None
@@ -1292,7 +1293,7 @@ async def test_empty_message_without_crypto_headers(registered_test_client: Asyn
 
 async def test_empty_message_with_crypto_headers(
     registered_test_client: AsyncPushTestClient,
-):
+) -> None:
     """Test that an empty message with crypto headers does not send either `headers`
     or `data` as part of the incoming websocket `notification` message.
     """
@@ -1323,7 +1324,7 @@ async def test_empty_message_with_crypto_headers(
     await registered_test_client.ack(result3["channelID"], result3["version"])
 
 
-async def test_big_message(registered_test_client):
+async def test_big_message(registered_test_client: AsyncPushTestClient) -> None:
     """Test that we accept a large message.
 
     Using pywebpush I encoded a 4096 block
@@ -1355,7 +1356,7 @@ async def test_big_message(registered_test_client):
 
 # Skipping test for now.
 # Note: dict_keys obj was not iterable, corrected by converting to iterable.
-async def test_delete_saved_notification(registered_test_client: AsyncPushTestClient):
+async def test_delete_saved_notification(registered_test_client: AsyncPushTestClient) -> None:
     """Test deleting a saved notification in client server."""
     await registered_test_client.disconnect()
     assert registered_test_client.channels
@@ -1370,7 +1371,7 @@ async def test_delete_saved_notification(registered_test_client: AsyncPushTestCl
     assert result is None
 
 
-async def test_with_key(test_client):
+async def test_with_key(test_client: AsyncPushTestClient) -> None:
     """Test getting a locked subscription with a valid VAPID public key."""
     private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
     claims = {
@@ -1469,7 +1470,9 @@ async def test_internal_endpoints(
         assert False
 
 
-async def test_broadcast_update_on_connect(test_client_broadcast, process_logs_autouse) -> None:
+async def test_broadcast_update_on_connect(
+    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
+) -> None:
     """Test that the client receives any pending broadcast updates on connect."""
     global MOCK_MP_SERVICES
     MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1493,7 +1496,7 @@ async def test_broadcast_update_on_connect(test_client_broadcast, process_logs_a
 
 
 async def test_broadcast_update_on_connect_with_errors(
-    test_client_broadcast, process_logs_autouse
+    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
 ) -> None:
     """Test that the client can receive broadcast updates on connect
     that may have produced internal errors.
@@ -1513,7 +1516,9 @@ async def test_broadcast_update_on_connect_with_errors(
     process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
 
-async def test_broadcast_subscribe(test_client_broadcast, process_logs_autouse) -> None:
+async def test_broadcast_subscribe(
+    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
+) -> None:
     """Test that the client can subscribe to new broadcasts."""
     global MOCK_MP_SERVICES
     MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1543,7 +1548,7 @@ async def test_broadcast_subscribe(test_client_broadcast, process_logs_autouse) 
 
 
 async def test_broadcast_subscribe_with_errors(
-    test_client_broadcast, process_logs_autouse
+    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
 ) -> None:
     """Test that broadcast returns expected errors."""
     global MOCK_MP_SERVICES
@@ -1566,7 +1571,9 @@ async def test_broadcast_subscribe_with_errors(
     process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
 
-async def test_broadcast_no_changes(test_client_broadcast, process_logs_autouse) -> None:
+async def test_broadcast_no_changes(
+    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
+) -> None:
     """Test to ensure there are no changes from broadcast."""
     global MOCK_MP_SERVICES
     MOCK_MP_SERVICES = {"kinto:123": "ver1"}
