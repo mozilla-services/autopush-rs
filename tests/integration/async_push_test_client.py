@@ -50,7 +50,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         }
 
     async def connect(self, connection_port: int | None = None) -> None:
-        """Establish a websocket connection to localhost at the provided `connection_port`.
+        """Establish a websocket connection to localhost (127.0.0.1) at provided `connection_port`.
 
         Parameters
         ----------
@@ -59,7 +59,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         """
         url: str = self.url
         if connection_port:  # pragma: no cover
-            url = f"ws://localhost:{connection_port}/"
+            url = f"ws://127.0.0.1:{connection_port}/"
         self.ws = await websockets.connect(uri=url, extra_headers=self.headers)
 
     async def ws_server_send(self, message: dict) -> None:
