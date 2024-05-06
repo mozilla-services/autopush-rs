@@ -743,9 +743,9 @@ async def test_hello_echo(test_client: AsyncPushTestClient) -> None:
     assert result["use_webpush"] is True
 
 
-@pytest.mark.parametrize("non_uaid", [uuid.uuid4().hex])
-async def test_hello_with_bad_prior_uaid(test_client: AsyncPushTestClient, non_uaid: str) -> None:
+async def test_hello_with_bad_prior_uaid(test_client: AsyncPushTestClient) -> None:
     """Test hello with bad prior uaid."""
+    non_uaid: str = uuid.uuid4().hex
     await test_client.connect()
     result = await test_client.hello(uaid=non_uaid)
     assert result != {}
@@ -753,9 +753,9 @@ async def test_hello_with_bad_prior_uaid(test_client: AsyncPushTestClient, non_u
     assert result["use_webpush"] is True
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_basic_delivery(registered_test_client: AsyncPushTestClient, uuid_data: str) -> None:
+async def test_basic_delivery(registered_test_client: AsyncPushTestClient) -> None:
     """Test basic regular push message delivery."""
+    uuid_data: str = str(uuid.uuid4())
     result = await registered_test_client.send_notification(data=uuid_data)
     # the following presumes that only `salt` is padded.
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
@@ -764,11 +764,9 @@ async def test_basic_delivery(registered_test_client: AsyncPushTestClient, uuid_
     assert result["messageType"] == "notification"
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_topic_basic_delivery(
-    registered_test_client: AsyncPushTestClient, uuid_data: str
-) -> None:
+async def test_topic_basic_delivery(registered_test_client: AsyncPushTestClient) -> None:
     """Test basic topic push message delivery."""
+    uuid_data: str = str(uuid.uuid4())
     result = await registered_test_client.send_notification(data=uuid_data, topic="Inbox")
     # the following presumes that only `salt` is padded.
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
@@ -777,11 +775,12 @@ async def test_topic_basic_delivery(
     assert result["messageType"] == "notification"
 
 
-@pytest.mark.parametrize(["uuid_data_1", "uuid_data_2"], [(str(uuid.uuid4()), str(uuid.uuid4()))])
 async def test_topic_replacement_delivery(
-    registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
+    registered_test_client: AsyncPushTestClient,
 ) -> None:
     """Test that a topic push message replaces it's prior version."""
+    uuid_data_1: str = str(uuid.uuid4())
+    uuid_data_2: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
     await registered_test_client.send_notification(data=uuid_data_1, topic="Inbox", status=201)
     await registered_test_client.send_notification(data=uuid_data_2, topic="Inbox", status=201)
@@ -798,13 +797,12 @@ async def test_topic_replacement_delivery(
     assert result is None
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_topic_no_delivery_on_reconnect(
     registered_test_client: AsyncPushTestClient,
-    uuid_data: str,
     process_logs_autouse,
 ) -> None:
     """Test that a topic message does not attempt to redeliver on reconnect."""
+    uuid_data: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
     await registered_test_client.send_notification(data=uuid_data, topic="Inbox", status=201)
     await registered_test_client.connect()
@@ -827,13 +825,12 @@ async def test_topic_no_delivery_on_reconnect(
     process_logs_autouse(max_conn_logs=4)
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_basic_delivery_with_vapid(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
-    uuid_data: str,
 ) -> None:
     """Test delivery of a basic push message with a VAPID header."""
+    uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(payload=vapid_payload)
     result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
     # the following presumes that only `salt` is padded.
@@ -843,13 +840,12 @@ async def test_basic_delivery_with_vapid(
     assert result["messageType"] == "notification"
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_basic_delivery_with_invalid_vapid(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
-    uuid_data: str,
 ) -> None:
     """Test basic delivery with invalid VAPID header."""
+    uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(
         payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
     )
@@ -857,12 +853,11 @@ async def test_basic_delivery_with_invalid_vapid(
     await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_basic_delivery_with_invalid_vapid_exp(
     registered_test_client: AsyncPushTestClient,
-    uuid_data: str,
 ) -> None:
     """Test basic delivery of a push message with invalid VAPID `exp` assertion."""
+    uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(
         payload={
             "aud": registered_test_client.get_host_client_endpoint(),
@@ -874,13 +869,12 @@ async def test_basic_delivery_with_invalid_vapid_exp(
     await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_basic_delivery_with_invalid_vapid_auth(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
-    uuid_data: str,
 ) -> None:
     """Test basic delivery with invalid VAPID auth."""
+    uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(
         payload=vapid_payload,
         endpoint=registered_test_client.get_host_client_endpoint(),
@@ -889,12 +883,11 @@ async def test_basic_delivery_with_invalid_vapid_auth(
     await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_basic_delivery_with_invalid_signature(
     registered_test_client: AsyncPushTestClient,
-    uuid_data: str,
 ) -> None:
     """Test that a basic delivery with invalid VAPID signature fails."""
+    uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(
         payload={
             "aud": registered_test_client.get_host_client_endpoint(),
@@ -905,13 +898,12 @@ async def test_basic_delivery_with_invalid_signature(
     await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_basic_delivery_with_invalid_vapid_ckey(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
-    uuid_data: str,
 ) -> None:
     """Test that basic delivery with invalid VAPID crypto-key fails."""
+    uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(
         payload=vapid_payload, endpoint=registered_test_client.get_host_client_endpoint()
     )
@@ -919,12 +911,11 @@ async def test_basic_delivery_with_invalid_vapid_ckey(
     await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info, status=401)
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_delivery_repeat_without_ack(
     registered_test_client: AsyncPushTestClient,
-    uuid_data: str,
 ) -> None:
     """Test that message delivery repeats if the client does not acknowledge messages."""
+    uuid_data: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
     assert registered_test_client.channels
     await registered_test_client.send_notification(data=uuid_data, status=201)
@@ -942,13 +933,13 @@ async def test_delivery_repeat_without_ack(
     assert result["data"] == base64url_encode(uuid_data)
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
 async def test_repeat_delivery_with_disconnect_without_ack(
-    registered_test_client: AsyncPushTestClient, uuid_data: str
+    registered_test_client: AsyncPushTestClient,
 ) -> None:
     """Test that message delivery repeats if the client disconnects
     without acknowledging the message.
     """
+    uuid_data: str = str(uuid.uuid4())
     result = await registered_test_client.send_notification(data=uuid_data)
     assert result != {}
     assert result["data"] == base64url_encode(uuid_data)
@@ -960,13 +951,14 @@ async def test_repeat_delivery_with_disconnect_without_ack(
     assert result["data"] == base64url_encode(uuid_data)
 
 
-@pytest.mark.parametrize(["uuid_data_1", "uuid_data_2"], [(str(uuid.uuid4()), str(uuid.uuid4()))])
 async def test_multiple_delivery_repeat_without_ack(
-    registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
+    registered_test_client: AsyncPushTestClient,
 ) -> None:
     """Test that the server will always try to deliver messages
     until the client acknowledges them.
     """
+    uuid_data_1: str = str(uuid.uuid4())
+    uuid_data_2: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
     assert registered_test_client.channels
     await registered_test_client.send_notification(data=uuid_data_1, status=201)
@@ -991,9 +983,9 @@ async def test_multiple_delivery_repeat_without_ack(
     assert result["data"] in map(base64url_encode, [uuid_data_1, uuid_data_2])
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_topic_expired(registered_test_client: AsyncPushTestClient, uuid_data: str) -> None:
+async def test_topic_expired(registered_test_client: AsyncPushTestClient) -> None:
     """Test that the server will not deliver a message topic that has expired."""
+    uuid_data: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
     assert registered_test_client.channels
     await registered_test_client.send_notification(data=uuid_data, ttl=1, topic="test", status=201)
@@ -1007,19 +999,8 @@ async def test_topic_expired(registered_test_client: AsyncPushTestClient, uuid_d
     assert result["data"] == base64url_encode(uuid_data)
 
 
-@pytest.mark.parametrize(
-    ["uuid_data_1", "uuid_data_2"],
-    [
-        (
-            b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # FirstMessage
-            b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # OtherMessage
-        )
-    ],
-)
 async def test_multiple_delivery_with_single_ack(
     registered_test_client: AsyncPushTestClient,
-    uuid_data_1: str,
-    uuid_data_2: str,
     process_logs_autouse,
 ) -> None:
     """Test that the server provides the right unacknowledged messages
@@ -1027,6 +1008,12 @@ async def test_multiple_delivery_with_single_ack(
     Note: the `data` fields are constructed so that they return
     `FirstMessage` and `OtherMessage`, which may be useful for debugging.
     """
+    uuid_data_1: bytes = (
+        b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
+    )  # FirstMessage
+    uuid_data_2: bytes = (
+        b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
+    )  # OtherMessage
     await registered_test_client.disconnect()
     assert registered_test_client.channels
     await registered_test_client.send_notification(data=uuid_data_1, status=201)
@@ -1064,23 +1051,20 @@ async def test_multiple_delivery_with_single_ack(
     process_logs_autouse(max_conn_logs=4)
 
 
-@pytest.mark.parametrize(
-    ["uuid_data_1", "uuid_data_2"],
-    [
-        (
-            b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # FirstMessage
-            b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode(),  # OtherMessage
-        )
-    ],
-)
 async def test_multiple_delivery_with_multiple_ack(
-    registered_test_client: AsyncPushTestClient, uuid_data_1: str, uuid_data_2: str
+    registered_test_client: AsyncPushTestClient,
 ) -> None:
     """Test that the server provides the no additional unacknowledged messages
     if the client acknowledges both of the received messages.
     Note: the `data` fields are constructed so that they return
     `FirstMessage` and `OtherMessage`, which may be useful for debugging.
     """
+    uuid_data_1: bytes = (
+        b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
+    )  # FirstMessage
+    uuid_data_2: bytes = (
+        b":\xd8^\xac\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
+    )  # OtherMessage
     await registered_test_client.disconnect()
     assert registered_test_client.channels
     await registered_test_client.send_notification(data=uuid_data_1, status=201)
@@ -1104,11 +1088,9 @@ async def test_multiple_delivery_with_multiple_ack(
     assert result is None
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_no_delivery_to_unregistered(
-    registered_test_client: AsyncPushTestClient, uuid_data: str
-) -> None:
+async def test_no_delivery_to_unregistered(registered_test_client: AsyncPushTestClient) -> None:
     """Test that the server does not try to deliver to unregistered channel IDs."""
+    uuid_data: str = str(uuid.uuid4())
     assert registered_test_client.channels
     chan = list(registered_test_client.channels.keys())[0]
 
@@ -1127,11 +1109,9 @@ async def test_no_delivery_to_unregistered(
     assert result is None
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_ttl_0_connected(
-    registered_test_client: AsyncPushTestClient, uuid_data: str
-) -> None:
+async def test_ttl_0_connected(registered_test_client: AsyncPushTestClient) -> None:
     """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
+    uuid_data: str = str(uuid.uuid4())
     result = await registered_test_client.send_notification(data=uuid_data, ttl=0)
     assert result is not None
     # the following presumes that only `salt` is padded.
@@ -1141,13 +1121,11 @@ async def test_ttl_0_connected(
     assert result["messageType"] == "notification"
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_ttl_0_not_connected(
-    registered_test_client: AsyncPushTestClient, uuid_data: str
-) -> None:
+async def test_ttl_0_not_connected(registered_test_client: AsyncPushTestClient) -> None:
     """Test that a message with a TTL=0 and a recipient client that is not connected,
     is not delivered when the client reconnects.
     """
+    uuid_data: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
     await registered_test_client.send_notification(data=uuid_data, ttl=0, status=201)
     await registered_test_client.connect()
@@ -1156,11 +1134,11 @@ async def test_ttl_0_not_connected(
     assert result is None
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_ttl_expired(registered_test_client: AsyncPushTestClient, uuid_data: str) -> None:
+async def test_ttl_expired(registered_test_client: AsyncPushTestClient) -> None:
     """Test that messages with a TTL that has expired are not delivered
     to a recipient client.
     """
+    uuid_data: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
     await registered_test_client.send_notification(data=uuid_data, ttl=1, status=201)
     await asyncio.sleep(1)
@@ -1170,25 +1148,16 @@ async def test_ttl_expired(registered_test_client: AsyncPushTestClient, uuid_dat
     assert result is None
 
 
-@pytest.mark.parametrize(
-    ["uuid_data_1", "uuid_data_2"],
-    [
-        (
-            str(uuid.uuid4()).encode(),
-            base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode(),
-        )
-    ],
-)
 async def test_ttl_batch_expired_and_good_one(
     registered_test_client: AsyncPushTestClient,
-    uuid_data_1: bytes,
-    uuid_data_2: bytes,
     process_logs_autouse,
 ) -> None:
     """Test that if a batch of messages are received while the recipient is offline,
     only messages that have not expired are sent to the recipient.
     This test checks if the latest pending message is not expired.
     """
+    uuid_data_1: bytes = str(uuid.uuid4()).encode()
+    uuid_data_2: bytes = base64.urlsafe_b64decode("0012") + str(uuid.uuid4()).encode()
     await registered_test_client.disconnect()
     for x in range(0, 12):
         prefix = base64.urlsafe_b64decode(f"{x:04d}")
@@ -1212,21 +1181,17 @@ async def test_ttl_batch_expired_and_good_one(
     process_logs_autouse(max_endpoint_logs=28)
 
 
-@pytest.mark.parametrize(
-    ["uuid_data_1", "uuid_data_2", "uuid_data_3"],
-    [(str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()))],
-)
 async def test_ttl_batch_partly_expired_and_good_one(
     registered_test_client: AsyncPushTestClient,
-    uuid_data_1: str,
-    uuid_data_2: str,
-    uuid_data_3: str,
     process_logs_autouse,
 ) -> None:
     """Test that if a batch of messages are received while the recipient is offline,
     only messages that have not expired are sent to the recipient.
     This test checks if there is an equal mix of expired and unexpired messages.
     """
+    uuid_data_1: str = str(uuid.uuid4())
+    uuid_data_2: str = str(uuid.uuid4())
+    uuid_data_3: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
     for x in range(0, 6):
         await registered_test_client.send_notification(data=uuid_data_1, status=201)
@@ -1258,11 +1223,9 @@ async def test_ttl_batch_partly_expired_and_good_one(
     process_logs_autouse(max_endpoint_logs=28)
 
 
-@pytest.mark.parametrize("uuid_data", [str(uuid.uuid4())])
-async def test_message_without_crypto_headers(
-    registered_test_client: AsyncPushTestClient, uuid_data: str
-) -> None:
+async def test_message_without_crypto_headers(registered_test_client: AsyncPushTestClient) -> None:
     """Test that a message without crypto headers, but has data is not accepted."""
+    uuid_data: str = str(uuid.uuid4())
     result = await registered_test_client.send_notification(
         data=uuid_data, use_header=False, status=400
     )
@@ -1396,9 +1359,10 @@ async def test_with_key(test_client: AsyncPushTestClient) -> None:
     await test_client.send_notification(vapid=vapid, status=401)
 
 
-@pytest.mark.parametrize(["chid", "bad_key"], [(str(uuid.uuid4()), "af1883%&!@#*(")])
-async def test_with_bad_key(test_client: AsyncPushTestClient, chid: str, bad_key: str):
+async def test_with_bad_key(test_client: AsyncPushTestClient):
     """Test that a message registration request with bad VAPID public key is rejected."""
+    chid: str = str(uuid.uuid4())
+    bad_key: str = "af1883%&!@#*("
     await test_client.connect()
     await test_client.hello()
     result = await test_client.register(channel_id=chid, key=bad_key, status=400)
