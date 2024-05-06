@@ -75,7 +75,8 @@ pub async fn handle_error(
             );
         }
         RouterError::RequestTimeout => {
-            warn!("Bridge timeout");
+            // Bridge timeouts are common.
+            info!("Bridge timeout");
             incr_error_metric(
                 metrics,
                 platform,
@@ -118,6 +119,17 @@ pub async fn handle_error(
                 platform,
                 app_id,
                 "server_error",
+                error.status(),
+                error.errno(),
+            );
+        }
+        RouterError::TooMuchData(_) => {
+            // Do not log this error since it's fairly common.
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "too_much_data",
                 error.status(),
                 error.errno(),
             );

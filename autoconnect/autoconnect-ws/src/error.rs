@@ -43,8 +43,7 @@ impl WSError {
     pub fn close_code(&self) -> actix_ws::CloseCode {
         match &self.kind {
             WSErrorKind::SM(e) => e.close_code(),
-            // TODO: applicable here?
-            //WSErrorKind::Protocol(_) => CloseCode::Protocol,
+            WSErrorKind::Protocol(_) => CloseCode::Protocol,
             WSErrorKind::UnsupportedMessage(_) => CloseCode::Unsupported,
             _ => CloseCode::Error,
         }

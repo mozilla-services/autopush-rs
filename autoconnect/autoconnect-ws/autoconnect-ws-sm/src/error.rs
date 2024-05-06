@@ -40,8 +40,6 @@ where
 impl SMError {
     pub fn close_code(&self) -> actix_ws::CloseCode {
         match self.kind {
-            // TODO: applicable here?
-            //SMErrorKind::InvalidMessage(_) => CloseCode::Invalid,
             SMErrorKind::UaidReset => CloseCode::Normal,
             _ => CloseCode::Error,
         }
@@ -70,7 +68,6 @@ impl ReportableError for SMError {
     }
 
     fn metric_label(&self) -> Option<&'static str> {
-        // TODO:
         match &self.kind {
             SMErrorKind::Database(e) => e.metric_label(),
             SMErrorKind::MakeEndpoint(e) => e.metric_label(),
