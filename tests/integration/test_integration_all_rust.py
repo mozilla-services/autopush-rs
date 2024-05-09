@@ -31,10 +31,9 @@ from jose import jws
 
 from .async_push_test_client import AsyncPushTestClient, ClientMessageType
 from .db import (
-    DynamoDBResource,
+
     base64url_encode,
-    create_message_table_ddb,
-    get_router_table,
+
 )
 
 app = FastAPI()
@@ -45,10 +44,7 @@ here_dir = os.path.abspath(os.path.dirname(__file__))
 tests_dir = os.path.dirname(here_dir)
 root_dir = os.path.dirname(tests_dir)
 
-DDB_JAR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal.jar")
-DDB_LIB_DIR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal_lib")
 SETUP_BT_SH = os.path.join(root_dir, "scripts", "setup_bt.sh")
-DDB_PROCESS: subprocess.Popen | None = None
 BT_PROCESS: subprocess.Popen | None = None
 BT_DB_SETTINGS: str | None = None
 
@@ -389,31 +385,6 @@ def setup_bt() -> None:
         raise
 
 
-def setup_dynamodb() -> None:
-    """Set up DynamoDB emulator."""
-    global DDB_PROCESS
-
-    log.debug("🐍🟢 Starting dynamodb")
-    if os.getenv("AWS_LOCAL_DYNAMODB") is None:
-        cmd = " ".join(
-            [
-                "java",
-                "-Djava.library.path=%s" % DDB_LIB_DIR,
-                "-jar",
-                DDB_JAR,
-                "-sharedDb",
-                "-inMemory",
-            ]
-        )
-        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
-        os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
-    else:
-        print("Using existing DynamoDB instance")
-
-    # Setup the necessary tables
-    boto_resource = DynamoDBResource()
-    create_message_table_ddb(boto_resource, MESSAGE_TABLE)
-    get_router_table(boto_resource, ROUTER_TABLE)
 
 
 def run_fastapi_app(host, port) -> None:
@@ -437,7 +408,7 @@ def setup_mock_server() -> None:
 
 def setup_connection_server(connection_binary) -> None:
     """Set up connection server from config."""
-    global CN_SERVER, BT_PROCESS, DDB_PROCESS
+    global CN_SERVER, BT_PROCESS
 
     # NOTE:
     # due to a change in Config, autopush uses a double
@@ -559,9 +530,6 @@ def setup_teardown() -> Generator:
         setup_bt()
     elif CONNECTION_CONFIG.get("db_dsn", "").startswith("dual"):
         setup_bt()
-        setup_dynamodb()
-    else:
-        setup_dynamodb()
 
     setup_mock_server()
 
@@ -579,10 +547,6 @@ def setup_teardown() -> Generator:
 
     yield
 
-    if DDB_PROCESS:
-        os.unsetenv("AWS_LOCAL_DYNAMODB")
-        log.debug("🐍🔴 Stopping dynamodb")
-        kill_process(DDB_PROCESS)
     if BT_PROCESS:
         os.unsetenv("BIGTABLE_EMULATOR_HOST")
         log.debug("🐍🔴 Stopping bigtable")
