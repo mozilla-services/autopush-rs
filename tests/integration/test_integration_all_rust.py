@@ -240,40 +240,58 @@ def print_lines_in_queues(queues, prefix) -> None:
                 sys.stdout.write(prefix + line)
 
 
-@pytest.fixture(name="process_logs_autouse", autouse=True, scope="function")
-def fixture_process_logs_autouse():
+@pytest.fixture
+def fixture_max_conn_logs(request):
+    """Fixture returning altered max_conn_logs value for process_logs fixture."""
+    if hasattr(request, "param"):
+        return int(request.param)
+
+
+@pytest.fixture
+def fixture_max_endpoint_logs(request):
+    """Fixture returning altered max_endpoint_logs value for process_logs fixture."""
+    if hasattr(request, "param"):
+        return int(request.param)
+
+
+@pytest.fixture(name="process_logs", autouse=True, scope="function")
+async def fixture_process_logs(fixture_max_endpoint_logs, fixture_max_conn_logs):
     """Process (print) the testcase logs.
 
     Ensures a maximum level of logs allowed to be emitted when running
     w/ a `--release` mode connection/endpoint node
 
     Default of max_endpoint_logs=8 & max_conn_logs=3 for standard tests.
-    Broadcast tests are set to max_endpoint_logs=4 & max_conn_logs = 1.
+    Broadcast tests are set to max_endpoint_logs=4 & max_conn_logs=1.
     Values are modified for specific test cases to accommodate specific outputs.
     """
+    yield
 
-    def _process_logs(max_endpoint_logs=8, max_conn_logs=3):
-        # max_endpoint_logs and max_conn_logs are max log lines
-        # allowed to be emitted by each node type
-        conn_count = sum(queue.qsize() for queue in CN_QUEUES)
-        endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
+    # max_endpoint_logs and max_conn_logs are max log lines
+    # allowed to be emitted by each node type
+    max_endpoint_logs: int = fixture_max_endpoint_logs or 8
+    max_conn_logs: int = fixture_max_conn_logs or 3
 
-        print_lines_in_queues(CN_QUEUES, f"{CONNECTION_BINARY.upper()}: ")
-        print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
+    conn_count = sum(queue.qsize() for queue in CN_QUEUES)
+    endpoint_count = sum(queue.qsize() for queue in EP_QUEUES)
 
-        if not STRICT_LOG_COUNTS:
-            return
+    print_lines_in_queues(CN_QUEUES, f"{CONNECTION_BINARY.upper()}: ")
+    print_lines_in_queues(EP_QUEUES, "AUTOENDPOINT: ")
 
-        msg = "endpoint node emitted excessive log statements, count: {} > max: {}"
-        # Give an extra to endpoint for potential startup log messages
-        # (e.g. when running tests individually)
-        max_endpoint_logs += 1
-        assert endpoint_count <= max_endpoint_logs, msg.format(endpoint_count, max_endpoint_logs)
+    print("🐍🟢 MAX_CONN_LOGS", max_conn_logs)
+    print("🐍🟢 MAX_ENDPOINT_LOGS", max_endpoint_logs)
 
-        msg = "conn node emitted excessive log statements, count: {} > max: {}"
-        assert conn_count <= max_conn_logs, msg.format(conn_count, max_conn_logs)
+    if not STRICT_LOG_COUNTS:
+        return
 
-    return _process_logs  # Calls the inner function with default values
+    msg = "endpoint node emitted excessive log statements, count: {} > max: {}"
+    # Give an extra to endpoint for potential startup log messages
+    # (e.g. when running tests individually)
+    max_endpoint_logs += 1
+    assert endpoint_count <= max_endpoint_logs, msg.format(endpoint_count, max_endpoint_logs)
+
+    msg = "conn node emitted excessive log statements, count: {} > max: {}"
+    assert conn_count <= max_conn_logs, msg.format(conn_count, max_conn_logs)
 
 
 @app.get("/v1/broadcasts")
@@ -652,9 +670,8 @@ async def fixture_registered_test_client(ws_config) -> AsyncGenerator:
     log.debug("🐍 Test Client Disconnected")
 
 
-async def test_sentry_output_autoconnect(
-    test_client: AsyncPushTestClient, process_logs_autouse
-) -> None:
+@pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
+async def test_sentry_output_autoconnect(test_client: AsyncPushTestClient) -> None:
     """Test sentry output for autoconnect."""
     if os.getenv("SKIP_SENTRY"):
         log.debug("Skipping test_sentry_output_autoconnect")
@@ -683,12 +700,9 @@ async def test_sentry_output_autoconnect(
         pass
     assert event1["exception"]["values"][0]["value"] == "LogCheck"
 
-    process_logs_autouse(max_conn_logs=4)
 
-
-async def test_sentry_output_autoendpoint(
-    registered_test_client: AsyncPushTestClient, process_logs_autouse
-) -> None:
+@pytest.mark.parametrize("fixture_max_endpoint_logs", [1], indirect=True)
+async def test_sentry_output_autoendpoint(registered_test_client: AsyncPushTestClient) -> None:
     """Test sentry output for autoendpoint."""
     if os.getenv("SKIP_SENTRY"):
         log.debug("Skipping test_sentry_output_autoendpoint")
@@ -712,10 +726,10 @@ async def test_sentry_output_autoendpoint(
     # since Sentry is capturing emission
     assert "LogCheck" in values
     assert sorted(values) == ["ERROR:Success", "LogCheck"]
-    process_logs_autouse(max_endpoint_logs=1)
 
 
-async def test_no_sentry_output(ws_url: str, process_logs_autouse) -> None:
+@pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
+async def test_no_sentry_output(ws_url: str) -> None:
     """Test for no Sentry output."""
     if os.getenv("SKIP_SENTRY"):
         log.debug("Skipping test_no_sentry_output")
@@ -732,7 +746,6 @@ async def test_no_sentry_output(ws_url: str, process_logs_autouse) -> None:
         pass
     except Empty:
         pass
-    process_logs_autouse(max_conn_logs=4)
 
 
 async def test_hello_echo(test_client: AsyncPushTestClient) -> None:
@@ -797,10 +810,8 @@ async def test_topic_replacement_delivery(
     assert result is None
 
 
-async def test_topic_no_delivery_on_reconnect(
-    registered_test_client: AsyncPushTestClient,
-    process_logs_autouse,
-) -> None:
+@pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
+async def test_topic_no_delivery_on_reconnect(registered_test_client: AsyncPushTestClient) -> None:
     """Test that a topic message does not attempt to redeliver on reconnect."""
     uuid_data: str = str(uuid.uuid4())
     await registered_test_client.disconnect()
@@ -822,7 +833,6 @@ async def test_topic_no_delivery_on_reconnect(
     await registered_test_client.disconnect()
     await registered_test_client.connect()
     await registered_test_client.hello()
-    process_logs_autouse(max_conn_logs=4)
 
 
 async def test_basic_delivery_with_vapid(
@@ -999,9 +1009,9 @@ async def test_topic_expired(registered_test_client: AsyncPushTestClient) -> Non
     assert result["data"] == base64url_encode(uuid_data)
 
 
+@pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
 async def test_multiple_delivery_with_single_ack(
     registered_test_client: AsyncPushTestClient,
-    process_logs_autouse,
 ) -> None:
     """Test that the server provides the right unacknowledged messages
     if the client only acknowledges one of the received messages.
@@ -1047,8 +1057,6 @@ async def test_multiple_delivery_with_single_ack(
     await registered_test_client.hello()
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result is None
-
-    process_logs_autouse(max_conn_logs=4)
 
 
 async def test_multiple_delivery_with_multiple_ack(
@@ -1148,10 +1156,8 @@ async def test_ttl_expired(registered_test_client: AsyncPushTestClient) -> None:
     assert result is None
 
 
-async def test_ttl_batch_expired_and_good_one(
-    registered_test_client: AsyncPushTestClient,
-    process_logs_autouse,
-) -> None:
+@pytest.mark.parametrize("fixture_max_endpoint_logs", [28], indirect=True)
+async def test_ttl_batch_expired_and_good_one(registered_test_client: AsyncPushTestClient) -> None:
     """Test that if a batch of messages are received while the recipient is offline,
     only messages that have not expired are sent to the recipient.
     This test checks if the latest pending message is not expired.
@@ -1178,12 +1184,11 @@ async def test_ttl_batch_expired_and_good_one(
     assert result["messageType"] == "notification"
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result is None
-    process_logs_autouse(max_endpoint_logs=28)
 
 
+@pytest.mark.parametrize("fixture_max_endpoint_logs", [28], indirect=True)
 async def test_ttl_batch_partly_expired_and_good_one(
     registered_test_client: AsyncPushTestClient,
-    process_logs_autouse,
 ) -> None:
     """Test that if a batch of messages are received while the recipient is offline,
     only messages that have not expired are sent to the recipient.
@@ -1220,7 +1225,6 @@ async def test_ttl_batch_partly_expired_and_good_one(
     # No more
     result = await registered_test_client.get_notification()
     assert result is None
-    process_logs_autouse(max_endpoint_logs=28)
 
 
 async def test_message_without_crypto_headers(registered_test_client: AsyncPushTestClient) -> None:
@@ -1369,7 +1373,8 @@ async def test_with_bad_key(test_client: AsyncPushTestClient):
     assert result["status"] == 400
 
 
-async def test_msg_limit(registered_test_client: AsyncPushTestClient, process_logs_autouse):
+@pytest.mark.parametrize("fixture_max_endpoint_logs", [44], indirect=True)
+async def test_msg_limit(registered_test_client: AsyncPushTestClient):
     """Test that sent messages that are larger than our size limit are rejected."""
     uaid = registered_test_client.uaid
     await registered_test_client.disconnect()
@@ -1386,7 +1391,6 @@ async def test_msg_limit(registered_test_client: AsyncPushTestClient, process_lo
     await registered_test_client.connect()
     await registered_test_client.hello()
     assert registered_test_client.uaid != uaid
-    process_logs_autouse(max_endpoint_logs=44)
 
 
 async def test_can_moz_ping(registered_test_client) -> None:
@@ -1434,9 +1438,12 @@ async def test_internal_endpoints(
         assert False
 
 
-async def test_broadcast_update_on_connect(
-    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
-) -> None:
+@pytest.mark.parametrize(
+    "fixture_max_endpoint_logs, fixture_max_conn_logs",
+    [[4, 1]],
+    indirect=["fixture_max_endpoint_logs", "fixture_max_conn_logs"],
+)
+async def test_broadcast_update_on_connect(test_client_broadcast: AsyncPushTestClient) -> None:
     """Test that the client receives any pending broadcast updates on connect."""
     global MOCK_MP_SERVICES
     MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1456,11 +1463,15 @@ async def test_broadcast_update_on_connect(
     result = await test_client_broadcast.get_broadcast(2)
     assert result.get("messageType") == ClientMessageType.BROADCAST.value
     assert result["broadcasts"]["kinto:123"] == "ver2"
-    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
 
+@pytest.mark.parametrize(
+    "fixture_max_endpoint_logs, fixture_max_conn_logs",
+    [[4, 1]],
+    indirect=["fixture_max_endpoint_logs", "fixture_max_conn_logs"],
+)
 async def test_broadcast_update_on_connect_with_errors(
-    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
+    test_client_broadcast: AsyncPushTestClient,
 ) -> None:
     """Test that the client can receive broadcast updates on connect
     that may have produced internal errors.
@@ -1477,12 +1488,14 @@ async def test_broadcast_update_on_connect_with_errors(
     assert result["use_webpush"] is True
     assert result["broadcasts"]["kinto:123"] == "ver1"
     assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
-    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
 
-async def test_broadcast_subscribe(
-    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
-) -> None:
+@pytest.mark.parametrize(
+    "fixture_max_endpoint_logs, fixture_max_conn_logs",
+    [[4, 1]],
+    indirect=["fixture_max_endpoint_logs", "fixture_max_conn_logs"],
+)
+async def test_broadcast_subscribe(test_client_broadcast: AsyncPushTestClient) -> None:
     """Test that the client can subscribe to new broadcasts."""
     global MOCK_MP_SERVICES
     MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1508,12 +1521,14 @@ async def test_broadcast_subscribe(
     result = await test_client_broadcast.get_broadcast(2)
     assert result.get("messageType") == ClientMessageType.BROADCAST.value
     assert result["broadcasts"]["kinto:123"] == "ver2"
-    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
 
-async def test_broadcast_subscribe_with_errors(
-    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
-) -> None:
+@pytest.mark.parametrize(
+    "fixture_max_endpoint_logs, fixture_max_conn_logs",
+    [[4, 1]],
+    indirect=["fixture_max_endpoint_logs", "fixture_max_conn_logs"],
+)
+async def test_broadcast_subscribe_with_errors(test_client_broadcast: AsyncPushTestClient) -> None:
     """Test that broadcast returns expected errors."""
     global MOCK_MP_SERVICES
     MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1532,12 +1547,14 @@ async def test_broadcast_subscribe_with_errors(
     assert result.get("messageType") == ClientMessageType.BROADCAST.value
     assert result["broadcasts"]["kinto:123"] == "ver1"
     assert result["broadcasts"]["errors"]["kinto:456"] == "Broadcast not found"
-    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
 
 
-async def test_broadcast_no_changes(
-    test_client_broadcast: AsyncPushTestClient, process_logs_autouse
-) -> None:
+@pytest.mark.parametrize(
+    "fixture_max_endpoint_logs, fixture_max_conn_logs",
+    [[4, 1]],
+    indirect=["fixture_max_endpoint_logs", "fixture_max_conn_logs"],
+)
+async def test_broadcast_no_changes(test_client_broadcast: AsyncPushTestClient) -> None:
     """Test to ensure there are no changes from broadcast."""
     global MOCK_MP_SERVICES
     MOCK_MP_SERVICES = {"kinto:123": "ver1"}
@@ -1550,4 +1567,3 @@ async def test_broadcast_no_changes(
     assert result != {}
     assert result["use_webpush"] is True
     assert result["broadcasts"] == {}
-    process_logs_autouse(max_endpoint_logs=4, max_conn_logs=1)
