@@ -66,13 +66,11 @@ Non-versioned messages are assumed to be original messages from before this sche
 
 ## Storage Tables
 
-Autopush uses a key / value data storage system. It can either use
-AWS DynamoDB (legacy), Google Cloud Bigtable, or a specific combination of the
-two.
+Autopush uses Google Cloud Bigtable as a key / value data storage system.
 
 ### DynamoDB (legacy)
 
-For DynamoDB, Autopush used a single router and messages table.
+Previously, for DynamoDB, Autopush used a single router and messages table.
 On startup, Autopush created these tables.
 For more information on DynamoDB tables, see
 <http://docs.aws.amazon.com/amazondynamodb/latest/gettingstartedguide/Welcome.html>
