@@ -155,11 +155,6 @@ jobs:
             DB_DSN: grpc://localhost:8086
             TEST_RESULTS_DIR: workspace/test-results
       - run:
-          name: Integration tests (DynamoDB)
-          command: make integration-test
-          environment:
-            TEST_RESULTS_DIR: workspace/test-results
-      - run:
           name: Integration tests (Dual Bigtable/DynamoDB)
           command: make integration-test
           environment:
