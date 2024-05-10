@@ -13,11 +13,6 @@ FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
 INSTALL_STAMP := .install.stamp
 
-.PHONY: ddb
-
-ddb:
-	mkdir $@
-	curl -sSL http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz | tar xzvC $@
 
 .PHONY: install
 install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
