@@ -152,16 +152,9 @@ jobs:
           name: Integration tests (Bigtable)
           command: make integration-test
           environment:
-            DB_DSN: grpc://localhost:8086
-            TEST_RESULTS_DIR: workspace/test-results
-      - run:
-          name: Integration tests (Dual Bigtable/DynamoDB)
-          command: make integration-test
-          environment:
             RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
             # PYTEST_ARGS: -sv
-            DB_DSN: dual
-            DB_SETTINGS: tests/integration/dual_test.json
+            DB_DSN: grpc://localhost:8086
             TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
