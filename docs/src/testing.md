@@ -136,4 +136,3 @@ For more details see the [README.md][load_tests_docs] file in the `tests/load` d
 [integration_tests_docs]: ./testing.md#integration-tests
 [load_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/tests/load
 [load_tests_docs]: https://github.com/mozilla-services/autopush-rs/blob/master/tests/load/README.md
-[dynamo_deps]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.DownloadingAndRunning.html

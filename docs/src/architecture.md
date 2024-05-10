@@ -44,6 +44,26 @@ If you are only running Autopush locally, you can skip to `running` as
 later topics in this document apply only to developing or production
 scale deployments of Autopush.
 
+## WebPush Sort Keys
+
+Messages for WebPush are stored using a partition key + sort key, originally the sort key was:
+
+    CHID : Encrypted(UAID: CHID)
+
+The encrypted portion was returned as the Location to the Application Server. Decrypting it resulted in enough information to create the sort key so that the message could be deleted and located again.
+
+For WebPush Topic messages, a new scheme was needed since the only way to locate the prior message is the UAID + CHID + Topic. Using Encryption in the sort key is therefore not useful since it would change every update.
+
+The sort key scheme for WebPush messages is:
+
+    VERSION : CHID : TOPIC
+
+To ensure updated messages are not deleted, each message will still have an update-id key/value in its item.
+
+Non-versioned messages are assumed to be original messages from before this scheme was adopted.
+
+``VERSION`` is a 2-digit 0-padded number, starting at 01 for Topic messages.
+
 ## Storage Tables
 
 Autopush uses a key / value data storage system. It can either use
@@ -88,6 +108,8 @@ cbt -project $PROJECT -instance $INSTANCE setgcpolicy $DATABASE $ROUTER maxversi
 Please note, this document will refer to the `message` table and the `router` table for
 legacy reasons. Please consider these to be the same as the `message` and `router` cell
 families.
+
+
 
 ### Router Table Schema
 
