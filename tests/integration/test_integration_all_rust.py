@@ -30,11 +30,6 @@ from fastapi import FastAPI, Request
 from jose import jws
 
 from .async_push_test_client import AsyncPushTestClient, ClientMessageType
-from .db import (
-
-    base64url_encode,
-
-)
 
 app = FastAPI()
 logging.basicConfig(level=logging.DEBUG)
@@ -121,6 +116,14 @@ def get_db_settings() -> str | dict[str, str | int | float] | None:
     )
 
 
+def base64url_encode(value: bytes | str) -> str:
+    """Encode an unpadded Base64 URL-encoded string per RFC 7515."""
+    if isinstance(value, str):
+        value = bytes(value, "utf-8")
+
+    return base64.urlsafe_b64encode(value).strip(b"=").decode("utf-8")
+
+
 MOCK_SERVER_PORT: Any = get_free_port()
 MOCK_MP_SERVICES: dict = {}
 MOCK_MP_TOKEN: str = "Bearer {}".format(uuid.uuid4().hex)
@@ -148,7 +151,7 @@ CONNECTION_CONFIG: dict[str, Any] = dict(
     human_logs="true",
     msg_limit=MSG_LIMIT,
     # new autoconnect
-    db_dsn=os.environ.get("DB_DSN", "http://127.0.0.1:8000"),
+    db_dsn=os.environ.get("DB_DSN", "grpc://localhost:8086"),
     db_settings=get_db_settings(),
 )
 
@@ -383,8 +386,6 @@ def setup_bt() -> None:
     except Exception as e:
         log.error("Bigtable Setup Error {}", e)
         raise
-
-
 
 
 def run_fastapi_app(host, port) -> None:
