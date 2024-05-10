@@ -111,44 +111,6 @@ files = [
 ]
 
 [[package]]
-name = "boto3"
-version = "1.34.87"
-description = "The AWS SDK for Python"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "boto3-1.34.87-py3-none-any.whl", hash = "sha256:b709dbf8d5c241a86406b0634461b9c8a7a7934ca35502347c2d1d6b8a97ab8a"},
-    {file = "boto3-1.34.87.tar.gz", hash = "sha256:c630597a4d8018dc5ca364176104f10d3c96ef21009d28b398090822d49a57f1"},
-]
-
-[package.dependencies]
-botocore = ">=1.34.87,<1.35.0"
-jmespath = ">=0.7.1,<2.0.0"
-s3transfer = ">=0.10.0,<0.11.0"
-
-[package.extras]
-crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
-
-[[package]]
-name = "botocore"
-version = "1.34.87"
-description = "Low-level, data-driven core of boto 3."
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "botocore-1.34.87-py3-none-any.whl", hash = "sha256:854c6de3c34fa6836f57cc4427651e57b7cfe90f297a60e4cc686886cb47140c"},
-    {file = "botocore-1.34.87.tar.gz", hash = "sha256:a3a4d857f0941d98a1e5ce8cd64c39062271fea0be4d9f3d0d6aff6cb58123b9"},
-]
-
-[package.dependencies]
-jmespath = ">=0.7.1,<2.0.0"
-python-dateutil = ">=2.1,<3.0.0"
-urllib3 = {version = ">=1.25.4,<2.2.0 || >2.2.0,<3", markers = "python_version >= \"3.10\""}
-
-[package.extras]
-crt = ["awscrt (==0.20.9)"]
-
-[[package]]
 name = "brotli"
 version = "1.1.0"
 description = "Python bindings for the Brotli compression library"
@@ -1057,17 +1019,6 @@ MarkupSafe = ">=2.0"
 i18n = ["Babel (>=2.7)"]
 
 [[package]]
-name = "jmespath"
-version = "1.0.1"
-description = "JSON Matching Expressions"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "jmespath-1.0.1-py3-none-any.whl", hash = "sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980"},
-    {file = "jmespath-1.0.1.tar.gz", hash = "sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe"},
-]
-
-[[package]]
 name = "jws"
 version = "0.1.3"
 description = "JSON Web Signatures implementation in Python"
@@ -1770,20 +1721,6 @@ files = [
 pytest = {version = ">=6.2.4", markers = "python_version >= \"3.10\""}
 
 [[package]]
-name = "python-dateutil"
-version = "2.9.0.post0"
-description = "Extensions to the standard Python datetime module"
-optional = false
-python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
-files = [
-    {file = "python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3"},
-    {file = "python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427"},
-]
-
-[package.dependencies]
-six = ">=1.5"
-
-[[package]]
 name = "python-dotenv"
 version = "1.0.1"
 description = "Read key-value pairs from a .env file and set them as environment variables"
@@ -2066,23 +2003,6 @@ files = [
 
 [package.dependencies]
 pyasn1 = ">=0.1.3"
-
-[[package]]
-name = "s3transfer"
-version = "0.10.1"
-description = "An Amazon S3 Transfer Manager"
-optional = false
-python-versions = ">= 3.8"
-files = [
-    {file = "s3transfer-0.10.1-py3-none-any.whl", hash = "sha256:ceb252b11bcf87080fb7850a224fb6e05c8a776bab8f2b64b7f25b969464839d"},
-    {file = "s3transfer-0.10.1.tar.gz", hash = "sha256:5683916b4c724f799e600f41dd9e10a9ff19871bf87623cc8f491cb4f5fa0a19"},
-]
-
-[package.dependencies]
-botocore = ">=1.33.2,<2.0a.0"
-
-[package.extras]
-crt = ["botocore[crt] (>=1.33.2,<2.0a.0)"]
 
 [[package]]
 name = "setuptools"
@@ -2638,4 +2558,4 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "b125e7286e3607b42a2747e5599c61d9678d64cc2e540584670ac7fea18b2f1a"
+content-hash = "99103a29155e194bb25360d655068b6849cad37ef1da13f275df1cff6ff6133e"
