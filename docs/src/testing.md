@@ -53,7 +53,8 @@ There are a few configuration steps required to run the Python integration tests
 
 1. Depending on your operating system, ensure you have `cmake` and `openssl` installed. If using MacOS, for example, you can use `brew install cmake openssl`.
 2. Build Autopush-rs: from the root directory, execute `cargo build`
-3. Setup Local Bigtable emulator:
+3. Setup Local Bigtable emulator. For more information on Bigtable, see the
+[Bigtable emulation docs in this repo]().  
 
 - Install the [Google Cloud CLI](https://cloud.google.com/sdk/gcloud)
 - Install and run the [Google Bigtable Emulator](https://cloud.google.com/bigtable/docs/emulator)
@@ -130,6 +131,7 @@ For more details see the [README.md][load_tests_docs] file in the `tests/load` d
 
 [unit_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/
 [unit_tests_docs]: ./testing.md#unit-tests
+[bigtable_docs]: ./bigtable-emulation.md
 [integration_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/tests/integration
 [integration_tests_docs]: ./testing.md#integration-tests
 [load_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/tests/load

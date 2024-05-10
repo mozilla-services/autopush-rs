@@ -1,11 +1,19 @@
-# Using bigtable emulation for testing
+# Bigtable Emulation
 
-The bigtable emulator is memory only. No structure persists after
+## Using Bigtable Emulation for Testing
+
+The Bigtable emulator is memory only. No structure persists after
 restart.
 
-## Getting the SDK
+You can also read the testing documentation for these steps 
 
-see [the Google Cloud CLI installation page](https://cloud.google.com/sdk/docs/install#deb)
+## Getting the Google CloudSDK & gcloud beta component
+
+See [the Google Cloud CLI installation page](https://cloud.google.com/sdk/docs/install#deb).
+
+Currently, for operations involving the Big Table emulator, this requires installation of the 
+beta component of the gcloud CLI. See the [documentation here](https://cloud.google.com/sdk/docs/components)
+to install `gcloud beta` once the alpha CLI is installed.
 
 for docker:
 google/cloud-sdk:latest <!-- TODO: need to work out details for connection to this. -->
