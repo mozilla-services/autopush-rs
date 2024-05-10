@@ -85,11 +85,6 @@ jobs:
           password: $DOCKER_PASS
         environment:
           RUST_BACKTRACE: 1
-      - image: amazon/dynamodb-local:latest
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        command: -jar DynamoDBLocal.jar -sharedDb
       - image: google/cloud-sdk:latest
         auth:
           username: $DOCKER_USER
@@ -98,7 +93,6 @@ jobs:
     resource_class: xlarge
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
-      AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
       - checkout
       # Need to download the poetry.lock files so we can use their
