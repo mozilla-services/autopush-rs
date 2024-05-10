@@ -1,6 +1,0 @@
-{
-  "primary": {
-    "db_settings": "{\"message_family\": \"message\", \"router_family\": \"router\", \"table_name\": \"projects/test/instances/test/tables/autopush\"}",
-    "dsn": "grpc://localhost:8086"
-  }
-}

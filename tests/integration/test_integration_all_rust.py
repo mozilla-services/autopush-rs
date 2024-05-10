@@ -529,8 +529,6 @@ def setup_teardown() -> Generator:
     if CONNECTION_CONFIG.get("db_dsn", "").startswith("grpc"):
         log.debug("Setting up BigTable")
         setup_bt()
-    elif CONNECTION_CONFIG.get("db_dsn", "").startswith("dual"):
-        setup_bt()
 
     setup_mock_server()
 
