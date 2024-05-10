@@ -515,16 +515,13 @@ def setup_endpoint_server() -> None:
 def setup_teardown() -> Generator:
     """Set up and tear down test resources within module.
 
-    Setup: BigTable or Dynamo and connection, endpoint, mock and megaphone servers.
+    Setup: BigTable and connection, endpoint, mock and megaphone servers.
     """
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, STRICT_LOG_COUNTS, RUST_LOG
 
     if "SKIP_INTEGRATION" in os.environ:  # pragma: nocover
         log.debug("Skipping integration tests")
         pytest.skip("Skipping integration tests", allow_module_level=True)
-
-    for name in ("boto", "boto3", "botocore"):
-        logging.getLogger(name).setLevel(logging.CRITICAL)
 
     if CONNECTION_CONFIG.get("db_dsn", "").startswith("grpc"):
         log.debug("Setting up BigTable")
