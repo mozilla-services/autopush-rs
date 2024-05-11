@@ -5,7 +5,7 @@
 The Bigtable emulator is memory only. No structure persists after
 restart.
 
-You can also read the testing documentation for these steps 
+You can also read the testing documentation for these steps.
 
 ## Getting the Google CloudSDK & gcloud beta component
 
