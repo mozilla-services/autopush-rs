@@ -54,38 +54,37 @@ websocket-client = "^1.7.0"
 websockets = "^12.0"
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.4.1"
-isort = "^5.13.1"
+black = "^24.4.2"
+isort = "^5.13.2"
 # flake8 configs in .flake8 file. Doesn't support .toml
 flake8 = "^6.1.0"
-mypy = "^1.7.1"
+mypy = "^1.9.1"
 pydocstyle = "^6.3.0"
-bandit = "^1.7.7"
+bandit = "^1.7.8"
 
 
 [tool.poetry.group.integration.dependencies]
-attrs = "^23.1.0"
 boto3 = "^1.33.13"
 botocore = "^1.33.13"
 cryptography = "^42.0.4"
 jws = "^0.1.3"
 psutil = "^5.9.6"
-pytest = "^7.4.3"
+pytest = "^8.2.0"
 python-jose = "^3.3.0"
-requests = "^2.31.0"
-twisted = "^23.10.0"
-types-requests = "^2.31.0.10"
-pytest-asyncio = "^0.23.5.post1"
+pytest-asyncio = "^0.23.6"
 pytest-order = "^1.2.1" 
 httpx = "^0.27.0"
-fastapi = "^0.110.0"
+fastapi = "^0.111.0"
 uvicorn = {extras = ["standard"], version="^0.29.0"}
 
 [tool.poetry.group.load.dependencies]
 locust = "^2.20.0"
 numpy = "^1.26.2"
-pydantic = "^2.5.2"
+pydantic = "^2.7.1"
 
 [build-system]
 requires = ["poetry-core>=1.8.1"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
