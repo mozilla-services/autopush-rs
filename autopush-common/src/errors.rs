@@ -139,7 +139,7 @@ pub enum ApcErrorKind {
     #[error("Database Error: {0}")]
     DatabaseError(String),
 
-    // TODO: option this.
+    #[cfg(feature = "dynamodb")]
     #[error("Rusoto Error: {0}")]
     RusotoError(String),
 }
