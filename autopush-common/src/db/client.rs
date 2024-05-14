@@ -26,7 +26,11 @@ pub trait DbClient: Send + Sync {
     /// exists.
     async fn add_user(&self, user: &User) -> DbResult<()>;
 
-    /// Update a user in the database. Returns whether the update occurred. The
+    /// Update a user in the database. This indicates user liveliness by
+    /// changing the version and connected_at fields. For BigTable, it may
+    /// also update the router information, which will prevent the record from
+    /// being garbage collected.
+    /// Returns whether the update occurred. The
     /// update will not occur if the user does not already exist, has a
     /// different router type, or has a newer `connected_at` timestamp.
     // TODO: make the bool a #[must_use]

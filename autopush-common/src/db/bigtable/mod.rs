@@ -37,6 +37,10 @@ fn retry_default() -> usize {
     bigtable_client::RETRY_COUNT
 }
 
+fn refresh_period_default() -> u64 {
+    bigtable_client::DEFAULT_REFRESH_PERIOD_SECONDS
+}
+
 /// The settings for accessing the BigTable contents.
 #[derive(Clone, Debug, Deserialize)]
 pub struct BigTableDbSettings {
@@ -82,6 +86,10 @@ pub struct BigTableDbSettings {
     /// Number of times to retry a GRPC function
     #[serde(default = "retry_default")]
     pub retry_count: usize,
+    /// How long between refreshes for the user's routing data.
+    /// This will determine when to garbage collect old records.
+    #[serde(default = "refresh_period_default")]
+    pub refresh_period_seconds: u64,
 }
 
 // Used by test, but we don't want available for release.
@@ -101,7 +109,8 @@ impl Default for BigTableDbSettings {
             database_pool_connection_ttl: Default::default(),
             database_pool_max_idle: Default::default(),
             route_to_leader: Default::default(),
-            retry_count: Default::default(),
+            retry_count: bigtable_client::RETRY_COUNT,
+            refresh_period_seconds: bigtable_client::DEFAULT_REFRESH_PERIOD_SECONDS,
         }
     }
 }

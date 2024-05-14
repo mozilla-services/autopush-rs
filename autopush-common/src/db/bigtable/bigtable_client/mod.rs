@@ -3,7 +3,7 @@ use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use again::RetryPolicy;
 use async_trait::async_trait;
@@ -53,6 +53,7 @@ const MESSAGE_FAMILY: &str = "message"; // The default family for messages
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 
 pub(crate) const RETRY_COUNT: usize = 5;
+pub(crate) const DEFAULT_REFRESH_PERIOD_SECONDS: u64 = 86400; // 24 hours
 
 /// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
 // TODO:Should we create something similar for ChannelID?
@@ -82,6 +83,13 @@ pub struct BigTableClientImpl {
     admin_metadata: Metadata,
 }
 
+/// Consistently return Duration with the same error.
+fn utc_now() -> Result<Duration, error::BigTableError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(error::BigTableError::WriteTime)
+}
+
 /// Return a a RowFilter matching the GC policy of the router Column Family
 fn router_gc_policy_filter() -> data::RowFilter {
     let mut latest_cell_filter = data::RowFilter::default();
@@ -93,10 +101,7 @@ fn router_gc_policy_filter() -> data::RowFilter {
 /// Families
 fn message_gc_policy_filter() -> Result<Vec<data::RowFilter>, error::BigTableError> {
     let mut timestamp_filter = data::RowFilter::default();
-    let bt_now: i64 = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_err(error::BigTableError::WriteTime)?
-        .as_millis() as i64;
+    let bt_now: i64 = utc_now()?.as_millis() as i64;
     let mut range_filter = data::TimestampRange::default();
     range_filter.set_start_timestamp_micros(bt_now * 1000);
     timestamp_filter.set_timestamp_range_filter(range_filter);
@@ -498,7 +503,7 @@ impl BigTableClientImpl {
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
-                set_cell.family_name = family_id.clone();
+                set_cell.family_name.clone_from(&family_id);
                 set_cell.set_column_qualifier(cell.qualifier.clone().into_bytes());
                 set_cell.set_value(cell.value);
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
@@ -582,7 +587,6 @@ impl BigTableClientImpl {
         Ok(mutations)
     }
 
-    #[allow(unused)]
     /// Delete all cell data from the specified columns with the optional time range.
     #[allow(unused)]
     async fn delete_cells(
@@ -759,8 +763,61 @@ impl BigTableClientImpl {
             });
         };
 
+        if let Some(refreshed_at) = &user.refreshed_at {
+            cells.push(cell::Cell {
+                qualifier: "refreshed_at".to_owned(),
+                value: refreshed_at.to_be_bytes().to_vec(),
+                timestamp: expiry,
+                ..Default::default()
+            });
+        };
+
         row.add_cells(ROUTER_FAMILY, cells);
         row
+    }
+
+    /// Refresh the cells associated with the current user's router record. This will prevent
+    /// those routes from being garbage collected. We return if the router needed refreshment.
+    pub async fn refresh_router(&self, uaid: &Uuid) -> Result<bool, DbError> {
+        // get the current user's router record
+        if let Some(user) = self.get_user(uaid).await? {
+            if let Some(refreshed_at) = user.refreshed_at {
+                if refreshed_at > (utc_now()?.as_secs() - self.settings.refresh_period_seconds) {
+                    // the record was recently refreshed, no action needed.
+                    dbg!("🉑 Router record for {} was recently refreshed", uaid);
+                    return Ok(false);
+                }
+            }
+
+            // rewrite the channels
+            let channels = self.get_channels(uaid).await?;
+            if !channels.is_empty() {
+                dbg!(
+                    "🉑 Refreshing Router record for {} ({})",
+                    uaid,
+                    channels.len()
+                );
+                self.add_channels(uaid, channels).await?;
+                return Ok(true);
+            } else {
+                dbg!("🉑 No channels to refresh for {}.", uaid);
+            }
+        }
+        Ok(false)
+    }
+
+    #[cfg(all(test, feature = "emulator"))]
+    /// Currently, only used for testing.
+    /// Return the raw row data for a given key so we can test the cell TTLs.
+    async fn get_raw_row(&self, row_key: &str, family: &str) -> DbResult<Option<Row>> {
+        let mut req = self.read_row_request(row_key);
+        let mut filters = vec![router_gc_policy_filter()];
+        filters.push(family_filter(format!("^{family}$")));
+        req.set_filter(filter_chain(filters));
+        let Some(row) = self.read_row(req).await? else {
+            return Ok(None);
+        };
+        Ok(Some(row))
     }
 }
 
@@ -849,6 +906,11 @@ impl DbClient for BigTableClientImpl {
             ));
         };
 
+        if self.refresh_router(&user.uaid).await? {
+            dbg!("🉑 Router refreshed");
+            user.refreshed_at = Some(utc_now()?.as_secs());
+        }
+
         let mut filters = vec![router_gc_policy_filter()];
         filters.extend(version_filter(version));
         let filter = filter_chain(filters);
@@ -928,6 +990,10 @@ impl DbClient for BigTableClientImpl {
 
         if let Some(cell) = row.take_cell("current_timestamp") {
             result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
+        }
+
+        if let Some(cell) = row.take_cell("refreshed_at") {
+            result.refreshed_at = Some(to_u64(cell.value, "refreshed_at")?)
         }
 
         Ok(Some(result))
@@ -1379,8 +1445,13 @@ mod tests {
     use uuid;
 
     use super::*;
-    use crate::{db::DbSettings, test_support::gen_test_uaid, util::ms_since_epoch};
+    use crate::{
+        db::DbSettings,
+        test_support::{gen_test_uaid, gen_test_uuid},
+        util::ms_since_epoch,
+    };
 
+    const CHID_PREFIX: &str = "DECAFBAD";
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
     const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
@@ -1532,13 +1603,7 @@ mod tests {
 
         // can we increment the storage for the user?
         client
-            .increment_storage(
-                &fetched.uaid,
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            )
+            .increment_storage(&fetched.uaid, utc_now()?.as_secs())
             .await?;
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
@@ -1642,6 +1707,109 @@ mod tests {
         assert!(client.get_user(&uaid).await?.is_none());
 
         Ok(())
+    }
+
+    #[actix_rt::test]
+    // Test the router refresh using lower level calls. This allows us
+    // to verify that the individual cell TTLs have been updated.
+    async fn refresh_router() -> DbResult<()> {
+        let client = new_client()?;
+
+        let connected_at = ms_since_epoch();
+        let uaid = gen_test_uaid();
+        let uaid_str = uaid.simple().to_string();
+        let chid = gen_test_uuid(CHID_PREFIX);
+        let chid_str = format!("chid:{}", chid.as_hyphenated());
+        let node_id = "test_node".to_owned();
+
+        client.remove_user(&uaid).await?;
+        let test_user = User {
+            uaid,
+            router_type: "webpush".to_owned(),
+            connected_at,
+            router_data: None,
+            last_connect: Some(connected_at),
+            node_id: Some(node_id),
+            ..Default::default()
+        };
+
+        client.add_user(&test_user).await?;
+        client.add_channel(&uaid, &chid).await?;
+
+        let mut fetch1 = client.get_user(&uaid).await?.unwrap();
+        assert_eq!(fetch1.refreshed_at, None);
+        let mut row = client.get_raw_row(&uaid_str, ROUTER_FAMILY).await?.unwrap();
+        let connected_at_cell = row.take_required_cell(&chid_str).unwrap();
+        let original_ts = connected_at_cell
+            .timestamp
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
+        // refresh the user. This should trigger the channel timestamp updates.
+        client.update_user(&mut fetch1).await?;
+        let mut row = client.get_raw_row(&uaid_str, ROUTER_FAMILY).await?.unwrap();
+        let refreshed_ts = row
+            .take_required_cell(&chid_str)
+            .unwrap()
+            .timestamp
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        assert!(refreshed_ts > original_ts);
+        let mut fetch2 = client.get_user(&uaid).await?.unwrap();
+        assert!(fetch2.refreshed_at.is_some());
+
+        // We should only update once a day.
+        client.update_user(&mut fetch2).await?;
+        let mut row = client.get_raw_row(&uaid_str, ROUTER_FAMILY).await?.unwrap();
+        let check_ts = row
+            .take_required_cell(&chid_str)
+            .unwrap()
+            .timestamp
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        assert_eq!(refreshed_ts, check_ts);
+
+        client.remove_user(&uaid).await?;
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    /// Test the router refresh using standard calls.
+    async fn refresh_check() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let user = User {
+            uaid,
+            ..Default::default()
+        };
+        client.remove_user(&uaid).await.unwrap();
+
+        client.add_user(&user).await.unwrap();
+        let mut fetch1 = client.get_user(&uaid).await.unwrap().unwrap();
+        assert!(client.update_user(&mut fetch1).await.unwrap());
+
+        let mut fetch2 = client.get_user(&uaid).await.unwrap().unwrap();
+        assert_eq!(fetch2.refreshed_at, None);
+
+        // Add a channel
+        client
+            .add_channel(&user.uaid, &Uuid::new_v4())
+            .await
+            .unwrap();
+
+        client.update_user(&mut fetch2).await.unwrap();
+        let mut fetch3 = client.get_user(&uaid).await.unwrap().unwrap();
+        assert_ne!(fetch3.refreshed_at, None);
+
+        client.update_user(&mut fetch3).await.unwrap();
+        let fetch4 = client.get_user(&uaid).await.unwrap().unwrap();
+        assert_eq!(fetch3.refreshed_at, fetch4.refreshed_at);
+
+        client.remove_user(&uaid).await.unwrap();
     }
 
     #[actix_rt::test]

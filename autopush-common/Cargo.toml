@@ -80,6 +80,7 @@ actix-rt = "2.8"
 [features]
 # NOTE: Do not set a `default` here, rather specify them in the calling library.
 # This is to reduce complexity around feature specification.
+default = ["emulator"]
 bigtable = [
     "dep:google-cloud-rust-raw",
     "dep:grpcio",
