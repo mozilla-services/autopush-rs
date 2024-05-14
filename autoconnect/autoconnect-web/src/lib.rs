@@ -7,7 +7,6 @@ extern crate slog_scope;
 
 pub mod dockerflow;
 pub mod error;
-pub mod metrics;
 pub mod routes;
 #[cfg(test)]
 mod test;
