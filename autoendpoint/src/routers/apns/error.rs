@@ -90,14 +90,6 @@ impl From<ApnsError> for ApiErrorKind {
 }
 
 impl ReportableError for ApnsError {
-    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
-        None
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
-    }
-
     fn is_sentry_event(&self) -> bool {
         matches!(
             self,
@@ -110,9 +102,5 @@ impl ReportableError for ApnsError {
             ApnsError::SizeLimit(_) => Some("notification.bridge.error.apns.oversized"),
             _ => None,
         }
-    }
-
-    fn extras(&self) -> Vec<(&str, String)> {
-        vec![]
     }
 }

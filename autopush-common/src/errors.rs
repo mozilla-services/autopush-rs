@@ -187,14 +187,19 @@ pub trait ReportableError: std::error::Error {
     }
 
     /// Return a `Backtrace` for this Error if one was captured
-    fn backtrace(&self) -> Option<&Backtrace>;
-
+    fn backtrace(&self) -> Option<&Backtrace> {
+        None
+    }
     /// Whether this error is reported to Sentry
-    fn is_sentry_event(&self) -> bool;
+    fn is_sentry_event(&self) -> bool {
+        true
+    }
 
     /// Errors that don't emit Sentry events (!is_sentry_event()) emit an
     /// increment metric instead with this label
-    fn metric_label(&self) -> Option<&'static str>;
+    fn metric_label(&self) -> Option<&'static str> {
+        None
+    }
 
     /// Experimental: return tag key value pairs for metrics and Sentry
     fn tags(&self) -> Vec<(&str, String)> {

@@ -103,10 +103,6 @@ impl ReportableError for DbError {
         }
     }
 
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
-    }
-
     fn is_sentry_event(&self) -> bool {
         match &self {
             #[cfg(feature = "bigtable")]

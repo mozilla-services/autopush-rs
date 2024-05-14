@@ -174,10 +174,6 @@ impl ReportableError for RouterError {
         }
     }
 
-    fn backtrace(&self) -> Option<&backtrace::Backtrace> {
-        None
-    }
-
     fn is_sentry_event(&self) -> bool {
         match self {
             RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),

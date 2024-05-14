@@ -83,22 +83,8 @@ impl From<FcmError> for ApiErrorKind {
 }
 
 impl ReportableError for FcmError {
-    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
-        None
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
-    }
-
     fn is_sentry_event(&self) -> bool {
-        matches!(
-            &self,
-            FcmError::InvalidAppId(_)
-                | FcmError::NoAppId
-                | FcmError::EmptyResponse(_)
-                | FcmError::InvalidResponse(_, _, _)
-        )
+        matches!(&self, FcmError::InvalidAppId(_) | FcmError::NoAppId)
     }
 
     fn metric_label(&self) -> Option<&'static str> {
