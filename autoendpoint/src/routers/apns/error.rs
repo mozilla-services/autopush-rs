@@ -90,16 +90,21 @@ impl From<ApnsError> for ApiErrorKind {
 
 impl ReportableError for ApnsError {
     fn is_sentry_event(&self) -> bool {
-        matches!(
-            self,
-            ApnsError::SizeLimit(_) | ApnsError::Unregistered | ApnsError::ApnsUpstream(_)
-        )
+        matches!(self, ApnsError::ApnsUpstream(_))
     }
 
     fn metric_label(&self) -> Option<&'static str> {
         match &self {
             ApnsError::SizeLimit(_) => Some("notification.bridge.error.apns.oversized"),
+            ApnsError::ApnsUpstream(_) => Some("notification.bridge.error.apns.upstream"),
             _ => None,
+        }
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        match self {
+            ApnsError::ApnsUpstream(e) => vec![("error", e.to_string())],
+            _ => vec![],
         }
     }
 }
