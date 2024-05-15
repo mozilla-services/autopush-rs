@@ -2,7 +2,6 @@ use crate::error::ApiErrorKind;
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
 use autopush_common::errors::ReportableError;
-use backtrace::Backtrace;
 use std::io;
 
 /// Errors that may occur in the Apple Push Notification Service router

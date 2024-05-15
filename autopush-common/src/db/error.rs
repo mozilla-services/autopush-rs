@@ -1,6 +1,5 @@
 use actix_web::http::StatusCode;
 
-use backtrace::Backtrace;
 #[cfg(feature = "dynamodb")]
 use rusoto_core::RusotoError;
 #[cfg(feature = "dynamodb")]

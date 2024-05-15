@@ -30,12 +30,6 @@ from fastapi import FastAPI, Request
 from jose import jws
 
 from .async_push_test_client import AsyncPushTestClient, ClientMessageType
-from .db import (
-    DynamoDBResource,
-    base64url_encode,
-    create_message_table_ddb,
-    get_router_table,
-)
 
 app = FastAPI()
 logging.basicConfig(level=logging.DEBUG)
@@ -45,10 +39,7 @@ here_dir = os.path.abspath(os.path.dirname(__file__))
 tests_dir = os.path.dirname(here_dir)
 root_dir = os.path.dirname(tests_dir)
 
-DDB_JAR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal.jar")
-DDB_LIB_DIR = os.path.join(root_dir, "tests", "integration", "ddb", "DynamoDBLocal_lib")
 SETUP_BT_SH = os.path.join(root_dir, "scripts", "setup_bt.sh")
-DDB_PROCESS: subprocess.Popen | None = None
 BT_PROCESS: subprocess.Popen | None = None
 BT_DB_SETTINGS: str | None = None
 
@@ -125,6 +116,14 @@ def get_db_settings() -> str | dict[str, str | int | float] | None:
     )
 
 
+def base64url_encode(value: bytes | str) -> str:
+    """Encode an unpadded Base64 URL-encoded string per RFC 7515."""
+    if isinstance(value, str):
+        value = bytes(value, "utf-8")
+
+    return base64.urlsafe_b64encode(value).strip(b"=").decode("utf-8")
+
+
 MOCK_SERVER_PORT: Any = get_free_port()
 MOCK_MP_SERVICES: dict = {}
 MOCK_MP_TOKEN: str = "Bearer {}".format(uuid.uuid4().hex)
@@ -152,7 +151,7 @@ CONNECTION_CONFIG: dict[str, Any] = dict(
     human_logs="true",
     msg_limit=MSG_LIMIT,
     # new autoconnect
-    db_dsn=os.environ.get("DB_DSN", "http://127.0.0.1:8000"),
+    db_dsn=os.environ.get("DB_DSN", "grpc://localhost:8086"),
     db_settings=get_db_settings(),
 )
 
@@ -389,33 +388,6 @@ def setup_bt() -> None:
         raise
 
 
-def setup_dynamodb() -> None:
-    """Set up DynamoDB emulator."""
-    global DDB_PROCESS
-
-    log.debug("🐍🟢 Starting dynamodb")
-    if os.getenv("AWS_LOCAL_DYNAMODB") is None:
-        cmd = " ".join(
-            [
-                "java",
-                "-Djava.library.path=%s" % DDB_LIB_DIR,
-                "-jar",
-                DDB_JAR,
-                "-sharedDb",
-                "-inMemory",
-            ]
-        )
-        DDB_PROCESS = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
-        os.environ["AWS_LOCAL_DYNAMODB"] = "http://127.0.0.1:8000"
-    else:
-        print("Using existing DynamoDB instance")
-
-    # Setup the necessary tables
-    boto_resource = DynamoDBResource()
-    create_message_table_ddb(boto_resource, MESSAGE_TABLE)
-    get_router_table(boto_resource, ROUTER_TABLE)
-
-
 def run_fastapi_app(host, port) -> None:
     """Run FastAPI app with uvicorn."""
     uvicorn.run(app, host=host, port=port, log_level="debug")
@@ -437,7 +409,7 @@ def setup_mock_server() -> None:
 
 def setup_connection_server(connection_binary) -> None:
     """Set up connection server from config."""
-    global CN_SERVER, BT_PROCESS, DDB_PROCESS
+    global CN_SERVER, BT_PROCESS
 
     # NOTE:
     # due to a change in Config, autopush uses a double
@@ -543,7 +515,7 @@ def setup_endpoint_server() -> None:
 def setup_teardown() -> Generator:
     """Set up and tear down test resources within module.
 
-    Setup: BigTable or Dynamo and connection, endpoint, mock and megaphone servers.
+    Setup: BigTable and connection, endpoint, mock and megaphone servers.
     """
     global CN_SERVER, CN_QUEUES, CN_MP_SERVER, MOCK_SERVER_THREAD, STRICT_LOG_COUNTS, RUST_LOG
 
@@ -551,17 +523,9 @@ def setup_teardown() -> Generator:
         log.debug("Skipping integration tests")
         pytest.skip("Skipping integration tests", allow_module_level=True)
 
-    for name in ("boto", "boto3", "botocore"):
-        logging.getLogger(name).setLevel(logging.CRITICAL)
-
     if CONNECTION_CONFIG.get("db_dsn", "").startswith("grpc"):
         log.debug("Setting up BigTable")
         setup_bt()
-    elif CONNECTION_CONFIG.get("db_dsn", "").startswith("dual"):
-        setup_bt()
-        setup_dynamodb()
-    else:
-        setup_dynamodb()
 
     setup_mock_server()
 
@@ -579,10 +543,6 @@ def setup_teardown() -> Generator:
 
     yield
 
-    if DDB_PROCESS:
-        os.unsetenv("AWS_LOCAL_DYNAMODB")
-        log.debug("🐍🔴 Stopping dynamodb")
-        kill_process(DDB_PROCESS)
     if BT_PROCESS:
         os.unsetenv("BIGTABLE_EMULATOR_HOST")
         log.debug("🐍🔴 Stopping bigtable")

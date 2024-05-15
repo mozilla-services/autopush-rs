@@ -1,7 +1,6 @@
 use std::fmt::{self, Display};
 
 use actix_web::http::StatusCode;
-use backtrace::Backtrace;
 use deadpool::managed::{PoolError, TimeoutType};
 use thiserror::Error;
 
