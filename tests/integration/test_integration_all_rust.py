@@ -72,7 +72,6 @@ modules = [
     "autoconnect_ws",
     "autoconnect_ws_sm",
     "autoendpoint",
-    "autopush",
     "autopush_common",
 ]
 log_string = [f"{x}=trace" for x in modules]
