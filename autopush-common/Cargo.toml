@@ -51,7 +51,6 @@ tokio.workspace = true
 tokio-core.workspace = true
 # tokio-postgres.workspace = true
 thiserror.workspace = true
-tungstenite.workspace = true
 uuid.workspace = true
 url.workspace = true
 
