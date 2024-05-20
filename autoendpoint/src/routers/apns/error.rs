@@ -90,7 +90,7 @@ impl From<ApnsError> for ApiErrorKind {
 
 impl ReportableError for ApnsError {
     fn is_sentry_event(&self) -> bool {
-        matches!(self, ApnsError::ApnsUpstream(_))
+        !matches!(self, ApnsError::SizeLimit(_) | ApnsError::Unregistered)
     }
 
     fn metric_label(&self) -> Option<&'static str> {
