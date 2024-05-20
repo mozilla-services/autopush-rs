@@ -735,8 +735,6 @@ dependencies = [
  "rand 0.8.5",
  "regex",
  "reqwest 0.12.2",
- "rusoto_core",
- "rusoto_dynamodb",
  "sentry",
  "sentry-actix",
  "sentry-core",
