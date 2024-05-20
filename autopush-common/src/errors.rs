@@ -91,8 +91,6 @@ impl Serialize for ApcError {
 #[derive(Error, Debug)]
 pub enum ApcErrorKind {
     #[error(transparent)]
-    Ws(#[from] tungstenite::Error),
-    #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
