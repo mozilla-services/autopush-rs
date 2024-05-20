@@ -31,7 +31,6 @@ rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 rusoto_core = { workspace = true, optional = true }
-rusoto_credential = { workspace = true, optional = true }
 rusoto_dynamodb = { workspace = true, optional = true }
 sentry-backtrace.workspace = true
 sentry.workspace = true
@@ -87,7 +86,7 @@ bigtable = [
     "dep:protobuf",
     "dep:form_urlencoded",
 ]
-dynamodb = ["dep:rusoto_core", "dep:rusoto_credential", "dep:rusoto_dynamodb"]
+dynamodb = ["dep:rusoto_core", "dep:rusoto_dynamodb"]
 dual = ["dynamodb", "bigtable"]
 aws = []
 emulator = [

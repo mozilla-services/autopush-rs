@@ -798,7 +798,6 @@ dependencies = [
  "regex",
  "reqwest 0.12.2",
  "rusoto_core",
- "rusoto_credential",
  "rusoto_dynamodb",
  "sentry",
  "sentry-backtrace",
