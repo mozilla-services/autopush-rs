@@ -214,9 +214,6 @@ pub trait ReportableError: std::error::Error {
 }
 
 impl ReportableError for ApcError {
-    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
-        None
-    }
     fn backtrace(&self) -> Option<&Backtrace> {
         Some(&self.backtrace)
     }
