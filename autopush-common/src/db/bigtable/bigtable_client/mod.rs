@@ -784,7 +784,7 @@ impl BigTableClientImpl {
             if let Some(refreshed_at) = user.refreshed_at {
                 if refreshed_at > (utc_now()?.as_secs() - self.settings.refresh_period_seconds) {
                     // the record was recently refreshed, no action needed.
-                    dbg!("🉑 Router record for {} was recently refreshed", uaid);
+                    debug!("🉑 Router record for {} was recently refreshed", uaid);
                     return Ok(false);
                 }
             }
@@ -792,7 +792,7 @@ impl BigTableClientImpl {
             // rewrite the channels
             let channels = self.get_channels(uaid).await?;
             if !channels.is_empty() {
-                dbg!(
+                debug!(
                     "🉑 Refreshing Router record for {} ({})",
                     uaid,
                     channels.len()
@@ -800,7 +800,7 @@ impl BigTableClientImpl {
                 self.add_channels(uaid, channels).await?;
                 return Ok(true);
             } else {
-                dbg!("🉑 No channels to refresh for {}.", uaid);
+                debug!("🉑 No channels to refresh for {}.", uaid);
             }
         }
         Ok(false)
@@ -907,7 +907,7 @@ impl DbClient for BigTableClientImpl {
         };
 
         if self.refresh_router(&user.uaid).await? {
-            dbg!("🉑 Router refreshed");
+            debug!("🉑 Router refreshed");
             user.refreshed_at = Some(utc_now()?.as_secs());
         }
 
