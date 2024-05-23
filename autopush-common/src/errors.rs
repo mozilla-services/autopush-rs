@@ -1,6 +1,5 @@
 //! Error handling for common autopush functions
 
-use std::any::Any;
 use std::fmt::{self, Display};
 use std::io;
 use std::num;
@@ -104,8 +103,6 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
-    #[error("thread panicked")]
-    Thread(Box<dyn Any + Send>),
     #[error("websocket pong timeout")]
     PongTimeout,
     #[error("client sent too many pings")]
