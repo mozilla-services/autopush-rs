@@ -97,8 +97,6 @@ pub enum ApcErrorKind {
     #[error(transparent)]
     Httparse(#[from] httparse::Error),
     #[error(transparent)]
-    MetricError(#[from] cadence::MetricError),
-    #[error(transparent)]
     UuidError(#[from] uuid::Error),
     #[error(transparent)]
     ParseIntError(#[from] num::ParseIntError),
@@ -106,40 +104,18 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
-    #[error("Error while validating token")]
-    TokenHashValidation(#[source] openssl::error::ErrorStack),
-    #[error("Error while creating secret")]
-    RegistrationSecretHash(#[source] openssl::error::ErrorStack),
-
     #[error("thread panicked")]
     Thread(Box<dyn Any + Send>),
     #[error("websocket pong timeout")]
     PongTimeout,
-    #[error("repeat uaid disconnect")]
-    RepeatUaidDisconnect,
-    #[error("invalid state transition, from: {0}, to: {1}")]
-    InvalidStateTransition(String, String),
-    #[error("invalid json: {0}")]
-    InvalidClientMessage(String),
-    #[error("server error fetching messages")]
-    MessageFetch,
-    #[error("unable to send to client")]
-    SendError,
     #[error("client sent too many pings")]
     ExcessivePing,
-
     #[error("Broadcast Error: {0}")]
     BroadcastError(String),
     #[error("Payload Error: {0}")]
     PayloadError(String),
     #[error("General Error: {0}")]
     GeneralError(String),
-    #[error("Database Error: {0}")]
-    DatabaseError(String),
-
-    #[cfg(feature = "dynamodb")]
-    #[error("Rusoto Error: {0}")]
-    RusotoError(String),
 }
 
 impl ApcErrorKind {
