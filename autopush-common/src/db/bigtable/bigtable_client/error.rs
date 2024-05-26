@@ -1,7 +1,6 @@
 use std::fmt::{self, Display};
 
 use actix_web::http::StatusCode;
-use backtrace::Backtrace;
 use deadpool::managed::{PoolError, TimeoutType};
 use thiserror::Error;
 
@@ -149,14 +148,6 @@ impl BigTableError {
 }
 
 impl ReportableError for BigTableError {
-    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
-        None
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
-    }
-
     fn is_sentry_event(&self) -> bool {
         #[allow(clippy::match_like_matches_macro)]
         match self {

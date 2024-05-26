@@ -295,7 +295,6 @@ jobs:
             docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
 workflows:
-  version: 2
 
   build-test-deploy:
     jobs:

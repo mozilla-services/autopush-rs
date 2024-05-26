@@ -167,40 +167,25 @@ impl RouterError {
             RouterError::Upstream { .. } => None,
         }
     }
+}
 
-    pub fn metric_label(&self) -> Option<&'static str> {
-        // NOTE: Some metrics are emitted for other Errors via handle_error
-        // callbacks, whereas some are emitted via this method. These 2 should
-        // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
-        let err = match self {
-            #[cfg(feature = "adm")]
-            RouterError::Adm(AdmError::InvalidProfile | AdmError::NoProfile) => {
-                "notification.bridge.error.adm.profile"
-            }
-            RouterError::Apns(ApnsError::SizeLimit(_)) => {
-                "notification.bridge.error.apns.oversized"
-            }
-            RouterError::Fcm(FcmError::InvalidAppId(_) | FcmError::NoAppId) => {
-                "notification.bridge.error.fcm.badappid"
-            }
-            RouterError::TooMuchData(_) => "notification.bridge.error.too_much_data",
-            RouterError::SaveDb(e) => e.metric_label().unwrap_or_default(),
-            _ => "",
-        };
-        if !err.is_empty() {
-            return Some(err);
+impl ReportableError for RouterError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self {
+            RouterError::Apns(e) => Some(e),
+            RouterError::Fcm(e) => Some(e),
+            RouterError::SaveDb(e) => Some(e),
+            _ => None,
         }
-        None
     }
 
-    pub fn is_sentry_event(&self) -> bool {
+    fn is_sentry_event(&self) -> bool {
         match self {
             #[cfg(feature = "adm")]
             RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
             // apns handle_error emits a metric for ApnsError::Unregistered
-            RouterError::Apns(ApnsError::SizeLimit(_))
-            | RouterError::Apns(ApnsError::Unregistered) => false,
-            RouterError::Fcm(e) => !matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId),
+            RouterError::Apns(e) => e.is_sentry_event(),
+            RouterError::Fcm(e) => e.is_sentry_event(),
             // common handle_error emits metrics for these
             RouterError::Authentication
             | RouterError::GCMAuthentication
@@ -214,8 +199,25 @@ impl RouterError {
         }
     }
 
-    pub fn extras(&self) -> Vec<(&str, String)> {
+    fn metric_label(&self) -> Option<&'static str> {
+        // NOTE: Some metrics are emitted for other Errors via handle_error
+        // callbacks, whereas some are emitted via this method. These 2 should
+        // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
         match self {
+            #[cfg(feature = "adm")]
+            RouterError::Adm(AdmError::InvalidProfile | AdmError::NoProfile) => {
+                Some("notification.bridge.error.adm.profile")
+            }
+            RouterError::Apns(e) => e.metric_label(),
+            RouterError::Fcm(e) => e.metric_label(),
+            RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),
+            _ => None,
+        }
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        match &self {
+            RouterError::Apns(e) => e.extras(),
             RouterError::Fcm(e) => e.extras(),
             RouterError::SaveDb(e) => e.extras(),
             _ => vec![],

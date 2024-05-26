@@ -26,14 +26,12 @@ Usage: autoconnect [options]
 
 Options:
     -h, --help                          Show this message.
-    --config-connection=CONFIGFILE      Connection configuration file path.
-    --config-shared=CONFIGFILE          Common configuration file path.
+    --config=CONFIGFILE                 Connection configuration file path.
 ";
 
 #[derive(Debug, Deserialize)]
 struct Args {
-    flag_config_connection: Option<String>,
-    flag_config_shared: Option<String>,
+    flag_config: Option<String>,
 }
 
 #[actix_web::main]
@@ -43,10 +41,7 @@ async fn main() -> Result<()> {
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
     let mut filenames = Vec::new();
-    if let Some(shared_filename) = args.flag_config_shared {
-        filenames.push(shared_filename);
-    }
-    if let Some(config_filename) = args.flag_config_connection {
+    if let Some(config_filename) = args.flag_config {
         filenames.push(config_filename);
     }
     let settings =
