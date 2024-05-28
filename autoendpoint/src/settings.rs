@@ -96,9 +96,8 @@ impl Settings {
 
         let built = config.build()?;
 
-        built
-            .try_deserialize::<Self>()
-            .map_err(|error| match error {
+        built.try_deserialize::<Self>().map_err(|error| {
+            match error {
                 // Configuration errors are not very sysop friendly, Try to make them
                 // a bit more 3AM useful.
                 ConfigError::Message(error_msg) => {
@@ -115,7 +114,8 @@ impl Settings {
                     error!("Configuration error: Other: {:?}", &error);
                     error
                 }
-            })
+            }
+        })
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.
