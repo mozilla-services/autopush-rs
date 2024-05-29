@@ -1,6 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::routers::RouterType;
-use actix_web::{dev::Payload, FromRequest, HttpRequest};
+use crate::server::AppState;
+use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
 use futures::future;
 
 /// Extracts and validates the `router_type` and `app_id` path arguments
@@ -20,6 +21,9 @@ impl FromRequest for RegistrationPathArgs {
             .expect("{router_type} must be part of the path")
             .parse::<RouterType>()
         {
+            Ok(RouterType::STUB) if !stub_router_enabled(req) => {
+                return future::err(ApiErrorKind::InvalidRouterType.into())
+            }
             Ok(router_type) => router_type,
             Err(_) => return future::err(ApiErrorKind::InvalidRouterType.into()),
         };
@@ -33,4 +37,12 @@ impl FromRequest for RegistrationPathArgs {
             app_id,
         })
     }
+}
+
+fn stub_router_enabled(req: &HttpRequest) -> bool {
+    req.app_data::<Data<AppState>>()
+        .expect("Couldn't get AppState")
+        .settings
+        .stub
+        .enabled
 }

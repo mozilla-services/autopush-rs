@@ -3,6 +3,7 @@
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct StubSettings {
+    pub enabled: bool,
     pub url: String,
     #[serde(rename = "credentials")]
     pub server_credentials: String,
@@ -18,6 +19,7 @@ pub struct StubServerSettings {
 impl Default for StubSettings {
     fn default() -> Self {
         Self {
+            enabled: false,
             url: "http://localhost:8080".to_owned(),
             server_credentials: "{\"project_id\":\"test\", \"error\":\"\"}".to_string(),
         }
