@@ -24,9 +24,7 @@ can be run on separate hosts as well.
 *#TODO* rebuild the docker-compose.yaml files based off of syncstorage ones.
 
 - [ ] rebuild docker-componse.yaml
-  - [ ] selectable for dynamodb, bigtable, dual
   - [ ] initialize tables
-  - [ ]
 - [] define steps here
 
 <!-- The following block needs to be updated. The docker instructions are no
