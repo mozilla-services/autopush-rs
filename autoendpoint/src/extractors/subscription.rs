@@ -265,10 +265,14 @@ fn validate_vapid_jwt(
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
+    let mut validation = Validation::new(Algorithm::ES256);
+    validation.set_audience(&["https://push.services.mozilla.org"]);
+    validation.set_required_spec_claims(&["exp", "aud", "sub"]);
+
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
         &DecodingKey::from_ec_der(&public_key),
-        &Validation::new(Algorithm::ES256),
+        &validation,
     ) {
         Ok(v) => v,
         Err(e) => match e.kind() {
