@@ -1,6 +1,6 @@
 use super::client::StubClient;
 use super::error::StubError;
-use super::settings::StubSettings;
+use super::settings::{StubServerSettings, StubSettings};
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
@@ -12,6 +12,7 @@ use std::collections::HashMap;
 /// Firebase Cloud Messaging router
 pub struct StubRouter {
     settings: StubSettings,
+    server_settings: StubServerSettings,
     /// A map from application ID to an authenticated FCM client
     clients: HashMap<String, StubClient>,
 }
@@ -19,18 +20,25 @@ pub struct StubRouter {
 impl StubRouter {
     /// Create a new `StubRouter`
     pub fn new(settings: StubSettings) -> Result<Self, StubError> {
-        let clients = Self::create_clients();
-        Ok(Self { settings, clients })
+        let server_settings =
+            serde_json::from_str::<StubServerSettings>(&settings.server_credentials)
+                .unwrap_or_default();
+        let clients = Self::create_clients(&server_settings);
+        Ok(Self {
+            settings,
+            server_settings,
+            clients,
+        })
     }
 
     /// Create Test clients for each application
-    fn create_clients() -> HashMap<String, StubClient> {
+    fn create_clients(server_settings: &StubServerSettings) -> HashMap<String, StubClient> {
         let mut clients = HashMap::new();
 
         clients.insert("success".to_owned(), StubClient::success());
         clients.insert(
             "error".to_owned(),
-            StubClient::error(StubError::General("General Error".to_owned())),
+            StubClient::error(StubError::General(server_settings.error.clone())),
         );
         clients
     }
@@ -78,8 +86,8 @@ impl Router for StubRouter {
         let client = self
             .clients
             .get(&client_type.to_string().to_lowercase())
-            .unwrap_or_else(|| self.clients.get("success").unwrap());
-        client.call().await?;
+            .unwrap_or_else(|| self.clients.get("error").unwrap());
+        client.call(&self.server_settings).await?;
         Ok(RouterResponse::success(
             format!("{}/m/123", self.settings.url),
             notification.headers.ttl as usize,

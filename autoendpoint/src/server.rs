@@ -23,7 +23,10 @@ use autopush_common::{
     middleware::sentry::SentryWrapper,
 };
 
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
+#[cfg(feature = "stub")]
+use crate::routers::stub::router::StubRouter;
 use crate::routers::{adm::router::AdmRouter, apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
@@ -34,10 +37,6 @@ use crate::routes::{
     webpush::{delete_notification_route, webpush_route},
 };
 use crate::settings::Settings;
-use crate::{
-    error::{ApiError, ApiErrorKind, ApiResult},
-    routers::stub::router::StubRouter,
-};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -50,6 +49,7 @@ pub struct AppState {
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
     pub adm_router: Arc<AdmRouter>,
+    #[cfg(feature = "stub")]
     pub stub_router: Arc<StubRouter>,
 }
 
@@ -123,6 +123,7 @@ impl Server {
             metrics.clone(),
             db.clone(),
         )?);
+        #[cfg(feature = "stub")]
         let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
         let app_state = AppState {
             metrics: metrics.clone(),
@@ -133,6 +134,7 @@ impl Server {
             fcm_router,
             apns_router,
             adm_router,
+            #[cfg(feature = "stub")]
             stub_router,
         };
 

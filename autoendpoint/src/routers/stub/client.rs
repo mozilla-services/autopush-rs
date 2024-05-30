@@ -1,4 +1,5 @@
 use super::error::StubError;
+use super::settings::StubServerSettings;
 use crate::routers::RouterError;
 
 pub struct StubClient {
@@ -23,12 +24,12 @@ impl StubClient {
     }
 
     /// Send the message data to Test
-    pub async fn call(&self) -> Result<(), RouterError> {
+    pub async fn call(&self, settings: &StubServerSettings) -> Result<(), RouterError> {
         if !self.success {
             return Err(self
                 .err
                 .clone()
-                .unwrap_or(StubError::General("AAAH!".to_owned()))
+                .unwrap_or(StubError::General(settings.error.clone()))
                 .into());
         }
 

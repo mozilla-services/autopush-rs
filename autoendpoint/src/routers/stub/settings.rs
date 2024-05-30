@@ -11,15 +11,23 @@ pub struct StubSettings {
 /// Credential information for each application
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct StubServerSettings {
-    pub project_id: String,
+    #[serde(default)]
     pub error: String,
+}
+
+impl Default for StubServerSettings {
+    fn default() -> Self {
+        Self {
+            error: "General Error".to_owned(),
+        }
+    }
 }
 
 impl Default for StubSettings {
     fn default() -> Self {
         Self {
             url: "http://localhost:8080".to_owned(),
-            server_credentials: "{\"project_id\":\"test\", \"error\":\"\"}".to_string(),
+            server_credentials: "{\"error\":\"General Error\"}".to_string(),
         }
     }
 }

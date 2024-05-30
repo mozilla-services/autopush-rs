@@ -15,12 +15,14 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use thiserror::Error;
 
+#[cfg(feature = "stub")]
 use self::stub::error::StubError;
 
 pub mod adm;
 pub mod apns;
 mod common;
 pub mod fcm;
+#[cfg(feature = "stub")]
 pub mod stub;
 pub mod webpush;
 
@@ -85,6 +87,7 @@ pub enum RouterError {
     #[error(transparent)]
     Fcm(#[from] FcmError),
 
+    #[cfg(feature = "stub")]
     #[error(transparent)]
     Stub(#[from] StubError),
 
@@ -126,6 +129,8 @@ impl RouterError {
             RouterError::Adm(e) => e.status(),
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => e.status(),
+
+            #[cfg(feature = "stub")]
             RouterError::Stub(e) => e.status(),
 
             RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
@@ -148,6 +153,8 @@ impl RouterError {
             RouterError::Adm(e) => e.errno(),
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
+
+            #[cfg(feature = "stub")]
             RouterError::Stub(e) => e.errno(),
 
             RouterError::TooMuchData(_) => Some(104),
