@@ -1545,7 +1545,7 @@ async def test_mobile_register_v1(test_client: AsyncPushTestClient) -> None:
             method="POST",
             url=f"{endpoint}/v1/stub/success/registration",
             headers={"content-type": "application/json"},
-            data=json.dumps({"token": "success"}),
+            content=json.dumps({"token": "success"}),
         )  # nosec
         assert resp.status_code == 200, "Could not register stub endpoint"
         response = resp.json()
