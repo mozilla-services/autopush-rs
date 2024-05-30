@@ -1555,6 +1555,7 @@ async def test_mobile_register_v1(test_client: AsyncPushTestClient) -> None:
         assert response.get("secret") is not None
         assert response.get("uaid") is not None
 
+
 async def test_mobile_register_v2(test_client: AsyncPushTestClient) -> None:
     """Test that a signed endpoint is returned if a valid VAPID public
     key is included in the body.
