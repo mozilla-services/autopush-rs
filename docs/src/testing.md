@@ -1,57 +1,98 @@
 # Testing
 
-## Testing Configuration
+## Test Strategy
 
-When testing, it's important to reduce the number of potential conflicts
-as much as possible. To that end, it's advised to have as clean a
-testing environment as possible before running tests.
+Autopush is tested using a combination of functional, integration, and performance tests.
 
-This includes:
+Unit tests are written in the same Rust module as the code they are testing. Integration and Load Test code are in the `tests/` directory, both written in Python.
 
-* Making sure notifications are not globally blocked by your browser.
-* "Do Not Disturb" or similar "distraction free" mode is disabled on
-    your OS
-* You run a "fresh" Firefox profile (start `firefox --P` to display the profile picker)
-    which does not have extra extensions or optional plug-ins running.
+Presently, the Autopush test strategy does not require a minimum test coverage percentage for unit and integration tests. However, it is the goal that the service eventually have defined minimum coverage.
+Load tests results should not go below a minimum performance threshold.
 
-You may find it useful to run firefox in a Virtual Machine (like
-VirtualBox or VMWare), but this is not required.
+The functional test strategy is three-tiered, composed of: 
 
-In addition, it may be useful to open the Firefox Brower Console
-(Ctrl+Shift+J) as well as the Firefox Web Console (Ctrl+Shift+K). Both
-are located under the **Web Developer** sub-menu.
+- [unit test dir][unit_tests] - [documentation][unit_tests_docs]
+- [integration test dir][integration_tests] - [documentation][integration_tests_docs]
+- [load test dir][load_tests] - [documentation][load_tests_docs]
 
-## Running Tests
+See the documentation in each given test area for specific details on running and maintaining tests.
 
-If you plan on doing development and testing, you will need to install
-some additional packages.
+## Unit Tests
 
-``` bash
-$ bin/pip install -r test-requirements.txt
+Unit tests allow for testing individual components of code in isolation to ensure they function as expected. Rust's built-in support for writing and running unit tests use the `#[cfg(test)]` attribute and the `#[test]` attribute.
+
+### Best Practices
+
+- Test functions are regular Rust functions annotated with the `#[test]` attribute.
+- Test functions should be written in the same module as the code they are testing.
+- Test functions should be named in a manner that describes the behavior being tested.
+
+For example:
+
+```Rust
+    #[test]
+    fn test_broadcast_change_tracker()
 ```
 
-Once the Makefile has been run, you can run `make test` to run the test
-suite.
+- The use of assertion macros is encouraged. This includes, but is not limited to:
+`assert_eq!(actual, expected)`, `assert_ne!(actual, expected)`, `assert!(<condition>)`.
+- You should group related tests into modules using the `mod` keyword. Furthermore, test modules can be nested to organize tests in a hierarchy.
 
-<b>Note</b> Failures may occur if a `.boto` file exists in your home directory. This
-file should be moved elsewhere before running the tests.`
+### Running Unit Tests
+Run Rust unit tests with the `cargo test` command from the root of the directory.
 
-### Disabling Integration Tests
+To run a specific test, provide the function name to `cargo test`. Ex. `cargo test test_function_name`.
 
-`make test` runs the `tox` program which can be difficult to break for
-debugging purposes. The following bash script has been useful for
-running tests outside of tox:
+## Integration Tests
+The autopush-rs tests are written in Python and located in the [integration test directory][integration_tests]. 
 
-``` bash
-#! /bin/bash
-mv autopush/tests/test_integration.py{,.hold}
-mv autopush/tests/test_logging.py{,.hold}
-bin/nosetests -sv autopush
-mv autopush/tests/test_integration.py{.hold,}
-mv autopush/tests/test_logging.py{.hold,}
+### Testing Configuration
+All dependencies are maintained by Poetry and defined in the `tests/pyproject.toml` file.  
+
+There are a few configuration steps required to run the Python integration tests:
+
+1. Depending on your operating system, ensure you have `cmake` and `openssl` installed. If using MacOS, for example, you can use `brew install cmake openssl`.
+2. Build Autopush-rs: from the root directory, execute `cargo build`
+3. Setup Local Bigtable emulator. For more information on Bigtable, see the
+[Bigtable emulation docs in this repo]().  
+
+- Install the [Google Cloud CLI](https://cloud.google.com/sdk/gcloud)
+- Install and run the [Google Bigtable Emulator](https://cloud.google.com/bigtable/docs/emulator)
+- Configure the Bigtable emulator by running the following shell script: (***Note***, this will create a project and instance both named `test`, meaning that the tablename will be `projects/test/instances/test/tables/autopush`)
+
+```bash
+BIGTABLE_EMULATOR_HOST=localhost:8086 \
+scripts/setup_bt.sh
 ```
 
-This script will cause the integration and logging tests to not run.
+4. Create Python virtual environment. It is recommended to use `pyenv virtualenv`:
+
+```shell
+$ pyenv virtualenv
+$ pyenv install 3.12 # install matching version currently used
+$ pyenv virtualenv 3.12 push-312 # you can name this whatever you like
+$ pyenv local push-312 # sets this venv to activate when entering dir
+$ pyenv activate push-312
+```
+
+5. Run `poetry install` to install all dependencies for testing.
+
+### Running Integration Tests
+To run the integration tests, simply run `make integration-tests` from your terminal at the root of the project.
+
+You can alter the verbosity and logging output by adding command line flags to the `PYTEST_ARGS ?=` variable in the root project Makefile. For example, for greater verbosity and stdout printing, add `-vv -s`.
+
+The test output is then emitted in your terminal instance. This includes the name of the tests, whether they pass or fail and any exceptions that are triggered during the test run.
+
+Integration tests in CI will be triggered automatically whenever a commit is pushed to a branch as a part of the CI PR workflow.
+
+### Debugging
+In some instances after making test changes, the test client can potentially hang in a dangling process. This can result in inaccurate results or tests not running correctly. You can run the following commands to determine the PID's of the offending processes and terminate them:
+```shell
+$ ps -fA | grep autopush
+# any result other than grep operation is dangling
+$ kill -s KILL <PID>
+```
 
 ## Firefox Testing
 
@@ -79,11 +120,19 @@ For desktop use, you can set `dom.push.loglevel` to `"debug"`. This will
 log all push messages to the Browser Console (Tools \> Web Developer \>
 Browser Console).
 
-### Performance Testing
+## Load Tests - Performance Testing
 
 Performance load tests can be found under the `tests/load` directory. These tests spawn
 multiple clients that connect to Autopush in order to simulate real-world load on the
 infrastructure. These tests use the Locust framework and are triggered manually at the
 discretion of the Autopush Engineering Team.
 
-For more details see the README.md file in the `tests/load` directory.
+For more details see the [README.md][load_tests_docs] file in the `tests/load` directory.
+
+[unit_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/
+[unit_tests_docs]: ./testing.md#unit-tests
+[bigtable_docs]: ./bigtable-emulation.md
+[integration_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/tests/integration
+[integration_tests_docs]: ./testing.md#integration-tests
+[load_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/tests/load
+[load_tests_docs]: https://github.com/mozilla-services/autopush-rs/blob/master/tests/load/README.md

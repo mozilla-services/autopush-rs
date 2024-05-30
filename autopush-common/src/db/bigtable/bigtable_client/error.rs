@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
-use backtrace::Backtrace;
+use actix_web::http::StatusCode;
+use deadpool::managed::{PoolError, TimeoutType};
 use thiserror::Error;
 
 use crate::errors::ReportableError;
@@ -81,6 +82,21 @@ impl Display for MutateRowStatus {
     }
 }
 
+impl MutateRowStatus {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            MutateRowStatus::OK => StatusCode::OK,
+            // Some of these were taken from the java-bigtable-hbase retry handlers
+            MutateRowStatus::Aborted
+            | MutateRowStatus::DeadlineExceeded
+            | MutateRowStatus::Internal
+            | MutateRowStatus::ResourceExhausted
+            | MutateRowStatus::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum BigTableError {
     #[error("Invalid Row Response: {0}")]
@@ -109,31 +125,39 @@ pub enum BigTableError {
     #[error("BigTable Admin Error: {0}")]
     Admin(String, Option<String>),
 
-    #[error("Bigtable Recycle request")]
-    Recycle,
-
-    /// General Pool builder errors.
+    /// General Pool errors
     #[error("Pool Error: {0}")]
-    Pool(String),
+    Pool(Box<PoolError<BigTableError>>),
+
+    /// Timeout occurred while getting a pooled connection
+    #[error("Pool Timeout: {0:?}")]
+    PoolTimeout(TimeoutType),
+
+    #[error("BigTable config error: {0}")]
+    Config(String),
+}
+
+impl BigTableError {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            BigTableError::PoolTimeout(_) => StatusCode::SERVICE_UNAVAILABLE,
+            BigTableError::Status(e, _) => e.status(),
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 }
 
 impl ReportableError for BigTableError {
-    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
-        None
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
-    }
-
     fn is_sentry_event(&self) -> bool {
-        // eventually, only capture important errors
-        //matches!(&self, BigTableError::Admin(_, _))
-        true
+        #[allow(clippy::match_like_matches_macro)]
+        match self {
+            BigTableError::PoolTimeout(_) => false,
+            _ => true,
+        }
     }
 
     fn metric_label(&self) -> Option<&'static str> {
-        let err = match &self {
+        let err = match self {
             BigTableError::InvalidRowResponse(_) => "storage.bigtable.error.invalid_row_response",
             BigTableError::InvalidChunk(_) => "storage.bigtable.error.invalid_chunk",
             BigTableError::Read(_) => "storage.bigtable.error.read",
@@ -141,15 +165,24 @@ impl ReportableError for BigTableError {
             BigTableError::Status(_, _) => "storage.bigtable.error.status",
             BigTableError::WriteTime(_) => "storage.bigtable.error.writetime",
             BigTableError::Admin(_, _) => "storage.bigtable.error.admin",
-            BigTableError::Recycle => "storage.bigtable.error.recycle",
             BigTableError::Pool(_) => "storage.bigtable.error.pool",
+            BigTableError::PoolTimeout(_) => "storage.bigtable.error.pool_timeout",
             BigTableError::GRPC(_) => "storage.bigtable.error.grpc",
+            BigTableError::Config(_) => "storage.bigtable.error.config",
         };
         Some(err)
     }
 
+    fn tags(&self) -> Vec<(&str, String)> {
+        #[allow(clippy::match_like_matches_macro)]
+        match self {
+            BigTableError::PoolTimeout(tt) => vec![("type", format!("{tt:?}").to_lowercase())],
+            _ => vec![],
+        }
+    }
+
     fn extras(&self) -> Vec<(&str, String)> {
-        match &self {
+        match self {
             BigTableError::InvalidRowResponse(s) => vec![("error", s.to_string())],
             BigTableError::InvalidChunk(s) => vec![("error", s.to_string())],
             BigTableError::GRPC(s) => vec![("error", s.to_string())],
@@ -166,7 +199,7 @@ impl ReportableError for BigTableError {
                 };
                 x
             }
-            BigTableError::Pool(s) => vec![("error", s.to_owned())],
+            BigTableError::Pool(e) => vec![("error", e.to_string())],
             _ => vec![],
         }
     }

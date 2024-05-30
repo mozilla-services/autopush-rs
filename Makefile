@@ -5,7 +5,7 @@ TEST_RESULTS_DIR ?= workspace/test-results
 PYTEST_ARGS ?=
 INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
 LOAD_TEST_DIR := $(TESTS_DIR)/load
-POETRY := poetry --directory $(TESTS_DIR)
+POETRY := --directory $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(TESTS_DIR)/pyproject.toml
 POETRY_LOCK := $(TESTS_DIR)/poetry.lock
@@ -13,11 +13,6 @@ FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
 INSTALL_STAMP := .install.stamp
 
-.PHONY: ddb
-
-ddb:
-	mkdir $@
-	curl -sSL http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz | tar xzvC $@
 
 .PHONY: install
 install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
@@ -98,3 +93,9 @@ load-clean:
       -p autopush-rs-load-tests \
       down
 	docker rmi locust
+
+.PHONY: doc-prev
+doc-prev:  ##  Generate live preview of autopush docs via browser
+	mdbook clean docs/
+	mdbook build docs/
+	mdbook serve docs/ --open

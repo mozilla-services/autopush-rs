@@ -109,12 +109,17 @@ pub trait DbClient: Send + Sync {
     #[allow(clippy::needless_lifetimes)]
     fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
-    fn box_clone(&self) -> Box<dyn DbClient>;
-
     /// Provide the module name.
     /// This was added for simple dual mode testing, but may be useful in
     /// other situations.
     fn name(&self) -> String;
+
+    /// Return the current deadpool Status (if using deadpool)
+    fn pool_status(&self) -> Option<deadpool::Status> {
+        None
+    }
+
+    fn box_clone(&self) -> Box<dyn DbClient>;
 }
 
 impl Clone for Box<dyn DbClient> {

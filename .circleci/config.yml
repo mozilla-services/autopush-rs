@@ -56,7 +56,7 @@ jobs:
 
   python-checks:
     docker:
-      - image: python:3.10-slim-bullseye
+      - image: python:3.12-slim-bullseye
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -79,17 +79,12 @@ jobs:
 
   test:
     docker:
-      - image: python:3.10-slim-bullseye
+      - image: python:3.12-slim-bullseye
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         environment:
           RUST_BACKTRACE: 1
-      - image: amazon/dynamodb-local:latest
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        command: -jar DynamoDBLocal.jar -sharedDb
       - image: google/cloud-sdk:latest
         auth:
           username: $DOCKER_USER
@@ -98,7 +93,6 @@ jobs:
     resource_class: xlarge
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
-      AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
       - checkout
       # Need to download the poetry.lock files so we can use their
@@ -158,21 +152,9 @@ jobs:
           name: Integration tests (Bigtable)
           command: make integration-test
           environment:
-            DB_DSN: grpc://localhost:8086
-            TEST_RESULTS_DIR: workspace/test-results
-      - run:
-          name: Integration tests (DynamoDB)
-          command: make integration-test
-          environment:
-            TEST_RESULTS_DIR: workspace/test-results
-      - run:
-          name: Integration tests (Dual Bigtable/DynamoDB)
-          command: make integration-test
-          environment:
             RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
             # PYTEST_ARGS: -sv
-            DB_DSN: dual
-            DB_SETTINGS: tests/integration/dual_test.json
+            DB_DSN: grpc://localhost:8086
             TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
@@ -313,7 +295,6 @@ jobs:
             docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
 workflows:
-  version: 2
 
   build-test-deploy:
     jobs:

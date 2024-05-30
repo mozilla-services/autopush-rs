@@ -91,8 +91,6 @@ impl Serialize for ApcError {
 #[derive(Error, Debug)]
 pub enum ApcErrorKind {
     #[error(transparent)]
-    Ws(#[from] tungstenite::Error),
-    #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
@@ -108,8 +106,6 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
-    #[error(transparent)]
-    DbError(#[from] crate::db::error::DbError),
     #[error("Error while validating token")]
     TokenHashValidation(#[source] openssl::error::ErrorStack),
     #[error("Error while creating secret")]
@@ -141,7 +137,7 @@ pub enum ApcErrorKind {
     #[error("Database Error: {0}")]
     DatabaseError(String),
 
-    // TODO: option this.
+    #[cfg(feature = "dynamodb")]
     #[error("Rusoto Error: {0}")]
     RusotoError(String),
 }
@@ -163,27 +159,18 @@ impl ApcErrorKind {
             Self::PongTimeout | Self::ExcessivePing => false,
             // Non-actionable Endpoint errors
             Self::PayloadError(_) => false,
-            #[cfg(feature = "bigtable")]
-            Self::DbError(crate::db::error::DbError::BTError(
-                crate::db::bigtable::BigTableError::Recycle,
-            )) => false,
             _ => true,
         }
     }
 
     pub fn metric_label(&self) -> Option<&'static str> {
         // TODO: add labels for skipped stuff
-        let label = match self {
-            Self::PongTimeout => "pong_timeout",
-            Self::ExcessivePing => "excessive_ping",
-            Self::PayloadError(_) => "payload",
-            #[cfg(feature = "bigtable")]
-            Self::DbError(crate::db::error::DbError::BTError(
-                crate::db::bigtable::BigTableError::Recycle,
-            )) => "bt_recycle",
-            _ => return None,
-        };
-        Some(label)
+        match self {
+            Self::PongTimeout => Some("pong_timeout"),
+            Self::ExcessivePing => Some("excessive_ping"),
+            Self::PayloadError(_) => Some("payload"),
+            _ => None,
+        }
     }
 }
 
@@ -198,14 +185,19 @@ pub trait ReportableError: std::error::Error {
     }
 
     /// Return a `Backtrace` for this Error if one was captured
-    fn backtrace(&self) -> Option<&Backtrace>;
-
+    fn backtrace(&self) -> Option<&Backtrace> {
+        None
+    }
     /// Whether this error is reported to Sentry
-    fn is_sentry_event(&self) -> bool;
+    fn is_sentry_event(&self) -> bool {
+        true
+    }
 
     /// Errors that don't emit Sentry events (!is_sentry_event()) emit an
     /// increment metric instead with this label
-    fn metric_label(&self) -> Option<&'static str>;
+    fn metric_label(&self) -> Option<&'static str> {
+        None
+    }
 
     /// Experimental: return tag key value pairs for metrics and Sentry
     fn tags(&self) -> Vec<(&str, String)> {

@@ -1,3 +1,108 @@
+<a name="1.71.2"></a>
+## 1.71.2 (2024-04-17)
+
+
+#### Bug Fixes
+
+*   a couple retry logic error messages were incorrect (#676) ([6cb6549b](https://github.com/mozilla-services/autopush-rs/commit/6cb6549b087a3ff44262cd796e45ec50d231cd37))
+
+#### Features
+
+*   Ensure that status and labels are propagated for DB errors (#679) ([5a1f2099](https://github.com/mozilla-services/autopush-rs/commit/5a1f20997ad1705c6ded3ace02f6f1a1be5a70ef))
+*   emit pool timeouts/conditional failures as metrics (not sentry) (#671) ([b4f01af8](https://github.com/mozilla-services/autopush-rs/commit/b4f01af8f68b157a39ec3bf4bfa2778f283652c0))
+*   Switch to randomized UAID for health check (#670) ([06093787](https://github.com/mozilla-services/autopush-rs/commit/060937875b34695d8c2be39425c35a1b71e007aa))
+
+#### Test
+
+* **load:**  Document the process for calibrating users per worker  (#661) ([c89627fd](https://github.com/mozilla-services/autopush-rs/commit/c89627fdad2708613acd59f480d44913f074b6a5))
+
+#### Doc
+
+* **load:**  Document the process for calibrating worker count (#666) ([de752ec4](https://github.com/mozilla-services/autopush-rs/commit/de752ec4e118c7218c461d9c2488529fc71f8a04))
+
+#### Refactor
+
+*   add initial async features for client (#653) ([22f058e6](https://github.com/mozilla-services/autopush-rs/commit/22f058e6b9d41b6a30b8ffb1aaaed1979d94c2da))
+
+#### Chore
+
+* **deps-dev:**
+  *  bump cryptography from 42.0.2 to 42.0.4 in /tests (#630) ([967465b2](https://github.com/mozilla-services/autopush-rs/commit/967465b22429fea77db9a6323f31055f269a4276))
+  *  bump idna from 3.6 to 3.7 in /tests (#678) ([0672bba4](https://github.com/mozilla-services/autopush-rs/commit/0672bba4e61b47e7143190a6765b4cfb9c7a6be6))
+  *  bump idna from 3.6 to 3.7 in /tests ([e8234982](https://github.com/mozilla-services/autopush-rs/commit/e8234982d44af22562b018d58e6661bd6bcd8f60))
+
+
+
+<a name="1.71.1"></a>
+## 1.71.1 (2024-03-19)
+
+
+#### Features
+
+*   introduce end_median for dual. (#663) ([38d6a6d1](https://github.com/mozilla-services/autopush-rs/commit/38d6a6d134a2a6f039b3126e1c7ec7c79c1c3c36))
+*   Switch to lighter weight health check (#662) ([133bcb53](https://github.com/mozilla-services/autopush-rs/commit/133bcb534070920f0db6192435f0d30016791e77))
+*   Swtich to lighter weight health check ([bed0f7f4](https://github.com/mozilla-services/autopush-rs/commit/bed0f7f42aa6439e6b5dec3a13749f0090bd3406))
+
+#### Bug Fixes
+
+*   dual mode needs its own spawn_sweeper (#658) ([1b4d5a9a](https://github.com/mozilla-services/autopush-rs/commit/1b4d5a9afa2535f0b7c9edd19756efe4b5f16622))
+
+
+
+<a name="1.71.0"></a>
+## 1.71.0 (2024-03-13)
+
+
+#### Features
+
+*   further special case another form of an incomplete router record (#655) ([396c7b04](https://github.com/mozilla-services/autopush-rs/commit/396c7b0497e66cd01079226cccd99f3dfe899196))
+*   evict idle connections from bigtable's db pool (#654) ([70b1e7b2](https://github.com/mozilla-services/autopush-rs/commit/70b1e7b2d224e18fb29e81b4f6109be8c4cb82ac))
+
+
+
+<a name="1.70.11"></a>
+## 1.70.11 (2024-03-07)
+
+
+#### Bug Fixes
+
+*   don't skip DbError in the ReportableError chain (#649) ([c9b97d13](https://github.com/mozilla-services/autopush-rs/commit/c9b97d13e20cfaa9a9caf4b9bc4620469cc166f9))
+
+
+
+<a name="1.70.10"></a>
+## 1.70.10 (2024-03-06)
+
+
+#### Features
+
+*   include tags/extras across the exception chain (#648) ([fb2b0ee7](https://github.com/mozilla-services/autopush-rs/commit/fb2b0ee770291e9347494110e733736f8e585844))
+
+
+
+<a name="1.70.9"></a>
+## 1.70.9 (2024-02-27)
+
+
+#### Features
+
+*   Make bigtable calls retryable (#591) ([12dd7b41](https://github.com/mozilla-services/autopush-rs/commit/12dd7b41e44c5dfdf58eceee4a8a14e8f9e0fcf7))
+*   special case "chid-only" records (#646) ([5ab83fb8](https://github.com/mozilla-services/autopush-rs/commit/5ab83fb832383d5d7889d27edcd80ec7159afb60))
+*   report db pool metrics (#644) ([93d4cd38](https://github.com/mozilla-services/autopush-rs/commit/93d4cd38a5ecd4a8428ad3f93cb2a910521769cd))
+*   Add timeouts for bigtable operations (#611) ([34964235](https://github.com/mozilla-services/autopush-rs/commit/349642355656a407be9edab089c18a6491332c49))
+
+
+
+<a name="1.70.8"></a>
+## 1.70.8 (2024-02-26)
+
+
+#### Bug Fixes
+
+*   don't ignore add_user errors (#640) ([6a91bce5](https://github.com/mozilla-services/autopush-rs/commit/6a91bce5525b019e904d5ec7c4f025b5b2e917a7))
+
+
+
 <a name="1.70.7"></a>
 ## 1.70.7 (2024-02-22)
 

@@ -10,7 +10,7 @@ CLUSTER='autopush-locust-load-test'
 TARGET='https://updates-autopush.stage.mozaws.net'
 SCOPE='https://www.googleapis.com/auth/cloud-platform'
 REGION='us-central1'
-WORKER_COUNT=150
+WORKER_COUNT=${WORKER_COUNT:-150}
 MACHINE_TYPE='c3d-standard-4' # 4 CPUs + 16GB Memory
 BOLD=$(tput bold)
 NORM=$(tput sgr0)
@@ -97,7 +97,7 @@ echo "==================== The script is used to create & delete the GKE cluster
 echo "==================== Do you want to create or setup the existing or delete GKE cluster? Select ${BOLD}create or delete or setup ${NORM}"
 while :
 do
-    read response
+    response=${1:-${COMMAND:-$(read r; echo $r)}}
     case $response in
         create) #Setup Kubernetes Cluster
             echo -e "==================== Creating the GKE cluster "

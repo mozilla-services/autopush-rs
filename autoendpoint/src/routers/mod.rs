@@ -3,6 +3,7 @@
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
+#[cfg(feature = "adm")]
 use crate::routers::adm::error::AdmError;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
@@ -12,12 +13,13 @@ use autopush_common::db::error::DbError;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use async_trait::async_trait;
+use autopush_common::errors::ReportableError;
 use std::collections::HashMap;
 use thiserror::Error;
 
 #[cfg(feature = "stub")]
 use self::stub::error::StubError;
-
+#[cfg(feature = "adm")]
 pub mod adm;
 pub mod apns;
 mod common;
@@ -78,6 +80,7 @@ impl From<RouterResponse> for HttpResponse {
 
 #[derive(Debug, Error)]
 pub enum RouterError {
+    #[cfg(feature = "adm")]
     #[error(transparent)]
     Adm(#[from] AdmError),
 
@@ -126,14 +129,14 @@ impl RouterError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
+            #[cfg(feature = "adm")]
             RouterError::Adm(e) => e.status(),
             RouterError::Apns(e) => e.status(),
-            RouterError::Fcm(e) => e.status(),
+            RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
 
             #[cfg(feature = "stub")]
             RouterError::Stub(e) => e.status(),
-
-            RouterError::SaveDb(_) => StatusCode::SERVICE_UNAVAILABLE,
+            RouterError::SaveDb(e) => e.status(),
 
             RouterError::UserWasDeleted | RouterError::NotFound => StatusCode::GONE,
 
@@ -150,6 +153,7 @@ impl RouterError {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
+            #[cfg(feature = "adm")]
             RouterError::Adm(e) => e.errno(),
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
@@ -176,37 +180,25 @@ impl RouterError {
             RouterError::Upstream { .. } => None,
         }
     }
+}
 
-    pub fn metric_label(&self) -> Option<&'static str> {
-        // NOTE: Some metrics are emitted for other Errors via handle_error
-        // callbacks, whereas some are emitted via this method. These 2 should
-        // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
-        let err = match self {
-            RouterError::Adm(AdmError::InvalidProfile | AdmError::NoProfile) => {
-                "notification.bridge.error.adm.profile"
-            }
-            RouterError::Apns(ApnsError::SizeLimit(_)) => {
-                "notification.bridge.error.apns.oversized"
-            }
-            RouterError::Fcm(FcmError::InvalidAppId(_) | FcmError::NoAppId) => {
-                "notification.bridge.error.fcm.badappid"
-            }
-            RouterError::TooMuchData(_) => "notification.bridge.error.too_much_data",
-            _ => "",
-        };
-        if !err.is_empty() {
-            return Some(err);
+impl ReportableError for RouterError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self {
+            RouterError::Apns(e) => Some(e),
+            RouterError::Fcm(e) => Some(e),
+            RouterError::SaveDb(e) => Some(e),
+            _ => None,
         }
-        None
     }
 
-    pub fn is_sentry_event(&self) -> bool {
+    fn is_sentry_event(&self) -> bool {
         match self {
+            #[cfg(feature = "adm")]
             RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
             // apns handle_error emits a metric for ApnsError::Unregistered
-            RouterError::Apns(ApnsError::SizeLimit(_))
-            | RouterError::Apns(ApnsError::Unregistered) => false,
-            RouterError::Fcm(e) => !matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId),
+            RouterError::Apns(e) => e.is_sentry_event(),
+            RouterError::Fcm(e) => e.is_sentry_event(),
             // common handle_error emits metrics for these
             RouterError::Authentication
             | RouterError::GCMAuthentication
@@ -215,13 +207,32 @@ impl RouterError {
             | RouterError::RequestTimeout
             | RouterError::TooMuchData(_)
             | RouterError::Upstream { .. } => false,
+            RouterError::SaveDb(e) => e.is_sentry_event(),
             _ => true,
         }
     }
 
-    pub fn extras(&self) -> Vec<(&str, String)> {
+    fn metric_label(&self) -> Option<&'static str> {
+        // NOTE: Some metrics are emitted for other Errors via handle_error
+        // callbacks, whereas some are emitted via this method. These 2 should
+        // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
         match self {
+            #[cfg(feature = "adm")]
+            RouterError::Adm(AdmError::InvalidProfile | AdmError::NoProfile) => {
+                Some("notification.bridge.error.adm.profile")
+            }
+            RouterError::Apns(e) => e.metric_label(),
+            RouterError::Fcm(e) => e.metric_label(),
+            RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),
+            _ => None,
+        }
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        match &self {
+            RouterError::Apns(e) => e.extras(),
             RouterError::Fcm(e) => e.extras(),
+            RouterError::SaveDb(e) => e.extras(),
             _ => vec![],
         }
     }

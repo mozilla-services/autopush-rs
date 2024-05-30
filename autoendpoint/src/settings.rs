@@ -5,6 +5,7 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
+#[cfg(feature = "adm")]
 use crate::routers::adm::settings::AdmSettings;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
@@ -44,6 +45,7 @@ pub struct Settings {
 
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
+    #[cfg(feature = "adm")]
     pub adm: AdmSettings,
 
     #[cfg(feature = "stub")]
@@ -76,6 +78,7 @@ impl Default for Settings {
             statsd_label: "autoendpoint".to_string(),
             fcm: FcmSettings::default(),
             apns: ApnsSettings::default(),
+            #[cfg(feature = "adm")]
             adm: AdmSettings::default(),
             #[cfg(feature = "stub")]
             stub: StubSettings::default(),
@@ -100,9 +103,8 @@ impl Settings {
 
         let built = config.build()?;
 
-        built
-            .try_deserialize::<Self>()
-            .map_err(|error| match error {
+        built.try_deserialize::<Self>().map_err(|error| {
+            match error {
                 // Configuration errors are not very sysop friendly, Try to make them
                 // a bit more 3AM useful.
                 ConfigError::Message(error_msg) => {
@@ -119,7 +121,8 @@ impl Settings {
                     error!("Configuration error: Other: {:?}", &error);
                     error
                 }
-            })
+            }
+        })
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.

@@ -53,7 +53,7 @@ actix-service = "2.0"
 docopt = "1.1"
 
 [features]
-default = ["dual"]
+default = ["dual", "emulator"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 dynamodb = ["autopush_common/dynamodb", "autoconnect_settings/dynamodb"]
 dual = ["bigtable", "dynamodb"]
