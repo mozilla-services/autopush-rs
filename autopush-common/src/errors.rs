@@ -92,10 +92,6 @@ pub enum ApcErrorKind {
     #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
-    Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    Httparse(#[from] httparse::Error),
-    #[error(transparent)]
     UuidError(#[from] uuid::Error),
     #[error(transparent)]
     ParseIntError(#[from] num::ParseIntError),
@@ -115,9 +111,7 @@ impl ApcErrorKind {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            Self::Json(_) | Self::ParseIntError(_) | Self::ParseUrlError(_) | Self::Httparse(_) => {
-                StatusCode::BAD_REQUEST
-            }
+            Self::ParseIntError(_) | Self::ParseUrlError(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
