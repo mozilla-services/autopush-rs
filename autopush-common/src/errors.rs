@@ -103,10 +103,6 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
-    #[error("websocket pong timeout")]
-    PongTimeout,
-    #[error("client sent too many pings")]
-    ExcessivePing,
     #[error("Broadcast Error: {0}")]
     BroadcastError(String),
     #[error("Payload Error: {0}")]
@@ -129,7 +125,6 @@ impl ApcErrorKind {
     pub fn is_sentry_event(&self) -> bool {
         match self {
             // TODO: Add additional messages to ignore here.
-            Self::PongTimeout | Self::ExcessivePing => false,
             // Non-actionable Endpoint errors
             Self::PayloadError(_) => false,
             _ => true,
@@ -139,8 +134,6 @@ impl ApcErrorKind {
     pub fn metric_label(&self) -> Option<&'static str> {
         // TODO: add labels for skipped stuff
         match self {
-            Self::PongTimeout => Some("pong_timeout"),
-            Self::ExcessivePing => Some("excessive_ping"),
             Self::PayloadError(_) => Some("payload"),
             _ => None,
         }
