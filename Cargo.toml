@@ -71,7 +71,6 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 rusoto_core = { version = "0.47", default-features = false, features = [
   "rustls",
 ] } # locked by serde_dynamodb 0.9
-rusoto_credential = { version = "0.47" } # locked by serde_dynamodb 0.9
 rusoto_dynamodb = { version = "0.47", default-features = false, features = [
   "rustls",
 ] } # locked by serde_dynamodb 0.9
