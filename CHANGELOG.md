@@ -1,3 +1,17 @@
+<a name="1.71.3"></a>
+## 1.71.3 (2024-05-31)
+
+
+#### Chore
+
+*   update per RUSTSEC-2024-0336 (#682) ([e6293090](https://github.com/mozilla-services/autopush-rs/commit/e629309049a3cfb18858574fcb5bf94c22d1de55))
+
+#### Refactor
+
+*   upgrade all integration tests to asyncio async await  (#667) ([c7448f45](https://github.com/mozilla-services/autopush-rs/commit/c7448f45033633e04b3e4ba61befa9e220b4feba))
+
+
+
 <a name="1.71.2"></a>
 ## 1.71.2 (2024-04-17)
 
