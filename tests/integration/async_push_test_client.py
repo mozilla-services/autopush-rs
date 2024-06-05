@@ -217,15 +217,15 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             headers["Topic"] = topic
         body: str | bytes = data or ""
         method: str = "POST"
-        print("#"*20)
+        print("#" * 20)
         print(f"VAPID {vapid}")
 
         print(f"method: {method} body: {body!r}")
         print(f"url {url}")
         print(f"url.geturl() {url.geturl()}")
-        print(f"body content {body}")
+        print(f"body content {body!r}")
         print(f"Headers {headers}")
-        print("#"*20)
+        print("#" * 20)
         log.debug(f"{method} body: {body!r}")
         log.debug(f"  headers: {headers}")
         async with httpx.AsyncClient() as httpx_client:
