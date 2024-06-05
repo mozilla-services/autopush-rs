@@ -266,7 +266,7 @@ fn validate_vapid_jwt(
 
     let public_key = decode_public_key(public_key)?;
     let mut validation = Validation::new(Algorithm::ES256);
-    validation.set_audience(&["https://push.services.mozilla.org"]);
+    validation.set_audience(&["https://push.services.mozilla.org", "http://127.0.0.1:9160"]);
     validation.set_required_spec_claims(&["exp", "aud", "sub"]);
 
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
