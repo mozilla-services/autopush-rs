@@ -45,10 +45,9 @@ has read through.
 
 When table rotation is allowed, the router table uses the `curmonth`
 field to indicate the last month the client has read notifications
-through. This is independent of the last_connect since it is possible
+through. This field is updated for a new month when the client connects **after**
+it has ack'd all the notifications out of the last month, since it is possible
 for a client to connect, fail to read its notifications, then reconnect.
-This field is updated for a new month when the client connects **after**
-it has ack'd all the notifications out of the last month.
 
 To avoid issues with time synchronization, the node the client is
 connected to acts as the source of truth for when the month has flipped
