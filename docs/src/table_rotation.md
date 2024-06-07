@@ -36,18 +36,20 @@ on the prior month may then be lowered.
 ## DynamoDB Rotating Message Table Interaction Rules (legacy)
 
 Due to the complexity of having notifications spread across two tables,
-several rules are used to avoid losing messages during the month
+several rules were used to avoid losing messages during the month
 transition.
 
 The logic for connection nodes is more complex, since only the
 connection node knows when the client connects, and how many messages it
 has read through.
 
-When table rotation is allowed, the router table uses the `curmonth`
-field to indicate the last month the client has read notifications
-through. This field is updated for a new month when the client connects **after**
-it has ack'd all the notifications out of the last month, since it is possible
+When table rotation was allowed, the router table used the `curmonth`
+field to indicate the last month the client had read notifications
+through. This was independent of the last_connect since it was possible
 for a client to connect, fail to read its notifications, then reconnect.
+This field was updated for a new month when the client connected **after**
+it had ack'd all the notifications out of the last month.
+
 
 To avoid issues with time synchronization, the node the client is
 connected to acts as the source of truth for when the month has flipped

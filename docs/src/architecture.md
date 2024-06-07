@@ -128,6 +128,7 @@ router record for a `UAID`.
 | router_type  | Router Type (See [`autoendpoint::extractors::routers::RouterType`])              |
 | node_id      | Hostname of the connection node the client is connected to.                      |
 | connected_at | Precise time (in milliseconds) the client connected to the node.                 |
+| last_connect | **global secondary index** - year-month-hour that the client has last connected. |
 | curmonth     | Message table name to use for storing `WebPush` messages.                        |
 
 Autopush DynamoDB used an optimistic deletion policy for `node_id` to avoid
@@ -139,6 +140,10 @@ router table.
 If an endpoint node discovered during a delivery attempt that the
 `node_id` on record did not have the client connected, it would clear
 the `node_id` record for that `UAID` in the router table.
+
+The `last_connect` was a secondary global index to allow for
+maintenance scripts to locate and purge stale client records and
+messages.
 
 Clients with a `router_type` of `webpush` drain stored messages from the
 message table named `curmonth` after completing their initial handshake.
@@ -157,6 +162,7 @@ that are of the `router` family. These values are similar to the ones listed abo
 | router_type  | Router Type (See [`autoendpoint::extractors::routers::RouterType`])              |
 | node_id      | Hostname of the connection node the client is connected to.                      |
 | connected_at | Precise time (in milliseconds) the client connected to the node.                 |
+| last_connect | year-month-hour that the client has last connected.                              |
 
 ### Message Table Schema
 
