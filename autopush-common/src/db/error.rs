@@ -1,6 +1,5 @@
 use actix_web::http::StatusCode;
 
-use backtrace::Backtrace;
 #[cfg(feature = "dynamodb")]
 use rusoto_core::RusotoError;
 #[cfg(feature = "dynamodb")]
@@ -101,10 +100,6 @@ impl ReportableError for DbError {
             DbError::BTError(e) => Some(e),
             _ => None,
         }
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
     }
 
     fn is_sentry_event(&self) -> bool {

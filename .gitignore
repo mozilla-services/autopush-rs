@@ -42,7 +42,6 @@ docs/old
 *.local.toml
 .cargo/config
 .vscode/*
-dynamodb-local-metadata.json
 
 # circleCI
 workspace
