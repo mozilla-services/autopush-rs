@@ -19,7 +19,6 @@ use crate::util::sec_since_epoch;
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
-use chrono::Utc;
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
@@ -651,12 +650,4 @@ impl DbClient for DdbClientImpl {
     fn name(&self) -> String {
         "DynamoDb".to_owned()
     }
-}
-
-/// Indicate whether this last_connect falls in the current month
-pub(crate) fn has_connected_this_month(user: &User) -> bool {
-    user.last_connect.map_or(false, |v| {
-        let pat = Utc::now().format("%Y%m").to_string();
-        v.to_string().starts_with(&pat)
-    })
 }

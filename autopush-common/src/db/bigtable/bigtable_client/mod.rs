@@ -1459,7 +1459,6 @@ mod tests {
             router_type: "webpush".to_owned(),
             connected_at,
             router_data: None,
-            last_connect: Some(connected_at),
             node_id: Some(node_id.clone()),
             ..Default::default()
         };
