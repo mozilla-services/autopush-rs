@@ -132,7 +132,6 @@ impl UnidentifiedClient {
                         return Err(SMErrorKind::AlreadyConnected.into());
                     }
                     user.connected_at = connected_at;
-                    user.set_last_connect();
                     if !self.app_state.db.update_user(&mut user).await? {
                         let _ = self.app_state.metrics.incr("ua.already_connected");
                         return Err(SMErrorKind::AlreadyConnected.into());
@@ -150,8 +149,6 @@ impl UnidentifiedClient {
             // change from the previous state machine impl)
         }
 
-        // TODO: NOTE: A new User doesn't get a `set_last_connect()` (matching
-        // the previous impl)
         let user = User {
             current_month: self
                 .app_state
