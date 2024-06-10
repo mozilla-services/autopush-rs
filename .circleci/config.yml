@@ -38,7 +38,7 @@ jobs:
   audit:
     docker:
       # NOTE: update version for all # RUST_VER
-      - image: rust:1.76
+      - image: rust:1.78
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -56,7 +56,7 @@ jobs:
 
   python-checks:
     docker:
-      - image: python:3.12-slim-bullseye
+      - image: python:3.12-slim-bookworm
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -79,7 +79,7 @@ jobs:
 
   test:
     docker:
-      - image: python:3.12-slim-bullseye
+      - image: python:3.12-slim-bookworm
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -124,14 +124,14 @@ jobs:
           name: Set up Rust
           command: |
             apt update
-            apt install build-essential curl libstdc++6 libstdc++-10-dev libssl-dev pkg-config -y
+            apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
             apt install cmake -y
             # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.76 -y
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.78 -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build --features=emulator --features=dual
+            cargo build --features=emulator
       - run:
           name: Check formatting
           command: |
@@ -217,7 +217,7 @@ jobs:
 
   build-load-test:
     docker:
-      - image: cimg/base:2023.12
+      - image: cimg/base:2024.06
     steps:
       - checkout
       - setup_remote_docker:
@@ -273,7 +273,7 @@ jobs:
 
   deploy-load-test:
     docker:
-      - image: cimg/base:2023.12
+      - image: cimg/base:2024.06
     steps:
       - checkout
       - attach_workspace:
