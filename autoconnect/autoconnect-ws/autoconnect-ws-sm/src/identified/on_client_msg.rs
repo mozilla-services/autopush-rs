@@ -98,13 +98,12 @@ impl WebPushClient {
             self.deferred_add_user = None;
         } else {
             // Check to see if the UAID is still valid.
-            if self
+            if !self
                 .app_state
                 .db
-                .get_user(&self.uaid)
+                .check_user(&self.uaid)
                 .await
                 .map_err(|_| SMErrorKind::UaidReset)?
-                .is_none()
             {
                 return Err(SMErrorKind::UaidReset);
             }
