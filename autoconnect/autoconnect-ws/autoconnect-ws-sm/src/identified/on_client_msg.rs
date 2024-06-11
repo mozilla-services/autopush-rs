@@ -96,6 +96,18 @@ impl WebPushClient {
             );
             self.app_state.db.add_user(user).await?;
             self.deferred_add_user = None;
+        } else {
+            // Check to see if the UAID is still valid.
+            if self
+                .app_state
+                .db
+                .get_user(&self.uaid)
+                .await
+                .map_err(|_| SMErrorKind::UaidReset)?
+                .is_none()
+            {
+                return Err(SMErrorKind::UaidReset);
+            }
         }
 
         let endpoint = make_endpoint(
@@ -326,5 +338,41 @@ impl WebPushClient {
         } else {
             Ok(vec![])
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::identified::{ClientFlags, SessionStatistics, WebPushClient};
+    use autopush_common::util::user_agent::UserAgentInfo;
+
+    /// Test that you can't register if you don't exist.
+    #[tokio::test]
+    async fn test_do_register_unregistered() {
+        // Mostly a garbage client, but note that the deferred_add_user is None.
+        let mut client = WebPushClient {
+            uaid: Uuid::new_v4(),
+            uid: Uuid::new_v4(),
+            ua_info: UserAgentInfo::default(),
+            broadcast_subs: Default::default(),
+            flags: ClientFlags::default(),
+            ack_state: Default::default(),
+            sent_from_storage: 0,
+            deferred_add_user: None,
+            connected_at: sec_since_epoch(),
+            last_ping: sec_since_epoch(),
+            current_timestamp: None,
+            stats: SessionStatistics::default(),
+            app_state: Arc::new(autoconnect_settings::AppState::default()),
+        };
+        let result = client.do_register(&Uuid::new_v4(), None).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            SMErrorKind::UaidReset.to_string()
+        );
     }
 }
