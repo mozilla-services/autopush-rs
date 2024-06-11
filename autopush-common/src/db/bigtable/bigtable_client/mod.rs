@@ -509,7 +509,7 @@ impl BigTableClientImpl {
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
-                set_cell.family_name = family_id.clone();
+                set_cell.family_name.clone_from(&family_id);
                 set_cell.set_column_qualifier(cell.qualifier.clone().into_bytes());
                 set_cell.set_value(cell.value);
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
@@ -1473,7 +1473,6 @@ mod tests {
             router_type: "webpush".to_owned(),
             connected_at,
             router_data: None,
-            last_connect: Some(connected_at),
             node_id: Some(node_id.clone()),
             ..Default::default()
         };

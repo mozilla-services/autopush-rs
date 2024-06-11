@@ -10,7 +10,6 @@ name = "autopush_common"
 
 [dependencies]
 actix-web.workspace = true
-actix-http.workspace = true
 backtrace.workspace = true
 base64.workspace = true
 cadence.workspace = true
@@ -22,20 +21,16 @@ futures.workspace = true
 futures-util.workspace = true
 hex.workspace = true
 httparse.workspace = true
-hyper.workspace = true
 lazy_static.workspace = true
-log.workspace = true
 mockall.workspace = true
 openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 rusoto_core = { workspace = true, optional = true }
-rusoto_credential = { workspace = true, optional = true }
 rusoto_dynamodb = { workspace = true, optional = true }
 sentry-backtrace.workspace = true
 sentry.workspace = true
-sentry-core.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
 serde_dynamodb.workspace = true
@@ -47,18 +42,13 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
-tokio.workspace = true
-tokio-core.workspace = true
-# tokio-postgres.workspace = true
 thiserror.workspace = true
-tungstenite.workspace = true
 uuid.workspace = true
 url.workspace = true
 
 again = "0.1"
 async-trait = "0.1"
 gethostname = "0.4"
-futures-backoff = "0.1.0"
 num_cpus = "1.16"
 woothee = "0.13"
 
@@ -88,7 +78,7 @@ bigtable = [
     "dep:protobuf",
     "dep:form_urlencoded",
 ]
-dynamodb = ["dep:rusoto_core", "dep:rusoto_credential", "dep:rusoto_dynamodb"]
+dynamodb = ["dep:rusoto_core", "dep:rusoto_dynamodb"]
 dual = ["dynamodb", "bigtable"]
 aws = []
 emulator = [

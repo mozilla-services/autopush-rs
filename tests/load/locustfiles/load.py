@@ -4,6 +4,7 @@
 
 """Load test shape module."""
 import math
+import os
 from typing import Type
 
 import numpy
@@ -51,9 +52,13 @@ class AutopushLoadTestShape(LoadTestShape):
     the WORKERS_COUNT and USERS_PER_WORKER values must be changed respectively.
     """
 
-    MAX_RUN_TIME: int = 600  # 10 minutes
-    WORKER_COUNT: int = 150  # Must match value defined in setup_k8s.sh
-    USERS_PER_WORKER: int = 1000  # Number of users supported on a c3d-standard-4 hosted worker
+    MAX_RUN_TIME: int = int(os.environ.get("MAX_RUN_TIME", 600))  # 10 minutes
+    WORKER_COUNT: int = int(
+        os.environ.get("WORKER_COUNT", 150)
+    )  # Must match value defined in setup_k8s.sh
+    USERS_PER_WORKER: int = int(
+        os.environ.get("USERS_PER_WORKER", 1000)
+    )  # Number of users supported on a worker running on a n1-standard-2
     MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
     user_classes: list[Type[User]] = [AutopushUser]
@@ -77,7 +82,7 @@ class AutopushLoadTestShape(LoadTestShape):
 
         None: Instruction to stop the load test
         """
-        run_time: int = self.get_run_time()
+        run_time: int = int(self.get_run_time())
         if run_time > self.MAX_RUN_TIME:
             return None
 

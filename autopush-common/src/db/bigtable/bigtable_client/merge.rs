@@ -191,7 +191,10 @@ impl RowMerger {
 
         let cell = &mut row.cell_in_progress;
         if chunk.has_family_name() {
-            cell.family = chunk.take_family_name().get_value().to_owned();
+            chunk
+                .take_family_name()
+                .get_value()
+                .clone_into(&mut cell.family);
         } else {
             if self.last_seen_cell_family.is_none() {
                 return Err(BigTableError::InvalidChunk(
@@ -294,7 +297,7 @@ impl RowMerger {
         if row_in_progress.last_family != cell_in_progress.family {
             family_changed = true;
             let cip_family = cell_in_progress.family.clone();
-            row_in_progress.last_family = cip_family.clone();
+            row_in_progress.last_family.clone_from(&cip_family);
 
             // append the cell in progress to the completed cells for this family in the row.
             //
@@ -314,7 +317,7 @@ impl RowMerger {
         // If the family changed, or the cell name changed
         if family_changed || row_in_progress.last_qualifier != cell_in_progress.qualifier {
             let qualifier = cell_in_progress.qualifier.clone();
-            row_in_progress.last_qualifier = qualifier.clone();
+            row_in_progress.last_qualifier.clone_from(&qualifier);
             let qualifier_cells = vec![Cell {
                 family: cell_in_progress.family.clone(),
                 timestamp: cell_in_progress.timestamp,
