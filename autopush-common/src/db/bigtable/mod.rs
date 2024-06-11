@@ -167,7 +167,7 @@ impl TryFrom<&str> for BigTableDbSettings {
         // There's a small chance that this could be reported as "unspecified", so this
         // removes that confusion.
         if me.profile_id.is_empty() {
-            me.profile_id = "default".to_owned();
+            "default".clone_into(&mut me.profile_id);
         }
 
         Ok(me)
