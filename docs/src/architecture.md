@@ -44,16 +44,34 @@ If you are only running Autopush locally, you can skip to `running` as
 later topics in this document apply only to developing or production
 scale deployments of Autopush.
 
+## WebPush Sort Keys
+
+Messages for WebPush are stored using a partition key + sort key, originally the sort key was:
+
+    CHID : Encrypted(UAID: CHID)
+
+The encrypted portion was returned as the Location to the Application Server. Decrypting it resulted in enough information to create the sort key so that the message could be deleted and located again.
+
+For WebPush Topic messages, a new scheme was needed since the only way to locate the prior message is the UAID + CHID + Topic. Using Encryption in the sort key is therefore not useful since it would change every update.
+
+The sort key scheme for WebPush messages is:
+
+    VERSION : CHID : TOPIC
+
+To ensure updated messages are not deleted, each message will still have an update-id key/value in its item.
+
+Non-versioned messages are assumed to be original messages from before this scheme was adopted.
+
+``VERSION`` is a 2-digit 0-padded number, starting at 01 for Topic messages.
+
 ## Storage Tables
 
-Autopush uses a key / value data storage system. It can either use
-AWS DynamoDB, Google Cloud Bigtable, or a specific combination of the
-two.
+Autopush uses Google Cloud Bigtable as a key / value data storage system.
 
-### DynamoDB
+### DynamoDB (legacy)
 
-For DynamoDB, Autopush uses a single router and messages table.
-On startup, Autopush will create these tables.
+Previously, for DynamoDB, Autopush used a single router and messages table.
+On startup, Autopush created these tables.
 For more information on DynamoDB tables, see
 <http://docs.aws.amazon.com/amazondynamodb/latest/gettingstartedguide/Welcome.html>
 
@@ -89,13 +107,15 @@ Please note, this document will refer to the `message` table and the `router` ta
 legacy reasons. Please consider these to be the same as the `message` and `router` cell
 families.
 
+
+
 ### Router Table Schema
 
 The router table contains info about how to send out the incoming message.
 
-#### DynamoDB
+#### DynamoDB (legacy)
 
-The router table stores metadata for a given `UAID` as well as which
+The router table stored metadata for a given `UAID` as well as which
 month table should be used for clients with a `router_type` of
 `webpush`.
 
@@ -111,23 +131,23 @@ router record for a `UAID`.
 | last_connect | **global secondary index** - year-month-hour that the client has last connected. |
 | curmonth     | Message table name to use for storing `WebPush` messages.                        |
 
-Autopush uses an optimistic deletion policy for `node_id` to avoid
+Autopush DynamoDB used an optimistic deletion policy for `node_id` to avoid
 delete calls when not needed. During a delivery attempt, the endpoint
-will check the `node_id` for the corresponding `UAID`. If the client is
-not connected, it will clear the `node_id` record for that `UAID` in the
+would check the `node_id` for the corresponding `UAID`. If the client was
+not connected, it would clear the `node_id` record for that `UAID` in the
 router table.
 
-If an endpoint node discovers during a delivery attempt that the
-`node_id` on record does not have the client connected, it will clear
+If an endpoint node discovered during a delivery attempt that the
+`node_id` on record did not have the client connected, it would clear
 the `node_id` record for that `UAID` in the router table.
 
-The `last_connect` has a secondary global index on it to allow for
+The `last_connect` was a secondary global index to allow for
 maintenance scripts to locate and purge stale client records and
 messages.
 
 Clients with a `router_type` of `webpush` drain stored messages from the
 message table named `curmonth` after completing their initial handshake.
-If the `curmonth` entry is not the current month then it updates it to
+If the `curmonth` entry was not the current month then it updated it to
 store new messages in the latest message table after stored message
 retrieval.
 
@@ -149,22 +169,22 @@ that are of the `router` family. These values are similar to the ones listed abo
 The message table stores messages for users while they're offline or
 unable to get immediate message delivery.
 
-#### DynamoDB
+#### DynamoDB (legacy)
 
 |               |                                                                                                                                       |
 |---------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | uaid          | **partition key** - `UAID`                                                                                                            |
 | chidmessageid | **sort key** - `CHID` + `Message-ID`.                                                                                                 |
-| chids         | Set of `CHID` that are valid for a given user. This entry is only present in the item when `chidmessageid` is a space.                |
+| chids         | Set of `CHID` that are valid for a given user. This entry was only present in the item when `chidmessageid` is a space.                |
 | data          | Payload of the message, provided in the Notification body.                                                                            |
 | headers       | HTTP headers for the Notification.                                                                                                    |
 | ttl           | Time-To-Live for the Notification.                                                                                                    |
 | timestamp     | Time (in seconds) that the message was saved.                                                                                         |
-| updateid      | UUID generated when the message is stored to track if the message is updated between a client reading it and attempting to delete it. |
+| updateid      | UUID generated when the message was stored to track if the message was updated between a client reading it and attempting to delete it. |
 
-The subscribed channels are stored as `chids` in a record stored with a
+The subscribed channels were stored as `chids` in a record stored with a
 blank space set for `chidmessageid`. Before storing or delivering a
-`Notification` a lookup is done against these `chids`.
+`Notification` a lookup was done against these `chids`.
 
 #### Bigtable
 

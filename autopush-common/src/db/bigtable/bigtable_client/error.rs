@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use backtrace::Backtrace;
+use actix_web::http::StatusCode;
 use deadpool::managed::{PoolError, TimeoutType};
 use thiserror::Error;
 
@@ -82,6 +82,21 @@ impl Display for MutateRowStatus {
     }
 }
 
+impl MutateRowStatus {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            MutateRowStatus::OK => StatusCode::OK,
+            // Some of these were taken from the java-bigtable-hbase retry handlers
+            MutateRowStatus::Aborted
+            | MutateRowStatus::DeadlineExceeded
+            | MutateRowStatus::Internal
+            | MutateRowStatus::ResourceExhausted
+            | MutateRowStatus::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum BigTableError {
     #[error("Invalid Row Response: {0}")]
@@ -122,15 +137,17 @@ pub enum BigTableError {
     Config(String),
 }
 
+impl BigTableError {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            BigTableError::PoolTimeout(_) => StatusCode::SERVICE_UNAVAILABLE,
+            BigTableError::Status(e, _) => e.status(),
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 impl ReportableError for BigTableError {
-    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
-        None
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
-    }
-
     fn is_sentry_event(&self) -> bool {
         #[allow(clippy::match_like_matches_macro)]
         match self {

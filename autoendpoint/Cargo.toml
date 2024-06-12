@@ -24,8 +24,6 @@ openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
-rusoto_core.workspace = true
-rusoto_dynamodb.workspace = true
 sentry.workspace = true
 sentry-actix.workspace = true
 sentry-core.workspace = true
@@ -61,6 +59,7 @@ yup-oauth2 = "8.1"
 #ureq={ version="2.4", features=["json"] }
 
 [dev-dependencies]
+deadpool = { workspace = true }
 mockall.workspace = true
 mockito = "0.31"
 tempfile = "3.2.0"
@@ -72,3 +71,4 @@ bigtable = ["autopush_common/bigtable"]
 dynamodb = ["autopush_common/dynamodb"]
 dual = ["bigtable", "dynamodb"]
 emulator = ["bigtable"]
+adm = []

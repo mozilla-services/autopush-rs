@@ -1,4 +1,5 @@
-use backtrace::Backtrace;
+use actix_web::http::StatusCode;
+
 #[cfg(feature = "dynamodb")]
 use rusoto_core::RusotoError;
 #[cfg(feature = "dynamodb")]
@@ -81,6 +82,17 @@ pub enum DbError {
     Backoff(String),
 }
 
+impl DbError {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            #[cfg(feature = "bigtable")]
+            Self::BTError(e) => e.status(),
+            Self::Backoff(_) => StatusCode::SERVICE_UNAVAILABLE,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 impl ReportableError for DbError {
     fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
         match &self {
@@ -88,10 +100,6 @@ impl ReportableError for DbError {
             DbError::BTError(e) => Some(e),
             _ => None,
         }
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
     }
 
     fn is_sentry_event(&self) -> bool {
