@@ -1,7 +1,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-FROM python:3.12-slim-bullseye
+FROM python:3.12-slim-bookworm
 
 LABEL org.opencontainers.image.authors="contextual-services-team@mozilla.com"
 
