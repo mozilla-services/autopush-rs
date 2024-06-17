@@ -86,9 +86,6 @@ available in the virtualenv `bin/` directory:
 | `endpoint_diagnostic` | Runs Endpoint diagnostics         |
 | `autokey`             | Endpoint encryption key generator |
 
-If you are planning on using DynamoDB as your storage, you will need to have a [boto config
-file](http://boto3.readthedocs.io/en/docs/guide/quickstart.html#configuration)
-file or `AWS` environment keys setup.
 
 If you are planning on using Google Cloud Bigtable, you will need to configure
 your `GOOGLE_APPLICATION_CREDENTIALS`. See [How Application Default Credentials works](https://cloud.google.com/docs/authentication/application-default-credentials)
@@ -122,37 +119,6 @@ This specifies the URL to the storage system to use. See following sections for 
 
 **db_settings**  
 This is a serialized JSON dictionary containing the storage specific settings.
-
-## Using a Local DynamoDB Server
-
-Amazon supplies a [Local DynamoDB Java
-server](http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Tools.DynamoDBLocal.html)
-to use for local testing that implements the complete DynamoDB API. This
-is used for automated unit testing on Travis and can be used to run
-autopush locally for testing.
-
-You will need the Java JDK 6.x or newer.
-
-To setup the server locally:
-
-``` bash
-mkdir ddb
-curl -sSL http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz | tar xzvC ddb/
-java -Djava.library.path=./ddb/DynamoDBLocal_lib -jar ./ddb/DynamoDBLocal.jar -sharedDb -inMemory
-```
-
-An example [boto config
-file](http://boto3.readthedocs.io/en/docs/guide/quickstart.html#configuration)
-is provided in `automock/boto.cfg` that directs autopush to your local
-DynamoDB instance.
-
-The `db_dsn` to use for this would be the same as what is specified in the `AWS_LOCAL_DYNAMODB` environment variable. e.g. `http://127.0.0.1:8000`
-
-The `db_settings` contains a JSON dictionary indicating the names of the message and router table (remember to escape these values for whatever system you are using):
-
-```json
-{"message_table":"message","router_table":"router"}
-```
 
 ## Using Google Bigtable Emulator locally
 
@@ -190,7 +156,7 @@ For example, if we were to use the values from the initializion script above (re
 {"message_family":"message","message_topic_family":"message_topic","router_family":"router","table_name":"projects/test/instances/test/tables/autopush"}
 ```
 
-## Using the "Dual" storage configuration
+## Using the "Dual" storage configuration (legacy)
 
 Dual is a temporary system to be used to transition user data from one system to another. The "primary" system is read/write, while the "secondary" is read only, and is only read when a value is not found in the "primary" storage.
 

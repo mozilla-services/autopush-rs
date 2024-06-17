@@ -1,6 +1,5 @@
 //! Error handling for common autopush functions
 
-use std::any::Any;
 use std::fmt::{self, Display};
 use std::io;
 use std::num;
@@ -91,15 +90,7 @@ impl Serialize for ApcError {
 #[derive(Error, Debug)]
 pub enum ApcErrorKind {
     #[error(transparent)]
-    Ws(#[from] tungstenite::Error),
-    #[error(transparent)]
     Io(#[from] io::Error),
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    Httparse(#[from] httparse::Error),
-    #[error(transparent)]
-    MetricError(#[from] cadence::MetricError),
     #[error(transparent)]
     UuidError(#[from] uuid::Error),
     #[error(transparent)]
@@ -108,49 +99,19 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
-    #[error("Error while validating token")]
-    TokenHashValidation(#[source] openssl::error::ErrorStack),
-    #[error("Error while creating secret")]
-    RegistrationSecretHash(#[source] openssl::error::ErrorStack),
-
-    #[error("thread panicked")]
-    Thread(Box<dyn Any + Send>),
-    #[error("websocket pong timeout")]
-    PongTimeout,
-    #[error("repeat uaid disconnect")]
-    RepeatUaidDisconnect,
-    #[error("invalid state transition, from: {0}, to: {1}")]
-    InvalidStateTransition(String, String),
-    #[error("invalid json: {0}")]
-    InvalidClientMessage(String),
-    #[error("server error fetching messages")]
-    MessageFetch,
-    #[error("unable to send to client")]
-    SendError,
-    #[error("client sent too many pings")]
-    ExcessivePing,
-
     #[error("Broadcast Error: {0}")]
     BroadcastError(String),
     #[error("Payload Error: {0}")]
     PayloadError(String),
     #[error("General Error: {0}")]
     GeneralError(String),
-    #[error("Database Error: {0}")]
-    DatabaseError(String),
-
-    // TODO: option this.
-    #[error("Rusoto Error: {0}")]
-    RusotoError(String),
 }
 
 impl ApcErrorKind {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            Self::Json(_) | Self::ParseIntError(_) | Self::ParseUrlError(_) | Self::Httparse(_) => {
-                StatusCode::BAD_REQUEST
-            }
+            Self::ParseIntError(_) | Self::ParseUrlError(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -158,7 +119,6 @@ impl ApcErrorKind {
     pub fn is_sentry_event(&self) -> bool {
         match self {
             // TODO: Add additional messages to ignore here.
-            Self::PongTimeout | Self::ExcessivePing => false,
             // Non-actionable Endpoint errors
             Self::PayloadError(_) => false,
             _ => true,
@@ -167,13 +127,10 @@ impl ApcErrorKind {
 
     pub fn metric_label(&self) -> Option<&'static str> {
         // TODO: add labels for skipped stuff
-        let label = match self {
-            Self::PongTimeout => "pong_timeout",
-            Self::ExcessivePing => "excessive_ping",
-            Self::PayloadError(_) => "payload",
-            _ => return None,
-        };
-        Some(label)
+        match self {
+            Self::PayloadError(_) => Some("payload"),
+            _ => None,
+        }
     }
 }
 
@@ -188,14 +145,19 @@ pub trait ReportableError: std::error::Error {
     }
 
     /// Return a `Backtrace` for this Error if one was captured
-    fn backtrace(&self) -> Option<&Backtrace>;
-
+    fn backtrace(&self) -> Option<&Backtrace> {
+        None
+    }
     /// Whether this error is reported to Sentry
-    fn is_sentry_event(&self) -> bool;
+    fn is_sentry_event(&self) -> bool {
+        true
+    }
 
     /// Errors that don't emit Sentry events (!is_sentry_event()) emit an
     /// increment metric instead with this label
-    fn metric_label(&self) -> Option<&'static str>;
+    fn metric_label(&self) -> Option<&'static str> {
+        None
+    }
 
     /// Experimental: return tag key value pairs for metrics and Sentry
     fn tags(&self) -> Vec<(&str, String)> {

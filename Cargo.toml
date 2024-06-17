@@ -1,8 +1,6 @@
 [workspace]
 members = [
   "autopush-common",
-  # Pending removal: https://github.com/mozilla-services/autopush-rs/issues/524
-  #"autopush",
   "autoendpoint",
   "autoconnect",
   "autoconnect/autoconnect-common",
@@ -14,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.70.11"
+version = "1.71.3"
 authors = [
   "Ben Bangert <ben@groovie.org>",
   "JR Conlin <jrconlin@mozilla.com>",
@@ -73,7 +71,6 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 rusoto_core = { version = "0.47", default-features = false, features = [
   "rustls",
 ] } # locked by serde_dynamodb 0.9
-rusoto_credential = { version = "0.47" } # locked by serde_dynamodb 0.9
 rusoto_dynamodb = { version = "0.47", default-features = false, features = [
   "rustls",
 ] } # locked by serde_dynamodb 0.9
@@ -104,8 +101,6 @@ tokio-compat-02 = "0.2"
 tokio-core = "0.1"
 tokio-io = "0.1"
 tokio-openssl = "0.6"
-# Use older version of tungstenite to support legacy connection server.
-tungstenite = { version = "0.9.2", default-features = false } # 0.10+ requires tokio 0.3+
 uuid = { version = "1.1", features = ["serde", "v4"] }
 url = "2.2"
 

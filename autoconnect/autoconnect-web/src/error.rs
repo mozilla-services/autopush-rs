@@ -1,6 +1,5 @@
 use actix_http::ws::HandshakeError;
 use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
-use backtrace::Backtrace;
 use serde_json::json;
 
 use autopush_common::errors::ReportableError;
@@ -34,20 +33,12 @@ impl ResponseError for ApiError {
 }
 
 impl ReportableError for ApiError {
-    fn backtrace(&self) -> Option<&Backtrace> {
-        None
-    }
-
     fn is_sentry_event(&self) -> bool {
         match self {
             // Ignore failing upgrade to WebSocket
             ApiError::Actix(e) => e.as_error::<HandshakeError>().is_none(),
             _ => true,
         }
-    }
-
-    fn metric_label(&self) -> Option<&'static str> {
-        None
     }
 }
 
