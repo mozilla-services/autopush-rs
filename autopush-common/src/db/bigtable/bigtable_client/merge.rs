@@ -60,9 +60,12 @@ pub(crate) struct PartialRow {
     cells: HashMap<FamilyId, Vec<PartialCell>>,
     /// the last family id string we encountered
     last_family: FamilyId,
-    /// the working set of family and cells
-    /// we've encountered so far
-    last_family_cells: HashMap<FamilyId, Vec<Cell>>,
+    /// the working set of cells for a given qualifier
+    /// *NOTE* Bigtable wants to collect cells by Family ID. That's
+    /// not important for us to process data, so we cheat a bit and
+    /// return a row structure that replaces the Family ID with the
+    /// cell qualifier, allowing us to index the returned data faster.
+    last_collected_cells: HashMap<Qualifier, Vec<Cell>>,
     /// the last column name we've encountered
     last_qualifier: Qualifier,
     /// Any cell that may be in progress (chunked
@@ -188,7 +191,10 @@ impl RowMerger {
 
         let cell = &mut row.cell_in_progress;
         if chunk.has_family_name() {
-            cell.family = chunk.take_family_name().get_value().to_owned();
+            chunk
+                .take_family_name()
+                .get_value()
+                .clone_into(&mut cell.family);
         } else {
             if self.last_seen_cell_family.is_none() {
                 return Err(BigTableError::InvalidChunk(
@@ -291,7 +297,7 @@ impl RowMerger {
         if row_in_progress.last_family != cell_in_progress.family {
             family_changed = true;
             let cip_family = cell_in_progress.family.clone();
-            row_in_progress.last_family = cip_family.clone();
+            row_in_progress.last_family.clone_from(&cip_family);
 
             // append the cell in progress to the completed cells for this family in the row.
             //
@@ -311,7 +317,7 @@ impl RowMerger {
         // If the family changed, or the cell name changed
         if family_changed || row_in_progress.last_qualifier != cell_in_progress.qualifier {
             let qualifier = cell_in_progress.qualifier.clone();
-            row_in_progress.last_qualifier = qualifier.clone();
+            row_in_progress.last_qualifier.clone_from(&qualifier);
             let qualifier_cells = vec![Cell {
                 family: cell_in_progress.family.clone(),
                 timestamp: cell_in_progress.timestamp,
@@ -320,8 +326,11 @@ impl RowMerger {
                 value: cell_in_progress.value.clone(),
                 ..Default::default()
             }];
+            // The Family ID is only really important for us for garbage collection,
+            // the rest of the time, the data is basically flat and contains one cell.
+            //
             row_in_progress
-                .last_family_cells
+                .last_collected_cells
                 .insert(qualifier.clone(), qualifier_cells);
             row_in_progress.last_qualifier = qualifier;
         }
@@ -353,7 +362,7 @@ impl RowMerger {
 
         Ok(Row {
             row_key: row.row_key,
-            cells: row.last_family_cells,
+            cells: row.last_collected_cells,
         })
     }
 
@@ -370,8 +379,6 @@ impl RowMerger {
     /// Iterate through all the returned chunks and compile them into a hash of finished cells indexed by row_key
     pub async fn process_chunks(
         mut stream: ClientSStreamReceiver<ReadRowsResponse>,
-        timestamp_filter: Option<u64>,
-        limit: Option<usize>,
     ) -> Result<BTreeMap<RowKey, Row>, BigTableError> {
         // Work object
         let mut merger = Self::default();
@@ -380,11 +387,6 @@ impl RowMerger {
         let mut rows = BTreeMap::<RowKey, Row>::new();
 
         while let (Some(row_resp_res), s) = stream.into_future().await {
-            if let Some(limit) = limit {
-                if limit > 0 && rows.len() > limit {
-                    break;
-                }
-            }
             stream = s;
             let row = match row_resp_res {
                 Ok(v) => v,
@@ -434,28 +436,7 @@ impl RowMerger {
                 }
                 if merger.state == ReadState::RowComplete {
                     debug! {"🟧 row complete"};
-                    // Check to see if we can add this row, or if it's blocked by the timestamp filter.
                     let finished_row = merger.row_complete(&mut chunk)?;
-                    if let Some(timestamp) = timestamp_filter {
-                        if let Some(sk_ts) = finished_row.clone().take_cell("sortkey_timestamp") {
-                            let ts_val = crate::db::bigtable::bigtable_client::to_u64(
-                                sk_ts.value,
-                                "sortkey_timestamp",
-                            )
-                            .map_err(|_| {
-                                BigTableError::InvalidChunk("Invalid timestamp".to_owned())
-                            })?;
-                            if ts_val <= timestamp {
-                                trace!(
-                                    "⚖ {}: Skipping {} <= {}",
-                                    &finished_row.row_key,
-                                    ts_val,
-                                    timestamp
-                                );
-                                continue;
-                            }
-                        }
-                    }
                     rows.insert(finished_row.row_key.clone(), finished_row);
                 } else if chunk.has_commit_row() {
                     return Err(BigTableError::InvalidChunk(format!(

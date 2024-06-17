@@ -9,9 +9,10 @@ use crate::routers::common::{
     build_message_data, incr_error_metric, incr_success_metrics, message_size_check,
 };
 use crate::routers::{Router, RouterError, RouterResponse};
-use a2::request::payload::Payload;
 use a2::{
-    self, DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
+    self,
+    request::payload::{Payload, PayloadLike},
+    DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
     Response,
 };
 use actix_web::http::StatusCode;
@@ -265,7 +266,7 @@ impl ApnsRouter {
         // still needed or used. (I want to get rid of this.)
         if let Some(v) = replacement.get("title") {
             if let Some(v) = v.as_str() {
-                holder.title = v.to_owned();
+                v.clone_into(&mut holder.title);
                 aps = aps.set_title(&holder.title);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -273,7 +274,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("subtitle") {
             if let Some(v) = v.as_str() {
-                holder.subtitle = v.to_owned();
+                v.clone_into(&mut holder.subtitle);
                 aps = aps.set_subtitle(&holder.subtitle);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -281,7 +282,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("body") {
             if let Some(v) = v.as_str() {
-                holder.body = v.to_owned();
+                v.clone_into(&mut holder.body);
                 aps = aps.set_body(&holder.body);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -289,7 +290,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("title_loc_key") {
             if let Some(v) = v.as_str() {
-                holder.title_loc_key = v.to_owned();
+                v.clone_into(&mut holder.title_loc_key);
                 aps = aps.set_title_loc_key(&holder.title_loc_key);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -313,7 +314,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("action_loc_key") {
             if let Some(v) = v.as_str() {
-                holder.action_loc_key = v.to_owned();
+                v.clone_into(&mut holder.action_loc_key);
                 aps = aps.set_action_loc_key(&holder.action_loc_key);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -321,7 +322,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("loc_key") {
             if let Some(v) = v.as_str() {
-                holder.loc_key = v.to_owned();
+                v.clone_into(&mut holder.loc_key);
                 aps = aps.set_loc_key(&holder.loc_key);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -345,7 +346,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("launch_image") {
             if let Some(v) = v.as_str() {
-                holder.launch_image = v.to_owned();
+                v.clone_into(&mut holder.launch_image);
                 aps = aps.set_launch_image(&holder.launch_image);
             } else {
                 return Err(ApnsError::InvalidApsData);

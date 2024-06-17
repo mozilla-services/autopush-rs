@@ -74,7 +74,7 @@ impl FromRequest for Subscription {
         async move {
             // Collect token info and server state
             let token_info = TokenInfo::extract(&req).await?;
-            trace!("Token info: {:?}", &token_info);
+            trace!("🔐 Token info: {:?}", &token_info);
             let app_state: Data<AppState> =
                 Data::extract(&req).await.expect("No server state found");
             let metrics = Metrics::from(&app_state);
@@ -84,7 +84,9 @@ impl FromRequest for Subscription {
                 .fernet
                 .decrypt(&repad_base64(&token_info.token))
                 .map_err(|e| {
-                    error!("fernet: {:?}", e);
+                    // Since we're decrypting and endpoint, we get a lot of spam links.
+                    // This can fill our logs.
+                    trace!("🔐 fernet: {:?}", e);
                     ApiErrorKind::InvalidToken
                 })?;
 
@@ -369,7 +371,11 @@ fn validate_vapid_jwt(
     };
 
     if domain != &aud {
-        error!("Bad Aud: I am <{:?}>, asked for <{:?}> ", domain, aud);
+        info!(
+            "Bad Aud: I am <{:?}>, asked for <{:?}> ",
+            domain.as_str(),
+            token_data.claims.aud
+        );
         metrics.clone().incr("notification.auth.bad_vapid.domain");
         return Err(VapidError::InvalidAudience.into());
     }

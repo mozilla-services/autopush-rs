@@ -1,3 +1,293 @@
+<a name="1.71.3"></a>
+## 1.71.3 (2024-05-31)
+
+
+#### Chore
+
+*   update per RUSTSEC-2024-0336 (#682) ([e6293090](https://github.com/mozilla-services/autopush-rs/commit/e629309049a3cfb18858574fcb5bf94c22d1de55))
+
+#### Refactor
+
+*   upgrade all integration tests to asyncio async await  (#667) ([c7448f45](https://github.com/mozilla-services/autopush-rs/commit/c7448f45033633e04b3e4ba61befa9e220b4feba))
+
+
+
+<a name="1.71.2"></a>
+## 1.71.2 (2024-04-17)
+
+
+#### Bug Fixes
+
+*   a couple retry logic error messages were incorrect (#676) ([6cb6549b](https://github.com/mozilla-services/autopush-rs/commit/6cb6549b087a3ff44262cd796e45ec50d231cd37))
+
+#### Features
+
+*   Ensure that status and labels are propagated for DB errors (#679) ([5a1f2099](https://github.com/mozilla-services/autopush-rs/commit/5a1f20997ad1705c6ded3ace02f6f1a1be5a70ef))
+*   emit pool timeouts/conditional failures as metrics (not sentry) (#671) ([b4f01af8](https://github.com/mozilla-services/autopush-rs/commit/b4f01af8f68b157a39ec3bf4bfa2778f283652c0))
+*   Switch to randomized UAID for health check (#670) ([06093787](https://github.com/mozilla-services/autopush-rs/commit/060937875b34695d8c2be39425c35a1b71e007aa))
+
+#### Test
+
+* **load:**  Document the process for calibrating users per worker  (#661) ([c89627fd](https://github.com/mozilla-services/autopush-rs/commit/c89627fdad2708613acd59f480d44913f074b6a5))
+
+#### Doc
+
+* **load:**  Document the process for calibrating worker count (#666) ([de752ec4](https://github.com/mozilla-services/autopush-rs/commit/de752ec4e118c7218c461d9c2488529fc71f8a04))
+
+#### Refactor
+
+*   add initial async features for client (#653) ([22f058e6](https://github.com/mozilla-services/autopush-rs/commit/22f058e6b9d41b6a30b8ffb1aaaed1979d94c2da))
+
+#### Chore
+
+* **deps-dev:**
+  *  bump cryptography from 42.0.2 to 42.0.4 in /tests (#630) ([967465b2](https://github.com/mozilla-services/autopush-rs/commit/967465b22429fea77db9a6323f31055f269a4276))
+  *  bump idna from 3.6 to 3.7 in /tests (#678) ([0672bba4](https://github.com/mozilla-services/autopush-rs/commit/0672bba4e61b47e7143190a6765b4cfb9c7a6be6))
+  *  bump idna from 3.6 to 3.7 in /tests ([e8234982](https://github.com/mozilla-services/autopush-rs/commit/e8234982d44af22562b018d58e6661bd6bcd8f60))
+
+
+
+<a name="1.71.1"></a>
+## 1.71.1 (2024-03-19)
+
+
+#### Features
+
+*   introduce end_median for dual. (#663) ([38d6a6d1](https://github.com/mozilla-services/autopush-rs/commit/38d6a6d134a2a6f039b3126e1c7ec7c79c1c3c36))
+*   Switch to lighter weight health check (#662) ([133bcb53](https://github.com/mozilla-services/autopush-rs/commit/133bcb534070920f0db6192435f0d30016791e77))
+*   Swtich to lighter weight health check ([bed0f7f4](https://github.com/mozilla-services/autopush-rs/commit/bed0f7f42aa6439e6b5dec3a13749f0090bd3406))
+
+#### Bug Fixes
+
+*   dual mode needs its own spawn_sweeper (#658) ([1b4d5a9a](https://github.com/mozilla-services/autopush-rs/commit/1b4d5a9afa2535f0b7c9edd19756efe4b5f16622))
+
+
+
+<a name="1.71.0"></a>
+## 1.71.0 (2024-03-13)
+
+
+#### Features
+
+*   further special case another form of an incomplete router record (#655) ([396c7b04](https://github.com/mozilla-services/autopush-rs/commit/396c7b0497e66cd01079226cccd99f3dfe899196))
+*   evict idle connections from bigtable's db pool (#654) ([70b1e7b2](https://github.com/mozilla-services/autopush-rs/commit/70b1e7b2d224e18fb29e81b4f6109be8c4cb82ac))
+
+
+
+<a name="1.70.11"></a>
+## 1.70.11 (2024-03-07)
+
+
+#### Bug Fixes
+
+*   don't skip DbError in the ReportableError chain (#649) ([c9b97d13](https://github.com/mozilla-services/autopush-rs/commit/c9b97d13e20cfaa9a9caf4b9bc4620469cc166f9))
+
+
+
+<a name="1.70.10"></a>
+## 1.70.10 (2024-03-06)
+
+
+#### Features
+
+*   include tags/extras across the exception chain (#648) ([fb2b0ee7](https://github.com/mozilla-services/autopush-rs/commit/fb2b0ee770291e9347494110e733736f8e585844))
+
+
+
+<a name="1.70.9"></a>
+## 1.70.9 (2024-02-27)
+
+
+#### Features
+
+*   Make bigtable calls retryable (#591) ([12dd7b41](https://github.com/mozilla-services/autopush-rs/commit/12dd7b41e44c5dfdf58eceee4a8a14e8f9e0fcf7))
+*   special case "chid-only" records (#646) ([5ab83fb8](https://github.com/mozilla-services/autopush-rs/commit/5ab83fb832383d5d7889d27edcd80ec7159afb60))
+*   report db pool metrics (#644) ([93d4cd38](https://github.com/mozilla-services/autopush-rs/commit/93d4cd38a5ecd4a8428ad3f93cb2a910521769cd))
+*   Add timeouts for bigtable operations (#611) ([34964235](https://github.com/mozilla-services/autopush-rs/commit/349642355656a407be9edab089c18a6491332c49))
+
+
+
+<a name="1.70.8"></a>
+## 1.70.8 (2024-02-26)
+
+
+#### Bug Fixes
+
+*   don't ignore add_user errors (#640) ([6a91bce5](https://github.com/mozilla-services/autopush-rs/commit/6a91bce5525b019e904d5ec7c4f025b5b2e917a7))
+
+
+
+<a name="1.70.7"></a>
+## 1.70.7 (2024-02-22)
+
+
+#### Bug Fixes
+
+*   retry get_user when the add_user condition fails (#637) ([87ed38c3](https://github.com/mozilla-services/autopush-rs/commit/87ed38c3f745073bc917c2c73cc06c5807eae134))
+*   Add missing doc diagram. (#623) ([12bce705](https://github.com/mozilla-services/autopush-rs/commit/12bce70538f11edaab7d281f8dbb2130f4626c01))
+
+
+
+<a name="1.70.6"></a>
+## 1.70.6 (2024-02-22)
+
+
+#### Features
+
+*   prefer the simpler delete to avoid the admin API (#636) ([0b7265ed](https://github.com/mozilla-services/autopush-rs/commit/0b7265edaa047bd10a556009a9174aa9772fec82))
+
+
+
+<a name="1.70.5"></a>
+## 1.70.5 (2024-02-22)
+
+
+#### Bug Fixes
+
+*   don't add_channels when there's none to add (#634) ([b0ffa8cd](https://github.com/mozilla-services/autopush-rs/commit/b0ffa8cd10a900d32ddacfeaeadf0ccc51160021))
+
+
+
+<a name="1.70.4"></a>
+## 1.70.4 (2024-02-20)
+
+
+#### Features
+
+*   have Bigtable match DynamoDB's metrics (#627) ([0ce81aab](https://github.com/mozilla-services/autopush-rs/commit/0ce81aab562d4129d1a976bd7d232a0ea95fa1fa))
+*   have bigtable remove_channel write conditionally (#625) ([60c6675b](https://github.com/mozilla-services/autopush-rs/commit/60c6675b607a113cc6ba01ff49126781e7fa9df2))
+
+#### Bug Fixes
+
+*   "recycle" the user object in update_token_route (#621) ([4bd48278](https://github.com/mozilla-services/autopush-rs/commit/4bd48278d13a675a27626a1b0042e0c366c76dde))
+
+
+
+<a name="1.70.3"></a>
+## 1.70.3 (2024-02-20)
+
+
+#### Bug Fixes
+
+*   fix add/update_user version field handling on migrations (#619) ([1ff88e79](https://github.com/mozilla-services/autopush-rs/commit/1ff88e796611749714cada7b88fd4986049d83bb))
+
+
+
+<a name="1.70.2"></a>
+## 1.70.2 (2024-02-15)
+
+
+#### Bug Fixes
+
+*   dual update_user calling add_user ([c80866d6](https://github.com/mozilla-services/autopush-rs/commit/c80866d6b3c7b0f8b09e456cc7e4aa4bba7bf6e7))
+
+
+
+<a name="1.70.1"></a>
+## 1.70.1 (2024-02-15)
+
+
+#### Features
+
+*   add metadata headers for bigtable (#586) ([e043fb02](https://github.com/mozilla-services/autopush-rs/commit/e043fb02dc4ccd13f39c5083c94b7311887f3fef))
+*   simplify StoredNotifAutopushUser's on_start (#614) ([c2841113](https://github.com/mozilla-services/autopush-rs/commit/c284111312ba4cb034d887aaec14d1fda7286ae1))
+*   simplify StoredNotifAutopushUser's on_start ([0d0e99e6](https://github.com/mozilla-services/autopush-rs/commit/0d0e99e6996c11b2a81cfeebd2a89c609a7a9d01))
+*   retry dynamodb HttpDispatch errors (#605) ([cb1482de](https://github.com/mozilla-services/autopush-rs/commit/cb1482de2f5cedef0047ca9a7b01db0d7103e5ab))
+*   Elevate big table settings dump for deployment debug (#609) ([7d29c16d](https://github.com/mozilla-services/autopush-rs/commit/7d29c16dae5388ab41052832fe672fd41cfcf3d0))
+*   put old AWS crap behind a feature flag (#606) ([04df79e5](https://github.com/mozilla-services/autopush-rs/commit/04df79e5df9899fc0563d116187fbd59e0a53eee))
+
+#### Chore
+
+* **deps-dev:**
+  *  bump jinja2 from 3.1.2 to 3.1.3 in /tests (#549) ([80c961a5](https://github.com/mozilla-services/autopush-rs/commit/80c961a53c0bb3946fb32851ad58e8744c9909a3))
+  *  bump cryptography from 41.0.7 to 42.0.0 in /tests (#600) ([4fbbaea2](https://github.com/mozilla-services/autopush-rs/commit/4fbbaea2a4dda5e818420d6f77df2d1e6486e82c))
+  *  bump cryptography from 41.0.7 to 42.0.0 in /tests ([222c05cc](https://github.com/mozilla-services/autopush-rs/commit/222c05cc7d6af778d5aa5fe3ec38517cc2bc806f))
+  *  bump jinja2 from 3.1.2 to 3.1.3 in /tests ([3c7d900b](https://github.com/mozilla-services/autopush-rs/commit/3c7d900b59848ee053197809d19dc201c566f750))
+
+#### Bug Fixes
+
+*   add secondary_write for channels (#597) ([37b377ae](https://github.com/mozilla-services/autopush-rs/commit/37b377ae17c2afe30e72c739fc539aa9eec465d5))
+*   Isolate dynamodb to feature flag only (#612) ([158e01c4](https://github.com/mozilla-services/autopush-rs/commit/158e01c45017c051c2f834537a1cb8c9c5546da6))
+*   Add errors for health check reporting (#610) ([37a0724a](https://github.com/mozilla-services/autopush-rs/commit/37a0724a8815d42c471ca30ebb56c352f0ed673e))
+*   reset the WebSocket every time it disconnects (#607) ([9bb964c6](https://github.com/mozilla-services/autopush-rs/commit/9bb964c62df7b46b101d3c98739155ec84112fe3))
+
+
+
+<a name="1.70.0"></a>
+## 1.70.0 (2024-02-06)
+
+
+#### Refactor
+
+*   cleanup add_channels to use mutate_row (#583) ([db2e02ed](https://github.com/mozilla-services/autopush-rs/commit/db2e02ed0cd02ad5dd57f1b9bc81368d96777def))
+
+#### Chore
+
+*   tag 1.69.8 (#601) ([978bc153](https://github.com/mozilla-services/autopush-rs/commit/978bc15380adb73f1c5b06a6fc656d30c0ffb670))
+*   stop building legacy autopush (#575) ([80264495](https://github.com/mozilla-services/autopush-rs/commit/8026449591db85cfb388a886bfc5d1ea8e647f0e))
+
+#### Features
+
+*   add a new test that produces stored notifs  (#598) ([a6bd3cd7](https://github.com/mozilla-services/autopush-rs/commit/a6bd3cd7074c799c91bab99ed15df186ab58febe))
+*   filter reads by latest cell (#599) ([e012955a](https://github.com/mozilla-services/autopush-rs/commit/e012955a56243258513a86033c5711821b256d46))
+*   [SYNC-3835] pydocstyle implementation (#585) ([aa5773da](https://github.com/mozilla-services/autopush-rs/commit/aa5773da196a51a3779a6f76d8ed20837b604c66))
+*   Add integration test for `dual` mode (#582) ([76848753](https://github.com/mozilla-services/autopush-rs/commit/76848753b268b7116e572ad6ab3e9f3d256f2009))
+*   don't store duplicated message columns (#581) ([7f2396aa](https://github.com/mozilla-services/autopush-rs/commit/7f2396aaaccbfd783fb0d52e177b887cdcc6a8bd))
+*   store the channel_id metadata in a single bigtable row (#574) ([1716f205](https://github.com/mozilla-services/autopush-rs/commit/1716f205bd746a7c8aafe4a0932ce213a0d9983e))
+
+#### Bug Fixes
+
+*   errors when deleting and provisioning load test clusters (#593) ([925130a1](https://github.com/mozilla-services/autopush-rs/commit/925130a10712fa07f2ef6fd3025fbdb201b3fb01))
+*   fix remove_node_id's condition check to be more reliable (#590) ([dc077623](https://github.com/mozilla-services/autopush-rs/commit/dc0776232ab44d3b41f4de980ec1a0edbd91ea3a))
+*   fetch messages shouldn't read the current timestamp's notif (#577) ([fc99e774](https://github.com/mozilla-services/autopush-rs/commit/fc99e7741eb36ca5e1156c17f7644439ce32a469))
+*   Clarify how the index for Row is used between reading and writing to Bigtable (#573) ([09fe7ac2](https://github.com/mozilla-services/autopush-rs/commit/09fe7ac20f83ee22ab44a068685f57403ed9c946))
+
+
+
+<a name="1.69.8"></a>
+## 1.69.8 (2024-01-24)
+
+
+#### Bug Fixes
+
+*   channel_ids should continue being represented in hyphenated format (#561) ([661a705d](https://github.com/mozilla-services/autopush-rs/commit/661a705d631279bbd1c1d895cae5880cdce1acb9))
+*   Use standard chidmessageid parser for remove_message (#555) ([42775f9e](https://github.com/mozilla-services/autopush-rs/commit/42775f9e747fa39ca1cd753f44e74e42de3d3cee))
+*   filter by timestamp (#548) ([b7cd357b](https://github.com/mozilla-services/autopush-rs/commit/b7cd357b6a8aa68ff7ed0b93a099aae343023281))
+*   don't assume topic chidmessageids in remove_message (#553) ([e6729c06](https://github.com/mozilla-services/autopush-rs/commit/e6729c06ad373b826c6dee6d25015668bb2a9f9e))
+*   Add proper update_user logic for Bigtable  (#503) ([89c3bd98](https://github.com/mozilla-services/autopush-rs/commit/89c3bd9844f6e3c9a79e8bbf17bc0a9bbdfe8cf4))
+*   kill the delete_all_data_from_table flag (#541) ([8c99f47c](https://github.com/mozilla-services/autopush-rs/commit/8c99f47c796694d51d5cb7ca33aa859a76a8f07a))
+*   copy over the channels when migrating the user (#539) ([e36b3fef](https://github.com/mozilla-services/autopush-rs/commit/e36b3fefdf26c3602cacda3381fdd6ca726cb75b))
+*   remove unneeded clone operation (#521) ([53b6f03f](https://github.com/mozilla-services/autopush-rs/commit/53b6f03f66ce702173247765d242ea16427199cf))
+
+#### Features
+
+*   set all column families (message) to maxversions=1 (#566) ([464c87a5](https://github.com/mozilla-services/autopush-rs/commit/464c87a5486ab23d49eb9eb22cef5d3578026251))
+*   read via row ranges instead of regex (#564) ([0a96e1b8](https://github.com/mozilla-services/autopush-rs/commit/0a96e1b82418dab6b9e4731eb720f307f22542d0))
+*   Be more clear and consistent about features around `dual` (#557) ([60c8b333](https://github.com/mozilla-services/autopush-rs/commit/60c8b33327ec314874a729c0e2909c2d0afb5d64))
+*   save some cloning (possibly) (#563) ([03afd7cc](https://github.com/mozilla-services/autopush-rs/commit/03afd7cc968a56afb3fea87525c62569bbd67a56))
+*   run integration tests against Bigtable (#558) ([356f24cf](https://github.com/mozilla-services/autopush-rs/commit/356f24cf7c89344502311b05815fd99183dcd618))
+*   run unit tests against the bigtable emulator (#547) ([21e0d40c](https://github.com/mozilla-services/autopush-rs/commit/21e0d40c3d8ae4c02254cfa5f16784d505ade381))
+*   Add database routing support (#473) ([5aea6548](https://github.com/mozilla-services/autopush-rs/commit/5aea6548d18f1a20cad227e078d9e5f0a49b98b0))
+*   Report BigTableErrors with extra data (#530) ([c7fa922f](https://github.com/mozilla-services/autopush-rs/commit/c7fa922f46e8c22456a06cd62058b7ca28e8cb66))
+*   support dual mode data storage (#369) ([6624a19a](https://github.com/mozilla-services/autopush-rs/commit/6624a19ad97af90174cc7623b9b8683392c3aec9))
+*   quiet remove_node_id's conditional failure case errors (#517) ([7fe9d489](https://github.com/mozilla-services/autopush-rs/commit/7fe9d4892018916a0b240e20db58e1d89799bd1f))
+
+#### Doc
+
+*   update to the new autoconnect url (#538) ([ac5c691f](https://github.com/mozilla-services/autopush-rs/commit/ac5c691f162da6020e603d23f3adce453ab59f94))
+*   Document VAPID key should be base64 encoded (#535) ([c9b9d6bd](https://github.com/mozilla-services/autopush-rs/commit/c9b9d6bdd980af1df9d3d9705a438fa55f3c4f37))
+
+#### Chore
+
+*   replace AUTOPUSH_ENDPOINT_URL and AUTOPUSH_SERVER_URL with LOCUST_HOST in load tests (#523) ([b72dee15](https://github.com/mozilla-services/autopush-rs/commit/b72dee153ef49ef6dcae5ed7a01d98a23a640a96))
+*   add build_load_test and deploy-load-test job to build-test-deploy ci workflow ([05b6d448](https://github.com/mozilla-services/autopush-rs/commit/05b6d448823a5007b70f9c7db7f20a62e70d1900))
+*   update python dependencies and fix mypy errors ([a5d8828d](https://github.com/mozilla-services/autopush-rs/commit/a5d8828dc5bd1724979706a057139e28563b4dca))
+*   upload integration test results to CircleCI test insights  (#519) ([ff882fea](https://github.com/mozilla-services/autopush-rs/commit/ff882fea571dd898de01b643f28f0f2fe0d03750))
+*   lint & make integration tests in autopush-rs (#518) ([e3d38c6c](https://github.com/mozilla-services/autopush-rs/commit/e3d38c6c10c2e94e04f8ca0e2694424101ca8c0a))
+* **deps:**  bump openssl from 0.10.57 to 0.10.60 (#525) ([3b52f7b7](https://github.com/mozilla-services/autopush-rs/commit/3b52f7b7842c16dca9329858bc0d811444f6f1de))
+
+
+
 <a name="1.69.7"></a>
 ## 1.69.7 (2023-11-13)
 

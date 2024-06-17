@@ -51,14 +51,11 @@ impl UnidentifiedClient {
     ) -> Result<(WebPushClient, impl IntoIterator<Item = ServerMessage>), SMError> {
         trace!("❓UnidentifiedClient::on_client_msg");
         let ClientMessage::Hello {
-            uaid,
-            use_webpush: Some(true),
-            broadcasts,
-            ..
+            uaid, broadcasts, ..
         } = msg
         else {
             return Err(SMError::invalid_message(
-                r#"Expected messageType="hello", "use_webpush": true"#.to_owned(),
+                r#"Expected messageType="hello""#.to_owned(),
             ));
         };
         debug!(
@@ -110,8 +107,8 @@ impl UnidentifiedClient {
 
         let smsg = ServerMessage::Hello {
             uaid: uaid.as_simple().to_string(),
+            use_webpush: true,
             status: 200,
-            use_webpush: Some(true),
             broadcasts,
         };
         let smsgs = std::iter::once(smsg).chain(check_storage_smsgs);
@@ -135,8 +132,7 @@ impl UnidentifiedClient {
                         return Err(SMErrorKind::AlreadyConnected.into());
                     }
                     user.connected_at = connected_at;
-                    user.set_last_connect();
-                    if !self.app_state.db.update_user(&user).await? {
+                    if !self.app_state.db.update_user(&mut user).await? {
                         let _ = self.app_state.metrics.incr("ua.already_connected");
                         return Err(SMErrorKind::AlreadyConnected.into());
                     }
@@ -153,8 +149,6 @@ impl UnidentifiedClient {
             // change from the previous state machine impl)
         }
 
-        // TODO: NOTE: A new User doesn't get a `set_last_connect()` (matching
-        // the previous impl)
         let user = User {
             current_month: self
                 .app_state
@@ -201,7 +195,7 @@ struct GetOrCreateUser {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{str::FromStr, sync::Arc};
 
     use autoconnect_common::{
         protocol::ClientMessage,
@@ -250,12 +244,17 @@ mod tests {
             db: hello_again_db(DUMMY_UAID).into_boxed_arc(),
             ..Default::default()
         });
-        let msg = ClientMessage::Hello {
-            uaid: Some(DUMMY_UAID.to_string()),
-            channel_ids: None,
-            use_webpush: Some(true),
-            broadcasts: None,
-        };
+        // Use a constructed JSON structure here to capture the sort of input we expect,
+        // which may not match what we derive into.
+        let js = serde_json::json!({
+            "messageType": "hello",
+            "uaid": DUMMY_UAID,
+            "use_webpush": true,
+            "channelIDs": [],
+            "broadcasts": {}
+        })
+        .to_string();
+        let msg: ClientMessage = serde_json::from_str(&js).unwrap();
         client.on_client_msg(msg).await.expect("Hello failed");
     }
 
@@ -266,12 +265,12 @@ mod tests {
             db: hello_db().into_boxed_arc(),
             ..Default::default()
         });
-        let msg = ClientMessage::Hello {
-            uaid: None,
-            channel_ids: None,
-            use_webpush: Some(true),
-            broadcasts: None,
-        };
+        // Ensure that we do not need to pass the "use_webpush" flag.
+        // (yes, this could just be passing the string, but I want to be
+        // very explicit here.)
+        let json = serde_json::json!({"messageType":"hello"});
+        let raw = json.to_string();
+        let msg = ClientMessage::from_str(&raw).unwrap();
         client.on_client_msg(msg).await.expect("Hello failed");
     }
 
@@ -281,7 +280,6 @@ mod tests {
         let msg = ClientMessage::Hello {
             uaid: Some("".to_owned()),
             channel_ids: None,
-            use_webpush: Some(true),
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");
@@ -293,7 +291,6 @@ mod tests {
         let msg = ClientMessage::Hello {
             uaid: Some("invalid".to_owned()),
             channel_ids: None,
-            use_webpush: Some(true),
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");

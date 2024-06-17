@@ -1,5 +1,6 @@
 # NOTE: Ensure builder's Rust version matches CI's in .circleci/config.yml
-FROM rust:1.74-buster as builder
+# RUST_VER
+FROM rust:1.78-bookworm as builder
 ARG CRATE
 
 ADD . /app
@@ -18,9 +19,9 @@ RUN \
     cargo install --path $CRATE --locked --root /app
 
 
-FROM debian:buster-slim
+FROM debian:bookworm-slim
 ARG BINARY
-# FROM debian:buster  # for debugging docker build
+# FROM debian:bookworm  # for debugging docker build
 RUN \
     groupadd --gid 10001 app && \
     useradd --uid 10001 --gid 10001 --home /app --create-home app && \

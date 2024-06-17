@@ -4,7 +4,7 @@
 #[macro_use]
 extern crate slog_scope;
 
-use std::{env, vec::Vec};
+use std::{env, time::Duration, vec::Vec};
 
 use actix_http::HttpService;
 use actix_server::Server;
@@ -16,6 +16,7 @@ use serde::Deserialize;
 use autoconnect_settings::{AppState, Settings};
 use autoconnect_web::{build_app, config, config_router};
 use autopush_common::{
+    db::spawn_pool_periodic_reporter,
     errors::{ApcErrorKind, Result},
     logging,
 };
@@ -25,14 +26,12 @@ Usage: autoconnect [options]
 
 Options:
     -h, --help                          Show this message.
-    --config-connection=CONFIGFILE      Connection configuration file path.
-    --config-shared=CONFIGFILE          Common configuration file path.
+    --config=CONFIGFILE                 Connection configuration file path.
 ";
 
 #[derive(Debug, Deserialize)]
 struct Args {
-    flag_config_connection: Option<String>,
-    flag_config_shared: Option<String>,
+    flag_config: Option<String>,
 }
 
 #[actix_web::main]
@@ -42,10 +41,7 @@ async fn main() -> Result<()> {
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
     let mut filenames = Vec::new();
-    if let Some(shared_filename) = args.flag_config_shared {
-        filenames.push(shared_filename);
-    }
-    if let Some(config_filename) = args.flag_config_connection {
+    if let Some(config_filename) = args.flag_config {
         filenames.push(config_filename);
     }
     let settings =
@@ -79,12 +75,17 @@ async fn main() -> Result<()> {
     let actix_workers = settings.actix_workers;
     let app_state = AppState::from_settings(settings)?;
     app_state.init_and_spawn_megaphone_updater().await?;
+    spawn_pool_periodic_reporter(
+        Duration::from_secs(10),
+        app_state.db.clone(),
+        app_state.metrics.clone(),
+    );
 
     info!(
-        "Starting autoconnect on port: {} router_port: {} (available_parallelism: {:?})",
+        "Starting autoconnect on port: {} router_port: {} ({})",
         port,
         router_port,
-        std::thread::available_parallelism()
+        logging::parallelism_banner()
     );
 
     let router_app_state = app_state.clone();

@@ -1,7 +1,7 @@
 # These environment variables must be set in CircleCI UI
 #
-# DOCKERHUB_REPO - docker hub repo, format: <username>/<repo>
-# DOCKERHUB_ENDPOINT_REPO - same as DOCKERHUB_REPO, but for autoendpoint
+# DOCKERHUB_CONNECT_REPO - autoconnect docker hub repo, format: <username>/<repo>
+# DOCKERHUB_ENDPOINT_REPO - autoendpoint docker hub repo, format: <username>/<repo>
 # DOCKER_EMAIL   - login info for docker hub
 # DOCKER_USER
 # DOCKER_PASS
@@ -38,7 +38,7 @@ jobs:
   audit:
     docker:
       # NOTE: update version for all # RUST_VER
-      - image: rust:1.74
+      - image: rust:1.78
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -56,7 +56,7 @@ jobs:
 
   python-checks:
     docker:
-      - image: python:3.10-slim-bullseye
+      - image: python:3.12-slim-bookworm
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -74,22 +74,17 @@ jobs:
             pip install --upgrade pip
             pip install poetry
       - run:
-          name: isort, black, flake8 and mypy
+          name: isort, black, flake8, pydocstyle and mypy
           command: make lint
 
   test:
     docker:
-      - image: python:3.10-slim-bullseye
+      - image: python:3.12-slim-bookworm
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         environment:
-            RUST_BACKTRACE: 1
-      - image: amazon/dynamodb-local:latest
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        command: -jar DynamoDBLocal.jar -sharedDb
+          RUST_BACKTRACE: 1
       - image: google/cloud-sdk:latest
         auth:
           username: $DOCKER_USER
@@ -98,7 +93,6 @@ jobs:
     resource_class: xlarge
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
-      AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
       - checkout
       # Need to download the poetry.lock files so we can use their
@@ -130,10 +124,10 @@ jobs:
           name: Set up Rust
           command: |
             apt update
-            apt install build-essential curl libstdc++6 libstdc++-10-dev libssl-dev pkg-config -y
+            apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
             apt install cmake -y
             # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.73 -y
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.78 -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
@@ -153,16 +147,14 @@ jobs:
           # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
           # the machine level memory and CPU which are far higher than the memory allocated to the docker
           # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=emulator --jobs=2
+          command: cargo test --features=emulator --features=dual --jobs=2
       - run:
-          name: Integration tests (Autopush Legacy)
-          command: make integration-test-legacy
-          environment:
-            TEST_RESULTS_DIR: workspace/test-results
-      - run:
-          name: Integration tests (Autoconnect)
+          name: Integration tests (Bigtable)
           command: make integration-test
           environment:
+            RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
+            # PYTEST_ARGS: -sv
+            DB_DSN: grpc://localhost:8086
             TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
@@ -225,7 +217,7 @@ jobs:
 
   build-load-test:
     docker:
-      - image: cimg/base:2023.12
+      - image: cimg/base:2024.06
     steps:
       - checkout
       - setup_remote_docker:
@@ -281,7 +273,7 @@ jobs:
 
   deploy-load-test:
     docker:
-      - image: cimg/base:2023.12
+      - image: cimg/base:2024.06
     steps:
       - checkout
       - attach_workspace:
@@ -303,7 +295,6 @@ jobs:
             docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
 workflows:
-  version: 2
 
   build-test-deploy:
     jobs:
@@ -316,14 +307,6 @@ workflows:
             tags:
               only: /.*/
       - test:
-          filters:
-            tags:
-              only: /.*/
-      - build:
-          name: build-autopush
-          image: autopush:build
-          crate: autopush
-          binary: autopush_rs
           filters:
             tags:
               only: /.*/
@@ -352,19 +335,6 @@ workflows:
               only: /.*/
 
       # Comment out the following two sections for local CircleCI testing.
-      - deploy:
-          name: deploy-autopush
-          image: autopush:build
-          repo: ${DOCKERHUB_REPO}
-          requires:
-            - build-autopush
-            - test
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only: master
-
       - deploy:
           name: deploy-autoconnect
           image: autoconnect:build

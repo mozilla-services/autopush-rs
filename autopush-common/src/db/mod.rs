@@ -18,8 +18,6 @@ use serde::Serializer;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::db::{dynamodb::has_connected_this_month, util::generate_last_connect};
-
 #[cfg(feature = "bigtable")]
 pub mod bigtable;
 pub mod client;
@@ -29,11 +27,13 @@ pub mod dual;
 pub mod dynamodb;
 pub mod error;
 pub mod models;
+pub mod reporter;
 pub mod routing;
-mod util;
 
 // used by integration testing
 pub mod mock;
+
+pub use reporter::spawn_pool_periodic_reporter;
 
 use crate::errors::{ApcErrorKind, Result};
 use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
@@ -44,6 +44,8 @@ const MAX_EXPIRY: u64 = 2_592_000;
 pub const USER_RECORD_VERSION: u64 = 1;
 /// The maximum TTL for channels, 30 days
 pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
+/// The maximum TTL for router records, 30 days
+pub const MAX_ROUTER_TTL: u64 = MAX_CHANNEL_TTL;
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {
@@ -57,13 +59,32 @@ pub enum StorageType {
     // Postgres,
 }
 
+impl From<&str> for StorageType {
+    fn from(name: &str) -> Self {
+        match name.to_lowercase().as_str() {
+            #[cfg(feature = "bigtable")]
+            "bigtable" => Self::BigTable,
+            #[cfg(feature = "dual")]
+            "dual" => Self::Dual,
+            #[cfg(feature = "dynamodb")]
+            "dynamodb" => Self::DynamoDb,
+            _ => Self::INVALID,
+        }
+    }
+}
+
 /// The type of storage to use.
+#[allow(clippy::vec_init_then_push)] // Because we are only pushing on feature flags.
 impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
         #[allow(unused_mut)]
-        let mut result = ["DynamoDB"].to_vec();
+        let mut result: Vec<&str> = Vec::new();
+        #[cfg(feature = "dynamodb")]
+        result.push("DynamoDB");
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
+        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+        result.push("Dual");
         result
     }
 
@@ -71,8 +92,9 @@ impl StorageType {
         debug!("Supported data types: {:?}", StorageType::available());
         debug!("Checking DSN: {:?}", &dsn);
         if dsn.is_none() {
-            info!("No DSN specified, failing over to old default dsn");
-            return Self::DynamoDb;
+            let default = Self::available()[0];
+            info!("No DSN specified, failing over to old default dsn: {default}");
+            return Self::from(default);
         }
         let dsn = dsn
             .clone()
@@ -156,11 +178,6 @@ pub struct User {
     pub router_type: String,
     /// Router-specific data
     pub router_data: Option<HashMap<String, serde_json::Value>>,
-    /// Keyed time in a month the user last connected at with limited
-    /// key range for indexing
-    // [ed. --sigh. don't use custom timestamps kids.]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_connect: Option<u64>,
     /// Last node/port the client was or may be connected to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
@@ -175,6 +192,9 @@ pub struct User {
     //TODO: rename this to `last_notification_timestamp`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_timestamp: Option<u64>,
+    /// UUID4 version number for optimistic locking of updates on Bigtable
+    #[serde(skip_serializing)]
+    pub version: Option<Uuid>,
 }
 
 impl Default for User {
@@ -186,21 +206,11 @@ impl Default for User {
             connected_at: ms_since_epoch(),
             router_type: "webpush".to_string(),
             router_data: None,
-            last_connect: Some(generate_last_connect()),
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
             current_month: None,
             current_timestamp: None,
-        }
-    }
-}
-
-impl User {
-    pub fn set_last_connect(&mut self) {
-        self.last_connect = if has_connected_this_month(self) {
-            None
-        } else {
-            Some(generate_last_connect())
+            version: Some(Uuid::new_v4()),
         }
     }
 }
@@ -246,7 +256,7 @@ pub struct NotificationRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<NotificationHeaders>,
     /// This is the acknowledgement-id used for clients to ack that they have received the
-    /// message. Some Python code refers to this as a message_id. Endpoints generate this
+    /// message. Autoendpoint refers to this as a message_id. Endpoints generate this
     /// value before sending it to storage or a connection node.
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,

@@ -3,37 +3,34 @@ name = "autopush_common"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+build = "build.rs"
 
 [lib]
 name = "autopush_common"
 
 [dependencies]
 actix-web.workspace = true
-actix-http.workspace = true
 backtrace.workspace = true
 base64.workspace = true
 cadence.workspace = true
 chrono.workspace = true
 config.workspace = true
+deadpool.workspace = true
 fernet.workspace = true
 futures.workspace = true
 futures-util.workspace = true
 hex.workspace = true
 httparse.workspace = true
-hyper.workspace = true
 lazy_static.workspace = true
-log.workspace = true
 mockall.workspace = true
 openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 rusoto_core = { workspace = true, optional = true }
-rusoto_credential = { workspace = true, optional = true }
 rusoto_dynamodb = { workspace = true, optional = true }
 sentry-backtrace.workspace = true
 sentry.workspace = true
-sentry-core.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
 serde_dynamodb.workspace = true
@@ -45,19 +42,14 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
-tokio.workspace = true
-tokio-core.workspace = true
-# tokio-postgres.workspace = true
 thiserror.workspace = true
-tungstenite.workspace = true
 uuid.workspace = true
 url.workspace = true
 
 again = "0.1"
 async-trait = "0.1"
-deadpool = "0.10"
 gethostname = "0.4"
-futures-backoff = "0.1.0"
+num_cpus = "1.16"
 woothee = "0.13"
 
 # #[cfg(bigtable)] for this section.
@@ -66,7 +58,9 @@ google-cloud-rust-raw = { version = "0.16", default-features = false, features =
     "bigtable",
 ], optional = true }
 grpcio = { version = "=0.13.0", features = ["openssl"], optional = true }
+grpcio-sys = { version = "=0.13.0", optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
+form_urlencoded = { version = "1.2", optional = true }
 
 [dev-dependencies]
 mockito = "0.31"
@@ -75,11 +69,18 @@ tokio = { version = "0.2", features = ["macros"] }
 actix-rt = "2.8"
 
 [features]
-# for testing:
-# default = ["emulator", "bigtable", "dynamodb"]
-default = ["dynamodb"]
-bigtable = ["dep:google-cloud-rust-raw", "dep:grpcio", "dep:protobuf"]
-dynamodb = ["dep:rusoto_core", "dep:rusoto_credential", "dep:rusoto_dynamodb"]
+# NOTE: Do not set a `default` here, rather specify them in the calling library.
+# This is to reduce complexity around feature specification.
+bigtable = [
+    "dep:google-cloud-rust-raw",
+    "dep:grpcio",
+    "dep:grpcio-sys",
+    "dep:protobuf",
+    "dep:form_urlencoded",
+]
+dynamodb = ["dep:rusoto_core", "dep:rusoto_dynamodb"]
+dual = ["dynamodb", "bigtable"]
+aws = []
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.

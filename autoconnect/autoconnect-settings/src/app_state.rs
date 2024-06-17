@@ -2,7 +2,12 @@ use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+use autopush_common::db::dual::DualClientImpl;
+#[cfg(feature = "dynamodb")]
+use autopush_common::db::dynamodb::DdbClientImpl;
 use cadence::StatsdClient;
+use config::ConfigError;
 use fernet::{Fernet, MultiFernet};
 use tokio::sync::RwLock;
 
@@ -10,8 +15,7 @@ use autoconnect_common::{
     broadcast::BroadcastChangeTracker, megaphone::init_and_spawn_megaphone_updater,
     registry::ClientRegistry,
 };
-use autopush_common::db::{client::DbClient, dynamodb::DdbClientImpl, DbSettings, StorageType};
-use autopush_common::errors::{ApcErrorKind, Result};
+use autopush_common::db::{client::DbClient, DbSettings, StorageType};
 
 use crate::{Settings, ENV_PREFIX};
 
@@ -35,24 +39,20 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn from_settings(settings: Settings) -> Result<Self> {
+    pub fn from_settings(settings: Settings) -> Result<Self, ConfigError> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
-            return Err(
-                ApcErrorKind::ConfigError(config::ConfigError::Message(format!(
-                    "Invalid {}_CRYPTO_KEY",
-                    ENV_PREFIX
-                )))
-                .into(),
-            );
+            return Err(ConfigError::Message(format!(
+                "Invalid {ENV_PREFIX}_CRYPTO_KEY"
+            )));
         }
         let crypto_key = &crypto_key[1..crypto_key.len() - 1];
-        debug!("Fernet keys: {:?}", &crypto_key);
+        debug!("🔐 Fernet keys: {:?}", &crypto_key);
         let fernets: Vec<Fernet> = crypto_key
             .split(',')
             .map(|s| s.trim().to_string())
             .map(|key| {
-                Fernet::new(&key).unwrap_or_else(|| panic!("Invalid {}_CRYPTO_KEY", ENV_PREFIX))
+                Fernet::new(&key).unwrap_or_else(|| panic!("Invalid {ENV_PREFIX}_CRYPTO_KEY"))
             })
             .collect();
         let fernet = MultiFernet::new(fernets);
@@ -60,7 +60,8 @@ impl AppState {
             &settings.statsd_label,
             &settings.statsd_host,
             settings.statsd_port,
-        )?
+        )
+        .map_err(|e| ConfigError::Message(e.to_string()))?
         // Temporary tag to distinguish from the legacy autopush(connect)
         .with_tag("autoconnect", "true")
         .build();
@@ -71,11 +72,26 @@ impl AppState {
             db_settings: settings.db_settings.clone(),
         };
         let storage_type = StorageType::from_dsn(&db_settings.dsn);
+        #[allow(unused)]
         let db: Box<dyn DbClient> = match storage_type {
-            StorageType::DynamoDb => Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?),
+            #[cfg(feature = "dynamodb")]
+            StorageType::DynamoDb => Box::new(
+                DdbClientImpl::new(metrics.clone(), &db_settings)
+                    .map_err(|e| ConfigError::Message(e.to_string()))?,
+            ),
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
-                Box::new(BigTableClientImpl::new(metrics.clone(), &db_settings)?)
+                let client = BigTableClientImpl::new(metrics.clone(), &db_settings)
+                    .map_err(|e| ConfigError::Message(e.to_string()))?;
+                client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
+            }
+            #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
+            StorageType::Dual => {
+                let client = DualClientImpl::new(metrics.clone(), &db_settings)
+                    .map_err(|e| ConfigError::Message(e.to_string()))?;
+                client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
             }
             _ => panic!(
                 "Invalid Storage type {:?}. Check {}__DB_DSN.",
@@ -108,17 +124,14 @@ impl AppState {
     /// Initialize the `BroadcastChangeTracker`
     ///
     /// Via `autoconnect_common::megaphone::init_and_spawn_megaphone_updater`
-    pub async fn init_and_spawn_megaphone_updater(&self) -> Result<()> {
+    pub async fn init_and_spawn_megaphone_updater(&self) -> Result<(), ConfigError> {
         let Some(ref url) = self.settings.megaphone_api_url else {
             return Ok(());
         };
         let Some(ref token) = self.settings.megaphone_api_token else {
-            return Err(
-                ApcErrorKind::ConfigError(config::ConfigError::Message(format!(
-                    "{ENV_PREFIX}__MEGAPHONE_API_URL requires {ENV_PREFIX}__MEGAPHONE_API_TOKEN"
-                )))
-                .into(),
-            );
+            return Err(ConfigError::Message(format!(
+                "{ENV_PREFIX}__MEGAPHONE_API_URL requires {ENV_PREFIX}__MEGAPHONE_API_TOKEN"
+            )));
         };
         init_and_spawn_megaphone_updater(
             &self.broadcaster,
@@ -129,7 +142,7 @@ impl AppState {
             self.settings.megaphone_poll_interval,
         )
         .await
-        .map_err(|e| ApcErrorKind::GeneralError(format!("{}", e)))?;
+        .map_err(|e| ConfigError::Message(e.to_string()))?;
         Ok(())
     }
 }

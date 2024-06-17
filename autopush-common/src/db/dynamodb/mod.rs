@@ -8,7 +8,7 @@ use crate::db::client::DbClient;
 use crate::db::dynamodb::retry::{
     retry_policy, retryable_batchwriteitem_error, retryable_delete_error,
     retryable_describe_table_error, retryable_getitem_error, retryable_putitem_error,
-    retryable_updateitem_error,
+    retryable_query_error, retryable_updateitem_error,
 };
 use crate::db::error::{DbError, DbResult};
 use crate::db::{
@@ -19,7 +19,6 @@ use crate::util::sec_since_epoch;
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
-use chrono::Utc;
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::{HttpClient, Region, RusotoError};
 use rusoto_dynamodb::{
@@ -61,6 +60,7 @@ pub struct DdbClientImpl {
 
 impl DdbClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, db_settings: &DbSettings) -> DbResult<Self> {
+        debug!("🛢️DynamoDB Settings {:?}", db_settings);
         let db_client = if let Ok(endpoint) = env::var("AWS_LOCAL_DYNAMODB") {
             DynamoDbClient::new_with(
                 HttpClient::new().expect("TLS initialization error"),
@@ -158,7 +158,7 @@ impl DbClient for DdbClientImpl {
         Ok(())
     }
 
-    async fn update_user(&self, user: &User) -> DbResult<bool> {
+    async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         let mut user_map = serde_dynamodb::to_hashmap(&user)?;
         user_map.remove("uaid");
         let input = UpdateItemInput {
@@ -352,6 +352,7 @@ impl DbClient for DdbClientImpl {
         uaid: &Uuid,
         node_id: &str,
         connected_at: u64,
+        _version: &Option<Uuid>,
     ) -> DbResult<bool> {
         let input = UpdateItemInput {
             key: ddb_item! { uaid: s => uaid.simple().to_string() },
@@ -397,7 +398,13 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        let output = self.db_client.query(input.clone()).await?;
+        let output = retry_policy()
+            .retry_if(
+                || self.db_client.query(input.clone()),
+                retryable_query_error(self.metrics.clone()),
+            )
+            .await?;
+
         let mut notifs: Vec<NotificationRecord> = output.items.map_or_else(Vec::new, |items| {
             debug!("Got response of: {:?}", items);
             items
@@ -460,7 +467,13 @@ impl DbClient for DdbClientImpl {
             ..Default::default()
         };
 
-        let output = self.db_client.query(input.clone()).await?;
+        let output = retry_policy()
+            .retry_if(
+                || self.db_client.query(input.clone()),
+                retryable_query_error(self.metrics.clone()),
+            )
+            .await?;
+
         let messages = output.items.map_or_else(Vec::new, |items| {
             debug!("Got response of: {:?}", items);
             items
@@ -533,6 +546,7 @@ impl DbClient for DdbClientImpl {
         self.metrics
             .incr_with_tags("notification.message.stored")
             .with_tag("topic", &topic)
+            .with_tag("database", &self.name())
             .send();
         Ok(())
     }
@@ -545,6 +559,7 @@ impl DbClient for DdbClientImpl {
                 self.metrics
                     .incr_with_tags("notification.message.stored")
                     .with_tag("topic", &n.topic.is_some().to_string())
+                    .with_tag("database", &self.name())
                     .send();
                 serde_dynamodb::to_hashmap(&NotificationRecord::from_notif(uaid, n))
                     .ok()
@@ -586,6 +601,7 @@ impl DbClient for DdbClientImpl {
             .await?;
         self.metrics
             .incr_with_tags("notification.message.deleted")
+            .with_tag("database", &self.name())
             .send();
         Ok(())
     }
@@ -618,6 +634,7 @@ impl DbClient for DdbClientImpl {
             .map_err(|e| DbError::General(format!("DynamoDB health check failure: {:?}", e)))?;
         if let Some(names) = result.table_names {
             // We found at least one table that matches the message_table
+            debug!("dynamodb ok");
             return Ok(!names.is_empty());
         }
         // Huh, we couldn't find a message table? That's a failure.
@@ -633,12 +650,4 @@ impl DbClient for DdbClientImpl {
     fn name(&self) -> String {
         "DynamoDb".to_owned()
     }
-}
-
-/// Indicate whether this last_connect falls in the current month
-pub(crate) fn has_connected_this_month(user: &User) -> bool {
-    user.last_connect.map_or(false, |v| {
-        let pat = Utc::now().format("%Y%m").to_string();
-        v.to_string().starts_with(&pat)
-    })
 }

@@ -3,7 +3,7 @@
 ## Overview
 
 To run Autopush, you will need to run at least one connection node, one
-endpoint node, and a local DynamoDB server or AWS DynamoDB. The prior
+endpoint node, and a local storage system. The prior
 section on Autopush architecture documented these components and their
 relation to each other.
 
@@ -16,17 +16,15 @@ If you want to run the latest Autopush code from source then you should
 follow the `developing` instructions.
 
 The instructions below assume that you want to run Autopush with a local
-DynamoDB server for testing or local verification. The docker containers
-can be run on separate hosts as well, or with AWS DynamoDB instead.
+Bigtable emulator for testing or local verification. The docker containers
+can be run on separate hosts as well.
 
 ## Setup
 
 *#TODO* rebuild the docker-compose.yaml files based off of syncstorage ones.
 
 - [ ] rebuild docker-componse.yaml
-  - [ ] selectable for dynamodb, bigtable, dual
   - [ ] initialize tables
-  - [ ]
 - [] define steps here
 
 <!-- The following block needs to be updated. The docker instructions are no

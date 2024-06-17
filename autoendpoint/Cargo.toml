@@ -24,8 +24,6 @@ openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
-rusoto_core.workspace = true
-rusoto_dynamodb.workspace = true
 sentry.workspace = true
 sentry-actix.workspace = true
 sentry-core.workspace = true
@@ -44,7 +42,7 @@ tokio.workspace = true
 url.workspace = true
 uuid.workspace = true
 
-a2 = { version = "0.8", git = "https://github.com/mozilla-services/a2", branch = "master" }
+a2 = { version = "0.8" }
 bytebuffer = "2.1"
 again = { version = "0.1.2", default-features = false, features = [
     "log",
@@ -52,23 +50,25 @@ again = { version = "0.1.2", default-features = false, features = [
 ] }
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
-jsonwebtoken = "8.0"
-validator = "0.16"
-validator_derive = "0.16"
+jsonwebtoken = "8.0" # v9.0 breaks vapid aud tests. https://mozilla-hub.atlassian.net/browse/SYNC-4201
+validator = "0.17"
+validator_derive = "0.17"
 yup-oauth2 = "8.1"
 
 # For mockito test debugging
 #ureq={ version="2.4", features=["json"] }
 
 [dev-dependencies]
+deadpool = { workspace = true }
 mockall.workspace = true
 mockito = "0.31"
 tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
-default = ["dynamodb"]
-dynamodb = ["autopush_common/dynamodb"]
-emulator = ["bigtable"]
-dual = ["bigtable", "dynamodb"]
+default = ["dual"]
 bigtable = ["autopush_common/bigtable"]
+dynamodb = ["autopush_common/dynamodb"]
+dual = ["bigtable", "dynamodb"]
+emulator = ["bigtable"]
+adm = []

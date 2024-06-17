@@ -4,11 +4,13 @@
 
 """Load test shape module."""
 import math
+import os
 from typing import Type
 
 import numpy
 from locust import LoadTestShape, User
 from locustfile import AutopushUser
+from stored import StoredNotifAutopushUser
 
 TickTuple = tuple[int, float, list[Type[User]]]
 
@@ -27,25 +29,36 @@ class QuadraticTrend:
         )
 
     def calculate_users(self, run_time: int) -> int:
-        """Determined the number of active users given a run time.
+        """Determine the number of active users given a run time.
 
-        Returns:
-            int: The number of users
+        Parameters
+        ----------
+        run_time : int
+            Run time in seconds
+
+        Returns
+        -------
+        run_time : int
+            The number of users
         """
         return int(round((self.a * math.pow(run_time, 2)) + (self.b * run_time) + self.c))
 
 
 class AutopushLoadTestShape(LoadTestShape):
-    """A load test shape class for Autopush (Duration: 10 minutes, Users: 83300).
+    """A load test shape class for Autopush (Duration: 10 minutes, Users: 150000).
 
     Note: The Shape class assumes that the workers can support the generated spawn rates. Should
     the number of available Locust workers change or should the Locust worker capacity change,
-    the MAX_USERS should also be changed.
+    the WORKERS_COUNT and USERS_PER_WORKER values must be changed respectively.
     """
 
-    MAX_RUN_TIME: int = 600  # 10 minutes
-    WORKER_COUNT: int = 300  # Must match value defined in setup_k8s.sh
-    USERS_PER_WORKER: int = 500  # Number of users supported on a worker running on a n1-standard-2
+    MAX_RUN_TIME: int = int(os.environ.get("MAX_RUN_TIME", 600))  # 10 minutes
+    WORKER_COUNT: int = int(
+        os.environ.get("WORKER_COUNT", 150)
+    )  # Must match value defined in setup_k8s.sh
+    USERS_PER_WORKER: int = int(
+        os.environ.get("USERS_PER_WORKER", 1000)
+    )  # Number of users supported on a worker running on a n1-standard-2
     MAX_USERS: int = WORKER_COUNT * USERS_PER_WORKER
     trend: QuadraticTrend
     user_classes: list[Type[User]] = [AutopushUser]
@@ -57,15 +70,19 @@ class AutopushLoadTestShape(LoadTestShape):
     def tick(self) -> TickTuple | None:
         """Override defining the desired distribution for Autopush load testing.
 
-        Returns:
-            TickTuple: Distribution parameters
-                user_count: Total user count
-                spawn_rate: Number of users to start/stop per second when changing
-                            number of users
-                user_classes: None or a List of user classes to be spawned
-            None: Instruction to stop the load test
+        Returns
+        -------
+        TickTuple | None
+
+        TickTuple Contained Parameters
+            user_count: Total user count
+            spawn_rate: Number of users to start/stop per second when changing
+                        number of users
+            user_classes: None or a List of user classes to be spawned
+
+        None: Instruction to stop the load test
         """
-        run_time: int = self.get_run_time()
+        run_time: int = int(self.get_run_time())
         if run_time > self.MAX_RUN_TIME:
             return None
 
@@ -74,3 +91,12 @@ class AutopushLoadTestShape(LoadTestShape):
         spawn_rate: float = max(abs(users - self.get_current_user_count()), 1)
 
         return users, spawn_rate, self.user_classes
+
+
+class StoredNotifAutopushLoadTestShape(AutopushLoadTestShape):
+    """A load test shape class for StoredNotifAutopushLoadTestShape
+    (Duration: 15 minutes, Users: 150000).
+    """
+
+    MAX_RUN_TIME: int = 900  # 15 minutes
+    user_classes: list[Type[User]] = [StoredNotifAutopushUser]

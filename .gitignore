@@ -45,3 +45,6 @@ docs/old
 
 # circleCI
 workspace
+
+# For poetry install
+.install.stamp
