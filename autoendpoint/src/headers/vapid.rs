@@ -20,10 +20,16 @@ pub struct VapidClaims {
 impl Default for VapidClaims {
     fn default() -> Self {
         Self {
-            exp: sec_since_epoch() + ONE_DAY_IN_SECONDS,
+            exp: VapidClaims::default_exp(),
             aud: "No audience".to_owned(),
             sub: "No sub".to_owned(),
         }
+    }
+}
+
+impl VapidClaims {
+    pub fn default_exp() -> u64 {
+        sec_since_epoch() + ONE_DAY_IN_SECONDS
     }
 }
 

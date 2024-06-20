@@ -293,7 +293,7 @@ fn validate_vapid_jwt(
         );
     };
 
-    if token_data.claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
+    if token_data.claims.exp > VapidClaims::default_exp() {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
     }
