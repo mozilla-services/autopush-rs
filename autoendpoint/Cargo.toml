@@ -50,7 +50,7 @@ again = { version = "0.1.2", default-features = false, features = [
 ] }
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
-jsonwebtoken = "8.0" # v9.0 breaks vapid aud tests. https://mozilla-hub.atlassian.net/browse/SYNC-4201
+jsonwebtoken = "9.3.0"
 validator = "0.17"
 validator_derive = "0.17"
 yup-oauth2 = "8.1"

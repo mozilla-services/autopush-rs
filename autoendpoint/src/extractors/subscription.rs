@@ -29,6 +29,8 @@ use crate::headers::{
 use crate::metrics::Metrics;
 use crate::server::AppState;
 
+use crate::settings::Settings;
+
 const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
@@ -291,13 +293,19 @@ fn validate_vapid_jwt(
     domain: &Url,
     metrics: &Metrics,
 ) -> ApiResult<()> {
+    let settings = Settings::with_env_and_config_file(&None).unwrap();
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
+    let mut validation = Validation::new(Algorithm::ES256);
+    let audience: Vec<&str> = settings.vapid_aud.iter().map(|s| s.as_str()).collect();
+    validation.set_audience(&audience);
+    validation.set_required_spec_claims(&["exp", "aud", "sub"]);
+
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
         &DecodingKey::from_ec_der(&public_key),
-        &Validation::new(Algorithm::ES256),
+        &validation,
     ) {
         Ok(v) => v,
         Err(e) => match e.kind() {
