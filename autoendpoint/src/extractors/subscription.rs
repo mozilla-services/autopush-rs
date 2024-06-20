@@ -100,7 +100,7 @@ impl FromRequest for Subscription {
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
             // values we get.
-            if let Some(header) = vapid.clone() {
+            if let Some(ref header) = vapid {
                 let sub = header
                     .vapid
                     .sub()

@@ -85,7 +85,7 @@ impl VapidHeader {
 
         if let Some(sub_candiate) = data.get("sub") {
             if let Some(sub) = sub_candiate.as_str() {
-                if !sub.starts_with("mailto:") {
+                if !sub.starts_with("mailto:") || !sub.starts_with("https://") {
                     info!("🔐 Vapid: Bad Format {:?}", sub);
                     return Err(VapidError::SubBadFormat);
                 }
