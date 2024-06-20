@@ -13,8 +13,6 @@ use serde_json::json;
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
-#[cfg(feature = "dual")]
-use autopush_common::db::dual::DualClientImpl;
 #[cfg(feature = "dynamodb")]
 use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::{
@@ -79,12 +77,6 @@ impl Server {
             StorageType::BigTable => {
                 debug!("Using BigTable");
                 let client = BigTableClientImpl::new(metrics.clone(), &db_settings)?;
-                client.spawn_sweeper(Duration::from_secs(30));
-                Box::new(client)
-            }
-            #[cfg(all(feature = "bigtable", feature = "dual"))]
-            StorageType::Dual => {
-                let client = DualClientImpl::new(metrics.clone(), &db_settings)?;
                 client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
