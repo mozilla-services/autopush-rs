@@ -5,7 +5,7 @@ use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
 use autopush_common::{
     db::User,
     tags::Tags,
-    util::{b64_decode_std, b64_decode_url, sec_since_epoch, ONE_DAY_IN_SECONDS},
+    util::{b64_decode_std, b64_decode_url},
 };
 use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
@@ -25,6 +25,8 @@ use crate::headers::{
 };
 use crate::metrics::Metrics;
 use crate::server::AppState;
+
+use crate::settings::Settings;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 #[derive(Clone, Debug)]
@@ -232,13 +234,19 @@ fn validate_vapid_jwt(
     domain: &Url,
     metrics: &Metrics,
 ) -> ApiResult<()> {
+    let settings = Settings::with_env_and_config_file(&None).unwrap();
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
+    let mut validation = Validation::new(Algorithm::ES256);
+    let audience: Vec<&str> = settings.vapid_aud.iter().map(|s| s.as_str()).collect();
+    validation.set_audience(&audience);
+    validation.set_required_spec_claims(&["exp", "aud", "sub"]);
+
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
         &DecodingKey::from_ec_der(&public_key),
-        &Validation::new(Algorithm::ES256),
+        &validation,
     ) {
         Ok(v) => v,
         Err(e) => match e.kind() {
@@ -327,7 +335,7 @@ mod tests {
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
     use crate::metrics::Metrics;
-    use autopush_common::util::{b64_decode_std, sec_since_epoch};
+    use autopush_common::util::b64_decode_std;
     use serde::{Deserialize, Serialize};
     use std::str::FromStr;
     use url::Url;
@@ -356,7 +364,7 @@ mod tests {
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
         let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: VapidClaims::default_exp() - 100,
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
@@ -387,7 +395,7 @@ mod tests {
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
         let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: VapidClaims::default_exp() - 100,
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
@@ -432,7 +440,7 @@ mod tests {
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
         let claims = StrExpVapidClaims {
-            exp: (sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100).to_string(),
+            exp: (VapidClaims::default_exp() - 100).to_string(),
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
@@ -480,7 +488,7 @@ mod tests {
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
         let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: VapidClaims::default_exp() - 100,
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
@@ -555,7 +563,7 @@ mod tests {
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
         let claims = NoSubVapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: VapidClaims::default_exp() - 100,
             aud: domain.to_owned(),
             sub: None,
         };
