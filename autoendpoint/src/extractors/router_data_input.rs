@@ -45,6 +45,9 @@ impl FromRequest for RouterDataInput {
                 }
                 #[cfg(feature = "adm")]
                 RouterType::ADM => VALID_ADM_TOKEN.is_match(&data.token),
+
+                #[cfg(feature = "stub")]
+                RouterType::STUB => data.token.as_str() == "success",
             };
 
             if !is_valid {

@@ -461,6 +461,7 @@ impl Router for ApnsRouter {
                 apns_topic: Some(topic),
                 apns_collapse_id: None,
                 apns_expiration: Some(notification.timestamp + notification.headers.ttl as u64),
+                ..Default::default()
             },
         );
         payload.data = message_data

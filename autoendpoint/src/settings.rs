@@ -9,6 +9,8 @@ use url::Url;
 use crate::routers::adm::settings::AdmSettings;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
+#[cfg(feature = "stub")]
+use crate::routers::stub::settings::StubSettings;
 
 pub const ENV_PREFIX: &str = "autoend";
 
@@ -45,6 +47,9 @@ pub struct Settings {
     pub apns: ApnsSettings,
     #[cfg(feature = "adm")]
     pub adm: AdmSettings,
+
+    #[cfg(feature = "stub")]
+    pub stub: StubSettings,
 }
 
 impl Default for Settings {
@@ -75,6 +80,8 @@ impl Default for Settings {
             apns: ApnsSettings::default(),
             #[cfg(feature = "adm")]
             adm: AdmSettings::default(),
+            #[cfg(feature = "stub")]
+            stub: StubSettings::default(),
         }
     }
 }

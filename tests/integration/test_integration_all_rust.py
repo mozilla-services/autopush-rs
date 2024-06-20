@@ -177,6 +177,7 @@ For local test debugging, set `AUTOPUSH_EP_CONFIG=_url_` to override
 creation of the local server.
 """
 ENDPOINT_CONFIG = dict(
+    scheme="http",
     host="127.0.0.1",
     port=ENDPOINT_PORT,
     router_table_name=ROUTER_TABLE,
@@ -471,7 +472,7 @@ def setup_megaphone_server(connection_binary) -> None:
 
 def setup_endpoint_server() -> None:
     """Set up endpoint server from configuration."""
-    global CONNECTION_CONFIG, EP_SERVER, BT_PROCESS
+    global CONNECTION_CONFIG, EP_SERVER, BT_PROCESS, ENDPOINT_CONFIG
 
     # Set up environment
     # NOTE:
@@ -1526,3 +1527,76 @@ async def test_broadcast_no_changes(test_client_broadcast: AsyncPushTestClient) 
     assert result != {}
     assert result["use_webpush"] is True
     assert result["broadcasts"] == {}
+
+
+# Stub Tests
+# these tests are only really useful for testing the stub system and are
+# not required for production CI testing.
+async def test_mobile_register_v1(test_client: AsyncPushTestClient) -> None:
+    """Test that the mobile "hello" request returns an unsigned endpoint
+    if no `key` is included in the body
+    """
+    if not os.getenv("TEST_STUB"):
+        pytest.skip("Skipping stub test test_mobile_register_v1")
+
+    endpoint = test_client.get_host_client_endpoint()
+    async with httpx.AsyncClient() as httpx_client:
+        resp = await httpx_client.request(
+            method="POST",
+            url=f"{endpoint}/v1/stub/success/registration",
+            headers={"content-type": "application/json"},
+            content=json.dumps({"token": "success"}),
+        )  # nosec
+        assert resp.status_code == 200, "Could not register stub endpoint"
+        response = resp.json()
+        endpoint = response.get("endpoint")
+        assert endpoint is not None
+        assert urlparse(endpoint).path.split("/")[2] == "v1"
+        assert response.get("secret") is not None
+        assert response.get("uaid") is not None
+
+
+async def test_mobile_register_v2(test_client: AsyncPushTestClient) -> None:
+    """Test that a signed endpoint is returned if a valid VAPID public
+    key is included in the body.
+    """
+    if not os.getenv("TEST_STUB"):
+        pytest.skip("Skipping stub test test_mobile_register_v2")
+    vapid_pub = (
+        "BBO5r087l4d3kxx9INyRenewaA5WOWiaSFqy77UXN7ZRVxr3gNtyWeP"
+        "CjUbOerY1xUUcUFCtVoT5vdElIxTLlCc"
+    )
+    endpoint = test_client.get_host_client_endpoint()
+    async with httpx.AsyncClient() as httpx_client:
+        resp = await httpx_client.request(
+            method="POST",
+            url=f"{endpoint}/v1/stub/success/registration",
+            headers={"content-type": "application/json"},
+            content=json.dumps({"token": "success", "key": vapid_pub}),
+        )  # nosec
+        assert resp.status_code == 200
+        response = resp.json()
+        endpoint = response.get("endpoint")
+        secret = response.get("secret")
+        uaid = response.get("uaid")
+        assert response.get("channelID") is not None
+        assert endpoint is not None
+        assert urlparse(endpoint).path.split("/")[2] == "v2"
+        assert secret is not None
+        assert uaid is not None
+
+    # and check to see that we can subscribe to a new channel and pass
+    # in an explicit channelID.
+    chid2 = str(uuid.uuid4())
+    async with httpx.AsyncClient() as httpx_client:
+        resp = await httpx_client.request(
+            method="POST",
+            url=f"{endpoint}/v1/stub/success/registration/{uaid}/subscription",
+            headers={"content-type": "application/json", "authorization": f"webpush {secret}"},
+            content=json.dumps({"token": "success", "channelID": chid2, "key": vapid_pub}),
+        )  # nosec
+        assert resp.status_code == 200
+        resp2 = resp.json()
+        end2 = resp2.get("endpoint")
+        assert end2 is not None and end2 != endpoint
+        assert chid2 == resp2.get("channelID")
