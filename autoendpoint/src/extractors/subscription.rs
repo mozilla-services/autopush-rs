@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
 
@@ -104,7 +105,7 @@ impl FromRequest for Subscription {
                 let sub = header
                     .vapid
                     .sub()
-                    .map_err(|e| {
+                    .map_err(|e: VapidError| {
                         // Capture the type of error and add it to metrics.
                         let mut tags = Tags::default();
                         tags.tags
@@ -328,8 +329,30 @@ fn validate_vapid_jwt(
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
             _ => {
+                // Attempt to match up the majority of ErrorKind variants.
+                // The third-party errors all defer to the source, so we can
+                // use that to differentiate for actual errors.
                 let mut tags = Tags::default();
-                tags.tags.insert("error".to_owned(), e.to_string());
+                let label = if e.source().is_none() {
+                    // These two have the most cardinality, so we need to handle
+                    // them separately.
+                    match e.clone().into_kind() {
+                        jsonwebtoken::errors::ErrorKind::InvalidRsaKey(_) => {
+                            "InvalidRsaKey".to_owned()
+                        }
+                        jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(_) => {
+                            "MissingRequiredClaim".to_owned()
+                        }
+                        // NOTE: It's possible that any new error introduced could
+                        // be a source of cardinality. We should handle these as they
+                        // come up.
+                        _ => e.to_string(),
+                    }
+                } else {
+                    // If you need to dig into these, there's always the logs.
+                    "Other".to_owned()
+                };
+                tags.tags.insert("error".to_owned(), label);
                 metrics
                     .clone()
                     .incr_with_tags("notification.auth.bad_vapid.other", Some(tags));
