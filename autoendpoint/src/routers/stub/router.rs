@@ -59,10 +59,10 @@ impl Router for StubRouter {
 
         let mut router_data = HashMap::new();
         router_data.insert(
-            "token".to_string(),
+            "token".to_owned(),
             serde_json::to_value(&router_data_input.token).unwrap(),
         );
-        router_data.insert("app_id".to_string(), serde_json::to_value(app_id).unwrap());
+        router_data.insert("app_id".to_owned(), serde_json::to_value(app_id).unwrap());
 
         Ok(router_data)
     }

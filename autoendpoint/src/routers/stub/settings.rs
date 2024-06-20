@@ -27,7 +27,7 @@ impl Default for StubSettings {
     fn default() -> Self {
         Self {
             url: "http://localhost:8080".to_owned(),
-            server_credentials: "{\"error\":\"General Error\"}".to_string(),
+            server_credentials: "{\"error\":\"General Error\"}".to_owned(),
         }
     }
 }
