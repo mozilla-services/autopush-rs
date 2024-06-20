@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
 
@@ -97,7 +98,29 @@ impl FromRequest for Subscription {
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
 
-            trace!("Vapid: {:?}", &vapid);
+            trace!("raw vapid: {:?}", &vapid);
+
+            // Capturing the vapid sub right now will cause too much cardinality. Instead,
+            // let's just capture if we have a valid VAPID, as well as what sort of bad sub
+            // values we get.
+            if let Some(ref header) = vapid {
+                let sub = header
+                    .vapid
+                    .sub()
+                    .map_err(|e: VapidError| {
+                        // Capture the type of error and add it to metrics.
+                        let mut tags = Tags::default();
+                        tags.tags
+                            .insert("error".to_owned(), e.as_metric().to_owned());
+                        metrics
+                            .clone()
+                            .incr_with_tags("notification.auth.error", Some(tags));
+                    })
+                    .unwrap_or_default();
+                // For now, record that we had a good (?) VAPID sub,
+                metrics.clone().incr("notification.auth.ok");
+                info!("VAPID sub: {:?}", sub)
+            };
 
             match token_info.api_version {
                 ApiVersion::Version1 => version_1_validation(&token)?,
@@ -164,7 +187,13 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Opti
         None => return Ok(None),
     };
 
-    let vapid = VapidHeader::parse(auth_header)?;
+    let vapid = VapidHeader::parse(auth_header).map_err(|e| {
+        metrics
+            .incr_with_tags("notification.auth.error")
+            .with_tag("error", e.as_metric())
+            .send();
+        e
+    })?;
 
     metrics
         .incr_with_tags("notification.auth")
@@ -308,7 +337,34 @@ fn validate_vapid_jwt(
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
             _ => {
-                metrics.clone().incr("notification.auth.bad_vapid.other");
+                // Attempt to match up the majority of ErrorKind variants.
+                // The third-party errors all defer to the source, so we can
+                // use that to differentiate for actual errors.
+                let mut tags = Tags::default();
+                let label = if e.source().is_none() {
+                    // These two have the most cardinality, so we need to handle
+                    // them separately.
+                    match e.clone().into_kind() {
+                        jsonwebtoken::errors::ErrorKind::InvalidRsaKey(_) => {
+                            "InvalidRsaKey".to_owned()
+                        }
+                        jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(_) => {
+                            "MissingRequiredClaim".to_owned()
+                        }
+                        // NOTE: It's possible that any new error introduced could
+                        // be a source of cardinality. We should handle these as they
+                        // come up.
+                        _ => e.to_string(),
+                    }
+                } else {
+                    // If you need to dig into these, there's always the logs.
+                    "Other".to_owned()
+                };
+                tags.tags.insert("error".to_owned(), label);
+                metrics
+                    .clone()
+                    .incr_with_tags("notification.auth.bad_vapid.other", Some(tags));
+                error!("Bad Aud: Unexpected VAPID error: {:?}", &e);
                 return Err(e.into());
             }
         },

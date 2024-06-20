@@ -20,7 +20,6 @@ pub struct FcmClient {
     timeout: Duration,
     max_data: usize,
     authenticator: Option<DefaultAuthenticator>,
-    pub is_gcm: bool,
     http_client: reqwest::Client,
 }
 
@@ -77,7 +76,6 @@ impl FcmClient {
             timeout: Duration::from_secs(settings.timeout as u64),
             max_data: settings.max_data,
             authenticator: auth,
-            is_gcm: server_credential.is_gcm.unwrap_or_default(),
             http_client: http,
         })
     }
