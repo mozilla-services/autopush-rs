@@ -29,6 +29,7 @@ use grpcio::Metadata;
 use serde::Deserialize;
 use std::time::Duration;
 
+use crate::consts;
 use crate::db::bigtable::bigtable_client::MetadataBuilder;
 use crate::db::error::DbError;
 use crate::util::deserialize_opt_u32_to_duration;
@@ -38,7 +39,7 @@ fn retry_default() -> usize {
 }
 
 fn refresh_period_default() -> u64 {
-    bigtable_client::DEFAULT_REFRESH_PERIOD_SECONDS
+    consts::ONE_DAY_IN_SECONDS as u64
 }
 
 /// The settings for accessing the BigTable contents.
@@ -110,7 +111,7 @@ impl Default for BigTableDbSettings {
             database_pool_max_idle: Default::default(),
             route_to_leader: Default::default(),
             retry_count: bigtable_client::RETRY_COUNT,
-            refresh_period_seconds: bigtable_client::DEFAULT_REFRESH_PERIOD_SECONDS,
+            refresh_period_seconds: refresh_period_default(),
         }
     }
 }

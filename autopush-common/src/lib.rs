@@ -5,6 +5,7 @@ extern crate slog;
 #[macro_use]
 extern crate slog_scope;
 
+pub mod consts;
 #[macro_use]
 pub mod db;
 pub mod endpoint;

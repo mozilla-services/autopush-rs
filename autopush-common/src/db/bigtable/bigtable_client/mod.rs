@@ -53,7 +53,6 @@ const MESSAGE_FAMILY: &str = "message"; // The default family for messages
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 
 pub(crate) const RETRY_COUNT: usize = 5;
-pub(crate) const DEFAULT_REFRESH_PERIOD_SECONDS: u64 = 86400; // 24 hours
 
 /// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
 // TODO:Should we create something similar for ChannelID?
@@ -778,31 +777,29 @@ impl BigTableClientImpl {
 
     /// Refresh the cells associated with the current user's router record. This will prevent
     /// those routes from being garbage collected. We return if the router needed refreshment.
-    pub async fn refresh_router(&self, uaid: &Uuid) -> Result<bool, DbError> {
+    pub async fn refresh_router_channels(&self, user: &User) -> Result<bool, DbError> {
         // get the current user's router record
-        if let Some(user) = self.get_user(uaid).await? {
-            if let Some(refreshed_at) = user.refreshed_at {
-                if refreshed_at > (utc_now()?.as_secs() - self.settings.refresh_period_seconds) {
-                    // the record was recently refreshed, no action needed.
-                    debug!("🉑 Router record for {} was recently refreshed", uaid);
-                    return Ok(false);
-                }
-            }
-
-            // rewrite the channels
-            let channels = self.get_channels(uaid).await?;
-            if !channels.is_empty() {
-                debug!(
-                    "🉑 Refreshing Router record for {} ({})",
-                    uaid,
-                    channels.len()
-                );
-                self.add_channels(uaid, channels).await?;
-                return Ok(true);
-            } else {
-                debug!("🉑 No channels to refresh for {}.", uaid);
+        let uaid = user.uaid;
+        if let Some(refreshed_at) = user.refreshed_at {
+            if refreshed_at > (utc_now()?.as_secs() - self.settings.refresh_period_seconds) {
+                // the record was recently refreshed, no action needed.
+                debug!("🉑 Router record for {} was recently refreshed", uaid);
+                return Ok(false);
             }
         }
+
+        // rewrite the channels
+        let channels = self.get_channels(&uaid).await?;
+        if !channels.is_empty() {
+            debug!(
+                "🉑 Refreshing Router record for {} ({})",
+                uaid,
+                channels.len()
+            );
+            self.add_channels(&uaid, channels).await?;
+            return Ok(true);
+        }
+        debug!("🉑 No channels to refresh for {}.", uaid);
         Ok(false)
     }
 
@@ -906,7 +903,8 @@ impl DbClient for BigTableClientImpl {
             ));
         };
 
-        if self.refresh_router(&user.uaid).await? {
+        // Check to see if we need to refresh the channels as well.
+        if self.refresh_router_channels(&user).await? {
             debug!("🉑 Router refreshed");
             user.refreshed_at = Some(utc_now()?.as_secs());
         }
