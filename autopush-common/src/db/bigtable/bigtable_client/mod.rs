@@ -904,7 +904,7 @@ impl DbClient for BigTableClientImpl {
         };
 
         // Check to see if we need to refresh the channels as well.
-        if self.refresh_router_channels(&user).await? {
+        if self.refresh_router_channels(user).await? {
             debug!("🉑 Router refreshed");
             user.refreshed_at = Some(utc_now()?.as_secs());
         }
