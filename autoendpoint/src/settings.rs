@@ -56,7 +56,7 @@ impl Default for Settings {
             host: "127.0.0.1".to_string(),
             endpoint_url: "".to_string(),
             port: 8000,
-            db_dsn: None,
+            db_dsn: Some("grpc://localhost:8086".to_string()),
             db_settings: "".to_owned(),
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
