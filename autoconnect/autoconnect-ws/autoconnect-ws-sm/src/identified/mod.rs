@@ -321,6 +321,10 @@ pub async fn process_existing_user(
 
     let flags = ClientFlags {
         check_storage: true,
+        // check the user's record version. This was added when we
+        // created the "topic" record and needed to update users to
+        // the new format. Setting this to `true` will cause the
+        // user's UAID to be reset.
         old_record_version: user
             .record_version
             .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
