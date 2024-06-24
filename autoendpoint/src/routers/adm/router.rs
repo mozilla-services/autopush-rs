@@ -186,10 +186,10 @@ mod tests {
     use url::Url;
 
     /// Create a router for testing
-    fn make_router(db: Box<dyn DbClient>) -> AdmRouter {
+    fn make_router(server: &mockito::ServerGuard, db: Box<dyn DbClient>) -> AdmRouter {
         AdmRouter::new(
             AdmSettings {
-                base_url: Url::parse(&mockito::server_url()).unwrap(),
+                base_url: Url::parse(&server.url()).unwrap(),
                 profiles: format!(
                     r#"{{ "dev": {{ "client_id": "{CLIENT_ID}", "client_secret": "{CLIENT_SECRET}" }} }}"#
                 ),
@@ -217,10 +217,12 @@ mod tests {
     /// A notification with no data is sent to ADM
     #[tokio::test]
     async fn successful_routing_no_data() {
+        let mut server = mockito::Server::new_async().await;
+
         let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(db);
-        let _token_mock = mock_token_endpoint();
-        let adm_mock = mock_adm_endpoint_builder()
+        let router = make_router(&server, db);
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let adm_mock = mock_adm_endpoint_builder(&mut server)
             .match_body(
                 serde_json::json!({
                     "data": { "chid": CHANNEL_ID },
@@ -230,7 +232,8 @@ mod tests {
                 .as_str(),
             )
             .with_body(r#"{"registrationID":"test-registration-id"}"#)
-            .create();
+            .create_async()
+            .await;
         let notification = make_notification(default_router_data(), None, RouterType::ADM);
 
         let result = router.route_notification(&notification).await;
@@ -245,10 +248,12 @@ mod tests {
     /// A notification with data is sent to ADM
     #[tokio::test]
     async fn successful_routing_with_data() {
+        let mut server = mockito::Server::new_async().await;
+
         let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(db);
-        let _token_mock = mock_token_endpoint();
-        let adm_mock = mock_adm_endpoint_builder()
+        let router = make_router(&server, db);
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let adm_mock = mock_adm_endpoint_builder(&mut server)
             .match_body(
                 serde_json::json!({
                     "data": {
@@ -265,7 +270,8 @@ mod tests {
                 .as_str(),
             )
             .with_body(r#"{"registrationID":"test-registration-id"}"#)
-            .create();
+            .create_async()
+            .await;
         let data = "test-data".to_string();
         let notification = make_notification(default_router_data(), Some(data), RouterType::ADM);
 
@@ -282,10 +288,15 @@ mod tests {
     /// the ADM request is not sent.
     #[tokio::test]
     async fn missing_client() {
+        let mut server = mockito::Server::new_async().await;
+
         let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(db);
-        let _token_mock = mock_token_endpoint();
-        let adm_mock = mock_adm_endpoint_builder().expect(0).create();
+        let router = make_router(&server, db);
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let adm_mock = mock_adm_endpoint_builder(&mut server)
+            .expect(0)
+            .create_async()
+            .await;
         let mut router_data = default_router_data();
         router_data.insert(
             "creds".to_string(),
@@ -308,6 +319,8 @@ mod tests {
     /// If the ADM user no longer exists (404), we drop the user from our database
     #[tokio::test]
     async fn no_adm_user() {
+        let mut server = mockito::Server::new_async().await;
+
         let notification = make_notification(default_router_data(), None, RouterType::ADM);
         let mut db = MockDbClient::new();
         db.expect_remove_user()
@@ -315,12 +328,13 @@ mod tests {
             .times(1)
             .return_once(|_| Ok(()));
 
-        let router = make_router(db.into_boxed_arc());
-        let _token_mock = mock_token_endpoint();
-        let _adm_mock = mock_adm_endpoint_builder()
+        let router = make_router(&server, db.into_boxed_arc());
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _adm_mock = mock_adm_endpoint_builder(&mut server)
             .with_status(404)
             .with_body(r#"{"reason":"test-message"}"#)
-            .create();
+            .create_async()
+            .await;
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());
@@ -336,6 +350,7 @@ mod tests {
     /// If ADM returns a new registration token, update our copy to match
     #[tokio::test]
     async fn update_registration_token() {
+        let mut server = mockito::Server::new_async().await;
         let notification = make_notification(default_router_data(), None, RouterType::ADM);
         let mut db = MockDbClient::new();
         db.expect_update_user()
@@ -350,11 +365,12 @@ mod tests {
             .times(1)
             .return_once(|_| Ok(true));
 
-        let router = make_router(db.into_boxed_arc());
-        let _token_mock = mock_token_endpoint();
-        let _adm_mock = mock_adm_endpoint_builder()
+        let router = make_router(&server, db.into_boxed_arc());
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _adm_mock = mock_adm_endpoint_builder(&mut server)
             .with_body(r#"{"registrationID":"test-registration-id2"}"#)
-            .create();
+            .create_async()
+            .await;
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_ok());
