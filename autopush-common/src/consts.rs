@@ -1,0 +1,2 @@
+pub const ONE_DAY_IN_SECONDS: i64 = 86_400;
+pub const ONE_MONTH_IN_SECONDS: i64 = ONE_DAY_IN_SECONDS * 30;

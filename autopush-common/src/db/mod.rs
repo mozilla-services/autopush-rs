@@ -178,6 +178,9 @@ pub struct User {
     pub router_type: String,
     /// Router-specific data
     pub router_data: Option<HashMap<String, serde_json::Value>>,
+    /// UTC Time in seconds that the user's router data was last refreshed.
+    /// This field is exclusive to the Bigtable data scheme
+    pub refreshed_at: Option<u64>,
     /// Last node/port the client was or may be connected to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
@@ -211,6 +214,7 @@ impl Default for User {
             current_month: None,
             current_timestamp: None,
             version: Some(Uuid::new_v4()),
+            refreshed_at: None,
         }
     }
 }

@@ -2,6 +2,7 @@ use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
+use autopush_common::consts;
 use autopush_common::util::InsertOpt;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -17,7 +18,7 @@ lazy_static! {
 }
 
 /// 60 days
-const MAX_TTL: i64 = 60 * 60 * 24 * 60;
+const MAX_TTL: i64 = consts::ONE_MONTH_IN_SECONDS;
 
 /// Extractor and validator for notification headers
 #[derive(Clone, Debug, Eq, PartialEq, Validate)]

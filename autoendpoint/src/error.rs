@@ -20,7 +20,7 @@ use std::fmt::{self, Display};
 use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
 
-use autopush_common::{db::error::DbError, errors::ReportableError};
+use autopush_common::{consts, db::error::DbError, errors::ReportableError};
 
 /// Common `Result` type.
 pub type ApiResult<T> = Result<T, ApiError>;
@@ -309,7 +309,9 @@ impl ResponseError for ApiError {
 
         match self.status_code() {
             StatusCode::GONE => {
-                builder.insert_header(CacheControl(vec![CacheDirective::MaxAge(86400)]));
+                builder.insert_header(CacheControl(vec![CacheDirective::MaxAge(
+                    consts::ONE_DAY_IN_SECONDS as u32, // TODO: Fix before 2032
+                )]));
             }
             StatusCode::SERVICE_UNAVAILABLE => {
                 builder.insert_header((header::RETRY_AFTER, RETRY_AFTER_PERIOD));
