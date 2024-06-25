@@ -169,9 +169,14 @@ fn filter_chain(filters: impl Into<RepeatedField<RowFilter>>) -> RowFilter {
 }
 
 /// Return a ReadRowsRequest against table for a given row key
-fn read_row_request(table_name: &str, row_key: &str) -> bigtable::ReadRowsRequest {
+fn read_row_request(
+    table_name: &str,
+    app_profile_id: &str,
+    row_key: &str,
+) -> bigtable::ReadRowsRequest {
     let mut req = bigtable::ReadRowsRequest::default();
     req.set_table_name(table_name.to_owned());
+    req.set_app_profile_id(app_profile_id.to_owned());
 
     let mut row_keys = RepeatedField::default();
     row_keys.push(row_key.as_bytes().to_vec());
@@ -337,13 +342,18 @@ impl BigTableClientImpl {
 
     /// Return a ReadRowsRequest for a given row key
     fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
-        read_row_request(&self.settings.table_name, row_key)
+        read_row_request(
+            &self.settings.table_name,
+            &self.settings.profile_id,
+            row_key,
+        )
     }
 
     /// Return a MutateRowRequest for a given row key
     fn mutate_row_request(&self, row_key: &str) -> bigtable::MutateRowRequest {
         let mut req = bigtable::MutateRowRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.profile_id.clone());
         req.set_row_key(row_key.as_bytes().to_vec());
         req
     }
@@ -352,6 +362,7 @@ impl BigTableClientImpl {
     fn check_and_mutate_row_request(&self, row_key: &str) -> bigtable::CheckAndMutateRowRequest {
         let mut req = bigtable::CheckAndMutateRowRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.profile_id.clone());
         req.set_row_key(row_key.as_bytes().to_vec());
         req
     }
@@ -787,7 +798,8 @@ impl BigtableDb {
     ///
     pub async fn health_check(
         &mut self,
-        metrics: Arc<StatsdClient>,
+        metrics: &Arc<StatsdClient>,
+        app_profile_id: &str,
     ) -> Result<bool, error::BigTableError> {
         // It is recommended that we pick a random key to perform the health check. Selecting
         // a single key for all health checks causes a "hot tablet" to arise. The `PingAndWarm`
@@ -796,7 +808,7 @@ impl BigtableDb {
         // This health check is to see if the database is present, the response is not important
         // other than it does not return an error.
         let random_uaid = Uuid::new_v4().simple().to_string();
-        let mut req = read_row_request(&self.table_name, &random_uaid);
+        let mut req = read_row_request(&self.table_name, app_profile_id, &random_uaid);
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
@@ -1221,6 +1233,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.profile_id.clone());
 
         let start_key = format!("{}#01:", uaid.simple());
         let end_key = format!("{}#02:", uaid.simple());
@@ -1269,6 +1282,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.profile_id.clone());
 
         let mut rows = data::RowSet::default();
         let mut row_range = data::RowRange::default();
@@ -1331,7 +1345,7 @@ impl DbClient for BigTableClientImpl {
             .pool
             .get()
             .await?
-            .health_check(self.metrics.clone())
+            .health_check(&self.metrics.clone(), &self.settings.profile_id)
             .await?)
     }
 

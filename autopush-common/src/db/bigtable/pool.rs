@@ -216,7 +216,7 @@ impl Manager for BigtableClientManager {
         }
 
         if !client
-            .health_check(self.metrics.clone())
+            .health_check(&self.metrics.clone(), &self.settings.profile_id)
             .await
             .inspect_err(|e| debug!("🏊 Recycle requested (health). {:?}", e))?
         {
