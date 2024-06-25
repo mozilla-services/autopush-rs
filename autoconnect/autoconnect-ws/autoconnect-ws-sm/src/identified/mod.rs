@@ -1,7 +1,7 @@
 use std::{fmt, mem, sync::Arc};
 
 use actix_web::rt;
-use cadence::{CountedExt, Timed};
+use cadence::Timed;
 use futures::channel::mpsc;
 use uuid::Uuid;
 
@@ -284,41 +284,7 @@ impl WebPushClient {
 /// Somewhat similar to autoendpoint's `validate_webpush_user` function. When a
 /// User record is invalid it will be dropped from the db and `None` will be
 /// returned.
-pub async fn process_existing_user(
-    app_state: &Arc<AppState>,
-    user: &User,
-) -> DbResult<Option<ClientFlags>> {
-    // TODO: if BigTable, can we assume the user is migrated at this point (so
-    // we wouldn't need to validate `current_month` is not None?)
-    if let Some(rotating_message_table) = app_state.db.rotating_message_table() {
-        let Some(ref current_month) = user.current_month else {
-            debug!("Missing `current_month` value, dropping user"; "user" => ?user);
-            app_state
-                .metrics
-                .incr_with_tags("ua.expiration")
-                .with_tag("code", "104")
-                .with_tag("reason", "no_current_month")
-                .send();
-            app_state.db.remove_user(&user.uaid).await?;
-            return Ok(None);
-        };
-
-        if current_month != rotating_message_table {
-            debug!("User is inactive, dropping user";
-                   "db.message_table" => rotating_message_table,
-                   "user.current_month" => current_month,
-                   "user" => ?user);
-            app_state
-                .metrics
-                .incr_with_tags("ua.expiration")
-                .with_tag("code", "105")
-                .with_tag("reason", "invalid_current_month")
-                .send();
-            app_state.db.remove_user(&user.uaid).await?;
-            return Ok(None);
-        }
-    }
-
+pub async fn process_existing_user(user: &User) -> DbResult<Option<ClientFlags>> {
     let flags = ClientFlags {
         check_storage: true,
         old_record_version: user

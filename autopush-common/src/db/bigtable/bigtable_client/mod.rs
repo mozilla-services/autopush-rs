@@ -1347,11 +1347,6 @@ impl DbClient for BigTableClientImpl {
         Ok(true)
     }
 
-    /// BigTable does not support message table rotation
-    fn rotating_message_table(&self) -> Option<&str> {
-        None
-    }
-
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
     }

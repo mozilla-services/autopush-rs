@@ -170,9 +170,6 @@ pub struct User {
     /// Record version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_version: Option<u64>,
-    /// LEGACY: Current month table in the database the user is on
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_month: Option<String>,
     /// the timestamp of the last notification sent to the user
     /// This field is exclusive to the Bigtable data scheme
     //TODO: rename this to `last_notification_timestamp`
@@ -194,7 +191,6 @@ impl Default for User {
             router_data: None,
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
-            current_month: None,
             current_timestamp: None,
             version: Some(Uuid::new_v4()),
         }

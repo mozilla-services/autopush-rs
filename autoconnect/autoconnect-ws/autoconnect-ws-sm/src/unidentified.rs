@@ -125,7 +125,7 @@ impl UnidentifiedClient {
             // serde_dynamodb::from_hashmap failed (but this now occurs inside
             // the db impl)
             if let Some(mut user) = self.app_state.db.get_user(&uaid).await? {
-                if let Some(flags) = process_existing_user(&self.app_state, &user).await? {
+                if let Some(flags) = process_existing_user(&user).await? {
                     user.node_id = Some(self.app_state.router_url.to_owned());
                     if user.connected_at > connected_at {
                         let _ = self.app_state.metrics.incr("ua.already_connected");
@@ -150,11 +150,6 @@ impl UnidentifiedClient {
         }
 
         let user = User {
-            current_month: self
-                .app_state
-                .db
-                .rotating_message_table()
-                .map(str::to_owned),
             node_id: Some(self.app_state.router_url.to_owned()),
             connected_at,
             ..Default::default()
