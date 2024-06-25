@@ -130,7 +130,7 @@ impl Default for Settings {
             // Matches the legacy value
             statsd_label: "autopush".to_owned(),
             statsd_port: 8125,
-            db_dsn: Some("grpc://localhost:8086".to_string()),
+            db_dsn: None,
             db_settings: "".to_owned(),
             megaphone_api_url: None,
             megaphone_api_token: None,
@@ -219,6 +219,7 @@ impl Settings {
     }
 
     pub fn test_settings() -> Self {
+        let db_dsn = Some("grpc://localhost:8086".to_string());
         // BigTable DB_SETTINGS.
         let db_settings = json!({
             "table_name":"projects/test/instances/test/tables/autopush",
@@ -228,6 +229,7 @@ impl Settings {
         })
         .to_string();
         Self {
+            db_dsn,
             db_settings,
             ..Default::default()
         }
