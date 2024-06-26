@@ -7,8 +7,9 @@ use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
 
-use crate::error::{ApiErrorKind, ApiResult};
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::extractors::{notification::Notification, router_data_input::RouterDataInput};
+use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::{Router, RouterError, RouterResponse};
 
 use autopush_common::db::{client::DbClient, User};
@@ -104,7 +105,10 @@ impl Router for WebPushRouter {
             Ok(Some(user)) => user,
             Ok(None) => {
                 trace!("✉ No user found, must have been deleted");
-                return Err(ApiErrorKind::Router(RouterError::UserWasDeleted).into());
+                return Err(self.handle_error(
+                    ApiErrorKind::Router(RouterError::UserWasDeleted),
+                    notification.subscription.vapid.clone(),
+                ));
             }
             Err(e) => {
                 // Database error, but we already stored the message so it's ok
@@ -157,6 +161,17 @@ impl Router for WebPushRouter {
 }
 
 impl WebPushRouter {
+    /// Use the same sort of error chokepoint that all the mobile clients use.
+    fn handle_error(&self, error: ApiErrorKind, vapid: Option<VapidHeaderWithKey>) -> ApiError {
+        let mut err = ApiError::from(error);
+        if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
+            let mut extras = err.extras.unwrap_or_default();
+            extras.extend([("sub".to_owned(), claims.sub)]);
+            err.extras = Some(extras);
+        };
+        err
+    }
+
     /// Send the notification to the node
     async fn send_notification(
         &self,
@@ -189,16 +204,18 @@ impl WebPushRouter {
             )
             .await
             .map_err(|e| {
-                ApiErrorKind::Router(RouterError::SaveDb(
-                    e,
-                    // try to extract the `sub` from the VAPID clamis.
-                    notification
-                        .subscription
-                        .vapid
-                        .as_ref()
-                        .map(|vapid| vapid.vapid.claims().map(|c| c.sub).unwrap_or_default()),
-                ))
-                .into()
+                self.handle_error(
+                    ApiErrorKind::Router(RouterError::SaveDb(
+                        e,
+                        // try to extract the `sub` from the VAPID clamis.
+                        notification
+                            .subscription
+                            .vapid
+                            .as_ref()
+                            .map(|vapid| vapid.vapid.claims().map(|c| c.sub).unwrap_or_default()),
+                    )),
+                    notification.subscription.vapid.clone(),
+                )
             })
     }
 
@@ -259,5 +276,44 @@ impl WebPushRouter {
             },
             body: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::boxed::Box;
+    use std::sync::Arc;
+
+    use reqwest;
+
+    use crate::extractors::subscription::tests::{make_vapid, PUB_KEY};
+    use crate::headers::vapid::VapidClaims;
+    use autopush_common::errors::ReportableError;
+
+    use super::*;
+    use autopush_common::db::mock::MockDbClient;
+
+    fn make_router(db: Box<dyn DbClient>) -> WebPushRouter {
+        WebPushRouter {
+            db,
+            metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
+            http: reqwest::Client::new(),
+            endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn pass_extras() {
+        let router = make_router(Box::new(MockDbClient::new()));
+        let sub = "foo@example.com";
+        let vapid = make_vapid(
+            sub,
+            "https://push.services.mozilla.org",
+            VapidClaims::default_exp(),
+            PUB_KEY.to_owned(),
+        );
+
+        let err = router.handle_error(ApiErrorKind::LogCheck, Some(vapid));
+        assert!(err.extras().contains(&("sub", sub.to_owned())));
     }
 }

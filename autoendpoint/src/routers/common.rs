@@ -4,7 +4,6 @@ use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
 use autopush_common::db::client::DbClient;
-use autopush_common::errors::ReportableError;
 use autopush_common::util::InsertOpt;
 use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use std::collections::HashMap;

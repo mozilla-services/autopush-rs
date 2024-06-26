@@ -363,10 +363,7 @@ impl ReportableError for ApiError {
 
     fn extras(&self) -> Vec<(&str, String)> {
         let mut extras: Vec<(&str, String)> = match &self.extras {
-            Some(extras) => extras
-                .into_iter()
-                .map(|e| (e.0.as_str(), e.1.clone()))
-                .collect(),
+            Some(extras) => extras.iter().map(|e| (e.0.as_str(), e.1.clone())).collect(),
             None => Default::default(),
         };
 
@@ -408,7 +405,10 @@ fn errno_from_validation_errors(e: &ValidationErrors) -> Option<usize> {
 mod tests {
     use autopush_common::{db::error::DbError, sentry::event_from_error};
 
+    use crate::routers::RouterError;
+
     use super::{ApiError, ApiErrorKind};
+    use crate::error::ReportableError;
 
     #[test]
     fn sentry_event_with_extras() {
@@ -445,5 +445,20 @@ mod tests {
 
     /// Ensure that extras set on a given error are included in the ApiError.extras() call.
     #[tokio::test]
-    async fn pass_extras() {}
+    async fn pass_extras() {
+        let e = RouterError::NotFound;
+        let mut ae = ApiError::from(e);
+        ae.extras = Some([("foo".to_owned(), "bar".to_owned())].to_vec());
+
+        let aex: Vec<(&str, String)> = ae.extras();
+        assert!(aex.contains(&("foo", "bar".to_owned())));
+
+        let e = ApiErrorKind::LogCheck;
+        let mut ae = ApiError::from(e);
+        ae.extras = Some([("foo".to_owned(), "bar".to_owned())].to_vec());
+
+        let aex: Vec<(&str, String)> = ae.extras();
+        assert!(aex.contains(&("foo", "bar".to_owned())));
+        assert!(aex.contains(&("coffee", "Unsupported".to_owned())));
+    }
 }
