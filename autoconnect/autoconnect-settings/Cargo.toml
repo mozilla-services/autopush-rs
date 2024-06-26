@@ -26,4 +26,3 @@ autopush_common.workspace = true
 dynamodb = []
 bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
-dual = ["bigtable", "dynamodb"]
