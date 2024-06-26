@@ -153,9 +153,17 @@ impl ApnsRouter {
         } else {
             settings.key.as_bytes().to_vec()
         };
+        // TODO: We should define these timeouts, currently
+        // these default to `request_timeout_secs`: 20s,
+        // and `pool_idle_timeout_secs`: 10m, but no guarantee
+        // that they will stay those values.
+        let config = a2::ClientConfig {
+            endpoint,
+            ..Default::default()
+        };
         let client = ApnsClientData {
             client: Box::new(
-                a2::Client::certificate_parts(&cert, &key, endpoint)
+                a2::Client::certificate_parts(&cert, &key, config)
                     .map_err(ApnsError::ApnsClient)?,
             ),
             topic: settings

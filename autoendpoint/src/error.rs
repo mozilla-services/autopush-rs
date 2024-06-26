@@ -34,6 +34,7 @@ const RETRY_AFTER_PERIOD: &str = "120"; // retry after 2 minutes;
 pub struct ApiError {
     pub kind: ApiErrorKind,
     pub backtrace: Backtrace,
+    pub extras: Option<Vec<(String, String)>>,
 }
 
 impl ApiError {
@@ -295,6 +296,7 @@ where
         ApiError {
             kind: ApiErrorKind::from(item),
             backtrace: Backtrace::new(),
+            extras: None,
         }
     }
 }
@@ -360,11 +362,20 @@ impl ReportableError for ApiError {
     }
 
     fn extras(&self) -> Vec<(&str, String)> {
+        let mut extras: Vec<(&str, String)> = match &self.extras {
+            Some(extras) => extras
+                .into_iter()
+                .map(|e| (e.0.as_str(), e.1.clone()))
+                .collect(),
+            None => Default::default(),
+        };
+
         match &self.kind {
-            ApiErrorKind::Router(e) => e.extras(),
-            ApiErrorKind::LogCheck => vec![("coffee", "Unsupported".to_owned())],
-            _ => vec![],
-        }
+            ApiErrorKind::Router(e) => extras.extend(e.extras()),
+            ApiErrorKind::LogCheck => extras.extend(vec![("coffee", "Unsupported".to_owned())]),
+            _ => {}
+        };
+        extras
     }
 }
 
@@ -431,4 +442,8 @@ mod tests {
         // "Retry-After" is applied on any 503 response (See ApiError::error_response)
         assert_eq!(e.kind.status(), actix_http::StatusCode::SERVICE_UNAVAILABLE)
     }
+
+    /// Ensure that extras set on a given error are included in the ApiError.extras() call.
+    #[tokio::test]
+    async fn pass_extras() {}
 }

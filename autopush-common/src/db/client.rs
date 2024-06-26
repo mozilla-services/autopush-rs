@@ -110,7 +110,7 @@ pub trait DbClient: Send + Sync {
     fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
 
     /// Provide the module name.
-    /// This was added for simple dual mode testing, but may be useful in
+    /// This was added for simple dual mode testing (legacy), but may be useful in
     /// other situations.
     fn name(&self) -> String;
 

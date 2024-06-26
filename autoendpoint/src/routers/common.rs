@@ -48,10 +48,6 @@ pub async fn handle_error(
     uaid: Uuid,
     vapid: Option<VapidHeaderWithKey>,
 ) -> ApiError {
-    // If we have a `sub` from the provider, append it to the extras.
-    if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
-        error.extras().append(&mut [("sub", claims.sub)].to_vec());
-    };
     match &error {
         RouterError::Authentication => {
             error!("Bridge authentication error");
@@ -148,7 +144,14 @@ pub async fn handle_error(
         }
     }
 
-    ApiError::from(error)
+    let mut err = ApiError::from(error);
+
+    if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
+        let mut extras = err.extras.unwrap_or_default();
+        extras.extend([("sub".to_owned(), claims.sub)]);
+        err.extras = Some(extras);
+    };
+    err
 }
 
 /// Increment `notification.bridge.error`

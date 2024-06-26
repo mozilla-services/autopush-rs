@@ -204,8 +204,9 @@ pub mod tests {
     const ACCESS_TOKEN: &str = "test-access-token";
 
     /// Mock the OAuth token endpoint to provide the access token
-    pub fn mock_token_endpoint() -> mockito::Mock {
-        mockito::mock("POST", "/auth/O2/token")
+    pub async fn mock_token_endpoint(server: &mut mockito::ServerGuard) -> mockito::Mock {
+        server
+            .mock("POST", "/auth/O2/token")
             .with_body(
                 serde_json::json!({
                     "access_token": ACCESS_TOKEN,
@@ -215,22 +216,23 @@ pub mod tests {
                 })
                 .to_string(),
             )
-            .create()
+            .create_async()
+            .await
     }
 
     /// Start building a mock for the ADM endpoint
-    pub fn mock_adm_endpoint_builder() -> mockito::Mock {
-        mockito::mock(
+    pub fn mock_adm_endpoint_builder(server: &mut mockito::ServerGuard) -> mockito::Mock {
+        server.mock(
             "POST",
             format!("/messaging/registrations/{REGISTRATION_ID}/messages").as_str(),
         )
     }
 
     /// Make an AdmClient which uses the mock server
-    fn make_client() -> AdmClient {
+    fn make_client(server: &mockito::ServerGuard) -> AdmClient {
         AdmClient::new(
             &AdmSettings {
-                base_url: Url::parse(&mockito::server_url()).unwrap(),
+                base_url: Url::parse(&server.url()).unwrap(),
                 ..Default::default()
             },
             AdmProfile {
@@ -245,9 +247,11 @@ pub mod tests {
     /// expected request.
     #[tokio::test]
     async fn sends_correct_request() {
-        let client = make_client();
-        let _token_mock = mock_token_endpoint();
-        let adm_mock = mock_adm_endpoint_builder()
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(&server);
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let adm_mock = mock_adm_endpoint_builder(&mut server)
             .match_header("Authorization", format!("Bearer {ACCESS_TOKEN}").as_str())
             .match_header("Content-Type", "application/json")
             .match_header("Accept", "application/json")
@@ -261,7 +265,8 @@ pub mod tests {
             )
             .match_body(r#"{"data":{"is_test":"true"},"expiresAfter":42}"#)
             .with_body(r#"{"registrationID":"test-registration-id2"}"#)
-            .create();
+            .create_async()
+            .await;
 
         let mut data = HashMap::new();
         data.insert("is_test", "true".to_string());
@@ -275,12 +280,15 @@ pub mod tests {
     /// Authorization errors are handled
     #[tokio::test]
     async fn unauthorized() {
-        let client = make_client();
-        let _token_mock = mock_token_endpoint();
-        let _adm_mock = mock_adm_endpoint_builder()
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(&server);
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _adm_mock = mock_adm_endpoint_builder(&mut server)
             .with_status(401)
             .with_body(r#"{"reason":"test-message"}"#)
-            .create();
+            .create_async()
+            .await;
 
         let result = client
             .send(HashMap::new(), REGISTRATION_ID.to_string(), 42)
@@ -295,12 +303,15 @@ pub mod tests {
     /// 404 errors are handled
     #[tokio::test]
     async fn not_found() {
-        let client = make_client();
-        let _token_mock = mock_token_endpoint();
-        let _adm_mock = mock_adm_endpoint_builder()
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(&server);
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _adm_mock = mock_adm_endpoint_builder(&mut server)
             .with_status(404)
             .with_body(r#"{"reason":"test-message"}"#)
-            .create();
+            .create_async()
+            .await;
 
         let result = client
             .send(HashMap::new(), REGISTRATION_ID.to_string(), 42)
@@ -315,9 +326,10 @@ pub mod tests {
     /// Unhandled errors (where a reason is returned) are wrapped and returned
     #[tokio::test]
     async fn other_adm_error() {
-        let client = make_client();
-        let _token_mock = mock_token_endpoint();
-        let _fcm_mock = mock_adm_endpoint_builder()
+        let mut server = mockito::Server::new_async().await;
+        let client = make_client(&server);
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_adm_endpoint_builder(&mut server)
             .with_status(400)
             .with_body(r#"{"reason":"test-message"}"#)
             .create();
@@ -339,12 +351,14 @@ pub mod tests {
     /// Unknown errors (where a reason is NOT returned) are handled
     #[tokio::test]
     async fn unknown_adm_error() {
-        let client = make_client();
-        let _token_mock = mock_token_endpoint();
-        let _fcm_mock = mock_adm_endpoint_builder()
+        let mut server = mockito::Server::new_async().await;
+        let client = make_client(&server);
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_adm_endpoint_builder(&mut server)
             .with_status(400)
             .with_body("{}")
-            .create();
+            .create_async()
+            .await;
 
         let result = client
             .send(HashMap::new(), REGISTRATION_ID.to_string(), 42)
