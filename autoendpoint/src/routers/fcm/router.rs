@@ -175,6 +175,7 @@ impl Router for FcmRouter {
                 platform,
                 &app_id,
                 notification.subscription.user.uaid,
+                notification.subscription.vapid.clone(),
             )
             .await);
         };

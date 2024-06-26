@@ -34,6 +34,7 @@ const RETRY_AFTER_PERIOD: &str = "120"; // retry after 2 minutes;
 pub struct ApiError {
     pub kind: ApiErrorKind,
     pub backtrace: Backtrace,
+    pub extras: Option<Vec<(String, String)>>,
 }
 
 impl ApiError {
@@ -295,6 +296,7 @@ where
         ApiError {
             kind: ApiErrorKind::from(item),
             backtrace: Backtrace::new(),
+            extras: None,
         }
     }
 }
@@ -360,11 +362,17 @@ impl ReportableError for ApiError {
     }
 
     fn extras(&self) -> Vec<(&str, String)> {
+        let mut extras: Vec<(&str, String)> = match &self.extras {
+            Some(extras) => extras.iter().map(|e| (e.0.as_str(), e.1.clone())).collect(),
+            None => Default::default(),
+        };
+
         match &self.kind {
-            ApiErrorKind::Router(e) => e.extras(),
-            ApiErrorKind::LogCheck => vec![("coffee", "Unsupported".to_owned())],
-            _ => vec![],
-        }
+            ApiErrorKind::Router(e) => extras.extend(e.extras()),
+            ApiErrorKind::LogCheck => extras.extend(vec![("coffee", "Unsupported".to_owned())]),
+            _ => {}
+        };
+        extras
     }
 }
 
@@ -397,7 +405,10 @@ fn errno_from_validation_errors(e: &ValidationErrors) -> Option<usize> {
 mod tests {
     use autopush_common::{db::error::DbError, sentry::event_from_error};
 
+    use crate::routers::RouterError;
+
     use super::{ApiError, ApiErrorKind};
+    use crate::error::ReportableError;
 
     #[test]
     fn sentry_event_with_extras() {
@@ -430,5 +441,24 @@ mod tests {
 
         // "Retry-After" is applied on any 503 response (See ApiError::error_response)
         assert_eq!(e.kind.status(), actix_http::StatusCode::SERVICE_UNAVAILABLE)
+    }
+
+    /// Ensure that extras set on a given error are included in the ApiError.extras() call.
+    #[tokio::test]
+    async fn pass_extras() {
+        let e = RouterError::NotFound;
+        let mut ae = ApiError::from(e);
+        ae.extras = Some([("foo".to_owned(), "bar".to_owned())].to_vec());
+
+        let aex: Vec<(&str, String)> = ae.extras();
+        assert!(aex.contains(&("foo", "bar".to_owned())));
+
+        let e = ApiErrorKind::LogCheck;
+        let mut ae = ApiError::from(e);
+        ae.extras = Some([("foo".to_owned(), "bar".to_owned())].to_vec());
+
+        let aex: Vec<(&str, String)> = ae.extras();
+        assert!(aex.contains(&("foo", "bar".to_owned())));
+        assert!(aex.contains(&("coffee", "Unsupported".to_owned())));
     }
 }

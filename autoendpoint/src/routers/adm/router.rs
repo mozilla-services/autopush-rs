@@ -126,6 +126,7 @@ impl Router for AdmRouter {
                     "adm",
                     profile,
                     notification.subscription.user.uaid,
+                    notification.subscription.vapid.clone(),
                 )
                 .await)
             }
