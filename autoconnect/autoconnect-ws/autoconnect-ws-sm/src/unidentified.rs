@@ -8,11 +8,14 @@ use autoconnect_common::{
     protocol::{BroadcastValue, ClientMessage, ServerMessage},
 };
 use autoconnect_settings::{AppState, Settings};
-use autopush_common::{db::User, util::ms_since_epoch};
+use autopush_common::{
+    db::{User, USER_RECORD_VERSION},
+    util::ms_since_epoch,
+};
 
 use crate::{
     error::{SMError, SMErrorKind},
-    identified::{process_existing_user, ClientFlags, WebPushClient},
+    identified::{ClientFlags, WebPushClient},
 };
 
 /// Represents a Client waiting for (or yet to process) a Hello message
@@ -125,23 +128,28 @@ impl UnidentifiedClient {
             // serde_dynamodb::from_hashmap failed (but this now occurs inside
             // the db impl)
             if let Some(mut user) = self.app_state.db.get_user(&uaid).await? {
-                if let Some(flags) = process_existing_user(&user).await? {
-                    user.node_id = Some(self.app_state.router_url.to_owned());
-                    if user.connected_at > connected_at {
-                        let _ = self.app_state.metrics.incr("ua.already_connected");
-                        return Err(SMErrorKind::AlreadyConnected.into());
-                    }
-                    user.connected_at = connected_at;
-                    if !self.app_state.db.update_user(&mut user).await? {
-                        let _ = self.app_state.metrics.incr("ua.already_connected");
-                        return Err(SMErrorKind::AlreadyConnected.into());
-                    }
-                    return Ok(GetOrCreateUser {
-                        user,
-                        existing_user: true,
-                        flags,
-                    });
+                let flags = ClientFlags {
+                    check_storage: true,
+                    old_record_version: user
+                        .record_version
+                        .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
+                    ..Default::default()
+                };
+                user.node_id = Some(self.app_state.router_url.to_owned());
+                if user.connected_at > connected_at {
+                    let _ = self.app_state.metrics.incr("ua.already_connected");
+                    return Err(SMErrorKind::AlreadyConnected.into());
                 }
+                user.connected_at = connected_at;
+                if !self.app_state.db.update_user(&mut user).await? {
+                    let _ = self.app_state.metrics.incr("ua.already_connected");
+                    return Err(SMErrorKind::AlreadyConnected.into());
+                }
+                return Ok(GetOrCreateUser {
+                    user,
+                    existing_user: true,
+                    flags,
+                });
             }
             // NOTE: when the client's specified a uaid but get_user returns
             // None (or process_existing_user dropped the user record due to it

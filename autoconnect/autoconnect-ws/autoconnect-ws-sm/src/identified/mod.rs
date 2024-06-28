@@ -12,7 +12,7 @@ use autoconnect_common::{
 
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
-    db::{error::DbResult, User, USER_RECORD_VERSION},
+    db::User,
     notification::Notification,
     util::{ms_since_epoch, user_agent::UserAgentInfo},
 };
@@ -279,32 +279,16 @@ impl WebPushClient {
     }
 }
 
-/// Ensure an existing user's record is valid, returning its `ClientFlags`
-///
-/// Somewhat similar to autoendpoint's `validate_webpush_user` function. When a
-/// User record is invalid it will be dropped from the db and `None` will be
-/// returned.
-pub async fn process_existing_user(user: &User) -> DbResult<Option<ClientFlags>> {
-    let flags = ClientFlags {
-        check_storage: true,
-        old_record_version: user
-            .record_version
-            .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
-        ..Default::default()
-    };
-    Ok(Some(flags))
-}
-
 #[derive(Debug)]
 pub struct ClientFlags {
     /// Whether check_storage queries for topic (not "timestamped") messages
-    include_topic: bool,
+    pub include_topic: bool,
     /// Flags the need to increment the last read for timestamp for timestamped messages
-    increment_storage: bool,
+    pub increment_storage: bool,
     /// Whether this client needs to check storage for messages
-    check_storage: bool,
+    pub check_storage: bool,
     /// Flags the need to drop the user record
-    old_record_version: bool,
+    pub old_record_version: bool,
 }
 
 impl Default for ClientFlags {
