@@ -35,6 +35,11 @@ pub trait DbClient: Send + Sync {
     /// Read a user from the database
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>>;
 
+    /// Does the user record still exist?
+    async fn check_user(&self, uaid: &Uuid) -> DbResult<bool> {
+        Ok(self.get_user(uaid).await?.is_some())
+    }
+
     /// Delete a user from the router table
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()>;
 

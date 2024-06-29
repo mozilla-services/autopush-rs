@@ -17,6 +17,7 @@ use autopush_common::db::User;
 use autopush_common::endpoint::make_endpoint;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
+/// This call is used to register a new user with a given bridge.
 pub async fn register_uaid_route(
     path_args: RegistrationPathArgs,
     router_data_input: RouterDataInput,
@@ -79,6 +80,7 @@ pub async fn register_uaid_route(
 }
 
 /// Handle the `DELETE /v1/{router_type}/{app_id}/registration/{uaid}` route
+/// This call is used to unregister a user from a given bridge.
 pub async fn unregister_user_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
@@ -91,6 +93,7 @@ pub async fn unregister_user_route(
 }
 
 /// Handle the `PUT /v1/{router_type}/{app_id}/registration/{uaid}` route
+/// This call is used to update the token of a user with a given bridge.
 pub async fn update_token_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
@@ -125,6 +128,7 @@ pub async fn update_token_route(
 }
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration/{uaid}/subscription` route
+/// This call is used to add a new channel to a user (provided the user still exists).
 pub async fn new_channel_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
@@ -133,6 +137,12 @@ pub async fn new_channel_route(
 ) -> ApiResult<HttpResponse> {
     // Add the channel
     let uaid = path_args.user.uaid;
+    // Make sure the UAID still exists before adding a channel.
+    // The UAID may have been dropped by the bridge, which the UA
+    // may be unaware of.
+    if !app_state.db.check_user(&uaid).await? {
+        return Err(ApiErrorKind::NoUser.into());
+    }
     debug!("🌍 Adding a channel to UAID {uaid}");
     let channel_data = channel_data.map(Json::into_inner).unwrap_or_default();
     let channel_id = channel_data.channel_id.unwrap_or_else(Uuid::new_v4);
@@ -158,6 +168,9 @@ pub async fn new_channel_route(
 }
 
 /// Handle the `GET /v1/{router_type}/{app_id}/registration/{uaid}` route
+/// This call is used to get the list of channel IDs for a user. The UA will
+/// compare that list with it's own and if there are any discrepancies, the
+/// UA will reset it's subscriptions.
 pub async fn get_channels_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
@@ -174,6 +187,7 @@ pub async fn get_channels_route(
 }
 
 /// Handle the `DELETE /v1/{router_type}/{app_id}/registration/{uaid}/subscription/{chid}` route
+/// This call is used to remove a channel from a user.
 pub async fn unregister_channel_route(
     _auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,

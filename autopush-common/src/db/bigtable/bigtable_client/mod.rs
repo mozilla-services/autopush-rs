@@ -862,6 +862,15 @@ impl DbClient for BigTableClientImpl {
         Ok(predicate_matched)
     }
 
+    async fn check_user(&self, uaid: &Uuid) -> DbResult<bool> {
+        let row_key = uaid.as_simple().to_string();
+        let mut req = self.read_row_request(&row_key);
+        let mut filters = vec![router_gc_policy_filter()];
+        filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
+        req.set_filter(filter_chain(filters));
+        Ok(self.read_row(req).await?.is_some())
+    }
+
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
         let row_key = uaid.as_simple().to_string();
         let mut req = self.read_row_request(&row_key);
