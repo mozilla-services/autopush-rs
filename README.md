@@ -3,7 +3,7 @@
 [![docs][docs-badge]][docs]
 [![autoconnect API][autoconnect-API-docs-badge]][autoconnect-API-docs]
 [![autoendpoint API][autoendpoint-API-docs-badge]][autoendpoint-API-docs]
-[![Connect to Matrix via the Riot webapp][matrix-badge]][matrix]
+[![Open #push Matrix room in chat.mozilla.org web client][matrix-badge]][matrix]
 
 # Autopush-rs
 
@@ -27,11 +27,11 @@ code files directly.
 
 ## Debugging on Mobile
 
-Mobile devices can specify the Push Server URL via the "[secret settings](https://github.com/mozilla-mobile/fenix/wiki/%22Secret-settings%22-debug-menu-instructions)".
+Mobile devices can specify the Push Server URL via the "[secret settings](https://firefox-source-docs.mozilla.org/mobile/android/fenix/Secret-settings-debug-menu-instructions.html)".
 
 _Do not use the mobile `about:config` menu settings. These are not read or used by the mobile browser._
 
-The secret settings can be activatedby following [these instructions](https://github.com/mozilla-mobile/fenix/wiki/%22Secret-settings%22-debug-menu-instructions). Once the secret menu is active, select
+The secret settings can be activatedby following [these instructions](https://firefox-source-docs.mozilla.org/mobile/android/fenix/Secret-settings-debug-menu-instructions.html). Once the secret menu is active, select
 **Sync Debug** from the the mobile **Settings** menu, and specify the **Custom Push server** URL.
 
 **NOTE:** the default Push server url is `wss://push.services.mozilla.com/`
