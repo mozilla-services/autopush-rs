@@ -234,8 +234,8 @@ impl ApnsRouter {
         ApiError::from(ApnsError::ApnsUpstream(error))
     }
 
-    /// Convert all of the floats in a JSON value into integers. DynamoDB
-    /// returns all numbers as floats, but deserializing to `APS` will fail if
+    /// Convert all of the floats in a JSON value into integers.
+    /// Deserializing to `APS` will fail if
     /// it expects an integer and gets a float.
     fn convert_value_float_to_int(value: &mut Value) {
         if let Some(float) = value.as_f64() {
