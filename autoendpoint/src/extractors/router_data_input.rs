@@ -43,8 +43,6 @@ impl FromRequest for RouterDataInput {
                 RouterType::FCM | RouterType::GCM | RouterType::APNS => {
                     VALID_TOKEN.is_match(&data.token)
                 }
-                #[cfg(feature = "adm")]
-                RouterType::ADM => VALID_ADM_TOKEN.is_match(&data.token),
             };
 
             if !is_valid {

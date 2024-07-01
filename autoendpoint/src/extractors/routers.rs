@@ -49,8 +49,6 @@ impl Display for RouterType {
             RouterType::FCM => "fcm",
             RouterType::GCM => "gcm",
             RouterType::APNS => "apns",
-            #[cfg(feature = "adm")]
-            RouterType::ADM => "adm",
         })
     }
 }
@@ -96,8 +94,6 @@ impl Routers {
             RouterType::WebPush => &self.webpush,
             RouterType::FCM | RouterType::GCM => self.fcm.as_ref(),
             RouterType::APNS => self.apns.as_ref(),
-            #[cfg(feature = "adm")]
-            RouterType::ADM => self.adm.as_ref(),
         }
     }
 }
