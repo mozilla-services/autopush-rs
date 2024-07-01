@@ -141,7 +141,6 @@ pub struct CheckStorageResponse {
 pub struct User {
     /// The UAID. This is generally a UUID4. It needs to be globally
     /// unique.
-    // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     pub uaid: Uuid,
     /// Time in milliseconds that the user last connected at
@@ -189,10 +188,8 @@ impl Default for User {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct NotificationRecord {
     /// The UserAgent Identifier (UAID)
-    // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     uaid: Uuid,
-    // DynamoDB <Range key>
     // Format:
     //    Topic Messages:
     //        {TOPIC_NOTIFICATION_PREFIX}:{channel id}:{topic}
