@@ -55,6 +55,5 @@ docopt = "1.1"
 [features]
 default = ["bigtable", "emulator"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
-dynamodb = ["autopush_common/dynamodb", "autoconnect_settings/dynamodb"]
 emulator = ["bigtable"]
 log_vapid = []
