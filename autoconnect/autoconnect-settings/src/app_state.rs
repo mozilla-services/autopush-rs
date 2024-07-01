@@ -2,8 +2,6 @@ use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
-#[cfg(feature = "dynamodb")]
-use autopush_common::db::dynamodb::DdbClientImpl;
 use cadence::StatsdClient;
 use config::ConfigError;
 use fernet::{Fernet, MultiFernet};
@@ -72,11 +70,6 @@ impl AppState {
         let storage_type = StorageType::from_dsn(&db_settings.dsn);
         #[allow(unused)]
         let db: Box<dyn DbClient> = match storage_type {
-            #[cfg(feature = "dynamodb")]
-            StorageType::DynamoDb => Box::new(
-                DdbClientImpl::new(metrics.clone(), &db_settings)
-                    .map_err(|e| ConfigError::Message(e.to_string()))?,
-            ),
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 let client = BigTableClientImpl::new(metrics.clone(), &db_settings)
