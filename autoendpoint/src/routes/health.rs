@@ -19,8 +19,6 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     let router_health = interpret_table_health(state.db.router_table_exists().await);
     let message_health = interpret_table_health(state.db.message_table_exists().await);
     let mut routers: HashMap<&str, bool> = HashMap::new();
-    #[cfg(feature = "adm")]
-    routers.insert("adm", state.adm_router.active());
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
