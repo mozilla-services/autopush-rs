@@ -614,11 +614,6 @@ impl DbClient for DdbClientImpl {
         self.table_exists(self.settings.message_table.clone()).await
     }
 
-    fn rotating_message_table(&self) -> Option<&str> {
-        trace!("ddb message table {:?}", &self.settings.message_table);
-        Some(&self.settings.message_table)
-    }
-
     /// Perform a simple health check to make sure that the database is there.
     /// This is called by __health__, so it should be reasonably light weight.
     async fn health_check(&self) -> DbResult<bool> {
