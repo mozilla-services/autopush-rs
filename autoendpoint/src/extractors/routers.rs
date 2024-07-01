@@ -12,7 +12,6 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// Valid `DynamoDbUser::router_type` values
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum RouterType {
