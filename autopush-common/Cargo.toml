@@ -62,7 +62,7 @@ form_urlencoded = { version = "1.2", optional = true }
 [dev-dependencies]
 mockito = "0.31"
 tempfile = "3.2.0"
-tokio = { version = "0.2", features = ["macros"] }
+tokio = { version = "1.38", features = ["macros"] }
 actix-rt = "2.8"
 
 [features]

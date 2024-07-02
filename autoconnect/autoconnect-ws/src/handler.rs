@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use actix_ws::{CloseReason, Message};
 use futures::{channel::mpsc, Stream, StreamExt};
-use tokio::time::timeout;
+use tokio::{select, time::timeout};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autoconnect_settings::AppState;
@@ -151,7 +151,7 @@ async fn identified_ws(
 
     let mut ping_manager = PingManager::new(client.app_settings()).await;
     let close_reason = loop {
-        tokio::select! {
+        select! {
             maybe_result = msg_stream.next() => {
                 let Some(result) = maybe_result else {
                     trace!("identified_ws: msg_stream EOF");
