@@ -79,9 +79,7 @@ impl StorageType {
             info!("No DSN specified, failing over to old default dsn: {default}");
             return Self::from(default);
         }
-        let dsn = dsn
-            .clone()
-            .unwrap_or(std::env::var("GOOGLE_APPLICATION_CREDENTIALS").unwrap_or_default());
+        let dsn = dsn.clone().unwrap_or_default();
         #[cfg(feature = "bigtable")]
         if dsn.starts_with("grpc") {
             trace!("Found grpc");
