@@ -597,7 +597,6 @@ dependencies = [
  "slog-scope",
  "slog-stdlog",
  "slog-term",
- "tokio",
  "uuid",
 ]
 

@@ -40,7 +40,6 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
-tokio.workspace = true
 uuid.workspace = true
 
 autoconnect_common.workspace = true
@@ -54,7 +53,7 @@ actix-service = "2.0"
 docopt = "1.1"
 
 [features]
-default = ["bigtable", "emulator"]
+default = ["bigtable"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
 log_vapid = []
