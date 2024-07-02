@@ -81,29 +81,3 @@
 #        "sandbox": true
 #    }
 #}"""
-
-# Settings for the Amazon Device Messaging router
-[adm]
-# The minimum TTL to use. If a notification's TTL is shorter than this, it will
-# be set to this value.
-#min_ttl = 60
-
-# The max size of notification data in bytes. This is usually dictated by ADM to
-# be about 6KB.
-#max_data = 6000
-
-# The number of seconds to wait for FCM requests to complete
-#timeout = 3
-
-# The base URL to use when sending messages
-#base_url = "https://api.amazon.com"
-
-# The credentials to use for each profile. This setting is a JSON dictionary
-# where the key is the app ID. The client ID and secret are supplied for each
-# application.
-#profiles = """{
-#    "test": {
-#        "client_id": "...",
-#        "client_secret": "..."
-#    }
-#}"""
