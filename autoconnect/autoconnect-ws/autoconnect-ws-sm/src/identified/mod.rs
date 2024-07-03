@@ -1,7 +1,7 @@
 use std::{fmt, mem, sync::Arc};
 
 use actix_web::rt;
-use cadence::{CountedExt, Timed};
+use cadence::Timed;
 use futures::channel::mpsc;
 use uuid::Uuid;
 
@@ -12,7 +12,7 @@ use autoconnect_common::{
 
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
-    db::{error::DbResult, User, USER_RECORD_VERSION},
+    db::User,
     notification::Notification,
     util::{ms_since_epoch, user_agent::UserAgentInfo},
 };
@@ -279,66 +279,16 @@ impl WebPushClient {
     }
 }
 
-/// Ensure an existing user's record is valid, returning its `ClientFlags`
-///
-/// Somewhat similar to autoendpoint's `validate_webpush_user` function. When a
-/// User record is invalid it will be dropped from the db and `None` will be
-/// returned.
-pub async fn process_existing_user(
-    app_state: &Arc<AppState>,
-    user: &User,
-) -> DbResult<Option<ClientFlags>> {
-    // TODO: if BigTable, can we assume the user is migrated at this point (so
-    // we wouldn't need to validate `current_month` is not None?)
-    if let Some(rotating_message_table) = app_state.db.rotating_message_table() {
-        let Some(ref current_month) = user.current_month else {
-            debug!("Missing `current_month` value, dropping user"; "user" => ?user);
-            app_state
-                .metrics
-                .incr_with_tags("ua.expiration")
-                .with_tag("code", "104")
-                .with_tag("reason", "no_current_month")
-                .send();
-            app_state.db.remove_user(&user.uaid).await?;
-            return Ok(None);
-        };
-
-        if current_month != rotating_message_table {
-            debug!("User is inactive, dropping user";
-                   "db.message_table" => rotating_message_table,
-                   "user.current_month" => current_month,
-                   "user" => ?user);
-            app_state
-                .metrics
-                .incr_with_tags("ua.expiration")
-                .with_tag("code", "105")
-                .with_tag("reason", "invalid_current_month")
-                .send();
-            app_state.db.remove_user(&user.uaid).await?;
-            return Ok(None);
-        }
-    }
-
-    let flags = ClientFlags {
-        check_storage: true,
-        old_record_version: user
-            .record_version
-            .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
-        ..Default::default()
-    };
-    Ok(Some(flags))
-}
-
 #[derive(Debug)]
 pub struct ClientFlags {
     /// Whether check_storage queries for topic (not "timestamped") messages
-    include_topic: bool,
+    pub include_topic: bool,
     /// Flags the need to increment the last read for timestamp for timestamped messages
-    increment_storage: bool,
+    pub increment_storage: bool,
     /// Whether this client needs to check storage for messages
-    check_storage: bool,
+    pub check_storage: bool,
     /// Flags the need to drop the user record
-    old_record_version: bool,
+    pub old_record_version: bool,
 }
 
 impl Default for ClientFlags {

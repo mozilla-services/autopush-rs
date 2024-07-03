@@ -216,17 +216,17 @@ Autopush used a [table rotation system](table_rotation.md), which is now legacy.
     Endpoint will deliver the message to the client completely bypassing
     Storage. This Notification will be referred to as a Direct
     Notification vs. a Stored Notification.
-* (_DynamoDb_) Provisioned Write Throughput for the Router table determines how
+* (_DynamoDb (legacy)_) Provisioned Write Throughput for the Router table determines how
     many connections per second can be accepted across the entire
     cluster.
-* (_DynamoDb_) Provisioned Read Throughput for the Router table **and** Provisioned
+* (_DynamoDb (legacy)_) Provisioned Read Throughput for the Router table **and** Provisioned
     Write throughput for the Storage table determine maximum possible
     notifications per second that can be handled. In theory notification
     throughput can be higher than Provisioned Write Throughput on the
     Storage as connected clients will frequently not require using
     Storage at all. Read's to the Router table are still needed for
     every notification, whether Storage is hit or not.
-* (_DynamoDb_) Provisioned Read Throughput on for the Storage table is an important
+* (_DynamoDb (legacy)_) Provisioned Read Throughput on for the Storage table is an important
     factor in maximum notification throughput, as many slow clients may
     require frequent Storage checks.
 * If a client is reconnecting, their Router record will be old. Router

@@ -23,6 +23,5 @@ autopush_common.workspace = true
 
 [features]
 # specify the default via the calling crate, in order to simplify default chains.
-dynamodb = []
 bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
