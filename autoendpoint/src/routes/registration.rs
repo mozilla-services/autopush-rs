@@ -157,14 +157,40 @@ pub async fn new_channel_route(
 }
 
 /// Handle the `GET /v1/{router_type}/{app_id}/registration/{uaid}` route
+/// Since this is called daily by a mobile device, it can serve as part of
+/// a liveliness check for the device. This is more authoritative than
+/// relying on the bridge service to return a "success", since the bridge
+/// may retain "inactive" devices, but will immediately drop devices
+/// where Firefox has been uninstalled or that have been factory reset.
 pub async fn get_channels_route(
-    _auth: AuthorizationCheck,
+    auth: AuthorizationCheck,
     path_args: RegistrationPathArgsWithUaid,
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     let uaid = path_args.user.uaid;
+    let db = &app_state.db;
     debug!("🌍 Getting channel IDs for UAID {uaid}");
-    let channel_ids = app_state.db.get_channels(&uaid).await?;
+    //
+    if let Some(mut user) = db.get_user(&uaid).await? {
+        db.update_user(&mut user).await?;
+        // report the rough user agent so we know what clients are actively pinging us.
+        let os = auth.user_agent.metrics_os.clone();
+        let browser = auth.user_agent.metrics_browser.clone();
+        // use the "real" version here. (these are less normalized)
+        info!("Mobile client check";
+            "os"=>auth.user_agent.os,
+            "os_version"=>auth.user_agent.os_version,
+            "browser"=>auth.user_agent.browser_name,
+            "browser_version"=>auth.user_agent.browser_version);
+        // use the "metrics" version since we need to consider cardinality.
+        app_state
+            .metrics
+            .incr_with_tags("ua.connection.check")
+            .with_tag("os", &os)
+            .with_tag("browser", &browser)
+            .send();
+    }
+    let channel_ids = db.get_channels(&uaid).await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uaid": uaid,

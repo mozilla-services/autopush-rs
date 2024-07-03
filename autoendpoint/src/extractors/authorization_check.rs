@@ -9,6 +9,8 @@ use futures::FutureExt;
 use openssl::error::ErrorStack;
 use uuid::Uuid;
 
+use autopush_common::util::user_agent::UserAgentInfo;
+
 /// Verifies the request authorization via the authorization header.
 ///
 /// The expected token is the HMAC-SHA256 hash of the UAID, signed with one of
@@ -16,7 +18,9 @@ use uuid::Uuid;
 /// NOTE: This is *ONLY* for internal calls that require authorization and should
 ///      NOT be used by calls that are using VAPID authentication (e.g.
 ///      subscription provider endpoints)
-pub struct AuthorizationCheck;
+pub struct AuthorizationCheck {
+    pub user_agent: UserAgentInfo,
+}
 
 impl AuthorizationCheck {
     pub fn generate_token(auth_key: &str, user: &Uuid) -> Result<String, ErrorStack> {
@@ -27,6 +31,7 @@ impl AuthorizationCheck {
         token: &str,
         uaid: &Uuid,
         auth_keys: &[String],
+        user_agent: UserAgentInfo,
     ) -> Result<Self, ApiError> {
         // Check the token against the expected token for each key
         for key in auth_keys {
@@ -38,7 +43,7 @@ impl AuthorizationCheck {
             if expected_token.len() == token.len()
                 && openssl::memcmp::eq(expected_token.as_bytes(), token.as_bytes())
             {
-                return Ok(Self);
+                return Ok(Self { user_agent });
             }
         }
         Err(ApiErrorKind::InvalidLocalAuth("incorrect auth token".to_owned()).into())
@@ -66,8 +71,9 @@ impl FromRequest for AuthorizationCheck {
                 .ok_or_else(|| ApiErrorKind::InvalidLocalAuth("missing auth header".to_owned()))?;
             let token = get_token_from_auth_header(auth_header)
                 .ok_or_else(|| ApiErrorKind::InvalidLocalAuth("missing auth token".to_owned()))?;
+            let user_agent = UserAgentInfo::from(&req);
 
-            Self::validate_token(token, &uaid, &state.settings.auth_keys())
+            Self::validate_token(token, &uaid, &state.settings.auth_keys(), user_agent)
         }
         .boxed_local()
     }
@@ -91,6 +97,7 @@ fn get_token_from_auth_header(header: &str) -> Option<&str> {
 mod test {
 
     use crate::error::ApiResult;
+    use autopush_common::util::user_agent::UserAgentInfo;
 
     use super::*;
 
@@ -101,7 +108,7 @@ mod test {
         let auth_keys = ["HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned()].to_vec();
         let token = AuthorizationCheck::generate_token(auth_keys.first().unwrap(), &uaid).unwrap();
 
-        AuthorizationCheck::validate_token(&token, &uaid, &auth_keys)?;
+        AuthorizationCheck::validate_token(&token, &uaid, &auth_keys, UserAgentInfo::default())?;
         Ok(())
     }
 

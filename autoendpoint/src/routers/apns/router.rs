@@ -474,6 +474,17 @@ impl Router for ApnsRouter {
         // Sent successfully, update metrics and make response
         trace!("APNS request was successful");
         incr_success_metrics(&self.metrics, "apns", channel, notification);
+        // Do a liviness check for the user. While `update_user` requires
+        // a &mut, we don't really care if the notification.subscription.user
+        // is updated, since we're at the end of processing.
+        // NOTE: This is not as accurate as triggering an `update_user` off of
+        // the daily channel check, since the remote Bridge systems may retain
+        // a device record for a device that's inactive or lost, however the
+        // bridge will report devices that are known inaccessible
+        // (e.g. Firefox has been uninstalled, or the device has been
+        // factory reset.)
+        let mut user = notification.subscription.user.clone();
+        self.db.update_user(&mut user).await?;
 
         Ok(RouterResponse::success(
             self.endpoint_url
