@@ -13,8 +13,6 @@ use serde_json::json;
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
-#[cfg(feature = "dynamodb")]
-use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::{
     db::{client::DbClient, spawn_pool_periodic_reporter, DbSettings, StorageType},
     middleware::sentry::SentryWrapper,
@@ -64,11 +62,6 @@ impl Server {
             },
         };
         let db: Box<dyn DbClient> = match StorageType::from_dsn(&db_settings.dsn) {
-            #[cfg(feature = "dynamodb")]
-            StorageType::DynamoDb => {
-                debug!("Using Dynamodb");
-                Box::new(DdbClientImpl::new(metrics.clone(), &db_settings)?)
-            }
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 debug!("Using BigTable");

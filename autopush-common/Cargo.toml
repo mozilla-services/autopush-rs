@@ -27,13 +27,10 @@ openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
-rusoto_core = { workspace = true, optional = true }
-rusoto_dynamodb = { workspace = true, optional = true }
 sentry-backtrace.workspace = true
 sentry.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
-serde_dynamodb.workspace = true
 serde_json.workspace = true
 slog.workspace = true
 slog-async.workspace = true
@@ -65,7 +62,7 @@ form_urlencoded = { version = "1.2", optional = true }
 [dev-dependencies]
 mockito = "0.31"
 tempfile = "3.2.0"
-tokio = { version = "0.2", features = ["macros"] }
+tokio = { workspace=true, features = ["macros"] }
 actix-rt = "2.8"
 
 [features]
@@ -78,7 +75,6 @@ bigtable = [
     "dep:protobuf",
     "dep:form_urlencoded",
 ]
-dynamodb = ["dep:rusoto_core", "dep:rusoto_dynamodb"]
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.

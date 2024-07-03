@@ -1313,10 +1313,9 @@ impl DbClient for BigTableClientImpl {
         );
 
         let messages = self.rows_to_notifications(rows)?;
-        // Note: Bigtable always returns a timestamp of None here whereas
-        // DynamoDB returns the `current_timestamp` read from its meta
-        // record. Under Bigtable `current_timestamp` is instead initially read
-        // from [get_user]
+        // Note: Bigtable always returns a timestamp of None.
+        // Under Bigtable `current_timestamp` is instead initially read
+        // from [get_user].
         Ok(FetchMessageResponse {
             messages,
             timestamp: None,

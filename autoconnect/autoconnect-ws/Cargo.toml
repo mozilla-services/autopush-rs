@@ -18,7 +18,7 @@ serde_json.workspace = true
 sentry.workspace = true
 slog-scope.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["macros"] }
 
 async-trait = "0.1"
 strum = { version = "0.26", features = ["derive"] }

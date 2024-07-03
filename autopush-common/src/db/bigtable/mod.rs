@@ -160,7 +160,7 @@ impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
         let me: Self = serde_json::from_str(setting_string)
-            .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))?;
+            .map_err(|e| DbError::General(format!("Could not parse DbSettings: {:?}", e)))?;
 
         if me.table_name.starts_with('/') {
             return Err(DbError::ConnectionError(
