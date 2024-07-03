@@ -79,8 +79,6 @@ bigtable = [
     "dep:form_urlencoded",
 ]
 dynamodb = ["dep:rusoto_core", "dep:rusoto_dynamodb"]
-dual = ["dynamodb", "bigtable"]
-aws = []
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.

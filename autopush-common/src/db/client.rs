@@ -97,20 +97,8 @@ pub trait DbClient: Send + Sync {
     /// Perform the health check on this data store
     async fn health_check(&self) -> DbResult<bool>;
 
-    /// Return the DynamoDB current message table name
-    ///
-    /// DynamoDB tables were previously rotated to new tables on a monthly
-    /// basis. The current table name is used to validate the DynamoDB specific
-    /// legacy `User::current_month` value.
-    ///
-    /// N/A to BigTable (returns `None`).
-    // #[automock] requires an explicit 'a lifetime here which is otherwise
-    // unnecessary and rejected by clippy
-    #[allow(clippy::needless_lifetimes)]
-    fn rotating_message_table<'a>(&'a self) -> Option<&'a str>;
-
     /// Provide the module name.
-    /// This was added for simple dual mode testing, but may be useful in
+    /// This was added for simple dual mode testing (legacy), but may be useful in
     /// other situations.
     fn name(&self) -> String;
 

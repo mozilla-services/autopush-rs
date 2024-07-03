@@ -21,8 +21,6 @@ use uuid::Uuid;
 #[cfg(feature = "bigtable")]
 pub mod bigtable;
 pub mod client;
-#[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-pub mod dual;
 #[cfg(feature = "dynamodb")]
 pub mod dynamodb;
 pub mod error;
@@ -54,9 +52,6 @@ pub enum StorageType {
     BigTable,
     #[cfg(feature = "dynamodb")]
     DynamoDb,
-    #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-    Dual,
-    // Postgres,
 }
 
 impl From<&str> for StorageType {
@@ -64,8 +59,6 @@ impl From<&str> for StorageType {
         match name.to_lowercase().as_str() {
             #[cfg(feature = "bigtable")]
             "bigtable" => Self::BigTable,
-            #[cfg(feature = "dual")]
-            "dual" => Self::Dual,
             #[cfg(feature = "dynamodb")]
             "dynamodb" => Self::DynamoDb,
             _ => Self::INVALID,
@@ -83,8 +76,6 @@ impl StorageType {
         result.push("DynamoDB");
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
-        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-        result.push("Dual");
         result
     }
 
@@ -116,11 +107,6 @@ impl StorageType {
                 trace!("Env: {:?}", cred);
             }
             return Self::BigTable;
-        }
-        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-        if dsn.to_lowercase() == "dual" {
-            trace!("Found Dual mode");
-            return Self::Dual;
         }
         Self::INVALID
     }
@@ -184,9 +170,6 @@ pub struct User {
     /// Record version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_version: Option<u64>,
-    /// LEGACY: Current month table in the database the user is on
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_month: Option<String>,
     /// the timestamp of the last notification sent to the user
     /// This field is exclusive to the Bigtable data scheme
     //TODO: rename this to `last_notification_timestamp`
@@ -208,7 +191,6 @@ impl Default for User {
             router_data: None,
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
-            current_month: None,
             current_timestamp: None,
             version: Some(Uuid::new_v4()),
         }

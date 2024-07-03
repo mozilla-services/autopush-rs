@@ -13,8 +13,6 @@ use serde_json::json;
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
-#[cfg(feature = "dual")]
-use autopush_common::db::dual::DualClientImpl;
 #[cfg(feature = "dynamodb")]
 use autopush_common::db::dynamodb::DdbClientImpl;
 use autopush_common::{
@@ -24,8 +22,6 @@ use autopush_common::{
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
-#[cfg(feature = "adm")]
-use crate::routers::adm::router::AdmRouter;
 use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
@@ -47,8 +43,6 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
-    #[cfg(feature = "adm")]
-    pub adm_router: Arc<AdmRouter>,
 }
 
 pub struct Server;
@@ -79,12 +73,6 @@ impl Server {
             StorageType::BigTable => {
                 debug!("Using BigTable");
                 let client = BigTableClientImpl::new(metrics.clone(), &db_settings)?;
-                client.spawn_sweeper(Duration::from_secs(30));
-                Box::new(client)
-            }
-            #[cfg(all(feature = "bigtable", feature = "dual"))]
-            StorageType::Dual => {
-                let client = DualClientImpl::new(metrics.clone(), &db_settings)?;
                 client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
@@ -120,14 +108,6 @@ impl Server {
             )
             .await?,
         );
-        #[cfg(feature = "adm")]
-        let adm_router = Arc::new(AdmRouter::new(
-            settings.adm.clone(),
-            endpoint_url,
-            http.clone(),
-            metrics.clone(),
-            db.clone(),
-        )?);
         let app_state = AppState {
             metrics: metrics.clone(),
             settings,
@@ -136,8 +116,6 @@ impl Server {
             http,
             fcm_router,
             apns_router,
-            #[cfg(feature = "adm")]
-            adm_router,
         };
 
         spawn_pool_periodic_reporter(

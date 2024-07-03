@@ -5,8 +5,6 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
-#[cfg(feature = "adm")]
-use crate::routers::adm::settings::AdmSettings;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
 
@@ -29,6 +27,8 @@ pub struct Settings {
     pub router_table_name: String,
     pub message_table_name: String,
 
+    pub vapid_aud: Vec<String>,
+
     pub max_data_bytes: usize,
     pub crypto_keys: String,
     pub auth_keys: String,
@@ -43,8 +43,6 @@ pub struct Settings {
 
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
-    #[cfg(feature = "adm")]
-    pub adm: AdmSettings,
 }
 
 impl Default for Settings {
@@ -58,6 +56,10 @@ impl Default for Settings {
             db_settings: "".to_owned(),
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
+            vapid_aud: vec![
+                "https://push.services.mozilla.org".to_string(),
+                "http://127.0.0.1:9160".to_string(),
+            ],
             // max data is a bit hard to figure out, due to encryption. Using something
             // like pywebpush, if you encode a block of 4096 bytes, you'll get a
             // 4216 byte data block. Since we're going to be receiving this, we have to
@@ -73,8 +75,6 @@ impl Default for Settings {
             statsd_label: "autoendpoint".to_string(),
             fcm: FcmSettings::default(),
             apns: ApnsSettings::default(),
-            #[cfg(feature = "adm")]
-            adm: AdmSettings::default(),
         }
     }
 }

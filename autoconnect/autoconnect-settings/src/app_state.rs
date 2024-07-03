@@ -2,8 +2,6 @@ use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
-#[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-use autopush_common::db::dual::DualClientImpl;
 #[cfg(feature = "dynamodb")]
 use autopush_common::db::dynamodb::DdbClientImpl;
 use cadence::StatsdClient;
@@ -82,13 +80,6 @@ impl AppState {
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 let client = BigTableClientImpl::new(metrics.clone(), &db_settings)
-                    .map_err(|e| ConfigError::Message(e.to_string()))?;
-                client.spawn_sweeper(Duration::from_secs(30));
-                Box::new(client)
-            }
-            #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-            StorageType::Dual => {
-                let client = DualClientImpl::new(metrics.clone(), &db_settings)
                     .map_err(|e| ConfigError::Message(e.to_string()))?;
                 client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)

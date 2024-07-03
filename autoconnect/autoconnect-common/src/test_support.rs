@@ -22,11 +22,7 @@ pub const CURRENT_MONTH: &str = "message_2018_06";
 
 /// Return a simple MockDbClient that responds to hello (once) with a new uaid.
 pub fn hello_db() -> MockDbClient {
-    let mut db = MockDbClient::new();
-    db.expect_rotating_message_table()
-        .times(1)
-        .return_const(Some(CURRENT_MONTH));
-    db
+    MockDbClient::new()
 }
 
 /// Return a simple MockDbClient that responds to hello (once) with the
@@ -38,13 +34,10 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
             uaid,
             // Last connected 10 minutes ago
             connected_at: ms_since_epoch() - (10 * 60 * 1000),
-            current_month: Some(CURRENT_MONTH.to_owned()),
             ..Default::default()
         }))
     });
-    db.expect_rotating_message_table()
-        .times(1)
-        .return_const(Some(CURRENT_MONTH));
+
     db.expect_update_user().times(1).return_once(|_| Ok(true));
     db.expect_fetch_topic_messages()
         .times(1)
