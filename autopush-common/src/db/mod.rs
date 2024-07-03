@@ -21,8 +21,6 @@ use uuid::Uuid;
 #[cfg(feature = "bigtable")]
 pub mod bigtable;
 pub mod client;
-#[cfg(feature = "dynamodb")]
-pub mod dynamodb;
 pub mod error;
 pub mod models;
 pub mod reporter;
@@ -50,8 +48,6 @@ pub enum StorageType {
     INVALID,
     #[cfg(feature = "bigtable")]
     BigTable,
-    #[cfg(feature = "dynamodb")]
-    DynamoDb,
 }
 
 impl From<&str> for StorageType {
@@ -59,8 +55,6 @@ impl From<&str> for StorageType {
         match name.to_lowercase().as_str() {
             #[cfg(feature = "bigtable")]
             "bigtable" => Self::BigTable,
-            #[cfg(feature = "dynamodb")]
-            "dynamodb" => Self::DynamoDb,
             _ => Self::INVALID,
         }
     }
@@ -72,8 +66,6 @@ impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
         #[allow(unused_mut)]
         let mut result: Vec<&str> = Vec::new();
-        #[cfg(feature = "dynamodb")]
-        result.push("DynamoDB");
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
         result
@@ -87,14 +79,7 @@ impl StorageType {
             info!("No DSN specified, failing over to old default dsn: {default}");
             return Self::from(default);
         }
-        let dsn = dsn
-            .clone()
-            .unwrap_or(std::env::var("AWS_LOCAL_DYNAMODB").unwrap_or_default());
-        #[cfg(feature = "dynamodb")]
-        if dsn.starts_with("http") {
-            trace!("Found http");
-            return Self::DynamoDb;
-        }
+        let dsn = dsn.clone().unwrap_or_default();
         #[cfg(feature = "bigtable")]
         if dsn.starts_with("grpc") {
             trace!("Found grpc");
@@ -120,9 +105,8 @@ pub struct DbSettings {
     pub dsn: Option<String>,
     /// A JSON formatted dictionary containing Database settings that
     /// are specific to the type of Data storage specified in the `dsn`
-    /// See the respective settings structures for
-    /// [crate::db::dynamodb::DynamoDbSettings]
-    /// and [crate::db::bigtable::BigTableDbSettings]
+    /// See the respective settings structure for
+    /// [crate::db::bigtable::BigTableDbSettings]
     pub db_settings: String,
 }
 //TODO: add `From<autopush::settings::Settings> for DbSettings`?
@@ -155,7 +139,6 @@ pub struct CheckStorageResponse {
 pub struct User {
     /// The UAID. This is generally a UUID4. It needs to be globally
     /// unique.
-    // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     pub uaid: Uuid,
     /// Time in milliseconds that the user last connected at
@@ -203,10 +186,8 @@ impl Default for User {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct NotificationRecord {
     /// The UserAgent Identifier (UAID)
-    // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     uaid: Uuid,
-    // DynamoDB <Range key>
     // Format:
     //    Topic Messages:
     //        {TOPIC_NOTIFICATION_PREFIX}:{channel id}:{topic}
@@ -224,8 +205,7 @@ pub struct NotificationRecord {
     /// Time in seconds from epoch
     #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<u64>,
-    /// DynamoDB expiration timestamp per
-    ///    <https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html>
+    /// Expiration timestamp
     expiry: u64,
     /// TTL value provided by application server for the message
     #[serde(skip_serializing_if = "Option::is_none")]

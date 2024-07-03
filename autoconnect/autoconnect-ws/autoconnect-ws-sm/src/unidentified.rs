@@ -124,9 +124,6 @@ impl UnidentifiedClient {
         let connected_at = ms_since_epoch();
 
         if let Some(uaid) = uaid {
-            // NOTE: previously a user would be dropped when
-            // serde_dynamodb::from_hashmap failed (but this now occurs inside
-            // the db impl)
             if let Some(mut user) = self.app_state.db.get_user(&uaid).await? {
                 let flags = ClientFlags {
                     check_storage: true,
