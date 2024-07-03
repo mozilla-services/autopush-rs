@@ -181,9 +181,8 @@ impl WebPushClient {
             .or(self.current_timestamp);
         trace!("🗄️ WebPushClient::do_check_storage {:?}", &timestamp);
         // if we're to include topic messages, do those first.
-        // NOTE: DynamoDB would also wind up fetching the `current_timestamp` when pulling these,
-        // Bigtable can't fetch `current_timestamp` so we can't rely on `fetch_topic_messages()`
-        // returning a reasonable timestamp.
+        // NOTE: Bigtable can't fetch `current_timestamp`, so we can't rely on
+        // `fetch_topic_messages()` returning a reasonable timestamp.
         let topic_resp = if self.flags.include_topic {
             trace!("🗄️ WebPushClient::do_check_storage: fetch_topic_messages");
             // Get the most recent max 11 messages.

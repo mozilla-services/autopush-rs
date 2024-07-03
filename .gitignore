@@ -7,7 +7,6 @@ syntax:glob
 *.egg
 *~
 build
-ddb
 dist
 docs/_build
 *.xml

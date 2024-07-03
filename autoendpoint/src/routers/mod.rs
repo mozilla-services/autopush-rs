@@ -3,8 +3,6 @@
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
-#[cfg(feature = "adm")]
-use crate::routers::adm::error::AdmError;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
 
@@ -17,8 +15,6 @@ use autopush_common::errors::ReportableError;
 use std::collections::HashMap;
 use thiserror::Error;
 
-#[cfg(feature = "adm")]
-pub mod adm;
 pub mod apns;
 mod common;
 pub mod fcm;
@@ -76,10 +72,6 @@ impl From<RouterResponse> for HttpResponse {
 
 #[derive(Debug, Error)]
 pub enum RouterError {
-    #[cfg(feature = "adm")]
-    #[error(transparent)]
-    Adm(#[from] AdmError),
-
     #[error(transparent)]
     Apns(#[from] ApnsError),
 
@@ -121,8 +113,6 @@ impl RouterError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            #[cfg(feature = "adm")]
-            RouterError::Adm(e) => e.status(),
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
 
@@ -143,8 +133,6 @@ impl RouterError {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            #[cfg(feature = "adm")]
-            RouterError::Adm(e) => e.errno(),
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
 
@@ -181,8 +169,6 @@ impl ReportableError for RouterError {
 
     fn is_sentry_event(&self) -> bool {
         match self {
-            #[cfg(feature = "adm")]
-            RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
             // apns handle_error emits a metric for ApnsError::Unregistered
             RouterError::Apns(e) => e.is_sentry_event(),
             RouterError::Fcm(e) => e.is_sentry_event(),
@@ -204,10 +190,6 @@ impl ReportableError for RouterError {
         // callbacks, whereas some are emitted via this method. These 2 should
         // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
         match self {
-            #[cfg(feature = "adm")]
-            RouterError::Adm(AdmError::InvalidProfile | AdmError::NoProfile) => {
-                Some("notification.bridge.error.adm.profile")
-            }
             RouterError::Apns(e) => e.metric_label(),
             RouterError::Fcm(e) => e.metric_label(),
             RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),

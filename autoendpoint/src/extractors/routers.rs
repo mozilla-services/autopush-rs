@@ -1,6 +1,4 @@
 use crate::error::{ApiError, ApiResult};
-#[cfg(feature = "adm")]
-use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 use crate::routers::webpush::WebPushRouter;
@@ -14,7 +12,6 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// Valid `DynamoDbUser::router_type` values
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum RouterType {
@@ -22,8 +19,6 @@ pub enum RouterType {
     FCM,
     GCM,
     APNS,
-    #[cfg(feature = "adm")]
-    ADM,
 }
 
 impl FromStr for RouterType {
@@ -35,8 +30,6 @@ impl FromStr for RouterType {
             "fcm" => Ok(RouterType::FCM),
             "gcm" => Ok(RouterType::GCM),
             "apns" => Ok(RouterType::APNS),
-            #[cfg(feature = "adm")]
-            "adm" => Ok(RouterType::ADM),
             _ => Err(()),
         }
     }
@@ -49,8 +42,6 @@ impl Display for RouterType {
             RouterType::FCM => "fcm",
             RouterType::GCM => "gcm",
             RouterType::APNS => "apns",
-            #[cfg(feature = "adm")]
-            RouterType::ADM => "adm",
         })
     }
 }
@@ -61,8 +52,6 @@ pub struct Routers {
     webpush: WebPushRouter,
     fcm: Arc<FcmRouter>,
     apns: Arc<ApnsRouter>,
-    #[cfg(feature = "adm")]
-    adm: Arc<AdmRouter>,
 }
 
 impl FromRequest for Routers {
@@ -83,8 +72,6 @@ impl FromRequest for Routers {
             },
             fcm: app_state.fcm_router.clone(),
             apns: app_state.apns_router.clone(),
-            #[cfg(feature = "adm")]
-            adm: app_state.adm_router.clone(),
         })
     }
 }
@@ -96,8 +83,6 @@ impl Routers {
             RouterType::WebPush => &self.webpush,
             RouterType::FCM | RouterType::GCM => self.fcm.as_ref(),
             RouterType::APNS => self.apns.as_ref(),
-            #[cfg(feature = "adm")]
-            RouterType::ADM => self.adm.as_ref(),
         }
     }
 }
