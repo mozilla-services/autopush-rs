@@ -611,7 +611,11 @@ mod tests {
 
             Ok(apns_success_response())
         });
-        let db = MockDbClient::new().into_boxed_arc();
+        let mut mdb = MockDbClient::new();
+        mdb.expect_update_user()
+            .once()
+            .return_once(|_| Ok(Default::default()));
+        let db = mdb.into_boxed_arc();
         let router = make_router(client, db);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
@@ -648,7 +652,11 @@ mod tests {
 
             Ok(apns_success_response())
         });
-        let db = MockDbClient::new().into_boxed_arc();
+        let mut mdb = MockDbClient::new();
+        mdb.expect_update_user()
+            .once()
+            .return_once(|_| Ok(Default::default()));
+        let db = mdb.into_boxed_arc();
         let router = make_router(client, db);
         let data = "test-data".to_string();
         let notification = make_notification(default_router_data(), Some(data), RouterType::APNS);

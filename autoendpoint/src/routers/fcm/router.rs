@@ -279,7 +279,11 @@ mod tests {
     async fn successful_routing_no_data() {
         let mut server = mockito::Server::new_async().await;
 
-        let db = MockDbClient::new().into_boxed_arc();
+        let mut mdb = MockDbClient::new();
+        mdb.expect_update_user()
+            .once()
+            .return_once(|_| Ok(Default::default()));
+        let db = mdb.into_boxed_arc();
         let service_key = make_service_key(&server);
         let router = make_router(&mut server, service_key, "whatever".to_string(), db).await;
         assert!(router.active());
@@ -317,7 +321,11 @@ mod tests {
     async fn successful_routing_with_data() {
         let mut server = mockito::Server::new_async().await;
 
-        let db = MockDbClient::new().into_boxed_arc();
+        let mut mdb = MockDbClient::new();
+        mdb.expect_update_user()
+            .once()
+            .return_once(|_| Ok(Default::default()));
+        let db = mdb.into_boxed_arc();
         let service_key = make_service_key(&server);
         let router = make_router(&mut server, service_key, "whatever".to_string(), db).await;
         let _token_mock = mock_token_endpoint(&mut server).await;
