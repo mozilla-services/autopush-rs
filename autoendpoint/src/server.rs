@@ -20,6 +20,8 @@ use autopush_common::{
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
+#[cfg(feature = "stub")]
+use crate::routers::stub::router::StubRouter;
 use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
@@ -41,6 +43,8 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
+    #[cfg(feature = "stub")]
+    pub stub_router: Arc<StubRouter>,
 }
 
 pub struct Server;
@@ -101,6 +105,8 @@ impl Server {
             )
             .await?,
         );
+        #[cfg(feature = "stub")]
+        let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
         let app_state = AppState {
             metrics: metrics.clone(),
             settings,
@@ -109,6 +115,8 @@ impl Server {
             http,
             fcm_router,
             apns_router,
+            #[cfg(feature = "stub")]
+            stub_router,
         };
 
         spawn_pool_periodic_reporter(

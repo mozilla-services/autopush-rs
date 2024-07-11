@@ -15,9 +15,13 @@ use autopush_common::errors::ReportableError;
 use std::collections::HashMap;
 use thiserror::Error;
 
+#[cfg(feature = "stub")]
+use self::stub::error::StubError;
 pub mod apns;
 mod common;
 pub mod fcm;
+#[cfg(feature = "stub")]
+pub mod stub;
 pub mod webpush;
 
 #[async_trait(?Send)]
@@ -78,6 +82,10 @@ pub enum RouterError {
     #[error(transparent)]
     Fcm(#[from] FcmError),
 
+    #[cfg(feature = "stub")]
+    #[error(transparent)]
+    Stub(#[from] StubError),
+
     #[error("Database error while saving notification")]
     SaveDb(#[source] DbError),
 
@@ -116,6 +124,8 @@ impl RouterError {
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
 
+            #[cfg(feature = "stub")]
+            RouterError::Stub(e) => e.status(),
             RouterError::SaveDb(e) => e.status(),
 
             RouterError::UserWasDeleted | RouterError::NotFound => StatusCode::GONE,
@@ -135,6 +145,9 @@ impl RouterError {
         match self {
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
+
+            #[cfg(feature = "stub")]
+            RouterError::Stub(e) => e.errno(),
 
             RouterError::TooMuchData(_) => Some(104),
 

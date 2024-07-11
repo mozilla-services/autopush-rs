@@ -71,3 +71,4 @@ tokio = { workspace = true, features = ["fs", "macros"] }
 default = ["bigtable"]
 bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
+stub = []
