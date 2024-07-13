@@ -219,12 +219,17 @@ impl Settings {
     }
 
     pub fn test_settings() -> Self {
+        let db_dsn = Some("grpc://localhost:8086".to_string());
+        // BigTable DB_SETTINGS.
         let db_settings = json!({
-            "message_table": "message_test",
-            "router_table": "router_test"
+            "table_name":"projects/test/instances/test/tables/autopush",
+            "message_family":"message",
+            "router_family":"router",
+            "message_topic_family":"message_topic",
         })
         .to_string();
         Self {
+            db_dsn,
             db_settings,
             ..Default::default()
         }

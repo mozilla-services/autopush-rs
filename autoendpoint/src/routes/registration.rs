@@ -39,7 +39,6 @@ pub async fn register_uaid_route(
     let user = User {
         router_type: path_args.router_type.to_string(),
         router_data: Some(router_data),
-        current_month: app_state.db.rotating_message_table().map(str::to_owned),
         ..Default::default()
     };
     let channel_id = router_data_input.channel_id.unwrap_or_else(Uuid::new_v4);
