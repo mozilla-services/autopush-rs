@@ -41,6 +41,8 @@ impl FromRequest for RouterDataInput {
                 RouterType::FCM | RouterType::GCM | RouterType::APNS => {
                     VALID_TOKEN.is_match(&data.token)
                 }
+                #[cfg(feature = "stub")]
+                RouterType::STUB => data.token.as_str() == "success",
             };
 
             if !is_valid {
