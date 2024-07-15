@@ -8,8 +8,6 @@ use uuid::Uuid;
 
 lazy_static! {
     static ref VALID_TOKEN: Regex = Regex::new(r"^[^ ]{8,}$").unwrap();
-    static ref VALID_ADM_TOKEN: Regex =
-        Regex::new(r"^amzn1.adm-registration.v3.[^ ]{256,}$").unwrap();
 }
 
 /// Extracts the router data from the request body and validates the token
@@ -43,8 +41,8 @@ impl FromRequest for RouterDataInput {
                 RouterType::FCM | RouterType::GCM | RouterType::APNS => {
                     VALID_TOKEN.is_match(&data.token)
                 }
-                #[cfg(feature = "adm")]
-                RouterType::ADM => VALID_ADM_TOKEN.is_match(&data.token),
+                #[cfg(feature = "stub")]
+                RouterType::STUB => data.token.as_str() == "success",
             };
 
             if !is_valid {
