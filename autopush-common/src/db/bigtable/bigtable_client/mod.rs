@@ -344,7 +344,7 @@ impl BigTableClientImpl {
     fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
         read_row_request(
             &self.settings.table_name,
-            &self.settings.profile_id,
+            &self.settings.app_profile_id,
             row_key,
         )
     }
@@ -353,7 +353,7 @@ impl BigTableClientImpl {
     fn mutate_row_request(&self, row_key: &str) -> bigtable::MutateRowRequest {
         let mut req = bigtable::MutateRowRequest::default();
         req.set_table_name(self.settings.table_name.clone());
-        req.set_app_profile_id(self.settings.profile_id.clone());
+        req.set_app_profile_id(self.settings.app_profile_id.clone());
         req.set_row_key(row_key.as_bytes().to_vec());
         req
     }
@@ -362,7 +362,7 @@ impl BigTableClientImpl {
     fn check_and_mutate_row_request(&self, row_key: &str) -> bigtable::CheckAndMutateRowRequest {
         let mut req = bigtable::CheckAndMutateRowRequest::default();
         req.set_table_name(self.settings.table_name.clone());
-        req.set_app_profile_id(self.settings.profile_id.clone());
+        req.set_app_profile_id(self.settings.app_profile_id.clone());
         req.set_row_key(row_key.as_bytes().to_vec());
         req
     }
@@ -1233,7 +1233,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
-        req.set_app_profile_id(self.settings.profile_id.clone());
+        req.set_app_profile_id(self.settings.app_profile_id.clone());
 
         let start_key = format!("{}#01:", uaid.simple());
         let end_key = format!("{}#02:", uaid.simple());
@@ -1281,7 +1281,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
-        req.set_app_profile_id(self.settings.profile_id.clone());
+        req.set_app_profile_id(self.settings.app_profile_id.clone());
 
         let mut rows = data::RowSet::default();
         let mut row_range = data::RowRange::default();
@@ -1344,7 +1344,7 @@ impl DbClient for BigTableClientImpl {
             .pool
             .get()
             .await?
-            .health_check(&self.metrics.clone(), &self.settings.profile_id)
+            .health_check(&self.metrics.clone(), &self.settings.app_profile_id)
             .await?)
     }
 

@@ -51,7 +51,7 @@ pub struct BigTableDbSettings {
     /// Routing replication profile id.
     /// Should be used everywhere we set `table_name` when creating requests
     #[serde(default)]
-    pub profile_id: String,
+    pub app_profile_id: String,
     #[serde(default)]
     pub router_family: String,
     #[serde(default)]
@@ -106,7 +106,7 @@ impl Default for BigTableDbSettings {
             database_pool_max_idle: Default::default(),
             route_to_leader: Default::default(),
             retry_count: Default::default(),
-            profile_id: Default::default(),
+            app_profile_id: Default::default(),
         }
     }
 }
@@ -166,8 +166,8 @@ impl TryFrom<&str> for BigTableDbSettings {
         // specify the default string "default" if it's not specified.
         // There's a small chance that this could be reported as "unspecified", so this
         // removes that confusion.
-        if me.profile_id.is_empty() {
-            "default".clone_into(&mut me.profile_id);
+        if me.app_profile_id.is_empty() {
+            "default".clone_into(&mut me.app_profile_id);
         }
 
         Ok(me)
