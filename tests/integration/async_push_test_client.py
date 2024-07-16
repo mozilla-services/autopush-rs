@@ -270,7 +270,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         try:
             d = await asyncio.wait_for(self.ws.recv(), timeout)
-            log.debug(f"Recv: {d}")
+            log.debug(f"Recv: {d!r}")
             result = json.loads(d)
             return result
         except WebSocketException as ex:  # pragma: no cover
@@ -285,7 +285,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug("Send: {}")
         await self.ws.send("{}")
         result = await self.ws.recv()
-        log.debug(f"Recv: {result}")
+        log.debug(f"Recv: {result!r}")
         return result
 
     async def ack(self, channel, version) -> None:
