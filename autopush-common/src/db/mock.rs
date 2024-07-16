@@ -103,10 +103,6 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).message_table_exists().await
     }
 
-    fn rotating_message_table(&self) -> Option<&str> {
-        Arc::as_ref(self).rotating_message_table()
-    }
-
     async fn health_check(&self) -> DbResult<bool> {
         Arc::as_ref(self).health_check().await
     }

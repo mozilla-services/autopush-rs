@@ -1,5 +1,8 @@
 # DynamoDB Message Table Rotation (legacy)
 
+Note: this section does not apply to our BigTable database backend. 
+All documentation below is deprecated and left for historical purposes.
+
 As of version 1.45.0, message table rotation can be disabled. This is
 because DynamoDB now provides automatic entry expiration. This is
 controlled in our data by the "expiry" field. (_**Note**_, field
@@ -14,7 +17,10 @@ aesthetically pleasing, it's more efficient than copying data to a new,
 generic table. If it's preferred, service can be shut down, previous
 tables dropped, the current table renamed, and service brought up again.
 
-**Message Table Rotation information**
+**Message Table Rotation information (legacy)**
+
+Note: this section does not apply to our BigTable database backend. 
+All documentation below is deprecated and left for historical purposes.
 
 To avoid costly table scans, autopush used a rotating message and
 router table. Clients that hadn't connected in 30-60 days would have

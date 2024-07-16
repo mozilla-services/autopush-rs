@@ -153,9 +153,17 @@ impl ApnsRouter {
         } else {
             settings.key.as_bytes().to_vec()
         };
+        // TODO: We should define these timeouts, currently
+        // these default to `request_timeout_secs`: 20s,
+        // and `pool_idle_timeout_secs`: 10m, but no guarantee
+        // that they will stay those values.
+        let config = a2::ClientConfig {
+            endpoint,
+            ..Default::default()
+        };
         let client = ApnsClientData {
             client: Box::new(
-                a2::Client::certificate_parts(&cert, &key, endpoint)
+                a2::Client::certificate_parts(&cert, &key, config)
                     .map_err(ApnsError::ApnsClient)?,
             ),
             topic: settings
@@ -224,21 +232,6 @@ impl ApnsRouter {
         }
 
         ApiError::from(ApnsError::ApnsUpstream(error))
-    }
-
-    /// Convert all of the floats in a JSON value into integers. DynamoDB
-    /// returns all numbers as floats, but deserializing to `APS` will fail if
-    /// it expects an integer and gets a float.
-    fn convert_value_float_to_int(value: &mut Value) {
-        if let Some(float) = value.as_f64() {
-            *value = Value::Number(serde_json::Number::from(float as i64));
-        }
-
-        if let Some(object) = value.as_object_mut() {
-            object
-                .values_mut()
-                .for_each(Self::convert_value_float_to_int);
-        }
     }
 
     /// if we have any clients defined, this connection is "active"
@@ -424,13 +417,7 @@ impl Router for ApnsRouter {
             .get("rel_channel")
             .and_then(Value::as_str)
             .ok_or(ApnsError::NoReleaseChannel)?;
-        // XXX: We don't really use anything that is a numeric here, aside from
-        // mutable contant, and even there we should just check for presense.
-        // Once we're off of DynamoDB, we might want to kill the map.
-        let aps_json = router_data.get("aps").cloned().map(|mut value| {
-            Self::convert_value_float_to_int(&mut value);
-            value
-        });
+        let aps_json = router_data.get("aps").cloned();
         let mut message_data = build_message_data(notification)?;
         message_data.insert("ver", notification.message_id.clone());
 

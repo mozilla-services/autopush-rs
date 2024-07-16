@@ -1,19 +1,17 @@
 use std::borrow::Cow;
 use std::error::Error;
-use std::fmt;
 use std::str::FromStr;
 
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
 use autopush_common::{
     db::User,
     tags::Tags,
-    util::{b64_decode_std, b64_decode_url, sec_since_epoch},
+    util::{b64_decode_std, b64_decode_url},
 };
 use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
-use serde::{Deserialize, Serialize};
 use url::Url;
 use uuid::Uuid;
 
@@ -24,14 +22,12 @@ use crate::extractors::{
 };
 use crate::headers::{
     crypto_key::CryptoKeyHeader,
-    vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
+    vapid::{VapidClaims, VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
 };
 use crate::metrics::Metrics;
 use crate::server::AppState;
 
 use crate::settings::Settings;
-
-const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
 /// Extracts subscription data from `TokenInfo` and verifies auth/crypto headers
 #[derive(Clone, Debug)]
@@ -41,32 +37,6 @@ pub struct Subscription {
     pub vapid: Option<VapidHeaderWithKey>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VapidClaims {
-    exp: u64,
-    aud: String,
-    sub: String,
-}
-
-impl Default for VapidClaims {
-    fn default() -> Self {
-        Self {
-            exp: sec_since_epoch() + ONE_DAY_IN_SECONDS,
-            aud: "No audience".to_owned(),
-            sub: "No sub".to_owned(),
-        }
-    }
-}
-
-impl fmt::Display for VapidClaims {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("VapidClaims")
-            .field("exp", &self.exp)
-            .field("aud", &self.aud)
-            .field("sub", &self.sub)
-            .finish()
-    }
-}
 impl FromRequest for Subscription {
     type Error = ApiError;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
@@ -387,7 +357,7 @@ fn validate_vapid_jwt(
         );
     };
 
-    if token_data.claims.exp > (sec_since_epoch() + ONE_DAY_IN_SECONDS) {
+    if token_data.claims.exp > VapidClaims::default_exp() {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
     }
@@ -415,16 +385,52 @@ fn validate_vapid_jwt(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::{validate_vapid_jwt, VapidClaims};
     use crate::error::ApiErrorKind;
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
     use crate::metrics::Metrics;
-    use autopush_common::util::{b64_decode_std, sec_since_epoch};
+    use autopush_common::util::b64_decode_std;
+    use lazy_static::lazy_static;
     use serde::{Deserialize, Serialize};
     use std::str::FromStr;
     use url::Url;
+
+    pub const PUB_KEY: &str =
+        "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds";
+
+    lazy_static! {
+        static ref PRIV_KEY: Vec<u8> = b64_decode_std(
+            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
+                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
+                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
+        )
+        .unwrap();
+    }
+
+    /// Make a vapid header.
+    /// *NOTE*: This follows a python format where you only specify overrides. Any value not
+    /// specified will use a default value.
+    pub fn make_vapid(sub: &str, aud: &str, exp: u64, key: String) -> VapidHeaderWithKey {
+        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
+        let claims = VapidClaims {
+            exp,
+            aud: aud.to_string(),
+            sub: sub.to_string(),
+        };
+        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
+
+        VapidHeaderWithKey {
+            public_key: key.to_owned(),
+            vapid: VapidHeader {
+                scheme: "vapid".to_string(),
+                token,
+                version_data: VapidVersionData::Version1,
+            },
+        }
+    }
 
     #[test]
     fn repad_base64_1_padding() {
@@ -438,62 +444,29 @@ mod tests {
 
     #[test]
     fn vapid_aud_valid() {
-        let priv_key = b64_decode_std(
-            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
-                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-        )
-        .unwrap();
         // Specify a potentially invalid padding.
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds==".to_owned();
         let domain = "https://push.services.mozilla.org";
-        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
-        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
-        let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
-            aud: domain.to_owned(),
-            sub: "mailto:admin@example.com".to_owned(),
-        };
-        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
 
-        let header = VapidHeaderWithKey {
+        let header = make_vapid(
+            "mailto:admin@example.com",
+            domain,
+            VapidClaims::default_exp() - 100,
             public_key,
-            vapid: VapidHeader {
-                scheme: "vapid".to_string(),
-                token,
-                version_data: VapidVersionData::Version1,
-            },
-        };
+        );
         let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop());
         assert!(result.is_ok());
     }
 
     #[test]
     fn vapid_aud_invalid() {
-        let priv_key = b64_decode_std(
-            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
-                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-        )
-        .unwrap();
-        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
         let domain = "https://push.services.mozilla.org";
-        let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
-        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
-        let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
-            aud: domain.to_owned(),
-            sub: "mailto:admin@example.com".to_owned(),
-        };
-        let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
-        let header = VapidHeaderWithKey {
-            public_key,
-            vapid: VapidHeader {
-                scheme: "vapid".to_string(),
-                token,
-                version_data: VapidVersionData::Version1,
-            },
-        };
+        let header = make_vapid(
+            "mailto:admin@example.com",
+            domain,
+            VapidClaims::default_exp() - 100,
+            PUB_KEY.to_owned(),
+        );
         assert!(matches!(
             validate_vapid_jwt(
                 &header,
@@ -515,24 +488,17 @@ mod tests {
             sub: String,
         }
 
-        let priv_key = b64_decode_std(
-            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
-                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-        )
-        .unwrap();
-        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
         let domain = "https://push.services.mozilla.org";
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
-        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = StrExpVapidClaims {
-            exp: (sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100).to_string(),
+            exp: (VapidClaims::default_exp() - 100).to_string(),
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         let header = VapidHeaderWithKey {
-            public_key,
+            public_key: PUB_KEY.to_owned(),
             vapid: VapidHeader {
                 scheme: "vapid".to_string(),
                 token,
@@ -561,20 +527,14 @@ mod tests {
             sub: String,
         }
 
-        let priv_key = b64_decode_std(
-            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
-                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-        )
-        .unwrap();
         // pretty much matches the kind of key we get from some partners.
         let public_key_standard = "BM3bVjW/wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf+1odb8hds=".to_owned();
         let public_key_url_safe = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds=".to_owned();
         let domain = "https://push.services.mozilla.org";
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
-        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = VapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: VapidClaims::default_exp() - 100,
             aud: domain.to_owned(),
             sub: "mailto:admin@example.com".to_owned(),
         };
@@ -638,24 +598,17 @@ mod tests {
             sub: Option<String>,
         }
 
-        let priv_key = b64_decode_std(
-            "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZImOgpRszunnU3j1\
-                    oX5UQiX8KU4X2OdbENuvc/t8wpmhRANCAATN21Y1v8LmQueGpSG6o022gTbbYa4l\
-                    bXWZXITsjknW1WHmELtouYpyXX7e41FiAMuDvcRwW2Nfehn/taHW/IXb",
-        )
-        .unwrap();
-        let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds".to_owned();
         let domain = "https://push.services.mozilla.org";
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
-        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&priv_key);
+        let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = NoSubVapidClaims {
-            exp: sec_since_epoch() + super::ONE_DAY_IN_SECONDS - 100,
+            exp: VapidClaims::default_exp() - 100,
             aud: domain.to_owned(),
             sub: None,
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         let header = VapidHeaderWithKey {
-            public_key,
+            public_key: PUB_KEY.to_owned(),
             vapid: VapidHeader {
                 scheme: "vapid".to_string(),
                 token,
