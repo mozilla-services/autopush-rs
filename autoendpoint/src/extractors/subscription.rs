@@ -255,9 +255,12 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 // Perform a very brain dead conversion of a string to a CamelCaseVersion
 fn term_to_label(term: &str) -> String {
     term.split(' ').fold("".to_owned(), |prev, word: &str| {
-        let mut cap = word.get(0..1).unwrap_or_default().to_string();
-        cap.make_ascii_uppercase();
-        format!("{}{}{}", prev, cap, word.get(1..).unwrap_or_default())
+        format!(
+            "{}{}{}",
+            prev,
+            word.get(0..1).unwrap_or_default().to_ascii_uppercase(),
+            word.get(1..).unwrap_or_default()
+        )
     })
 }
 
