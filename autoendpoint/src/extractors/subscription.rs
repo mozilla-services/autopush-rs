@@ -254,13 +254,11 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
 
 // Perform a very brain dead conversion of a string to a CamelCaseVersion
 fn term_to_label(term: &str) -> String {
-    term.split(" ")
-        .map(|word: &str| {
-            let mut cap = word.get(0..1).unwrap_or_default().to_string();
-            cap.make_ascii_uppercase();
-            format!("{}{}", cap, word.get(1..).unwrap_or_default())
-        })
-        .collect()
+    term.split(' ').fold("".to_owned(), |prev, word: &str| {
+        let mut cap = word.get(0..1).unwrap_or_default().to_string();
+        cap.make_ascii_uppercase();
+        format!("{}{}{}", prev, cap, word.get(1..).unwrap_or_default())
+    })
 }
 
 /// Validate the VAPID JWT token. Specifically,
@@ -326,12 +324,12 @@ fn validate_vapid_jwt(
                     // These two have the most cardinality, so we need to handle
                     // them separately.
                     let mut label_name = e.to_string();
-                    if label_name.contains(":") {
+                    if label_name.contains(':') {
                         // if the error begins with a common tag e.g. "Missing required claim: ..."
                         // then convert it to a less cardinal version. This is lossy, but acceptable.
                         label_name =
-                            term_to_label(label_name.split(":").next().unwrap_or_default());
-                    } else if label_name.contains(" ") {
+                            term_to_label(label_name.split(':').next().unwrap_or_default());
+                    } else if label_name.contains(' ') {
                         // if a space still snuck through somehow, remove it.
                         label_name = term_to_label(&label_name);
                     }
