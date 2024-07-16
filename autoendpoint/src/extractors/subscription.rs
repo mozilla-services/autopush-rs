@@ -252,6 +252,17 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
     Ok(())
 }
 
+// Perform a very brain dead conversion of a string to a CamelCaseVersion
+fn term_to_label(term: &str) -> String {
+    term.split(" ")
+        .map(|word: &str| {
+            let mut cap = word.get(0..1).unwrap_or_default().to_string();
+            cap.make_ascii_uppercase();
+            format!("{}{}", cap, word.get(1..).unwrap_or_default())
+        })
+        .collect()
+}
+
 /// Validate the VAPID JWT token. Specifically,
 /// - Check the signature
 /// - Make sure it hasn't expired
@@ -314,18 +325,17 @@ fn validate_vapid_jwt(
                 let label = if e.source().is_none() {
                     // These two have the most cardinality, so we need to handle
                     // them separately.
-                    match e.clone().into_kind() {
-                        jsonwebtoken::errors::ErrorKind::InvalidRsaKey(_) => {
-                            "InvalidRsaKey".to_owned()
-                        }
-                        jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(_) => {
-                            "MissingRequiredClaim".to_owned()
-                        }
-                        // NOTE: It's possible that any new error introduced could
-                        // be a source of cardinality. We should handle these as they
-                        // come up.
-                        _ => e.to_string(),
+                    let mut label_name = e.to_string();
+                    if label_name.contains(":") {
+                        // if the error begins with a common tag e.g. "Missing required claim: ..."
+                        // then convert it to a less cardinal version. This is lossy, but acceptable.
+                        label_name =
+                            term_to_label(label_name.split(":").next().unwrap_or_default());
+                    } else if label_name.contains(" ") {
+                        // if a space still snuck through somehow, remove it.
+                        label_name = term_to_label(&label_name);
                     }
+                    label_name
                 } else {
                     // If you need to dig into these, there's always the logs.
                     "Other".to_owned()
@@ -386,7 +396,7 @@ fn validate_vapid_jwt(
 
 #[cfg(test)]
 pub mod tests {
-    use super::{validate_vapid_jwt, VapidClaims};
+    use super::{term_to_label, validate_vapid_jwt, VapidClaims};
     use crate::error::ApiErrorKind;
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
@@ -626,5 +636,14 @@ pub mod tests {
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
         ])
+    }
+
+    #[test]
+    fn test_crapitalize() {
+        assert_eq!(
+            "LabelFieldWithoutData",
+            term_to_label("LabelField without data")
+        );
+        assert_eq!("UntouchedField", term_to_label("UntouchedField"));
     }
 }
