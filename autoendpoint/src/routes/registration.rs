@@ -178,10 +178,10 @@ pub async fn get_channels_route(
         let browser = auth.user_agent.metrics_browser.clone();
         // use the "real" version here. (these are less normalized)
         info!("Mobile client check";
-            "os"=>auth.user_agent.os,
-            "os_version"=>auth.user_agent.os_version,
-            "browser"=>auth.user_agent.browser_name,
-            "browser_version"=>auth.user_agent.browser_version);
+            "os" => auth.user_agent.os,
+            "os_version" => auth.user_agent.os_version,
+            "browser" => auth.user_agent.browser_name,
+            "browser_version" => auth.user_agent.browser_version);
         // use the "metrics" version since we need to consider cardinality.
         app_state
             .metrics
