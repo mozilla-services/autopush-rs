@@ -12,6 +12,7 @@ use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
 
+use derive_builder::Builder;
 use lazy_static::lazy_static;
 use regex::RegexSet;
 use serde::Serializer;
@@ -135,7 +136,8 @@ pub struct CheckStorageResponse {
 }
 
 /// A user data record.
-#[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
+#[derive(Deserialize, PartialEq, Debug, Clone, Serialize, Builder)]
+#[builder(default, pattern = "owned")]
 pub struct User {
     /// The UAID. This is generally a UUID4. It needs to be globally
     /// unique.
@@ -161,6 +163,19 @@ pub struct User {
     /// UUID4 version number for optimistic locking of updates on Bigtable
     #[serde(skip_serializing)]
     pub version: Option<Uuid>,
+    /// Set of user's channel ids. These are stored in router (user) record's
+    /// row in Bigtable. They are read along with the rest of the user record
+    /// so that them, along with every other field in the router record, will
+    /// automatically have their TTL (cell timestamp) reset during
+    /// [DbClient::update_user].
+    ///
+    /// This is solely used for the sake of that update thus private.
+    /// [DbClient::get_channels] is preferred for reading the latest version of
+    /// the channel ids (partly due to historical purposes but also is a more
+    /// flexible API that might benefit different, non Bigtable [DbClient]
+    /// backends that don't necessarily store the channel ids in the router
+    /// record).
+    _channels: HashSet<Uuid>,
 }
 
 impl Default for User {
@@ -176,7 +191,15 @@ impl Default for User {
             record_version: Some(USER_RECORD_VERSION),
             current_timestamp: None,
             version: Some(Uuid::new_v4()),
+            _channels: HashSet::new(),
         }
+    }
+}
+
+impl User {
+    /// Return a new [UserBuilder] (generated from [derive_builder::Builder])
+    pub fn builder() -> UserBuilder {
+        UserBuilder::default()
     }
 }
 

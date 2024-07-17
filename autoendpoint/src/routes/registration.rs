@@ -35,11 +35,11 @@ pub async fn register_uaid_route(
     incr_metric("ua.command.register", &app_state.metrics, &request);
 
     // Register user and channel in database
-    let user = User {
-        router_type: path_args.router_type.to_string(),
-        router_data: Some(router_data),
-        ..Default::default()
-    };
+    let user = User::builder()
+        .router_type(path_args.router_type.to_string())
+        .router_data(Some(router_data))
+        .build()
+        .map_err(|e| ApiErrorKind::General(format!("User::builder error: {e}")))?;
     let channel_id = router_data_input.channel_id.unwrap_or_else(Uuid::new_v4);
     trace!("🌍 Creating user with UAID {}", user.uaid);
     trace!("🌍 user = {:?}", user);

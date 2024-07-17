@@ -30,12 +30,12 @@ pub fn hello_db() -> MockDbClient {
 pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     let mut db = MockDbClient::new();
     db.expect_get_user().times(1).return_once(move |_| {
-        Ok(Some(User {
-            uaid,
-            // Last connected 10 minutes ago
-            connected_at: ms_since_epoch() - (10 * 60 * 1000),
-            ..Default::default()
-        }))
+        let user = User::builder()
+            .uaid(uaid)
+            .connected_at(ms_since_epoch() - (10 * 60 * 1000))
+            .build()
+            .unwrap();
+        Ok(Some(user))
     });
 
     db.expect_update_user().times(1).return_once(|_| Ok(true));
