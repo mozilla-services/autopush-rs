@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::error::Error;
 use std::str::FromStr;
 
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
@@ -67,7 +68,29 @@ impl FromRequest for Subscription {
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
 
-            trace!("Vapid: {:?}", &vapid);
+            trace!("raw vapid: {:?}", &vapid);
+
+            // Capturing the vapid sub right now will cause too much cardinality. Instead,
+            // let's just capture if we have a valid VAPID, as well as what sort of bad sub
+            // values we get.
+            if let Some(ref header) = vapid {
+                let sub = header
+                    .vapid
+                    .sub()
+                    .map_err(|e: VapidError| {
+                        // Capture the type of error and add it to metrics.
+                        let mut tags = Tags::default();
+                        tags.tags
+                            .insert("error".to_owned(), e.as_metric().to_owned());
+                        metrics
+                            .clone()
+                            .incr_with_tags("notification.auth.error", Some(tags));
+                    })
+                    .unwrap_or_default();
+                // For now, record that we had a good (?) VAPID sub,
+                metrics.clone().incr("notification.auth.ok");
+                info!("VAPID sub: {:?}", sub)
+            };
 
             match token_info.api_version {
                 ApiVersion::Version1 => version_1_validation(&token)?,
@@ -134,7 +157,13 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Opti
         None => return Ok(None),
     };
 
-    let vapid = VapidHeader::parse(auth_header)?;
+    let vapid = VapidHeader::parse(auth_header).map_err(|e| {
+        metrics
+            .incr_with_tags("notification.auth.error")
+            .with_tag("error", e.as_metric())
+            .send();
+        e
+    })?;
 
     metrics
         .incr_with_tags("notification.auth")
@@ -223,6 +252,18 @@ fn version_2_validation(token: &[u8], vapid: Option<&VapidHeaderWithKey>) -> Api
     Ok(())
 }
 
+// Perform a very brain dead conversion of a string to a CamelCaseVersion
+fn term_to_label(term: &str) -> String {
+    term.split(' ').fold("".to_owned(), |prev, word: &str| {
+        format!(
+            "{}{}{}",
+            prev,
+            word.get(0..1).unwrap_or_default().to_ascii_uppercase(),
+            word.get(1..).unwrap_or_default()
+        )
+    })
+}
+
 /// Validate the VAPID JWT token. Specifically,
 /// - Check the signature
 /// - Make sure it hasn't expired
@@ -278,7 +319,33 @@ fn validate_vapid_jwt(
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
             _ => {
-                metrics.clone().incr("notification.auth.bad_vapid.other");
+                // Attempt to match up the majority of ErrorKind variants.
+                // The third-party errors all defer to the source, so we can
+                // use that to differentiate for actual errors.
+                let mut tags = Tags::default();
+                let label = if e.source().is_none() {
+                    // These two have the most cardinality, so we need to handle
+                    // them separately.
+                    let mut label_name = e.to_string();
+                    if label_name.contains(':') {
+                        // if the error begins with a common tag e.g. "Missing required claim: ..."
+                        // then convert it to a less cardinal version. This is lossy, but acceptable.
+                        label_name =
+                            term_to_label(label_name.split(':').next().unwrap_or_default());
+                    } else if label_name.contains(' ') {
+                        // if a space still snuck through somehow, remove it.
+                        label_name = term_to_label(&label_name);
+                    }
+                    label_name
+                } else {
+                    // If you need to dig into these, there's always the logs.
+                    "Other".to_owned()
+                };
+                tags.tags.insert("error".to_owned(), label);
+                metrics
+                    .clone()
+                    .incr_with_tags("notification.auth.bad_vapid.other", Some(tags));
+                error!("Bad Aud: Unexpected VAPID error: {:?}", &e);
                 return Err(e.into());
             }
         },
@@ -330,7 +397,7 @@ fn validate_vapid_jwt(
 
 #[cfg(test)]
 pub mod tests {
-    use super::{validate_vapid_jwt, VapidClaims};
+    use super::{term_to_label, validate_vapid_jwt, VapidClaims};
     use crate::error::ApiErrorKind;
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
@@ -570,5 +637,14 @@ pub mod tests {
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
         ])
+    }
+
+    #[test]
+    fn test_crapitalize() {
+        assert_eq!(
+            "LabelFieldWithoutData",
+            term_to_label("LabelField without data")
+        );
+        assert_eq!("UntouchedField", term_to_label("UntouchedField"));
     }
 }

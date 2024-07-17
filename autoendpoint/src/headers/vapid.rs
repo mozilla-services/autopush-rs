@@ -3,6 +3,7 @@ use std::fmt;
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::headers::util::split_key_value;
@@ -134,6 +135,29 @@ impl VapidHeader {
         }
     }
 
+    pub fn sub(&self) -> Result<String, VapidError> {
+        let data: HashMap<String, Value> = serde_json::from_str(&self.token).map_err(|e| {
+            warn!("🔐 Vapid: {:?}", e);
+            VapidError::SubInvalid
+        })?;
+
+        if let Some(sub_candiate) = data.get("sub") {
+            if let Some(sub) = sub_candiate.as_str() {
+                if !sub.starts_with("mailto:") || !sub.starts_with("https://") {
+                    info!("🔐 Vapid: Bad Format {:?}", sub);
+                    return Err(VapidError::SubBadFormat);
+                }
+                if sub.is_empty() {
+                    info!("🔐 Empty Vapid sub");
+                    return Err(VapidError::SubEmpty);
+                }
+                info!("🔐 Vapid: sub: {:?}", sub);
+                return Ok(sub.to_owned());
+            }
+        }
+        Err(VapidError::SubMissing)
+    }
+
     pub fn claims(&self) -> Result<VapidClaims, VapidError> {
         VapidClaims::try_from(self.clone())
     }
@@ -159,6 +183,34 @@ pub enum VapidError {
     FutureExpirationToken,
     #[error("Unknown auth scheme")]
     UnknownScheme,
+    #[error("Unparsable sub string")]
+    SubInvalid,
+    #[error("Improperly formatted sub string")]
+    SubBadFormat,
+    #[error("Empty sub string")]
+    SubEmpty,
+    #[error("Missing sub")]
+    SubMissing,
+}
+
+impl VapidError {
+    pub fn as_metric(&self) -> &str {
+        match self {
+            Self::MissingToken => "missing_token",
+            Self::InvalidVapid(_) => "invalid_vapid",
+            Self::MissingKey => "missing_key",
+            Self::InvalidKey(_) => "invalid_key",
+            Self::InvalidAudience => "invalid_audience",
+            Self::InvalidExpiry => "invalid_expiry",
+            Self::KeyMismatch => "key_mismatch",
+            Self::FutureExpirationToken => "future_expiration_token",
+            Self::UnknownScheme => "unknown_scheme",
+            Self::SubInvalid => "invalid_sub",
+            Self::SubBadFormat => "bad_format_sub",
+            Self::SubEmpty => "empty_sub",
+            Self::SubMissing => "missing_sub",
+        }
+    }
 }
 
 #[cfg(test)]
