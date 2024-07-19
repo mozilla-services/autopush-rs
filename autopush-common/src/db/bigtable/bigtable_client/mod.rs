@@ -29,7 +29,7 @@ use crate::db::{
 };
 
 pub use self::metadata::MetadataBuilder;
-use self::row::Row;
+use self::row::{Row, RowCells};
 use super::pool::BigTablePool;
 use super::BigTableDbSettings;
 
@@ -204,10 +204,10 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
 
 /// Parse the "set" (see [DbClient::add_channels]) of channel ids in a bigtable Row.
 ///
-/// The row should solely contain the set of channels otherwise an Error is returned.
-fn channels_from_row(row: &row::Row) -> DbResult<HashSet<Uuid>> {
+/// Cells should solely contain the set of channels otherwise an Error is returned.
+fn channels_from_cells(cells: &RowCells) -> DbResult<HashSet<Uuid>> {
     let mut result = HashSet::new();
-    for cells in row.cells.values() {
+    for cells in cells.values() {
         let Some(cell) = cells.last() else {
             continue;
         };
@@ -322,7 +322,7 @@ pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) ->
 /// 2) When router TTLs are eventually enabled: `add_channel` and
 /// `increment_storage` can write cells with later expiry times than the other
 /// router cells
-fn is_incomplete_router_record(cells: &HashMap<String, Vec<cell::Cell>>) -> bool {
+fn is_incomplete_router_record(cells: &RowCells) -> bool {
     cells
         .keys()
         .all(|k| ["current_timestamp", "version"].contains(&k.as_str()) || k.starts_with("chid:"))
@@ -986,7 +986,7 @@ impl DbClient for BigTableClientImpl {
         }
 
         // Read the channels last, after removal of all non channel cells
-        result._channels = channels_from_row(&row)?;
+        result._channels = channels_from_cells(&row.cells)?;
 
         Ok(Some(result))
     }
@@ -1049,7 +1049,7 @@ impl DbClient for BigTableClientImpl {
         let Some(row) = self.read_row(req).await? else {
             return Ok(Default::default());
         };
-        channels_from_row(&row)
+        channels_from_cells(&row.cells)
     }
 
     /// Delete the channel. Does not delete its associated pending messages.
