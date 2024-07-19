@@ -137,7 +137,7 @@ pub struct CheckStorageResponse {
 
 /// A user data record.
 #[derive(Deserialize, PartialEq, Debug, Clone, Serialize, Builder)]
-#[builder(default, pattern = "owned")]
+#[builder(default, setter(strip_option))]
 pub struct User {
     /// The UAID. This is generally a UUID4. It needs to be globally
     /// unique.

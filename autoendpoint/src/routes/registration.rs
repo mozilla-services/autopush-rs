@@ -37,7 +37,7 @@ pub async fn register_uaid_route(
     // Register user and channel in database
     let user = User::builder()
         .router_type(path_args.router_type.to_string())
-        .router_data(Some(router_data))
+        .router_data(router_data)
         .build()
         .map_err(|e| ApiErrorKind::General(format!("User::builder error: {e}")))?;
     let channel_id = router_data_input.channel_id.unwrap_or_else(Uuid::new_v4);

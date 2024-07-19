@@ -229,7 +229,7 @@ pub mod tests {
         router_type: RouterType,
     ) -> Notification {
         let user = User::builder()
-            .router_data(Some(router_data))
+            .router_data(router_data)
             .router_type(router_type.to_string())
             .build()
             .unwrap();

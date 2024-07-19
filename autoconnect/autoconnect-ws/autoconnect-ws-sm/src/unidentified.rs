@@ -155,7 +155,7 @@ impl UnidentifiedClient {
         }
 
         let user = User::builder()
-            .node_id(Some(self.app_state.router_url.to_owned()))
+            .node_id(self.app_state.router_url.to_owned())
             .connected_at(connected_at)
             .build()
             .map_err(|e| SMErrorKind::Internal(format!("User::builder error: {e}")))?;
