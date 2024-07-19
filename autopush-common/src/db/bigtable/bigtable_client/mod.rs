@@ -203,10 +203,10 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
 }
 
 /// Parse the "set" (see [DbClient::add_channels]) of channel ids in a bigtable Row
-fn channels_from_row(row: row::Row) -> DbResult<HashSet<Uuid>> {
+fn channels_from_row(row: &row::Row) -> DbResult<HashSet<Uuid>> {
     let mut result = HashSet::new();
-    for mut cells in row.cells.into_values() {
-        let Some(cell) = cells.pop() else {
+    for cells in row.cells.values() {
+        let Some(cell) = cells.last() else {
             continue;
         };
         let Some((_, chid)) = cell.qualifier.split_once("chid:") else {
@@ -983,7 +983,7 @@ impl DbClient for BigTableClientImpl {
             result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
         }
 
-        result._channels = channels_from_row(row)?;
+        result._channels = channels_from_row(&row)?;
 
         Ok(Some(result))
     }
@@ -1046,7 +1046,7 @@ impl DbClient for BigTableClientImpl {
         let Some(row) = self.read_row(req).await? else {
             return Ok(Default::default());
         };
-        channels_from_row(row)
+        channels_from_row(&row)
     }
 
     /// Delete the channel. Does not delete its associated pending messages.
