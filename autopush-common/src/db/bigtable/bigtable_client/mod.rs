@@ -202,7 +202,9 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
     })
 }
 
-/// Parse the "set" (see [DbClient::add_channels]) of channel ids in a bigtable Row
+/// Parse the "set" (see [DbClient::add_channels]) of channel ids in a bigtable Row.
+///
+/// The row should solely contain the set of channels otherwise an Error is returned.
 fn channels_from_row(row: &row::Row) -> DbResult<HashSet<Uuid>> {
     let mut result = HashSet::new();
     for cells in row.cells.values() {
@@ -983,6 +985,7 @@ impl DbClient for BigTableClientImpl {
             result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
         }
 
+        // Read the channels last, after removal of all non channel cells
         result._channels = channels_from_row(&row)?;
 
         Ok(Some(result))
