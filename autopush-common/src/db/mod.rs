@@ -351,3 +351,16 @@ impl NotificationRecord {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{User, USER_RECORD_VERSION};
+
+    #[test]
+    fn user_defaults() {
+        let user = User::builder().current_timestamp(22).build().unwrap();
+        assert_eq!(user.current_timestamp, Some(22));
+        assert_eq!(user.router_type, "webpush".to_owned());
+        assert_eq!(user.record_version, Some(USER_RECORD_VERSION));
+    }
+}
