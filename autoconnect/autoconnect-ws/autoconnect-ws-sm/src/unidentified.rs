@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use cadence::CountedExt;
+use cadence::{Counted, CountedExt};
 use uuid::Uuid;
 
 use autoconnect_common::{
@@ -54,7 +54,9 @@ impl UnidentifiedClient {
     ) -> Result<(WebPushClient, impl IntoIterator<Item = ServerMessage>), SMError> {
         trace!("❓UnidentifiedClient::on_client_msg");
         let ClientMessage::Hello {
-            uaid, broadcasts, ..
+            uaid,
+            broadcasts,
+            channel_ids,
         } = msg
         else {
             return Err(SMError::invalid_message(
@@ -92,6 +94,13 @@ impl UnidentifiedClient {
                 }
             })
             .send();
+        if let Some(chids) = channel_ids {
+            self.app_state
+                .metrics
+                .count_with_tags("busi.channel_count", chids.len() as u64)
+                .with_tag_value("desktop")
+                .send();
+        }
 
         let (broadcast_subs, broadcasts) = self
             .broadcast_init(&Broadcast::from_hashmap(broadcasts.unwrap_or_default()))
