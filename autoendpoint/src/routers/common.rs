@@ -228,14 +228,15 @@ pub mod tests {
         data: Option<String>,
         router_type: RouterType,
     ) -> Notification {
+        let user = User::builder()
+            .router_data(router_data)
+            .router_type(router_type.to_string())
+            .build()
+            .unwrap();
         Notification {
             message_id: "test-message-id".to_string(),
             subscription: Subscription {
-                user: User {
-                    router_data: Some(router_data),
-                    router_type: router_type.to_string(),
-                    ..Default::default()
-                },
+                user,
                 channel_id: channel_id(),
                 vapid: None,
             },
