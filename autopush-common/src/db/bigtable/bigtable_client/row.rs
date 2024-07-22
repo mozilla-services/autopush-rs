@@ -4,6 +4,8 @@ use crate::db::error::{DbError, DbResult};
 
 use super::{cell::Cell, RowKey};
 
+pub type RowCells = HashMap<String, Vec<Cell>>;
+
 /// A Bigtable storage row. Bigtable stores by Family ID which isn't
 /// very useful for us later, so we overload this structure a bit.
 /// When we read data back out of Bigtable, we index cells by
@@ -19,7 +21,7 @@ pub struct Row {
     pub row_key: RowKey,
     /// The row's collection of cells, indexed by either the
     /// FamilyID (for write) or Qualifier (for read).
-    pub cells: HashMap<String, Vec<Cell>>,
+    pub cells: RowCells,
 }
 
 impl Row {
