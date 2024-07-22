@@ -811,7 +811,10 @@ impl BigTableClientImpl {
             });
         };
 
-        cells.extend(channels_to_cells(Cow::Borrowed(&user._channels), expiry));
+        cells.extend(channels_to_cells(
+            Cow::Borrowed(&user.priv_channels),
+            expiry,
+        ));
 
         row.add_cells(ROUTER_FAMILY, cells);
         row
@@ -986,7 +989,7 @@ impl DbClient for BigTableClientImpl {
         }
 
         // Read the channels last, after removal of all non channel cells
-        result._channels = channels_from_cells(&row.cells)?;
+        result.priv_channels = channels_from_cells(&row.cells)?;
 
         Ok(Some(result))
     }

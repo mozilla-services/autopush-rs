@@ -175,7 +175,7 @@ pub struct User {
     /// flexible API that might benefit different, non Bigtable [DbClient]
     /// backends that don't necessarily store the channel ids in the router
     /// record).
-    _channels: HashSet<Uuid>,
+    priv_channels: HashSet<Uuid>,
 }
 
 impl Default for User {
@@ -191,7 +191,7 @@ impl Default for User {
             record_version: Some(USER_RECORD_VERSION),
             current_timestamp: None,
             version: Some(Uuid::new_v4()),
-            _channels: HashSet::new(),
+            priv_channels: HashSet::new(),
         }
     }
 }
