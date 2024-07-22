@@ -5,6 +5,7 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
+use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
 #[cfg(feature = "stub")]
@@ -30,6 +31,12 @@ pub struct Settings {
     pub message_table_name: String,
 
     pub vapid_aud: Vec<String>,
+
+    /// A stringified JSON list of VAPID public keys which should be tracked internally.
+    /// This should ONLY include Mozilla generated and consumed messages (e.g. "SendToTab", etc.)
+    pub tracking_keys: String,
+    /// Cached, parsed tracking keys.
+    pub tracking_vapid_pubs: Vec<String>,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
@@ -65,6 +72,7 @@ impl Default for Settings {
                 "https://push.services.mozilla.org".to_string(),
                 "http://127.0.0.1:9160".to_string(),
             ],
+            tracking_vapid_pubs: vec![],
             // max data is a bit hard to figure out, due to encryption. Using something
             // like pywebpush, if you encode a block of 4096 bytes, you'll get a
             // 4216 byte data block. Since we're going to be receiving this, we have to
@@ -72,6 +80,7 @@ impl Default for Settings {
             max_data_bytes: 5630,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
+            tracking_keys: r#"[]"#.to_string(),
             human_logs: false,
             connection_timeout_millis: 1000,
             request_timeout_millis: 3000,
@@ -101,9 +110,7 @@ impl Settings {
         // down to the sub structures.
         config = config.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
 
-        let built = config.build()?;
-
-        built.try_deserialize::<Self>().map_err(|error| {
+        let mut built: Self = config.build()?.try_deserialize::<Self>().map_err(|error| {
             match error {
                 // Configuration errors are not very sysop friendly, Try to make them
                 // a bit more 3AM useful.
@@ -122,7 +129,12 @@ impl Settings {
                     error
                 }
             }
-        })
+        })?;
+
+        // cache the tracking keys we've built.
+        built.tracking_vapid_pubs = built.tracking_keys();
+
+        Ok(built)
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.
@@ -157,6 +169,22 @@ impl Settings {
         Self::read_list_from_str(keys, "Invalid AUTOEND_AUTH_KEYS")
             .map(|v| v.to_owned())
             .collect()
+    }
+
+    /// Get the list of tracking public keys
+    pub fn tracking_keys(&self) -> Vec<String> {
+        // return the cached version if present.
+        if !self.tracking_vapid_pubs.is_empty() {
+            return self.tracking_vapid_pubs.clone();
+        };
+        let keys = &self.tracking_keys.replace(['"', ' '], "");
+        Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
+            .map(|v| v.to_owned())
+            .collect()
+    }
+
+    pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
+        self.tracking_vapid_pubs.contains(&vapid.public_key)
     }
 
     /// Get the URL for this endpoint server
@@ -197,6 +225,16 @@ mod tests {
         let result = settings.auth_keys();
         assert_eq!(result, success);
         Ok(())
+    }
+
+    #[test]
+    fn test_tracking_keys() -> ApiResult<()> {
+        let mut settings = Settings{
+            tracking_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC="]"#.to_owned(),
+            ..Default::default()
+        };
+
+        let result = settings.tracking_keys();
     }
 
     #[test]
