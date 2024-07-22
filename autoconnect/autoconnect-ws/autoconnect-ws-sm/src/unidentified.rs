@@ -97,7 +97,7 @@ impl UnidentifiedClient {
         if let Some(chids) = channel_ids {
             self.app_state
                 .metrics
-                .count_with_tags("busi.channel_count", chids.len() as u64)
+                .count_with_tags("business.channel_count", chids.len() as u64)
                 .with_tag_value("desktop")
                 .send();
         }

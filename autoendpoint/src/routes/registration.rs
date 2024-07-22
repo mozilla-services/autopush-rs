@@ -194,7 +194,7 @@ pub async fn get_channels_route(
 
     app_state
         .metrics
-        .count_with_tags("busi.channel_count", channel_ids.len() as u64)
+        .count_with_tags("business.channel_count", channel_ids.len() as u64)
         .with_tag_value("mobile")
         .send();
 
