@@ -10,7 +10,7 @@ use autoconnect_common::{
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
     db::{User, USER_RECORD_VERSION},
-    util::ms_since_epoch,
+    util::{ms_since_epoch, ms_utc_midnight},
 };
 
 use crate::{
@@ -56,7 +56,7 @@ impl UnidentifiedClient {
         let ClientMessage::Hello {
             uaid,
             broadcasts,
-            channel_ids,
+            _channel_ids,
         } = msg
         else {
             return Err(SMError::invalid_message(
@@ -94,10 +94,15 @@ impl UnidentifiedClient {
                 }
             })
             .send();
-        if let Some(chids) = channel_ids {
+
+        // This is the first time that the user has connected "today".
+        if flags.user_gm {
+            // Return the number of channels for the user using the internal channel_count.
+            // NOTE: this metric can be approximate since we're sampling to determine the
+            // approximate average of channels per user for business reasons.
             self.app_state
                 .metrics
-                .count_with_tags("business.channel_count", chids.len() as u64)
+                .count_with_tags("business.channel_count", user.channel_count() as u64)
                 .with_tag_value("desktop")
                 .send();
         }
@@ -139,6 +144,7 @@ impl UnidentifiedClient {
                     old_record_version: user
                         .record_version
                         .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
+                    user_gm: user.connected_at < ms_utc_midnight(),
                     ..Default::default()
                 };
                 user.node_id = Some(self.app_state.router_url.to_owned());
@@ -288,7 +294,7 @@ mod tests {
         let client = uclient(Default::default());
         let msg = ClientMessage::Hello {
             uaid: Some("".to_owned()),
-            channel_ids: None,
+            _channel_ids: None,
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");
@@ -299,7 +305,7 @@ mod tests {
         let client = uclient(Default::default());
         let msg = ClientMessage::Hello {
             uaid: Some("invalid".to_owned()),
-            channel_ids: None,
+            _channel_ids: None,
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");
