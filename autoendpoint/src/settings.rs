@@ -34,8 +34,13 @@ pub struct Settings {
 
     /// A stringified JSON list of VAPID public keys which should be tracked internally.
     /// This should ONLY include Mozilla generated and consumed messages (e.g. "SendToTab", etc.)
+    /// These keys should be specified in stripped, b64encoded, X962 format (e.g. a single line of
+    /// base64 encoded data without padding).
+    /// You can use `scripts/convert_pem_to_x962.py` to easily convert EC Public keys stored in
+    /// PEM format into appropriate x962 format.
     pub tracking_keys: String,
     /// Cached, parsed tracking keys.
+    //TODO: convert to decoded Vec<u8>?
     pub tracking_vapid_pubs: Vec<String>,
 
     pub max_data_bytes: usize,
@@ -183,8 +188,12 @@ impl Settings {
             .collect()
     }
 
+    /// Very simple string check to see if the Public Key specified in the Vapid header
+    /// matches the set of trackable keys.
     pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
-        self.tracking_vapid_pubs.contains(&vapid.public_key)
+        // ideally, [Settings.with_env_and_config_file()] does the work of pre-populating
+        // the Settings.tracking_vapid_pubs cache, but we can't rely on that.
+        self.tracking_keys().contains(&vapid.public_key)
     }
 
     /// Get the URL for this endpoint server
@@ -201,7 +210,10 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::Settings;
-    use crate::error::ApiResult;
+    use crate::{
+        error::ApiResult,
+        headers::vapid::{VapidHeader, VapidHeaderWithKey},
+    };
 
     #[test]
     fn test_auth_keys() -> ApiResult<()> {
@@ -230,11 +242,27 @@ mod tests {
     #[test]
     fn test_tracking_keys() -> ApiResult<()> {
         let mut settings = Settings{
-            tracking_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC="]"#.to_owned(),
+            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI"]"#.to_owned(),
             ..Default::default()
         };
 
+        let test_header = VapidHeaderWithKey {
+            vapid: VapidHeader {
+                scheme: "".to_owned(),
+                token: "".to_owned(),
+                version_data: crate::headers::vapid::VapidVersionData::Version1,
+            },
+            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI".to_owned()
+        };
+
         let result = settings.tracking_keys();
+        assert!(!result.is_empty());
+
+        // emulate Settings.with_env_and_config_file()
+        settings.tracking_vapid_pubs = result;
+
+        assert!(settings.is_trackable(&test_header));
+        Ok(())
     }
 
     #[test]
