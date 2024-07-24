@@ -74,7 +74,7 @@ impl FromRequest for Subscription {
 
             trace!("raw vapid: {:?}", &vapid);
             let trackable = if let Some(vapid) = &vapid {
-                app_state.settings.is_trackable(&vapid)
+                app_state.settings.is_trackable(vapid)
             } else {
                 false
             };
