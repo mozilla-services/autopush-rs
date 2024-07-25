@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use cadence::{Counted, CountedExt};
+use cadence::{Counted, CountedExt, Histogrammed};
 use uuid::Uuid;
 
 use autoconnect_common::{
@@ -102,7 +102,15 @@ impl UnidentifiedClient {
             // approximate average of channels per user for business reasons.
             self.app_state
                 .metrics
-                .count_with_tags("business.channel_count", user.channel_count() as u64)
+                .incr_with_tags("ua.connection.check")
+                // TODO: These should reflect the actual os and browser, but getting those
+                // values at this point would be very complicated. For now, just use "desktop"
+                .with_tag("os", "desktop")
+                .with_tag("browser", "desktop")
+                .send();
+            self.app_state
+                .metrics
+                .histogram_with_tags("ua.connection.channel_count", user.channel_count() as u64)
                 .with_tag_value("desktop")
                 .send();
         }

@@ -1,6 +1,6 @@
 use actix_web::web::{Data, Json};
 use actix_web::{HttpRequest, HttpResponse};
-use cadence::{Counted, CountedExt, StatsdClient};
+use cadence::{CountedExt, Histogrammed, StatsdClient};
 use uuid::Uuid;
 
 use crate::error::{ApiErrorKind, ApiResult};
@@ -194,7 +194,7 @@ pub async fn get_channels_route(
 
     app_state
         .metrics
-        .count_with_tags("business.channel_count", channel_ids.len() as u64)
+        .histogram_with_tags("ua.connection.channel_count", channel_ids.len() as u64)
         .with_tag_value("mobile")
         .send();
 
