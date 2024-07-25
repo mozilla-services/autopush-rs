@@ -76,7 +76,9 @@ bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
 
 # Enable "stub" router for local testing purposes.
-# The "stub" will return errors and
+# The "stub" will return specified error strings or success
+# depending on which `app_id` client is called based on the registration
+# and endpoint. See [autoendpoint::router::stub::router::StubRouter]
 stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// Stub router
+/// ##Stub router
 ///
 /// This will create a testing router who's behavior is determined
 /// by the messages that it handles. This router can be used for
@@ -49,7 +49,10 @@ impl StubRouter {
     }
 
     /// Create Test clients for each application. Tests can specify which client
-    /// to use by designating the value in the `app_id` of the subscription URL. (e.g.)
+    /// to use by designating the value in the `app_id` of the subscription URL.
+    /// While the `success` client is always defined, the `error` client can take on
+    /// different error results based on the server configuration. See [StubServerSettings]
+    /// for details.
     fn create_clients(server_settings: &StubServerSettings) -> HashMap<String, StubClient> {
         let mut clients = HashMap::new();
         // TODO: Expand this to provide for additional error states based on app_id drawn

@@ -13,8 +13,10 @@ pub struct StubSettings {
     pub server_credentials: String,
 }
 
-/// StubServerSettings contains the default available client types.
-///
+/// `StubServerSettings` allows the server configuration file to specify
+/// the default error to use for requests to the "error" `app_id`.
+/// Requests to endpoints associated with this client will return the
+/// `error` string.
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct StubServerSettings {
     #[serde(default)]
@@ -29,6 +31,9 @@ impl Default for StubServerSettings {
     }
 }
 
+/// The `StubSettings` contains client provided data that can override
+/// the response error string when endpoints associated with this client
+/// are called.
 impl Default for StubSettings {
     fn default() -> Self {
         Self {
