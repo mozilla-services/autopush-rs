@@ -136,7 +136,7 @@ impl Default for Settings {
             megaphone_api_token: None,
             megaphone_poll_interval: Duration::from_secs(30),
             human_logs: false,
-            msg_limit: 100,
+            msg_limit: 150,
             actix_max_connections: None,
             actix_workers: None,
         }
