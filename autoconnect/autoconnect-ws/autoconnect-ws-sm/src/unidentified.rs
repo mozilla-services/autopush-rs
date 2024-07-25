@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use cadence::{Counted, CountedExt, Histogrammed};
+use cadence::{CountedExt, Histogrammed};
 use uuid::Uuid;
 
 use autoconnect_common::{
