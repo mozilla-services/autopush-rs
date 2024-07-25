@@ -23,7 +23,7 @@ impl StubClient {
         }
     }
 
-    /// Send the message data to Test
+    /// Reply to the "client" based on the the type of app_id they specified.
     pub async fn call(&self, settings: &StubServerSettings) -> Result<(), RouterError> {
         if !self.success {
             return Err(self

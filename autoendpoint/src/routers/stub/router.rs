@@ -9,7 +9,24 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// Firebase Cloud Messaging router
+/// Stub router
+///
+/// This will create a testing router who's behavior is determined
+/// by the messages that it handles. This router can be used for
+/// local development and testing. The Stub router can be controlled
+/// by specifying the action in the `app_id` of the subscription URL.
+/// The `success` `app_id` is always defined.
+///
+/// for example, using a subscription registration URL of
+/// `/v1/stub/success/registration` with the request body of
+/// `"{\"token\":\"success\", \"key\":"..."}"` will return a successful
+/// registration endpoint that uses the provided VAPID key. Calling that endpoint
+/// with a VAPID signed request will succeed.
+///
+/// Likewise, using a subscription registration URL of
+/// `/v1/stub/error/registration` with the request body of
+/// `"{\"token\":\"General Error\", \"key\":"..."}"` will return that error
+/// when the subscription endpoint is called.
 pub struct StubRouter {
     settings: StubSettings,
     server_settings: StubServerSettings,
@@ -31,10 +48,12 @@ impl StubRouter {
         })
     }
 
-    /// Create Test clients for each application
+    /// Create Test clients for each application. Tests can specify which client
+    /// to use by designating the value in the `app_id` of the subscription URL. (e.g.)
     fn create_clients(server_settings: &StubServerSettings) -> HashMap<String, StubClient> {
         let mut clients = HashMap::new();
-
+        // TODO: Expand this to provide for additional error states based on app_id drawn
+        // from the StubServerSettings.
         clients.insert("success".to_owned(), StubClient::success());
         clients.insert(
             "error".to_owned(),

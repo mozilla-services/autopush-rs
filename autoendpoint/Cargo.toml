@@ -69,6 +69,14 @@ tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
 default = ["bigtable"]
+# data store types
 bigtable = ["autopush_common/bigtable"]
+
+# enable emulator to call locally run data store.
 emulator = ["bigtable"]
+
+# Enable "stub" router for local testing purposes.
+# The "stub" will return errors and
 stub = []
+# Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
+log_vapid = []
