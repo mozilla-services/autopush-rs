@@ -1827,7 +1827,6 @@ mod tests {
             .await
             .unwrap();
 
-        // This reads all cells, regardless of family for `uaid`
         let req = client.read_row_request(&uaid.as_simple().to_string());
         let Some(mut row) = client.read_row(req).await.unwrap() else {
             panic!("Expected row");
@@ -1862,16 +1861,24 @@ mod tests {
             panic!("Expected row");
         };
 
-        let connected_at2 = row.take_required_cell("connected_at").unwrap().timestamp;
-        assert!(connected_at2 > connected_at);
+        let connected_at2 = SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_millis(
+                to_u64(
+                    row.take_required_cell("connected_at").unwrap().value,
+                    "connected_at",
+                )
+                .unwrap(),
+            );
+
+        assert!(connected_at2 >= connected_at);
 
         for mut cells in row.cells.into_values() {
             let Some(cell) = cells.pop() else {
                 continue;
             };
-            assert_eq!(
-                cell.timestamp, connected_at2,
-                "{} cell timestamp should match connected_at's",
+            assert!(
+                cell.timestamp >= connected_at2,
+                "{} cell timestamp expiry should exceed connected_at's",
                 cell.qualifier
             );
         }
