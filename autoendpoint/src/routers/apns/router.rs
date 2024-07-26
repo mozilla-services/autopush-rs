@@ -9,7 +9,6 @@ use crate::routers::common::{
     build_message_data, incr_error_metric, incr_success_metrics, message_size_check,
 };
 use crate::routers::{Router, RouterError, RouterResponse};
-use crate::settings::Settings;
 use a2::{
     self,
     request::payload::{Payload, PayloadLike},
@@ -154,15 +153,15 @@ impl ApnsRouter {
         } else {
             settings.key.as_bytes().to_vec()
         };
-        // Timeouts defined in autoendpoint settings.rs config and can be modified.
+        // Timeouts defined in ApnsSettings settings.rs config and can be modified.
         // We define them to prevent possible a2 library changes that could
         // create unexpected behavior if timeouts are altered.
         // They currently map to values matching the detaults in the a2 lib v0.10.
-        let autoendpoint_settings = Settings::default();
+        let apns_settings = ApnsSettings::default();
         let config = a2::ClientConfig {
             endpoint,
-            request_timeout_secs: autoendpoint_settings.request_timeout_secs,
-            pool_idle_timeout_secs: autoendpoint_settings.pool_idle_timeout_secs,
+            request_timeout_secs: apns_settings.request_timeout_secs,
+            pool_idle_timeout_secs: apns_settings.pool_idle_timeout_secs,
         };
         let client = ApnsClientData {
             client: Box::new(

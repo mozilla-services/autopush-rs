@@ -45,13 +45,6 @@ pub struct Settings {
 
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
-
-    // These values correspond to the a2 library ClientConfig struct.
-    // https://github.com/WalletConnect/a2/blob/master/src/client.rs#L65-L71.
-    // Utilized by autoendpoint router config in creating the client.
-    pub request_timeout_secs: Option<u64>,
-    pub pool_idle_timeout_secs: Option<u64>,
-
     #[cfg(feature = "stub")]
     pub stub: StubSettings,
 }
@@ -86,8 +79,6 @@ impl Default for Settings {
             statsd_label: "autoendpoint".to_string(),
             fcm: FcmSettings::default(),
             apns: ApnsSettings::default(),
-            request_timeout_secs: Some(20),
-            pool_idle_timeout_secs: Some(600),
             #[cfg(feature = "stub")]
             stub: StubSettings::default(),
         }
