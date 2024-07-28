@@ -1215,20 +1215,49 @@ impl DbClient for BigTableClientImpl {
             &row_key,
             timestamp.to_be_bytes().to_vec()
         );
-        let mut row = Row::new(row_key);
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
-        row.cells.insert(
-            ROUTER_FAMILY.to_owned(),
-            vec![
-                cell::Cell {
-                    qualifier: "current_timestamp".to_owned(),
-                    value: timestamp.to_be_bytes().to_vec(),
-                    timestamp: expiry,
-                    ..Default::default()
-                },
-                new_version_cell(expiry),
-            ],
-        );
+        let mut row = Row::new(row_key.clone());
+        let mut refreshed_cells: Vec<cell::Cell> = Vec::new();
+
+        // This doesn't have to be in a block, but I find it's easier to
+        // understand if it's separated out. This will iterate over all of the
+        // "ROUTER" fields and update the timestamp for them. (It also
+        // modifies two of the fields for bookkeeping.)
+        // We have to iterate over all of these because it's the only way to
+        // set the expiration period for the field beyond the original when a
+        // device connects or checks-in, and we want to ensure that the ROUTER
+        // record is not dropped prematurely due to early garbage collection.
+        {
+            let mut original_req = self.read_row_request(&row_key);
+            let mut filters = vec![router_gc_policy_filter()];
+            filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
+            original_req.set_filter(filter_chain(filters));
+            if let Some(original) = self.read_row(original_req).await? {
+                for (_, cells) in original.cells {
+                    for cell in cells {
+                        let value = if cell.qualifier == "current_timestamp" {
+                            timestamp.to_be_bytes().to_vec()
+                        } else {
+                            cell.value
+                        };
+                        if cell.qualifier == "version" {
+                            refreshed_cells.push(new_version_cell(expiry))
+                        } else {
+                            refreshed_cells.push(cell::Cell {
+                                qualifier: cell.qualifier,
+                                value,
+                                value_index: cell.value_index,
+                                family: cell.family,
+                                timestamp: expiry,
+                                labels: cell.labels,
+                            })
+                        }
+                    }
+                }
+            }
+        }
+
+        row.cells.insert(ROUTER_FAMILY.to_owned(), refreshed_cells);
         self.write_row(row).await?;
 
         Ok(())
@@ -1832,21 +1861,15 @@ mod tests {
             panic!("Expected row");
         };
 
-        // Ensure the initial expiry (timestamp) of all the cells in the row
-        let connected_at = SystemTime::UNIX_EPOCH
-            + std::time::Duration::from_millis(
-                to_u64(
-                    row.take_required_cell("connected_at").unwrap().value,
-                    "connected_at",
-                )
-                .unwrap(),
-            );
+        // Ensure the initial cell expiry (timestamp) of all the cells
+        // in the row has been updated
+        let ca_expiry = row.take_required_cell("connected_at").unwrap().timestamp;
         for mut cells in row.cells.into_values() {
             let Some(cell) = cells.pop() else {
                 continue;
             };
             assert!(
-                cell.timestamp >= connected_at,
+                cell.timestamp >= ca_expiry,
                 "{} cell timestamp should >= connected_at's",
                 cell.qualifier
             );
@@ -1861,23 +1884,16 @@ mod tests {
             panic!("Expected row");
         };
 
-        let connected_at2 = SystemTime::UNIX_EPOCH
-            + std::time::Duration::from_millis(
-                to_u64(
-                    row.take_required_cell("connected_at").unwrap().value,
-                    "connected_at",
-                )
-                .unwrap(),
-            );
+        let ca_expiry2 = row.take_required_cell("connected_at").unwrap().timestamp;
 
-        assert!(connected_at2 >= connected_at);
+        assert!(ca_expiry2 >= ca_expiry);
 
         for mut cells in row.cells.into_values() {
             let Some(cell) = cells.pop() else {
                 continue;
             };
             assert!(
-                cell.timestamp >= connected_at2,
+                cell.timestamp >= ca_expiry2,
                 "{} cell timestamp expiry should exceed connected_at's",
                 cell.qualifier
             );
