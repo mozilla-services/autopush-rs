@@ -16,6 +16,7 @@ pub mod notification;
 pub mod sentry;
 pub mod tags;
 pub mod test_support;
+pub mod track_id;
 
 #[macro_use]
 pub mod util;
