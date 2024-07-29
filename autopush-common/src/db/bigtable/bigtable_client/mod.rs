@@ -1217,7 +1217,6 @@ impl DbClient for BigTableClientImpl {
         );
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
         let mut row = Row::new(row_key.clone());
-        let mut refreshed_cells: Vec<cell::Cell> = Vec::new();
 
         // This doesn't have to be in a block, but I find it's easier to
         // understand if it's separated out. This will iterate over all of the
@@ -1227,7 +1226,9 @@ impl DbClient for BigTableClientImpl {
         // set the expiration period for the field beyond the original when a
         // device connects or checks-in, and we want to ensure that the ROUTER
         // record is not dropped prematurely due to early garbage collection.
-        {
+        let cells = {
+            let mut refreshed_cells: Vec<cell::Cell> = Vec::new();
+
             let mut original_req = self.read_row_request(&row_key);
             let mut filters = vec![router_gc_policy_filter()];
             filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
@@ -1255,10 +1256,13 @@ impl DbClient for BigTableClientImpl {
                     }
                 }
             }
-        }
+            refreshed_cells
+        };
 
-        row.cells.insert(ROUTER_FAMILY.to_owned(), refreshed_cells);
-        self.write_row(row).await?;
+        if !cells.is_empty() {
+            row.cells.insert(ROUTER_FAMILY.to_owned(), cells);
+            self.write_row(row).await?;
+        }
 
         Ok(())
     }
