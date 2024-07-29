@@ -363,7 +363,7 @@ fn validate_vapid_jwt(
 
     // Dump the claims.
     // Note, this can produce a LOT of log messages if this feature is enabled.
-    #[cfg(log_vapid)]
+    #[cfg(feature = "log_vapid")]
     if let Some(claims_str) = vapid.token.split('.').next() {
         use base64::Engine;
         info!(

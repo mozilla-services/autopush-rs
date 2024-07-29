@@ -153,13 +153,15 @@ impl ApnsRouter {
         } else {
             settings.key.as_bytes().to_vec()
         };
-        // TODO: We should define these timeouts, currently
-        // these default to `request_timeout_secs`: 20s,
-        // and `pool_idle_timeout_secs`: 10m, but no guarantee
-        // that they will stay those values.
+        // Timeouts defined in ApnsSettings settings.rs config and can be modified.
+        // We define them to prevent possible a2 library changes that could
+        // create unexpected behavior if timeouts are altered.
+        // They currently map to values matching the detaults in the a2 lib v0.10.
+        let apns_settings = ApnsSettings::default();
         let config = a2::ClientConfig {
             endpoint,
-            ..Default::default()
+            request_timeout_secs: apns_settings.request_timeout_secs,
+            pool_idle_timeout_secs: apns_settings.pool_idle_timeout_secs,
         };
         let client = ApnsClientData {
             client: Box::new(
