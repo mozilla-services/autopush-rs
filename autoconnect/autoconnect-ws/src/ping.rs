@@ -47,12 +47,12 @@ impl PingManager {
     /// Signals either a:
     ///
     /// - WebSocket Ping (or a WebPush Broadcast, if one is pending) to be sent
-    /// to the Client to prevent its connection from idling out/disconnecting
-    /// due to inactivity
+    ///   to the Client to prevent its connection from idling out/disconnecting
+    ///   due to inactivity
     ///
     /// - WebSocket Ping was previously sent and the Client failed to respond
-    /// with a Pong within the `auto_ping_timeout` interval
-    /// (`WSError::PongTimeout` Error returned)
+    ///   with a Pong within the `auto_ping_timeout` interval
+    ///   (`WSError::PongTimeout` Error returned)
     pub async fn tick(&mut self) -> Result<(), WSError> {
         self.ping_or_timeout.tick().await;
         match self.waiting {
