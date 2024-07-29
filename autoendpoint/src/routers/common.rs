@@ -239,7 +239,7 @@ pub mod tests {
                 user,
                 channel_id: channel_id(),
                 vapid: None,
-                trackable: false,
+                tracking_id: None,
             },
             headers: NotificationHeaders {
                 ttl: 0,

@@ -38,7 +38,7 @@ pub struct Subscription {
     /// Should this subscription update be tracked internally?
     /// (This should ONLY be applied for messages that match known
     /// Mozilla provided VAPID public keys.)
-    pub trackable: bool,
+    pub tracking_id: Option<String>,
 }
 
 impl FromRequest for Subscription {
@@ -136,7 +136,13 @@ impl FromRequest for Subscription {
                 user,
                 channel_id,
                 vapid,
-                trackable,
+                // Eventually this will be replaced by the generated, opaque
+                // tracking ID, for now, just use a simple UUID4 string.
+                tracking_id: if trackable {
+                    Some(uuid::Uuid::new_v4().as_simple().to_string())
+                } else {
+                    None
+                },
             })
         }
         .boxed_local()
