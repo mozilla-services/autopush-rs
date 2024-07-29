@@ -1226,7 +1226,7 @@ impl DbClient for BigTableClientImpl {
         // set the expiration period for the field beyond the original when a
         // device connects or checks-in, and we want to ensure that the ROUTER
         // record is not dropped prematurely due to early garbage collection.
-        let cells = {
+        let mut cells = {
             let mut refreshed_cells: Vec<cell::Cell> = Vec::new();
 
             let mut original_req = self.read_row_request(&row_key);
@@ -1236,17 +1236,16 @@ impl DbClient for BigTableClientImpl {
             if let Some(original) = self.read_row(original_req).await? {
                 for (_, cells) in original.cells {
                     for cell in cells {
-                        let value = if cell.qualifier == "current_timestamp" {
-                            timestamp.to_be_bytes().to_vec()
-                        } else {
-                            cell.value
-                        };
+                        // We're going to override this field explicity.
+                        if cell.qualifier.to_ascii_lowercase() == "current_timestamp" {
+                            continue;
+                        }
                         if cell.qualifier == "version" {
                             refreshed_cells.push(new_version_cell(expiry))
                         } else {
                             refreshed_cells.push(cell::Cell {
                                 qualifier: cell.qualifier,
-                                value,
+                                value: cell.value,
                                 value_index: cell.value_index,
                                 family: cell.family,
                                 timestamp: expiry,
@@ -1259,10 +1258,15 @@ impl DbClient for BigTableClientImpl {
             refreshed_cells
         };
 
-        if !cells.is_empty() {
-            row.cells.insert(ROUTER_FAMILY.to_owned(), cells);
-            self.write_row(row).await?;
-        }
+        cells.push(cell::Cell {
+            qualifier: "current_timestamp".to_owned(),
+            value: timestamp.to_be_bytes().to_vec(),
+            timestamp: expiry,
+            ..Default::default()
+        });
+
+        row.cells.insert(ROUTER_FAMILY.to_owned(), cells);
+        self.write_row(row).await?;
 
         Ok(())
     }
