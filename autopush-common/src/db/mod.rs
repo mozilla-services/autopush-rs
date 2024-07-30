@@ -201,6 +201,10 @@ impl User {
     pub fn builder() -> UserBuilder {
         UserBuilder::default()
     }
+
+    pub fn channel_count(&self) -> usize {
+        self.priv_channels.len()
+    }
 }
 
 /// A stored Notification record. This is a notification that is to be stored

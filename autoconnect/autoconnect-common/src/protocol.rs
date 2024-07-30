@@ -36,7 +36,7 @@ pub enum ClientMessage {
     Hello {
         uaid: Option<String>,
         #[serde(rename = "channelIDs", skip_serializing_if = "Option::is_none")]
-        channel_ids: Option<Vec<Uuid>>,
+        _channel_ids: Option<Vec<Uuid>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         broadcasts: Option<HashMap<String, String>>,
     },
