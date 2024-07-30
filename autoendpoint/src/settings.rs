@@ -5,6 +5,7 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
+use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
 #[cfg(feature = "stub")]
@@ -30,6 +31,17 @@ pub struct Settings {
     pub message_table_name: String,
 
     pub vapid_aud: Vec<String>,
+
+    /// A stringified JSON list of VAPID public keys which should be tracked internally.
+    /// This should ONLY include Mozilla generated and consumed messages (e.g. "SendToTab", etc.)
+    /// These keys should be specified in stripped, b64encoded, X962 format (e.g. a single line of
+    /// base64 encoded data without padding).
+    /// You can use `scripts/convert_pem_to_x962.py` to easily convert EC Public keys stored in
+    /// PEM format into appropriate x962 format.
+    pub tracking_keys: String,
+    /// Cached, parsed tracking keys.
+    //TODO: convert to decoded Vec<u8>?
+    pub tracking_vapid_pubs: Vec<String>,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
@@ -64,6 +76,7 @@ impl Default for Settings {
                 "https://push.services.mozilla.org".to_string(),
                 "http://127.0.0.1:9160".to_string(),
             ],
+            tracking_vapid_pubs: vec![],
             // max data is a bit hard to figure out, due to encryption. Using something
             // like pywebpush, if you encode a block of 4096 bytes, you'll get a
             // 4216 byte data block. Since we're going to be receiving this, we have to
@@ -71,6 +84,7 @@ impl Default for Settings {
             max_data_bytes: 5630,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
+            tracking_keys: r#"[]"#.to_string(),
             human_logs: false,
             connection_timeout_millis: 1000,
             request_timeout_millis: 3000,
@@ -100,9 +114,7 @@ impl Settings {
         // down to the sub structures.
         config = config.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
 
-        let built = config.build()?;
-
-        built.try_deserialize::<Self>().map_err(|error| {
+        let mut built: Self = config.build()?.try_deserialize::<Self>().map_err(|error| {
             match error {
                 // Configuration errors are not very sysop friendly, Try to make them
                 // a bit more 3AM useful.
@@ -121,7 +133,12 @@ impl Settings {
                     error
                 }
             }
-        })
+        })?;
+
+        // cache the tracking keys we've built.
+        built.tracking_vapid_pubs = built.tracking_keys();
+
+        Ok(built)
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.
@@ -158,6 +175,26 @@ impl Settings {
             .collect()
     }
 
+    /// Get the list of tracking public keys
+    pub fn tracking_keys(&self) -> Vec<String> {
+        // return the cached version if present.
+        if !self.tracking_vapid_pubs.is_empty() {
+            return self.tracking_vapid_pubs.clone();
+        };
+        let keys = &self.tracking_keys.replace(['"', ' '], "");
+        Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
+            .map(|v| v.to_owned())
+            .collect()
+    }
+
+    /// Very simple string check to see if the Public Key specified in the Vapid header
+    /// matches the set of trackable keys.
+    pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
+        // ideally, [Settings.with_env_and_config_file()] does the work of pre-populating
+        // the Settings.tracking_vapid_pubs cache, but we can't rely on that.
+        self.tracking_keys().contains(&vapid.public_key)
+    }
+
     /// Get the URL for this endpoint server
     pub fn endpoint_url(&self) -> Url {
         let endpoint = if self.endpoint_url.is_empty() {
@@ -172,7 +209,10 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::Settings;
-    use crate::error::ApiResult;
+    use crate::{
+        error::ApiResult,
+        headers::vapid::{VapidHeader, VapidHeaderWithKey},
+    };
 
     #[test]
     fn test_auth_keys() -> ApiResult<()> {
@@ -195,6 +235,32 @@ mod tests {
         };
         let result = settings.auth_keys();
         assert_eq!(result, success);
+        Ok(())
+    }
+
+    #[test]
+    fn test_tracking_keys() -> ApiResult<()> {
+        let mut settings = Settings{
+            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI"]"#.to_owned(),
+            ..Default::default()
+        };
+
+        let test_header = VapidHeaderWithKey {
+            vapid: VapidHeader {
+                scheme: "".to_owned(),
+                token: "".to_owned(),
+                version_data: crate::headers::vapid::VapidVersionData::Version1,
+            },
+            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI".to_owned()
+        };
+
+        let result = settings.tracking_keys();
+        assert!(!result.is_empty());
+
+        // emulate Settings.with_env_and_config_file()
+        settings.tracking_vapid_pubs = result;
+
+        assert!(settings.is_trackable(&test_header));
         Ok(())
     }
 

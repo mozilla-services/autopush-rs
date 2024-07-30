@@ -76,8 +76,8 @@ impl FromRequest for Subscription {
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
             // values we get.
-
-            let track_id = if let Some(ref header) = vapid {
+            let tracking_id: Option<TrackId> = if let Some(header) = &vapid {
+                // Since we have a Vapid header parsed, might as well extract the "sub" out of it.
                 let sub = header
                     .vapid
                     .sub()
@@ -94,22 +94,26 @@ impl FromRequest for Subscription {
                 // For now, record that we had a good (?) VAPID sub,
                 metrics.clone().incr("notification.auth.ok");
                 info!("VAPID sub: {:?}", sub);
-
-                header
-                    .vapid
-                    .claims()
-                    .map(|claims| {
-                        claims.meta.map(|meta| TrackId {
-                            meta: Some(meta),
-                            ..Default::default()
+                if app_state.settings.is_trackable(header) {
+                    header
+                        .vapid
+                        .claims()
+                        .map(|claims| {
+                            claims.meta.map(|meta| TrackId {
+                                meta: Some(meta),
+                                ..Default::default()
+                            })
                         })
-                    })
-                    .unwrap_or(None)
+                        .unwrap_or(None)
+                } else {
+                    None
+                }
             } else {
                 None
             };
-            if track_id.is_some() {
-                debug!("👣 TrackId {:?}", track_id);
+
+            if tracking_id.is_some() {
+                debug!("👣 TrackId {:?}", tracking_id);
             }
 
             match token_info.api_version {
@@ -147,7 +151,7 @@ impl FromRequest for Subscription {
                 user,
                 channel_id,
                 vapid,
-                tracking_id: track_id,
+                tracking_id,
             })
         }
         .boxed_local()
