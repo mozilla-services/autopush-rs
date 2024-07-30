@@ -663,7 +663,6 @@ pub mod tests {
         )
         .unwrap_err()
         .kind;
-        dbg!(&vv);
         assert!(matches![
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
