@@ -45,7 +45,6 @@ pub struct Settings {
 
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
-
     #[cfg(feature = "stub")]
     pub stub: StubSettings,
 }
