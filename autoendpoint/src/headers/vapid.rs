@@ -3,7 +3,6 @@ use std::fmt;
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
 use crate::headers::util::split_key_value;
@@ -14,16 +13,21 @@ pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct VapidClaims {
     pub exp: u64,
-    pub aud: String,
-    pub sub: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aud: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<String>,
 }
 
 impl Default for VapidClaims {
     fn default() -> Self {
         Self {
             exp: VapidClaims::default_exp(),
-            aud: "No audience".to_owned(),
-            sub: "No sub".to_owned(),
+            aud: None,
+            sub: None,
+            meta: None,
         }
     }
 }
@@ -36,11 +40,14 @@ impl VapidClaims {
 
 impl fmt::Display for VapidClaims {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("VapidClaims")
-            .field("exp", &self.exp)
+        let mut fds = f.debug_struct("VapidClaims");
+        fds.field("exp", &self.exp)
             .field("aud", &self.aud)
-            .field("sub", &self.sub)
-            .finish()
+            .field("sub", &self.sub);
+        if let Some(meta) = &self.meta {
+            fds.field("meta", &meta);
+        };
+        fds.finish()
     }
 }
 
@@ -67,6 +74,7 @@ impl TryFrom<VapidHeader> for VapidClaims {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VapidHeader {
     pub scheme: String,
+    // TODO: We should extract the claims instead of reparsing the token.
     pub token: String,
     pub version_data: VapidVersionData,
 }
@@ -135,29 +143,26 @@ impl VapidHeader {
         }
     }
 
+    /// Validate and return the sender identifying "sub" field.
     pub fn sub(&self) -> Result<String, VapidError> {
-        let data: HashMap<String, Value> = serde_json::from_str(&self.token).map_err(|e| {
-            warn!("🔐 Vapid: {:?}", e);
-            VapidError::SubInvalid
-        })?;
-
-        if let Some(sub_candiate) = data.get("sub") {
-            if let Some(sub) = sub_candiate.as_str() {
-                if !sub.starts_with("mailto:") || !sub.starts_with("https://") {
-                    info!("🔐 Vapid: Bad Format {:?}", sub);
-                    return Err(VapidError::SubBadFormat);
-                }
-                if sub.is_empty() {
-                    info!("🔐 Empty Vapid sub");
-                    return Err(VapidError::SubEmpty);
-                }
-                info!("🔐 Vapid: sub: {:?}", sub);
-                return Ok(sub.to_owned());
+        let claims = self.claims()?;
+        if let Some(sub) = claims.sub {
+            if !sub.starts_with("mailto:") || !sub.starts_with("https://") {
+                info!("🔐 Vapid: Bad Format {:?}", sub);
+                return Err(VapidError::SubBadFormat);
             }
+            if sub.is_empty() {
+                info!("🔐 Empty Vapid sub");
+                return Err(VapidError::SubEmpty);
+            }
+            info!("🔐 Vapid: sub: {:?}", sub);
+            Ok(sub.to_owned())
+        } else {
+            Err(VapidError::SubMissing)
         }
-        Err(VapidError::SubMissing)
     }
 
+    /// Parse the token and return the claims
     pub fn claims(&self) -> Result<VapidClaims, VapidError> {
         VapidClaims::try_from(self.clone())
     }
@@ -232,6 +237,12 @@ mod tests {
         let mut parts = VALID_HEADER.split(' ').nth(1).unwrap().split(',');
         let token = parts.next().unwrap().split('=').nth(1).unwrap().to_string();
         let public_key = parts.next().unwrap().split('=').nth(1).unwrap().to_string();
+        let claims = VapidClaims {
+            exp: 1713564872,
+            aud: Some("https://push.services.mozilla.com".to_string()),
+            sub: Some("mailto:admin@example.com".to_string()),
+            meta: None,
+        };
 
         let expected_header = VapidHeader {
             scheme: "vapid".to_string(),
@@ -242,13 +253,6 @@ mod tests {
         let returned_header = VapidHeader::parse(VALID_HEADER);
         assert_eq!(returned_header, Ok(expected_header.clone()));
 
-        assert_eq!(
-            returned_header.unwrap().claims(),
-            Ok(VapidClaims {
-                exp: 1713564872,
-                aud: "https://push.services.mozilla.com".to_string(),
-                sub: "mailto:admin@example.com".to_string()
-            })
-        )
+        assert_eq!(returned_header.unwrap().claims(), Ok(claims))
     }
 }

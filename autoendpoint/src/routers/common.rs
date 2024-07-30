@@ -147,8 +147,13 @@ pub async fn handle_error(
 
     if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
         let mut extras = err.extras.unwrap_or_default();
-        extras.extend([("sub".to_owned(), claims.sub)]);
-        err.extras = Some(extras);
+        if let Some(sub) = claims.sub {
+            extras.extend([("sub".to_owned(), sub)]);
+        }
+        if let Some(meta) = claims.meta {
+            extras.extend([("meta".to_owned(), meta)]);
+        }
+        err.extras = Some(extras)
     };
     err
 }
@@ -239,6 +244,7 @@ pub mod tests {
                 user,
                 channel_id: channel_id(),
                 vapid: None,
+                tracking_id: None,
             },
             headers: NotificationHeaders {
                 ttl: 0,

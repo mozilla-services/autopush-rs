@@ -26,6 +26,7 @@ use crate::headers::{
 };
 use crate::metrics::Metrics;
 use crate::server::AppState;
+use autopush_common::track_id::TrackId;
 
 use crate::settings::Settings;
 
@@ -35,6 +36,7 @@ pub struct Subscription {
     pub user: User,
     pub channel_id: Uuid,
     pub vapid: Option<VapidHeaderWithKey>,
+    pub tracking_id: Option<TrackId>,
 }
 
 impl FromRequest for Subscription {
@@ -70,10 +72,12 @@ impl FromRequest for Subscription {
 
             trace!("raw vapid: {:?}", &vapid);
 
+            // Generate the tracking ID we can use for this message.
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
             // values we get.
-            if let Some(ref header) = vapid {
+
+            let track_id = if let Some(ref header) = vapid {
                 let sub = header
                     .vapid
                     .sub()
@@ -89,8 +93,24 @@ impl FromRequest for Subscription {
                     .unwrap_or_default();
                 // For now, record that we had a good (?) VAPID sub,
                 metrics.clone().incr("notification.auth.ok");
-                info!("VAPID sub: {:?}", sub)
+                info!("VAPID sub: {:?}", sub);
+
+                header
+                    .vapid
+                    .claims()
+                    .map(|claims| {
+                        claims.meta.map(|meta| TrackId {
+                            meta: Some(meta),
+                            ..Default::default()
+                        })
+                    })
+                    .unwrap_or(None)
+            } else {
+                None
             };
+            if track_id.is_some() {
+                debug!("👣 TrackId {:?}", track_id);
+            }
 
             match token_info.api_version {
                 ApiVersion::Version1 => version_1_validation(&token)?,
@@ -127,6 +147,7 @@ impl FromRequest for Subscription {
                 user,
                 channel_id,
                 vapid,
+                tracking_id: track_id,
             })
         }
         .boxed_local()
@@ -318,6 +339,9 @@ fn validate_vapid_jwt(
                 // the Json parse error.
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
             }
+            jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(_) => {
+                return Err(VapidError::InvalidVapid(e.to_string()).into());
+            }
             _ => {
                 // Attempt to match up the majority of ErrorKind variants.
                 // The third-party errors all defer to the source, so we can
@@ -373,7 +397,7 @@ fn validate_vapid_jwt(
         return Err(VapidError::FutureExpirationToken.into());
     }
 
-    let aud = match Url::from_str(&token_data.claims.aud) {
+    let aud = match Url::from_str(&token_data.claims.aud.clone().unwrap_or_default()) {
         Ok(v) => v,
         Err(_) => {
             error!("Bad Aud: Invalid audience {:?}", &token_data.claims.aud);
@@ -428,8 +452,9 @@ pub mod tests {
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = VapidClaims {
             exp,
-            aud: aud.to_string(),
-            sub: sub.to_string(),
+            aud: Some(aud.to_string()),
+            sub: Some(sub.to_string()),
+            meta: None,
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
 
@@ -546,8 +571,9 @@ pub mod tests {
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = VapidClaims {
             exp: VapidClaims::default_exp() - 100,
-            aud: domain.to_owned(),
-            sub: "mailto:admin@example.com".to_owned(),
+            aud: Some(domain.to_owned()),
+            sub: Some("mailto:admin@example.com".to_owned()),
+            meta: None,
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         // try standard form with padding
@@ -633,6 +659,7 @@ pub mod tests {
         )
         .unwrap_err()
         .kind;
+        dbg!(&vv);
         assert!(matches![
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
