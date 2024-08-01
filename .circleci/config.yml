@@ -192,18 +192,16 @@ jobs:
       - run:
           name: Create Workspace
           command: mkdir -p workspace
-      # - run:
-      #     name: Set up system
-      #     command: |
-      #       apt update
-      #       apt install libssl-dev apt-transport-https ca-certificates gnupg curl -y
+      - run:
+          name: Create Test Results directory
+          command: mkdir -p workspace/test-results
       - run:
           name: Set up cbt
           command: |
-            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-            apt-get update -y
-            apt install google-cloud-cli-cbt -y
+            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+            sudo apt-get update -y
+            sudo apt install google-cloud-cli-cbt -y
       - run:
           name: Set up Rust
           command: |
@@ -220,30 +218,16 @@ jobs:
           name: Run Build
           command: cargo build --features=emulator
       - run:
-          name: Run Rust tests
-          # Note: This build can potentially exceed the amount of memory availble to the CircleCI instance.
-          # We've seen that limiting the number of jobs helps reduce the frequency of this. (Note that
-          # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
-          # the machine level memory and CPU which are far higher than the memory allocated to the docker
-          # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=emulator --features=bigtable --jobs=2
-      - run:
-          name: Install cargo2junit
-          command: cargo install cargo2junit --locked
-      - run:
           name: Install cargo-llvm-cov
           command: cargo install cargo-llvm-cov
       - run:
           name: Report tests and coverage
-          environment:
-            # https://github.com/johnterickson/cargo2junit/issues/79
-            RUSTC_BOOTSTRAP: 1
           command: |
-            cargo llvm-cov --no-report test -- -Z unstable-options --format json --report-time | cargo2junit > workspace/test-results/results.xml
-            cargo llvm-cov report --fail-under-lines 67 --json
+            cargo llvm-cov --json --output-path workspace/test-results/cov.json test --features=emulator --features=bigtable --jobs=2
+
       - store_artifacts:
-          path: target/llvm-cov/html # Default location
-          destination: llvm-cov/html
+          path: ~/workspace/test-results/cov.json
+          destination: cov.json
       - store_test_results:
           path: workspace/test-results
       - save_cache:
