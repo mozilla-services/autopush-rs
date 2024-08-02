@@ -112,6 +112,9 @@ jobs:
       - restore_cache:
           name: Restoring Rust cache
           key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Create Workspace
+          command: mkdir -p workspace
       - setup-rust
       - run:
           name: Set up system
@@ -175,6 +178,9 @@ jobs:
       - restore_cache:
           name: Restoring Rust cache
           key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Create Workspace
+          command: mkdir -p workspace/test-results
       - setup-rust
       - run:
           name: Set up cbt
@@ -214,6 +220,36 @@ jobs:
             - target
             - ~/.cargo/registry
             - ~/.cargo/git
+
+  check-rust-formatting:
+    docker:
+      - image: python:3.12-slim-bookworm
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        environment:
+          RUST_BACKTRACE: 1
+          RUST_TEST_THREADS: 1
+    resource_class: large
+    environment:
+      BIGTABLE_EMULATOR_HOST: localhost:8086
+    steps:
+      - checkout
+      # Need to download the poetry.lock files so we can use their
+      # checksums in restore_cache.
+      - restore_cache:
+          name: Restoring Rust cache
+          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - setup-rust
+      - run:
+          name: Set up Rust
+          command: |
+            rustc --version
+      - run:
+          name: Check formatting
+          command: |
+            cargo fmt -- --check
+            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
 
   build:
     docker:
@@ -355,10 +391,17 @@ workflows:
             tags:
               only: /.*/
       - test-integration:
+          name: Integration Tests
           filters:
             tags:
               only: /.*/
       - test-rust:
+          name: Rust Tests
+          filters:
+            tags:
+              only: /.*/
+      - check-rust-formatting:
+          name: Rust Formatting Check
           filters:
             tags:
               only: /.*/
@@ -393,8 +436,9 @@ workflows:
           repo: ${DOCKERHUB_CONNECT_REPO}
           requires:
             - build-autoconnect
-            - test-integration
-            - test-rust
+            - Integration Tests
+            - Rust Tests
+            - Rust Formatting Check
           filters:
             tags:
               only: /.*/
@@ -407,8 +451,9 @@ workflows:
           repo: ${DOCKERHUB_ENDPOINT_REPO}
           requires:
             - build-autoendpoint
-            - test-integration
-            - test-rust
+            - Integration Tests
+            - Rust Tests
+            - Rust Formatting Check
           filters:
             tags:
               only: /.*/
