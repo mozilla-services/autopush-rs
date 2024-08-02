@@ -174,7 +174,7 @@ jobs:
       # checksums in restore_cache.
       - restore_cache:
           name: Restoring Rust cache
-          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
       - setup-rust
       - run:
           name: Set up cbt
@@ -209,7 +209,7 @@ jobs:
           path: ~/project/workspace/test-results
       - save_cache:
           name: Save Rust cache
-          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
           paths:
             - target
             - ~/.cargo/registry
