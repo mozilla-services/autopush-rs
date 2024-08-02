@@ -33,6 +33,20 @@ commands:
             else
               echo "${PASS}" | docker login -u="${USER}" --password-stdin
             fi
+  setup-rust:
+    steps:
+      - run:
+          name: Set up Rust and build applications
+          command: |
+            apt update
+            apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
+            apt install cmake -y
+            # RUST_VER
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.80 -y
+            export PATH=$PATH:$HOME/.cargo/bin
+            echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
+            rustc --version
+            cargo build --features=emulator
 
 jobs:
   audit:
@@ -77,7 +91,7 @@ jobs:
           name: isort, black, flake8, pydocstyle and mypy
           command: make lint
 
-  test:
+  test-integration:
     docker:
       - image: python:3.12-slim-bookworm
         auth:
@@ -95,19 +109,18 @@ jobs:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
-      # Need to download the poetry.lock files so we can use their
-      # checksums in restore_cache.
       - restore_cache:
           name: Restoring Rust cache
-          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
       - run:
           name: Create Workspace
           command: mkdir -p workspace
+      - setup-rust
       - run:
           name: Set up system
           command: |
             apt update
-            apt install libssl-dev apt-transport-https ca-certificates gnupg curl -y
+            apt install libssl-dev apt-transport-https ca-certificates gnupg curl cmake -y
       - run:
           name: Set up cbt
           command: |
@@ -121,33 +134,8 @@ jobs:
             pip install --upgrade pip
             pip install poetry
       - run:
-          name: Set up Rust
-          command: |
-            apt update
-            apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
-            apt install cmake -y
-            # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.80 -y
-            export PATH=$PATH:$HOME/.cargo/bin
-            echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
-            rustc --version
-            cargo build --features=emulator
-      - run:
-          name: Check formatting
-          command: |
-            cargo fmt -- --check
-            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
-      - run:
           name: Setup Bigtable
           command: scripts/setup_bt.sh
-      - run:
-          name: Rust tests
-          # Note: This build can potentially exceed the amount of memory availble to the CircleCI instance.
-          # We've seen that limiting the number of jobs helps reduce the frequency of this. (Note that
-          # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
-          # the machine level memory and CPU which are far higher than the memory allocated to the docker
-          # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=emulator --features=bigtable --jobs=2
       - run:
           name: Integration tests (Bigtable)
           command: make integration-test
@@ -160,11 +148,101 @@ jobs:
           path: workspace/test-results
       - save_cache:
           name: Save Rust cache
-          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
           paths:
             - target
             - ~/.cargo/registry
             - ~/.cargo/git
+
+  test-rust:
+    docker:
+      - image: python:3.12-slim-bookworm
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        environment:
+          RUST_BACKTRACE: 1
+          RUST_TEST_THREADS: 1
+      - image: google/cloud-sdk:latest
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        command: gcloud beta emulators bigtable start --host-port=localhost:8086
+    resource_class: xlarge
+    environment:
+      BIGTABLE_EMULATOR_HOST: localhost:8086
+    steps:
+      - checkout
+      # Need to download the poetry.lock files so we can use their
+      # checksums in restore_cache.
+      - restore_cache:
+          name: Restoring Rust cache
+          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Create Workspace
+          command: mkdir -p workspace/test-results
+      - setup-rust
+      - run:
+          name: Set up cbt
+          command: |
+            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+            apt-get update -y
+            apt install google-cloud-cli-cbt -y
+      - run:
+          name: Set up Rust
+          command: |
+            rustc --version
+      - run:
+          name: Setup Bigtable
+          command: scripts/setup_bt.sh
+      - run:
+          name: Install cargo-llvm-cov
+          command: cargo install cargo-llvm-cov
+      - run:
+          name: Report tests and coverage
+          command: |
+            cargo llvm-cov --json --output-path workspace/test-results/cov.json test --features=emulator --features=bigtable --jobs=2
+      - store_artifacts:
+          path: ~/project/workspace/test-results/cov.json
+          destination: cov.json
+      - save_cache:
+          name: Save Rust cache
+          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - target
+            - ~/.cargo/registry
+            - ~/.cargo/git
+
+  check-rust-formatting:
+    docker:
+      - image: python:3.12-slim-bookworm
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        environment:
+          RUST_BACKTRACE: 1
+          RUST_TEST_THREADS: 1
+    resource_class: xlarge
+    environment:
+      BIGTABLE_EMULATOR_HOST: localhost:8086
+    steps:
+      - checkout
+      # Need to download the poetry.lock files so we can use their
+      # checksums in restore_cache.
+      - restore_cache:
+          name: Restoring Rust cache
+          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - setup-rust
+      - run:
+          name: Set up Rust
+          command: |
+            rustc --version
+      - run:
+          name: Check formatting
+          command: |
+            cargo fmt -- --check
+            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
 
   build:
     docker:
@@ -305,7 +383,18 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - test:
+      - test-integration:
+          name: Integration Tests
+          filters:
+            tags:
+              only: /.*/
+      - test-rust:
+          name: Rust Tests
+          filters:
+            tags:
+              only: /.*/
+      - check-rust-formatting:
+          name: Rust Formatting Check
           filters:
             tags:
               only: /.*/
@@ -340,7 +429,9 @@ workflows:
           repo: ${DOCKERHUB_CONNECT_REPO}
           requires:
             - build-autoconnect
-            - test
+            - Integration Tests
+            - Rust Tests
+            - Rust Formatting Check
           filters:
             tags:
               only: /.*/
@@ -353,7 +444,9 @@ workflows:
           repo: ${DOCKERHUB_ENDPOINT_REPO}
           requires:
             - build-autoendpoint
-            - test
+            - Integration Tests
+            - Rust Tests
+            - Rust Formatting Check
           filters:
             tags:
               only: /.*/
