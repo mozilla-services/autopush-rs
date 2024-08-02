@@ -36,7 +36,7 @@ commands:
   setup-rust:
     steps:
       - run:
-          name: Set up Rust
+          name: Set up Rust and build applications
           command: |
             apt update
             apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
@@ -109,15 +109,15 @@ jobs:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
-      - attach_workspace:
-          at: workspace
+      - restore_cache:
+          name: Restoring Rust cache
+          key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
       - setup-rust
       - run:
           name: Set up system
           command: |
             apt update
             apt install libssl-dev apt-transport-https ca-certificates gnupg curl cmake -y
-            cp -r workspace/target ./
       - run:
           name: Set up cbt
           command: |
@@ -143,6 +143,13 @@ jobs:
             TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
+      - save_cache:
+          name: Save Rust cache
+          key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - target
+            - ~/.cargo/registry
+            - ~/.cargo/git
 
   test-rust:
     docker:
@@ -165,20 +172,17 @@ jobs:
       - checkout
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
-      - attach_workspace:
-          at: workspace
+      - restore_cache:
+          name: Restoring Rust cache
+          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
       - setup-rust
-      - run:
-          name: Set up system
-          command: |
-            cp -r workspace/target ./
       - run:
           name: Set up cbt
           command: |
-            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-            sudo apt-get update -y
-            sudo apt install google-cloud-cli-cbt -y
+            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+            apt-get update -y
+            apt install google-cloud-cli-cbt -y
       - run:
           name: Set up Rust
           command: |
@@ -186,6 +190,11 @@ jobs:
       - run:
           name: Setup Bigtable
           command: scripts/setup_bt.sh
+      - run:
+          name: Check formatting
+          command: |
+            cargo fmt -- --check
+            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
       - run:
           name: Install cargo-llvm-cov
           command: cargo install cargo-llvm-cov
@@ -198,47 +207,6 @@ jobs:
           destination: cov.json
       - store_test_results:
           path: ~/project/workspace/test-results
-
-  build-for-tests:
-    docker:
-      - image: cimg/rust:1.80
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        environment:
-          RUST_BACKTRACE: 1
-          RUST_TEST_THREADS: 1
-    resource_class: large
-    steps:
-      - checkout
-      # Need to download the poetry.lock files so we can use their
-      # checksums in restore_cache.
-      - restore_cache:
-          name: Restoring Rust cache
-          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
-      - run:
-          name: Create Workspace
-          command: mkdir -p workspace
-      - run:
-          name: Set up Rust
-          command: |
-            rustc --version
-      - run:
-          name: Check formatting
-          command: |
-            cargo fmt -- --check
-            cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
-      - run:
-          name: Run Build
-          command: cargo build --features=emulator
-      - run:
-          name: Copy to workspace
-          command: |
-            cp -r target/ workspace/
-      - persist_to_workspace:
-          root: workspace
-          paths:
-            - target
       - save_cache:
           name: Save Rust cache
           key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
@@ -386,19 +354,14 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - build-for-tests
       - test-integration:
           filters:
             tags:
               only: /.*/
-          requires:
-            - build-for-tests
       - test-rust:
           filters:
             tags:
               only: /.*/
-          requires:
-            - build-for-tests
 
       - build:
           name: build-autoconnect
