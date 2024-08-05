@@ -150,7 +150,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
-    resource_class: medium
+    resource_class: large
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
@@ -194,7 +194,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
-    resource_class: medium
+    resource_class: large
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
@@ -238,7 +238,7 @@ jobs:
         environment:
           RUST_BACKTRACE: 1
           RUST_TEST_THREADS: 1
-    resource_class: medium
+    resource_class: large
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
