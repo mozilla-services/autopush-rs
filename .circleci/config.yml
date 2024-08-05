@@ -33,7 +33,7 @@ commands:
             else
               echo "${PASS}" | docker login -u="${USER}" --password-stdin
             fi
-  setup-rust:
+  setup_rust:
     steps:
       - run:
           name: Set up Rust and build applications
@@ -47,6 +47,52 @@ commands:
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
             cargo build --features=emulator
+  setup_bigtable:
+    steps:
+      - run:
+          name: Setup Bigtable
+          command: scripts/setup_bt.sh
+  setup_cbt:
+    steps:
+      - run:
+          name: Set up cbt
+          command: |
+            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+            apt-get update -y
+            apt install google-cloud-cli-cbt -y
+  create_test_result_workspace:
+    steps:
+      - run:
+          name: Create Workspace
+          command: mkdir -p workspace/test-results
+  restore_test_cache:
+    parameters:
+      cache_key:
+        type: string
+    steps:
+      - restore_cache:
+          name: Restoring Rust cache
+          key: <<parameters.cache_key>>
+  save_test_cache:
+    parameters:
+      cache_key:
+        type: string
+    steps:
+      - save_cache:
+          name: Save Rust cache
+          key: <<parameters.cache_key>>
+          paths:
+            - target
+            - ~/.cargo/registry
+            - ~/.cargo/git
+  setup_python:
+    steps:
+      - run:
+          name: Set up Python
+          command: |
+            pip install --upgrade pip
+            pip install poetry
 
 jobs:
   audit:
@@ -104,38 +150,23 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
-    resource_class: xlarge
+    resource_class: medium
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
-      - restore_cache:
-          name: Restoring Rust cache
-          key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
-      - run:
-          name: Create Workspace
-          command: mkdir -p workspace
-      - setup-rust
+      - restore_test_cache:
+          cache_key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - create_test_result_workspace
+      - setup_rust
       - run:
           name: Set up system
           command: |
             apt update
             apt install libssl-dev apt-transport-https ca-certificates gnupg curl cmake -y
-      - run:
-          name: Set up cbt
-          command: |
-            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-            apt-get update -y
-            apt install google-cloud-cli-cbt -y
-      - run:
-          name: Set up Python
-          command: |
-            pip install --upgrade pip
-            pip install poetry
-      - run:
-          name: Setup Bigtable
-          command: scripts/setup_bt.sh
+      - setup_cbt
+      - setup_python
+      - setup_bigtable
       - run:
           name: Integration tests (Bigtable)
           command: make integration-test
@@ -146,15 +177,10 @@ jobs:
             TEST_RESULTS_DIR: workspace/test-results
       - store_test_results:
           path: workspace/test-results
-      - save_cache:
-          name: Save Rust cache
-          key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
-          paths:
-            - target
-            - ~/.cargo/registry
-            - ~/.cargo/git
+      - save_test_cache:
+          cache_key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
 
-  test-rust:
+  test-unit:
     docker:
       - image: python:3.12-slim-bookworm
         auth:
@@ -168,37 +194,31 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
-    resource_class: xlarge
+    resource_class: medium
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
-      - restore_cache:
-          name: Restoring Rust cache
-          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - restore_test_cache:
+          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - create_test_result_workspace
+      - setup_rust
+      - setup_cbt
+      - setup_bigtable
       - run:
-          name: Create Workspace
-          command: mkdir -p workspace/test-results
-      - setup-rust
-      - run:
-          name: Set up cbt
-          command: |
-            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-            apt-get update -y
-            apt install google-cloud-cli-cbt -y
-      - run:
-          name: Set up Rust
+          name: Echo Rust version
           command: |
             rustc --version
       - run:
-          name: Setup Bigtable
-          command: scripts/setup_bt.sh
-      - run:
           name: Install cargo-llvm-cov
           command: cargo install cargo-llvm-cov
+      # Note: This build can potentially exceed the amount of memory availble to the CircleCI instance.
+      # We've seen that limiting the number of jobs helps reduce the frequency of this. (Note that
+      # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
+      # the machine level memory and CPU which are far higher than the memory allocated to the docker
+      # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
       - run:
           name: Report tests and coverage
           command: |
@@ -206,15 +226,10 @@ jobs:
       - store_artifacts:
           path: ~/project/workspace/test-results/cov.json
           destination: cov.json
-      - save_cache:
-          name: Save Rust cache
-          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
-          paths:
-            - target
-            - ~/.cargo/registry
-            - ~/.cargo/git
+      - save_test_cache:
+          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
 
-  check-rust-formatting:
+  rust-checks:
     docker:
       - image: python:3.12-slim-bookworm
         auth:
@@ -223,19 +238,18 @@ jobs:
         environment:
           RUST_BACKTRACE: 1
           RUST_TEST_THREADS: 1
-    resource_class: xlarge
+    resource_class: medium
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
-      - restore_cache:
-          name: Restoring Rust cache
-          key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
-      - setup-rust
+      - restore_test_cache:
+          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+      - setup_rust
       - run:
-          name: Set up Rust
+          name: Echo Rust Version
           command: |
             rustc --version
       - run:
@@ -388,12 +402,12 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - test-rust:
-          name: Rust Tests
+      - test-unit:
+          name: Rust Unit Tests
           filters:
             tags:
               only: /.*/
-      - check-rust-formatting:
+      - rust-checks:
           name: Rust Formatting Check
           filters:
             tags:
@@ -430,7 +444,7 @@ workflows:
           requires:
             - build-autoconnect
             - Integration Tests
-            - Rust Tests
+            - Rust Unit Tests
             - Rust Formatting Check
           filters:
             tags:
@@ -445,7 +459,7 @@ workflows:
           requires:
             - build-autoendpoint
             - Integration Tests
-            - Rust Tests
+            - Rust Unit Tests
             - Rust Formatting Check
           filters:
             tags:
