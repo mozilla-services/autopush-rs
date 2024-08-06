@@ -24,8 +24,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
-    USER_RECORD_VERSION,
+    DbSettings, Notification, NotificationRecord, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
 };
 
 pub use self::metadata::MetadataBuilder;
@@ -1023,7 +1022,7 @@ impl DbClient for BigTableClientImpl {
         // easy/efficient
         let row_key = uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
 
         // Note: updating the version column isn't necessary here because this
         // write only adds a new (or updates an existing) column with a 0 byte
