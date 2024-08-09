@@ -899,6 +899,18 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
+    ///
+    /// NOTE: This function updates the key ROUTER records for a given UAID. It does this by
+    /// calling [BigTableClientImpl::user_to_row] which creates a new row with new `cell.timestamp` values set
+    /// to now + `MAX_ROUTER_TTL`. This function is called by mobile during the daily
+    /// [autoendpoint::routes::update_token_route] handling, and by desktop
+    /// [autoconnect-ws-sm::get_or_create_user]` which is called
+    /// during the `HELLO` handler. This should be enough to ensure that the ROUTER records
+    /// are properly refreshed for "lively" clients.
+    ///
+    /// NOTE: There is some, very small, potential risk that a desktop client that can
+    /// somehow remain connected the duration of MAX_ROUTER_TTL, may be dropped as not being
+    /// "lively".
     async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         let Some(ref version) = user.version else {
             return Err(DbError::General(
@@ -1217,54 +1229,19 @@ impl DbClient for BigTableClientImpl {
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
         let mut row = Row::new(row_key.clone());
 
-        // This doesn't have to be in a block, but I find it's easier to
-        // understand if it's separated out. This will iterate over all of the
-        // "ROUTER" fields and update the timestamp for them. (It also
-        // modifies two of the fields for bookkeeping.)
-        // We have to iterate over all of these because it's the only way to
-        // set the expiration period for the field beyond the original when a
-        // device connects or checks-in, and we want to ensure that the ROUTER
-        // record is not dropped prematurely due to early garbage collection.
-        let mut cells = {
-            let mut refreshed_cells: Vec<cell::Cell> = Vec::new();
+        row.cells.insert(
+            ROUTER_FAMILY.to_owned(),
+            vec![
+                cell::Cell {
+                    qualifier: "current_timestamp".to_owned(),
+                    value: timestamp.to_be_bytes().to_vec(),
+                    timestamp: expiry,
+                    ..Default::default()
+                },
+                new_version_cell(expiry),
+            ],
+        );
 
-            let mut original_req = self.read_row_request(&row_key);
-            let mut filters = vec![router_gc_policy_filter()];
-            filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
-            original_req.set_filter(filter_chain(filters));
-            if let Some(original) = self.read_row(original_req).await? {
-                for (_, cells) in original.cells {
-                    for cell in cells {
-                        // We're going to override this field explicity.
-                        if cell.qualifier.to_ascii_lowercase() == "current_timestamp" {
-                            continue;
-                        }
-                        if cell.qualifier == "version" {
-                            refreshed_cells.push(new_version_cell(expiry))
-                        } else {
-                            refreshed_cells.push(cell::Cell {
-                                qualifier: cell.qualifier,
-                                value: cell.value,
-                                value_index: cell.value_index,
-                                family: cell.family,
-                                timestamp: expiry,
-                                labels: cell.labels,
-                            })
-                        }
-                    }
-                }
-            }
-            refreshed_cells
-        };
-
-        cells.push(cell::Cell {
-            qualifier: "current_timestamp".to_owned(),
-            value: timestamp.to_be_bytes().to_vec(),
-            timestamp: expiry,
-            ..Default::default()
-        });
-
-        row.cells.insert(ROUTER_FAMILY.to_owned(), cells);
         self.write_row(row).await?;
 
         Ok(())
