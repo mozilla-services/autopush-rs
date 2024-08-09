@@ -8,8 +8,18 @@
 # DOCKERHUB_LOAD_TEST_REPO - Docker Hub repo for load tests, format: <username>/<repo>
 # DOCKER_LOAD_TEST_PASS - Docker Hub load test repo password
 # DOCKER_LOAD_TEST_USER - Docker Hub load test repo user
+#
+# These environment variables are necessary to authenticate with GCP and upload images to GAR
+# GCP_GAR_REPO - Name of GAR repo
+# GCP_PROJECT_ID - GCP project ID
+# GCP_SERVICE_ACCOUNT_EMAIL - GCP service account email
+# GCP_WIP_ID - GCP Workload Identity Pool ID
+# GCP_WIP_PROVIDER_ID - GCP Workload Identity Pool Provider ID
 
 version: 2.1
+
+orbs:
+  gcp-gcr: circleci/gcp-gcr@0.16.3
 
 commands:
   docker_login:
@@ -402,6 +412,42 @@ jobs:
             docker push "${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}"
             docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
+  deploy-to-gar:
+    executor: gcp-gcr/default
+    parameters:
+      build_tag:
+        type: string
+        default: build
+      image:
+        type: string
+      registry-url:
+        type: string
+        default: us-docker.pkg.dev
+    steps:
+      - gcp-gcr/gcr-auth:
+          gcp_cred_config_file_path: ~/gcp_cred_config.json
+          google-project-id: $GCP_PROJECT_ID
+          registry-url: <<parameters.registry-url>>
+          service_account_email: $GCP_SERVICE_ACCOUNT_EMAIL
+          workload_identity_pool_id: $GCP_WIP_ID
+          workload_identity_pool_provider_id: GCP_WIP_PROVIDER_ID
+      - run:
+          name: Tag image
+          command: |
+            if [ "${CIRCLE_BRANCH}" == "master" ]; then
+              echo 'export GAR_TAG=master' >> $BASH_ENV
+            elif [ ! -z "${CIRCLE_TAG}" ]; then
+              echo "export GAR_TAG=$CIRCLE_TAG" >> $BASH_ENV
+            fi
+              echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
+              source $BASH_ENV
+              docker tag <<parameters.image>>:<<build_tag>> $GAR_IMAGE:$GAR_TAG
+      - gcp-gcr/push-image:
+          image: $GAR_IMAGE
+          google-project-id: $GCP_PROJECT_ID
+          registry-url: <<parameters.registry-url>>
+          tag: $GAR_TAG
+
 workflows:
   build-test-deploy:
     jobs:
@@ -452,7 +498,7 @@ workflows:
             tags:
               only: /.*/
 
-      # Comment out the following two sections for local CircleCI testing.
+      # Comment out the following four sections for local CircleCI testing.
       - deploy:
           name: deploy-autoconnect
           image: autoconnect:build
@@ -472,6 +518,34 @@ workflows:
           name: deploy-autoendpoint
           image: autoendpoint:build
           repo: ${DOCKERHUB_ENDPOINT_REPO}
+          requires:
+            - build-autoendpoint
+            - Integration Tests
+            - Rust Unit Tests
+            - Rust Formatting Check
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
+      - deploy-to-gar:
+          name: deploy-autoconnect-gar
+          image: autoconnect
+          requires:
+            - build-autoconnect
+            - Integration Tests
+            - Rust Unit Tests
+            - Rust Formatting Check
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
+      - deploy-to-gar:
+          name: deploy-autoendpoint-gar
+          image: autoendpoint
           requires:
             - build-autoendpoint
             - Integration Tests
