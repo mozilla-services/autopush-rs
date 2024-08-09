@@ -8,7 +8,7 @@ use url::Url;
 #[serde(deny_unknown_fields)]
 pub struct FcmSettings {
     /// The minimum TTL to use for FCM notifications
-    pub min_ttl: usize,
+    pub min_ttl: u64,
     /// A JSON dict of `FcmCredential`s. This must be a `String` because
     /// environment variables cannot encode a `HashMap<String, FcmCredential>`
     /// This contains both GCM and FCM credentials.

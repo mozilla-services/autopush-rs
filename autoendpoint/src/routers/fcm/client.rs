@@ -85,7 +85,7 @@ impl FcmClient {
         &self,
         data: HashMap<&'static str, String>,
         routing_token: String,
-        ttl: usize,
+        ttl: u64,
     ) -> Result<(), RouterError> {
         // Check the payload size. FCM only cares about the `data` field when
         // checking size.
