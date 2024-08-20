@@ -194,7 +194,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
-    resource_class: large
+    resource_class: 2xlarge
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
