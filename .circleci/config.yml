@@ -36,7 +36,7 @@ commands:
   setup_rust:
     steps:
       - run:
-          name: Set up Rust and build applications
+          name: Set up Rust
           command: |
             apt update
             apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
@@ -46,7 +46,11 @@ commands:
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build --features=emulator
+  build_applications:
+    steps:
+      - run:
+          name: Build Applicatins
+          command: cargo build --features=emulator
   setup_bigtable:
     steps:
       - run:
@@ -159,6 +163,7 @@ jobs:
           cache_key: rust-v1-integration-test-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
       - setup_rust
+      - build_applications
       - run:
           name: Set up system
           command: |
