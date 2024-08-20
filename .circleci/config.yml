@@ -208,6 +208,9 @@ jobs:
       - setup_cbt
       - setup_bigtable
       - run:
+          name: Install cargo-nextest
+          command: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
+      - run:
           name: Echo Rust version
           command: |
             rustc --version
@@ -222,10 +225,12 @@ jobs:
       - run:
           name: Report tests and coverage
           command: |
-            cargo llvm-cov --json --output-path workspace/test-results/cov.json test --features=emulator --features=bigtable --jobs=2
+            cargo llvm-cov --json --output-path workspace/test-results/cov.json nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
       - store_artifacts:
           path: ~/project/workspace/test-results/cov.json
           destination: cov.json
+      - store_test_results:
+          path: target/nextest/ci
       - save_test_cache:
           cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
 
