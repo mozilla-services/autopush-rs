@@ -156,7 +156,7 @@ jobs:
     steps:
       - checkout
       - restore_test_cache:
-          cache_key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v1-integration-test-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
       - setup_rust
       - run:
@@ -178,7 +178,7 @@ jobs:
       - store_test_results:
           path: workspace/test-results
       - save_test_cache:
-          cache_key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v1-integration-test-cache-{{ checksum "Cargo.lock" }}
 
   test-unit:
     docker:
@@ -202,7 +202,7 @@ jobs:
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
       - restore_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
       - setup_rust
       - setup_cbt
@@ -232,7 +232,7 @@ jobs:
       - store_test_results:
           path: target/nextest/ci
       - save_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
 
   rust-checks:
     docker:
@@ -251,7 +251,7 @@ jobs:
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
       - restore_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
       - setup_rust
       - run:
           name: Echo Rust Version
