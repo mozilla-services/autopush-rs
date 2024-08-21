@@ -36,7 +36,7 @@ commands:
   setup_rust:
     steps:
       - run:
-          name: Set up Rust and build applications
+          name: Set up Rust
           command: |
             apt update
             apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
@@ -46,7 +46,11 @@ commands:
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build --features=emulator
+  build_applications:
+    steps:
+      - run:
+          name: Build Applicatins
+          command: cargo build --features=emulator
   setup_bigtable:
     steps:
       - run:
@@ -156,9 +160,10 @@ jobs:
     steps:
       - checkout
       - restore_test_cache:
-          cache_key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v1-integration-test-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
       - setup_rust
+      - build_applications
       - run:
           name: Set up system
           command: |
@@ -175,10 +180,13 @@ jobs:
             # PYTEST_ARGS: -sv
             DB_DSN: grpc://localhost:8086
             TEST_RESULTS_DIR: workspace/test-results
+      - store_artifacts:
+          path: ~/project/workspace/test-results/integration_test_results.xml
+          destination: integration_test_results.xml
       - store_test_results:
           path: workspace/test-results
       - save_test_cache:
-          cache_key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v1-integration-test-cache-{{ checksum "Cargo.lock" }}
 
   test-unit:
     docker:
@@ -194,7 +202,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
-    resource_class: large
+    resource_class: 2xlarge
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
@@ -202,11 +210,14 @@ jobs:
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
       - restore_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
       - setup_rust
       - setup_cbt
       - setup_bigtable
+      - run:
+          name: Install cargo-nextest
+          command: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
       - run:
           name: Echo Rust version
           command: |
@@ -222,12 +233,17 @@ jobs:
       - run:
           name: Report tests and coverage
           command: |
-            cargo llvm-cov --json --output-path workspace/test-results/cov.json test --features=emulator --features=bigtable --jobs=2
+            cargo llvm-cov --json --output-path workspace/test-results/cov.json nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
       - store_artifacts:
           path: ~/project/workspace/test-results/cov.json
           destination: cov.json
+      - store_artifacts:
+          path: ~/project/target/nextest/ci/junit.xml
+          destination: junit.xml
+      - store_test_results:
+          path: target/nextest/ci
       - save_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
 
   rust-checks:
     docker:
@@ -246,7 +262,7 @@ jobs:
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
       - restore_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
       - setup_rust
       - run:
           name: Echo Rust Version
