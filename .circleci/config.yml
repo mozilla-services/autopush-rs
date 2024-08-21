@@ -180,6 +180,9 @@ jobs:
             # PYTEST_ARGS: -sv
             DB_DSN: grpc://localhost:8086
             TEST_RESULTS_DIR: workspace/test-results
+      - store_artifacts:
+          path: ~/project/workspace/test-results/integration_test_results.xml
+          destination: integration_test_results.xml
       - store_test_results:
           path: workspace/test-results
       - save_test_cache:
@@ -234,6 +237,9 @@ jobs:
       - store_artifacts:
           path: ~/project/workspace/test-results/cov.json
           destination: cov.json
+      - store_artifacts:
+          path: ~/project/target/nextest/ci/junit.xml
+          destination: junit.xml
       - store_test_results:
           path: target/nextest/ci
       - save_test_cache:
