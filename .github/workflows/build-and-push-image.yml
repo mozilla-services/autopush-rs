@@ -23,6 +23,9 @@ on:
         required: true
         type: string
         default: moz-fx-autopush-prod
+      image:
+        required: true
+        type: string
       tag:
         required: true
         type: string
