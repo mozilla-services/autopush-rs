@@ -1,6 +1,6 @@
 name: Build and push image to GAR
 
-run-name: Build and push image "${inputs.image}:${inputs.tag}" to GAR
+run-name: Build and push image "${{ inputs.image }}:${{ inputs.tag }}" to GAR
 
 on:
   workflow_call:
