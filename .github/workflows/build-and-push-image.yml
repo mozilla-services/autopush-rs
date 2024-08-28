@@ -11,6 +11,10 @@ on:
       crate:
         required: true
         type: string
+      # `gar_location`, `gar_repository`, and `gcp_project_id` have all been
+      # set as optional because default value has been supplied. As this
+      # workflow is only callable by other workflows, GitHub Actions will throw
+      # an error if we set "required: true" regardless of any defaults defined.
       gar_location:
         required: false
         type: string
