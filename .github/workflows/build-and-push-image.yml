@@ -1,4 +1,4 @@
-name: Build and push image to GAR
+name: Reusable build-and-push workflow
 
 run-name: Build and push image "${{ inputs.image }}:${{ inputs.tag }}" to GAR
 
