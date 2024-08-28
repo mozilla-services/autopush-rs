@@ -38,7 +38,7 @@ jobs:
 
   autoconnect:
     name: "Autoconnect: Build and push to GAR"
-    needs: [tag]
+    needs: [determine-tag]
     permissions:
       contents: read
       id-token: write
@@ -52,7 +52,7 @@ jobs:
 
   autoendpoint:
     name: "Autoendpoint: Build and push to GAR"
-    needs: [tag]
+    needs: [determine-tag]
     permissions:
       contents: read
       id-token: write
