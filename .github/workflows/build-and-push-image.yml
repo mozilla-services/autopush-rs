@@ -12,15 +12,15 @@ on:
         required: true
         type: string
       gar_location:
-        required: true
+        required: false
         type: string
         default: us
       gar_repository:
-        required: true
+        required: false
         type: string
         default: autopush-prod
       gcp_project_id:
-        required: true
+        required: false
         type: string
         default: moz-fx-autopush-prod
       image:
