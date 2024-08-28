@@ -13,9 +13,9 @@ jobs:
     name: Determine tag to build
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'check_run' && \
-      github.event.check_run.name == 'build-test-deploy' && \
-      github.event.check_run.conclusion == 'success' && \
+      (github.event_name == 'check_run' &&
+      github.event.check_run.name == 'build-test-deploy' &&
+      github.event.check_run.conclusion == 'success' &&
       github.ref_type == 'tag')
     runs-on: ubuntu-latest
     permissions: {}
