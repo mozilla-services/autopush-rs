@@ -48,7 +48,7 @@ jobs:
       binary: autoconnect
       crate: autoconnect
       image: autoconnect
-      tag: ${{ needs.tag.outputs.TAG }}
+      tag: ${{ needs.determine-tag.outputs.TAG }}
 
   autoendpoint:
     name: "Autoendpoint: Build and push to GAR"
@@ -62,4 +62,4 @@ jobs:
       binary: autoendpoint
       crate: autoendpoint
       image: autoendpoint
-      tag: ${{ needs.tag.outputs.TAG }}
+      tag: ${{ needs.determine-tag.outputs.TAG }}
