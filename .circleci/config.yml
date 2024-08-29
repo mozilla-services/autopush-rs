@@ -233,7 +233,7 @@ jobs:
       - run:
           name: Report tests and coverage
           command: |
-            cargo llvm-cov --json --output-path workspace/test-results/cov.json nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
+            cargo llvm-cov --summary-only --json --output-path workspace/test-results/cov.json nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
       - store_artifacts:
           path: ~/project/workspace/test-results/cov.json
           destination: cov.json
