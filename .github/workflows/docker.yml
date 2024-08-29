@@ -28,7 +28,7 @@ jobs:
           if [[ "${{ github.event.inputs.git_tag }}" != "" ]]; then
             echo "tag=${{ github.event.inputs.git_tag }}" >> $GITHUB_OUTPUT
           # successful check_run from tag
-          elif [[ "${{ startsWith(github.event.check_run.check_suite.head_branch, 'release/') }}" == "true" ]]; then
+          elif [[ "${{ github.event.check_run.check_suite.head_branch }}" =~ ^release\/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "tag=$(cut -d \/ -f2 <(echo '${{ github.event.check_run.check_suite.head_branch }}'))" >> $GITHUB_OUTPUT
           else
             echo "Cannot determine tag"
