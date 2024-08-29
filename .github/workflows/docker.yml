@@ -1,0 +1,65 @@
+name: Build and deploy Docker images to GAR
+on:
+  check_run:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      git_tag:
+        type: string
+        required: true
+
+jobs:
+  determine-tag:
+    name: Determine tag to build
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'check_run' &&
+      github.event.check_run.name == 'build-test-deploy' &&
+      github.event.check_run.conclusion == 'success' &&
+      github.ref_type == 'tag')
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      TAG: ${{ steps.determine.outputs.tag }}
+    steps:
+      - id: determine
+        run: |
+          # workflow_dispatch
+          if [[ "${{ github.event.inputs.git_tag }}" != "" ]]; then
+            echo "tag=${{ github.event.inputs.git_tag }}" >> $GITHUB_OUTPUT
+          # successful check_run from tag
+          elif [[ "${{ github.ref }}" != "" ]] && \
+               [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "tag=$(cut -d \/ -f3 <(echo '${{ github.ref }}'))" >> $GITHUB_OUTPUT
+          else
+            echo "Cannot determine tag"
+            exit 1
+          fi
+
+  autoconnect:
+    name: "Autoconnect: Build and push to GAR"
+    needs: [determine-tag]
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/build-and-push-image.yml
+    secrets: inherit
+    with:
+      binary: autoconnect
+      crate: autoconnect
+      image: autoconnect
+      tag: ${{ needs.determine-tag.outputs.TAG }}
+
+  autoendpoint:
+    name: "Autoendpoint: Build and push to GAR"
+    needs: [determine-tag]
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/build-and-push-image.yml
+    secrets: inherit
+    with:
+      binary: autoendpoint
+      crate: autoendpoint
+      image: autoendpoint
+      tag: ${{ needs.determine-tag.outputs.TAG }}
