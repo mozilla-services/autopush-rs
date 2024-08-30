@@ -1,7 +1,8 @@
 name: Build and deploy Docker images to GAR
 on:
   push:
-    tags: *
+    tags:
+      - '*'
   workflow_dispatch:
     inputs:
       git_tag:
