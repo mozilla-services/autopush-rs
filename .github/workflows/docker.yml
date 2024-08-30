@@ -1,7 +1,7 @@
 name: Build and deploy Docker images to GAR
 on:
-  check_run:
-    types: [completed]
+  push:
+    tags: *
   workflow_dispatch:
     inputs:
       git_tag:
@@ -11,12 +11,6 @@ on:
 jobs:
   determine-tag:
     name: Determine tag to build
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'check_run' &&
-      github.event.check_run.name == 'build-test-deploy' &&
-      github.event.check_run.conclusion == 'success' &&
-      github.ref_type == 'tag')
     runs-on: ubuntu-latest
     permissions: {}
     outputs:
@@ -28,8 +22,7 @@ jobs:
           if [[ "${{ github.event.inputs.git_tag }}" != "" ]]; then
             echo "tag=${{ github.event.inputs.git_tag }}" >> $GITHUB_OUTPUT
           # successful check_run from tag
-          elif [[ "${{ github.ref }}" != "" ]] && \
-               [[ "${{ github.ref_type }}" == "tag" ]]; then
+          elif [[ "${{ github.ref }}" != "" ]]; then
             echo "tag=$(cut -d \/ -f3 <(echo '${{ github.ref }}'))" >> $GITHUB_OUTPUT
           else
             echo "Cannot determine tag"
