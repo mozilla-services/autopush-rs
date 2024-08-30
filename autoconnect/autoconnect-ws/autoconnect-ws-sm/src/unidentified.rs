@@ -96,18 +96,10 @@ impl UnidentifiedClient {
             .send();
 
         // This is the first time that the user has connected "today".
-        if flags.user_gm {
+        if flags.emit_channel_metrics {
             // Return the number of channels for the user using the internal channel_count.
             // NOTE: this metric can be approximate since we're sampling to determine the
             // approximate average of channels per user for business reasons.
-            self.app_state
-                .metrics
-                .incr_with_tags("ua.connection.check")
-                // TODO: These should reflect the actual os and browser, but getting those
-                // values at this point would be very complicated. For now, just use "desktop"
-                .with_tag("os", "desktop")
-                .with_tag("browser", "desktop")
-                .send();
             self.app_state
                 .metrics
                 .histogram_with_tags("ua.connection.channel_count", user.channel_count() as u64)
@@ -152,7 +144,7 @@ impl UnidentifiedClient {
                     old_record_version: user
                         .record_version
                         .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
-                    user_gm: user.connected_at < ms_utc_midnight(),
+                    emit_channel_metrics: user.connected_at < ms_utc_midnight(),
                     ..Default::default()
                 };
                 user.node_id = Some(self.app_state.router_url.to_owned());

@@ -290,7 +290,7 @@ pub struct ClientFlags {
     /// Flags the need to drop the user record
     pub old_record_version: bool,
     /// First time a user has connected "today"
-    pub user_gm: bool,
+    pub emit_channel_metrics: bool,
 }
 
 impl Default for ClientFlags {
@@ -300,7 +300,7 @@ impl Default for ClientFlags {
             increment_storage: false,
             check_storage: false,
             old_record_version: false,
-            user_gm: false,
+            emit_channel_metrics: false,
         }
     }
 }
