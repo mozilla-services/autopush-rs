@@ -1,0 +1,88 @@
+name: Reusable build-and-push workflow
+
+run-name: Build and push image "${{ inputs.image }}:${{ inputs.tag }}" to GAR
+
+on:
+  workflow_call:
+    inputs:
+      binary:
+        required: true
+        type: string
+      crate:
+        required: true
+        type: string
+      # `gar_location`, `gar_repository`, and `gcp_project_id` have all been
+      # set as optional because default value has been supplied. As this
+      # workflow is only callable by other workflows, GitHub Actions will throw
+      # an error if we set "required: true" regardless of any defaults defined.
+      gar_location:
+        required: false
+        type: string
+        default: us
+      gar_repository:
+        required: false
+        type: string
+        default: autopush-prod
+      gcp_project_id:
+        required: false
+        type: string
+        default: moz-fx-autopush-prod
+      image:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    environment: build
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      BINARY: ${{ inputs.binary }}
+      CRATE: ${{ inputs.crate }}
+      GAR_LOCATION: ${{ inputs.gar_location }}
+      GAR_REPOSITORY: ${{ inputs.gar_repository }}
+      GCP_PROJECT_ID: ${{ inputs.gcp_project_id }}
+      IMAGE: ${{ inputs.image }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - run: |
+          printf '{"commit":"%s","version":"%s","source":"https://github.com/%s","build":"%s/%s/actions/runs/%s"}\n' \
+          "${GITHUB_SHA}" \
+          "${GITHUB_REF_NAME}" \
+          "${GITHUB_REPOSITORY}" \
+          "${GITHUB_SERVER_URL}" \
+          "${GITHUB_REPOSITORY}" \
+          "${GITHUB_RUN_ID}" > version.json
+      - uses: docker/setup-buildx-action@v3
+      - id: gcp-auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: 'access_token'
+          service_account: artifact-writer@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          workload_identity_provider: ${{ vars.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.gcp-auth.outputs.access_token }}
+      - id: build-and-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          # This is using both "latest" and app version tags.
+          tags: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE }}:latest,${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE }}:${{ env.TAG }}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            CRATE=${{ env.CRATE }}
+            BINARY=${{ env.BINARY }}

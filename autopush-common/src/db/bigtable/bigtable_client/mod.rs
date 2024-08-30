@@ -315,13 +315,13 @@ pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) ->
 /// They can be incomplete for a couple reasons:
 ///
 /// 1) A migration code bug caused a few incomplete migrations where
-/// `add_channels` and `increment_storage` calls occurred when the migration's
-/// initial `add_user` was never completed:
-/// https://github.com/mozilla-services/autopush-rs/pull/640
+///    `add_channels` and `increment_storage` calls occurred when the migration's
+///    initial `add_user` was never completed:
+///    https://github.com/mozilla-services/autopush-rs/pull/640
 ///
 /// 2) When router TTLs are eventually enabled: `add_channel` and
-/// `increment_storage` can write cells with later expiry times than the other
-/// router cells
+///    `increment_storage` can write cells with later expiry times than the other
+///    router cells
 fn is_incomplete_router_record(cells: &RowCells) -> bool {
     cells
         .keys()

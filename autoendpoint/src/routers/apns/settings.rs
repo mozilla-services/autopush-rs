@@ -10,6 +10,11 @@ pub struct ApnsSettings {
     pub channels: String,
     /// The max size of notification data in bytes
     pub max_data: usize,
+    // These values correspond to the a2 library ClientConfig struct.
+    // https://github.com/WalletConnect/a2/blob/master/src/client.rs#L65-L71.
+    // Utilized by apns router config in creating the client.
+    pub request_timeout_secs: Option<u64>,
+    pub pool_idle_timeout_secs: Option<u64>,
 }
 
 /// Settings for a specific APNS release channel
@@ -27,10 +32,12 @@ pub struct ApnsChannel {
 }
 
 impl Default for ApnsSettings {
-    fn default() -> Self {
-        Self {
+    fn default() -> ApnsSettings {
+        ApnsSettings {
             channels: "{}".to_string(),
             max_data: 4096,
+            request_timeout_secs: Some(20),
+            pool_idle_timeout_secs: Some(600),
         }
     }
 }

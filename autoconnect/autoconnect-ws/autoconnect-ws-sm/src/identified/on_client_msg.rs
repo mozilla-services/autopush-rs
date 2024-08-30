@@ -293,7 +293,9 @@ impl WebPushClient {
         let flags = &self.flags;
         if flags.check_storage {
             if flags.increment_storage {
-                debug!("▶️ WebPushClient:post_process_all_acked check_storage && increment_storage");
+                debug!(
+                    "▶️ WebPushClient:post_process_all_acked check_storage && increment_storage"
+                );
                 self.increment_storage().await?;
             }
 
