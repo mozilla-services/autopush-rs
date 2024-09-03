@@ -442,11 +442,12 @@ jobs:
               echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
               docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:$GAR_TAG
+              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:latest
       - gcp-gcr/push-image:
           image: $GAR_IMAGE
           google-project-id: GCP_PROJECT_ID
           registry-url: <<parameters.registry-url>>
-          tag: $GAR_TAG
+          tag: $GAR_TAG,latest
 
 workflows:
   build-test-deploy:
