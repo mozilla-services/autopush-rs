@@ -334,11 +334,14 @@ jobs:
         type: string
         default: us-docker.pkg.dev
     steps:
+      # gcr-auth parameters:
+      # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-gcr-auth
       - gcp-gcr/gcr-auth:
           gcp_cred_config_file_path: ~/gcp_cred_config.json
           google-project-id: GCP_PROJECT_ID
           registry-url: <<parameters.registry-url>>
           service_account_email: GCP_SERVICE_ACCOUNT_EMAIL
+          use_oidc: true
           workload_identity_pool_id: GCP_WIP_ID
           workload_identity_pool_provider_id: GCP_WIP_PROVIDER_ID
       - run:
@@ -353,6 +356,8 @@ jobs:
               source $BASH_ENV
               docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:$GAR_TAG
               docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:latest
+      # push-image parameters:
+      # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
           image: $GAR_IMAGE
           google-project-id: GCP_PROJECT_ID
