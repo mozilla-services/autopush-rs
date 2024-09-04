@@ -328,9 +328,9 @@ jobs:
       # required since Workflows do not have the same remote docker instance.
       - run:
           name: docker save <<parameters.image>>
-          command: mkdir -p /cache; docker save -o /cache/docker.tar "<<parameters.image>>"
+          command: mkdir -p /tmp/cache; docker save -o /tmp/cache/docker.tar "<<parameters.image>>"
       - persist_to_workspace:
-          root: /cache
+          root: /tmp/cache
           paths:
             - docker.tar
 
@@ -369,10 +369,10 @@ jobs:
       - setup_remote_docker
       - docker_login
       - attach_workspace:
-          at: /cache
+          at: /tmp/cache
       - run:
           name: Restore Docker image cache
-          command: docker load -i /cache/docker.tar
+          command: docker load -i /tmp/cache/docker.tar
       - run:
           name: Deploy to Dockerhub
           command: |
@@ -437,10 +437,10 @@ jobs:
           workload_identity_pool_id: GCP_OIDC_WIP_ID
           workload_identity_pool_provider_id: GCP_OIDC_WIP_PROVIDER_ID
       - attach_workspace:
-          at: /cache
+          at: /tmp/cache
       - run:
           name: Restore Docker image cache
-          command: docker load -i /cache/docker.tar
+          command: docker load -i /tmp/cache/docker.tar
       - run:
           name: Tag image
           command: |
