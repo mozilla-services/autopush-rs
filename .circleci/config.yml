@@ -446,8 +446,8 @@ jobs:
             fi
               echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_GAR_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
-              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:$GAR_TAG
-              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:latest
+              docker tag <<parameters.image>> $GAR_IMAGE:$GAR_TAG
+              docker tag <<parameters.image>> $GAR_IMAGE:latest
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
@@ -549,7 +549,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - RRM-181
 
       - deploy-to-gar:
           name: deploy-autoendpoint-gar
@@ -563,7 +565,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - RRM-181
 
       - deploy-load-test:
           requires:
