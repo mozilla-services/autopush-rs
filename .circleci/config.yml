@@ -458,7 +458,7 @@ jobs:
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
-          image: $GAR_IMAGE
+          image: "${GCP_GAR_REPO}/<<parameters.image>>"
           google-project-id: GCP_GAR_PROJECT_ID
           registry-url: <<parameters.registry-url>>
           tag: $GAR_TAG,latest
