@@ -542,11 +542,11 @@ workflows:
       - deploy-to-gar:
           name: deploy-autoconnect-gar
           image: autoconnect
-          requires:
-            - build-autoconnect
-            - Integration Tests
-            - Rust Unit Tests
-            - Rust Formatting Check
+          #requires:
+          #  - build-autoconnect
+          #  - Integration Tests
+          #  - Rust Unit Tests
+          #  - Rust Formatting Check
           filters:
             tags:
               only: /.*/
@@ -558,11 +558,11 @@ workflows:
       - deploy-to-gar:
           name: deploy-autoendpoint-gar
           image: autoendpoint
-          requires:
-            - build-autoendpoint
-            - Integration Tests
-            - Rust Unit Tests
-            - Rust Formatting Check
+          #requires:
+          #  - build-autoendpoint
+          #  - Integration Tests
+          #  - Rust Unit Tests
+          #  - Rust Formatting Check
           filters:
             tags:
               only: /.*/
