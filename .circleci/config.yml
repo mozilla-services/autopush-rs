@@ -429,6 +429,7 @@ jobs:
           google-project-id: GCP_PROJECT_ID
           registry-url: <<parameters.registry-url>>
           service_account_email: GCP_SERVICE_ACCOUNT_EMAIL
+          use_oidc: true
           workload_identity_pool_id: GCP_WIP_ID
           workload_identity_pool_provider_id: GCP_WIP_PROVIDER_ID
       - run:
