@@ -12,7 +12,7 @@
 # These environment variables are necessary to authenticate with GCP and upload images to GAR
 # GCP_GAR_PROJECT_ID - GCP project ID for GAR repo
 # GCP_GAR_REPO - Name of GAR repo
-# GCP_OIDC_PROJECT_ID - GCP project ID for Workload Identity Pool/Provider
+# GCP_OIDC_PROJECT_NUMBER - GCP project number for Workload Identity Pool/Provider
 # GCP_OIDC_SERVICE_ACCOUNT_EMAIL - GCP service account email
 # GCP_OIDC_WIP_ID - GCP Workload Identity Pool ID
 # GCP_OIDC_WIP_PROVIDER_ID - GCP Workload Identity Pool Provider ID
@@ -429,7 +429,8 @@ jobs:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-gcr-auth
       - gcp-gcr/gcr-auth:
           gcp_cred_config_file_path: ~/gcp_cred_config.json
-          google-project-id: GCP_OIDC_PROJECT_ID
+          google-project-id: GCP_GAR_PROJECT_ID
+          google_project_number: GCP_OIDC_PROJECT_NUMBER
           registry-url: <<parameters.registry-url>>
           service_account_email: GCP_OIDC_SERVICE_ACCOUNT_EMAIL
           use_oidc: true
