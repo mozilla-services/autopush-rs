@@ -436,6 +436,11 @@ jobs:
           use_oidc: true
           workload_identity_pool_id: GCP_OIDC_WIP_ID
           workload_identity_pool_provider_id: GCP_OIDC_WIP_PROVIDER_ID
+      - attach_workspace:
+          at: /cache
+      - run:
+          name: Restore Docker image cache
+          command: docker load -i /cache/docker.tar
       - run:
           name: Tag image
           command: |
@@ -448,8 +453,8 @@ jobs:
             fi
               echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_GAR_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
-              docker tag <<parameters.image>> $GAR_IMAGE:$GAR_TAG
-              docker tag <<parameters.image>> $GAR_IMAGE:latest
+              docker tag <<parameters.image>>:build $GAR_IMAGE:$GAR_TAG
+              docker tag <<parameters.image>>:build $GAR_IMAGE:latest
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
@@ -542,11 +547,11 @@ workflows:
       - deploy-to-gar:
           name: deploy-autoconnect-gar
           image: autoconnect
-          #requires:
-          #  - build-autoconnect
-          #  - Integration Tests
-          #  - Rust Unit Tests
-          #  - Rust Formatting Check
+          requires:
+            - build-autoconnect
+            - Integration Tests
+            - Rust Unit Tests
+            - Rust Formatting Check
           filters:
             tags:
               only: /.*/
@@ -558,11 +563,11 @@ workflows:
       - deploy-to-gar:
           name: deploy-autoendpoint-gar
           image: autoendpoint
-          #requires:
-          #  - build-autoendpoint
-          #  - Integration Tests
-          #  - Rust Unit Tests
-          #  - Rust Formatting Check
+          requires:
+            - build-autoendpoint
+            - Integration Tests
+            - Rust Unit Tests
+            - Rust Formatting Check
           filters:
             tags:
               only: /.*/
