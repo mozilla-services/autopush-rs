@@ -44,15 +44,33 @@ If you are only running Autopush locally, you can skip to `running` as
 later topics in this document apply only to developing or production
 scale deployments of Autopush.
 
+## WebPush Sort Keys
+
+Messages for WebPush are stored using a partition key + sort key, originally the sort key was:
+
+    CHID : Encrypted(UAID: CHID)
+
+The encrypted portion was returned as the Location to the Application Server. Decrypting it resulted in enough information to create the sort key so that the message could be deleted and located again.
+
+For WebPush Topic messages, a new scheme was needed since the only way to locate the prior message is the UAID + CHID + Topic. Using Encryption in the sort key is therefore not useful since it would change every update.
+
+The sort key scheme for WebPush messages is:
+
+    VERSION : CHID : TOPIC
+
+To ensure updated messages are not deleted, each message will still have an update-id key/value in its item.
+
+Non-versioned messages are assumed to be original messages from before this scheme was adopted.
+
+``VERSION`` is a 2-digit 0-padded number, starting at 01 for Topic messages.
+
 ## Storage Tables
 
-Autopush uses a key / value data storage system. It can either use
-AWS DynamoDB (legacy), Google Cloud Bigtable, or a specific combination of the
-two.
+Autopush uses Google Cloud Bigtable as a key / value data storage system.
 
 ### DynamoDB (legacy)
 
-For DynamoDB, Autopush used a single router and messages table.
+Previously, for DynamoDB, Autopush used a single router and messages table.
 On startup, Autopush created these tables.
 For more information on DynamoDB tables, see
 <http://docs.aws.amazon.com/amazondynamodb/latest/gettingstartedguide/Welcome.html>
@@ -88,6 +106,8 @@ cbt -project $PROJECT -instance $INSTANCE setgcpolicy $DATABASE $ROUTER maxversi
 Please note, this document will refer to the `message` table and the `router` table for
 legacy reasons. Please consider these to be the same as the `message` and `router` cell
 families.
+
+
 
 ### Router Table Schema
 
@@ -196,17 +216,17 @@ Autopush used a [table rotation system](table_rotation.md), which is now legacy.
     Endpoint will deliver the message to the client completely bypassing
     Storage. This Notification will be referred to as a Direct
     Notification vs. a Stored Notification.
-* (_DynamoDb_) Provisioned Write Throughput for the Router table determines how
+* (_DynamoDb (legacy)_) Provisioned Write Throughput for the Router table determines how
     many connections per second can be accepted across the entire
     cluster.
-* (_DynamoDb_) Provisioned Read Throughput for the Router table **and** Provisioned
+* (_DynamoDb (legacy)_) Provisioned Read Throughput for the Router table **and** Provisioned
     Write throughput for the Storage table determine maximum possible
     notifications per second that can be handled. In theory notification
     throughput can be higher than Provisioned Write Throughput on the
     Storage as connected clients will frequently not require using
     Storage at all. Read's to the Router table are still needed for
     every notification, whether Storage is hit or not.
-* (_DynamoDb_) Provisioned Read Throughput on for the Storage table is an important
+* (_DynamoDb (legacy)_) Provisioned Read Throughput on for the Storage table is an important
     factor in maximum notification throughput, as many slow clients may
     require frequent Storage checks.
 * If a client is reconnecting, their Router record will be old. Router

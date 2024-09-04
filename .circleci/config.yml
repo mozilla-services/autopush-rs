@@ -8,8 +8,18 @@
 # DOCKERHUB_LOAD_TEST_REPO - Docker Hub repo for load tests, format: <username>/<repo>
 # DOCKER_LOAD_TEST_PASS - Docker Hub load test repo password
 # DOCKER_LOAD_TEST_USER - Docker Hub load test repo user
+#
+# These environment variables are necessary to authenticate with GCP and upload images to GAR
+# GCP_GAR_REPO - Name of GAR repo
+# GCP_PROJECT_ID - GCP project ID
+# GCP_SERVICE_ACCOUNT_EMAIL - GCP service account email
+# GCP_WIP_ID - GCP Workload Identity Pool ID
+# GCP_WIP_PROVIDER_ID - GCP Workload Identity Pool Provider ID
 
 version: 2.1
+
+orbs:
+  gcp-gcr: circleci/gcp-gcr@0.16.3
 
 commands:
   docker_login:
@@ -33,12 +43,76 @@ commands:
             else
               echo "${PASS}" | docker login -u="${USER}" --password-stdin
             fi
+  setup_rust:
+    steps:
+      - run:
+          name: Set up Rust
+          command: |
+            apt update
+            apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
+            apt install cmake -y
+            # RUST_VER
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.80 -y
+            export PATH=$PATH:$HOME/.cargo/bin
+            echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
+            rustc --version
+  build_applications:
+    steps:
+      - run:
+          name: Build Applicatins
+          command: cargo build --features=emulator
+  setup_bigtable:
+    steps:
+      - run:
+          name: Setup Bigtable
+          command: scripts/setup_bt.sh
+  setup_cbt:
+    steps:
+      - run:
+          name: Set up cbt
+          command: |
+            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+            apt-get update -y
+            apt install google-cloud-cli-cbt -y
+  create_test_result_workspace:
+    steps:
+      - run:
+          name: Create Workspace
+          command: mkdir -p workspace/test-results
+  restore_test_cache:
+    parameters:
+      cache_key:
+        type: string
+    steps:
+      - restore_cache:
+          name: Restoring Rust cache
+          key: <<parameters.cache_key>>
+  save_test_cache:
+    parameters:
+      cache_key:
+        type: string
+    steps:
+      - save_cache:
+          name: Save Rust cache
+          key: <<parameters.cache_key>>
+          paths:
+            - target
+            - ~/.cargo/registry
+            - ~/.cargo/git
+  setup_python:
+    steps:
+      - run:
+          name: Set up Python
+          command: |
+            pip install --upgrade pip
+            pip install poetry
 
 jobs:
   audit:
     docker:
       # NOTE: update version for all # RUST_VER
-      - image: rust:1.76
+      - image: rust:1.80
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -56,7 +130,7 @@ jobs:
 
   python-checks:
     docker:
-      - image: python:3.12-slim-bullseye
+      - image: python:3.12-slim-bookworm
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -77,112 +151,138 @@ jobs:
           name: isort, black, flake8, pydocstyle and mypy
           command: make lint
 
-  test:
+  test-integration:
     docker:
-      - image: python:3.12-slim-bullseye
+      - image: python:3.12-slim-bookworm
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         environment:
           RUST_BACKTRACE: 1
-      - image: amazon/dynamodb-local:latest
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        command: -jar DynamoDBLocal.jar -sharedDb
       - image: google/cloud-sdk:latest
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
-    resource_class: xlarge
+    resource_class: large
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
-      AWS_LOCAL_DYNAMODB: http://localhost:8000
     steps:
       - checkout
-      # Need to download the poetry.lock files so we can use their
-      # checksums in restore_cache.
-      - restore_cache:
-          name: Restoring Rust cache
-          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
-      - run:
-          name: Create Workspace
-          command: mkdir -p workspace
+      - restore_test_cache:
+          cache_key: rust-v1-integration-test-{{ checksum "Cargo.lock" }}
+      - create_test_result_workspace
+      - setup_rust
+      - build_applications
       - run:
           name: Set up system
           command: |
             apt update
-            apt install libssl-dev apt-transport-https ca-certificates gnupg curl -y
+            apt install libssl-dev apt-transport-https ca-certificates gnupg curl cmake -y
+      - setup_cbt
+      - setup_python
+      - setup_bigtable
       - run:
-          name: Set up cbt
-          command: |
-            echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-            apt-get update -y
-            apt install google-cloud-cli-cbt -y
+          name: Integration tests (Bigtable)
+          command: make integration-test
+          environment:
+            RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
+            # PYTEST_ARGS: -sv
+            DB_DSN: grpc://localhost:8086
+            TEST_RESULTS_DIR: workspace/test-results
+      - store_artifacts:
+          path: ~/project/workspace/test-results/integration_test_results.xml
+          destination: integration_test_results.xml
+      - store_test_results:
+          path: workspace/test-results
+      - save_test_cache:
+          cache_key: rust-v1-integration-test-cache-{{ checksum "Cargo.lock" }}
+
+  test-unit:
+    docker:
+      - image: python:3.12-slim-bookworm
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        environment:
+          RUST_BACKTRACE: 1
+          RUST_TEST_THREADS: 1
+      - image: google/cloud-sdk:latest
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        command: gcloud beta emulators bigtable start --host-port=localhost:8086
+    resource_class: 2xlarge
+    environment:
+      BIGTABLE_EMULATOR_HOST: localhost:8086
+    steps:
+      - checkout
+      # Need to download the poetry.lock files so we can use their
+      # checksums in restore_cache.
+      - restore_test_cache:
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
+      - create_test_result_workspace
+      - setup_rust
+      - setup_cbt
+      - setup_bigtable
       - run:
-          name: Set up Python
-          command: |
-            pip install --upgrade pip
-            pip install poetry
+          name: Install cargo-nextest
+          command: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
       - run:
-          name: Set up Rust
+          name: Echo Rust version
           command: |
-            apt update
-            apt install build-essential curl libstdc++6 libstdc++-10-dev libssl-dev pkg-config -y
-            apt install cmake -y
-            # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.76 -y
-            export PATH=$PATH:$HOME/.cargo/bin
-            echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build --features=emulator --features=dual
+      - run:
+          name: Install cargo-llvm-cov
+          command: cargo install cargo-llvm-cov
+      # Note: This build can potentially exceed the amount of memory availble to the CircleCI instance.
+      # We've seen that limiting the number of jobs helps reduce the frequency of this. (Note that
+      # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
+      # the machine level memory and CPU which are far higher than the memory allocated to the docker
+      # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
+      - run:
+          name: Report tests and coverage
+          command: |
+            cargo llvm-cov --summary-only --json --output-path workspace/test-results/cov.json nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
+      - store_artifacts:
+          path: ~/project/workspace/test-results/cov.json
+          destination: cov.json
+      - store_artifacts:
+          path: ~/project/target/nextest/ci/junit.xml
+          destination: junit.xml
+      - store_test_results:
+          path: target/nextest/ci
+      - save_test_cache:
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
+
+  rust-checks:
+    docker:
+      - image: python:3.12-slim-bookworm
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        environment:
+          RUST_BACKTRACE: 1
+          RUST_TEST_THREADS: 1
+    resource_class: large
+    environment:
+      BIGTABLE_EMULATOR_HOST: localhost:8086
+    steps:
+      - checkout
+      # Need to download the poetry.lock files so we can use their
+      # checksums in restore_cache.
+      - restore_test_cache:
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
+      - setup_rust
+      - run:
+          name: Echo Rust Version
+          command: |
+            rustc --version
       - run:
           name: Check formatting
           command: |
             cargo fmt -- --check
             cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
-      - run:
-          name: Setup Bigtable
-          command: scripts/setup_bt.sh
-      - run:
-          name: Rust tests
-          # Note: This build can potentially exceed the amount of memory availble to the CircleCI instance.
-          # We've seen that limiting the number of jobs helps reduce the frequency of this. (Note that
-          # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
-          # the machine level memory and CPU which are far higher than the memory allocated to the docker
-          # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
-          command: cargo test --features=emulator --features=dual --jobs=2
-      - run:
-          name: Integration tests (Bigtable)
-          command: make integration-test
-          environment:
-            DB_DSN: grpc://localhost:8086
-            TEST_RESULTS_DIR: workspace/test-results
-      - run:
-          name: Integration tests (DynamoDB)
-          command: make integration-test
-          environment:
-            TEST_RESULTS_DIR: workspace/test-results
-      - run:
-          name: Integration tests (Dual Bigtable/DynamoDB)
-          command: make integration-test
-          environment:
-            RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
-            # PYTEST_ARGS: -sv
-            DB_DSN: dual
-            DB_SETTINGS: tests/integration/dual_test.json
-            TEST_RESULTS_DIR: workspace/test-results
-      - store_test_results:
-          path: workspace/test-results
-      - save_cache:
-          name: Save Rust cache
-          key: rust-v1-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
-          paths:
-            - target
-            - ~/.cargo/registry
-            - ~/.cargo/git
 
   build:
     docker:
@@ -235,7 +335,7 @@ jobs:
 
   build-load-test:
     docker:
-      - image: cimg/base:2023.12
+      - image: cimg/base:2024.06
     steps:
       - checkout
       - setup_remote_docker:
@@ -291,7 +391,7 @@ jobs:
 
   deploy-load-test:
     docker:
-      - image: cimg/base:2023.12
+      - image: cimg/base:2024.06
     steps:
       - checkout
       - attach_workspace:
@@ -312,9 +412,44 @@ jobs:
             docker push "${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}"
             docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
-workflows:
-  version: 2
+  deploy-to-gar:
+    executor: gcp-gcr/default
+    parameters:
+      build_tag:
+        type: string
+        default: build
+      image:
+        type: string
+      registry-url:
+        type: string
+        default: us-docker.pkg.dev
+    steps:
+      - gcp-gcr/gcr-auth:
+          gcp_cred_config_file_path: ~/gcp_cred_config.json
+          google-project-id: GCP_PROJECT_ID
+          registry-url: <<parameters.registry-url>>
+          service_account_email: GCP_SERVICE_ACCOUNT_EMAIL
+          workload_identity_pool_id: GCP_WIP_ID
+          workload_identity_pool_provider_id: GCP_WIP_PROVIDER_ID
+      - run:
+          name: Tag image
+          command: |
+            if [ "${CIRCLE_BRANCH}" == "master" ]; then
+              echo 'export GAR_TAG=master' >> $BASH_ENV
+            elif [ ! -z "${CIRCLE_TAG}" ]; then
+              echo "export GAR_TAG=$CIRCLE_TAG" >> $BASH_ENV
+            fi
+              echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
+              source $BASH_ENV
+              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:$GAR_TAG
+              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:latest
+      - gcp-gcr/push-image:
+          image: $GAR_IMAGE
+          google-project-id: GCP_PROJECT_ID
+          registry-url: <<parameters.registry-url>>
+          tag: $GAR_TAG,latest
 
+workflows:
   build-test-deploy:
     jobs:
       - audit:
@@ -325,7 +460,18 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - test:
+      - test-integration:
+          name: Integration Tests
+          filters:
+            tags:
+              only: /.*/
+      - test-unit:
+          name: Rust Unit Tests
+          filters:
+            tags:
+              only: /.*/
+      - rust-checks:
+          name: Rust Formatting Check
           filters:
             tags:
               only: /.*/
@@ -353,14 +499,16 @@ workflows:
             tags:
               only: /.*/
 
-      # Comment out the following two sections for local CircleCI testing.
+      # Comment out the following four sections for local CircleCI testing.
       - deploy:
           name: deploy-autoconnect
           image: autoconnect:build
           repo: ${DOCKERHUB_CONNECT_REPO}
           requires:
             - build-autoconnect
-            - test
+            - Integration Tests
+            - Rust Unit Tests
+            - Rust Formatting Check
           filters:
             tags:
               only: /.*/
@@ -373,7 +521,37 @@ workflows:
           repo: ${DOCKERHUB_ENDPOINT_REPO}
           requires:
             - build-autoendpoint
-            - test
+            - Integration Tests
+            - Rust Unit Tests
+            - Rust Formatting Check
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
+      - deploy-to-gar:
+          name: deploy-autoconnect-gar
+          image: autoconnect
+          requires:
+            - build-autoconnect
+            - Integration Tests
+            - Rust Unit Tests
+            - Rust Formatting Check
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
+      - deploy-to-gar:
+          name: deploy-autoendpoint-gar
+          image: autoendpoint
+          requires:
+            - build-autoendpoint
+            - Integration Tests
+            - Rust Unit Tests
+            - Rust Formatting Check
           filters:
             tags:
               only: /.*/

@@ -21,6 +21,8 @@ pub struct UserAgentInfo {
     pub metrics_os: String,
     pub os_version: String,
     pub os: String,
+    // Note, Woothee can determine if a user agent is mobile if the
+    // ["smartphone", "mobilephone"].contains(category)
 }
 
 impl From<&str> for UserAgentInfo {
@@ -51,6 +53,16 @@ impl From<&str> for UserAgentInfo {
             os_version: wresult.os_version.to_string(),
             os: wresult.os.to_owned(),
             _user_agent_string: user_agent_string.to_owned(),
+        }
+    }
+}
+
+impl From<&actix_web::HttpRequest> for UserAgentInfo {
+    fn from(req: &actix_web::HttpRequest) -> UserAgentInfo {
+        if let Some(header) = req.headers().get(&actix_web::http::header::USER_AGENT) {
+            Self::from(header.to_str().unwrap_or("UNKNOWN"))
+        } else {
+            UserAgentInfo::default()
         }
     }
 }

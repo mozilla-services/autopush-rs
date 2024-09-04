@@ -5,9 +5,10 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
-use crate::routers::adm::settings::AdmSettings;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
+#[cfg(feature = "stub")]
+use crate::routers::stub::settings::StubSettings;
 
 pub const ENV_PREFIX: &str = "autoend";
 
@@ -28,6 +29,8 @@ pub struct Settings {
     pub router_table_name: String,
     pub message_table_name: String,
 
+    pub vapid_aud: Vec<String>,
+
     pub max_data_bytes: usize,
     pub crypto_keys: String,
     pub auth_keys: String,
@@ -42,7 +45,8 @@ pub struct Settings {
 
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
-    pub adm: AdmSettings,
+    #[cfg(feature = "stub")]
+    pub stub: StubSettings,
 }
 
 impl Default for Settings {
@@ -56,6 +60,10 @@ impl Default for Settings {
             db_settings: "".to_owned(),
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
+            vapid_aud: vec![
+                "https://push.services.mozilla.org".to_string(),
+                "http://127.0.0.1:9160".to_string(),
+            ],
             // max data is a bit hard to figure out, due to encryption. Using something
             // like pywebpush, if you encode a block of 4096 bytes, you'll get a
             // 4216 byte data block. Since we're going to be receiving this, we have to
@@ -71,7 +79,8 @@ impl Default for Settings {
             statsd_label: "autoendpoint".to_string(),
             fcm: FcmSettings::default(),
             apns: ApnsSettings::default(),
-            adm: AdmSettings::default(),
+            #[cfg(feature = "stub")]
+            stub: StubSettings::default(),
         }
     }
 }
@@ -93,9 +102,8 @@ impl Settings {
 
         let built = config.build()?;
 
-        built
-            .try_deserialize::<Self>()
-            .map_err(|error| match error {
+        built.try_deserialize::<Self>().map_err(|error| {
+            match error {
                 // Configuration errors are not very sysop friendly, Try to make them
                 // a bit more 3AM useful.
                 ConfigError::Message(error_msg) => {
@@ -112,7 +120,8 @@ impl Settings {
                     error!("Configuration error: Other: {:?}", &error);
                     error
                 }
-            })
+            }
+        })
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.

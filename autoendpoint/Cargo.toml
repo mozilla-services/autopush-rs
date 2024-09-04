@@ -24,14 +24,11 @@ openssl.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
-rusoto_core.workspace = true
-rusoto_dynamodb.workspace = true
 sentry.workspace = true
 sentry-actix.workspace = true
 sentry-core.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
-serde_dynamodb.workspace = true
 serde_json.workspace = true
 slog.workspace = true
 slog-async.workspace = true
@@ -44,7 +41,7 @@ tokio.workspace = true
 url.workspace = true
 uuid.workspace = true
 
-a2 = { version = "0.8" }
+a2 = { version = "0.10" }
 bytebuffer = "2.1"
 again = { version = "0.1.2", default-features = false, features = [
     "log",
@@ -52,10 +49,13 @@ again = { version = "0.1.2", default-features = false, features = [
 ] }
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
-jsonwebtoken = "8.0" # v9.0 breaks vapid aud tests. https://mozilla-hub.atlassian.net/browse/SYNC-4201
-validator = "0.17"
-validator_derive = "0.17"
+jsonwebtoken = "9.3.0"
+validator = "0.18"
+validator_derive = "0.18"
+
 yup-oauth2 = "8.1"
+# Updating to 9+ requires configuring rust-tls (See https://github.com/dermesser/yup-oauth2/issues/235)
+# yup-oauth2 = { version = "10.0.1", features = ["hyper-rustls"] }
 
 # For mockito test debugging
 #ureq={ version="2.4", features=["json"] }
@@ -63,13 +63,22 @@ yup-oauth2 = "8.1"
 [dev-dependencies]
 deadpool = { workspace = true }
 mockall.workspace = true
-mockito = "0.31"
+mockito = "1.4"
 tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
-default = ["dual"]
+default = ["bigtable"]
+# data store types
 bigtable = ["autopush_common/bigtable"]
-dynamodb = ["autopush_common/dynamodb"]
-dual = ["bigtable", "dynamodb"]
+
+# enable emulator to call locally run data store.
 emulator = ["bigtable"]
+
+# Enable "stub" router for local testing purposes.
+# The "stub" will return specified error strings or success
+# depending on which `app_id` client is called based on the registration
+# and endpoint. See [autoendpoint::router::stub::router::StubRouter]
+stub = []
+# Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
+log_vapid = []
