@@ -441,6 +441,8 @@ jobs:
           command: |
             if [ "${CIRCLE_BRANCH}" == "master" ]; then
               echo 'export GAR_TAG=master' >> $BASH_ENV
+            elif [ "${CIRCLE_BRANCH}" == "RRM-181" ]; then
+              echo 'export GAR_TAG=debug' >> $BASH_ENV
             elif [ ! -z "${CIRCLE_TAG}" ]; then
               echo "export GAR_TAG=$CIRCLE_TAG" >> $BASH_ENV
             fi
