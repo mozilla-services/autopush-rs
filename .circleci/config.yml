@@ -444,9 +444,7 @@ workflows:
           image: autoconnect
           requires:
             - build-autoconnect
-            - Integration Tests
-            - Rust Unit Tests
-            - Rust Formatting Check
+            - test
           filters:
             tags:
               only: /.*/
@@ -458,9 +456,7 @@ workflows:
           image: autoendpoint
           requires:
             - build-autoendpoint
-            - Integration Tests
-            - Rust Unit Tests
-            - Rust Formatting Check
+            - test
           filters:
             tags:
               only: /.*/
