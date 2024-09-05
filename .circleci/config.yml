@@ -10,11 +10,12 @@
 # DOCKER_LOAD_TEST_USER - Docker Hub load test repo user
 #
 # These environment variables are necessary to authenticate with GCP and upload images to GAR
+# GCP_GAR_PROJECT_ID - GCP project ID for GAR repo
 # GCP_GAR_REPO - Name of GAR repo
-# GCP_PROJECT_ID - GCP project ID
-# GCP_SERVICE_ACCOUNT_EMAIL - GCP service account email
-# GCP_WIP_ID - GCP Workload Identity Pool ID
-# GCP_WIP_PROVIDER_ID - GCP Workload Identity Pool Provider ID
+# GCP_OIDC_PROJECT_NUMBER - GCP project number for Workload Identity Pool/Provider
+# GCP_OIDC_SERVICE_ACCOUNT_EMAIL - GCP service account email
+# GCP_OIDC_WIP_ID - GCP Workload Identity Pool ID
+# GCP_OIDC_WIP_PROVIDER_ID - GCP Workload Identity Pool Provider ID
 
 version: 2.1
 
@@ -428,12 +429,18 @@ jobs:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-gcr-auth
       - gcp-gcr/gcr-auth:
           gcp_cred_config_file_path: ~/gcp_cred_config.json
-          google-project-id: GCP_PROJECT_ID
+          google-project-id: GCP_GAR_PROJECT_ID
+          google_project_number: GCP_OIDC_PROJECT_NUMBER
           registry-url: <<parameters.registry-url>>
-          service_account_email: GCP_SERVICE_ACCOUNT_EMAIL
+          service_account_email: GCP_OIDC_SERVICE_ACCOUNT_EMAIL
           use_oidc: true
-          workload_identity_pool_id: GCP_WIP_ID
-          workload_identity_pool_provider_id: GCP_WIP_PROVIDER_ID
+          workload_identity_pool_id: GCP_OIDC_WIP_ID
+          workload_identity_pool_provider_id: GCP_OIDC_WIP_PROVIDER_ID
+      - attach_workspace:
+          at: /tmp/cache
+      - run:
+          name: Restore Docker image cache
+          command: docker load -i /tmp/cache/docker.tar
       - run:
           name: Tag image
           command: |
@@ -442,15 +449,15 @@ jobs:
             elif [ ! -z "${CIRCLE_TAG}" ]; then
               echo "export GAR_TAG=$CIRCLE_TAG" >> $BASH_ENV
             fi
-              echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
+              echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_GAR_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
               docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:$GAR_TAG
               docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:latest
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
-          image: $GAR_IMAGE
-          google-project-id: GCP_PROJECT_ID
+          image: "${GCP_GAR_REPO}/<<parameters.image>>"
+          google-project-id: GCP_GAR_PROJECT_ID
           registry-url: <<parameters.registry-url>>
           tag: $GAR_TAG,latest
 
