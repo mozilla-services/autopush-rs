@@ -1,3 +1,24 @@
+<a name="1.71.7"></a>
+## 1.71.7 (2024-09-05)
+
+
+#### Chore
+
+*   fix GAR deploy dependencies ([9996254e](https://github.com/mozilla-services/autopush-rs/commit/9996254e5402e1f6ec140a6f80a41ca3f8137d65))
+*   added missing use_oidc gcr-auth param (#761) ([3e358d46](https://github.com/mozilla-services/autopush-rs/commit/3e358d4628074799988c11f156a891c3ec616ee7))
+
+#### Bug Fixes
+
+*   minor fixes for GAR deploy CircleCI jobs (#764) ([1883d278](https://github.com/mozilla-services/autopush-rs/commit/1883d278f2ddc43bf34443e7045f3525c73f6965))
+*   using google_project_number for OIDC authentication (#763) ([4445fcfb](https://github.com/mozilla-services/autopush-rs/commit/4445fcfb3ba42ed6271bbf7230a7b13023fcd929))
+* **circleci:**  now using correct project IDs, cleaned up env var names (#762) ([d4fc2079](https://github.com/mozilla-services/autopush-rs/commit/d4fc2079ae4770b9815cea656a2ea01b63a01d6f))
+
+#### Features
+
+*   push Docker images to GAR (#746) ([2995239d](https://github.com/mozilla-services/autopush-rs/commit/2995239dfdd4bbd38cc3fdf42ec412a09903b1c7))
+
+
+
 <a name="1.71.6"></a>
 ## 1.71.6 (2024-09-05)
 
