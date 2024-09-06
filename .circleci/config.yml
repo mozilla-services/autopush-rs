@@ -477,7 +477,7 @@ workflows:
 
       # Comment out the following two sections for local CircleCI testing.
       - deploy:
-          name: deploy-autoconnect-gar
+          name: deploy-autoconnect
           image: autoconnect
           requires:
             - build-autoconnect
@@ -491,7 +491,7 @@ workflows:
               only: master
 
       - deploy:
-          name: deploy-autoendpoint-gar
+          name: deploy-autoendpoint
           image: autoendpoint
           requires:
             - build-autoendpoint
