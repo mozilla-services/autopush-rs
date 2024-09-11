@@ -355,65 +355,6 @@ jobs:
             - autopush-locust.tar
 
   deploy:
-    docker:
-      - image: docker:18.03.0-ce
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-    parameters:
-      image:
-        type: string
-      repo:
-        type: string
-    steps:
-      - setup_remote_docker
-      - docker_login
-      - attach_workspace:
-          at: /cache
-      - run:
-          name: Restore Docker image cache
-          command: docker load -i /cache/docker.tar
-      - run:
-          name: Deploy to Dockerhub
-          command: |
-            if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              # deploy master
-              docker login -u $DOCKER_USER -p $DOCKER_PASS
-              docker tag <<parameters.image>> <<parameters.repo>>:latest
-              docker push <<parameters.repo>>:latest
-            elif  [ ! -z "${CIRCLE_TAG}" ]; then
-              # deploy a release tag
-              docker login -u $DOCKER_USER -p $DOCKER_PASS
-              echo "<<parameters.repo>>:${CIRCLE_TAG}"
-              docker tag <<parameters.image>> "<<parameters.repo>>:${CIRCLE_TAG}"
-              docker images
-              docker push "<<parameters.repo>>:${CIRCLE_TAG}"
-            fi
-
-  deploy-load-test:
-    docker:
-      - image: cimg/base:2024.06
-    steps:
-      - checkout
-      - attach_workspace:
-          at: /tmp/workspace
-      - setup_remote_docker
-      - run:
-          name: Load Docker Image From Workspace
-          command: docker load -i /tmp/workspace/autopush-locust.tar
-      - docker_login:
-          load: True
-      - run:
-          name: Push to Docker Hub
-          command: |
-            echo ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
-            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
-            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:latest
-            docker images
-            docker push "${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}"
-            docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
-
-  deploy-to-gar:
     executor: gcp-gcr/default
     parameters:
       build_tag:
@@ -460,6 +401,29 @@ jobs:
           google-project-id: GCP_GAR_PROJECT_ID
           registry-url: <<parameters.registry-url>>
           tag: $GAR_TAG,latest
+
+  deploy-load-test:
+    docker:
+      - image: cimg/base:2024.06
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      - setup_remote_docker
+      - run:
+          name: Load Docker Image From Workspace
+          command: docker load -i /tmp/workspace/autopush-locust.tar
+      - docker_login:
+          load: True
+      - run:
+          name: Push to Docker Hub
+          command: |
+            echo ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
+            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
+            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:latest
+            docker images
+            docker push "${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}"
+            docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
 workflows:
   build-test-deploy:
@@ -511,11 +475,10 @@ workflows:
             tags:
               only: /.*/
 
-      # Comment out the following four sections for local CircleCI testing.
+      # Comment out the following two sections for local CircleCI testing.
       - deploy:
           name: deploy-autoconnect
-          image: autoconnect:build
-          repo: ${DOCKERHUB_CONNECT_REPO}
+          image: autoconnect
           requires:
             - build-autoconnect
             - Integration Tests
@@ -529,35 +492,6 @@ workflows:
 
       - deploy:
           name: deploy-autoendpoint
-          image: autoendpoint:build
-          repo: ${DOCKERHUB_ENDPOINT_REPO}
-          requires:
-            - build-autoendpoint
-            - Integration Tests
-            - Rust Unit Tests
-            - Rust Formatting Check
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only: master
-
-      - deploy-to-gar:
-          name: deploy-autoconnect-gar
-          image: autoconnect
-          requires:
-            - build-autoconnect
-            - Integration Tests
-            - Rust Unit Tests
-            - Rust Formatting Check
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only: master
-
-      - deploy-to-gar:
-          name: deploy-autoendpoint-gar
           image: autoendpoint
           requires:
             - build-autoendpoint
