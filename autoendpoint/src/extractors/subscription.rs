@@ -157,12 +157,11 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Opti
         None => return Ok(None),
     };
 
-    let vapid = VapidHeader::parse(auth_header).map_err(|e| {
+    let vapid = VapidHeader::parse(auth_header).inspect_err(|e| {
         metrics
             .incr_with_tags("notification.auth.error")
             .with_tag("error", e.as_metric())
             .send();
-        e
     })?;
 
     metrics

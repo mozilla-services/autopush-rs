@@ -1,3 +1,23 @@
+<a name="1.71.5"></a>
+## 1.71.5 (2024-08-29)
+
+
+#### Chore
+
+*   update openssl per RUSTSEC-2024-0357 ([52d9da33](https://github.com/mozilla-services/autopush-rs/commit/52d9da335e8bfe5dcef9583e621f917a2e9f5099))
+
+
+
+<a name="1.71.4"></a>
+## 1.71.4 (2024-08-29)
+
+
+#### Chore
+
+*   Re-tag 1.71.3
+
+
+
 <a name="1.71.3"></a>
 ## 1.71.3 (2024-05-31)
 

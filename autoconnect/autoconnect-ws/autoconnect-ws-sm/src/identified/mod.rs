@@ -245,7 +245,7 @@ impl WebPushClient {
             if let Some(node_id) = user.node_id {
                 app_state
                     .http
-                    .put(&format!("{}/notif/{}", node_id, uaid.as_simple()))
+                    .put(format!("{}/notif/{}", node_id, uaid.as_simple()))
                     .send()
                     .await?
                     .error_for_status()?;
