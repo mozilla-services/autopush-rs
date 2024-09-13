@@ -11,6 +11,14 @@ use autopush_common::util::{sec_since_epoch, ONE_DAY_IN_SECONDS};
 
 pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 
+/*
+The Assertion block for the VAPID header.
+
+Please note: We require the `sub` claim in addition to the `exp` and `aud`.
+See [HTTP Endpoints for Notficiations::Lexicon::{vapid_key}](https://mozilla-services.github.io/autopush-rs/http.html#lexicon-1)
+for details.
+
+ */
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct VapidClaims {
     pub exp: u64,
