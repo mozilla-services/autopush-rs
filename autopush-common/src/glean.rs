@@ -16,6 +16,7 @@ use uuid::Uuid;
 ///
 /// To record a Glean event
 /// ```
+/// # These values are provided by Glean once the application is approved.
 /// const GLEAN_APPLICATION_ID:&str = "GleanApplicationId";
 /// const GLEAN_DISPLAY_VERSION:&str = "GleanDisplayVersion";
 /// const GLEAN_CHANNEL:&str = "GleanChannel";
@@ -31,10 +32,10 @@ use uuid::Uuid;
 ///     GLEAN_APPLICATION_ID,
 ///     GLEAN_DISPLAY_VERSION,
 ///     GLEAN_CHANNEL,
+///     get_user_agent_string(),    # these functions are placeholders
+///     get_ip_address_string(),    # use the client IP and UA string.
 ///     "autotrack",        # the ping.yaml / metrics.yaml Category name
 ///     "some_event",       # the metrics.yaml Event descriptor name
-///     get_user_agent_string(),    # these functions are placeholders
-///     get_ip_address_string(),
 ///     quantities,
 ///     strings)?.to_string();
 ///
@@ -57,13 +58,15 @@ impl Glean {
     // Not a fan, but not sure how to best deal with this.
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
-        application_id: &str,
+        application_id: &str, //TODO: these should probably come from some `settings` bank
         display_version: &str,
         channel: &str,
+
+        user_agent: &str, // TODO: These should come from the request bank
+        ip_address: &str,
+
         category_name: &str,
         event_name: &str,
-        user_agent: &str,
-        ip_address: &str,
         quantities: Option<HashMap<&str, i64>>,
         strings: Option<HashMap<&str, &str>>,
     ) -> Result<Self, serde_json::Error> {
