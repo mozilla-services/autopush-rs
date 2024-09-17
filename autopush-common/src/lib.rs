@@ -9,6 +9,7 @@ extern crate slog_scope;
 pub mod db;
 pub mod endpoint;
 pub mod errors;
+#[cfg(feature = "glean")]
 pub mod glean;
 pub mod logging;
 pub mod metrics;
