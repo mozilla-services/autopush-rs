@@ -54,6 +54,8 @@ pub struct Glean {
 }
 
 impl Glean {
+    // Not a fan, but not sure how to best deal with this.
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         application_id: &str,
         display_version: &str,
@@ -129,7 +131,7 @@ impl MetricSet {
         values: HashMap<&str, &str>,
     ) -> Result<&mut MetricSet, serde_json::Error> {
         for (key, value) in values.iter() {
-            self.set_string(*key, *value)?;
+            self.set_string(key, value)?;
         }
         Ok(self)
     }
@@ -140,7 +142,7 @@ impl MetricSet {
         values: HashMap<&str, i64>,
     ) -> Result<&mut MetricSet, serde_json::Error> {
         for (key, value) in values.iter() {
-            self.set_quantity(*key, value)?;
+            self.set_quantity(key, value)?;
         }
         Ok(self)
     }
