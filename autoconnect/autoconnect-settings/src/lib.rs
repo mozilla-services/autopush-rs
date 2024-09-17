@@ -108,6 +108,9 @@ pub struct Settings {
     ///
     /// By default, the number of available physical CPUs is used as the worker count.
     pub actix_workers: Option<usize>,
+
+    /// various Glean settings.
+    pub glean_settings: Option<String>,
 }
 
 impl Default for Settings {
@@ -139,6 +142,7 @@ impl Default for Settings {
             msg_limit: 150,
             actix_max_connections: None,
             actix_workers: None,
+            glean_settings: None,
         }
     }
 }

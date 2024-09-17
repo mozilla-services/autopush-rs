@@ -82,3 +82,5 @@ emulator = ["bigtable"]
 stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []
+
+glean = ["autopush_common/glean"]

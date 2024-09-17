@@ -18,6 +18,9 @@ use autopush_common::{
     middleware::sentry::SentryWrapper,
 };
 
+#[cfg(feature = "glean")]
+use autopush_common::glean::GleanSettings;
+
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
 #[cfg(feature = "stub")]
@@ -45,6 +48,8 @@ pub struct AppState {
     pub apns_router: Arc<ApnsRouter>,
     #[cfg(feature = "stub")]
     pub stub_router: Arc<StubRouter>,
+    #[cfg(feature = "glean")]
+    pub glean_settings: Box<GleanSettings>,
 }
 
 pub struct Server;
@@ -107,6 +112,10 @@ impl Server {
         );
         #[cfg(feature = "stub")]
         let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
+
+        #[cfg(feature = "glean")]
+        let glean_settings: Box<GleanSettings> = Box::new(settings.glean_settings.clone());
+
         let app_state = AppState {
             metrics: metrics.clone(),
             settings,
@@ -117,6 +126,8 @@ impl Server {
             apns_router,
             #[cfg(feature = "stub")]
             stub_router,
+            #[cfg(feature = "glean")]
+            glean_settings,
         };
 
         spawn_pool_periodic_reporter(

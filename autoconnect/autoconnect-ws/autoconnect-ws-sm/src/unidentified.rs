@@ -8,6 +8,8 @@ use autoconnect_common::{
     protocol::{BroadcastValue, ClientMessage, ServerMessage},
 };
 use autoconnect_settings::{AppState, Settings};
+#[cfg(feature = "glean")]
+use autopush_common::glean::{Glean, GleanSettings, MetricSet};
 use autopush_common::{
     db::{User, USER_RECORD_VERSION},
     util::ms_since_epoch,
@@ -141,6 +143,37 @@ impl UnidentifiedClient {
                 if !self.app_state.db.update_user(&mut user).await? {
                     let _ = self.app_state.metrics.incr("ua.already_connected");
                     return Err(SMErrorKind::AlreadyConnected.into());
+                }
+                #[cfg(feature = "glean")]
+                {
+                    // Compose the "Glean" metric string and write it to STDOUT, which is the
+                    // expected destination.
+                    let glean_settings: GleanSettings = self.app_state.glean_settings.clone();
+                    let mut metric_set = MetricSet::default();
+                    metric_set
+                        .add_string("uaid", &user.uaid.to_string())
+                        .map_err(|e| {
+                            SMErrorKind::Internal(format!(
+                                "Failed to construct Glean record: {:?}",
+                                e
+                            ))
+                        })?
+                        .add_string("app", "autoconnect")
+                        .map_err(|e| {
+                            SMErrorKind::Internal(format!(
+                                "Failed to construct Glean record: {:?}",
+                                e
+                            ))
+                        })?;
+                    let glean_string =
+                        Glean::try_new(&glean_settings, "autopush", "dau", &metric_set, None, None)
+                            .map_err(|e| {
+                                SMErrorKind::Internal(format!(
+                                    "Failed to compose Glean record: {:?}",
+                                    e
+                                ))
+                            })?;
+                    println!("{}", glean_string);
                 }
                 return Ok(GetOrCreateUser {
                     user,
