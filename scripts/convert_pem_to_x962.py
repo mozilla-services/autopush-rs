@@ -11,12 +11,13 @@ import base64
 import sys
 
 from typing import cast
-from cryptography.hazmat.primitives.asymmetric import ec, utils as ec_utils
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
 
 try:
-    content = open(sys.argv[1], "rb").read()
-    pubkey = serialization.load_pem_public_key(content)
+    with open(sys.argv[1], "rb") as fp:
+        content = fp.read()
+        pubkey = serialization.load_pem_public_key(content)
 except IndexError:
     print ("Please specify a public key PEM file to convert.")
     exit()

@@ -35,9 +35,11 @@ pub struct Subscription {
     pub user: User,
     pub channel_id: Uuid,
     pub vapid: Option<VapidHeaderWithKey>,
-    /// Should this subscription update be tracked internally?
+    /// A stored value here indicates that the subscription update
+    /// should be tracked internally.
     /// (This should ONLY be applied for messages that match known
     /// Mozilla provided VAPID public keys.)
+    ///
     pub tracking_id: Option<String>,
 }
 
@@ -74,7 +76,7 @@ impl FromRequest for Subscription {
 
             trace!("raw vapid: {:?}", &vapid);
             let trackable = if let Some(vapid) = &vapid {
-                app_state.settings.is_trackable(vapid)
+                app_state.reliability.is_trackable(vapid)
             } else {
                 false
             };
@@ -132,17 +134,14 @@ impl FromRequest for Subscription {
                     .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
             }
 
+            let tracking_id =
+                trackable.then(|| app_state.reliability.get_tracking_id(req.headers()));
+
             Ok(Subscription {
                 user,
                 channel_id,
                 vapid,
-                // Eventually this will be replaced by the generated, opaque
-                // tracking ID, for now, just use a simple UUID4 string.
-                tracking_id: if trackable {
-                    Some(uuid::Uuid::new_v4().as_simple().to_string())
-                } else {
-                    None
-                },
+                tracking_id,
             })
         }
         .boxed_local()
