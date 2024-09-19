@@ -332,14 +332,12 @@ mod tests {
             None,
         )?;
 
-        dbg!(&glean);
         assert_eq!(&glean.fields.document_namespace, "APPLICATION_ID");
         assert_eq!(&glean.fields.document_type, "category_name");
         assert_eq!(&glean.fields.user_agent, &None);
         assert_eq!(&glean.fields.ip_address, &None);
         assert!(!&glean.fields.document_id.is_empty());
         let de_payload = Value::from_str(&glean.fields.payload)?;
-        dbg!(&de_payload);
         assert_eq!(
             de_payload
                 .get("client_info")
@@ -402,7 +400,6 @@ mod tests {
 
         let pinfo = &de_payload.get("ping_info").unwrap();
         let sts = parse_rfc3339(&pinfo.get("start_time").unwrap().to_string());
-        dbg!(&de_payload.get("ping_info").unwrap().get("end_time"));
         let ets = parse_rfc3339(&pinfo.get("end_time").unwrap().to_string());
         assert_eq!(sts, ets);
         assert!(sts > now);
@@ -416,8 +413,7 @@ mod tests {
 
         let settings: GleanSettings = serde_json::from_str(setting_string)?;
 
-        dbg!(settings);
-
+        assert_eq!(settings.application_id, "APPLICATION_ID");
         Ok(())
     }
 }
