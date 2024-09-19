@@ -225,13 +225,9 @@ impl VapidTracker {
 
 #[cfg(test)]
 mod tests {
-<<<<<<< HEAD
     use actix_http::header::{HeaderMap, HeaderName, HeaderValue};
 
     use super::{Settings, VapidTracker};
-=======
-    use super::Settings;
->>>>>>> 0f8c0292a677104bdcb71226601d31b11dd1979c
     use crate::{
         error::ApiResult,
         headers::vapid::{VapidHeader, VapidHeaderWithKey},
@@ -258,32 +254,6 @@ mod tests {
         };
         let result = settings.auth_keys();
         assert_eq!(result, success);
-        Ok(())
-    }
-
-    #[test]
-    fn test_tracking_keys() -> ApiResult<()> {
-        let mut settings = Settings{
-            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI"]"#.to_owned(),
-            ..Default::default()
-        };
-
-        let test_header = VapidHeaderWithKey {
-            vapid: VapidHeader {
-                scheme: "".to_owned(),
-                token: "".to_owned(),
-                version_data: crate::headers::vapid::VapidVersionData::Version1,
-            },
-            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI".to_owned()
-        };
-
-        let result = settings.tracking_keys();
-        assert!(!result.is_empty());
-
-        // emulate Settings.with_env_and_config_file()
-        settings.tracking_vapid_pubs = result;
-
-        assert!(settings.is_trackable(&test_header));
         Ok(())
     }
 
