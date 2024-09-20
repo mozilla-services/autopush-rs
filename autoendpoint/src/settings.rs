@@ -40,9 +40,6 @@ pub struct Settings {
     /// You can use `scripts/convert_pem_to_x962.py` to easily convert EC Public keys stored in
     /// PEM format into appropriate x962 format.
     pub tracking_keys: String,
-    /// Cached, parsed tracking keys.
-    //TODO: convert to decoded Vec<u8>?
-    pub tracking_vapid_pubs: Vec<String>,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
@@ -77,7 +74,6 @@ impl Default for Settings {
                 "https://push.services.mozilla.org".to_string(),
                 "http://127.0.0.1:9160".to_string(),
             ],
-            tracking_vapid_pubs: vec![],
             // max data is a bit hard to figure out, due to encryption. Using something
             // like pywebpush, if you encode a block of 4096 bytes, you'll get a
             // 4216 byte data block. Since we're going to be receiving this, we have to
@@ -115,7 +111,7 @@ impl Settings {
         // down to the sub structures.
         config = config.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
 
-        let mut built: Self = config.build()?.try_deserialize::<Self>().map_err(|error| {
+        let built: Self = config.build()?.try_deserialize::<Self>().map_err(|error| {
             match error {
                 // Configuration errors are not very sysop friendly, Try to make them
                 // a bit more 3AM useful.
@@ -135,9 +131,6 @@ impl Settings {
                 }
             }
         })?;
-
-        // cache the tracking keys we've built.
-        built.tracking_vapid_pubs = built.tracking_keys();
 
         Ok(built)
     }
@@ -177,11 +170,10 @@ impl Settings {
     }
 
     /// Get the list of tracking public keys
+    // TODO: this should return a Vec<[u8]> so that key formatting errors do not cause
+    // false rejections. This is not a problem now since we have access to the source
+    // public key, but that may not always be true.
     pub fn tracking_keys(&self) -> Vec<String> {
-        // return the cached version if present.
-        if !self.tracking_vapid_pubs.is_empty() {
-            return self.tracking_vapid_pubs.clone();
-        };
         let keys = &self.tracking_keys.replace(['"', ' '], "");
         Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
             .map(|v| v.to_owned())
@@ -214,12 +206,15 @@ impl VapidTracker {
     pub fn get_tracking_id(&self, headers: &HeaderMap) -> String {
         headers
             .get("X-MessageId")
-            .map(|s| {
-                s.to_str()
-                    .unwrap_or(uuid::Uuid::new_v4().as_simple().to_string().as_str())
-                    .to_string()
-            })
-            .unwrap_or(uuid::Uuid::new_v4().as_simple().to_string())
+            .and_then(|v|
+                // TODO: we should convert the public key string to a bitarray
+                // this would prevent any formatting errors from falsely rejecting
+                // the key. We're ok with comparing strings because we currently
+                // have access to the same public key value string that is being
+                // used, but that may not always be the case.
+                v.to_str().ok())
+            .map(|v| v.to_owned())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().as_simple().to_string())
     }
 }
 
