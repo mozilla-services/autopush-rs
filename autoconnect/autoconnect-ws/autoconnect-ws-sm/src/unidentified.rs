@@ -172,22 +172,18 @@ impl UnidentifiedClient {
                                 "Failed to construct Glean record: {:?}",
                                 e
                             ))
-                        })?
-                        .add_string("app", "autoconnect")
-                        .map_err(|e| {
-                            SMErrorKind::Internal(format!(
-                                "Failed to construct Glean record: {:?}",
-                                e
-                            ))
                         })?;
-                    let glean_string =
-                        Glean::try_new(&glean_settings, "autopush", "dau", &metric_set, None, None)
-                            .map_err(|e| {
-                                SMErrorKind::Internal(format!(
-                                    "Failed to compose Glean record: {:?}",
-                                    e
-                                ))
-                            })?;
+                    let glean_string = Glean::try_new(
+                        &glean_settings,
+                        "autoconnect",
+                        "dau",
+                        &metric_set,
+                        None,
+                        None,
+                    )
+                    .map_err(|e| {
+                        SMErrorKind::Internal(format!("Failed to compose Glean record: {:?}", e))
+                    })?;
                     println!("{}", glean_string);
                 }
                 return Ok(GetOrCreateUser {

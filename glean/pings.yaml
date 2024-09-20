@@ -1,0 +1,38 @@
+## Describe the `pings` you're sending out.
+## This file also does double duty as the wrapper file for server metric logging.
+## The metrics for server logging are described in `metrics_server.yaml`, but are
+## limited to `event`, `string`, & `quantity`.
+
+# Schema
+$schema: moz://mozilla.org/schemas/glean/pings/1-0-0
+
+# Each group defines a discrete logging event. `event` and the field types
+# in `metrics_server.yaml` are associated with these, and discrete Loggers
+# are built for each.
+# NOTE: A potentially empty `metrics` group will always be built since that's
+# the default. It depends on if any of the `event` or field types specified indicate
+# if they're included in the default `metrics` ping.
+
+# There are no groups, well, technically, this is the group. It's
+# limited to alphanum.
+autoconnect:
+  bugs:
+    - "https://github.com/mozilla-services/autopush-rs/issues"
+  data_reviews:
+    # TODO:
+    - "https://example.com"
+  notification_emails:
+    - "push-admin+glean@mozilla.com"
+  description: "Record information related to the Daily Active Use (DAU) of the desktop connection server"
+  include_client_id: false
+
+autoendpoint:
+  bugs:
+    - "https://github.com/mozilla-services/autopush-rs/issues"
+  data_reviews:
+    # TODO:
+    - "https://example.com"
+  notification_emails:
+    - "push-admin+glean@mozilla.com"
+  description: "Record information related to the Daily Active Use (DAU) of the endpoint server by the mobile client."
+  include_client_id: false

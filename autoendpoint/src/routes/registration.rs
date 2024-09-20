@@ -201,16 +201,18 @@ pub async fn get_channels_route(
                 .add_string("uaid", &user.uaid.to_string())
                 .map_err(|e| {
                     ApiErrorKind::General(format!("Failed to construct Glean record: {:?}", e))
-                })?
-                .add_string("app", "autoendpoint")
-                .map_err(|e| {
-                    ApiErrorKind::General(format!("Failed to construct Glean record: {:?}", e))
                 })?;
-            let glean_string =
-                Glean::try_new(glean_settings, "autopush", "dau", &metric_set, None, None)
-                    .map_err(|e| {
-                        ApiErrorKind::General(format!("Failed to compose Glean record: {:?}", e))
-                    })?;
+            let glean_string = Glean::try_new(
+                glean_settings,
+                "autoendpoint",
+                "dau",
+                &metric_set,
+                None,
+                None,
+            )
+            .map_err(|e| {
+                ApiErrorKind::General(format!("Failed to compose Glean record: {:?}", e))
+            })?;
             println!("{}", glean_string);
         }
     }
