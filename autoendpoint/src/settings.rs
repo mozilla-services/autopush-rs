@@ -1,10 +1,12 @@
 //! Application settings
 
+use actix_http::header::HeaderMap;
 use config::{Config, ConfigError, Environment, File};
 use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
+use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
 #[cfg(feature = "stub")]
@@ -30,6 +32,14 @@ pub struct Settings {
     pub message_table_name: String,
 
     pub vapid_aud: Vec<String>,
+
+    /// A stringified JSON list of VAPID public keys which should be tracked internally.
+    /// This should ONLY include Mozilla generated and consumed messages (e.g. "SendToTab", etc.)
+    /// These keys should be specified in stripped, b64encoded, X962 format (e.g. a single line of
+    /// base64 encoded data without padding).
+    /// You can use `scripts/convert_pem_to_x962.py` to easily convert EC Public keys stored in
+    /// PEM format into appropriate x962 format.
+    pub tracking_keys: String,
 
     pub max_data_bytes: usize,
     pub crypto_keys: String,
@@ -71,6 +81,7 @@ impl Default for Settings {
             max_data_bytes: 5630,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
+            tracking_keys: r#"[]"#.to_string(),
             human_logs: false,
             connection_timeout_millis: 1000,
             request_timeout_millis: 3000,
@@ -100,9 +111,7 @@ impl Settings {
         // down to the sub structures.
         config = config.add_source(Environment::with_prefix(ENV_PREFIX).separator("__"));
 
-        let built = config.build()?;
-
-        built.try_deserialize::<Self>().map_err(|error| {
+        let built: Self = config.build()?.try_deserialize::<Self>().map_err(|error| {
             match error {
                 // Configuration errors are not very sysop friendly, Try to make them
                 // a bit more 3AM useful.
@@ -121,7 +130,9 @@ impl Settings {
                     error
                 }
             }
-        })
+        })?;
+
+        Ok(built)
     }
 
     /// Convert a string like `[item1,item2]` into a iterator over `item1` and `item2`.
@@ -158,6 +169,17 @@ impl Settings {
             .collect()
     }
 
+    /// Get the list of tracking public keys
+    // TODO: this should return a Vec<[u8]> so that key formatting errors do not cause
+    // false rejections. This is not a problem now since we have access to the source
+    // public key, but that may not always be true.
+    pub fn tracking_keys(&self) -> Vec<String> {
+        let keys = &self.tracking_keys.replace(['"', ' '], "");
+        Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
+            .map(|v| v.to_owned())
+            .collect()
+    }
+
     /// Get the URL for this endpoint server
     pub fn endpoint_url(&self) -> Url {
         let endpoint = if self.endpoint_url.is_empty() {
@@ -169,10 +191,42 @@ impl Settings {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct VapidTracker(pub Vec<String>);
+impl VapidTracker {
+    /// Very simple string check to see if the Public Key specified in the Vapid header
+    /// matches the set of trackable keys.
+    pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
+        // ideally, [Settings.with_env_and_config_file()] does the work of pre-populating
+        // the Settings.tracking_vapid_pubs cache, but we can't rely on that.
+        self.0.contains(&vapid.public_key)
+    }
+
+    /// Extract the message Id from the headers (if present), otherwise just make one up.
+    pub fn get_tracking_id(&self, headers: &HeaderMap) -> String {
+        headers
+            .get("X-MessageId")
+            .and_then(|v|
+                // TODO: we should convert the public key string to a bitarray
+                // this would prevent any formatting errors from falsely rejecting
+                // the key. We're ok with comparing strings because we currently
+                // have access to the same public key value string that is being
+                // used, but that may not always be the case.
+                v.to_str().ok())
+            .map(|v| v.to_owned())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().as_simple().to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::Settings;
-    use crate::error::ApiResult;
+    use actix_http::header::{HeaderMap, HeaderName, HeaderValue};
+
+    use super::{Settings, VapidTracker};
+    use crate::{
+        error::ApiResult,
+        headers::vapid::{VapidHeader, VapidHeaderWithKey},
+    };
 
     #[test]
     fn test_auth_keys() -> ApiResult<()> {
@@ -251,5 +305,50 @@ mod tests {
         } else {
             env::remove_var(&timeout);
         }
+    }
+
+    #[test]
+    fn test_tracking_keys() -> ApiResult<()> {
+        let settings = Settings{
+            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI"]"#.to_owned(),
+            ..Default::default()
+        };
+
+        let test_header = VapidHeaderWithKey {
+            vapid: VapidHeader {
+                scheme: "".to_owned(),
+                token: "".to_owned(),
+                version_data: crate::headers::vapid::VapidVersionData::Version1,
+            },
+            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI".to_owned()
+        };
+
+        let key_set = settings.tracking_keys();
+        assert!(!key_set.is_empty());
+
+        let reliability = VapidTracker(key_set);
+        assert!(reliability.is_trackable(&test_header));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tracking_id() -> ApiResult<()> {
+        let mut headers = HeaderMap::new();
+        let keys = Vec::new();
+        let reliability = VapidTracker(keys);
+
+        let key = reliability.get_tracking_id(&headers);
+        assert!(!key.is_empty());
+
+        headers.insert(
+            HeaderName::from_lowercase(b"x-messageid").unwrap(),
+            HeaderValue::from_static("123foobar456"),
+        );
+
+        let key = reliability.get_tracking_id(&headers);
+        assert_eq!(key, "123foobar456".to_owned());
+
+        Ok(())
     }
 }

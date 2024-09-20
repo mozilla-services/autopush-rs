@@ -35,6 +35,12 @@ pub struct Subscription {
     pub user: User,
     pub channel_id: Uuid,
     pub vapid: Option<VapidHeaderWithKey>,
+    /// A stored value here indicates that the subscription update
+    /// should be tracked internally.
+    /// (This should ONLY be applied for messages that match known
+    /// Mozilla provided VAPID public keys.)
+    ///
+    pub tracking_id: Option<String>,
 }
 
 impl FromRequest for Subscription {
@@ -69,6 +75,11 @@ impl FromRequest for Subscription {
                 .transpose()?;
 
             trace!("raw vapid: {:?}", &vapid);
+            let trackable = if let Some(vapid) = &vapid {
+                app_state.reliability.is_trackable(vapid)
+            } else {
+                false
+            };
 
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
@@ -123,10 +134,14 @@ impl FromRequest for Subscription {
                     .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
             }
 
+            let tracking_id =
+                trackable.then(|| app_state.reliability.get_tracking_id(req.headers()));
+
             Ok(Subscription {
                 user,
                 channel_id,
                 vapid,
+                tracking_id,
             })
         }
         .boxed_local()
