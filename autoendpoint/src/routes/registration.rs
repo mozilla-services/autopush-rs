@@ -16,7 +16,7 @@ use crate::server::AppState;
 use autopush_common::db::User;
 use autopush_common::endpoint::make_endpoint;
 #[cfg(feature = "glean")]
-use autopush_common::glean::{Glean, GleanSettings, MetricSet};
+use autopush_common::glean::{Glean, GleanEvent, GleanSettings, MetricSet};
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
 pub async fn register_uaid_route(
@@ -196,17 +196,23 @@ pub async fn get_channels_route(
             // Compose the "Glean" metric string and write it to STDOUT, which is the
             // expected destination.
             let glean_settings: &GleanSettings = app_state.glean_settings.as_ref();
+
+            // This is the individual data to report. the `Glean` struct below will
+            // associate it with the correct Category and Event
             let mut metric_set = MetricSet::default();
             metric_set
-                .add_string("uaid", &user.uaid.to_string())
+                .add_string("autoendpoint.uaid", &user.uaid.to_string())
                 .map_err(|e| {
                     ApiErrorKind::General(format!("Failed to construct Glean record: {:?}", e))
                 })?;
             let glean_string = Glean::try_new(
                 glean_settings,
-                "autoendpoint",
-                "dau",
-                &metric_set,
+                GleanEvent {
+                    category: "autoendpoint",
+                    name: "dau",
+                },
+                "autopush",
+                metric_set,
                 None,
                 None,
             )

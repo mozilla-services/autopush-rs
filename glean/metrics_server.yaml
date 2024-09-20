@@ -8,15 +8,13 @@
 $schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
 
 # Category
-autopush:
+autoconnect:
 
   # Event
   dau:
-
     type: "event"
     send_in_pings:
-      - "autoconnect"
-      - "autoendpoint"
+      - "autopush"  # There is only one ping type.
 
     description: >
       A record of the connecting Push User info for recording the Daily Active Use (DAU). Users must have at least one active subscription.
@@ -30,11 +28,11 @@ autopush:
     notification_emails:
       - "push-admin+glean@mozilla.com"
 
+  # Datum
   uaid:
     type: "string"
     send_in_pings:
-      - "autoconnect"
-      - "autoendpoint"
+      - "autopush"
 
     description: >
       The Push User Identifier (UAID) for any user that has one or more subscriptions. This is only used for Daily Active Use (DAU).
@@ -47,3 +45,43 @@ autopush:
       - "https://example.com"
     notification_emails:
       - "push-admin+glean@mozilla.com"
+
+# Category
+autoendpoint:
+
+  # Event
+  dau:
+    type: "event"
+    send_in_pings:
+      - "autopush"
+
+    description: >
+      A record of the connecting Push User info for recording the Daily Active Use (DAU). Users must have at least one active subscription.
+
+    expires: "never"
+    bugs:
+      - "https://github.com/mozilla-services/autopush-rs/issues"
+    data_reviews:
+      # TODO:
+      - "https://example.com"
+    notification_emails:
+      - "push-admin+glean@mozilla.com"
+
+  # Datum
+  uaid:
+    type: "string"
+    send_in_pings:
+      - "autopush"
+
+    description: >
+      The Push User Identifier (UAID) for any user that has one or more subscriptions. This is only used for Daily Active Use (DAU).
+
+    expires: "never"
+    bugs:
+      - "https://github.com/mozilla-services/autopush-rs/issues"
+    data_reviews:
+      # TODO:
+      - "https://example.com"
+    notification_emails:
+      - "push-admin+glean@mozilla.com"
+

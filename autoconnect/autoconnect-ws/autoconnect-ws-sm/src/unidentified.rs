@@ -9,7 +9,7 @@ use autoconnect_common::{
 };
 use autoconnect_settings::{AppState, Settings};
 #[cfg(feature = "glean")]
-use autopush_common::glean::{Glean, GleanSettings, MetricSet};
+use autopush_common::glean::{Glean, GleanEvent, GleanSettings, MetricSet};
 use autopush_common::{
     db::{User, USER_RECORD_VERSION},
     util::{ms_since_epoch, ms_utc_midnight},
@@ -164,9 +164,12 @@ impl UnidentifiedClient {
                     // Compose the "Glean" metric string and write it to STDOUT, which is the
                     // expected destination.
                     let glean_settings: GleanSettings = self.app_state.glean_settings.clone();
+
+                    // This is the individual data to report. the `Glean` struct below will
+                    // associate it with the correct Category and Event
                     let mut metric_set = MetricSet::default();
                     metric_set
-                        .add_string("uaid", &user.uaid.to_string())
+                        .add_string("autoconnect.uaid", &user.uaid.to_string()) // `metrics:cat`.`metrics:
                         .map_err(|e| {
                             SMErrorKind::Internal(format!(
                                 "Failed to construct Glean record: {:?}",
@@ -175,9 +178,12 @@ impl UnidentifiedClient {
                         })?;
                     let glean_string = Glean::try_new(
                         &glean_settings,
-                        "autoconnect",
-                        "dau",
-                        &metric_set,
+                        GleanEvent {
+                            category: "autoconnect", // metrics.yaml Category
+                            name: "dau",             // metrics.yaml, owner event name
+                        },
+                        "autopush", // ping.yaml, name of the ping (Server specific)
+                        metric_set,
                         None,
                         None,
                     )

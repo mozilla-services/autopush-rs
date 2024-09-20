@@ -13,9 +13,8 @@ $schema: moz://mozilla.org/schemas/glean/pings/1-0-0
 # the default. It depends on if any of the `event` or field types specified indicate
 # if they're included in the default `metrics` ping.
 
-# There are no groups, well, technically, this is the group. It's
-# limited to alphanum.
-autoconnect:
+# Ping Name
+autopush:
   bugs:
     - "https://github.com/mozilla-services/autopush-rs/issues"
   data_reviews:
@@ -23,16 +22,5 @@ autoconnect:
     - "https://example.com"
   notification_emails:
     - "push-admin+glean@mozilla.com"
-  description: "Record information related to the Daily Active Use (DAU) of the desktop connection server"
-  include_client_id: false
-
-autoendpoint:
-  bugs:
-    - "https://github.com/mozilla-services/autopush-rs/issues"
-  data_reviews:
-    # TODO:
-    - "https://example.com"
-  notification_emails:
-    - "push-admin+glean@mozilla.com"
-  description: "Record information related to the Daily Active Use (DAU) of the endpoint server by the mobile client."
+  description: "Record information related to the Daily Active Use (DAU)"
   include_client_id: false

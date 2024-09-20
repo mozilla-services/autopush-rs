@@ -61,18 +61,18 @@ pub struct Glean {
 impl Glean {
     pub fn try_new(
         glean_settings: &GleanSettings,
+        event: GleanEvent,
+        ping_category: &str,
 
-        category_name: &str,
-        event_name: &str,
-        metric_set: &MetricSet,
+        metric_set: MetricSet,
 
         user_agent: Option<&str>, // These are optional (and should not be filled for autopush)
         ip_address: Option<&str>,
     ) -> Result<Self, serde_json::Error> {
         let now: DateTime<Utc> = SystemTime::now().into();
-        let event = make_event(now, &glean_settings.display_version, event_name)?;
+
         let payload = PingPayload::try_new(
-            metric_set,
+            &metric_set,
             event,
             &glean_settings.display_version,
             &glean_settings.channel,
@@ -84,7 +84,7 @@ impl Glean {
             gtype: "glean-server-event".to_owned(),
             fields: Ping::new(
                 glean_settings,
-                category_name,
+                ping_category,
                 user_agent,
                 ip_address,
                 &payload,
@@ -97,23 +97,6 @@ impl Display for Glean {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&serde_json::to_string(self).unwrap())
     }
-}
-
-pub(crate) fn make_event(
-    timestamp: DateTime<Utc>,
-    category: &str,
-    name: &str,
-) -> Result<HashMap<String, Value>, serde_json::Error> {
-    let mut event: HashMap<String, Value> = HashMap::new();
-
-    event.insert(
-        "timestamp".to_owned(),
-        Value::from(timestamp.timestamp_millis()),
-    );
-
-    event.insert("category".to_owned(), Value::from(category));
-    event.insert("name".to_owned(), Value::from(name));
-    Ok(event)
 }
 
 /// MetricSet is kind of the work-horse for defining the metrics being "recorded".
@@ -205,7 +188,7 @@ impl Serialize for MetricSet {
 /// Ping category. We're a bit more lax about that here, but we should check to see
 /// if that complicates things.
 #[derive(serde::Serialize)]
-pub(crate) struct PingPayload {
+struct PingPayload {
     metrics: MetricSet,
     events: Vec<HashMap<String, Value>>,
     ping_info: HashMap<String, Value>,
@@ -215,21 +198,20 @@ pub(crate) struct PingPayload {
 impl PingPayload {
     fn try_new(
         metrics: &MetricSet,
-        event: HashMap<String, Value>,
+        event: GleanEvent,
         display_version: &str,
         channel: &str,
         timestamp: DateTime<Utc>,
     ) -> Result<Self, serde_json::error::Error> {
         let timestamp_str = timestamp.to_rfc3339();
-        // This should be put in `make_event`, but it's kept separate because
-        // the various `glean_parser` built code keeps it separate.
-        // I am not sworn that this is an awesome way to do it, so I can be
-        // easily convinced to put it in `make_event`
+
+        // Ping informatino is ad-hoc for servers, so these reflect that.
         let mut ping_info: HashMap<String, Value> = HashMap::new();
         ping_info.insert("seq".to_owned(), Value::from(0));
         ping_info.insert("start_time".to_owned(), Value::from(timestamp_str.as_str()));
-        ping_info.insert("end_time".to_owned(), Value::from(timestamp_str));
+        ping_info.insert("end_time".to_owned(), Value::from(timestamp_str.as_str()));
 
+        // Most of these are "hard coded" for server apps.
         let mut client_info: HashMap<String, Value> = HashMap::new();
         client_info.insert("telemetry_sdk_build".to_owned(), Value::from(PARSER_ID));
         client_info.insert("first_run_date".to_owned(), Value::from("Unknown"));
@@ -243,9 +225,10 @@ impl PingPayload {
         );
         client_info.insert("app_channel".to_owned(), Value::from(channel));
 
+        // Generate the ping payload that will be serialized in `Ping`
         Ok(Self {
             metrics: metrics.clone(),
-            events: vec![event],
+            events: vec![event.as_event(&timestamp)?],
             ping_info,
             client_info,
         })
@@ -254,15 +237,19 @@ impl PingPayload {
 
 /// Compose a "Ping" event.
 #[derive(serde::Serialize, Debug)]
-pub struct Ping {
+struct Ping {
     document_namespace: String,
+    // Document type is the name of the Ping (defined in `pings.yml`)
     document_type: String,
     document_version: String,
     document_id: String,
+    // For autopush, this is always "None"
     #[serde(skip_serializing_if = "Option::is_none")]
     user_agent: Option<String>,
+    // For autopush, this is always "None"
     #[serde(skip_serializing_if = "Option::is_none")]
     ip_address: Option<String>,
+    // Serialized `PingPayload`
     payload: String,
 }
 
@@ -286,11 +273,40 @@ impl Ping {
     }
 }
 
+// These values are provided by Glean once the metrics & pings yml files
+// are processed.
 #[derive(Clone, Deserialize, Default, Debug, Serialize)]
 pub struct GleanSettings {
-    application_id: String,
-    display_version: String, // AKA: display_version
-    channel: String,
+    pub application_id: String,
+    pub display_version: String,
+    pub channel: String,
+}
+
+/// A Glean Event is how to categorize this submission. The server code
+/// uses
+#[derive(Clone, Deserialize, Default, Debug, Serialize)]
+pub struct GleanEvent {
+    pub category: &'static str, // the Category from metrics_server.yaml
+    pub name: &'static str,     // the associated ping (from `send_in_pings` and pings.yaml)
+}
+
+impl GleanEvent {
+    /// Return self as a serializable event.
+    fn as_event(
+        &self,
+        timestamp: &DateTime<Utc>,
+    ) -> Result<HashMap<String, Value>, serde_json::Error> {
+        let mut event: HashMap<String, Value> = HashMap::new();
+
+        event.insert(
+            "timestamp".to_owned(),
+            Value::from(timestamp.timestamp_millis()),
+        );
+
+        event.insert("category".to_owned(), Value::from(self.category));
+        event.insert("name".to_owned(), Value::from(self.name));
+        Ok(event)
+    }
 }
 
 #[cfg(test)]
@@ -313,8 +329,8 @@ mod tests {
         let now = SystemTime::now();
 
         let metric_set = MetricSet::default()
-            .add_string("first_string", "First")?
-            .add_quantity("first_quant", 1)?
+            .add_string("FirstString", "First")?
+            .add_quantity("FirstQuant", 1)?
             .clone();
 
         let glean_settings = GleanSettings {
@@ -325,15 +341,18 @@ mod tests {
 
         let glean = Glean::try_new(
             &glean_settings,
-            "category_name",
-            "event_name",
-            &metric_set,
+            crate::glean::GleanEvent {
+                category: "CategoryName",
+                name: "EventName",
+            },
+            "AutoconnectPing",
+            metric_set,
             None,
             None,
         )?;
 
         assert_eq!(&glean.fields.document_namespace, "APPLICATION_ID");
-        assert_eq!(&glean.fields.document_type, "category_name");
+        assert_eq!(&glean.fields.document_type, "AutoconnectPing");
         assert_eq!(&glean.fields.user_agent, &None);
         assert_eq!(&glean.fields.ip_address, &None);
         assert!(!&glean.fields.document_id.is_empty());
@@ -362,7 +381,7 @@ mod tests {
                 .unwrap()
                 .get("category")
                 .unwrap(),
-            &Value::from("category_name")
+            &Value::from("CategoryName")
         );
         assert_eq!(
             de_payload
@@ -372,7 +391,7 @@ mod tests {
                 .unwrap()
                 .get("name")
                 .unwrap(),
-            &Value::from("event_name")
+            &Value::from("EventName")
         );
         assert_eq!(
             de_payload
@@ -380,7 +399,7 @@ mod tests {
                 .unwrap()
                 .get("quantity")
                 .unwrap()
-                .get("first_quant")
+                .get("FirstQuant")
                 .unwrap(),
             &Value::from(1)
         );
@@ -390,7 +409,7 @@ mod tests {
                 .unwrap()
                 .get("string")
                 .unwrap()
-                .get("first_string")
+                .get("FirstString")
                 .unwrap(),
             &Value::from("First")
         );
@@ -399,8 +418,8 @@ mod tests {
         assert!(ts > now);
 
         let pinfo = &de_payload.get("ping_info").unwrap();
-        let sts = parse_rfc3339(&pinfo.get("start_time").unwrap().to_string());
-        let ets = parse_rfc3339(&pinfo.get("end_time").unwrap().to_string());
+        let sts = parse_rfc3339(pinfo.get("start_time").unwrap().as_str().unwrap());
+        let ets = parse_rfc3339(pinfo.get("end_time").unwrap().as_str().unwrap());
         assert_eq!(sts, ets);
         assert!(sts > now);
 
