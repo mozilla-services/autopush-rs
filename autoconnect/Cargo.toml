@@ -57,3 +57,8 @@ default = ["bigtable"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
 log_vapid = []
+glean = [
+    "autopush_common/glean",
+    "autoconnect_settings/glean",
+    "autoconnect_ws/glean",
+]

@@ -12,6 +12,8 @@ use autoconnect_common::{
     registry::ClientRegistry,
 };
 use autopush_common::db::{client::DbClient, DbSettings, StorageType};
+#[cfg(feature = "glean")]
+use autopush_common::glean::GleanSettings;
 
 use crate::{Settings, ENV_PREFIX};
 
@@ -30,6 +32,8 @@ pub struct AppState {
     pub broadcaster: Arc<RwLock<BroadcastChangeTracker>>,
 
     pub settings: Settings,
+    #[cfg(feature = "glean")]
+    pub glean_settings: GleanSettings,
     pub router_url: String,
     pub endpoint_url: String,
 }
@@ -91,6 +95,12 @@ impl AppState {
 
         let router_url = settings.router_url();
         let endpoint_url = settings.endpoint_url();
+        #[cfg(feature = "glean")]
+        let glean_settings: GleanSettings =
+            serde_json::from_str(&settings.glean_settings.clone().unwrap_or_else(|| {
+                panic!("Glean feature enabled, but no glean_settings configured")
+            }))
+            .unwrap_or_else(|e| panic!("Glean settings are indecipherable.{:?}", e));
 
         Ok(Self {
             db,
@@ -102,6 +112,8 @@ impl AppState {
             settings,
             router_url,
             endpoint_url,
+            #[cfg(feature = "glean")]
+            glean_settings,
         })
     }
 

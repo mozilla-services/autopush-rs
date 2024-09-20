@@ -5,6 +5,9 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
+#[cfg(feature = "glean")]
+use autopush_common::glean::GleanSettings;
+
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
 #[cfg(feature = "stub")]
@@ -47,6 +50,8 @@ pub struct Settings {
     pub apns: ApnsSettings,
     #[cfg(feature = "stub")]
     pub stub: StubSettings,
+    #[cfg(feature = "glean")]
+    pub glean_settings: GleanSettings,
 }
 
 impl Default for Settings {
@@ -81,6 +86,8 @@ impl Default for Settings {
             apns: ApnsSettings::default(),
             #[cfg(feature = "stub")]
             stub: StubSettings::default(),
+            #[cfg(feature = "glean")]
+            glean_settings: GleanSettings::default(),
         }
     }
 }
