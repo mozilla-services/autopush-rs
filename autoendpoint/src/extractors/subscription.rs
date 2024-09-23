@@ -40,7 +40,7 @@ pub struct Subscription {
     /// (This should ONLY be applied for messages that match known
     /// Mozilla provided VAPID public keys.)
     ///
-    pub tracking_id: Option<String>,
+    pub reliability_id: Option<String>,
 }
 
 impl FromRequest for Subscription {
@@ -75,11 +75,13 @@ impl FromRequest for Subscription {
                 .transpose()?;
 
             trace!("raw vapid: {:?}", &vapid);
-            let trackable = if let Some(vapid) = &vapid {
-                app_state.reliability.is_trackable(vapid)
-            } else {
-                false
-            };
+            let reliability_id: Option<String> = vapid.clone().and_then(|v| {
+                app_state
+                    .vapid_tracker
+                    .is_trackable(&v)
+                    .then(|| app_state.vapid_tracker.get_id(req.headers()))
+            });
+            debug!("🔍 Assigning Reliability: {:?}", reliability_id);
 
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
@@ -134,14 +136,11 @@ impl FromRequest for Subscription {
                     .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
             }
 
-            let tracking_id =
-                trackable.then(|| app_state.reliability.get_tracking_id(req.headers()));
-
             Ok(Subscription {
                 user,
                 channel_id,
                 vapid,
-                tracking_id,
+                reliability_id,
             })
         }
         .boxed_local()

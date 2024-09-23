@@ -16,7 +16,7 @@ import time
 import uuid
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Any, AsyncGenerator, Generator
+from typing import Any, AsyncGenerator, Generator, cast
 from urllib.parse import urlparse
 
 import ecdsa
@@ -48,6 +48,8 @@ MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
 MSG_LIMIT = 20
 
 CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode("utf-8")
+TRACKING_KEY = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+TRACKING_PUB_KEY = cast(ecdsa.VerifyingKey, TRACKING_KEY.get_verifying_key())
 CONNECTION_PORT = 9150
 ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
@@ -184,6 +186,10 @@ ENDPOINT_CONFIG = dict(
     message_table_name=MESSAGE_TABLE,
     human_logs="true",
     crypto_keys="[{}]".format(CRYPTO_KEY),
+    # convert to x692 format
+    tracking_keys="[{}]".format(
+        base64.urlsafe_b64encode((b"\4" + TRACKING_PUB_KEY.to_string())).decode()
+    ),
 )
 
 
@@ -213,7 +219,7 @@ def _get_vapid(
         payload["aud"] = endpoint
     if not key:
         key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
-    vk: ecdsa.VerifyingKey = key.get_verifying_key()
+    vk: ecdsa.VerifyingKey = cast(ecdsa.VerifyingKey, key.get_verifying_key())
     auth: str = jws.sign(payload, key, algorithm="ES256").strip("=")
     crypto_key: str = base64url_encode((b"\4" + vk.to_string()))
     return {"auth": auth, "crypto-key": crypto_key, "key": key}
@@ -808,6 +814,37 @@ async def test_basic_delivery_with_vapid(
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
     assert result["messageType"] == "notification"
+    # The key we used should not have been registered, so no tracking should
+    # be occurring.
+    log.debug(f"🔍 Reliability: {result.get("reliability_id")}")
+    assert result.get("reliability_id") is None
+
+
+async def test_basic_delivery_with_tracked_vapid(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+) -> None:
+    """Test delivery of a basic push message with a VAPID header."""
+    uuid_data: str = str(uuid.uuid4())
+    vapid_info = _get_vapid(key=TRACKING_KEY, payload=vapid_payload)
+    # quick sanity check to ensure that the keys match.
+    # (ideally, this should dump as x962, but DER is good enough.)
+    assert vapid_info["key"].get_verifying_key().to_der() == TRACKING_PUB_KEY.to_der()
+
+    # let's do an offline submit so we can validate the reliability_id survives storage.
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == "notification"
+    log.debug(f"🔍 reliability {result["reliability_id"]}")
+    assert result["reliability_id"] is not None
 
 
 async def test_basic_delivery_with_invalid_vapid(

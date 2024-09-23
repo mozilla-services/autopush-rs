@@ -4,7 +4,7 @@ Convert a EC Public key in PEM format into an b64 x962 string.
 Autopush will try to scan for known VAPID public keys to track. These keys
 are specified in the header as x962 formatted strings. X962 is effectively
 "raw" format and contains the two longs that are the coordinates for the
-public key.
+public key prefixed with a '\04` byte.
 
 """
 import base64

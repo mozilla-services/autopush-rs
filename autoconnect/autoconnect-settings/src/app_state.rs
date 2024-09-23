@@ -68,6 +68,7 @@ impl AppState {
             db_settings: settings.db_settings.clone(),
         };
         let storage_type = StorageType::from_dsn(&db_settings.dsn);
+
         #[allow(unused)]
         let db: Box<dyn DbClient> = match storage_type {
             #[cfg(feature = "bigtable")]
