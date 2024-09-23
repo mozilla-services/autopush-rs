@@ -385,10 +385,10 @@ jobs:
       - run:
           name: Tag image
           command: |
-            if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              echo 'export GAR_TAG=master' >> $BASH_ENV
-            elif [ ! -z "${CIRCLE_TAG}" ]; then
+            if [ ! -z "${CIRCLE_TAG}" ]; then
               echo "export GAR_TAG=$CIRCLE_TAG" >> $BASH_ENV
+            elif [ "${CIRCLE_BRANCH}" == "master" ]; then
+              echo 'export GAR_TAG=master' >> $BASH_ENV
             fi
               echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_GAR_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
