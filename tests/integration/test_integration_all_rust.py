@@ -829,7 +829,11 @@ async def test_basic_delivery_with_tracked_vapid(
     vapid_info = _get_vapid(key=TRACKING_KEY, payload=vapid_payload)
     # quick sanity check to ensure that the keys match.
     # (ideally, this should dump as x962, but DER is good enough.)
-    assert vapid_info["key"].get_verifying_key().to_der() == TRACKING_PUB_KEY.to_der()
+    key = cast(
+        ecdsa.VerifyingKey, cast(ecdsa.SigningKey, vapid_info["key"]).get_verifying_key()
+    ).to_der()
+
+    assert key == TRACKING_PUB_KEY.to_der()
 
     # let's do an offline submit so we can validate the reliability_id survives storage.
     await registered_test_client.disconnect()
