@@ -1303,7 +1303,6 @@ impl DbClient for BigTableClientImpl {
 
         let messages = self.rows_to_notifications(rows)?;
 
-        // Sadly, we can't do this lower in the database calls because of async issues.
         // Note: Bigtable always returns a timestamp of None.
         // Under Bigtable `current_timestamp` is instead initially read
         // from [get_user].
