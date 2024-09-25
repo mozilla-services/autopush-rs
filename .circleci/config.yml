@@ -382,13 +382,19 @@ jobs:
       - run:
           name: Restore Docker image cache
           command: docker load -i /tmp/cache/docker.tar
+      # This is the easiest way to tag multiple images using different
+      # conditions for the GAR_TAG variable in the smallest amount of code.
+      #
+      # You can find other jobs and commands you can use with this orb that
+      # include tagging here:
+      # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr
       - run:
           name: Tag image
           command: |
-            if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              echo 'export GAR_TAG=master' >> $BASH_ENV
-            elif [ ! -z "${CIRCLE_TAG}" ]; then
-              echo "export GAR_TAG=$CIRCLE_TAG" >> $BASH_ENV
+            if [ ! -z "${CIRCLE_TAG}" ]; then
+              echo "export GAR_TAG=${CIRCLE_TAG}" >> $BASH_ENV
+            else
+              echo "export GAR_TAG=${CIRCLE_BRANCH}" >> $BASH_ENV
             fi
               echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_GAR_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
