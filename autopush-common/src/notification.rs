@@ -5,7 +5,8 @@ use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(feature = "reliable_report")]
-use crate::{reliability::PushReliabilityState, util::ms_since_epoch};
+use crate::reliability::PushReliabilityState;
+use crate::util::ms_since_epoch;
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
 /// A Publishable Notification record. This is a notification that is either
