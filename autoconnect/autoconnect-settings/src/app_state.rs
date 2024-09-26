@@ -12,6 +12,8 @@ use autoconnect_common::{
     registry::ClientRegistry,
 };
 use autopush_common::db::{client::DbClient, DbSettings, StorageType};
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliability;
 
 use crate::{Settings, ENV_PREFIX};
 
@@ -32,6 +34,9 @@ pub struct AppState {
     pub settings: Settings,
     pub router_url: String,
     pub endpoint_url: String,
+
+    #[cfg(feature = "reliable_report")]
+    pub reliability: Arc<PushReliability>,
 }
 
 impl AppState {
@@ -68,13 +73,21 @@ impl AppState {
             db_settings: settings.db_settings.clone(),
         };
         let storage_type = StorageType::from_dsn(&db_settings.dsn);
+        // TODO: initialize this off of the settings.
+        #[cfg(feature = "reliable_report")]
+        let reliability = Arc::new(PushReliability::new("".to_owned(), 0));
 
         #[allow(unused)]
         let db: Box<dyn DbClient> = match storage_type {
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
-                let client = BigTableClientImpl::new(metrics.clone(), &db_settings)
-                    .map_err(|e| ConfigError::Message(e.to_string()))?;
+                let client = BigTableClientImpl::new(
+                    metrics.clone(),
+                    &db_settings,
+                    #[cfg(feature = "reliable_report")]
+                    reliability.clone(),
+                )
+                .map_err(|e| ConfigError::Message(e.to_string()))?;
                 client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
@@ -103,6 +116,8 @@ impl AppState {
             settings,
             router_url,
             endpoint_url,
+            #[cfg(feature = "reliable_report")]
+            reliability,
         })
     }
 

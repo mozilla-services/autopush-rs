@@ -68,7 +68,7 @@ tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
-default = ["bigtable"]
+default = ["bigtable", "reliable_report"]
 # data store types
 bigtable = ["autopush_common/bigtable"]
 
@@ -82,3 +82,5 @@ emulator = ["bigtable"]
 stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []
+
+reliable_report = ["autopush_common/reliable_report"]

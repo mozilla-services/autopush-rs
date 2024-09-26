@@ -7,6 +7,8 @@ use autoconnect_common::{
     broadcast::Broadcast,
     protocol::{BroadcastValue, ClientAck, ClientMessage, ServerMessage},
 };
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliabilityState;
 use autopush_common::{endpoint::make_endpoint, util::sec_since_epoch};
 
 use super::WebPushClient;
@@ -190,6 +192,12 @@ impl WebPushClient {
                 .unacked_direct_notifs
                 .iter()
                 .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
+            // TODO: Record the reliability ID as "delivered"
+            #[cfg(feature = "reliable_report")]
+            self.app_state
+                .reliability
+                .record(&notif.reliability_id, PushReliabilityState::DELIVERED)
+                .await;
             // We found one, so delete it from our list of unacked messages
             if let Some(pos) = pos {
                 debug!("✅ Ack (Direct)";

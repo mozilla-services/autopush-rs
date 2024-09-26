@@ -26,6 +26,8 @@ pub struct Notification {
     pub sort_key_timestamp: u64,
     /// The encrypted notification body
     pub data: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    pub reliablity_state: Option<autopush_common::reliability::PushReliabilityState>,
 }
 
 impl FromRequest for Notification {
@@ -85,6 +87,8 @@ impl FromRequest for Notification {
                 timestamp,
                 sort_key_timestamp,
                 data,
+                #[cfg(feature = "reliable_report")]
+                reliablity_state: None,
             })
         }
         .boxed_local()
@@ -104,6 +108,8 @@ impl From<Notification> for autopush_common::notification::Notification {
             data: notification.data,
             sortkey_timestamp,
             reliability_id: notification.subscription.reliability_id,
+            #[cfg(feature = "reliable_report")]
+            reliablity_state: notification.reliablity_state,
             headers: {
                 let headers: HashMap<String, String> = notification.headers.into();
                 if headers.is_empty() {

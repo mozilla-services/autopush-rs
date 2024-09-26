@@ -13,6 +13,8 @@ use serde_json::json;
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliability;
 use autopush_common::{
     db::{client::DbClient, spawn_pool_periodic_reporter, DbSettings, StorageType},
     middleware::sentry::SentryWrapper,
@@ -49,6 +51,8 @@ pub struct AppState {
     #[cfg(feature = "stub")]
     pub stub_router: Arc<StubRouter>,
     pub vapid_tracker: Arc<VapidTracker>,
+    #[cfg(feature = "reliable_report")]
+    pub reliability: Arc<PushReliability>,
 }
 
 pub struct Server;
@@ -59,6 +63,8 @@ impl Server {
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();
+        #[cfg(feature = "reliable_report")]
+        let reliability = Arc::new(PushReliability::new("").unwrap());
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
             db_settings: if settings.db_settings.is_empty() {
@@ -73,7 +79,12 @@ impl Server {
             #[cfg(feature = "bigtable")]
             StorageType::BigTable => {
                 debug!("Using BigTable");
-                let client = BigTableClientImpl::new(metrics.clone(), &db_settings)?;
+                let client = BigTableClientImpl::new(
+                    metrics.clone(),
+                    &db_settings,
+                    #[cfg(feature = "reliable_report")]
+                    reliability.clone(),
+                )?;
                 client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
@@ -97,6 +108,8 @@ impl Server {
                 http.clone(),
                 metrics.clone(),
                 db.clone(),
+                #[cfg(feature = "reliable_report")]
+                reliability.clone(),
             )
             .await?,
         );
@@ -106,6 +119,8 @@ impl Server {
                 endpoint_url.clone(),
                 metrics.clone(),
                 db.clone(),
+                #[cfg(feature = "reliable_report")]
+                reliability.clone(),
             )
             .await?,
         );
@@ -123,6 +138,8 @@ impl Server {
             #[cfg(feature = "stub")]
             stub_router,
             vapid_tracker,
+            #[cfg(feature = "reliable_report")]
+            reliability,
         };
 
         spawn_pool_periodic_reporter(

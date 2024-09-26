@@ -99,6 +99,9 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
+    #[cfg(feature = "reliable_report")]
+    #[error(transparent)]
+    RedisError(#[from] redis::RedisError),
     #[error("Broadcast Error: {0}")]
     BroadcastError(String),
     #[error("Payload Error: {0}")]

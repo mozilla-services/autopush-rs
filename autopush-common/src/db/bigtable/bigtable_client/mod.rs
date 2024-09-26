@@ -27,6 +27,8 @@ use crate::db::{
     DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
     USER_RECORD_VERSION,
 };
+#[cfg(feature = "reliable_report")]
+use crate::reliability::{PushReliability, PushReliabilityState};
 
 pub use self::metadata::MetadataBuilder;
 use self::row::{Row, RowCells};
@@ -81,6 +83,8 @@ pub struct BigTableClientImpl {
     pool: BigTablePool,
     metadata: Metadata,
     admin_metadata: Metadata,
+    #[cfg(feature = "reliable_report")]
+    reliability: Arc<PushReliability>,
 }
 
 /// Return a a RowFilter matching the GC policy of the router Column Family
@@ -357,7 +361,11 @@ fn call_opts(metadata: Metadata) -> ::grpcio::CallOption {
 /// `$HOME/.config/gcloud/application_default_credentials.json`)
 ///
 impl BigTableClientImpl {
-    pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
+    pub fn new(
+        metrics: Arc<StatsdClient>,
+        settings: &DbSettings,
+        #[cfg(feature = "reliable_report")] reliability: Arc<PushReliability>,
+    ) -> DbResult<Self> {
         // let env = Arc::new(EnvBuilder::new().build());
         debug!("🏊 BT Pool new");
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
@@ -373,6 +381,8 @@ impl BigTableClientImpl {
             metadata,
             admin_metadata,
             pool,
+            #[cfg(feature = "reliable_report")]
+            reliability,
         })
     }
 
@@ -735,6 +745,11 @@ impl BigTableClientImpl {
         // Backfill the Optional fields
         if let Some(cell) = row.take_cell("data") {
             notif.data = Some(to_string(cell.value, "data")?);
+        }
+        #[cfg(feature = "reliable_report")]
+        if let Some(cell) = row.take_cell("reliability_id") {
+            notif.reliability_id = Some(to_string(cell.value, "reliability_id")?);
+            notif.reliablity_state = Some(PushReliabilityState::STORED);
         }
         if let Some(cell) = row.take_cell("headers") {
             notif.headers = Some(
@@ -1178,6 +1193,9 @@ impl DbClient for BigTableClientImpl {
             });
         }
 
+        #[cfg(feature = "reliable_report")]
+        let report_id = message.reliability_id.clone();
+
         if let Some(reliability_id) = message.reliability_id {
             cells.push(cell::Cell {
                 qualifier: "reliability_id".to_owned(),
@@ -1189,6 +1207,16 @@ impl DbClient for BigTableClientImpl {
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
         self.write_row(row).await?;
+
+        #[cfg(feature = "reliable_report")]
+        self.reliability
+            .record(
+                &report_id,
+                PushReliabilityState::STORED,
+                &message.reliablity_state,
+                Some(message.ttl),
+            )
+            .await;
 
         self.metrics
             .incr_with_tags("notification.message.stored")
@@ -1302,6 +1330,20 @@ impl DbClient for BigTableClientImpl {
         );
 
         let messages = self.rows_to_notifications(rows)?;
+        #[cfg(feature = "reliable_report")]
+        {
+            // Sadly, we can't do this lower in the database calls because of async issues.
+            for message in &messages {
+                self.reliability
+                    .record(
+                        &message.reliability_id,
+                        PushReliabilityState::RETRIEVED,
+                        &message.reliablity_state,
+                        Some(message.ttl),
+                    )
+                    .await;
+            }
+        }
 
         // Note: Bigtable always returns a timestamp of None.
         // Under Bigtable `current_timestamp` is instead initially read
@@ -1430,6 +1472,9 @@ mod tests {
     use super::*;
     use crate::{db::DbSettings, test_support::gen_test_uaid, util::ms_since_epoch};
 
+    #[cfg(feature = "reliable_report")]
+    use crate::reliability::PushReliability;
+
     const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
     const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
@@ -1459,7 +1504,12 @@ mod tests {
 
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
 
-        BigTableClientImpl::new(metrics, &settings)
+        BigTableClientImpl::new(
+            metrics,
+            &settings,
+            #[cfg(feature = "reliable_report")]
+            Arc::new(PushReliability::new("".to_owned(), 0)),
+        )
     }
 
     #[test]

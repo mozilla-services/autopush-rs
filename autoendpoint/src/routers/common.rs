@@ -258,6 +258,8 @@ pub mod tests {
             timestamp: 0,
             sort_key_timestamp: 0,
             data,
+            #[cfg(feature = "reliable_report")]
+            reliablity_state: None,
         }
     }
 }

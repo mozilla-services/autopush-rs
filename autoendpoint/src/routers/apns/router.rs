@@ -1,4 +1,6 @@
 use autopush_common::db::client::DbClient;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::{PushReliability, PushReliabilityState};
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
@@ -34,6 +36,8 @@ pub struct ApnsRouter {
     endpoint_url: Url,
     metrics: Arc<StatsdClient>,
     db: Box<dyn DbClient>,
+    #[cfg(feature = "reliable_report")]
+    reliablity: Arc<PushReliability>,
 }
 
 struct ApnsClientData {
@@ -115,6 +119,7 @@ impl ApnsRouter {
         endpoint_url: Url,
         metrics: Arc<StatsdClient>,
         db: Box<dyn DbClient>,
+        #[cfg(feature = "reliable_report")] reliablity: Arc<PushReliability>,
     ) -> Result<Self, ApnsError> {
         let channels = settings.channels()?;
 
@@ -130,6 +135,8 @@ impl ApnsRouter {
             endpoint_url,
             metrics,
             db,
+            #[cfg(feature = "reliable_report")]
+            reliablity,
         })
     }
 
@@ -473,6 +480,16 @@ impl Router for ApnsRouter {
                 .await);
         }
 
+        #[cfg(feature = "reliable_report")]
+        self.reliablity
+            .record(
+                &notification.subscription.reliability_id,
+                PushReliabilityState::TRANSMITTED,
+                &notification.reliablity_state,
+                Some(notification.timestamp),
+            )
+            .await;
+
         // Sent successfully, update metrics and make response
         trace!("APNS request was successful");
         incr_success_metrics(&self.metrics, "apns", channel, notification);
@@ -501,6 +518,8 @@ mod tests {
     use async_trait::async_trait;
     use autopush_common::db::client::DbClient;
     use autopush_common::db::mock::MockDbClient;
+    #[cfg(feature = "reliable_report")]
+    use autopush_common::reliability::PushReliability;
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
@@ -562,6 +581,8 @@ mod tests {
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             db,
+            #[cfg(feature = "reliable_report")]
+            reliablity: Arc::new(PushReliability::new("").unwrap()),
         }
     }
 

@@ -1,4 +1,6 @@
 use autopush_common::db::client::DbClient;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::{PushReliability, PushReliabilityState};
 
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
@@ -27,6 +29,8 @@ pub struct FcmRouter {
     db: Box<dyn DbClient>,
     /// A map from application ID to an authenticated FCM client
     clients: HashMap<String, FcmClient>,
+    #[cfg(feature = "reliable_report")]
+    reliability: Arc<PushReliability>,
 }
 
 impl FcmRouter {
@@ -37,6 +41,7 @@ impl FcmRouter {
         http: reqwest::Client,
         metrics: Arc<StatsdClient>,
         db: Box<dyn DbClient>,
+        #[cfg(feature = "reliable_report")] reliability: Arc<PushReliability>,
     ) -> Result<Self, FcmError> {
         let server_credentials = settings.credentials()?;
         let clients = Self::create_clients(&settings, server_credentials, http.clone())
@@ -48,6 +53,8 @@ impl FcmRouter {
             metrics,
             db,
             clients,
+            #[cfg(feature = "reliable_report")]
+            reliability,
         })
     }
 
@@ -180,6 +187,15 @@ impl Router for FcmRouter {
             .await);
         };
         incr_success_metrics(&self.metrics, platform, &app_id, notification);
+        #[cfg(feature = "reliable_report")]
+        self.reliability
+            .record(
+                &notification.subscription.reliability_id,
+                PushReliabilityState::TRANSMITTED,
+                &notification.reliablity_state,
+                Some(notification.timestamp),
+            )
+            .await;
         // Sent successfully, update metrics and make response
         trace!("Send request was successful");
 
@@ -209,6 +225,8 @@ mod tests {
     use crate::routers::{Router, RouterResponse};
     use autopush_common::db::client::DbClient;
     use autopush_common::db::mock::MockDbClient;
+    #[cfg(feature = "reliable_report")]
+    use autopush_common::reliability::PushReliability;
     use std::sync::Arc;
 
     use cadence::StatsdClient;
@@ -247,6 +265,8 @@ mod tests {
             reqwest::Client::new(),
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             db,
+            #[cfg(feature = "reliable_report")]
+            Arc::new(PushReliability::new("").unwrap()),
         )
         .await
         .unwrap()

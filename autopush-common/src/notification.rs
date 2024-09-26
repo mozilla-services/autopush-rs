@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::util::ms_since_epoch;
+#[cfg(feature = "reliable_report")]
+use crate::{reliability::PushReliabilityState, util::ms_since_epoch};
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
 /// A Publishable Notification record. This is a notification that is either
@@ -29,6 +30,9 @@ pub struct Notification {
     pub headers: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reliability_id: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    #[serde(skip_serializing)]
+    pub reliablity_state: Option<PushReliabilityState>,
 }
 
 pub const TOPIC_NOTIFICATION_PREFIX: &str = "01";

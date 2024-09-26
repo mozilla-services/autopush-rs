@@ -7,6 +7,8 @@ use crate::extractors::routers::{RouterType, Routers};
 use crate::server::AppState;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliabilityState;
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 pub async fn webpush_route(
@@ -25,6 +27,16 @@ pub async fn webpush_route(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
     );
+    #[cfg(feature = "reliable_report")]
+    _app_state
+        .reliability
+        .record(
+            &notification.subscription.reliability_id,
+            PushReliabilityState::TRANSMITTED,
+            &notification.reliablity_state,
+            Some(notification.timestamp),
+        )
+        .await;
     Ok(router.route_notification(&notification).await?.into())
 }
 

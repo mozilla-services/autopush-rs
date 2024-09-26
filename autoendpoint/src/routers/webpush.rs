@@ -1,5 +1,8 @@
 use async_trait::async_trait;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliability;
 use cadence::{Counted, CountedExt, StatsdClient, Timed};
+use log::Record;
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::{hash_map::RandomState, HashMap};
@@ -24,6 +27,8 @@ pub struct WebPushRouter {
     pub metrics: Arc<StatsdClient>,
     pub http: reqwest::Client,
     pub endpoint_url: Url,
+    #[cfg(feature = "reliable_report")]
+    pub reliability: Arc<PushReliability>,
 }
 
 #[async_trait(?Send)]
@@ -179,9 +184,23 @@ impl WebPushRouter {
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
         let url = format!("{}/push/{}", node_id, notification.subscription.user.uaid);
-        let notification = notification.serialize_for_delivery();
 
-        self.http.put(&url).json(&notification).send().await
+        #[cfg(feature = "reliable_report")]
+        let reliability_id = notification.subscription.reliability_id.clone();
+
+        let transmittal = notification.serialize_for_delivery();
+
+        let result = self.http.put(&url).json(&transmittal).send().await?;
+        #[cfg(feature = "reliable_report")]
+        self.reliability
+            .record(
+                &reliability_id,
+                autopush_common::reliability::PushReliabilityState::TRANSMITTED,
+                &notification.reliablity_state,
+                Some(notification.timestamp),
+            )
+            .await;
+        Ok(result)
     }
 
     /// Notify the node to check for notifications for the user
@@ -289,6 +308,8 @@ mod test {
     use crate::extractors::subscription::tests::{make_vapid, PUB_KEY};
     use crate::headers::vapid::VapidClaims;
     use autopush_common::errors::ReportableError;
+    #[cfg(feature = "reliable_report")]
+    use autopush_common::reliability::PushReliability;
 
     use super::*;
     use autopush_common::db::mock::MockDbClient;
@@ -299,6 +320,8 @@ mod test {
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
+            #[cfg(feature = "reliable_report")]
+            reliability: Arc::new(PushReliability::new("").unwrap()),
         }
     }
 
