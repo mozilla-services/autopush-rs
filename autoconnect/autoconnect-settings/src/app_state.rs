@@ -75,7 +75,7 @@ impl AppState {
         let storage_type = StorageType::from_dsn(&db_settings.dsn);
         // TODO: initialize this off of the settings.
         #[cfg(feature = "reliable_report")]
-        let reliability = Arc::new(PushReliability::new("".to_owned(), 0));
+        let reliability = Arc::new(PushReliability::new("").unwrap());
 
         #[allow(unused)]
         let db: Box<dyn DbClient> = match storage_type {

@@ -17,24 +17,6 @@ pub enum PushReliabilityState {
     DELIVERED,
 }
 
-const GC_LUA: &str = r#"
-    local now = tonumber(ARGV[1])
-    -- Collect all the items that have a score less than `now`
-    local expired_items = redis.call('ZRANGE', 'items', '-inf', now, 'BYSCORE')
-
-    for i, key in ipairs(expired_items) do
-        local state,messageId = string.match(key, "(.*)%#(.*)")
-        if state then
-            redis.call('HINCRBY', 'state_counts', state, -1)
-        end
-        -- now clean things up.
-        redis.call('ZREM', 'items', key)
-        redis.call('DEL', key)
-    end
-    -- And return the items we removed.
-    return expired_items
-    "#;
-
 const COUNTS: &str = "state_counts";
 const ITEMS: &str = "items";
 
@@ -73,7 +55,6 @@ impl std::str::FromStr for PushReliabilityState {
 #[derive(Debug, Default, Clone)]
 pub struct PushReliability {
     client: Option<Client>,
-    scripts: HashMap<String, redis::Script>,
 }
 
 impl PushReliability {
@@ -81,11 +62,7 @@ impl PushReliability {
     pub fn new(dsn: &str) -> Result<Self> {
         let client = dsn.is_empty().then(|| Client::open(dsn).unwrap());
 
-        // register the scripts
-        let mut scripts = HashMap::<String, redis::Script>::new();
-        scripts.insert("gc".to_owned(), redis::Script::new(GC_LUA));
-
-        Ok(Self { client, scripts })
+        Ok(Self { client })
     }
 
     // Handle errors internally.
@@ -126,14 +103,14 @@ impl PushReliability {
 
         let mut expiry: HashMap<String, u64> = HashMap::new();
         expiry.insert(
-            format!("{}#{}", new_state.to_string(), rid),
+            format!("{}#{}", new_state, rid),
             util::sec_since_epoch() + expiry_s.unwrap_or_default(),
         );
         let mut pipe = redis::pipe();
         let pipe = pipe.atomic().hincr(COUNTS, new_state.to_string(), 1);
         let pipe = if let Some(old) = &prior_state {
             pipe.hincr(COUNTS, old.to_string(), -1)
-                .zrem(ITEMS, format!("{}#{}", old.to_string(), rid))
+                .zrem(ITEMS, format!("{}#{}", old, rid))
         } else {
             pipe
         };
@@ -158,6 +135,8 @@ impl PushReliability {
             .await?;
         let mut pipe = redis::pipe();
         let mut pipe = pipe.atomic();
+        // TODO: Record the purged record if it's not "DELIVERED"
+        // since that indicates a record that failed to be delivered.
         for key in purged {
             trace!("🔍 Purging: {}", key);
             let parts: Vec<&str> = key.splitn(2, '#').collect();

@@ -2,7 +2,6 @@ use async_trait::async_trait;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::PushReliability;
 use cadence::{Counted, CountedExt, StatsdClient, Timed};
-use log::Record;
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::{hash_map::RandomState, HashMap};
@@ -192,14 +191,17 @@ impl WebPushRouter {
 
         let result = self.http.put(&url).json(&transmittal).send().await?;
         #[cfg(feature = "reliable_report")]
-        self.reliability
-            .record(
-                &reliability_id,
-                autopush_common::reliability::PushReliabilityState::TRANSMITTED,
-                &notification.reliablity_state,
-                Some(notification.timestamp),
-            )
-            .await;
+        {
+            let _ = self
+                .reliability
+                .record(
+                    &reliability_id,
+                    autopush_common::reliability::PushReliabilityState::TRANSMITTED,
+                    &notification.reliablity_state,
+                    Some(notification.timestamp),
+                )
+                .await;
+        }
         Ok(result)
     }
 

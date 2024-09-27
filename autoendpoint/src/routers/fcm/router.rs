@@ -2,7 +2,7 @@ use autopush_common::db::client::DbClient;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::{PushReliability, PushReliabilityState};
 
-use crate::error::ApiResult;
+use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::common::{build_message_data, handle_error, incr_success_metrics};
@@ -195,7 +195,8 @@ impl Router for FcmRouter {
                 &notification.reliablity_state,
                 Some(notification.timestamp),
             )
-            .await;
+            .await
+            .map_err(|e| ApiErrorKind::General(e.to_string()))?;
         // Sent successfully, update metrics and make response
         trace!("Send request was successful");
 

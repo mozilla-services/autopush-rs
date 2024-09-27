@@ -1216,7 +1216,8 @@ impl DbClient for BigTableClientImpl {
                 &message.reliablity_state,
                 Some(message.ttl),
             )
-            .await;
+            .await
+            .map_err(|e| DbError::General(e.to_string()))?;
 
         self.metrics
             .incr_with_tags("notification.message.stored")
@@ -1341,7 +1342,8 @@ impl DbClient for BigTableClientImpl {
                         &message.reliablity_state,
                         Some(message.ttl),
                     )
-                    .await;
+                    .await
+                    .map_err(|e| DbError::General(e.to_string()))?;
             }
         }
 
@@ -1508,7 +1510,7 @@ mod tests {
             metrics,
             &settings,
             #[cfg(feature = "reliable_report")]
-            Arc::new(PushReliability::new("".to_owned(), 0)),
+            Arc::new(PushReliability::new("").unwrap()),
         )
     }
 

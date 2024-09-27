@@ -196,8 +196,14 @@ impl WebPushClient {
             #[cfg(feature = "reliable_report")]
             self.app_state
                 .reliability
-                .record(&notif.reliability_id, PushReliabilityState::DELIVERED)
-                .await;
+                .record(
+                    &notif.reliability_id,
+                    PushReliabilityState::DELIVERED,
+                    &Some(PushReliabilityState::TRANSMITTED), // We don't have the original, but there's only one known prior state.
+                    None,
+                )
+                .await
+                .map_err(|e| SMErrorKind::Internal(e.to_string()))?;
             // We found one, so delete it from our list of unacked messages
             if let Some(pos) = pos {
                 debug!("✅ Ack (Direct)";

@@ -36,7 +36,8 @@ pub async fn webpush_route(
             &notification.reliablity_state,
             Some(notification.timestamp),
         )
-        .await;
+        .await
+        .map_err(|e| ApiErrorKind::General(e.to_string()))?;
     Ok(router.route_notification(&notification).await?.into())
 }
 

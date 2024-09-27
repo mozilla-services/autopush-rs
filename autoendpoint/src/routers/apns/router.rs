@@ -2,7 +2,7 @@ use autopush_common::db::client::DbClient;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::{PushReliability, PushReliabilityState};
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::apns::error::ApnsError;
@@ -488,7 +488,8 @@ impl Router for ApnsRouter {
                 &notification.reliablity_state,
                 Some(notification.timestamp),
             )
-            .await;
+            .await
+            .map_err(|e| ApiErrorKind::General(e.to_string()))?;
 
         // Sent successfully, update metrics and make response
         trace!("APNS request was successful");
