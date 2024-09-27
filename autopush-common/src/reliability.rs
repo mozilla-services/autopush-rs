@@ -1,5 +1,6 @@
 /// Push Reliability Recorder
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use crate::errors::{ApcError, ApcErrorKind, Result};
 use crate::util;
@@ -7,7 +8,7 @@ use redis::{AsyncCommands, Client};
 use serde::Deserialize;
 
 /// The various states that a message may transit on the way from reception to delivery.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 pub enum PushReliabilityState {
     RECEIVED,
     STORED,
@@ -19,6 +20,9 @@ pub enum PushReliabilityState {
 
 const COUNTS: &str = "state_counts";
 const ITEMS: &str = "items";
+const TOTALS: &str = "totals";
+const TOTAL_SUCCESS: &str = "total_success";
+const TOTAL_FAILURE: &str = "total_failure";
 
 // TODO: Differentiate between "transmitted via webpush" and "transmitted via bridge"?
 impl std::fmt::Display for PushReliabilityState {
@@ -101,19 +105,26 @@ impl PushReliability {
             .get_multiplexed_async_connection()
             .await?;
 
-        let mut expiry: HashMap<String, u64> = HashMap::new();
-        expiry.insert(
-            format!("{}#{}", new_state, rid),
-            util::sec_since_epoch() + expiry_s.unwrap_or_default(),
-        );
         let mut pipe = redis::pipe();
         let pipe = pipe.atomic().hincr(COUNTS, new_state.to_string(), 1);
+
+        // if we have a prior state, decrement that state's count, and remove the old state
+        // milestone.
         let pipe = if let Some(old) = &prior_state {
             pipe.hincr(COUNTS, old.to_string(), -1)
                 .zrem(ITEMS, format!("{}#{}", old, rid))
         } else {
             pipe
         };
+
+        // Now, record the new milestone entry for this message.
+        // The score should (hopefully) be meaningless here since there should
+        // only ever be one entry with this hash value.
+        let mut expiry: HashMap<String, u64> = HashMap::new();
+        expiry.insert(
+            format!("{}#{}", new_state, rid),
+            util::sec_since_epoch() + expiry_s.unwrap_or_default(),
+        );
         pipe.zadd(ITEMS, expiry, 0)
             .exec_async(&mut con)
             .await
@@ -124,24 +135,47 @@ impl PushReliability {
         if self.client.is_none() {
             return Ok(());
         }
+
+        // TODO: Lock redis for gc update?
+        // Generate a lock, apply if not present, validate that the lock value matches what we set.
+        // proceed.
+
         let mut con = self
             .client
             .as_ref()
             .unwrap()
             .get_multiplexed_async_connection()
             .await?;
+        let mut success: u64 = 0;
+        let mut fail: u64 = 0;
+
+        // Collect up all the hash keys that have values (timestamps) that are less than "now"
         let purged: Vec<String> = con
             .zrange(ITEMS, -1, util::sec_since_epoch() as isize)
             .await?;
         let mut pipe = redis::pipe();
         let mut pipe = pipe.atomic();
-        // TODO: Record the purged record if it's not "DELIVERED"
-        // since that indicates a record that failed to be delivered.
+        // iterate though the detected list of candidates and remove them, adjusting the counts.
+
         for key in purged {
             trace!("🔍 Purging: {}", key);
             let parts: Vec<&str> = key.splitn(2, '#').collect();
             let state = parts[0];
-            pipe = pipe.hincr(COUNTS, state, -1).zrem(ITEMS, key);
+            pipe = pipe.hincr(COUNTS, state, -1).zrem(ITEMS, &key);
+            if PushReliabilityState::from_str(state)? != PushReliabilityState::DELIVERED {
+                success += 1;
+            } else {
+                fail += 1;
+            };
+        }
+        // Record the overall success/failure counts A failure is anything that did not reach
+        // "delivered" and was pruned.
+        // We don't expire counts (that needs to be done externally.)
+        if success > 0 {
+            pipe = pipe.hincr(TOTALS, TOTAL_SUCCESS, success);
+        }
+        if fail > 0 {
+            pipe = pipe.hincr(TOTALS, TOTAL_FAILURE, fail);
         }
         pipe.exec_async(&mut con).await.map_err(|e| e.into())
     }
