@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use cadence::CountedExt;
+use cadence::{CountedExt, Histogrammed};
 use uuid::Uuid;
 
 use autoconnect_common::{
@@ -10,7 +10,7 @@ use autoconnect_common::{
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
     db::{User, USER_RECORD_VERSION},
-    util::ms_since_epoch,
+    util::{ms_since_epoch, ms_utc_midnight},
 };
 
 use crate::{
@@ -54,7 +54,9 @@ impl UnidentifiedClient {
     ) -> Result<(WebPushClient, impl IntoIterator<Item = ServerMessage>), SMError> {
         trace!("❓UnidentifiedClient::on_client_msg");
         let ClientMessage::Hello {
-            uaid, broadcasts, ..
+            uaid,
+            broadcasts,
+            _channel_ids,
         } = msg
         else {
             return Err(SMError::invalid_message(
@@ -93,6 +95,18 @@ impl UnidentifiedClient {
             })
             .send();
 
+        // This is the first time that the user has connected "today".
+        if flags.emit_channel_metrics {
+            // Return the number of channels for the user using the internal channel_count.
+            // NOTE: this metric can be approximate since we're sampling to determine the
+            // approximate average of channels per user for business reasons.
+            self.app_state
+                .metrics
+                .histogram_with_tags("ua.connection.channel_count", user.channel_count() as u64)
+                .with_tag_value("desktop")
+                .send();
+        }
+
         let (broadcast_subs, broadcasts) = self
             .broadcast_init(&Broadcast::from_hashmap(broadcasts.unwrap_or_default()))
             .await;
@@ -130,6 +144,7 @@ impl UnidentifiedClient {
                     old_record_version: user
                         .record_version
                         .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
+                    emit_channel_metrics: user.connected_at < ms_utc_midnight(),
                     ..Default::default()
                 };
                 user.node_id = Some(self.app_state.router_url.to_owned());
@@ -279,7 +294,7 @@ mod tests {
         let client = uclient(Default::default());
         let msg = ClientMessage::Hello {
             uaid: Some("".to_owned()),
-            channel_ids: None,
+            _channel_ids: None,
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");
@@ -290,7 +305,7 @@ mod tests {
         let client = uclient(Default::default());
         let msg = ClientMessage::Hello {
             uaid: Some("invalid".to_owned()),
-            channel_ids: None,
+            _channel_ids: None,
             broadcasts: None,
         };
         client.on_client_msg(msg).await.expect("Hello failed");

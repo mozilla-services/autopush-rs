@@ -253,10 +253,18 @@ An example of the Authorization header would be:
 _The [VAPID Key](https://datatracker.ietf.org/doc/html/rfc8292#section-3.2) provided by the subscribing third party_
 
 The VAPID key is optional and provides a way for an application server to voluntarily identify itself.
+
+_*Please Note*_: While the VAPID key is optional, if it is included, the VAPID asserion block _must_ contain a `sub` field containing the publishing contact information as a vaild URI designator. (e.g. `mailto:admin+webpush@example.org` or `https://example.org/contact`). As an example, a minimal VAPID assertion block would contain:
+
+```json
+{"aud": "https://updates.push.services.mozilla.com", "exp": 1725468595, "sub": "mailto:admin+webpush@example.com"}
+```
+
+Where `exp` and `sub` reflect the expiration time and publishing contact information. The contact information is used in case of an issue with use of the Push service and is never used for marketing purposes.
+
 When the VAPID key is provided, autopush will return an endpoint that can only be used by the application server that provided the key.
+
 **The VAPID key is formatted as a URL-safe Base64 encoded string with no padding.**
-
-
 
 ## Calls
 

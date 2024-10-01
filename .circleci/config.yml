@@ -8,8 +8,19 @@
 # DOCKERHUB_LOAD_TEST_REPO - Docker Hub repo for load tests, format: <username>/<repo>
 # DOCKER_LOAD_TEST_PASS - Docker Hub load test repo password
 # DOCKER_LOAD_TEST_USER - Docker Hub load test repo user
+#
+# These environment variables are necessary to authenticate with GCP and upload images to GAR
+# GCP_GAR_PROJECT_ID - GCP project ID for GAR repo
+# GCP_GAR_REPO - Name of GAR repo
+# GCP_OIDC_PROJECT_NUMBER - GCP project number for Workload Identity Pool/Provider
+# GCP_OIDC_SERVICE_ACCOUNT_EMAIL - GCP service account email
+# GCP_OIDC_WIP_ID - GCP Workload Identity Pool ID
+# GCP_OIDC_WIP_PROVIDER_ID - GCP Workload Identity Pool Provider ID
 
 version: 2.1
+
+orbs:
+  gcp-gcr: circleci/gcp-gcr@0.16.3
 
 commands:
   docker_login:
@@ -36,17 +47,21 @@ commands:
   setup_rust:
     steps:
       - run:
-          name: Set up Rust and build applications
+          name: Set up Rust
           command: |
             apt update
             apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
             apt install cmake -y
             # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.80 -y
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.81 -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
-            cargo build --features=emulator
+  build_applications:
+    steps:
+      - run:
+          name: Build Applicatins
+          command: cargo build --features=emulator
   setup_bigtable:
     steps:
       - run:
@@ -98,7 +113,7 @@ jobs:
   audit:
     docker:
       # NOTE: update version for all # RUST_VER
-      - image: rust:1.80
+      - image: rust:1.81
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -156,9 +171,10 @@ jobs:
     steps:
       - checkout
       - restore_test_cache:
-          cache_key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v1-integration-test-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
       - setup_rust
+      - build_applications
       - run:
           name: Set up system
           command: |
@@ -175,10 +191,13 @@ jobs:
             # PYTEST_ARGS: -sv
             DB_DSN: grpc://localhost:8086
             TEST_RESULTS_DIR: workspace/test-results
+      - store_artifacts:
+          path: ~/project/workspace/test-results/integration_test_results.xml
+          destination: integration_test_results.xml
       - store_test_results:
           path: workspace/test-results
       - save_test_cache:
-          cache_key: rust-v1-integration-test-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v1-integration-test-cache-{{ checksum "Cargo.lock" }}
 
   test-unit:
     docker:
@@ -194,7 +213,7 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
-    resource_class: large
+    resource_class: 2xlarge
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
@@ -202,11 +221,14 @@ jobs:
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
       - restore_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
       - setup_rust
       - setup_cbt
       - setup_bigtable
+      - run:
+          name: Install cargo-nextest
+          command: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
       - run:
           name: Echo Rust version
           command: |
@@ -222,12 +244,17 @@ jobs:
       - run:
           name: Report tests and coverage
           command: |
-            cargo llvm-cov --json --output-path workspace/test-results/cov.json test --features=emulator --features=bigtable --jobs=2
+            cargo llvm-cov --summary-only --json --output-path workspace/test-results/cov.json nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
       - store_artifacts:
           path: ~/project/workspace/test-results/cov.json
           destination: cov.json
+      - store_artifacts:
+          path: ~/project/target/nextest/ci/junit.xml
+          destination: junit.xml
+      - store_test_results:
+          path: target/nextest/ci
       - save_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
 
   rust-checks:
     docker:
@@ -246,7 +273,7 @@ jobs:
       # Need to download the poetry.lock files so we can use their
       # checksums in restore_cache.
       - restore_test_cache:
-          cache_key: rust-v2-{{ .Environment.CACHE_VERSION }}-{{ .Branch }}-{{ checksum "Cargo.lock" }}
+          cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
       - setup_rust
       - run:
           name: Echo Rust Version
@@ -328,40 +355,58 @@ jobs:
             - autopush-locust.tar
 
   deploy:
-    docker:
-      - image: docker:18.03.0-ce
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
+    executor: gcp-gcr/default
     parameters:
+      build_tag:
+        type: string
+        default: build
       image:
         type: string
-      repo:
+      registry-url:
         type: string
+        default: us-docker.pkg.dev
     steps:
-      - setup_remote_docker
-      - docker_login
+      # gcr-auth parameters:
+      # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-gcr-auth
+      - gcp-gcr/gcr-auth:
+          gcp_cred_config_file_path: ~/gcp_cred_config.json
+          google-project-id: GCP_GAR_PROJECT_ID
+          google_project_number: GCP_OIDC_PROJECT_NUMBER
+          registry-url: <<parameters.registry-url>>
+          service_account_email: GCP_OIDC_SERVICE_ACCOUNT_EMAIL
+          use_oidc: true
+          workload_identity_pool_id: GCP_OIDC_WIP_ID
+          workload_identity_pool_provider_id: GCP_OIDC_WIP_PROVIDER_ID
       - attach_workspace:
-          at: /cache
+          at: /tmp/cache
       - run:
           name: Restore Docker image cache
-          command: docker load -i /cache/docker.tar
+          command: docker load -i /tmp/cache/docker.tar
+      # This is the easiest way to tag multiple images using different
+      # conditions for the GAR_TAG variable in the smallest amount of code.
+      #
+      # You can find other jobs and commands you can use with this orb that
+      # include tagging here:
+      # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr
       - run:
-          name: Deploy to Dockerhub
+          name: Tag image
           command: |
-            if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              # deploy master
-              docker login -u $DOCKER_USER -p $DOCKER_PASS
-              docker tag <<parameters.image>> <<parameters.repo>>:latest
-              docker push <<parameters.repo>>:latest
-            elif  [ ! -z "${CIRCLE_TAG}" ]; then
-              # deploy a release tag
-              docker login -u $DOCKER_USER -p $DOCKER_PASS
-              echo "<<parameters.repo>>:${CIRCLE_TAG}"
-              docker tag <<parameters.image>> "<<parameters.repo>>:${CIRCLE_TAG}"
-              docker images
-              docker push "<<parameters.repo>>:${CIRCLE_TAG}"
+            if [ ! -z "${CIRCLE_TAG}" ]; then
+              echo "export GAR_TAG=${CIRCLE_TAG}" >> $BASH_ENV
+            else
+              echo "export GAR_TAG=${CIRCLE_BRANCH}" >> $BASH_ENV
             fi
+              echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_GAR_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
+              source $BASH_ENV
+              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:$GAR_TAG
+              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:latest
+      # push-image parameters:
+      # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
+      - gcp-gcr/push-image:
+          image: "${GCP_GAR_REPO}/<<parameters.image>>"
+          google-project-id: GCP_GAR_PROJECT_ID
+          registry-url: <<parameters.registry-url>>
+          tag: $GAR_TAG,latest
 
   deploy-load-test:
     docker:
@@ -439,8 +484,7 @@ workflows:
       # Comment out the following two sections for local CircleCI testing.
       - deploy:
           name: deploy-autoconnect
-          image: autoconnect:build
-          repo: ${DOCKERHUB_CONNECT_REPO}
+          image: autoconnect
           requires:
             - build-autoconnect
             - Integration Tests
@@ -454,8 +498,7 @@ workflows:
 
       - deploy:
           name: deploy-autoendpoint
-          image: autoendpoint:build
-          repo: ${DOCKERHUB_ENDPOINT_REPO}
+          image: autoendpoint
           requires:
             - build-autoendpoint
             - Integration Tests
