@@ -45,6 +45,6 @@ pub mod util;
 /// Autopush in 60 days can be discarded.
 ///
 /// The maximum TTL for channels, 30 days in seconds
-pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
+pub const MAX_NOTIFICATION_TTL: u64 = 30 * 24 * 60 * 60;
 /// The maximum TTL for router records, 60 days in seconds
-pub const MAX_ROUTER_TTL: u64 = 2 * MAX_CHANNEL_TTL;
+pub const MAX_ROUTER_TTL: u64 = 2 * MAX_NOTIFICATION_TTL;

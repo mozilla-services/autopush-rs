@@ -35,7 +35,7 @@ pub use reporter::spawn_pool_periodic_reporter;
 use crate::errors::{ApcErrorKind, Result};
 use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
-use crate::{MAX_CHANNEL_TTL, MAX_ROUTER_TTL};
+use crate::{MAX_NOTIFICATION_TTL, MAX_ROUTER_TTL};
 use models::{NotificationHeaders, RangeKey};
 
 pub const USER_RECORD_VERSION: u64 = 1;
@@ -342,7 +342,7 @@ impl NotificationRecord {
             uaid: *uaid,
             chidmessageid: val.chidmessageid(),
             timestamp: Some(val.timestamp),
-            expiry: sec_since_epoch() + min(val.ttl, MAX_CHANNEL_TTL),
+            expiry: sec_since_epoch() + min(val.ttl, MAX_NOTIFICATION_TTL),
             ttl: Some(val.ttl),
             data: val.data,
             headers: val.headers.map(|h| h.into()),

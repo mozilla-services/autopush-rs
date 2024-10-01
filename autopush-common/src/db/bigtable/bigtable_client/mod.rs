@@ -1860,6 +1860,9 @@ mod tests {
         }
 
         let mut user = client.get_user(&uaid).await.unwrap().unwrap();
+
+        // Quick nap to make sure that the ca_expiry values are different.
+        tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
         client.update_user(&mut user).await.unwrap();
 
         // Ensure update_user updated the expiry (timestamp) of every cell in the row
@@ -1870,7 +1873,7 @@ mod tests {
 
         let ca_expiry2 = row.take_required_cell("connected_at").unwrap().timestamp;
 
-        assert!(ca_expiry2 >= ca_expiry);
+        assert!(ca_expiry2 > ca_expiry);
 
         for mut cells in row.cells.into_values() {
             let Some(cell) = cells.pop() else {
