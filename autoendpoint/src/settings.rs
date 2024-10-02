@@ -175,11 +175,11 @@ impl Settings {
     // public key, but that may not always be true.
     pub fn tracking_keys(&self) -> Vec<String> {
         let keys = &self.tracking_keys.replace(['"', ' '], "");
-        let reply = Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
+        let result = Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
             .map(|v| v.to_owned().replace("=", ""))
             .collect();
-        trace!("🔍 keys: {:?}", reply);
-        reply
+        trace!("🔍 tracking_keys: {:?}", result);
+        result
     }
 
     /// Get the URL for this endpoint server

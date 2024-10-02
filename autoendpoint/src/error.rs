@@ -70,6 +70,9 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     Jwt(#[from] jsonwebtoken::errors::Error),
 
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
+
     #[error("Error while validating token")]
     TokenHashValidation(#[source] openssl::error::ErrorStack),
 
@@ -143,6 +146,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::Jwt(_)
+            | ApiErrorKind::Serde(_)
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::InvalidAuthentication
             | ApiErrorKind::InvalidLocalAuth(_) => StatusCode::UNAUTHORIZED,
@@ -179,7 +183,7 @@ impl ApiErrorKind {
             ApiErrorKind::InvalidMessageId => "invalid_message_id",
 
             ApiErrorKind::VapidError(_) => "vapid_error",
-            ApiErrorKind::Jwt(_) => "jwt",
+            ApiErrorKind::Jwt(_) | ApiErrorKind::Serde(_) => "jwt",
             ApiErrorKind::TokenHashValidation(_) => "token_hash_validation",
             ApiErrorKind::InvalidAuthentication => "invalid_authentication",
             ApiErrorKind::InvalidLocalAuth(_) => "invalid_local_auth",
@@ -251,6 +255,7 @@ impl ApiErrorKind {
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::Jwt(_)
+            | ApiErrorKind::Serde(_)
             | ApiErrorKind::InvalidAuthentication
             | ApiErrorKind::InvalidLocalAuth(_) => Some(109),
 
