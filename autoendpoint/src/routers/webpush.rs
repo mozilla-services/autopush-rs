@@ -179,7 +179,7 @@ impl WebPushRouter {
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
         let url = format!("{}/push/{}", node_id, notification.subscription.user.uaid);
-        let notification = notification.serialize_for_delivery();
+        let notification = notification.serialize_for_delivery().unwrap();
 
         self.http.put(&url).json(&notification).send().await
     }
