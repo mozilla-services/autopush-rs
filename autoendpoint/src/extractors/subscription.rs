@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::error::Error;
-use std::str::FromStr;
 
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
 use autopush_common::{
@@ -12,7 +11,6 @@ use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
-use url::Url;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
@@ -294,6 +292,8 @@ fn validate_vapid_jwt(
     let public_key = decode_public_key(public_key)?;
     let mut validation = Validation::new(Algorithm::ES256);
     let audience: Vec<&str> = settings.vapid_aud.iter().map(|s| s.as_str()).collect();
+    // Set the audiences we allow. This obsoletes the need to manually match
+    // against values later.
     validation.set_audience(&audience);
     validation.set_required_spec_claims(&["exp", "aud", "sub"]);
 
@@ -387,27 +387,6 @@ fn validate_vapid_jwt(
     if token_data.claims.exp > VapidClaims::default_exp() {
         // The expiration is too far in the future
         return Err(VapidError::FutureExpirationToken.into());
-    }
-
-    let aud = match Url::from_str(&token_data.claims.aud) {
-        Ok(v) => v,
-        Err(_) => {
-            error!("Bad Aud: Invalid audience {:?}", &token_data.claims.aud);
-            metrics.clone().incr("notification.auth.bad_vapid.aud");
-            return Err(VapidError::InvalidAudience.into());
-        }
-    };
-
-    let domain = &settings.endpoint_url();
-
-    if domain != &aud {
-        info!(
-            "Bad Aud: I am <{:?}>, asked for <{:?}> ",
-            domain.as_str(),
-            token_data.claims.aud
-        );
-        metrics.clone().incr("notification.auth.bad_vapid.domain");
-        return Err(VapidError::InvalidAudience.into());
     }
 
     Ok(())
@@ -510,6 +489,23 @@ pub mod tests {
                 .kind,
             ApiErrorKind::VapidError(VapidError::InvalidAudience)
         ));
+    }
+
+    #[test]
+    fn vapid_aud_valid_for_alternate_host() {
+        let domain = "https://example.org";
+        let test_settings = Settings {
+            vapid_aud: [domain.to_owned()].to_vec(),
+            ..Default::default()
+        };
+        let header = make_vapid(
+            "mailto:admin@example.com",
+            domain,
+            VapidClaims::default_exp() - 100,
+            PUB_KEY.to_owned(),
+        );
+        let result = validate_vapid_jwt(&header, &test_settings, &Metrics::noop());
+        assert!(result.is_ok());
     }
 
     #[test]
