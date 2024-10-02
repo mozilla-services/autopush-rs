@@ -44,7 +44,7 @@ pub mod util;
 /// "abandoned" and any router info assigned to a User Agent that has not contacted
 /// Autopush in 60 days can be discarded.
 ///
-/// The maximum TTL for channels, 30 days in seconds
+/// The maximum TTL for notifications, 30 days in seconds
 pub const MAX_NOTIFICATION_TTL: u64 = 30 * 24 * 60 * 60;
 /// The maximum TTL for router records, 60 days in seconds
 pub const MAX_ROUTER_TTL: u64 = 2 * MAX_NOTIFICATION_TTL;
