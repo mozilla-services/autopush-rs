@@ -1122,7 +1122,6 @@ async def test_ttl_0_connected(registered_test_client: AsyncPushTestClient) -> N
     """Test that a message with a TTL=0 is delivered to a client that is actively connected."""
     uuid_data: str = str(uuid.uuid4())
     result = await registered_test_client.send_notification(data=uuid_data, ttl=0)
-    log.info(result);
     assert result is not None
     # the following presumes that only `salt` is padded.
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
