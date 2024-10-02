@@ -1,4 +1,4 @@
-use autopush_common::db::client::DbClient;
+use autopush_common::{db::client::DbClient, MAX_NOTIFICATION_TTL};
 
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
@@ -15,9 +15,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
-
-/// 28 days
-const MAX_TTL: usize = 28 * 24 * 60 * 60;
 
 /// Firebase Cloud Messaging router
 pub struct FcmRouter {
@@ -156,7 +153,8 @@ impl Router for FcmRouter {
 
         let (routing_token, app_id) =
             self.routing_info(router_data, &notification.subscription.user.uaid)?;
-        let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
+        let ttl =
+            MAX_NOTIFICATION_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as u64));
 
         // Send the notification to FCM
         let client = self

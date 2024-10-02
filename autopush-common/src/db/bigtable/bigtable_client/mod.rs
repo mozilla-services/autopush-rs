@@ -24,8 +24,7 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
-    USER_RECORD_VERSION,
+    DbSettings, Notification, NotificationRecord, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
 };
 
 pub use self::metadata::MetadataBuilder;
@@ -900,6 +899,18 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
+    ///
+    /// NOTE: This function updates the key ROUTER records for a given UAID. It does this by
+    /// calling [BigTableClientImpl::user_to_row] which creates a new row with new `cell.timestamp` values set
+    /// to now + `MAX_ROUTER_TTL`. This function is called by mobile during the daily
+    /// [autoendpoint::routes::update_token_route] handling, and by desktop
+    /// [autoconnect-ws-sm::get_or_create_user]` which is called
+    /// during the `HELLO` handler. This should be enough to ensure that the ROUTER records
+    /// are properly refreshed for "lively" clients.
+    ///
+    /// NOTE: There is some, very small, potential risk that a desktop client that can
+    /// somehow remain connected the duration of MAX_ROUTER_TTL, may be dropped as not being
+    /// "lively".
     async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         let Some(ref version) = user.version else {
             return Err(DbError::General(
@@ -1023,7 +1034,7 @@ impl DbClient for BigTableClientImpl {
         // easy/efficient
         let row_key = uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
 
         // Note: updating the version column isn't necessary here because this
         // write only adds a new (or updates an existing) column with a 0 byte
@@ -1215,8 +1226,9 @@ impl DbClient for BigTableClientImpl {
             &row_key,
             timestamp.to_be_bytes().to_vec()
         );
-        let mut row = Row::new(row_key);
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let mut row = Row::new(row_key.clone());
+
         row.cells.insert(
             ROUTER_FAMILY.to_owned(),
             vec![
@@ -1229,7 +1241,9 @@ impl DbClient for BigTableClientImpl {
                 new_version_cell(expiry),
             ],
         );
+
         self.write_row(row).await?;
+
         Ok(())
     }
 
@@ -1831,20 +1845,24 @@ mod tests {
             panic!("Expected row");
         };
 
-        // Ensure the initial expiry (timestamp) of all the cells in the row
-        let expiry = row.take_required_cell("connected_at").unwrap().timestamp;
+        // Ensure the initial cell expiry (timestamp) of all the cells
+        // in the row has been updated
+        let ca_expiry = row.take_required_cell("connected_at").unwrap().timestamp;
         for mut cells in row.cells.into_values() {
             let Some(cell) = cells.pop() else {
                 continue;
             };
             assert!(
-                cell.timestamp >= expiry,
+                cell.timestamp >= ca_expiry,
                 "{} cell timestamp should >= connected_at's",
                 cell.qualifier
             );
         }
 
         let mut user = client.get_user(&uaid).await.unwrap().unwrap();
+
+        // Quick nap to make sure that the ca_expiry values are different.
+        tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
         client.update_user(&mut user).await.unwrap();
 
         // Ensure update_user updated the expiry (timestamp) of every cell in the row
@@ -1853,16 +1871,17 @@ mod tests {
             panic!("Expected row");
         };
 
-        let expiry2 = row.take_required_cell("connected_at").unwrap().timestamp;
-        assert!(expiry2 > expiry);
+        let ca_expiry2 = row.take_required_cell("connected_at").unwrap().timestamp;
+
+        assert!(ca_expiry2 > ca_expiry);
 
         for mut cells in row.cells.into_values() {
             let Some(cell) = cells.pop() else {
                 continue;
             };
-            assert_eq!(
-                cell.timestamp, expiry2,
-                "{} cell timestamp should match connected_at's",
+            assert!(
+                cell.timestamp >= ca_expiry2,
+                "{} cell timestamp expiry should exceed connected_at's",
                 cell.qualifier
             );
         }
