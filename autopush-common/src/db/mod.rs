@@ -35,14 +35,10 @@ pub use reporter::spawn_pool_periodic_reporter;
 use crate::errors::{ApcErrorKind, Result};
 use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
+use crate::{MAX_NOTIFICATION_TTL, MAX_ROUTER_TTL};
 use models::{NotificationHeaders, RangeKey};
 
-const MAX_EXPIRY: u64 = 2_592_000;
 pub const USER_RECORD_VERSION: u64 = 1;
-/// The maximum TTL for channels, 30 days
-pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
-/// The maximum TTL for router records, 30 days
-pub const MAX_ROUTER_TTL: u64 = MAX_CHANNEL_TTL;
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {
@@ -351,7 +347,7 @@ impl NotificationRecord {
             uaid: *uaid,
             chidmessageid: val.chidmessageid(),
             timestamp: Some(val.timestamp),
-            expiry: sec_since_epoch() + min(val.ttl, MAX_EXPIRY),
+            expiry: sec_since_epoch() + min(val.ttl, MAX_NOTIFICATION_TTL),
             ttl: Some(val.ttl),
             data: val.data,
             headers: val.headers.map(|h| h.into()),

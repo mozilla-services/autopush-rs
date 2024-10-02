@@ -129,7 +129,7 @@ impl FromRequest for Subscription {
 
             // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid, &app_state.settings.endpoint_url(), &metrics)?;
+                validate_vapid_jwt(vapid, &app_state.settings, &metrics)?;
 
                 app_state
                     .metrics
@@ -285,10 +285,9 @@ fn term_to_label(term: &str) -> String {
 /// This is mostly taken care of by the jsonwebtoken library
 fn validate_vapid_jwt(
     vapid: &VapidHeaderWithKey,
-    domain: &Url,
+    settings: &Settings,
     metrics: &Metrics,
 ) -> ApiResult<()> {
-    let settings = Settings::with_env_and_config_file(&None).unwrap();
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
@@ -330,6 +329,9 @@ fn validate_vapid_jwt(
                 // Other errors are always possible. Try to be helpful by returning
                 // the Json parse error.
                 return Err(VapidError::InvalidVapid(e.to_string()).into());
+            }
+            jsonwebtoken::errors::ErrorKind::InvalidAudience => {
+                return Err(VapidError::InvalidAudience.into());
             }
             _ => {
                 // Attempt to match up the majority of ErrorKind variants.
@@ -395,6 +397,8 @@ fn validate_vapid_jwt(
         }
     };
 
+    let domain = &settings.endpoint_url();
+
     if domain != &aud {
         info!(
             "Bad Aud: I am <{:?}>, asked for <{:?}> ",
@@ -415,11 +419,11 @@ pub mod tests {
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};
     use crate::metrics::Metrics;
+    use crate::settings::Settings;
+
     use autopush_common::util::b64_decode_std;
     use lazy_static::lazy_static;
     use serde::{Deserialize, Serialize};
-    use std::str::FromStr;
-    use url::Url;
 
     pub const PUB_KEY: &str =
         "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds";
@@ -471,6 +475,10 @@ pub mod tests {
         // Specify a potentially invalid padding.
         let public_key = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds==".to_owned();
         let domain = "https://push.services.mozilla.org";
+        let test_settings = Settings {
+            endpoint_url: domain.to_owned(),
+            ..Default::default()
+        };
 
         let header = make_vapid(
             "mailto:admin@example.com",
@@ -478,27 +486,27 @@ pub mod tests {
             VapidClaims::default_exp() - 100,
             public_key,
         );
-        let result = validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop());
+        let result = validate_vapid_jwt(&header, &test_settings, &Metrics::noop());
         assert!(result.is_ok());
     }
 
     #[test]
     fn vapid_aud_invalid() {
         let domain = "https://push.services.mozilla.org";
+        let test_settings = Settings {
+            endpoint_url: domain.to_owned(),
+            ..Default::default()
+        };
         let header = make_vapid(
             "mailto:admin@example.com",
-            domain,
+            "https://example.com",
             VapidClaims::default_exp() - 100,
             PUB_KEY.to_owned(),
         );
         assert!(matches!(
-            validate_vapid_jwt(
-                &header,
-                &Url::from_str("http://example.org").unwrap(),
-                &Metrics::noop()
-            )
-            .unwrap_err()
-            .kind,
+            validate_vapid_jwt(&header, &test_settings, &Metrics::noop())
+                .unwrap_err()
+                .kind,
             ApiErrorKind::VapidError(VapidError::InvalidAudience)
         ));
     }
@@ -513,6 +521,10 @@ pub mod tests {
         }
 
         let domain = "https://push.services.mozilla.org";
+        let test_settings = Settings {
+            endpoint_url: "domain".to_owned(),
+            ..Default::default()
+        };
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = StrExpVapidClaims {
@@ -529,13 +541,9 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let vv = validate_vapid_jwt(
-            &header,
-            &Url::from_str("http://example.org").unwrap(),
-            &Metrics::noop(),
-        )
-        .unwrap_err()
-        .kind;
+        let vv = validate_vapid_jwt(&header, &test_settings, &Metrics::noop())
+            .unwrap_err()
+            .kind;
         assert!(matches![
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
@@ -555,6 +563,10 @@ pub mod tests {
         let public_key_standard = "BM3bVjW/wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf+1odb8hds=".to_owned();
         let public_key_url_safe = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds=".to_owned();
         let domain = "https://push.services.mozilla.org";
+        let test_settings = Settings {
+            endpoint_url: domain.to_owned(),
+            ..Default::default()
+        };
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = VapidClaims {
@@ -572,9 +584,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(
-            validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop()).is_ok()
-        );
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::noop()).is_ok());
         // try standard form with no padding
         let header = VapidHeaderWithKey {
             public_key: public_key_standard.trim_end_matches('=').to_owned(),
@@ -584,9 +594,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(
-            validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop()).is_ok()
-        );
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::noop()).is_ok());
         // try URL safe form with padding
         let header = VapidHeaderWithKey {
             public_key: public_key_url_safe.clone(),
@@ -596,9 +604,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(
-            validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop()).is_ok()
-        );
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::noop()).is_ok());
         // try URL safe form without padding
         let header = VapidHeaderWithKey {
             public_key: public_key_url_safe.trim_end_matches('=').to_owned(),
@@ -608,9 +614,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(
-            validate_vapid_jwt(&header, &Url::from_str(domain).unwrap(), &Metrics::noop()).is_ok()
-        );
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::noop()).is_ok());
     }
 
     #[test]
@@ -623,6 +627,10 @@ pub mod tests {
         }
 
         let domain = "https://push.services.mozilla.org";
+        let test_settings = Settings {
+            endpoint_url: domain.to_owned(),
+            ..Default::default()
+        };
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = NoSubVapidClaims {
@@ -639,13 +647,9 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let vv = validate_vapid_jwt(
-            &header,
-            &Url::from_str("http://example.org").unwrap(),
-            &Metrics::noop(),
-        )
-        .unwrap_err()
-        .kind;
+        let vv = validate_vapid_jwt(&header, &test_settings, &Metrics::noop())
+            .unwrap_err()
+            .kind;
         assert!(matches![
             vv,
             ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
