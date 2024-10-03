@@ -1,4 +1,4 @@
-use autopush_common::db::client::DbClient;
+use autopush_common::{db::client::DbClient, MAX_NOTIFICATION_TTL};
 
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
@@ -15,9 +15,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
-
-/// 28 days
-const MAX_TTL: usize = 28 * 24 * 60 * 60;
 
 /// Firebase Cloud Messaging router
 pub struct FcmRouter {
@@ -156,7 +153,8 @@ impl Router for FcmRouter {
 
         let (routing_token, app_id) =
             self.routing_info(router_data, &notification.subscription.user.uaid)?;
-        let ttl = MAX_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as usize));
+        let ttl =
+            MAX_NOTIFICATION_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as u64));
 
         // Send the notification to FCM
         let client = self
@@ -175,6 +173,7 @@ impl Router for FcmRouter {
                 platform,
                 &app_id,
                 notification.subscription.user.uaid,
+                notification.subscription.vapid.clone(),
             )
             .await);
         };
@@ -219,11 +218,12 @@ mod tests {
 
     /// Create a router for testing, using the given service auth file
     async fn make_router(
+        server: &mut mockito::ServerGuard,
         fcm_credential: String,
         gcm_credential: String,
         db: Box<dyn DbClient>,
     ) -> FcmRouter {
-        let url = &mockito::server_url();
+        let url = &server.url();
         FcmRouter::new(
             FcmSettings {
                 base_url: Url::parse(url).unwrap(),
@@ -264,11 +264,15 @@ mod tests {
     /// A notification with no data is sent to FCM
     #[tokio::test]
     async fn successful_routing_no_data() {
-        let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(make_service_key(), "whatever".to_string(), db).await;
+        let mut server = mockito::Server::new_async().await;
+
+        let mdb = MockDbClient::new();
+        let db = mdb.into_boxed_arc();
+        let service_key = make_service_key(&server);
+        let router = make_router(&mut server, service_key, "whatever".to_string(), db).await;
         assert!(router.active());
-        let _token_mock = mock_token_endpoint();
-        let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
             .match_body(
                 serde_json::json!({
                     "message": {
@@ -299,10 +303,14 @@ mod tests {
     /// A notification with data is sent to FCM
     #[tokio::test]
     async fn successful_routing_with_data() {
-        let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(make_service_key(), "whatever".to_string(), db).await;
-        let _token_mock = mock_token_endpoint();
-        let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
+        let mut server = mockito::Server::new_async().await;
+
+        let mdb = MockDbClient::new();
+        let db = mdb.into_boxed_arc();
+        let service_key = make_service_key(&server);
+        let router = make_router(&mut server, service_key, "whatever".to_string(), db).await;
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
             .match_body(
                 serde_json::json!({
                     "message": {
@@ -340,10 +348,16 @@ mod tests {
     /// the FCM request is not sent.
     #[tokio::test]
     async fn missing_client() {
+        let mut server = mockito::Server::new_async().await;
+
         let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(make_service_key(), "whatever".to_string(), db).await;
-        let _token_mock = mock_token_endpoint();
-        let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID).expect(0).create();
+        let service_key = make_service_key(&server);
+        let router = make_router(&mut server, service_key, "whatever".to_string(), db).await;
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
+            .expect(0)
+            .create_async()
+            .await;
         let mut router_data = default_router_data();
         let app_id = "app_id".to_string();
         router_data.insert(
@@ -367,6 +381,8 @@ mod tests {
     /// If the FCM user no longer exists (404), we drop the user from our database
     #[tokio::test]
     async fn no_fcm_user() {
+        let mut server = mockito::Server::new_async().await;
+
         let notification = make_notification(default_router_data(), None, RouterType::FCM);
         let mut db = MockDbClient::new();
         db.expect_remove_user()
@@ -374,17 +390,20 @@ mod tests {
             .times(1)
             .return_once(|_| Ok(()));
 
+        let service_key = make_service_key(&server);
         let router = make_router(
-            make_service_key(),
+            &mut server,
+            service_key,
             "whatever".to_string(),
             db.into_boxed_arc(),
         )
         .await;
-        let _token_mock = mock_token_endpoint();
-        let _fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
             .with_status(404)
             .with_body(r#"{"error":{"status":"NOT_FOUND","message":"test-message"}}"#)
-            .create();
+            .create_async()
+            .await;
 
         let result = router.route_notification(&notification).await;
         assert!(result.is_err());

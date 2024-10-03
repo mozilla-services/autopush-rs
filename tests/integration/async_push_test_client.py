@@ -50,7 +50,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         }
 
     async def connect(self, connection_port: int | None = None) -> None:
-        """Establish a websocket connection to localhost at the provided `connection_port`.
+        """Establish a websocket connection to localhost (127.0.0.1) at provided `connection_port`.
 
         Parameters
         ----------
@@ -59,7 +59,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         """
         url: str = self.url
         if connection_port:  # pragma: no cover
-            url = f"ws://localhost:{connection_port}/"
+            url = f"ws://127.0.0.1:{connection_port}/"
         self.ws = await websockets.connect(uri=url, extra_headers=self.headers)
 
     async def ws_server_send(self, message: dict) -> None:
@@ -77,7 +77,12 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug(f"Send: {payload}")
         await self.ws.send(payload)
 
-    async def hello(self, uaid: str | None = None, services: list[str] | None = None):
+    def get_host_client_endpoint(self) -> str:
+        """Return host endpoint from client."""
+        parsed = urlparse(list(self.channels.values())[0])
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    async def hello(self, uaid: str | None = None, services: dict[str, str] | None = None):
         """Hello verification."""
         if not self.ws:
             raise WebSocketException("WebSocket client not available as expected.")
@@ -109,7 +114,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self.uaid = result["uaid"]
         return result
 
-    async def broadcast_subscribe(self, services: list[str]) -> None:
+    async def broadcast_subscribe(self, services: dict[str, str]) -> None:
         """Broadcast WebSocket subscribe."""
         if not self.ws:
             raise WebSocketException("WebSocket client not available as expected.")
@@ -170,7 +175,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         self,
         channel=None,
         version=None,
-        data: str | None = None,
+        data: str | bytes | None = None,
         use_header: bool = True,
         status: int = 201,
         # 202 status reserved for yet to be implemented push w/ reciept.
@@ -210,9 +215,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
             headers.update({"Crypto-Key": f"{headers.get('Crypto-Key', '')};{ckey}"})
         if topic:
             headers["Topic"] = topic
-        body: str = data or ""
+        body: str | bytes = data or ""
         method: str = "POST"
-        log.debug(f"{method} body: {body}")
+        log.debug(f"{method} body: {body!r}")
         log.debug(f"  headers: {headers}")
         async with httpx.AsyncClient() as httpx_client:
             resp = await httpx_client.request(
@@ -265,9 +270,8 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
 
         try:
             d = await asyncio.wait_for(self.ws.recv(), timeout)
-            log.debug(f"Recv: {d}")
+            log.debug(f"Recv: {d!r}")
             result = json.loads(d)
-            assert result.get("messageType") == ClientMessageType.BROADCAST.value
             return result
         except WebSocketException as ex:  # pragma: no cover
             log.error(f"Error: {ex}")
@@ -281,7 +285,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug("Send: {}")
         await self.ws.send("{}")
         result = await self.ws.recv()
-        log.debug(f"Recv: {result}")
+        log.debug(f"Recv: {result!r}")
         return result
 
     async def ack(self, channel, version) -> None:

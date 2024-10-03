@@ -1,5 +1,6 @@
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
+use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
 use autopush_common::db::client::DbClient;
@@ -44,6 +45,7 @@ pub async fn handle_error(
     platform: &str,
     app_id: &str,
     uaid: Uuid,
+    vapid: Option<VapidHeaderWithKey>,
 ) -> ApiError {
     match &error {
         RouterError::Authentication => {
@@ -69,7 +71,8 @@ pub async fn handle_error(
             );
         }
         RouterError::RequestTimeout => {
-            warn!("Bridge timeout");
+            // Bridge timeouts are common.
+            info!("Bridge timeout");
             incr_error_metric(
                 metrics,
                 platform,
@@ -116,6 +119,17 @@ pub async fn handle_error(
                 error.errno(),
             );
         }
+        RouterError::TooMuchData(_) => {
+            // Do not log this error since it's fairly common.
+            incr_error_metric(
+                metrics,
+                platform,
+                app_id,
+                "too_much_data",
+                error.status(),
+                error.errno(),
+            );
+        }
         _ => {
             warn!("Unknown error while sending bridge request: {}", error);
             incr_error_metric(
@@ -129,7 +143,14 @@ pub async fn handle_error(
         }
     }
 
-    ApiError::from(error)
+    let mut err = ApiError::from(error);
+
+    if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
+        let mut extras = err.extras.unwrap_or_default();
+        extras.extend([("sub".to_owned(), claims.sub)]);
+        err.extras = Some(extras);
+    };
+    err
 }
 
 /// Increment `notification.bridge.error`
@@ -207,16 +228,18 @@ pub mod tests {
         data: Option<String>,
         router_type: RouterType,
     ) -> Notification {
+        let user = User::builder()
+            .router_data(router_data)
+            .router_type(router_type.to_string())
+            .build()
+            .unwrap();
         Notification {
             message_id: "test-message-id".to_string(),
             subscription: Subscription {
-                user: User {
-                    router_data: Some(router_data),
-                    router_type: router_type.to_string(),
-                    ..Default::default()
-                },
+                user,
                 channel_id: channel_id(),
                 vapid: None,
+                tracking_id: None,
             },
             headers: NotificationHeaders {
                 ttl: 0,

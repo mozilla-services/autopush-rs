@@ -12,28 +12,20 @@ use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
 
+use derive_builder::Builder;
 use lazy_static::lazy_static;
 use regex::RegexSet;
 use serde::Serializer;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[cfg(feature = "dynamodb")]
-use crate::db::dynamodb::has_connected_this_month;
-use util::generate_last_connect;
-
 #[cfg(feature = "bigtable")]
 pub mod bigtable;
 pub mod client;
-#[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-pub mod dual;
-#[cfg(feature = "dynamodb")]
-pub mod dynamodb;
 pub mod error;
 pub mod models;
 pub mod reporter;
 pub mod routing;
-mod util;
 
 // used by integration testing
 pub mod mock;
@@ -43,25 +35,16 @@ pub use reporter::spawn_pool_periodic_reporter;
 use crate::errors::{ApcErrorKind, Result};
 use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use crate::util::timing::{ms_since_epoch, sec_since_epoch};
+use crate::{MAX_NOTIFICATION_TTL, MAX_ROUTER_TTL};
 use models::{NotificationHeaders, RangeKey};
 
-const MAX_EXPIRY: u64 = 2_592_000;
 pub const USER_RECORD_VERSION: u64 = 1;
-/// The maximum TTL for channels, 30 days
-pub const MAX_CHANNEL_TTL: u64 = 30 * 24 * 60 * 60;
-/// The maximum TTL for router records, 30 days
-pub const MAX_ROUTER_TTL: u64 = MAX_CHANNEL_TTL;
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum StorageType {
     INVALID,
     #[cfg(feature = "bigtable")]
     BigTable,
-    #[cfg(feature = "dynamodb")]
-    DynamoDb,
-    #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-    Dual,
-    // Postgres,
 }
 
 impl From<&str> for StorageType {
@@ -69,10 +52,6 @@ impl From<&str> for StorageType {
         match name.to_lowercase().as_str() {
             #[cfg(feature = "bigtable")]
             "bigtable" => Self::BigTable,
-            #[cfg(feature = "dual")]
-            "dual" => Self::Dual,
-            #[cfg(feature = "dynamodb")]
-            "dynamodb" => Self::DynamoDb,
             _ => Self::INVALID,
         }
     }
@@ -84,12 +63,8 @@ impl StorageType {
     fn available<'a>() -> Vec<&'a str> {
         #[allow(unused_mut)]
         let mut result: Vec<&str> = Vec::new();
-        #[cfg(feature = "dynamodb")]
-        result.push("DynamoDB");
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
-        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-        result.push("Dual");
         result
     }
 
@@ -101,14 +76,7 @@ impl StorageType {
             info!("No DSN specified, failing over to old default dsn: {default}");
             return Self::from(default);
         }
-        let dsn = dsn
-            .clone()
-            .unwrap_or(std::env::var("AWS_LOCAL_DYNAMODB").unwrap_or_default());
-        #[cfg(feature = "dynamodb")]
-        if dsn.starts_with("http") {
-            trace!("Found http");
-            return Self::DynamoDb;
-        }
+        let dsn = dsn.clone().unwrap_or_default();
         #[cfg(feature = "bigtable")]
         if dsn.starts_with("grpc") {
             trace!("Found grpc");
@@ -122,11 +90,6 @@ impl StorageType {
             }
             return Self::BigTable;
         }
-        #[cfg(all(feature = "bigtable", feature = "dynamodb"))]
-        if dsn.to_lowercase() == "dual" {
-            trace!("Found Dual mode");
-            return Self::Dual;
-        }
         Self::INVALID
     }
 }
@@ -139,9 +102,8 @@ pub struct DbSettings {
     pub dsn: Option<String>,
     /// A JSON formatted dictionary containing Database settings that
     /// are specific to the type of Data storage specified in the `dsn`
-    /// See the respective settings structures for
-    /// [crate::db::dynamodb::DynamoDbSettings]
-    /// and [crate::db::bigtable::BigTableDbSettings]
+    /// See the respective settings structure for
+    /// [crate::db::bigtable::BigTableDbSettings]
     pub db_settings: String,
 }
 //TODO: add `From<autopush::settings::Settings> for DbSettings`?
@@ -170,11 +132,11 @@ pub struct CheckStorageResponse {
 }
 
 /// A user data record.
-#[derive(Deserialize, PartialEq, Debug, Clone, Serialize)]
+#[derive(Deserialize, PartialEq, Debug, Clone, Serialize, Builder)]
+#[builder(default, setter(strip_option))]
 pub struct User {
     /// The UAID. This is generally a UUID4. It needs to be globally
     /// unique.
-    // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     pub uaid: Uuid,
     /// Time in milliseconds that the user last connected at
@@ -183,20 +145,12 @@ pub struct User {
     pub router_type: String,
     /// Router-specific data
     pub router_data: Option<HashMap<String, serde_json::Value>>,
-    /// Keyed time in a month the user last connected at with limited
-    /// key range for indexing
-    // [ed. --sigh. don't use custom timestamps kids.]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_connect: Option<u64>,
     /// Last node/port the client was or may be connected to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
     /// Record version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_version: Option<u64>,
-    /// LEGACY: Current month table in the database the user is on
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_month: Option<String>,
     /// the timestamp of the last notification sent to the user
     /// This field is exclusive to the Bigtable data scheme
     //TODO: rename this to `last_notification_timestamp`
@@ -205,6 +159,19 @@ pub struct User {
     /// UUID4 version number for optimistic locking of updates on Bigtable
     #[serde(skip_serializing)]
     pub version: Option<Uuid>,
+    /// Set of user's channel ids. These are stored in router (user) record's
+    /// row in Bigtable. They are read along with the rest of the user record
+    /// so that them, along with every other field in the router record, will
+    /// automatically have their TTL (cell timestamp) reset during
+    /// [DbClient::update_user].
+    ///
+    /// This is solely used for the sake of that update thus private.
+    /// [DbClient::get_channels] is preferred for reading the latest version of
+    /// the channel ids (partly due to historical purposes but also is a more
+    /// flexible API that might benefit different, non Bigtable [DbClient]
+    /// backends that don't necessarily store the channel ids in the router
+    /// record).
+    priv_channels: HashSet<Uuid>,
 }
 
 impl Default for User {
@@ -216,24 +183,23 @@ impl Default for User {
             connected_at: ms_since_epoch(),
             router_type: "webpush".to_string(),
             router_data: None,
-            last_connect: Some(generate_last_connect()),
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
-            current_month: None,
             current_timestamp: None,
             version: Some(Uuid::new_v4()),
+            priv_channels: HashSet::new(),
         }
     }
 }
 
 impl User {
-    #[cfg(feature = "dynamodb")]
-    pub fn set_last_connect(&mut self) {
-        self.last_connect = if has_connected_this_month(self) {
-            None
-        } else {
-            Some(generate_last_connect())
-        }
+    /// Return a new [UserBuilder] (generated from [derive_builder::Builder])
+    pub fn builder() -> UserBuilder {
+        UserBuilder::default()
+    }
+
+    pub fn channel_count(&self) -> usize {
+        self.priv_channels.len()
     }
 }
 
@@ -243,10 +209,8 @@ impl User {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct NotificationRecord {
     /// The UserAgent Identifier (UAID)
-    // DynamoDB <Hash key>
     #[serde(serialize_with = "uuid_serializer")]
     uaid: Uuid,
-    // DynamoDB <Range key>
     // Format:
     //    Topic Messages:
     //        {TOPIC_NOTIFICATION_PREFIX}:{channel id}:{topic}
@@ -264,8 +228,7 @@ pub struct NotificationRecord {
     /// Time in seconds from epoch
     #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<u64>,
-    /// DynamoDB expiration timestamp per
-    ///    <https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html>
+    /// Expiration timestamp
     expiry: u64,
     /// TTL value provided by application server for the message
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -379,12 +342,25 @@ impl NotificationRecord {
             uaid: *uaid,
             chidmessageid: val.chidmessageid(),
             timestamp: Some(val.timestamp),
-            expiry: sec_since_epoch() + min(val.ttl, MAX_EXPIRY),
+            expiry: sec_since_epoch() + min(val.ttl, MAX_NOTIFICATION_TTL),
             ttl: Some(val.ttl),
             data: val.data,
             headers: val.headers.map(|h| h.into()),
             updateid: Some(val.version),
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{User, USER_RECORD_VERSION};
+
+    #[test]
+    fn user_defaults() {
+        let user = User::builder().current_timestamp(22).build().unwrap();
+        assert_eq!(user.current_timestamp, Some(22));
+        assert_eq!(user.router_type, "webpush".to_owned());
+        assert_eq!(user.record_version, Some(USER_RECORD_VERSION));
     }
 }

@@ -3,7 +3,6 @@
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
-use crate::routers::adm::error::AdmError;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
 
@@ -16,10 +15,13 @@ use autopush_common::errors::ReportableError;
 use std::collections::HashMap;
 use thiserror::Error;
 
-pub mod adm;
+#[cfg(feature = "stub")]
+use self::stub::error::StubError;
 pub mod apns;
 mod common;
 pub mod fcm;
+#[cfg(feature = "stub")]
+pub mod stub;
 pub mod webpush;
 
 #[async_trait(?Send)]
@@ -75,16 +77,17 @@ impl From<RouterResponse> for HttpResponse {
 #[derive(Debug, Error)]
 pub enum RouterError {
     #[error(transparent)]
-    Adm(#[from] AdmError),
-
-    #[error(transparent)]
     Apns(#[from] ApnsError),
 
     #[error(transparent)]
     Fcm(#[from] FcmError),
 
+    #[cfg(feature = "stub")]
+    #[error(transparent)]
+    Stub(#[from] StubError),
+
     #[error("Database error while saving notification")]
-    SaveDb(#[source] DbError),
+    SaveDb(#[source] DbError, Option<String>),
 
     #[error("User was deleted during routing")]
     UserWasDeleted,
@@ -118,11 +121,12 @@ impl RouterError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            RouterError::Adm(e) => e.status(),
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
 
-            RouterError::SaveDb(e) => e.status(),
+            RouterError::SaveDb(e, _) => e.status(),
+            #[cfg(feature = "stub")]
+            RouterError::Stub(e) => e.status(),
 
             RouterError::UserWasDeleted | RouterError::NotFound => StatusCode::GONE,
 
@@ -139,9 +143,11 @@ impl RouterError {
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
-            RouterError::Adm(e) => e.errno(),
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
+
+            #[cfg(feature = "stub")]
+            RouterError::Stub(e) => e.errno(),
 
             RouterError::TooMuchData(_) => Some(104),
 
@@ -149,7 +155,7 @@ impl RouterError {
 
             RouterError::NotFound => Some(106),
 
-            RouterError::SaveDb(_) => Some(201),
+            RouterError::SaveDb(_, _) => Some(201),
 
             RouterError::Authentication => Some(901),
 
@@ -162,38 +168,23 @@ impl RouterError {
             RouterError::Upstream { .. } => None,
         }
     }
+}
 
-    pub fn metric_label(&self) -> Option<&'static str> {
-        // NOTE: Some metrics are emitted for other Errors via handle_error
-        // callbacks, whereas some are emitted via this method. These 2 should
-        // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
-        let err = match self {
-            RouterError::Adm(AdmError::InvalidProfile | AdmError::NoProfile) => {
-                "notification.bridge.error.adm.profile"
-            }
-            RouterError::Apns(ApnsError::SizeLimit(_)) => {
-                "notification.bridge.error.apns.oversized"
-            }
-            RouterError::Fcm(FcmError::InvalidAppId(_) | FcmError::NoAppId) => {
-                "notification.bridge.error.fcm.badappid"
-            }
-            RouterError::TooMuchData(_) => "notification.bridge.error.too_much_data",
-            RouterError::SaveDb(e) => e.metric_label().unwrap_or_default(),
-            _ => "",
-        };
-        if !err.is_empty() {
-            return Some(err);
+impl ReportableError for RouterError {
+    fn reportable_source(&self) -> Option<&(dyn ReportableError + 'static)> {
+        match &self {
+            RouterError::Apns(e) => Some(e),
+            RouterError::Fcm(e) => Some(e),
+            RouterError::SaveDb(e, _) => Some(e),
+            _ => None,
         }
-        None
     }
 
-    pub fn is_sentry_event(&self) -> bool {
+    fn is_sentry_event(&self) -> bool {
         match self {
-            RouterError::Adm(e) => !matches!(e, AdmError::InvalidProfile | AdmError::NoProfile),
             // apns handle_error emits a metric for ApnsError::Unregistered
-            RouterError::Apns(ApnsError::SizeLimit(_))
-            | RouterError::Apns(ApnsError::Unregistered) => false,
-            RouterError::Fcm(e) => !matches!(e, FcmError::InvalidAppId(_) | FcmError::NoAppId),
+            RouterError::Apns(e) => e.is_sentry_event(),
+            RouterError::Fcm(e) => e.is_sentry_event(),
             // common handle_error emits metrics for these
             RouterError::Authentication
             | RouterError::GCMAuthentication
@@ -202,15 +193,34 @@ impl RouterError {
             | RouterError::RequestTimeout
             | RouterError::TooMuchData(_)
             | RouterError::Upstream { .. } => false,
-            RouterError::SaveDb(e) => e.is_sentry_event(),
+            RouterError::SaveDb(e, _) => e.is_sentry_event(),
             _ => true,
         }
     }
 
-    pub fn extras(&self) -> Vec<(&str, String)> {
+    fn metric_label(&self) -> Option<&'static str> {
+        // NOTE: Some metrics are emitted for other Errors via handle_error
+        // callbacks, whereas some are emitted via this method. These 2 should
+        // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
         match self {
+            RouterError::Apns(e) => e.metric_label(),
+            RouterError::Fcm(e) => e.metric_label(),
+            RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),
+            _ => None,
+        }
+    }
+
+    fn extras(&self) -> Vec<(&str, String)> {
+        match &self {
+            RouterError::Apns(e) => e.extras(),
             RouterError::Fcm(e) => e.extras(),
-            RouterError::SaveDb(e) => e.extras(),
+            RouterError::SaveDb(e, sub) => {
+                let mut extras = e.extras();
+                if let Some(sub) = sub {
+                    extras.append(&mut vec![("sub", sub.clone())]);
+                };
+                extras
+            }
             _ => vec![],
         }
     }

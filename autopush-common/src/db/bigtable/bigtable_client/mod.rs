@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
@@ -23,12 +24,11 @@ use uuid::Uuid;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, NotificationRecord, User, MAX_CHANNEL_TTL, MAX_ROUTER_TTL,
-    USER_RECORD_VERSION,
+    DbSettings, Notification, NotificationRecord, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
 };
 
 pub use self::metadata::MetadataBuilder;
-use self::row::Row;
+use self::row::{Row, RowCells};
 use super::pool::BigTablePool;
 use super::BigTableDbSettings;
 
@@ -169,9 +169,14 @@ fn filter_chain(filters: impl Into<RepeatedField<RowFilter>>) -> RowFilter {
 }
 
 /// Return a ReadRowsRequest against table for a given row key
-fn read_row_request(table_name: &str, row_key: &str) -> bigtable::ReadRowsRequest {
+fn read_row_request(
+    table_name: &str,
+    app_profile_id: &str,
+    row_key: &str,
+) -> bigtable::ReadRowsRequest {
     let mut req = bigtable::ReadRowsRequest::default();
     req.set_table_name(table_name.to_owned());
+    req.set_app_profile_id(app_profile_id.to_owned());
 
     let mut row_keys = RepeatedField::default();
     row_keys.push(row_key.as_bytes().to_vec());
@@ -194,6 +199,46 @@ fn to_string(value: Vec<u8>, name: &str) -> Result<String, DbError> {
         debug!("🉑 cannot read string {}: {:?}", name, e);
         DbError::DeserializeString(name.to_owned())
     })
+}
+
+/// Parse the "set" (see [DbClient::add_channels]) of channel ids in a bigtable Row.
+///
+/// Cells should solely contain the set of channels otherwise an Error is returned.
+fn channels_from_cells(cells: &RowCells) -> DbResult<HashSet<Uuid>> {
+    let mut result = HashSet::new();
+    for cells in cells.values() {
+        let Some(cell) = cells.last() else {
+            continue;
+        };
+        let Some((_, chid)) = cell.qualifier.split_once("chid:") else {
+            return Err(DbError::Integrity(
+                "get_channels expected: chid:<chid>".to_owned(),
+                None,
+            ));
+        };
+        result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
+    }
+    Ok(result)
+}
+
+/// Convert the [HashSet] of channel ids to cell entries for a bigtable Row
+fn channels_to_cells(channels: Cow<HashSet<Uuid>>, expiry: SystemTime) -> Vec<cell::Cell> {
+    let channels = channels.into_owned();
+    let mut cells = Vec::with_capacity(channels.len().min(100_000));
+    for (i, channel_id) in channels.into_iter().enumerate() {
+        // There is a limit of 100,000 mutations per batch for bigtable.
+        // https://cloud.google.com/bigtable/quotas
+        // If you have 100,000 channels, you have too many.
+        if i >= 100_000 {
+            break;
+        }
+        cells.push(cell::Cell {
+            qualifier: format!("chid:{}", channel_id.as_hyphenated()),
+            timestamp: expiry,
+            ..Default::default()
+        });
+    }
+    cells
 }
 
 pub fn retry_policy(max: usize) -> RetryPolicy {
@@ -269,14 +314,14 @@ pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) ->
 /// They can be incomplete for a couple reasons:
 ///
 /// 1) A migration code bug caused a few incomplete migrations where
-/// `add_channels` and `increment_storage` calls occurred when the migration's
-/// initial `add_user` was never completed:
-/// https://github.com/mozilla-services/autopush-rs/pull/640
+///    `add_channels` and `increment_storage` calls occurred when the migration's
+///    initial `add_user` was never completed:
+///    https://github.com/mozilla-services/autopush-rs/pull/640
 ///
 /// 2) When router TTLs are eventually enabled: `add_channel` and
-/// `increment_storage` can write cells with later expiry times than the other
-/// router cells
-fn is_incomplete_router_record(cells: &HashMap<String, Vec<cell::Cell>>) -> bool {
+///    `increment_storage` can write cells with later expiry times than the other
+///    router cells
+fn is_incomplete_router_record(cells: &RowCells) -> bool {
     cells
         .keys()
         .all(|k| ["current_timestamp", "version"].contains(&k.as_str()) || k.starts_with("chid:"))
@@ -337,13 +382,18 @@ impl BigTableClientImpl {
 
     /// Return a ReadRowsRequest for a given row key
     fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
-        read_row_request(&self.settings.table_name, row_key)
+        read_row_request(
+            &self.settings.table_name,
+            &self.settings.app_profile_id,
+            row_key,
+        )
     }
 
     /// Return a MutateRowRequest for a given row key
     fn mutate_row_request(&self, row_key: &str) -> bigtable::MutateRowRequest {
         let mut req = bigtable::MutateRowRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.app_profile_id.clone());
         req.set_row_key(row_key.as_bytes().to_vec());
         req
     }
@@ -352,6 +402,7 @@ impl BigTableClientImpl {
     fn check_and_mutate_row_request(&self, row_key: &str) -> bigtable::CheckAndMutateRowRequest {
         let mut req = bigtable::CheckAndMutateRowRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.app_profile_id.clone());
         req.set_row_key(row_key.as_bytes().to_vec());
         req
     }
@@ -498,7 +549,7 @@ impl BigTableClientImpl {
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
-                set_cell.family_name = family_id.clone();
+                set_cell.family_name.clone_from(&family_id);
                 set_cell.set_column_qualifier(cell.qualifier.clone().into_bytes());
                 set_cell.set_value(cell.value);
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
@@ -759,6 +810,11 @@ impl BigTableClientImpl {
             });
         };
 
+        cells.extend(channels_to_cells(
+            Cow::Borrowed(&user.priv_channels),
+            expiry,
+        ));
+
         row.add_cells(ROUTER_FAMILY, cells);
         row
     }
@@ -787,7 +843,8 @@ impl BigtableDb {
     ///
     pub async fn health_check(
         &mut self,
-        metrics: Arc<StatsdClient>,
+        metrics: &Arc<StatsdClient>,
+        app_profile_id: &str,
     ) -> Result<bool, error::BigTableError> {
         // It is recommended that we pick a random key to perform the health check. Selecting
         // a single key for all health checks causes a "hot tablet" to arise. The `PingAndWarm`
@@ -796,7 +853,7 @@ impl BigtableDb {
         // This health check is to see if the database is present, the response is not important
         // other than it does not return an error.
         let random_uaid = Uuid::new_v4().simple().to_string();
-        let mut req = read_row_request(&self.table_name, &random_uaid);
+        let mut req = read_row_request(&self.table_name, app_profile_id, &random_uaid);
         let mut filter = data::RowFilter::default();
         filter.set_block_all_filter(true);
         req.set_filter(filter);
@@ -842,6 +899,18 @@ impl DbClient for BigTableClientImpl {
     /// BigTable doesn't really have the concept of an "update". You simply write the data and
     /// the individual cells create a new version. Depending on the garbage collection rules for
     /// the family, these can either persist or be automatically deleted.
+    ///
+    /// NOTE: This function updates the key ROUTER records for a given UAID. It does this by
+    /// calling [BigTableClientImpl::user_to_row] which creates a new row with new `cell.timestamp` values set
+    /// to now + `MAX_ROUTER_TTL`. This function is called by mobile during the daily
+    /// [autoendpoint::routes::update_token_route] handling, and by desktop
+    /// [autoconnect-ws-sm::get_or_create_user]` which is called
+    /// during the `HELLO` handler. This should be enough to ensure that the ROUTER records
+    /// are properly refreshed for "lively" clients.
+    ///
+    /// NOTE: There is some, very small, potential risk that a desktop client that can
+    /// somehow remain connected the duration of MAX_ROUTER_TTL, may be dropped as not being
+    /// "lively".
     async fn update_user(&self, user: &mut User) -> DbResult<bool> {
         let Some(ref version) = user.version else {
             return Err(DbError::General(
@@ -930,6 +999,9 @@ impl DbClient for BigTableClientImpl {
             result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
         }
 
+        // Read the channels last, after removal of all non channel cells
+        result.priv_channels = channels_from_cells(&row.cells)?;
+
         Ok(Some(result))
     }
 
@@ -962,26 +1034,15 @@ impl DbClient for BigTableClientImpl {
         // easy/efficient
         let row_key = uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_CHANNEL_TTL);
+        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
 
-        let mut cells = Vec::with_capacity(channels.len().min(100_000));
-        for (i, channel_id) in channels.into_iter().enumerate() {
-            // There is a limit of 100,000 mutations per batch for bigtable.
-            // https://cloud.google.com/bigtable/quotas
-            // If you have 100,000 channels, you have too many.
-            if i >= 100_000 {
-                break;
-            }
-            cells.push(cell::Cell {
-                qualifier: format!("chid:{}", channel_id.as_hyphenated()),
-                timestamp: expiry,
-                ..Default::default()
-            });
-        }
         // Note: updating the version column isn't necessary here because this
         // write only adds a new (or updates an existing) column with a 0 byte
         // value
-        row.add_cells(ROUTER_FAMILY, cells);
+        row.add_cells(
+            ROUTER_FAMILY,
+            channels_to_cells(Cow::Owned(channels), expiry),
+        );
 
         self.write_row(row).await?;
         Ok(())
@@ -999,23 +1060,10 @@ impl DbClient for BigTableClientImpl {
             cq_filter,
         ]));
 
-        let mut result = HashSet::new();
-        if let Some(record) = self.read_row(req).await? {
-            for mut cells in record.cells.into_values() {
-                let Some(cell) = cells.pop() else {
-                    continue;
-                };
-                let Some((_, chid)) = cell.qualifier.split_once("chid:") else {
-                    return Err(DbError::Integrity(
-                        "get_channels expected: chid:<chid>".to_owned(),
-                        None,
-                    ));
-                };
-                result.insert(Uuid::from_str(chid).map_err(|e| DbError::General(e.to_string()))?);
-            }
-        }
-
-        Ok(result)
+        let Some(row) = self.read_row(req).await? else {
+            return Ok(Default::default());
+        };
+        channels_from_cells(&row.cells)
     }
 
     /// Delete the channel. Does not delete its associated pending messages.
@@ -1178,8 +1226,9 @@ impl DbClient for BigTableClientImpl {
             &row_key,
             timestamp.to_be_bytes().to_vec()
         );
-        let mut row = Row::new(row_key);
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let mut row = Row::new(row_key.clone());
+
         row.cells.insert(
             ROUTER_FAMILY.to_owned(),
             vec![
@@ -1192,7 +1241,9 @@ impl DbClient for BigTableClientImpl {
                 new_version_cell(expiry),
             ],
         );
+
         self.write_row(row).await?;
+
         Ok(())
     }
 
@@ -1221,6 +1272,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.app_profile_id.clone());
 
         let start_key = format!("{}#01:", uaid.simple());
         let end_key = format!("{}#02:", uaid.simple());
@@ -1249,10 +1301,9 @@ impl DbClient for BigTableClientImpl {
         );
 
         let messages = self.rows_to_notifications(rows)?;
-        // Note: Bigtable always returns a timestamp of None here whereas
-        // DynamoDB returns the `current_timestamp` read from its meta
-        // record. Under Bigtable `current_timestamp` is instead initially read
-        // from [get_user]
+        // Note: Bigtable always returns a timestamp of None.
+        // Under Bigtable `current_timestamp` is instead initially read
+        // from [get_user].
         Ok(FetchMessageResponse {
             messages,
             timestamp: None,
@@ -1269,6 +1320,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
         req.set_table_name(self.settings.table_name.clone());
+        req.set_app_profile_id(self.settings.app_profile_id.clone());
 
         let mut rows = data::RowSet::default();
         let mut row_range = data::RowRange::default();
@@ -1331,7 +1383,7 @@ impl DbClient for BigTableClientImpl {
             .pool
             .get()
             .await?
-            .health_check(self.metrics.clone())
+            .health_check(&self.metrics.clone(), &self.settings.app_profile_id)
             .await?)
     }
 
@@ -1345,11 +1397,6 @@ impl DbClient for BigTableClientImpl {
     /// by `family`.
     async fn message_table_exists(&self) -> DbResult<bool> {
         Ok(true)
-    }
-
-    /// BigTable does not support message table rotation
-    fn rotating_message_table(&self) -> Option<&str> {
-        None
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {
@@ -1459,7 +1506,6 @@ mod tests {
             router_type: "webpush".to_owned(),
             connected_at,
             router_data: None,
-            last_connect: Some(connected_at),
             node_id: Some(node_id.clone()),
             ..Default::default()
         };
@@ -1759,6 +1805,86 @@ mod tests {
         client.add_channel(&uaid, &chid).await.unwrap();
         assert!(client.remove_channel(&uaid, &chid).await.unwrap());
         assert!(client.get_user(&uaid).await.unwrap().is_none());
+
+        client.remove_user(&uaid).await.unwrap();
+    }
+
+    #[actix_rt::test]
+    async fn channel_and_current_timestamp_ttl_updates() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        client.remove_user(&uaid).await.unwrap();
+
+        // Setup a user with some channels and a current_timestamp
+        let user = User {
+            uaid,
+            ..Default::default()
+        };
+        client.add_user(&user).await.unwrap();
+
+        client.add_channel(&uaid, &chid).await.unwrap();
+        client
+            .add_channel(&uaid, &uuid::Uuid::new_v4())
+            .await
+            .unwrap();
+
+        client
+            .increment_storage(
+                &uaid,
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            )
+            .await
+            .unwrap();
+
+        let req = client.read_row_request(&uaid.as_simple().to_string());
+        let Some(mut row) = client.read_row(req).await.unwrap() else {
+            panic!("Expected row");
+        };
+
+        // Ensure the initial cell expiry (timestamp) of all the cells
+        // in the row has been updated
+        let ca_expiry = row.take_required_cell("connected_at").unwrap().timestamp;
+        for mut cells in row.cells.into_values() {
+            let Some(cell) = cells.pop() else {
+                continue;
+            };
+            assert!(
+                cell.timestamp >= ca_expiry,
+                "{} cell timestamp should >= connected_at's",
+                cell.qualifier
+            );
+        }
+
+        let mut user = client.get_user(&uaid).await.unwrap().unwrap();
+
+        // Quick nap to make sure that the ca_expiry values are different.
+        tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
+        client.update_user(&mut user).await.unwrap();
+
+        // Ensure update_user updated the expiry (timestamp) of every cell in the row
+        let req = client.read_row_request(&uaid.as_simple().to_string());
+        let Some(mut row) = client.read_row(req).await.unwrap() else {
+            panic!("Expected row");
+        };
+
+        let ca_expiry2 = row.take_required_cell("connected_at").unwrap().timestamp;
+
+        assert!(ca_expiry2 > ca_expiry);
+
+        for mut cells in row.cells.into_values() {
+            let Some(cell) = cells.pop() else {
+                continue;
+            };
+            assert!(
+                cell.timestamp >= ca_expiry2,
+                "{} cell timestamp expiry should exceed connected_at's",
+                cell.qualifier
+            );
+        }
 
         client.remove_user(&uaid).await.unwrap();
     }

@@ -2,7 +2,7 @@ use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
-use autopush_common::util::InsertOpt;
+use autopush_common::{util::InsertOpt, MAX_NOTIFICATION_TTL};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::cmp::min;
@@ -15,9 +15,6 @@ lazy_static! {
     static ref STRIP_PADDING: Regex =
         Regex::new(r"(?P<head>[0-9A-Za-z\-_]+)=+(?P<tail>[,;]|$)").unwrap();
 }
-
-/// 60 days
-const MAX_TTL: i64 = 60 * 60 * 24 * 60;
 
 /// Extractor and validator for notification headers
 #[derive(Clone, Debug, Eq, PartialEq, Validate)]
@@ -71,7 +68,9 @@ impl NotificationHeaders {
         let ttl = get_header(req, "ttl")
             .and_then(|ttl| ttl.parse().ok())
             // Enforce a maximum TTL, but don't error
-            .map(|ttl| min(ttl, MAX_TTL))
+            // NOTE: In order to trap for negative TTLs, this should be a
+            // signed value, otherwise we will error out with NO_TTL.
+            .map(|ttl| min(ttl, MAX_NOTIFICATION_TTL as i64))
             .ok_or(ApiErrorKind::NoTTL)?;
         let topic = get_owned_header(req, "topic");
 
@@ -216,9 +215,9 @@ impl NotificationHeaders {
 #[cfg(test)]
 mod tests {
     use super::NotificationHeaders;
-    use super::MAX_TTL;
     use crate::error::{ApiErrorKind, ApiResult};
     use actix_web::test::TestRequest;
+    use autopush_common::MAX_NOTIFICATION_TTL;
 
     /// Assert that a result is a validation error and check its serialization
     /// against the JSON value.
@@ -265,7 +264,6 @@ mod tests {
             .insert_header(("TTL", "-1"))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
-
         assert_validation_error(
             result,
             serde_json::json!({
@@ -285,12 +283,12 @@ mod tests {
     #[test]
     fn maximum_ttl() {
         let req = TestRequest::post()
-            .insert_header(("TTL", (MAX_TTL + 1).to_string()))
+            .insert_header(("TTL", (MAX_NOTIFICATION_TTL + 1).to_string()))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, MAX_TTL);
+        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL as i64);
     }
 
     /// A valid topic results in no errors

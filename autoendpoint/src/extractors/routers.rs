@@ -1,7 +1,8 @@
 use crate::error::{ApiError, ApiResult};
-use crate::routers::adm::router::AdmRouter;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
+#[cfg(feature = "stub")]
+use crate::routers::stub::router::StubRouter;
 use crate::routers::webpush::WebPushRouter;
 use crate::routers::Router;
 use crate::server::AppState;
@@ -13,7 +14,6 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// Valid `DynamoDbUser::router_type` values
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum RouterType {
@@ -21,7 +21,8 @@ pub enum RouterType {
     FCM,
     GCM,
     APNS,
-    ADM,
+    #[cfg(feature = "stub")]
+    STUB,
 }
 
 impl FromStr for RouterType {
@@ -33,7 +34,8 @@ impl FromStr for RouterType {
             "fcm" => Ok(RouterType::FCM),
             "gcm" => Ok(RouterType::GCM),
             "apns" => Ok(RouterType::APNS),
-            "adm" => Ok(RouterType::ADM),
+            #[cfg(feature = "stub")]
+            "stub" => Ok(RouterType::STUB),
             _ => Err(()),
         }
     }
@@ -46,7 +48,8 @@ impl Display for RouterType {
             RouterType::FCM => "fcm",
             RouterType::GCM => "gcm",
             RouterType::APNS => "apns",
-            RouterType::ADM => "adm",
+            #[cfg(feature = "stub")]
+            RouterType::STUB => "stub",
         })
     }
 }
@@ -57,7 +60,8 @@ pub struct Routers {
     webpush: WebPushRouter,
     fcm: Arc<FcmRouter>,
     apns: Arc<ApnsRouter>,
-    adm: Arc<AdmRouter>,
+    #[cfg(feature = "stub")]
+    stub: Arc<StubRouter>,
 }
 
 impl FromRequest for Routers {
@@ -78,7 +82,8 @@ impl FromRequest for Routers {
             },
             fcm: app_state.fcm_router.clone(),
             apns: app_state.apns_router.clone(),
-            adm: app_state.adm_router.clone(),
+            #[cfg(feature = "stub")]
+            stub: app_state.stub_router.clone(),
         })
     }
 }
@@ -90,7 +95,8 @@ impl Routers {
             RouterType::WebPush => &self.webpush,
             RouterType::FCM | RouterType::GCM => self.fcm.as_ref(),
             RouterType::APNS => self.apns.as_ref(),
-            RouterType::ADM => self.adm.as_ref(),
+            #[cfg(feature = "stub")]
+            RouterType::STUB => self.stub.as_ref(),
         }
     }
 }

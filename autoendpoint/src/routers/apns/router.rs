@@ -153,9 +153,19 @@ impl ApnsRouter {
         } else {
             settings.key.as_bytes().to_vec()
         };
+        // Timeouts defined in ApnsSettings settings.rs config and can be modified.
+        // We define them to prevent possible a2 library changes that could
+        // create unexpected behavior if timeouts are altered.
+        // They currently map to values matching the detaults in the a2 lib v0.10.
+        let apns_settings = ApnsSettings::default();
+        let config = a2::ClientConfig {
+            endpoint,
+            request_timeout_secs: apns_settings.request_timeout_secs,
+            pool_idle_timeout_secs: apns_settings.pool_idle_timeout_secs,
+        };
         let client = ApnsClientData {
             client: Box::new(
-                a2::Client::certificate_parts(&cert, &key, endpoint)
+                a2::Client::certificate_parts(&cert, &key, config)
                     .map_err(ApnsError::ApnsClient)?,
             ),
             topic: settings
@@ -226,21 +236,6 @@ impl ApnsRouter {
         ApiError::from(ApnsError::ApnsUpstream(error))
     }
 
-    /// Convert all of the floats in a JSON value into integers. DynamoDB
-    /// returns all numbers as floats, but deserializing to `APS` will fail if
-    /// it expects an integer and gets a float.
-    fn convert_value_float_to_int(value: &mut Value) {
-        if let Some(float) = value.as_f64() {
-            *value = Value::Number(serde_json::Number::from(float as i64));
-        }
-
-        if let Some(object) = value.as_object_mut() {
-            object
-                .values_mut()
-                .for_each(Self::convert_value_float_to_int);
-        }
-    }
-
     /// if we have any clients defined, this connection is "active"
     pub fn active(&self) -> bool {
         !self.clients.is_empty()
@@ -266,7 +261,7 @@ impl ApnsRouter {
         // still needed or used. (I want to get rid of this.)
         if let Some(v) = replacement.get("title") {
             if let Some(v) = v.as_str() {
-                holder.title = v.to_owned();
+                v.clone_into(&mut holder.title);
                 aps = aps.set_title(&holder.title);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -274,7 +269,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("subtitle") {
             if let Some(v) = v.as_str() {
-                holder.subtitle = v.to_owned();
+                v.clone_into(&mut holder.subtitle);
                 aps = aps.set_subtitle(&holder.subtitle);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -282,7 +277,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("body") {
             if let Some(v) = v.as_str() {
-                holder.body = v.to_owned();
+                v.clone_into(&mut holder.body);
                 aps = aps.set_body(&holder.body);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -290,7 +285,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("title_loc_key") {
             if let Some(v) = v.as_str() {
-                holder.title_loc_key = v.to_owned();
+                v.clone_into(&mut holder.title_loc_key);
                 aps = aps.set_title_loc_key(&holder.title_loc_key);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -314,7 +309,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("action_loc_key") {
             if let Some(v) = v.as_str() {
-                holder.action_loc_key = v.to_owned();
+                v.clone_into(&mut holder.action_loc_key);
                 aps = aps.set_action_loc_key(&holder.action_loc_key);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -322,7 +317,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("loc_key") {
             if let Some(v) = v.as_str() {
-                holder.loc_key = v.to_owned();
+                v.clone_into(&mut holder.loc_key);
                 aps = aps.set_loc_key(&holder.loc_key);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -346,7 +341,7 @@ impl ApnsRouter {
         }
         if let Some(v) = replacement.get("launch_image") {
             if let Some(v) = v.as_str() {
-                holder.launch_image = v.to_owned();
+                v.clone_into(&mut holder.launch_image);
                 aps = aps.set_launch_image(&holder.launch_image);
             } else {
                 return Err(ApnsError::InvalidApsData);
@@ -424,13 +419,7 @@ impl Router for ApnsRouter {
             .get("rel_channel")
             .and_then(Value::as_str)
             .ok_or(ApnsError::NoReleaseChannel)?;
-        // XXX: We don't really use anything that is a numeric here, aside from
-        // mutable contant, and even there we should just check for presense.
-        // Once we're off of DynamoDB, we might want to kill the map.
-        let aps_json = router_data.get("aps").cloned().map(|mut value| {
-            Self::convert_value_float_to_int(&mut value);
-            value
-        });
+        let aps_json = router_data.get("aps").cloned();
         let mut message_data = build_message_data(notification)?;
         message_data.insert("ver", notification.message_id.clone());
 
@@ -461,6 +450,7 @@ impl Router for ApnsRouter {
                 apns_topic: Some(topic),
                 apns_collapse_id: None,
                 apns_expiration: Some(notification.timestamp + notification.headers.ttl as u64),
+                ..Default::default()
             },
         );
         payload.data = message_data
@@ -612,7 +602,8 @@ mod tests {
 
             Ok(apns_success_response())
         });
-        let db = MockDbClient::new().into_boxed_arc();
+        let mdb = MockDbClient::new();
+        let db = mdb.into_boxed_arc();
         let router = make_router(client, db);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
@@ -649,7 +640,8 @@ mod tests {
 
             Ok(apns_success_response())
         });
-        let db = MockDbClient::new().into_boxed_arc();
+        let mdb = MockDbClient::new();
+        let db = mdb.into_boxed_arc();
         let router = make_router(client, db);
         let data = "test-data".to_string();
         let notification = make_notification(default_router_data(), Some(data), RouterType::APNS);

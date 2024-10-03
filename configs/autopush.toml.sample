@@ -51,10 +51,6 @@
 # The port of the metrics server
 #statsd_port = 8125
 
-# Override the DynamoDB endpoint via the AWS_LOCAL_DYNAMODB environment
-# variable. No default value.
-#aws_ddb_endpoint = "..."
-
 # The name of the router table
 #router_tablename = "router"
 
@@ -81,4 +77,4 @@
 
 # The max number of stored messages to return to a connecting client. If this
 # limit is reached, the client is dropped and must re-register.
-#msg_limit = 100
+#msg_limit = 150

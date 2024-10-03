@@ -20,7 +20,6 @@ pub struct FcmClient {
     timeout: Duration,
     max_data: usize,
     authenticator: Option<DefaultAuthenticator>,
-    pub is_gcm: bool,
     http_client: reqwest::Client,
 }
 
@@ -77,7 +76,6 @@ impl FcmClient {
             timeout: Duration::from_secs(settings.timeout as u64),
             max_data: settings.max_data,
             authenticator: auth,
-            is_gcm: server_credential.is_gcm.unwrap_or_default(),
             http_client: http,
         })
     }
@@ -87,7 +85,7 @@ impl FcmClient {
         &self,
         data: HashMap<&'static str, String>,
         routing_token: String,
-        ttl: usize,
+        ttl: u64,
     ) -> Result<(), RouterError> {
         // Check the payload size. FCM only cares about the `data` field when
         // checking size.
@@ -191,7 +189,7 @@ pub mod tests {
     pub const GCM_PROJECT_ID: &str = "valid_gcm_access_token";
 
     /// Write service data to a temporary file
-    pub fn make_service_key() -> String {
+    pub fn make_service_key(server: &mockito::ServerGuard) -> String {
         // Taken from the yup-oauth2 tests
         serde_json::json!({
             "type": "service_account",
@@ -201,15 +199,16 @@ pub mod tests {
             "client_email": "yup-test-sa-1@yup-test-243420.iam.gserviceaccount.com",
             "client_id": "102851967901799660408",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": mockito::server_url() + "/token",
+            "token_uri": server.url() + "/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
             "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/yup-test-sa-1%40yup-test-243420.iam.gserviceaccount.com"
         }).to_string()
     }
 
     /// Mock the OAuth token endpoint to provide the access token
-    pub fn mock_token_endpoint() -> mockito::Mock {
-        mockito::mock("POST", "/token")
+    pub async fn mock_token_endpoint(server: &mut mockito::ServerGuard) -> mockito::Mock {
+        server
+            .mock("POST", "/token")
             .with_body(
                 serde_json::json!({
                     "access_token": ACCESS_TOKEN,
@@ -218,19 +217,23 @@ pub mod tests {
                 })
                 .to_string(),
             )
-            .create()
+            .create_async()
+            .await
     }
 
     /// Start building a mock for the FCM endpoint
-    pub fn mock_fcm_endpoint_builder(id: &str) -> mockito::Mock {
-        mockito::mock("POST", format!("/v1/projects/{id}/messages:send").as_str())
+    pub fn mock_fcm_endpoint_builder(server: &mut mockito::ServerGuard, id: &str) -> mockito::Mock {
+        server.mock("POST", format!("/v1/projects/{id}/messages:send").as_str())
     }
 
     /// Make a FcmClient from the service auth data
-    async fn make_client(credential: FcmServerCredential) -> FcmClient {
+    async fn make_client(
+        server: &mockito::ServerGuard,
+        credential: FcmServerCredential,
+    ) -> FcmClient {
         FcmClient::new(
             &FcmSettings {
-                base_url: Url::parse(&mockito::server_url()).unwrap(),
+                base_url: Url::parse(&server.url()).unwrap(),
                 server_credentials: serde_json::json!(credential).to_string(),
                 ..Default::default()
             },
@@ -245,14 +248,19 @@ pub mod tests {
     /// expected FCM request.
     #[tokio::test]
     async fn sends_correct_fcm_request() {
-        let client = make_client(FcmServerCredential {
-            project_id: PROJECT_ID.to_owned(),
-            is_gcm: None,
-            server_access_token: make_service_key(),
-        })
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: None,
+                server_access_token: make_service_key(&server),
+            },
+        )
         .await;
-        let _token_mock = mock_token_endpoint();
-        let fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
             .match_header("Authorization", format!("Bearer {ACCESS_TOKEN}").as_str())
             .match_header("Content-Type", "application/json")
             .match_body(r#"{"message":{"android":{"data":{"is_test":"true"},"ttl":"42s"},"token":"test-token"}}"#)
@@ -269,17 +277,23 @@ pub mod tests {
     /// Authorization errors are handled
     #[tokio::test]
     async fn unauthorized() {
-        let client = make_client(FcmServerCredential {
-            project_id: PROJECT_ID.to_owned(),
-            is_gcm: None,
-            server_access_token: make_service_key(),
-        })
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: None,
+                server_access_token: make_service_key(&server),
+            },
+        )
         .await;
-        let _token_mock = mock_token_endpoint();
-        let _fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
             .with_status(401)
             .with_body(r#"{"error":{"status":"UNAUTHENTICATED","message":"test-message"}}"#)
-            .create();
+            .create_async()
+            .await;
 
         let result = client
             .send(HashMap::new(), "test-token".to_string(), 42)
@@ -294,17 +308,23 @@ pub mod tests {
     /// 404 errors are handled
     #[tokio::test]
     async fn not_found() {
-        let client = make_client(FcmServerCredential {
-            project_id: PROJECT_ID.to_owned(),
-            is_gcm: None,
-            server_access_token: make_service_key(),
-        })
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: None,
+                server_access_token: make_service_key(&server),
+            },
+        )
         .await;
-        let _token_mock = mock_token_endpoint();
-        let _fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
             .with_status(404)
             .with_body(r#"{"error":{"status":"NOT_FOUND","message":"test-message"}}"#)
-            .create();
+            .create_async()
+            .await;
 
         let result = client
             .send(HashMap::new(), "test-token".to_string(), 42)
@@ -319,17 +339,23 @@ pub mod tests {
     /// Unhandled errors (where an error object is returned) are wrapped and returned
     #[tokio::test]
     async fn other_fcm_error() {
-        let client = make_client(FcmServerCredential {
-            project_id: PROJECT_ID.to_owned(),
-            is_gcm: Some(false),
-            server_access_token: make_service_key(),
-        })
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: Some(false),
+                server_access_token: make_service_key(&server),
+            },
+        )
         .await;
-        let _token_mock = mock_token_endpoint();
-        let _fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
             .with_status(400)
             .with_body(r#"{"error":{"status":"TEST_ERROR","message":"test-message"}}"#)
-            .create();
+            .create_async()
+            .await;
 
         let result = client
             .send(HashMap::new(), "test-token".to_string(), 42)
@@ -348,17 +374,23 @@ pub mod tests {
     /// Unknown errors (where an error object is NOT returned) is handled
     #[tokio::test]
     async fn unknown_fcm_error() {
-        let client = make_client(FcmServerCredential {
-            project_id: PROJECT_ID.to_owned(),
-            is_gcm: Some(true),
-            server_access_token: make_service_key(),
-        })
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: Some(true),
+                server_access_token: make_service_key(&server),
+            },
+        )
         .await;
-        let _token_mock = mock_token_endpoint();
-        let _fcm_mock = mock_fcm_endpoint_builder(PROJECT_ID)
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
             .with_status(400)
             .with_body("{}")
-            .create();
+            .create_async()
+            .await;
 
         let result = client
             .send(HashMap::new(), "test-token".to_string(), 42)

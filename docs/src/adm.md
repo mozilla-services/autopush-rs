@@ -1,4 +1,4 @@
-# Configuring the Amazon Device Messaging Bridge
+# Configuring the Amazon Device Messaging Bridge (deprecated)
 
 <div style="color:red;border:4px solid red;padding:10px;margin 10px;">ADM is no longer supported by Autopush. This section is obsolete.
 </div>

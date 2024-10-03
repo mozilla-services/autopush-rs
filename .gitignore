@@ -7,7 +7,6 @@ syntax:glob
 *.egg
 *~
 build
-ddb
 dist
 docs/_build
 *.xml
@@ -42,7 +41,6 @@ docs/old
 *.local.toml
 .cargo/config
 .vscode/*
-dynamodb-local-metadata.json
 
 # circleCI
 workspace

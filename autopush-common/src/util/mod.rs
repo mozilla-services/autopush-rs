@@ -9,7 +9,9 @@ use serde::{Deserialize, Deserializer};
 pub mod timing;
 pub mod user_agent;
 
-pub use self::timing::{ms_since_epoch, sec_since_epoch, us_since_epoch};
+pub use self::timing::{ms_since_epoch, ms_utc_midnight, sec_since_epoch, us_since_epoch};
+
+pub const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
 
 pub trait InsertOpt<K: Eq + Hash, V> {
     /// Insert an item only if it exists

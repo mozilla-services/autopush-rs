@@ -1,8 +1,6 @@
 [workspace]
 members = [
   "autopush-common",
-  # Pending removal: https://github.com/mozilla-services/autopush-rs/issues/524
-  #"autopush",
   "autoendpoint",
   "autoconnect",
   "autoconnect/autoconnect-common",
@@ -70,13 +68,6 @@ openssl = { version = "0.10" }
 rand = "0.8"
 regex = "1.4"
 reqwest = { version = "0.12", features = ["json", "blocking"] }
-rusoto_core = { version = "0.47", default-features = false, features = [
-  "rustls",
-] } # locked by serde_dynamodb 0.9
-rusoto_credential = { version = "0.47" } # locked by serde_dynamodb 0.9
-rusoto_dynamodb = { version = "0.47", default-features = false, features = [
-  "rustls",
-] } # locked by serde_dynamodb 0.9
 sentry = { version = "0.32", features = [
   "debug-logs",
 ] } # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
@@ -85,7 +76,6 @@ sentry-actix = "0.32"
 sentry-backtrace = "0.32"
 serde = "1.0"
 serde_derive = "1.0"
-serde_dynamodb = "0.9"
 serde_json = "1.0"
 slog = { version = "2.7", features = [
   "dynamic-keys",
@@ -99,13 +89,11 @@ slog-scope = "4.4"
 slog-stdlog = "4.1"
 slog-term = "2.6"
 thiserror = "1.0"
-tokio = "1.36"
+tokio = "1.38"
 tokio-compat-02 = "0.2"
 tokio-core = "0.1"
 tokio-io = "0.1"
 tokio-openssl = "0.6"
-# Use older version of tungstenite to support legacy connection server.
-tungstenite = { version = "0.9.2", default-features = false } # 0.10+ requires tokio 0.3+
 uuid = { version = "1.1", features = ["serde", "v4"] }
 url = "2.2"
 
@@ -115,7 +103,7 @@ autoconnect_settings = { path = "./autoconnect/autoconnect-settings" }
 autoconnect_web = { path = "./autoconnect/autoconnect-web" }
 autoconnect_ws = { path = "./autoconnect/autoconnect-ws" }
 autoconnect_ws_clientsm = { path = "./autoconnect/autoconnect-ws/autoconnect-ws-clientsm" }
-autopush_common = { path = "./autopush-common", features = ["dual"] }
+autopush_common = { path = "./autopush-common", features = ["bigtable"] }
 
 [profile.release]
 debug = 1
