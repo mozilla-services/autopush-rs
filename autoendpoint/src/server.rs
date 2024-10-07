@@ -21,7 +21,7 @@ use autopush_common::{
 use crate::metrics;
 #[cfg(feature = "stub")]
 use crate::routers::stub::router::StubRouter;
-use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
+use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter, wns::router::WnsRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
     registration::{
@@ -46,6 +46,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
+    pub wns_router: Arc<WnsRouter>,
     #[cfg(feature = "stub")]
     pub stub_router: Arc<StubRouter>,
     pub reliability: Arc<VapidTracker>,
@@ -110,6 +111,16 @@ impl Server {
             .await?,
         );
         let reliability = Arc::new(VapidTracker(settings.tracking_keys()));
+        let wns_router = Arc::new(
+            WnsRouter::new(
+                settings.wns.clone(),
+                endpoint_url.clone(),
+                http.clone(),
+                metrics.clone(),
+                db.clone(),
+            )
+            .await?,
+        );
         #[cfg(feature = "stub")]
         let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
         let app_state = AppState {
@@ -120,6 +131,7 @@ impl Server {
             http,
             fcm_router,
             apns_router,
+            wns_router,
             #[cfg(feature = "stub")]
             stub_router,
             reliability,

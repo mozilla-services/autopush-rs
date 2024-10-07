@@ -21,6 +21,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     let mut routers: HashMap<&str, bool> = HashMap::new();
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
+    routers.insert("wns", state.wns_router.active());
 
     let health = json!({
     "status": "OK",

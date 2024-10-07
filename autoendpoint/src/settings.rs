@@ -9,6 +9,7 @@ use url::Url;
 use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
+use crate::routers::wns::settings::WnsSettings;
 #[cfg(feature = "stub")]
 use crate::routers::stub::settings::StubSettings;
 
@@ -55,6 +56,7 @@ pub struct Settings {
 
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
+    pub wns: WnsSettings,
     #[cfg(feature = "stub")]
     pub stub: StubSettings,
 }
@@ -90,6 +92,7 @@ impl Default for Settings {
             statsd_label: "autoendpoint".to_string(),
             fcm: FcmSettings::default(),
             apns: ApnsSettings::default(),
+            wns: WnsSettings::default(),
             #[cfg(feature = "stub")]
             stub: StubSettings::default(),
         }
