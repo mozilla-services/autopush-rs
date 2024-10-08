@@ -190,7 +190,12 @@ ENDPOINT_CONFIG = dict(
     message_table_name=MESSAGE_TABLE,
     human_logs="true",
     crypto_keys="[{}]".format(CRYPTO_KEY),
+<<<<<<< Updated upstream
 )
+=======
+    # convert to x692 format
+    tracking_keys="[{base64.urlsafe_b64encode((b'\4' + TRACKING_PUB_KEY.to_string())).decode()}]")
+>>>>>>> Stashed changes
 
 
 def _get_vapid(
@@ -834,6 +839,7 @@ async def test_basic_delivery_with_tracked_vapid(
     assert result["data"] == base64url_encode(uuid_data)
     assert result["messageType"] == "notification"
     assert result["reliability_id"] is not None
+    log.debug(f"🔍 reliability_id {result["reliability_id"]}")
 
 
 async def test_basic_delivery_with_invalid_vapid(
