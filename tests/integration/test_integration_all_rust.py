@@ -16,7 +16,7 @@ import time
 import uuid
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Any, AsyncGenerator, Generator
+from typing import Any, AsyncGenerator, Generator, cast
 from urllib.parse import urlparse
 
 import ecdsa
@@ -25,6 +25,7 @@ import psutil
 import pytest
 import uvicorn
 import websockets
+
 from cryptography.fernet import Fernet
 from fastapi import FastAPI, Request
 from jose import jws
@@ -48,6 +49,7 @@ MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
 MSG_LIMIT = 20
 
 CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode("utf-8")
+TRACKING_KEY = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
 CONNECTION_PORT = 9150
 ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
@@ -152,7 +154,15 @@ CONNECTION_CONFIG: dict[str, Any] = dict(
     # new autoconnect
     db_dsn=os.environ.get("DB_DSN", "grpc://localhost:8086"),
     db_settings=get_db_settings(),
+    tracking_keys="[{}]".format(
+        base64.urlsafe_b64encode(
+            cast(ecdsa.VerifyingKey, TRACKING_KEY.get_verifying_key()).to_string()
+        ).decode()
+    ),
 )
+
+if os.environ.get("RELIABLE_REPORT") is not None:
+    CONNECTION_CONFIG["reliability_dsn"] = "redis://localhost:6379"
 
 """Connection Megaphone Config:
 For local test debugging, set `AUTOPUSH_MP_CONFIG=_url_` to override
@@ -184,7 +194,18 @@ ENDPOINT_CONFIG = dict(
     message_table_name=MESSAGE_TABLE,
     human_logs="true",
     crypto_keys="[{}]".format(CRYPTO_KEY),
+    # convert to x692 format
+    tracking_keys=f"[{
+        base64.urlsafe_b64encode((
+            b'\4' + cast(
+                ecdsa.VerifyingKey,
+                TRACKING_KEY.get_verifying_key()
+            ).to_string())).decode()}]",
 )
+
+if os.environ.get("RELIABLE_REPORT") is not None:
+    CONNECTION_CONFIG["reliability_dsn"] = "redis://localhost:6379"
+    ENDPOINT_CONFIG["reliability_dsn"] = "redis://localhost:6379"
 
 
 def _get_vapid(
@@ -213,7 +234,7 @@ def _get_vapid(
         payload["aud"] = endpoint
     if not key:
         key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
-    vk: ecdsa.VerifyingKey = key.get_verifying_key()
+    vk: ecdsa.VerifyingKey = cast(ecdsa.VerifyingKey, key.get_verifying_key())
     auth: str = jws.sign(payload, key, algorithm="ES256").strip("=")
     crypto_key: str = base64url_encode((b"\4" + vk.to_string()))
     return {"auth": auth, "crypto-key": crypto_key, "key": key}
@@ -734,7 +755,7 @@ async def test_basic_delivery(registered_test_client: AsyncPushTestClient) -> No
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(bytes(uuid_data, "utf-8"))
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_topic_basic_delivery(registered_test_client: AsyncPushTestClient) -> None:
@@ -745,7 +766,7 @@ async def test_topic_basic_delivery(registered_test_client: AsyncPushTestClient)
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_topic_replacement_delivery(
@@ -765,7 +786,7 @@ async def test_topic_replacement_delivery(
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data_2)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result = await registered_test_client.get_notification()
     assert result is None
 
@@ -783,7 +804,7 @@ async def test_topic_no_delivery_on_reconnect(registered_test_client: AsyncPushT
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     await registered_test_client.ack(result["channelID"], result["version"])
     await registered_test_client.disconnect()
     await registered_test_client.connect()
@@ -801,13 +822,45 @@ async def test_basic_delivery_with_vapid(
 ) -> None:
     """Test delivery of a basic push message with a VAPID header."""
     uuid_data: str = str(uuid.uuid4())
+    # Since we are not explicity setting the TRACKING_KEY, we should not
+    # track this message.
     vapid_info = _get_vapid(payload=vapid_payload)
     result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
     # the following presumes that only `salt` is padded.
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
+    if os.environ.get("RELIABLE_REPORT") is not None:
+        assert result.get("reliability_id") is None, "Tracking unknown message"
+
+
+async def test_basic_delivery_with_tracked_vapid(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+) -> None:
+    """Test delivery of a basic push message with a VAPID header."""
+    if os.environ.get("RELIABLE_REPORT") is None:
+        pytest.skip("RELIABLE_REPORT not set, skipping test.")
+    # TODO: connect to test redis server and redis.flushall()
+    uuid_data: str = str(uuid.uuid4())
+    vapid_info = _get_vapid(key=TRACKING_KEY, payload=vapid_payload)
+    result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
+    assert result.get("reliability_id") is not None, "missing reliability_id"
+    if os.environ.get("RELIABLE_REPORT") is not None:
+        endpoint = registered_test_client.get_host_client_endpoint()
+        async with httpx.AsyncClient() as httpx_client:
+            resp = await httpx_client.get(f"{endpoint}/__milestones__", timeout=5)
+            log.debug(f"🔍 Milestones: {resp.text}")
+            jresp = json.loads(resp.text)
+            assert jresp["accepted"] == 1
+            for other in ["accepted_webpush", "received", "transmitted_webpush", "transmitted"]:
+                assert jresp[other] == 0, f"reliablity state '{other}' was not 0"
 
 
 async def test_basic_delivery_with_invalid_vapid(
@@ -1004,7 +1057,7 @@ async def test_multiple_delivery_with_single_ack(
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result != {}
     assert result["data"] == base64url_encode(uuid_data_1)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result2 = await registered_test_client.get_notification()
     assert result2 != {}
     assert result2["data"] == base64url_encode(uuid_data_2)
@@ -1086,7 +1139,7 @@ async def test_ttl_0_connected(registered_test_client: AsyncPushTestClient) -> N
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_ttl_0_not_connected(registered_test_client: AsyncPushTestClient) -> None:
@@ -1141,7 +1194,7 @@ async def test_ttl_batch_expired_and_good_one(registered_test_client: AsyncPushT
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data_2)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result is None
 
@@ -1202,7 +1255,7 @@ async def test_empty_message_without_crypto_headers(
     """Test that a message without crypto headers, and does not have data, is accepted."""
     result = await registered_test_client.send_notification(use_header=False)
     assert result is not None
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result
     assert "data" not in result
     await registered_test_client.ack(result["channelID"], result["version"])
@@ -1226,14 +1279,14 @@ async def test_empty_message_with_crypto_headers(
     """
     result = await registered_test_client.send_notification()
     assert result is not None
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result
     assert "data" not in result
 
     result2 = await registered_test_client.send_notification()
     # We shouldn't store headers for blank messages.
     assert result2 is not None
-    assert result2["messageType"] == "notification"
+    assert result2["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result2
     assert "data" not in result2
 
@@ -1259,8 +1312,6 @@ async def test_big_message(registered_test_client: AsyncPushTestClient) -> None:
     block that was 5624 bytes long. We'll skip the binary bit for a
     4216 block of "text" we then b64 encode to send.
     """
-    import base64
-
     bulk = "".join(
         random.choice(string.ascii_letters + string.digits + string.punctuation)
         for _ in range(0, 4216)

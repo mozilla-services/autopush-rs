@@ -55,6 +55,8 @@ pub struct Settings {
     pub apns: ApnsSettings,
     #[cfg(feature = "stub")]
     pub stub: StubSettings,
+    #[cfg(feature = "reliable_report")]
+    pub reliability_dsn: Option<String>,
 }
 
 impl Default for Settings {
@@ -86,6 +88,8 @@ impl Default for Settings {
             apns: ApnsSettings::default(),
             #[cfg(feature = "stub")]
             stub: StubSettings::default(),
+            #[cfg(feature = "reliable_report")]
+            reliability_dsn: None,
         }
     }
 }
@@ -170,7 +174,7 @@ impl Settings {
     pub fn tracking_keys(&self) -> Vec<String> {
         let keys = &self.tracking_keys.replace(['"', ' '], "");
         Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
-            .map(|v| v.to_owned())
+            .map(|v| v.replace('=', "").to_owned())
             .collect()
     }
 
@@ -193,11 +197,16 @@ impl VapidTracker {
     pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
         // ideally, [Settings.with_env_and_config_file()] does the work of pre-populating
         // the Settings.tracking_vapid_pubs cache, but we can't rely on that.
-        self.0.contains(&vapid.public_key)
+        trace!("🔍 Looking for {} in {:?}", &vapid.public_key, &self.0);
+        let result = self.0.contains(&vapid.public_key);
+        if result {
+            trace!("🔍 🟢Trackable!!");
+        }
+        result
     }
 
     /// Extract the message Id from the headers (if present), otherwise just make one up.
-    pub fn get_tracking_id(&self, headers: &HeaderMap) -> String {
+    pub fn get_id(&self, headers: &HeaderMap) -> String {
         headers
             .get("X-MessageId")
             .and_then(|v|
@@ -327,12 +336,12 @@ mod tests {
     }
 
     #[test]
-    fn test_tracking_id() -> ApiResult<()> {
+    fn test_reliability_id() -> ApiResult<()> {
         let mut headers = HeaderMap::new();
         let keys = Vec::new();
         let reliability = VapidTracker(keys);
 
-        let key = reliability.get_tracking_id(&headers);
+        let key = reliability.get_id(&headers);
         assert!(!key.is_empty());
 
         headers.insert(
@@ -340,7 +349,7 @@ mod tests {
             HeaderValue::from_static("123foobar456"),
         );
 
-        let key = reliability.get_tracking_id(&headers);
+        let key = reliability.get_id(&headers);
         assert_eq!(key, "123foobar456".to_owned());
 
         Ok(())

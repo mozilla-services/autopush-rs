@@ -34,3 +34,9 @@ ctor.workspace = true
 tokio.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
+
+[features]
+reliable_report = [
+    "autopush_common/reliable_report",
+    "autoconnect_ws/reliable_report",
+]

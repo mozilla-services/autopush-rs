@@ -245,6 +245,10 @@ pub struct NotificationRecord {
     /// value before sending it to storage or a connection node.
     #[serde(skip_serializing_if = "Option::is_none")]
     updateid: Option<String>,
+    /// Internal Push Reliability tracking id. (Applied only to subscription updates generated
+    /// by Mozilla owned and consumed messages, like SendTab updates.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reliability_id: Option<String>,
 }
 
 impl NotificationRecord {
@@ -333,6 +337,9 @@ impl NotificationRecord {
             data: self.data,
             headers: self.headers.map(|m| m.into()),
             sortkey_timestamp: key.sortkey_timestamp,
+            reliability_id: None,
+            #[cfg(feature = "reliable_report")]
+            reliable_state: None,
         })
     }
 

@@ -27,6 +27,10 @@ pub struct Notification {
     pub sortkey_timestamp: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reliability_id: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    pub reliable_state: Option<crate::reliability::PushReliabilityState>,
 }
 
 pub const TOPIC_NOTIFICATION_PREFIX: &str = "01";

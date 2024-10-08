@@ -9,12 +9,12 @@ use actix_web::web::Data;
 use actix_web::HttpResponse;
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
+/// This is the endpoint for all incoming Push subscription updates.
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
     _app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
-    // TODO:
     sentry::configure_scope(|scope| {
         scope.set_extra(
             "uaid",
@@ -25,7 +25,7 @@ pub async fn webpush_route(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
     );
-    Ok(router.route_notification(&notification).await?.into())
+    Ok(router.route_notification(notification).await?.into())
 }
 
 /// Handle the `DELETE /m/{message_id}` route
