@@ -1030,7 +1030,7 @@ async def test_multiple_delivery_with_single_ack(
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result != {}
     assert result["data"] == base64url_encode(uuid_data_1)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION
     result2 = await registered_test_client.get_notification()
     assert result2 != {}
     assert result2["data"] == base64url_encode(uuid_data_2)
