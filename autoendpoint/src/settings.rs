@@ -57,6 +57,8 @@ pub struct Settings {
     pub apns: ApnsSettings,
     #[cfg(feature = "stub")]
     pub stub: StubSettings,
+    #[cfg(feature = "reliable_report")]
+    pub reliability_dsn: Option<String>,
 }
 
 impl Default for Settings {
@@ -92,6 +94,8 @@ impl Default for Settings {
             apns: ApnsSettings::default(),
             #[cfg(feature = "stub")]
             stub: StubSettings::default(),
+            #[cfg(feature = "reliable_report")]
+            reliability_dsn: None,
         }
     }
 }
@@ -203,7 +207,7 @@ impl VapidTracker {
     }
 
     /// Extract the message Id from the headers (if present), otherwise just make one up.
-    pub fn get_tracking_id(&self, headers: &HeaderMap) -> String {
+    pub fn get_id(&self, headers: &HeaderMap) -> String {
         headers
             .get("X-MessageId")
             .and_then(|v|
@@ -333,12 +337,12 @@ mod tests {
     }
 
     #[test]
-    fn test_tracking_id() -> ApiResult<()> {
+    fn test_reliability_id() -> ApiResult<()> {
         let mut headers = HeaderMap::new();
         let keys = Vec::new();
         let reliability = VapidTracker(keys);
 
-        let key = reliability.get_tracking_id(&headers);
+        let key = reliability.get_id(&headers);
         assert!(!key.is_empty());
 
         headers.insert(
@@ -346,7 +350,7 @@ mod tests {
             HeaderValue::from_static("123foobar456"),
         );
 
-        let key = reliability.get_tracking_id(&headers);
+        let key = reliability.get_id(&headers);
         assert_eq!(key, "123foobar456".to_owned());
 
         Ok(())

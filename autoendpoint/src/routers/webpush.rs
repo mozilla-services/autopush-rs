@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliability;
 use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
@@ -24,6 +26,8 @@ pub struct WebPushRouter {
     pub metrics: Arc<StatsdClient>,
     pub http: reqwest::Client,
     pub endpoint_url: Url,
+    #[cfg(feature = "reliable_report")]
+    pub reliability: Arc<PushReliability>,
 }
 
 #[async_trait(?Send)]
@@ -37,7 +41,7 @@ impl Router for WebPushRouter {
         Ok(HashMap::new())
     }
 
-    async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+    async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse> {
         // The notification contains the original subscription information
         let user = &notification.subscription.user;
         debug!(
@@ -54,13 +58,13 @@ impl Router for WebPushRouter {
             );
 
             // Try to send the notification to the node
-            match self.send_notification(notification, node_id).await {
+            match self.send_notification(&notification, node_id).await {
                 Ok(response) => {
                     // The node might be busy, make sure it accepted the notification
                     if response.status() == 200 {
                         // The node has received the notification
                         trace!("✉ Node received notification");
-                        return Ok(self.make_delivered_response(notification));
+                        return Ok(self.make_delivered_response(&notification));
                     }
 
                     trace!(
@@ -92,12 +96,12 @@ impl Router for WebPushRouter {
                 // TODO: include `internal` if meta is set.
                 .with_tag("topic", &topic)
                 .send();
-            return Ok(self.make_delivered_response(notification));
+            return Ok(self.make_delivered_response(&notification));
         }
 
         // Save notification, node is not present or busy
         trace!("✉ Node is not present or busy, storing notification");
-        self.store_notification(notification).await?;
+        self.store_notification(&notification).await?;
 
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
@@ -113,7 +117,7 @@ impl Router for WebPushRouter {
             Err(e) => {
                 // Database error, but we already stored the message so it's ok
                 debug!("✉ Database error while re-fetching user: {}", e);
-                return Ok(self.make_stored_response(notification));
+                return Ok(self.make_stored_response(&notification));
             }
         };
 
@@ -123,7 +127,7 @@ impl Router for WebPushRouter {
             // The user is not connected to a node, nothing more to do
             None => {
                 trace!("✉ User is not connected to a node, returning stored response");
-                return Ok(self.make_stored_response(notification));
+                return Ok(self.make_stored_response(&notification));
             }
         };
 
@@ -144,17 +148,17 @@ impl Router for WebPushRouter {
                         .with_tag("app_id", "direct")
                         .send();
 
-                    Ok(self.make_delivered_response(notification))
+                    Ok(self.make_delivered_response(&notification))
                 } else {
                     trace!("✉ Node has not delivered the message, returning stored response");
-                    Ok(self.make_stored_response(notification))
+                    Ok(self.make_stored_response(&notification))
                 }
             }
             Err(error) => {
                 // Can't communicate with the node, attempt to stop using it
                 debug!("✉ Error while triggering notification check: {}", error);
                 self.remove_node_id(&user, node_id).await?;
-                Ok(self.make_stored_response(notification))
+                Ok(self.make_stored_response(&notification))
             }
         }
     }
@@ -179,9 +183,21 @@ impl WebPushRouter {
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
         let url = format!("{}/push/{}", node_id, notification.subscription.user.uaid);
-        let notification = notification.serialize_for_delivery();
+        #[cfg(feature = "reliable_report")]
+        let reliability_id = notification.subscription.reliability_id.clone();
+        let notification_out = notification.serialize_for_delivery();
 
-        self.http.put(&url).json(&notification).send().await
+        let result = self.http.put(&url).json(&notification_out).send().await;
+        #[cfg(feature = "reliable_report")]
+        self.reliability
+            .record(
+                &reliability_id,
+                autopush_common::reliability::PushReliabilityState::TRANSMITTED,
+                &notification.previous_state,
+                notification.expiry,
+            )
+            .await;
+        result
     }
 
     /// Notify the node to check for notifications for the user
@@ -197,26 +213,35 @@ impl WebPushRouter {
 
     /// Store a notification in the database
     async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
-        self.db
-            .save_message(
-                &notification.subscription.user.uaid,
-                notification.clone().into(),
-            )
-            .await
-            .map_err(|e| {
-                self.handle_error(
-                    ApiErrorKind::Router(RouterError::SaveDb(
-                        e,
-                        // try to extract the `sub` from the VAPID clamis.
-                        notification
-                            .subscription
-                            .vapid
-                            .as_ref()
-                            .map(|vapid| vapid.vapid.claims().map(|c| c.sub).unwrap_or_default()),
-                    )),
-                    notification.subscription.vapid.clone(),
+        let result =
+            self.db
+                .save_message(
+                    &notification.subscription.user.uaid,
+                    notification.clone().into(),
                 )
-            })
+                .await
+                .map_err(|e| {
+                    self.handle_error(
+                        ApiErrorKind::Router(RouterError::SaveDb(
+                            e,
+                            // try to extract the `sub` from the VAPID clamis.
+                            notification.subscription.vapid.as_ref().map(|vapid| {
+                                vapid.vapid.claims().map(|c| c.sub).unwrap_or_default()
+                            }),
+                        )),
+                        notification.subscription.vapid.clone(),
+                    )
+                });
+        #[cfg(feature = "reliable_report")]
+        self.reliability
+            .record(
+                &notification.subscription.reliability_id,
+                autopush_common::reliability::PushReliabilityState::STORED,
+                &notification.previous_state,
+                notification.expiry,
+            )
+            .await;
+        result
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer
@@ -289,6 +314,8 @@ mod test {
     use crate::extractors::subscription::tests::{make_vapid, PUB_KEY};
     use crate::headers::vapid::VapidClaims;
     use autopush_common::errors::ReportableError;
+    #[cfg(feature = "reliable_report")]
+    use autopush_common::reliability::PushReliability;
 
     use super::*;
     use autopush_common::db::mock::MockDbClient;
@@ -299,6 +326,8 @@ mod test {
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
+            #[cfg(feature = "reliable_report")]
+            reliability: Arc::new(PushReliability::new(&None, &None).unwrap()),
         }
     }
 

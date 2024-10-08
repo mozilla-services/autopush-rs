@@ -186,10 +186,32 @@ impl WebPushClient {
         let topic_resp = if self.flags.include_topic {
             trace!("🗄️ WebPushClient::do_check_storage: fetch_topic_messages");
             // Get the most recent max 11 messages.
-            self.app_state
+            let mut messages = self
+                .app_state
                 .db
                 .fetch_topic_messages(&self.uaid, 11)
-                .await?
+                .await?;
+            #[cfg(feature = "reliable_report")]
+            {
+                let reliability = &self.app_state.reliability;
+
+                // I'm guessing that there's a more elegant way to do this, but this works for now.
+                let mut new_messages: Vec<Notification> = Vec::new();
+                for mut message in messages.messages {
+                    let ttl = message.timestamp + message.ttl;
+                    message.previous_state = reliability
+                        .record(
+                            &message.reliability_id,
+                            autopush_common::reliability::PushReliabilityState::RETRIEVED,
+                            &message.previous_state,
+                            Some(ttl),
+                        )
+                        .await;
+                    new_messages.push(message);
+                }
+                messages.messages = new_messages;
+            }
+            messages
         } else {
             Default::default()
         };
@@ -226,7 +248,7 @@ impl WebPushClient {
             "🗄️ WebPushClient::do_check_storage: fetch_timestamp_messages timestamp: {:?}",
             timestamp
         );
-        let timestamp_resp = self
+        let mut timestamp_resp = self
             .app_state
             .db
             .fetch_timestamp_messages(&self.uaid, timestamp, 10)
@@ -244,6 +266,27 @@ impl WebPushClient {
                 )
                 .with_tag("topic", "false")
                 .send();
+        }
+
+        #[cfg(feature = "reliable_report")]
+        {
+            let reliability = &self.app_state.reliability;
+
+            // I'm guessing that there's a more elegant way to do this, but this works for now.
+            let mut new_messages: Vec<Notification> = Vec::new();
+            for mut message in timestamp_resp.messages {
+                let ttl = message.timestamp + message.ttl;
+                message.previous_state = reliability
+                    .record(
+                        &message.reliability_id,
+                        autopush_common::reliability::PushReliabilityState::RETRIEVED,
+                        &message.previous_state,
+                        Some(ttl),
+                    )
+                    .await;
+                new_messages.push(message);
+            }
+            timestamp_resp.messages = new_messages;
         }
 
         Ok(CheckStorageResponse {

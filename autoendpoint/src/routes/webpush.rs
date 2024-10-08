@@ -7,6 +7,8 @@ use crate::extractors::routers::{RouterType, Routers};
 use crate::server::AppState;
 use actix_web::web::Data;
 use actix_web::HttpResponse;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliabilityState;
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 pub async fn webpush_route(
@@ -14,7 +16,7 @@ pub async fn webpush_route(
     routers: Routers,
     _app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
-    // TODO:
+    let mut notification = notification;
     sentry::configure_scope(|scope| {
         scope.set_extra(
             "uaid",
@@ -25,7 +27,19 @@ pub async fn webpush_route(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
     );
-    Ok(router.route_notification(&notification).await?.into())
+    #[cfg(feature = "reliable_report")]
+    {
+        notification.previous_state = _app_state
+            .reliability
+            .record(
+                &notification.subscription.reliability_id,
+                PushReliabilityState::TRANSMITTED,
+                &notification.previous_state,
+                notification.expiry,
+            )
+            .await;
+    }
+    Ok(router.route_notification(notification).await?.into())
 }
 
 /// Handle the `DELETE /m/{message_id}` route

@@ -40,7 +40,7 @@ pub struct Subscription {
     /// (This should ONLY be applied for messages that match known
     /// Mozilla provided VAPID public keys.)
     ///
-    pub tracking_id: Option<String>,
+    pub reliability_id: Option<String>,
 }
 
 impl FromRequest for Subscription {
@@ -76,7 +76,7 @@ impl FromRequest for Subscription {
 
             trace!("raw vapid: {:?}", &vapid);
             let trackable = if let Some(vapid) = &vapid {
-                app_state.reliability.is_trackable(vapid)
+                app_state.reliability_filter.is_trackable(vapid)
             } else {
                 false
             };
@@ -134,14 +134,14 @@ impl FromRequest for Subscription {
                     .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
             }
 
-            let tracking_id =
-                trackable.then(|| app_state.reliability.get_tracking_id(req.headers()));
+            let reliability_id =
+                trackable.then(|| app_state.reliability_filter.get_id(req.headers()));
 
             Ok(Subscription {
                 user,
                 channel_id,
                 vapid,
-                tracking_id,
+                reliability_id,
             })
         }
         .boxed_local()

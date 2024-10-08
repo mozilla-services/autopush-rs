@@ -85,6 +85,8 @@ pub struct ClientAck {
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
     pub version: String,
+    #[serde(default)]
+    pub reliability_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

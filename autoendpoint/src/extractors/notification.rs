@@ -26,6 +26,12 @@ pub struct Notification {
     pub sort_key_timestamp: u64,
     /// The encrypted notification body
     pub data: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    /// The previous state the message was in (if tracked)
+    pub previous_state: Option<autopush_common::reliability::PushReliabilityState>,
+    #[cfg(feature = "reliable_report")]
+    /// The UTC expiration timestamp for this message
+    pub expiry: Option<u64>,
 }
 
 impl FromRequest for Notification {
@@ -68,6 +74,13 @@ impl FromRequest for Notification {
                 sort_key_timestamp,
             );
 
+            #[cfg(feature = "reliable_report")]
+            let expiry = if subscription.reliability_id.is_some() {
+                Some(timestamp + headers.ttl as u64)
+            } else {
+                None
+            };
+
             // Record the encoding if we have an encrypted payload
             if let Some(encoding) = &headers.encoding {
                 if data.is_some() {
@@ -85,6 +98,12 @@ impl FromRequest for Notification {
                 timestamp,
                 sort_key_timestamp,
                 data,
+                #[cfg(feature = "reliable_report")]
+                previous_state: Some(
+                    autopush_common::reliability::PushReliabilityState::TRANSMITTED,
+                ),
+                #[cfg(feature = "reliable_report")]
+                expiry,
             })
         }
         .boxed_local()
@@ -103,6 +122,7 @@ impl From<Notification> for autopush_common::notification::Notification {
             timestamp: notification.timestamp,
             data: notification.data,
             sortkey_timestamp,
+            reliability_id: notification.subscription.reliability_id,
             headers: {
                 let headers: HashMap<String, String> = notification.headers.into();
                 if headers.is_empty() {
@@ -111,6 +131,8 @@ impl From<Notification> for autopush_common::notification::Notification {
                     Some(headers)
                 }
             },
+            #[cfg(feature = "reliable_report")]
+            previous_state: notification.previous_state,
         }
     }
 }
