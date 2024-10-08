@@ -190,12 +190,8 @@ ENDPOINT_CONFIG = dict(
     message_table_name=MESSAGE_TABLE,
     human_logs="true",
     crypto_keys="[{}]".format(CRYPTO_KEY),
-<<<<<<< Updated upstream
-)
-=======
     # convert to x692 format
     tracking_keys="[{base64.urlsafe_b64encode((b'\4' + TRACKING_PUB_KEY.to_string())).decode()}]")
->>>>>>> Stashed changes
 
 
 def _get_vapid(
@@ -745,7 +741,7 @@ async def test_basic_delivery(registered_test_client: AsyncPushTestClient) -> No
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(bytes(uuid_data, "utf-8"))
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_topic_basic_delivery(registered_test_client: AsyncPushTestClient) -> None:
@@ -756,7 +752,7 @@ async def test_topic_basic_delivery(registered_test_client: AsyncPushTestClient)
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_topic_replacement_delivery(
@@ -776,7 +772,7 @@ async def test_topic_replacement_delivery(
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data_2)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result = await registered_test_client.get_notification()
     assert result is None
 
@@ -794,7 +790,7 @@ async def test_topic_no_delivery_on_reconnect(registered_test_client: AsyncPushT
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     await registered_test_client.ack(result["channelID"], result["version"])
     await registered_test_client.disconnect()
     await registered_test_client.connect()
@@ -818,7 +814,7 @@ async def test_basic_delivery_with_vapid(
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     if os.environ.get("RELIABLE_REPORT") is not None:
         assert result.get("reliability_id") is not None
 
@@ -837,7 +833,7 @@ async def test_basic_delivery_with_tracked_vapid(
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     assert result["reliability_id"] is not None
     log.debug(f"🔍 reliability_id {result["reliability_id"]}")
 
@@ -1036,7 +1032,7 @@ async def test_multiple_delivery_with_single_ack(
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result != {}
     assert result["data"] == base64url_encode(uuid_data_1)
-    assert result["messageType"] == ClientMessageType.NOTIFICATION
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result2 = await registered_test_client.get_notification()
     assert result2 != {}
     assert result2["data"] == base64url_encode(uuid_data_2)
@@ -1118,7 +1114,7 @@ async def test_ttl_0_connected(registered_test_client: AsyncPushTestClient) -> N
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_ttl_0_not_connected(registered_test_client: AsyncPushTestClient) -> None:
@@ -1173,7 +1169,7 @@ async def test_ttl_batch_expired_and_good_one(registered_test_client: AsyncPushT
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data_2)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result is None
 
@@ -1234,7 +1230,7 @@ async def test_empty_message_without_crypto_headers(
     """Test that a message without crypto headers, and does not have data, is accepted."""
     result = await registered_test_client.send_notification(use_header=False)
     assert result is not None
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result
     assert "data" not in result
     await registered_test_client.ack(result["channelID"], result["version"])
@@ -1258,14 +1254,14 @@ async def test_empty_message_with_crypto_headers(
     """
     result = await registered_test_client.send_notification()
     assert result is not None
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result
     assert "data" not in result
 
     result2 = await registered_test_client.send_notification()
     # We shouldn't store headers for blank messages.
     assert result2 is not None
-    assert result2["messageType"] == "notification"
+    assert result2["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result2
     assert "data" not in result2
 
