@@ -34,3 +34,5 @@ ctor.workspace = true
 tokio.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
+
+[features]

@@ -33,3 +33,5 @@ async-stream = "0.3"
 ctor.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
+
+[features]
