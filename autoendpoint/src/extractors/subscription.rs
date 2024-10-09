@@ -291,10 +291,9 @@ fn validate_vapid_jwt(
 
     let public_key = decode_public_key(public_key)?;
     let mut validation = Validation::new(Algorithm::ES256);
-    let audience: Vec<&str> = settings.vapid_aud.iter().map(|s| s.as_str()).collect();
     // Set the audiences we allow. This obsoletes the need to manually match
     // against values later.
-    validation.set_audience(&audience);
+    validation.set_audience(&[settings.endpoint_url().origin().ascii_serialization()]);
     validation.set_required_spec_claims(&["exp", "aud", "sub"]);
 
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
@@ -495,7 +494,7 @@ pub mod tests {
     fn vapid_aud_valid_for_alternate_host() {
         let domain = "https://example.org";
         let test_settings = Settings {
-            vapid_aud: [domain.to_owned()].to_vec(),
+            endpoint_url: domain.to_owned(),
             ..Default::default()
         };
         let header = make_vapid(
@@ -519,7 +518,7 @@ pub mod tests {
 
         let domain = "https://push.services.mozilla.org";
         let test_settings = Settings {
-            endpoint_url: "domain".to_owned(),
+            endpoint_url: domain.to_owned(),
             ..Default::default()
         };
         let jwk_header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
