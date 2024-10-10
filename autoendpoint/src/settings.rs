@@ -31,8 +31,6 @@ pub struct Settings {
     pub router_table_name: String,
     pub message_table_name: String,
 
-    pub vapid_aud: Vec<String>,
-
     /// A stringified JSON list of VAPID public keys which should be tracked internally.
     /// This should ONLY include Mozilla generated and consumed messages (e.g. "SendToTab", etc.)
     /// These keys should be specified in stripped, b64encoded, X962 format (e.g. a single line of
@@ -70,10 +68,6 @@ impl Default for Settings {
             db_settings: "".to_owned(),
             router_table_name: "router".to_string(),
             message_table_name: "message".to_string(),
-            vapid_aud: vec![
-                "https://push.services.mozilla.org".to_string(),
-                "http://127.0.0.1:9160".to_string(),
-            ],
             // max data is a bit hard to figure out, due to encryption. Using something
             // like pywebpush, if you encode a block of 4096 bytes, you'll get a
             // 4216 byte data block. Since we're going to be receiving this, we have to
