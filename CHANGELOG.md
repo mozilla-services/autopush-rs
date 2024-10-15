@@ -1,3 +1,79 @@
+<a name="1.72.0"></a>
+## 1.72.0 (2024-10-11)
+
+
+#### Bug Fixes
+
+*   Do not double-check VAPID aud (#772) ([ea04db68](https://github.com/mozilla-services/autopush-rs/commit/ea04db68580e62c5f6f2816883d0ff116f8bd4b8))
+*   pass settings to vapid when processing subscription request (#771) ([3cc5a565](https://github.com/mozilla-services/autopush-rs/commit/3cc5a565f550d482f83d1fc9534cac12bd4cbde0))
+*   minor fixes for GAR deploy CircleCI jobs (#764) ([e0d87663](https://github.com/mozilla-services/autopush-rs/commit/e0d876638674942eac19cb430b4f7eca48813167))
+*   using google_project_number for OIDC authentication (#763) ([92772f93](https://github.com/mozilla-services/autopush-rs/commit/92772f936c8fbc4f669268ecfa211685530cf6ee))
+*   fixed workflow_dispatch runs for docker.yml GHA workflow (#752) ([2acc5816](https://github.com/mozilla-services/autopush-rs/commit/2acc58168db785de95de54ed9f18735f44dde4ae))
+*   README fenix debug link ([8f769696](https://github.com/mozilla-services/autopush-rs/commit/8f7696969ce0fcdfd78f3612588be09a8124c2e3))
+*   jsonwebtoken validation errors (#709) ([372f3940](https://github.com/mozilla-services/autopush-rs/commit/372f3940e9bd17cdc278edbf9214f780056470ef))
+* **circleci:**  now using correct project IDs, cleaned up env var names (#762) ([7b51e776](https://github.com/mozilla-services/autopush-rs/commit/7b51e7769550e43dbc76886fc440a55822c0ad62))
+
+#### Chore
+
+*   prefer git tag for docker image tag (#768) ([9afbe422](https://github.com/mozilla-services/autopush-rs/commit/9afbe422c6c46a9babca3a4fcb4ef180480c3790))
+*   Updates for rust 1.81 (#766) ([39a1aa55](https://github.com/mozilla-services/autopush-rs/commit/39a1aa55c6f0b5b69daa6636b28bc72988acb481))
+*   clean up old GHA and Docker Hub deployment workflows (#765) ([59167492](https://github.com/mozilla-services/autopush-rs/commit/5916749298df5bca4924cd82b93b6b2f01c54c9b))
+*   added missing use_oidc gcr-auth param (#761) ([b3740a81](https://github.com/mozilla-services/autopush-rs/commit/b3740a81b3fdf326c3f6b0f446580f424f4d1903))
+*   Simplify publish_docs workflow (#749) ([9fb9fb37](https://github.com/mozilla-services/autopush-rs/commit/9fb9fb371ade2648eecb85e9d4a4d371df992293))
+*   add summary-only option to coverage json (#751) ([ed1cfcb2](https://github.com/mozilla-services/autopush-rs/commit/ed1cfcb2b62c10c17b63364299cbc6d843cef83e))
+*   Updates for rust 1.80 (#740) ([b235155e](https://github.com/mozilla-services/autopush-rs/commit/b235155ed07038cb3fa5d5f8bd404b8b3e17933f))
+*   Update for 2024-June (#716) ([b1c0f445](https://github.com/mozilla-services/autopush-rs/commit/b1c0f44530a289d3178ff8626263fb89736427aa))
+* **deps-dev:**
+  *  bump cryptography from 42.0.7 to 43.0.1 in /tests (#757) ([dfe96855](https://github.com/mozilla-services/autopush-rs/commit/dfe96855b86c9c17a2c1b37d55cbb388bd7d52f8))
+  *  bump flask-cors from 4.0.1 to 5.0.0 in /tests (#755) ([b22a3da7](https://github.com/mozilla-services/autopush-rs/commit/b22a3da706d6ee8e1c0b21f4e110e8c40e19fc79))
+  *  bump certifi from 2024.2.2 to 2024.7.4 in /tests (#731) ([fda011e6](https://github.com/mozilla-services/autopush-rs/commit/fda011e64e39a50a8f5fc6ea1be133fee28eb57a))
+  *  bump urllib3 from 2.2.1 to 2.2.2 in /tests (#714) ([8f905098](https://github.com/mozilla-services/autopush-rs/commit/8f905098ef401171f528789c4c1d1e3d4ecc9602))
+  *  bump requests from 2.31.0 to 2.32.0 in /tests (#707) ([65f1ab01](https://github.com/mozilla-services/autopush-rs/commit/65f1ab01a2e0e9c5cf81db7a3fe9a1447e39104b))
+  *  bump flask-cors from 4.0.0 to 4.0.1 in /tests (#703) ([61bf2f0a](https://github.com/mozilla-services/autopush-rs/commit/61bf2f0a8c08cf7652241483c1daf9d08f0996e3))
+  *  bump jinja2 from 3.1.3 to 3.1.4 in /tests (#701) ([c69028e0](https://github.com/mozilla-services/autopush-rs/commit/c69028e06488c6e5f917899d469ceeeb19502d2c))
+  *  bump werkzeug from 3.0.2 to 3.0.3 in /tests (#700) ([39368eda](https://github.com/mozilla-services/autopush-rs/commit/39368edaae05a7173644b3170de904284d694649))
+
+#### Refactor
+
+*   remove dynamodb legacy db impl (#720) ([71b32192](https://github.com/mozilla-services/autopush-rs/commit/71b321921b95614b1c947f9f696ecb2f9085369a))
+*   remove adm features (#729) ([6402531e](https://github.com/mozilla-services/autopush-rs/commit/6402531ea8fe6fc7776893013c16dc6d381cea4d))
+*   remove aws feature flag for logging aws ec2 (#728) ([e11e7d8b](https://github.com/mozilla-services/autopush-rs/commit/e11e7d8b5c58a139f93f919cf46dc75d175e66c2))
+*   remove User last_connect (#712) ([35b698b1](https://github.com/mozilla-services/autopush-rs/commit/35b698b14bfa77bac4847fe3d45c9bbc8334b8ae))
+*   autopush-common remove legacy autopush (#708) ([7ade0026](https://github.com/mozilla-services/autopush-rs/commit/7ade002670e80e7e656496088538bcb2beb1c347))
+*   remove autopush crate (#706) ([180675c5](https://github.com/mozilla-services/autopush-rs/commit/180675c5f7832dc77f80f4909d50cf9d2dedb13e))
+*   Replace Bottle with FastAPI (#668) ([d49458e6](https://github.com/mozilla-services/autopush-rs/commit/d49458e6e24cba6625e5a877e509e7f8c8f2d80e))
+
+#### Doc
+
+*   Update mobile debugging link in README.md ([b09814a8](https://github.com/mozilla-services/autopush-rs/commit/b09814a872e92a29bf82e253b7b6c03d7fb7ebef))
+
+#### Features
+
+*   Normalize and explain TTLs maximums (#742) ([b8e524fe](https://github.com/mozilla-services/autopush-rs/commit/b8e524febed6673922a8db506b37cf72912090ed))
+*   Add ability to track messages based on known VAPID keys (#739) ([b5256019](https://github.com/mozilla-services/autopush-rs/commit/b5256019e9823a8ebb93ea12322461d7c6c4b14b))
+*   Add metrics to return the number of channels per UAID (#736) ([b980d44c](https://github.com/mozilla-services/autopush-rs/commit/b980d44c08a970221ace6af9f521385181120a37))
+*   push Docker images to GAR (#746) ([97e91939](https://github.com/mozilla-services/autopush-rs/commit/97e9193972c255daa58a27471b80a7c60db82d01))
+*   use GHA to build and push images to GAR (#750) ([4d1f7e93](https://github.com/mozilla-services/autopush-rs/commit/4d1f7e935a614cc0445a680c752f3d1bfacd38a0))
+*   Add junit XML test reporting for unit tests on CI. ([d978b541](https://github.com/mozilla-services/autopush-rs/commit/d978b541ae8229054a6defe99620567bf696c128))
+*   [SYNC-4365]: Report test results and coverage on CI (#744) ([e45d1753](https://github.com/mozilla-services/autopush-rs/commit/e45d1753fe5ddb7c99b9221aa63575d53867766d))
+*   add APNS timeouts for a2 (#741) ([d321de3e](https://github.com/mozilla-services/autopush-rs/commit/d321de3ee3707395f48d63ddea55862a10cce44c))
+*   bump up msg_limit for autoconnect settings (#738) ([fde9b673](https://github.com/mozilla-services/autopush-rs/commit/fde9b673dcff675507b679d5938774a84903b094))
+*   add implicit updates of channel records to update_user (#734) ([4aef2806](https://github.com/mozilla-services/autopush-rs/commit/4aef2806ab4c8277fc7d06bdcd307778200eb151))
+*   Trigger an `update_user()` for channel checks and mobile messages (#730) ([843eeed4](https://github.com/mozilla-services/autopush-rs/commit/843eeed4785070be802e46aa089475be079a0821))
+*   add VAPID quality tracking metric messages (#417) ([604fd946](https://github.com/mozilla-services/autopush-rs/commit/604fd946d803064cbd83a1df30067e1717947918))
+*   Add `profile_app_id` routing hint to bigtable requests (#639) ([8e0ffff0](https://github.com/mozilla-services/autopush-rs/commit/8e0ffff096fbb9b2570eaa3db4a8269bb89813ce))
+*   Record the VAPID `sub` with database errors (#681) ([ae66e496](https://github.com/mozilla-services/autopush-rs/commit/ae66e49640b585789f63f0e7d49188249b49a6fc))
+*   Add integration test for mobile HTTP calls (#532) ([9bc1ae98](https://github.com/mozilla-services/autopush-rs/commit/9bc1ae9814dac9c15936f6f3b39f71582ac16f2c))
+*   remove `use_webpush` as a required flag (#522) ([f58d3752](https://github.com/mozilla-services/autopush-rs/commit/f58d3752e561c9dabd7c0d40609630c80d61bd67))
+*   Load test fixups (#584) ([a783a05a](https://github.com/mozilla-services/autopush-rs/commit/a783a05ae8e7b5993b1bb7a837ab3a5be579d27b))
+*   Make more errors use ReportableError trait (#632) ([b2d41173](https://github.com/mozilla-services/autopush-rs/commit/b2d411739318e59841e3973063fc7fa610160246))
+*   Move "ADM" router support behind a feature flag. (#629) ([38830f0d](https://github.com/mozilla-services/autopush-rs/commit/38830f0d9fbe537e291bab0f0b2d619a679433d1))
+*   fixturize pytest (#694) ([20ed0da9](https://github.com/mozilla-services/autopush-rs/commit/20ed0da9378caa96b7255aa9bfdc85561bbc4b0e))
+*   remove the unused metrics module (#698) ([a17857f8](https://github.com/mozilla-services/autopush-rs/commit/a17857f8d725a76c39cce686a021c3955146329f))
+*   Reduce some of the more common errors from the logs (#695) ([444f82a3](https://github.com/mozilla-services/autopush-rs/commit/444f82a33486700336dea0a89e3bf5257747e196))
+
+
+
 <a name="1.71.7"></a>
 ## 1.71.7 (2024-09-05)
 
