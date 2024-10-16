@@ -5,6 +5,7 @@ use crate::extractors::notification::Notification;
 use crate::extractors::router_data_input::RouterDataInput;
 use crate::routers::apns::error::ApnsError;
 use crate::routers::fcm::error::FcmError;
+use crate::routers::wns::error::WnsError;
 
 use autopush_common::db::error::DbError;
 
@@ -23,6 +24,7 @@ pub mod fcm;
 #[cfg(feature = "stub")]
 pub mod stub;
 pub mod webpush;
+pub mod wns;
 
 #[async_trait(?Send)]
 pub trait Router {
@@ -82,6 +84,9 @@ pub enum RouterError {
     #[error(transparent)]
     Fcm(#[from] FcmError),
 
+    #[error(transparent)]
+    Wns(#[from] WnsError),
+
     #[cfg(feature = "stub")]
     #[error(transparent)]
     Stub(#[from] StubError),
@@ -123,6 +128,7 @@ impl RouterError {
         match self {
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
+            RouterError::Wns(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
 
             RouterError::SaveDb(e, _) => e.status(),
             #[cfg(feature = "stub")]
@@ -145,6 +151,7 @@ impl RouterError {
         match self {
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
+            RouterError::Wns(e) => e.errno(),
 
             #[cfg(feature = "stub")]
             RouterError::Stub(e) => e.errno(),
@@ -175,6 +182,7 @@ impl ReportableError for RouterError {
         match &self {
             RouterError::Apns(e) => Some(e),
             RouterError::Fcm(e) => Some(e),
+            RouterError::Wns(e) => Some(e),
             RouterError::SaveDb(e, _) => Some(e),
             _ => None,
         }
@@ -185,6 +193,7 @@ impl ReportableError for RouterError {
             // apns handle_error emits a metric for ApnsError::Unregistered
             RouterError::Apns(e) => e.is_sentry_event(),
             RouterError::Fcm(e) => e.is_sentry_event(),
+            RouterError::Wns(e) => e.is_sentry_event(),
             // common handle_error emits metrics for these
             RouterError::Authentication
             | RouterError::GCMAuthentication
@@ -205,6 +214,7 @@ impl ReportableError for RouterError {
         match self {
             RouterError::Apns(e) => e.metric_label(),
             RouterError::Fcm(e) => e.metric_label(),
+            RouterError::Wns(e) => e.metric_label(),
             RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),
             _ => None,
         }
@@ -214,6 +224,7 @@ impl ReportableError for RouterError {
         match &self {
             RouterError::Apns(e) => e.extras(),
             RouterError::Fcm(e) => e.extras(),
+            RouterError::Wns(e) => e.extras(),
             RouterError::SaveDb(e, sub) => {
                 let mut extras = e.extras();
                 if let Some(sub) = sub {

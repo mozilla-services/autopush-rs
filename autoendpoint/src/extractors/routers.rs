@@ -1,6 +1,7 @@
 use crate::error::{ApiError, ApiResult};
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
+use crate::routers::wns::router::WnsRouter;
 #[cfg(feature = "stub")]
 use crate::routers::stub::router::StubRouter;
 use crate::routers::webpush::WebPushRouter;
@@ -21,6 +22,7 @@ pub enum RouterType {
     FCM,
     GCM,
     APNS,
+    WNS,
     #[cfg(feature = "stub")]
     STUB,
 }
@@ -34,6 +36,7 @@ impl FromStr for RouterType {
             "fcm" => Ok(RouterType::FCM),
             "gcm" => Ok(RouterType::GCM),
             "apns" => Ok(RouterType::APNS),
+            "wns" => Ok(RouterType::WNS),
             #[cfg(feature = "stub")]
             "stub" => Ok(RouterType::STUB),
             _ => Err(()),
@@ -48,6 +51,7 @@ impl Display for RouterType {
             RouterType::FCM => "fcm",
             RouterType::GCM => "gcm",
             RouterType::APNS => "apns",
+            RouterType::WNS => "wns",
             #[cfg(feature = "stub")]
             RouterType::STUB => "stub",
         })
@@ -60,6 +64,7 @@ pub struct Routers {
     webpush: WebPushRouter,
     fcm: Arc<FcmRouter>,
     apns: Arc<ApnsRouter>,
+    wns: Arc<WnsRouter>,
     #[cfg(feature = "stub")]
     stub: Arc<StubRouter>,
 }
@@ -82,6 +87,7 @@ impl FromRequest for Routers {
             },
             fcm: app_state.fcm_router.clone(),
             apns: app_state.apns_router.clone(),
+            wns: app_state.wns_router.clone(),
             #[cfg(feature = "stub")]
             stub: app_state.stub_router.clone(),
         })
@@ -95,6 +101,7 @@ impl Routers {
             RouterType::WebPush => &self.webpush,
             RouterType::FCM | RouterType::GCM => self.fcm.as_ref(),
             RouterType::APNS => self.apns.as_ref(),
+            RouterType::WNS => self.wns.as_ref(),
             #[cfg(feature = "stub")]
             RouterType::STUB => self.stub.as_ref(),
         }
