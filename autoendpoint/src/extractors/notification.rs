@@ -1,4 +1,4 @@
-use crate::error::{ApiError, ApiErrorKind};
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::extractors::{
     message_id::MessageId, notification_headers::NotificationHeaders, subscription::Subscription,
 };
@@ -103,6 +103,7 @@ impl From<Notification> for autopush_common::notification::Notification {
             timestamp: notification.timestamp,
             data: notification.data,
             sortkey_timestamp,
+            reliability_id: notification.subscription.reliability_id,
             headers: {
                 let headers: HashMap<String, String> = notification.headers.into();
                 if headers.is_empty() {
@@ -160,25 +161,28 @@ impl Notification {
     /// fields are still required when delivering to the connection server, so
     /// we can't simply convert this notification type to that one and serialize
     /// via serde.
-    pub fn serialize_for_delivery(&self) -> HashMap<&'static str, serde_json::Value> {
+    pub fn serialize_for_delivery(&self) -> ApiResult<HashMap<&'static str, serde_json::Value>> {
         let mut map = HashMap::new();
 
         map.insert(
             "channelID",
-            serde_json::to_value(self.subscription.channel_id).unwrap(),
+            serde_json::to_value(self.subscription.channel_id)?,
         );
-        map.insert("version", serde_json::to_value(&self.message_id).unwrap());
-        map.insert("ttl", serde_json::to_value(self.headers.ttl).unwrap());
-        map.insert("topic", serde_json::to_value(&self.headers.topic).unwrap());
-        map.insert("timestamp", serde_json::to_value(self.timestamp).unwrap());
-
-        if let Some(data) = &self.data {
-            map.insert("data", serde_json::to_value(data).unwrap());
-
-            let headers: HashMap<_, _> = self.headers.clone().into();
-            map.insert("headers", serde_json::to_value(headers).unwrap());
+        map.insert("version", serde_json::to_value(&self.message_id)?);
+        map.insert("ttl", serde_json::to_value(self.headers.ttl)?);
+        map.insert("topic", serde_json::to_value(&self.headers.topic)?);
+        map.insert("timestamp", serde_json::to_value(self.timestamp)?);
+        if let Some(reliability_id) = &self.subscription.reliability_id {
+            map.insert("reliability_id", serde_json::to_value(reliability_id)?);
         }
 
-        map
+        if let Some(data) = &self.data {
+            map.insert("data", serde_json::to_value(data)?);
+
+            let headers: HashMap<_, _> = self.headers.clone().into();
+            map.insert("headers", serde_json::to_value(headers)?);
+        }
+
+        Ok(map)
     }
 }

@@ -216,6 +216,7 @@ impl WebPushClient {
                 // Get the stored notification record.
                 let n = &self.ack_state.unacked_stored_notifs[pos];
                 debug!("✅ Ack notif: {:?}", &n);
+                // TODO: Record "ack'd" reliability_id, if present.
                 // Only force delete Topic messages, since they don't have a timestamp.
                 // Other messages persist in the database, to be, eventually, cleaned up by their
                 // TTL. We will need to update the `CurrentTimestamp` field for the channel
