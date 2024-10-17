@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliability;
 use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
@@ -24,6 +26,8 @@ pub struct WebPushRouter {
     pub metrics: Arc<StatsdClient>,
     pub http: reqwest::Client,
     pub endpoint_url: Url,
+    #[cfg(feature = "reliable_report")]
+    pub reliability: Arc<PushReliability>,
 }
 
 #[async_trait(?Send)]
@@ -37,12 +41,17 @@ impl Router for WebPushRouter {
         Ok(HashMap::new())
     }
 
-    async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+    async fn route_notification(
+        &self,
+        mut notification: Notification,
+    ) -> ApiResult<RouterResponse> {
         // The notification contains the original subscription information
-        let user = &notification.subscription.user;
+        let user = &notification.subscription.user.clone();
+        // A clone of the notification used only for the responses
+        // The canonical Notification is consumed by the various functions.
         debug!(
-            "✉ Routing WebPush notification to UAID {}",
-            notification.subscription.user.uaid
+            "✉ Routing WebPush notification to UAID {} :: {:?}",
+            notification.subscription.user.uaid, notification.subscription.reliability_id,
         );
         trace!("✉ Notification = {:?}", notification);
 
@@ -53,16 +62,30 @@ impl Router for WebPushRouter {
                 &node_id
             );
 
-            // Try to send the notification to the node
-            match self.send_notification(notification, node_id).await {
+            #[cfg(feature = "reliable_report")]
+            let (revert_state, mut notification) = {
+                let revert_state = notification.reliable_state;
+                // The node will set the next state (if successful)
+                notification.reliable_state = self
+                    .reliability
+                    .record(
+                        &notification.reliability_id,
+                        autopush_common::reliability::PushReliabilityState::IntTransmitted,
+                        &notification.reliable_state,
+                        notification.expiry,
+                    )
+                    .await;
+
+                (revert_state, notification.clone())
+            };
+            match self.send_notification(&notification, node_id).await {
                 Ok(response) => {
                     // The node might be busy, make sure it accepted the notification
                     if response.status() == 200 {
                         // The node has received the notification
                         trace!("✉ Node received notification");
-                        return Ok(self.make_delivered_response(notification));
+                        return Ok(self.make_delivered_response(&notification));
                     }
-
                     trace!(
                         "✉ Node did not receive the notification, response = {:?}",
                         response
@@ -79,6 +102,26 @@ impl Router for WebPushRouter {
                     self.remove_node_id(user, node_id).await?
                 }
             }
+
+            #[cfg(feature = "reliable_report")]
+            // Couldn't send the message! So revert to the prior state if we have one
+            if let Some(revert_state) = revert_state {
+                trace!(
+                    "🔎 Revert {:?} from {:?} to {:?}",
+                    &notification.reliability_id,
+                    &notification.reliable_state,
+                    revert_state
+                );
+                notification.reliable_state = self
+                    .reliability
+                    .record(
+                        &notification.reliability_id,
+                        revert_state,
+                        &notification.reliable_state,
+                        notification.expiry,
+                    )
+                    .await;
+            }
         }
 
         if notification.headers.ttl == 0 {
@@ -92,12 +135,24 @@ impl Router for WebPushRouter {
                 // TODO: include `internal` if meta is set.
                 .with_tag("topic", &topic)
                 .send();
-            return Ok(self.make_delivered_response(notification));
+            #[cfg(feature = "reliable_report")]
+            {
+                notification.reliable_state = self
+                    .reliability
+                    .record(
+                        &notification.reliability_id,
+                        autopush_common::reliability::PushReliabilityState::Expired,
+                        &notification.reliable_state,
+                        notification.expiry,
+                    )
+                    .await;
+            }
+            return Ok(self.make_delivered_response(&notification));
         }
 
         // Save notification, node is not present or busy
         trace!("✉ Node is not present or busy, storing notification");
-        self.store_notification(notification).await?;
+        self.store_notification(&mut notification).await?;
 
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
@@ -113,7 +168,7 @@ impl Router for WebPushRouter {
             Err(e) => {
                 // Database error, but we already stored the message so it's ok
                 debug!("✉ Database error while re-fetching user: {}", e);
-                return Ok(self.make_stored_response(notification));
+                return Ok(self.make_stored_response(&notification));
             }
         };
 
@@ -123,7 +178,7 @@ impl Router for WebPushRouter {
             // The user is not connected to a node, nothing more to do
             None => {
                 trace!("✉ User is not connected to a node, returning stored response");
-                return Ok(self.make_stored_response(notification));
+                return Ok(self.make_stored_response(&notification));
             }
         };
 
@@ -144,17 +199,17 @@ impl Router for WebPushRouter {
                         .with_tag("app_id", "direct")
                         .send();
 
-                    Ok(self.make_delivered_response(notification))
+                    Ok(self.make_delivered_response(&notification))
                 } else {
                     trace!("✉ Node has not delivered the message, returning stored response");
-                    Ok(self.make_stored_response(notification))
+                    Ok(self.make_stored_response(&notification))
                 }
             }
             Err(error) => {
                 // Can't communicate with the node, attempt to stop using it
                 debug!("✉ Error while triggering notification check: {}", error);
                 self.remove_node_id(&user, node_id).await?;
-                Ok(self.make_stored_response(notification))
+                Ok(self.make_stored_response(&notification))
             }
         }
     }
@@ -172,16 +227,22 @@ impl WebPushRouter {
         err
     }
 
-    /// Send the notification to the node
+    /// Consume and send the notification to the node
     async fn send_notification(
         &self,
         notification: &Notification,
         node_id: &str,
     ) -> Result<Response, reqwest::Error> {
         let url = format!("{}/push/{}", node_id, notification.subscription.user.uaid);
-        let notification = notification.serialize_for_delivery();
 
-        self.http.put(&url).json(&notification).send().await
+        let notification_out = notification.serialize_for_delivery();
+
+        trace!(
+            "⏩ out: Notification: {}, channel_id: {}",
+            &notification.subscription.user.uaid,
+            &notification.subscription.channel_id,
+        );
+        self.http.put(&url).json(&notification_out).send().await
     }
 
     /// Notify the node to check for notifications for the user
@@ -196,8 +257,9 @@ impl WebPushRouter {
     }
 
     /// Store a notification in the database
-    async fn store_notification(&self, notification: &Notification) -> ApiResult<()> {
-        self.db
+    async fn store_notification(&self, notification: &mut Notification) -> ApiResult<()> {
+        let result = self
+            .db
             .save_message(
                 &notification.subscription.user.uaid,
                 notification.clone().into(),
@@ -207,16 +269,29 @@ impl WebPushRouter {
                 self.handle_error(
                     ApiErrorKind::Router(RouterError::SaveDb(
                         e,
-                        // try to extract the `sub` from the VAPID clamis.
+                        // try to extract the `sub` from the VAPID claims.
                         notification
                             .subscription
                             .vapid
                             .as_ref()
-                            .map(|vapid| vapid.vapid.claims().map(|c| c.sub).unwrap_or_default()),
+                            .map(|vapid| vapid.vapid.sub().unwrap_or_default()),
                     )),
                     notification.subscription.vapid.clone(),
                 )
-            })
+            });
+        #[cfg(feature = "reliable_report")]
+        {
+            notification.reliable_state = self
+                .reliability
+                .record(
+                    &notification.subscription.reliability_id,
+                    autopush_common::reliability::PushReliabilityState::Stored,
+                    &notification.reliable_state,
+                    notification.expiry,
+                )
+                .await;
+        }
+        result
     }
 
     /// Remove the node ID from a user. This is done if the user is no longer
@@ -289,6 +364,8 @@ mod test {
     use crate::extractors::subscription::tests::{make_vapid, PUB_KEY};
     use crate::headers::vapid::VapidClaims;
     use autopush_common::errors::ReportableError;
+    #[cfg(feature = "reliable_report")]
+    use autopush_common::reliability::PushReliability;
 
     use super::*;
     use autopush_common::db::mock::MockDbClient;
@@ -299,6 +376,8 @@ mod test {
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
+            #[cfg(feature = "reliable_report")]
+            reliability: Arc::new(PushReliability::new(&None, &None).unwrap()),
         }
     }
 

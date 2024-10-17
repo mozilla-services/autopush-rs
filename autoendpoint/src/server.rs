@@ -13,11 +13,14 @@ use serde_json::json;
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliability;
 use autopush_common::{
     db::{client::DbClient, spawn_pool_periodic_reporter, DbSettings, StorageType},
     middleware::sentry::SentryWrapper,
 };
 
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
 #[cfg(feature = "stub")]
 use crate::routers::stub::router::StubRouter;
@@ -31,10 +34,7 @@ use crate::routes::{
     webpush::{delete_notification_route, webpush_route},
 };
 use crate::settings::Settings;
-use crate::{
-    error::{ApiError, ApiErrorKind, ApiResult},
-    settings::VapidTracker,
-};
+use crate::settings::VapidTracker;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -48,7 +48,9 @@ pub struct AppState {
     pub apns_router: Arc<ApnsRouter>,
     #[cfg(feature = "stub")]
     pub stub_router: Arc<StubRouter>,
-    pub reliability: Arc<VapidTracker>,
+    #[cfg(feature = "reliable_report")]
+    pub reliability: Arc<PushReliability>,
+    pub reliability_filter: VapidTracker,
 }
 
 pub struct Server;
@@ -59,6 +61,7 @@ impl Server {
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();
+        let reliability_filter = VapidTracker(settings.tracking_keys());
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
             db_settings: if settings.db_settings.is_empty() {
@@ -85,6 +88,12 @@ impl Server {
                 .into());
             }
         };
+        #[cfg(feature = "reliable_report")]
+        let reliability = Arc::new(
+            PushReliability::new(&settings.reliability_dsn, &Some(db.clone())).map_err(|e| {
+                ApiErrorKind::General(format!("Could not initialize Reliability Report: {:?}", e))
+            })?,
+        );
         let http = reqwest::ClientBuilder::new()
             .connect_timeout(Duration::from_millis(settings.connection_timeout_millis))
             .timeout(Duration::from_millis(settings.request_timeout_millis))
@@ -97,6 +106,8 @@ impl Server {
                 http.clone(),
                 metrics.clone(),
                 db.clone(),
+                #[cfg(feature = "reliable_report")]
+                reliability.clone(),
             )
             .await?,
         );
@@ -106,10 +117,11 @@ impl Server {
                 endpoint_url.clone(),
                 metrics.clone(),
                 db.clone(),
+                #[cfg(feature = "reliable_report")]
+                reliability.clone(),
             )
             .await?,
         );
-        let reliability = Arc::new(VapidTracker(settings.tracking_keys()));
         #[cfg(feature = "stub")]
         let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
         let app_state = AppState {
@@ -122,7 +134,9 @@ impl Server {
             apns_router,
             #[cfg(feature = "stub")]
             stub_router,
+            #[cfg(feature = "reliable_report")]
             reliability,
+            reliability_filter,
         };
 
         spawn_pool_periodic_reporter(
@@ -143,7 +157,7 @@ impl Server {
                     actix_web::http::Method::PUT,
                 ])
                 .max_age(3600);
-            App::new()
+            let app = App::new()
                 // Actix 4 recommends wrapping structures wtih web::Data (internally an Arc)
                 .app_data(Data::new(app_state.clone()))
                 // Extractor configuration
@@ -196,7 +210,13 @@ impl Server {
                 // Dockerflow
                 .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
-                .service(web::resource("/__version__").route(web::get().to(version_route)))
+                .service(web::resource("/__version__").route(web::get().to(version_route)));
+            #[cfg(feature = "reliable_report")]
+            let app = app.service(
+                web::resource("/__milestones__")
+                    .route(web::get().to(crate::routes::reliability::report_handler)),
+            );
+            app
         })
         .bind(bind_address)?
         .run();

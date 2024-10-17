@@ -79,6 +79,8 @@ impl FromRequest for Routers {
                 metrics: app_state.metrics.clone(),
                 http: app_state.http.clone(),
                 endpoint_url: app_state.settings.endpoint_url(),
+                #[cfg(feature = "reliable_report")]
+                reliability: app_state.reliability.clone(),
             },
             fcm: app_state.fcm_router.clone(),
             apns: app_state.apns_router.clone(),

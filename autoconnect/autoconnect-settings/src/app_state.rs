@@ -12,6 +12,8 @@ use autoconnect_common::{
     registry::ClientRegistry,
 };
 use autopush_common::db::{client::DbClient, DbSettings, StorageType};
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::PushReliability;
 
 use crate::{Settings, ENV_PREFIX};
 
@@ -32,6 +34,9 @@ pub struct AppState {
     pub settings: Settings,
     pub router_url: String,
     pub endpoint_url: String,
+
+    #[cfg(feature = "reliable_report")]
+    pub reliability: Arc<PushReliability>,
 }
 
 impl AppState {
@@ -68,6 +73,7 @@ impl AppState {
             db_settings: settings.db_settings.clone(),
         };
         let storage_type = StorageType::from_dsn(&db_settings.dsn);
+
         #[allow(unused)]
         let db: Box<dyn DbClient> = match storage_type {
             #[cfg(feature = "bigtable")]
@@ -83,6 +89,13 @@ impl AppState {
                 ENV_PREFIX.to_uppercase()
             ),
         };
+
+        #[cfg(feature = "reliable_report")]
+        let reliability = Arc::new(
+            PushReliability::new(&settings.reliability_dsn, &Some(db.clone())).map_err(|e| {
+                ConfigError::Message(format!("Could not start Reliability connection: {:?}", e))
+            })?,
+        );
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()
@@ -102,6 +115,8 @@ impl AppState {
             settings,
             router_url,
             endpoint_url,
+            #[cfg(feature = "reliable_report")]
+            reliability,
         })
     }
 

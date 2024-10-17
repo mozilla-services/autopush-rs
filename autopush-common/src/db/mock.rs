@@ -95,6 +95,15 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).remove_message(uaid, sort_key).await
     }
 
+    #[cfg(feature = "reliable_report")]
+    async fn log_report(
+        &self,
+        reliability_id: &str,
+        state: crate::reliability::PushReliabilityState,
+    ) -> DbResult<()> {
+        Arc::as_ref(self).log_report(reliability_id, state).await
+    }
+
     async fn router_table_exists(&self) -> DbResult<bool> {
         Arc::as_ref(self).router_table_exists().await
     }

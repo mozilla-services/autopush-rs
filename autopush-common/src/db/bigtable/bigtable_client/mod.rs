@@ -51,6 +51,10 @@ pub type FamilyId = String;
 const ROUTER_FAMILY: &str = "router";
 const MESSAGE_FAMILY: &str = "message"; // The default family for messages
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
+#[cfg(feature = "reliable_report")]
+const RELIABLE_LOG_FAMILY: &str = "reliability";
+#[cfg(feature = "reliable_report")]
+const RELIABLE_LOG_TTL: u64 = crate::db::MAX_NOTIFICATION_TTL * 2;
 
 pub(crate) const RETRY_COUNT: usize = 5;
 
@@ -720,6 +724,7 @@ impl BigTableClientImpl {
             )
         })?;
 
+        // Create from the known, required fields.
         let mut notif = Notification {
             channel_id: range_key.channel_id,
             topic: range_key.topic,
@@ -730,8 +735,29 @@ impl BigTableClientImpl {
             ..Default::default()
         };
 
+        // Backfill the Optional fields
         if let Some(cell) = row.take_cell("data") {
             notif.data = Some(to_string(cell.value, "data")?);
+        }
+        #[cfg(feature = "reliable_report")]
+        {
+            if let Some(cell) = row.take_cell("reliability_id") {
+                notif.reliability_id = Some(to_string(cell.value, "reliability_id")?);
+            }
+            if let Some(cell) = row.take_cell("reliable_state") {
+                notif.reliable_state = Some(
+                    crate::reliability::PushReliabilityState::from_str(&to_string(
+                        cell.value,
+                        "reliable_state",
+                    )?)
+                    .map_err(|e| {
+                        DbError::DeserializeString(format!(
+                            "Could not parse reliable_state {:?}",
+                            e
+                        ))
+                    })?,
+                );
+            }
         }
         if let Some(cell) = row.take_cell("headers") {
             notif.headers = Some(
@@ -1174,6 +1200,26 @@ impl DbClient for BigTableClientImpl {
                 });
             }
         }
+        #[cfg(feature = "reliable_report")]
+        {
+            if let Some(reliability_id) = message.reliability_id {
+                trace!("🔍 FOUND RELIABILITY ID: {}", reliability_id);
+                cells.push(cell::Cell {
+                    qualifier: "reliability_id".to_owned(),
+                    value: reliability_id.into_bytes(),
+                    timestamp: expiry,
+                    ..Default::default()
+                });
+            }
+            if let Some(reliable_state) = message.reliable_state {
+                cells.push(cell::Cell {
+                    qualifier: "reliable_state".to_owned(),
+                    value: reliable_state.to_string().into_bytes(),
+                    timestamp: expiry,
+                    ..Default::default()
+                });
+            }
+        }
         if let Some(data) = message.data {
             cells.push(cell::Cell {
                 qualifier: "data".to_owned(),
@@ -1301,6 +1347,7 @@ impl DbClient for BigTableClientImpl {
         );
 
         let messages = self.rows_to_notifications(rows)?;
+
         // Note: Bigtable always returns a timestamp of None.
         // Under Bigtable `current_timestamp` is instead initially read
         // from [get_user].
@@ -1397,6 +1444,32 @@ impl DbClient for BigTableClientImpl {
     /// by `family`.
     async fn message_table_exists(&self) -> DbResult<bool> {
         Ok(true)
+    }
+
+    #[cfg(feature = "reliable_report")]
+    async fn log_report(
+        &self,
+        reliability_id: &str,
+        new_state: crate::reliability::PushReliabilityState,
+    ) -> DbResult<()> {
+        let row_key = reliability_id.to_owned();
+
+        let mut row = Row::new(row_key);
+        let expiry = SystemTime::now() + Duration::from_secs(RELIABLE_LOG_TTL);
+
+        // Log the latest transition time for this id.
+        let cells: Vec<cell::Cell> = vec![cell::Cell {
+            qualifier: new_state.to_string(),
+            value: crate::util::ms_since_epoch().to_be_bytes().to_vec(),
+            timestamp: expiry,
+            ..Default::default()
+        }];
+
+        row.add_cells(RELIABLE_LOG_FAMILY, cells);
+
+        self.write_row(row).await?;
+
+        Ok(())
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {

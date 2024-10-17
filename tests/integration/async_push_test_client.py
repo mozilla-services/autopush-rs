@@ -28,6 +28,7 @@ class ClientMessageType(Enum):
     ACK = "ack"
     NACK = "nack"
     PING = "ping"
+    NOTIFICATION = "notification"
 
 
 class AsyncPushTestClient:
