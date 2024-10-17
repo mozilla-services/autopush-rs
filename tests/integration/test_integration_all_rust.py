@@ -25,7 +25,6 @@ import psutil
 import pytest
 import uvicorn
 import websockets
-
 from cryptography.fernet import Fernet
 from fastapi import FastAPI, Request
 from jose import jws
