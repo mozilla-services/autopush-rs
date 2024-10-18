@@ -90,9 +90,6 @@ pub struct ClientAck {
     pub channel_id: Uuid,
     // The corresponding version number for the message.
     pub version: String,
-    // The Reliability ID for the messages (if present)
-    #[serde(default)]
-    pub reliability_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

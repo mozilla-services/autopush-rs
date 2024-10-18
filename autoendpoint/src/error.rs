@@ -73,6 +73,9 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 
+    #[error(transparent)]
+    ReqwestError(#[from] reqwest::Error),
+
     #[error("Error while validating token")]
     TokenHashValidation(#[source] openssl::error::ErrorStack),
 
@@ -165,7 +168,8 @@ impl ApiErrorKind {
             | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::EndpointUrl(_)
-            | ApiErrorKind::RegistrationSecretHash(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            | ApiErrorKind::RegistrationSecretHash(_)
+            | ApiErrorKind::ReqwestError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -203,6 +207,7 @@ impl ApiErrorKind {
             ApiErrorKind::Conditional(_) => "conditional",
             ApiErrorKind::EndpointUrl(e) => return e.metric_label(),
             ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
+            ApiErrorKind::ReqwestError(_) => "reqwest",
         })
     }
 
@@ -225,7 +230,8 @@ impl ApiErrorKind {
             // Ignore oversized payload.
             ApiErrorKind::PayloadError(_) |
             ApiErrorKind::Validation(_) |
-            ApiErrorKind::Conditional(_) => false,
+            ApiErrorKind::Conditional(_) |
+            ApiErrorKind::ReqwestError(_) => false,
             _ => true,
         }
     }
@@ -274,7 +280,8 @@ impl ApiErrorKind {
             | ApiErrorKind::InvalidRouterToken
             | ApiErrorKind::RegistrationSecretHash(_)
             | ApiErrorKind::EndpointUrl(_)
-            | ApiErrorKind::InvalidMessageId => None,
+            | ApiErrorKind::InvalidMessageId
+            | ApiErrorKind::ReqwestError(_) => None,
         }
     }
 }

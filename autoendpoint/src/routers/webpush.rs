@@ -69,12 +69,14 @@ impl Router for WebPushRouter {
                     );
                 }
                 Err(error) => {
-                    if error.is_timeout() {
-                        self.metrics.incr("error.node.timeout")?;
+                    if let ApiErrorKind::ReqwestError(error) = &error.kind {
+                        if error.is_timeout() {
+                            self.metrics.incr("error.node.timeout")?;
+                        };
+                        if error.is_connect() {
+                            self.metrics.incr("error.node.connect")?;
+                        };
                     };
-                    if error.is_connect() {
-                        self.metrics.incr("error.node.connect")?;
-                    }
                     debug!("✉ Error while sending webpush notification: {}", error);
                     self.remove_node_id(user, node_id).await?
                 }
@@ -177,11 +179,11 @@ impl WebPushRouter {
         &self,
         notification: &Notification,
         node_id: &str,
-    ) -> Result<Response, reqwest::Error> {
+    ) -> ApiResult<Response> {
         let url = format!("{}/push/{}", node_id, notification.subscription.user.uaid);
         let notification = notification.serialize_for_delivery().unwrap();
 
-        self.http.put(&url).json(&notification).send().await
+        Ok(self.http.put(&url).json(&notification).send().await?)
     }
 
     /// Notify the node to check for notifications for the user

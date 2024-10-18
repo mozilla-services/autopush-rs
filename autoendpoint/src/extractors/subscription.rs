@@ -73,13 +73,13 @@ impl FromRequest for Subscription {
                 .transpose()?;
 
             trace!("raw vapid: {:?}", &vapid);
-            let reliability_id: Option<String> = vapid.clone().and_then(|v| {
+            let reliability_id: Option<String> = vapid.as_ref().and_then(|v| {
                 app_state
                     .vapid_tracker
-                    .is_trackable(&v)
+                    .is_trackable(v)
                     .then(|| app_state.vapid_tracker.get_id(req.headers()))
             });
-            debug!("🔍 Assigning Reliability ID: {:?}", reliability_id);
+            debug!("🔍 Assigning Reliability ID: {reliability_id:?}");
 
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
