@@ -172,7 +172,7 @@ impl Settings {
         let result = Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
             .map(|v| v.to_owned().replace("=", ""))
             .collect();
-        trace!("🔍 tracking_keys: {:?}", result);
+        trace!("🔍 tracking_keys: {result:?}");
         result
     }
 

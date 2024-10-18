@@ -181,7 +181,7 @@ impl WebPushRouter {
         node_id: &str,
     ) -> ApiResult<Response> {
         let url = format!("{}/push/{}", node_id, notification.subscription.user.uaid);
-        let notification = notification.serialize_for_delivery().unwrap();
+        let notification = notification.serialize_for_delivery()?;
 
         Ok(self.http.put(&url).json(&notification).send().await?)
     }
