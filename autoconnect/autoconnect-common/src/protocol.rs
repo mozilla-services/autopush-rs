@@ -80,10 +80,15 @@ impl FromStr for ClientMessage {
     }
 }
 
+/// Returned ACKnowledgement of the received message by the User Agent.
+/// This is the payload for the `messageType:ack` packet.
+///
 #[derive(Debug, Deserialize)]
 pub struct ClientAck {
+    // The channel_id which received messages
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
+    // The corresponding version number for the message.
     pub version: String,
 }
 

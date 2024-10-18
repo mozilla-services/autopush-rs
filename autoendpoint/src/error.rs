@@ -70,6 +70,12 @@ pub enum ApiErrorKind {
     #[error(transparent)]
     Jwt(#[from] jsonwebtoken::errors::Error),
 
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    ReqwestError(#[from] reqwest::Error),
+
     #[error("Error while validating token")]
     TokenHashValidation(#[source] openssl::error::ErrorStack),
 
@@ -143,6 +149,7 @@ impl ApiErrorKind {
 
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::Jwt(_)
+            | ApiErrorKind::Serde(_)
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::InvalidAuthentication
             | ApiErrorKind::InvalidLocalAuth(_) => StatusCode::UNAUTHORIZED,
@@ -161,7 +168,8 @@ impl ApiErrorKind {
             | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::EndpointUrl(_)
-            | ApiErrorKind::RegistrationSecretHash(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            | ApiErrorKind::RegistrationSecretHash(_)
+            | ApiErrorKind::ReqwestError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -179,7 +187,7 @@ impl ApiErrorKind {
             ApiErrorKind::InvalidMessageId => "invalid_message_id",
 
             ApiErrorKind::VapidError(_) => "vapid_error",
-            ApiErrorKind::Jwt(_) => "jwt",
+            ApiErrorKind::Jwt(_) | ApiErrorKind::Serde(_) => "jwt",
             ApiErrorKind::TokenHashValidation(_) => "token_hash_validation",
             ApiErrorKind::InvalidAuthentication => "invalid_authentication",
             ApiErrorKind::InvalidLocalAuth(_) => "invalid_local_auth",
@@ -199,6 +207,7 @@ impl ApiErrorKind {
             ApiErrorKind::Conditional(_) => "conditional",
             ApiErrorKind::EndpointUrl(e) => return e.metric_label(),
             ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
+            ApiErrorKind::ReqwestError(_) => "reqwest",
         })
     }
 
@@ -221,7 +230,8 @@ impl ApiErrorKind {
             // Ignore oversized payload.
             ApiErrorKind::PayloadError(_) |
             ApiErrorKind::Validation(_) |
-            ApiErrorKind::Conditional(_) => false,
+            ApiErrorKind::Conditional(_) |
+            ApiErrorKind::ReqwestError(_) => false,
             _ => true,
         }
     }
@@ -251,6 +261,7 @@ impl ApiErrorKind {
             ApiErrorKind::VapidError(_)
             | ApiErrorKind::TokenHashValidation(_)
             | ApiErrorKind::Jwt(_)
+            | ApiErrorKind::Serde(_)
             | ApiErrorKind::InvalidAuthentication
             | ApiErrorKind::InvalidLocalAuth(_) => Some(109),
 
@@ -269,7 +280,8 @@ impl ApiErrorKind {
             | ApiErrorKind::InvalidRouterToken
             | ApiErrorKind::RegistrationSecretHash(_)
             | ApiErrorKind::EndpointUrl(_)
-            | ApiErrorKind::InvalidMessageId => None,
+            | ApiErrorKind::InvalidMessageId
+            | ApiErrorKind::ReqwestError(_) => None,
         }
     }
 }

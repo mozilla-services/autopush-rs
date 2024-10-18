@@ -169,9 +169,11 @@ impl Settings {
     // public key, but that may not always be true.
     pub fn tracking_keys(&self) -> Vec<String> {
         let keys = &self.tracking_keys.replace(['"', ' '], "");
-        Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
-            .map(|v| v.to_owned())
-            .collect()
+        let result = Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
+            .map(|v| v.to_owned().replace("=", ""))
+            .collect();
+        trace!("🔍 tracking_keys: {result:?}");
+        result
     }
 
     /// Get the URL for this endpoint server
@@ -193,11 +195,20 @@ impl VapidTracker {
     pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
         // ideally, [Settings.with_env_and_config_file()] does the work of pre-populating
         // the Settings.tracking_vapid_pubs cache, but we can't rely on that.
-        self.0.contains(&vapid.public_key)
+        let key = vapid.public_key.replace('=', "");
+        let result = self.0.contains(&key);
+        debug!("🔍 Checking {key} {}", {
+            if result {
+                "Match!"
+            } else {
+                "no match"
+            }
+        });
+        result
     }
 
     /// Extract the message Id from the headers (if present), otherwise just make one up.
-    pub fn get_tracking_id(&self, headers: &HeaderMap) -> String {
+    pub fn get_id(&self, headers: &HeaderMap) -> String {
         headers
             .get("X-MessageId")
             .and_then(|v|
@@ -304,7 +315,7 @@ mod tests {
     #[test]
     fn test_tracking_keys() -> ApiResult<()> {
         let settings = Settings{
-            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI"]"#.to_owned(),
+            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7"]"#.to_owned(),
             ..Default::default()
         };
 
@@ -314,7 +325,7 @@ mod tests {
                 token: "".to_owned(),
                 version_data: crate::headers::vapid::VapidVersionData::Version1,
             },
-            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI".to_owned()
+            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7==".to_owned()
         };
 
         let key_set = settings.tracking_keys();
@@ -327,12 +338,12 @@ mod tests {
     }
 
     #[test]
-    fn test_tracking_id() -> ApiResult<()> {
+    fn test_reliability_id() -> ApiResult<()> {
         let mut headers = HeaderMap::new();
         let keys = Vec::new();
         let reliability = VapidTracker(keys);
 
-        let key = reliability.get_tracking_id(&headers);
+        let key = reliability.get_id(&headers);
         assert!(!key.is_empty());
 
         headers.insert(
@@ -340,7 +351,7 @@ mod tests {
             HeaderValue::from_static("123foobar456"),
         );
 
-        let key = reliability.get_tracking_id(&headers);
+        let key = reliability.get_id(&headers);
         assert_eq!(key, "123foobar456".to_owned());
 
         Ok(())
