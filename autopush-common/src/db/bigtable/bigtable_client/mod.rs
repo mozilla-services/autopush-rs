@@ -720,6 +720,7 @@ impl BigTableClientImpl {
             )
         })?;
 
+        // Create from the known, required fields.
         let mut notif = Notification {
             channel_id: range_key.channel_id,
             topic: range_key.topic,
@@ -730,6 +731,7 @@ impl BigTableClientImpl {
             ..Default::default()
         };
 
+        // Backfill the Optional fields
         if let Some(cell) = row.take_cell("data") {
             notif.data = Some(to_string(cell.value, "data")?);
         }
@@ -738,6 +740,10 @@ impl BigTableClientImpl {
                 serde_json::from_str::<HashMap<String, String>>(&to_string(cell.value, "headers")?)
                     .map_err(|e| DbError::Serialization(e.to_string()))?,
             );
+        }
+        if let Some(cell) = row.take_cell("reliability_id") {
+            trace!("🚣  Is reliable");
+            notif.reliability_id = Some(to_string(cell.value, "reliability_id")?);
         }
 
         trace!("🚣  Deserialized message row: {:?}", &notif);
@@ -1182,6 +1188,15 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             });
         }
+
+        if let Some(reliability_id) = message.reliability_id {
+            cells.push(cell::Cell {
+                qualifier: "reliability_id".to_owned(),
+                value: reliability_id.into_bytes(),
+                timestamp: expiry,
+                ..Default::default()
+            });
+        }
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
         self.write_row(row).await?;
@@ -1301,6 +1316,7 @@ impl DbClient for BigTableClientImpl {
         );
 
         let messages = self.rows_to_notifications(rows)?;
+
         // Note: Bigtable always returns a timestamp of None.
         // Under Bigtable `current_timestamp` is instead initially read
         // from [get_user].

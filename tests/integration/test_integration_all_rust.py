@@ -16,7 +16,7 @@ import time
 import uuid
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Any, AsyncGenerator, Generator
+from typing import Any, AsyncGenerator, Generator, cast
 from urllib.parse import urlparse
 
 import ecdsa
@@ -48,6 +48,8 @@ MESSAGE_TABLE = os.environ.get("MESSAGE_TABLE", "message_int_test")
 MSG_LIMIT = 20
 
 CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode("utf-8")
+TRACKING_KEY = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+TRACKING_PUB_KEY = cast(ecdsa.VerifyingKey, TRACKING_KEY.get_verifying_key())
 CONNECTION_PORT = 9150
 ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
@@ -125,7 +127,7 @@ def base64url_encode(value: bytes | str) -> str:
 
 MOCK_SERVER_PORT: Any = get_free_port()
 MOCK_MP_SERVICES: dict = {}
-MOCK_MP_TOKEN: str = "Bearer {}".format(uuid.uuid4().hex)
+MOCK_MP_TOKEN: str = f"Bearer {uuid.uuid4().hex}"
 MOCK_MP_POLLED: Event = Event()
 MOCK_SENTRY_QUEUE: Queue = Queue()
 
@@ -142,7 +144,7 @@ CONNECTION_CONFIG: dict[str, Any] = dict(
     endpoint_scheme="http",
     router_tablename=ROUTER_TABLE,
     message_tablename=MESSAGE_TABLE,
-    crypto_key="[{}]".format(CRYPTO_KEY),
+    crypto_key=f"[{CRYPTO_KEY}]",
     auto_ping_interval=30.0,
     auto_ping_timeout=10.0,
     close_handshake_timeout=5,
@@ -183,7 +185,9 @@ ENDPOINT_CONFIG = dict(
     router_table_name=ROUTER_TABLE,
     message_table_name=MESSAGE_TABLE,
     human_logs="true",
-    crypto_keys="[{}]".format(CRYPTO_KEY),
+    crypto_keys=f"[{CRYPTO_KEY}]",
+    # convert to x692 format
+    tracking_keys=f"[{base64.urlsafe_b64encode((b"\4" + TRACKING_PUB_KEY.to_string())).decode()}]",
 )
 
 
@@ -198,10 +202,10 @@ def _get_vapid(
     global CONNECTION_CONFIG
 
     if endpoint is None:
-        endpoint = "{}://{}:{}".format(
-            CONNECTION_CONFIG.get("endpoint_scheme"),
-            CONNECTION_CONFIG.get("endpoint_hostname"),
-            CONNECTION_CONFIG.get("endpoint_port"),
+        endpoint = (
+            f"{CONNECTION_CONFIG.get("endpoint_scheme")}://"
+            f"{CONNECTION_CONFIG.get("endpoint_hostname")}:"
+            f"{CONNECTION_CONFIG.get("endpoint_port")}"
         )
     if not payload:
         payload = {
@@ -213,7 +217,7 @@ def _get_vapid(
         payload["aud"] = endpoint
     if not key:
         key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
-    vk: ecdsa.VerifyingKey = key.get_verifying_key()
+    vk: ecdsa.VerifyingKey = cast(ecdsa.VerifyingKey, key.get_verifying_key())
     auth: str = jws.sign(payload, key, algorithm="ES256").strip("=")
     crypto_key: str = base64url_encode((b"\4" + vk.to_string()))
     return {"auth": auth, "crypto-key": crypto_key, "key": key}
@@ -327,11 +331,11 @@ def get_rust_binary_path(binary) -> str:
     """
     global STRICT_LOG_COUNTS
 
-    rust_bin: str = root_dir + "/target/release/{}".format(binary)
+    rust_bin: str = root_dir + f"/target/release/{binary}"
     possible_paths: list[str] = [
-        "/target/debug/{}".format(binary),
-        "/{0}/target/release/{0}".format(binary),
-        "/{0}/target/debug/{0}".format(binary),
+        f"/target/debug/{binary}",
+        f"/{binary}/target/release/{binary}",
+        f"/{binary}/target/debug/{binary}",
     ]
     while possible_paths and not os.path.exists(rust_bin):  # pragma: nocover
         rust_bin = root_dir + possible_paths.pop(0)
@@ -347,7 +351,7 @@ def write_config_to_env(config, prefix) -> None:
     """Write configurations to application read environment variables."""
     for key, val in config.items():
         new_key = prefix + key
-        log.debug("✍ config {} => {}".format(new_key, val))
+        log.debug(f"✍ config {new_key} => {val}")
         os.environ[new_key.upper()] = str(val)
 
 
@@ -466,7 +470,7 @@ def setup_megaphone_server(connection_binary) -> None:
     else:
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
-    log.debug("🐍🟢 Starting Megaphone server: {}".format(" ".join(cmd)))
+    log.debug(f"🐍🟢 Starting Megaphone server: {' '.join(cmd)}")
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
 
 
@@ -495,7 +499,7 @@ def setup_endpoint_server() -> None:
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
 
-    log.debug("🐍🟢 Starting Endpoint server: {}".format(" ".join(cmd)))
+    log.debug(f"🐍🟢 Starting Endpoint server: {' '.join(cmd)}")
     EP_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -734,7 +738,7 @@ async def test_basic_delivery(registered_test_client: AsyncPushTestClient) -> No
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(bytes(uuid_data, "utf-8"))
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_topic_basic_delivery(registered_test_client: AsyncPushTestClient) -> None:
@@ -745,7 +749,7 @@ async def test_topic_basic_delivery(registered_test_client: AsyncPushTestClient)
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_topic_replacement_delivery(
@@ -765,7 +769,7 @@ async def test_topic_replacement_delivery(
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data_2)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result = await registered_test_client.get_notification()
     assert result is None
 
@@ -783,7 +787,7 @@ async def test_topic_no_delivery_on_reconnect(registered_test_client: AsyncPushT
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     await registered_test_client.ack(result["channelID"], result["version"])
     await registered_test_client.disconnect()
     await registered_test_client.connect()
@@ -807,7 +811,42 @@ async def test_basic_delivery_with_vapid(
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
+    # The key we used should not have been registered, so no tracking should
+    # be occurring.
+    log.debug(f"🔍 Reliability: {result.get("reliability_id")}")
+    assert result.get("reliability_id") is None
+
+
+async def test_basic_delivery_with_tracked_vapid(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+) -> None:
+    """Test delivery of a basic push message with a VAPID header."""
+    uuid_data: str = str(uuid.uuid4())
+    vapid_info = _get_vapid(key=TRACKING_KEY, payload=vapid_payload)
+    # quick sanity check to ensure that the keys match.
+    # (ideally, this should dump as x962, but DER is good enough.)
+    key = cast(
+        ecdsa.VerifyingKey, cast(ecdsa.SigningKey, vapid_info["key"]).get_verifying_key()
+    ).to_der()
+
+    assert key == TRACKING_PUB_KEY.to_der()
+
+    # let's do an offline submit so we can validate the reliability_id survives storage.
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
+    log.debug(f"🔍 reliability {result}")
+    assert result["reliability_id"] is not None
 
 
 async def test_basic_delivery_with_invalid_vapid(
@@ -1004,7 +1043,7 @@ async def test_multiple_delivery_with_single_ack(
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result != {}
     assert result["data"] == base64url_encode(uuid_data_1)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result2 = await registered_test_client.get_notification()
     assert result2 != {}
     assert result2["data"] == base64url_encode(uuid_data_2)
@@ -1086,7 +1125,7 @@ async def test_ttl_0_connected(registered_test_client: AsyncPushTestClient) -> N
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
 
 
 async def test_ttl_0_not_connected(registered_test_client: AsyncPushTestClient) -> None:
@@ -1141,7 +1180,7 @@ async def test_ttl_batch_expired_and_good_one(registered_test_client: AsyncPushT
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data_2)
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result is None
 
@@ -1202,7 +1241,7 @@ async def test_empty_message_without_crypto_headers(
     """Test that a message without crypto headers, and does not have data, is accepted."""
     result = await registered_test_client.send_notification(use_header=False)
     assert result is not None
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result
     assert "data" not in result
     await registered_test_client.ack(result["channelID"], result["version"])
@@ -1226,14 +1265,14 @@ async def test_empty_message_with_crypto_headers(
     """
     result = await registered_test_client.send_notification()
     assert result is not None
-    assert result["messageType"] == "notification"
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result
     assert "data" not in result
 
     result2 = await registered_test_client.send_notification()
     # We shouldn't store headers for blank messages.
     assert result2 is not None
-    assert result2["messageType"] == "notification"
+    assert result2["messageType"] == ClientMessageType.NOTIFICATION.value
     assert "headers" not in result2
     assert "data" not in result2
 

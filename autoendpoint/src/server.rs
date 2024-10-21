@@ -48,7 +48,7 @@ pub struct AppState {
     pub apns_router: Arc<ApnsRouter>,
     #[cfg(feature = "stub")]
     pub stub_router: Arc<StubRouter>,
-    pub reliability: Arc<VapidTracker>,
+    pub vapid_tracker: Arc<VapidTracker>,
 }
 
 pub struct Server;
@@ -109,7 +109,7 @@ impl Server {
             )
             .await?,
         );
-        let reliability = Arc::new(VapidTracker(settings.tracking_keys()));
+        let vapid_tracker = Arc::new(VapidTracker(settings.tracking_keys()));
         #[cfg(feature = "stub")]
         let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
         let app_state = AppState {
@@ -122,7 +122,7 @@ impl Server {
             apns_router,
             #[cfg(feature = "stub")]
             stub_router,
-            reliability,
+            vapid_tracker,
         };
 
         spawn_pool_periodic_reporter(
