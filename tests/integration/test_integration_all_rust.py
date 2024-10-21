@@ -49,6 +49,7 @@ MSG_LIMIT = 20
 
 CRYPTO_KEY = os.environ.get("CRYPTO_KEY") or Fernet.generate_key().decode("utf-8")
 TRACKING_KEY = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+TRACKING_PUB_KEY = cast(ecdsa.VerifyingKey, TRACKING_KEY.get_verifying_key())
 CONNECTION_PORT = 9150
 ENDPOINT_PORT = 9160
 ROUTER_PORT = 9170
@@ -126,7 +127,7 @@ def base64url_encode(value: bytes | str) -> str:
 
 MOCK_SERVER_PORT: Any = get_free_port()
 MOCK_MP_SERVICES: dict = {}
-MOCK_MP_TOKEN: str = "Bearer {}".format(uuid.uuid4().hex)
+MOCK_MP_TOKEN: str = f"Bearer {uuid.uuid4().hex}"
 MOCK_MP_POLLED: Event = Event()
 MOCK_SENTRY_QUEUE: Queue = Queue()
 
@@ -143,7 +144,7 @@ CONNECTION_CONFIG: dict[str, Any] = dict(
     endpoint_scheme="http",
     router_tablename=ROUTER_TABLE,
     message_tablename=MESSAGE_TABLE,
-    crypto_key="[{}]".format(CRYPTO_KEY),
+    crypto_key=f"[{CRYPTO_KEY}]",
     auto_ping_interval=30.0,
     auto_ping_timeout=10.0,
     close_handshake_timeout=5,
@@ -192,14 +193,9 @@ ENDPOINT_CONFIG = dict(
     router_table_name=ROUTER_TABLE,
     message_table_name=MESSAGE_TABLE,
     human_logs="true",
-    crypto_keys="[{}]".format(CRYPTO_KEY),
+    crypto_keys=f"[{CRYPTO_KEY}]",
     # convert to x692 format
-    tracking_keys=f"[{
-        base64.urlsafe_b64encode((
-            b'\4' + cast(
-                ecdsa.VerifyingKey,
-                TRACKING_KEY.get_verifying_key()
-            ).to_string())).decode()}]",
+    tracking_keys=f"[{base64.urlsafe_b64encode((b"\4" + TRACKING_PUB_KEY.to_string())).decode()}]",
 )
 
 if os.environ.get("RELIABLE_REPORT") is not None:
@@ -218,10 +214,10 @@ def _get_vapid(
     global CONNECTION_CONFIG
 
     if endpoint is None:
-        endpoint = "{}://{}:{}".format(
-            CONNECTION_CONFIG.get("endpoint_scheme"),
-            CONNECTION_CONFIG.get("endpoint_hostname"),
-            CONNECTION_CONFIG.get("endpoint_port"),
+        endpoint = (
+            f"{CONNECTION_CONFIG.get("endpoint_scheme")}://"
+            f"{CONNECTION_CONFIG.get("endpoint_hostname")}:"
+            f"{CONNECTION_CONFIG.get("endpoint_port")}"
         )
     if not payload:
         payload = {
@@ -347,11 +343,11 @@ def get_rust_binary_path(binary) -> str:
     """
     global STRICT_LOG_COUNTS
 
-    rust_bin: str = root_dir + "/target/release/{}".format(binary)
+    rust_bin: str = root_dir + f"/target/release/{binary}"
     possible_paths: list[str] = [
-        "/target/debug/{}".format(binary),
-        "/{0}/target/release/{0}".format(binary),
-        "/{0}/target/debug/{0}".format(binary),
+        f"/target/debug/{binary}",
+        f"/{binary}/target/release/{binary}",
+        f"/{binary}/target/debug/{binary}",
     ]
     while possible_paths and not os.path.exists(rust_bin):  # pragma: nocover
         rust_bin = root_dir + possible_paths.pop(0)
@@ -367,7 +363,7 @@ def write_config_to_env(config, prefix) -> None:
     """Write configurations to application read environment variables."""
     for key, val in config.items():
         new_key = prefix + key
-        log.debug("✍ config {} => {}".format(new_key, val))
+        log.debug(f"✍ config {new_key} => {val}")
         os.environ[new_key.upper()] = str(val)
 
 
@@ -486,7 +482,7 @@ def setup_megaphone_server(connection_binary) -> None:
     else:
         write_config_to_env(MEGAPHONE_CONFIG, CONNECTION_SETTINGS_PREFIX)
     cmd = [connection_binary]
-    log.debug("🐍🟢 Starting Megaphone server: {}".format(" ".join(cmd)))
+    log.debug(f"🐍🟢 Starting Megaphone server: {' '.join(cmd)}")
     CN_MP_SERVER = subprocess.Popen(cmd, shell=True, env=os.environ)  # nosec
 
 
@@ -515,7 +511,7 @@ def setup_endpoint_server() -> None:
     # Run autoendpoint
     cmd = [get_rust_binary_path("autoendpoint")]
 
-    log.debug("🐍🟢 Starting Endpoint server: {}".format(" ".join(cmd)))
+    log.debug(f"🐍🟢 Starting Endpoint server: {' '.join(cmd)}")
     EP_SERVER = subprocess.Popen(
         cmd,
         shell=True,
@@ -831,6 +827,8 @@ async def test_basic_delivery_with_vapid(
     assert result["data"] == base64url_encode(uuid_data)
     assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     if os.environ.get("RELIABLE_REPORT") is not None:
+        # The key we used should not have been registered, so no tracking should
+        # be occurring.
         assert result.get("reliability_id") is None, "Tracking unknown message"
 
 
@@ -844,7 +842,21 @@ async def test_basic_delivery_with_tracked_vapid(
     # TODO: connect to test redis server and redis.flushall()
     uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(key=TRACKING_KEY, payload=vapid_payload)
-    result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
+    # quick sanity check to ensure that the keys match.
+    # (ideally, this should dump as x962, but DER is good enough.)
+    key = cast(
+        ecdsa.VerifyingKey, cast(ecdsa.SigningKey, vapid_info["key"]).get_verifying_key()
+    ).to_der()
+
+    assert key == TRACKING_PUB_KEY.to_der()
+
+    # let's do an offline submit so we can validate the reliability_id survives storage.
+    await registered_test_client.disconnect()
+    await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
+    await registered_test_client.connect()
+    await registered_test_client.hello()
+    result = await registered_test_client.get_notification()
+
     # the following presumes that only `salt` is padded.
     clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
     assert result["headers"]["encryption"] == clean_header

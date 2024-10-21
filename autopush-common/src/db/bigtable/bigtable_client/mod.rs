@@ -765,6 +765,10 @@ impl BigTableClientImpl {
                     .map_err(|e| DbError::Serialization(e.to_string()))?,
             );
         }
+        if let Some(cell) = row.take_cell("reliability_id") {
+            trace!("🚣  Is reliable");
+            notif.reliability_id = Some(to_string(cell.value, "reliability_id")?);
+        }
 
         trace!("🚣  Deserialized message row: {:?}", &notif);
         Ok(notif)
@@ -1228,6 +1232,7 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             });
         }
+
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
         self.write_row(row).await?;

@@ -70,6 +70,7 @@ impl FromRequest for Subscription {
             let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &app_state.metrics)?
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
+            trace!("raw vapid: {:?}", &vapid);
             // Validate the VAPID JWT token, fetch the claims, and record the version
             let vapid = if let Some(with_key) = vapid {
                 // Validate the VAPID JWT token and record the version
@@ -82,6 +83,14 @@ impl FromRequest for Subscription {
             } else {
                 None
             };
+
+            let reliability_id: Option<String> = vapid.as_ref().and_then(|v| {
+                app_state
+                    .reliability_filter
+                    .is_trackable(v)
+                    .then(|| app_state.reliability_filter.get_id(req.headers()))
+            });
+            debug!("🔍 Assigning Reliability ID: {reliability_id:?}");
 
             trace!("🔐 raw vapid: {:?}", &vapid);
             let reliability_id = vapid
@@ -140,11 +149,20 @@ impl FromRequest for Subscription {
             trace!("user: {:?}", &user);
             validate_user(&user, &channel_id, &app_state).await?;
 
+            // Validate the VAPID JWT token and record the version
+            if let Some(vapid) = &vapid {
+                validate_vapid_jwt(vapid, &app_state.settings, &app_state.metrics)?;
+
+                app_state
+                    .metrics
+                    .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
+            }
+
             Ok(Subscription {
                 user,
                 channel_id,
                 vapid,
-                reliability_id: reliability_id.clone(),
+                reliability_id,
             })
         }
         .boxed_local()

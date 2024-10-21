@@ -23,6 +23,10 @@ pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'st
         message_data.insert_opt("enckey", notification.headers.encryption_key.as_ref());
         // Report the data to the UA. How this value is reported back is still a work in progress, but
         // we do set the state to "accepted" on desktop "ACK" at least.
+        trace!(
+            "🔍 Sending Reliability ID: {:?}",
+            notification.subscription.reliability_id
+        );
         message_data.insert_opt("rid", notification.subscription.reliability_id.as_ref());
     }
 
