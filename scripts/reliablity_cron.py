@@ -3,8 +3,8 @@
 """
 This program reaps expired records and adjusts counts.
 
-Currently, this is desined to run on a cron, however it
-can be adapted to include it's own timing loop.
+Specifying "--nap=0" will cause this app to only run once.
+
 """
 
 import argparse
@@ -12,14 +12,13 @@ import asyncio
 import json
 import logging
 import os
-import time
 import pdb
-
+import time
 from typing import cast
 
 import redis
+import statsd
 import toml
-
 from google.cloud.bigtable.data import (
     BigtableDataClientAsync,
     RowMutationEntry,
@@ -42,7 +41,7 @@ class Counter:
     failed to be delivered.
     """
 
-    def __init__(self, log: logging.Logger, settings):
+    def __init__(self, log: logging.Logger, settings: argparse.Namespace):
         try:
             import pdb
 
@@ -117,6 +116,19 @@ class Counter:
             )
         return result
 
+    def counts(self) -> dict[str, int]:
+        """Return the current milestone counts (this should happen shortly after a gc)"""
+        return cast(dict[str, int], self.redis.hgetall(self.settings.count_table))
+
+
+def record_metrics(
+    log: logging.Logger, settings: argparse.Namespace, counts: dict[str, int]
+):
+    """Record the counts to metrics"""
+    log.info(f"📈 Recording metrics: {counts}")
+    for label, count in counts.items():
+        cast(statsd.StatsClient, settings.metric).gauge(label, count)
+
 
 def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     """Read the configuration from the args and environment."""
@@ -129,21 +141,21 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         "-r",
         help="DSN to connect to the Redis like service.",
         default=env_args.get(
-            "AUTOCONNECT_RELIABILITY_DSN", env_args.get("AUTOEND_RELIABILITY_DSN")
+            "AUTOEND_RELIABILITY_DSN", env_args.get("AUTOCONNECT_RELIABILITY_DSN")
         ),
     )
     parser.add_argument(
         "--db_dsn",
         "-b",
         help="User Agent ID",
-        default=env_args.get("AUTOCONNECT_DB_DSN", env_args.get("AUTOEND_DB_DSN")),
+        default=env_args.get("AUTOEND_DB_DSN", env_args.get("AUTOCONNECT_DB_DSN")),
     )
     parser.add_argument(
         "--db_settings",
         "-s",
         help="User Agent ID",
         default=env_args.get(
-            "AUTOCONNECT_DB_SETTINGS", env_args.get("AUTOEND_DB_SETTINGS")
+            "AUTOEND_DB_SETTINGS", env_args.get("AUTOCONNECT_DB_SETTINGS")
         ),
     )
     parser.add_argument(
@@ -160,6 +172,33 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         "--log_family",
         help="Name of Bigtable log family",
         default=env_args.get("AUTOTRACK_EXPIRY", "reliability"),
+    )
+    parser.add_argument(
+        "--statsd_host",
+        help="Metric host name",
+        default=env_args.get(
+            "AUTOEND_STATSD_HOST", env_args.get("AUTOCONNECT_STATSD_HOST")
+        ),
+    )
+    parser.add_argument(
+        "--statsd_port",
+        help="Metric host port",
+        default=env_args.get(
+            "AUTOEND_STATSD_HOST", env_args.get("AUTOCONNECT_STATSD_HOST", 8125)
+        ),
+    )
+    parser.add_argument(
+        "--statsd_label",
+        help="Metric root namespace",
+        default=env_args.get(
+            "AUTOEND_STATSD_LABEL",
+            env_args.get("AUTOCONNECT_STATSD_LABEL", "autotrack"),
+        ),
+    )
+    parser.add_argument(
+        "--nap",
+        help="seconds to nap between each gc cycle (smaller number is more accurate measurements)",
+        default=60,
     )
     args = parser.parse_args()
 
@@ -180,6 +219,13 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
             bt_settings[parts[i].rstrip("s")] = parts[i + 1]
         args.bigtable = bt_settings
 
+    if args.statsd_host or args.statsd_port:
+        args.metrics = statsd.StatsClient(
+            args.statsd_host, args.statsd_port, prefix=args.statsd_label
+        )
+    else:
+        args.metrics = None
+
     return args
 
 
@@ -191,14 +237,19 @@ def init_logs():
     return log
 
 
-async def amain(log, settings):
+async def amain(log: logging.Logger, settings: argparse.Namespace):
     """Async main loop"""
     counter = Counter(log, settings)
-    _result = await counter.gc()
-    # TODO: adjust timing loop based on result time.
-    # Ideally, this would have a loop that it runs on that becomes tighter the more items
-    # were purged, and adjusts based on the time it took to run.
-    return
+    while True:
+        _result = await counter.gc()
+        record_metrics(log, settings, counter.counts())
+        # TODO: adjust timing loop based on result time.
+        # Ideally, this would have a loop that it runs on that
+        # becomes tighter the more items were purged, and adjusts
+        # based on the time it took to run.
+        if settings.nap == 0:
+            return
+        time.sleep(settings.nap)
 
 
 def main():
