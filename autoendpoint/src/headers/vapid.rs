@@ -1,9 +1,9 @@
+use core::str;
 use std::collections::HashMap;
 use std::fmt;
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
 use crate::headers::util::split_key_value;
@@ -128,6 +128,8 @@ impl VapidHeader {
             (data, VapidVersionData::Version1)
         };
 
+        // Validate the JWT here
+
         Ok(Self {
             scheme,
             token,
@@ -143,26 +145,12 @@ impl VapidHeader {
         }
     }
 
+    /// Extract the `sub` from the VAPID claims, if validly specified.
     pub fn sub(&self) -> Result<String, VapidError> {
-        let data: HashMap<String, Value> = serde_json::from_str(&self.token).map_err(|e| {
-            warn!("🔐 Vapid: {:?}", e);
-            VapidError::SubInvalid
-        })?;
-
-        if let Some(sub_candiate) = data.get("sub") {
-            if let Some(sub) = sub_candiate.as_str() {
-                if !sub.starts_with("mailto:") || !sub.starts_with("https://") {
-                    info!("🔐 Vapid: Bad Format {:?}", sub);
-                    return Err(VapidError::SubBadFormat);
-                }
-                if sub.is_empty() {
-                    info!("🔐 Empty Vapid sub");
-                    return Err(VapidError::SubEmpty);
-                }
-                info!("🔐 Vapid: sub: {:?}", sub);
-                return Ok(sub.to_owned());
-            }
+        if let Ok(claims) = self.claims() {
+            return Ok(claims.sub);
         }
+
         Err(VapidError::SubMissing)
     }
 
@@ -258,5 +246,14 @@ mod tests {
                 sub: "mailto:admin@example.com".to_string()
             })
         )
+    }
+
+    #[test]
+    fn extract_sub() {
+        let header = VapidHeader::parse(VALID_HEADER).unwrap();
+        assert_eq!(
+            header.sub().unwrap(),
+            "mailto:admin@example.com".to_string()
+        );
     }
 }

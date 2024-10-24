@@ -29,6 +29,8 @@ pub struct Notification {
     pub headers: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reliability_id: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    pub reliable_state: Option<crate::reliability::PushReliabilityState>,
 }
 
 pub const TOPIC_NOTIFICATION_PREFIX: &str = "01";

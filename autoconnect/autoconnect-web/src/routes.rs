@@ -21,16 +21,59 @@ pub async fn push_route(
     notif: web::Json<Notification>,
     app_state: web::Data<AppState>,
 ) -> HttpResponse {
+    #[allow(unused_mut)] // Needed for "reliable_report"
+    let mut notif = notif.into_inner();
+    #[cfg(feature = "reliable_report")]
+    {
+        notif.reliable_state = app_state
+            .reliability
+            .record(
+                &notif.reliability_id,
+                autopush_common::reliability::PushReliabilityState::IntAccepted,
+                &notif.reliable_state,
+                Some(notif.timestamp + notif.ttl),
+            )
+            .await;
+    }
     trace!(
-        "⏩ push_route, uaid: {} channel_id: {}",
+        "⏩ in push_route, uaid: {} channel_id: {}",
         uaid,
-        notif.channel_id
+        notif.channel_id,
     );
+    #[cfg(feature = "reliable_report")]
+    let expiry = {
+        // Set "transmitted" a bit early since we can't do this inside of `notify`.
+        notif.reliable_state = app_state
+            .reliability
+            .record(
+                &notif.reliability_id,
+                autopush_common::reliability::PushReliabilityState::Transmitted,
+                &notif.reliable_state,
+                Some(notif.timestamp + notif.ttl),
+            )
+            .await;
+        Some(notif.timestamp + notif.ttl)
+    };
+    // Attempt to send the notification to the UA using WebSocket protocol, or store on failure.
     let result = app_state
         .clients
-        .notify(uaid.into_inner(), notif.into_inner())
+        .notify(uaid.into_inner(), notif.clone())
         .await;
     if result.is_ok() {
+        #[cfg(feature = "reliable_report")]
+        {
+            // Set "transmitted" a bit early since we can't do this inside of `notify`.
+            notif.reliable_state = app_state
+                .reliability
+                .record(
+                    &notif.reliability_id,
+                    autopush_common::reliability::PushReliabilityState::Accepted,
+                    &notif.reliable_state,
+                    expiry,
+                )
+                .await;
+        }
+
         HttpResponse::Ok().finish()
     } else {
         HttpResponse::NotFound().body("Client not available")

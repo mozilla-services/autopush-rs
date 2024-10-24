@@ -26,6 +26,14 @@ pub struct Notification {
     pub sort_key_timestamp: u64,
     /// The encrypted notification body
     pub data: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    /// The current state the message was in (if tracked)
+    pub reliable_state: Option<autopush_common::reliability::PushReliabilityState>,
+    #[cfg(feature = "reliable_report")]
+    /// The UTC expiration timestamp for this message
+    pub expiry: Option<u64>,
+    #[cfg(feature = "reliable_report")]
+    pub reliability_id: Option<String>,
 }
 
 impl FromRequest for Notification {
@@ -68,6 +76,30 @@ impl FromRequest for Notification {
                 sort_key_timestamp,
             );
 
+            #[cfg(feature = "reliable_report")]
+            let (expiry, current_state) = {
+                let expiry = if subscription.reliability_id.is_some() {
+                    Some(timestamp + headers.ttl as u64)
+                } else {
+                    None
+                };
+
+                // Brand new notification, so record it as "Received"
+                let current_state = app_state
+                    .reliability
+                    .record(
+                        &subscription.reliability_id,
+                        autopush_common::reliability::PushReliabilityState::Received,
+                        &None,
+                        expiry,
+                    )
+                    .await;
+                (expiry, current_state)
+            };
+
+            #[cfg(feature = "reliable_report")]
+            let reliability_id = subscription.reliability_id.clone();
+
             // Record the encoding if we have an encrypted payload
             if let Some(encoding) = &headers.encoding {
                 if data.is_some() {
@@ -85,6 +117,12 @@ impl FromRequest for Notification {
                 timestamp,
                 sort_key_timestamp,
                 data,
+                #[cfg(feature = "reliable_report")]
+                reliable_state: current_state,
+                #[cfg(feature = "reliable_report")]
+                expiry,
+                #[cfg(feature = "reliable_report")]
+                reliability_id,
             })
         }
         .boxed_local()
@@ -112,6 +150,8 @@ impl From<Notification> for autopush_common::notification::Notification {
                     Some(headers)
                 }
             },
+            #[cfg(feature = "reliable_report")]
+            reliable_state: notification.reliable_state,
         }
     }
 }
@@ -172,10 +212,18 @@ impl Notification {
         map.insert("ttl", serde_json::to_value(self.headers.ttl)?);
         map.insert("topic", serde_json::to_value(&self.headers.topic)?);
         map.insert("timestamp", serde_json::to_value(self.timestamp)?);
-        if let Some(reliability_id) = &self.subscription.reliability_id {
-            map.insert("reliability_id", serde_json::to_value(reliability_id)?);
+        #[cfg(feature = "reliable_report")]
+        {
+            if let Some(reliability_id) = self.subscription.reliability_id.clone() {
+                map.insert("reliability_id", serde_json::to_value(reliability_id)?);
+            }
+            if let Some(reliable_state) = self.reliable_state {
+                map.insert(
+                    "reliable_state",
+                    serde_json::to_value(reliable_state.to_string())?,
+                );
+            }
         }
-
         if let Some(data) = &self.data {
             map.insert("data", serde_json::to_value(data)?);
 
