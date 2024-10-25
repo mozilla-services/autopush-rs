@@ -1,5 +1,8 @@
+"""Module containing the Notification test files for autopush-rs."""
+
 import logging
 import time
+from typing import Any
 
 import imgcompare
 import pytest
@@ -8,12 +11,14 @@ from selenium.webdriver.common.by import By
 
 
 @pytest.fixture
-def images_dir(tmpdir):
+def images_dir(tmpdir: Any) -> Any:
+    """Directory to store the screenshots for testing."""
     return tmpdir.mkdir("images")
 
 
 @pytest.fixture(autouse=True)
-def setup_page(selenium, images_dir):
+def setup_page(selenium: Any, images_dir: str) -> ImageGrab:
+    """Fixture to setup the test page and take the base screenshot."""
     selenium.get("localhost:8201")
     selenium.find_element(By.CSS_SELECTOR, ".container").click()
     time.sleep(5)  # wait a bit to take the base screenshot
@@ -24,7 +29,10 @@ def setup_page(selenium, images_dir):
 
 
 @pytest.mark.nondestructive
-def test_basic_notification_by_itself(selenium, setup_page, images_dir):
+def test_basic_notification_by_itself(
+    selenium: Any, images_dir: str, setup_page: ImageGrab
+) -> None:
+    """Tests a basic notification with no changes."""
     el = selenium.find_element(
         By.CSS_SELECTOR, ".container > p:nth-child(5) > button:nth-child(1)"
     )
@@ -41,7 +49,8 @@ def test_basic_notification_by_itself(selenium, setup_page, images_dir):
 
 
 @pytest.mark.nondestructive
-def test_basic_notification_with_altered_title(selenium, images_dir):
+def test_basic_notification_with_altered_title(selenium: Any, images_dir: str):
+    """Tests a basic notification with a different title."""
     title_box = selenium.find_element(By.CSS_SELECTOR, "#msg_txt")
     title_box.send_keys(" testing titles")
     selenium.find_element(By.CSS_SELECTOR, ".container").click()
@@ -64,7 +73,8 @@ def test_basic_notification_with_altered_title(selenium, images_dir):
 
 
 @pytest.mark.nondestructive
-def test_basic_notification_with_altered_body(selenium, images_dir):
+def test_basic_notification_with_altered_body(selenium: Any, images_dir: str):
+    """Tests a basic notification with an altered notification body."""
     body_box = selenium.find_element(By.CSS_SELECTOR, "#body_txt")
     body_box.send_keys(" testing body text")
     base_img = ImageGrab.grab()
@@ -84,7 +94,8 @@ def test_basic_notification_with_altered_body(selenium, images_dir):
 
 
 @pytest.mark.nondestructive
-def test_basic_notification_close(selenium, setup_page, images_dir):
+def test_basic_notification_close(selenium: Any, images_dir: str, setup_page: ImageGrab):
+    """Tests a basic notification with and then closes it."""
     el = selenium.find_element(
         By.CSS_SELECTOR, ".container > p:nth-child(5) > button:nth-child(1)"
     )
