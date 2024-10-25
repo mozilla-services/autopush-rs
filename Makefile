@@ -4,6 +4,7 @@ TESTS_DIR := tests
 TEST_RESULTS_DIR ?= workspace/test-results
 PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
 INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
+NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
@@ -40,6 +41,13 @@ integration-test:
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
+
+notification-test:
+	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml build
+	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml up -d server
+	ENV=$(ENV) $(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml run -it --name notification-tests tests
+	docker cp notification-tests:/code/notification-tests.xml $(NOTIFICATION_TEST_DIR)
+	docker rm notification-tests
 
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code

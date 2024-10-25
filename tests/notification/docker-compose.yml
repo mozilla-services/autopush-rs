@@ -1,0 +1,13 @@
+services:
+  server:
+    image: "firefoxtesteng/autopush-e2e-test"
+    expose:
+      - "8201"
+    network_mode: host
+  tests:
+    environment:
+      SERVER_URL: server
+    build: .
+    depends_on: 
+      - server
+    network_mode: host
