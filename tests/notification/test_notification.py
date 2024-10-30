@@ -7,22 +7,24 @@ from typing import Any
 import imgcompare
 import pytest
 from PIL import ImageGrab
+from PIL.Image import Image
 from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.webdriver import WebDriver
 
 
 @pytest.fixture
-def images_dir(tmpdir: Any) -> Any:
+def images_dir(tmpdir: pytest.Testdir) -> object:
     """Directory to store the screenshots for testing."""
     return tmpdir.mkdir("images")
 
 
 @pytest.fixture(autouse=True)
-def setup_page(selenium: Any, images_dir: str) -> ImageGrab:
+def setup_page(selenium: WebDriver, images_dir: object) -> Image:
     """Fixture to setup the test page and take the base screenshot."""
     selenium.get("localhost:8201")
     selenium.find_element(By.CSS_SELECTOR, ".container").click()
     time.sleep(5)  # wait a bit to take the base screenshot
-    base_img = ImageGrab.grab()
+    base_img: Image = ImageGrab.grab()
     base_img.save(f"{images_dir}/base_screenshot.jpg")
     logging.info(images_dir)
     return base_img
@@ -30,7 +32,7 @@ def setup_page(selenium: Any, images_dir: str) -> ImageGrab:
 
 @pytest.mark.nondestructive
 def test_basic_notification_by_itself(
-    selenium: Any, images_dir: str, setup_page: ImageGrab
+    selenium: WebDriver, images_dir: object, setup_page: Image
 ) -> None:
     """Tests a basic notification with no changes."""
     el = selenium.find_element(
@@ -41,7 +43,7 @@ def test_basic_notification_by_itself(
     with selenium.context(selenium.CONTEXT_CHROME):
         button = selenium.find_element(By.CSS_SELECTOR, "button.popup-notification-primary-button")
         button.click()
-    img = ImageGrab.grab()
+    img: Image = ImageGrab.grab()
     img.save(f"{images_dir}/screenshot.jpg")
     # compare images
     diff = imgcompare.image_diff_percent(setup_page, img)
@@ -49,7 +51,7 @@ def test_basic_notification_by_itself(
 
 
 @pytest.mark.nondestructive
-def test_basic_notification_with_altered_title(selenium: Any, images_dir: str):
+def test_basic_notification_with_altered_title(selenium: WebDriver, images_dir: object):
     """Tests a basic notification with a different title."""
     title_box = selenium.find_element(By.CSS_SELECTOR, "#msg_txt")
     title_box.send_keys(" testing titles")
@@ -65,7 +67,7 @@ def test_basic_notification_with_altered_title(selenium: Any, images_dir: str):
         button = selenium.find_element(By.CSS_SELECTOR, "button.popup-notification-primary-button")
         button.click()
     selenium.find_element(By.CSS_SELECTOR, ".container").click()
-    img = ImageGrab.grab()
+    img: Image = ImageGrab.grab()
     img.save(f"{images_dir}/screenshot.jpg")
     # compare images
     diff = imgcompare.image_diff_percent(base_img, img)
@@ -73,7 +75,7 @@ def test_basic_notification_with_altered_title(selenium: Any, images_dir: str):
 
 
 @pytest.mark.nondestructive
-def test_basic_notification_with_altered_body(selenium: Any, images_dir: str):
+def test_basic_notification_with_altered_body(selenium: WebDriver, images_dir: object):
     """Tests a basic notification with an altered notification body."""
     body_box = selenium.find_element(By.CSS_SELECTOR, "#body_txt")
     body_box.send_keys(" testing body text")
@@ -87,14 +89,14 @@ def test_basic_notification_with_altered_body(selenium: Any, images_dir: str):
         button = selenium.find_element(By.CSS_SELECTOR, "button.popup-notification-primary-button")
         button.click()
     base_img.save(f"{images_dir}/base_screenshot_with_altered_body.jpg")
-    img = ImageGrab.grab()
+    img: Image = ImageGrab.grab()
     img.save(f"{images_dir}/screenshot_with_altered_body.jpg")
     diff = imgcompare.image_diff_percent(base_img, img)
     assert diff < 2
 
 
 @pytest.mark.nondestructive
-def test_basic_notification_close(selenium: Any, images_dir: str, setup_page: ImageGrab):
+def test_basic_notification_close(selenium: WebDriver, images_dir: object, setup_page: Image):
     """Tests a basic notification with and then closes it."""
     el = selenium.find_element(
         By.CSS_SELECTOR, ".container > p:nth-child(5) > button:nth-child(1)"
@@ -104,7 +106,7 @@ def test_basic_notification_close(selenium: Any, images_dir: str, setup_page: Im
     with selenium.context(selenium.CONTEXT_CHROME):
         button = selenium.find_element(By.CSS_SELECTOR, "button.popup-notification-primary-button")
         button.click()
-    img = ImageGrab.grab()
+    img: Image = ImageGrab.grab()
     img.save(f"{images_dir}/screenshot.jpg")
     # compare images
     diff = imgcompare.image_diff_percent(setup_page, img)
