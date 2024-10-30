@@ -227,7 +227,7 @@ impl WebPushClient {
                 // record. Use that field to set the baseline timestamp for when to pull messages
                 // in the future.
                 // Topic/legacy messages have no sortkey_timestamp
-                if n.sortkey_timestamp.is_none() {
+                if n.sortkey_timestamp_ms.is_none() {
                     debug!(
                         "✅ WebPushClient:ack removing Stored, sort_key: {}",
                         &n.chidmessageid()

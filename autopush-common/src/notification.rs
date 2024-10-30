@@ -20,11 +20,12 @@ pub struct Notification {
     #[serde(skip_serializing)]
     pub topic: Option<String>,
     #[serde(skip_serializing)]
-    pub timestamp: u64,
+    #[serde(rename = "timestamp")]
+    pub recv_timestamp_s: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
     #[serde(skip_serializing)]
-    pub sortkey_timestamp: Option<u64>,
+    pub sortkey_timestamp_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,7 +39,7 @@ impl Notification {
     /// Return an appropriate chidmessageid
     ///
     /// For standard messages:
-    ///     {STANDARD_NOTIFICATION_PREFIX}:{sortkey_timestamp}:{chid}
+    ///     {STANDARD_NOTIFICATION_PREFIX}:{sortkey_timestamp_ms}:{chid}
     ///
     /// For topic messages:
     ///     {TOPIC_NOTIFICATION_PREFIX}:{chid}:{topic}
@@ -49,13 +50,13 @@ impl Notification {
         let chid = self.channel_id.as_hyphenated();
         if let Some(ref topic) = self.topic {
             format!("{TOPIC_NOTIFICATION_PREFIX}:{chid}:{topic}")
-        } else if let Some(sortkey_timestamp) = self.sortkey_timestamp {
+        } else if let Some(sortkey_timestamp_ms) = self.sortkey_timestamp_ms {
             format!(
                 "{STANDARD_NOTIFICATION_PREFIX}:{}:{}",
-                if sortkey_timestamp == 0 {
+                if sortkey_timestamp_ms == 0 {
                     ms_since_epoch()
                 } else {
-                    sortkey_timestamp
+                    sortkey_timestamp_ms
                 },
                 chid
             )
@@ -69,7 +70,7 @@ impl Notification {
     /// Convenience function to determine if the notification
     /// has aged out.
     pub fn expired(&self, at_sec: u64) -> bool {
-        at_sec >= self.timestamp + self.ttl
+        at_sec >= self.recv_timestamp_s + self.ttl
     }
 }
 

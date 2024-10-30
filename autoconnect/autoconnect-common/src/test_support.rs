@@ -32,7 +32,7 @@ pub fn hello_again_db(uaid: Uuid) -> MockDbClient {
     db.expect_get_user().times(1).return_once(move |_| {
         let user = User::builder()
             .uaid(uaid)
-            .connected_at(ms_since_epoch() - (10 * 60 * 1000))
+            .connected_at_ms(ms_since_epoch() - (10 * 60 * 1000))
             .build()
             .unwrap();
         Ok(Some(user))

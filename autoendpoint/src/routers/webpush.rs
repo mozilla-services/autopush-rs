@@ -139,7 +139,8 @@ impl Router for WebPushRouter {
                     self.metrics
                         .time_with_tags(
                             "notification.total_request_time",
-                            (notification.timestamp - autopush_common::util::sec_since_epoch())
+                            (notification.recv_timestamp_s
+                                - autopush_common::util::sec_since_epoch())
                                 * 1000,
                         )
                         .with_tag("platform", "websocket")
@@ -227,7 +228,7 @@ impl WebPushRouter {
         self.metrics.incr("updates.client.host_gone").ok();
         let removed = self
             .db
-            .remove_node_id(&user.uaid, node_id, user.connected_at, &user.version)
+            .remove_node_id(&user.uaid, node_id, user.connected_at_ms, &user.version)
             .await?;
         if !removed {
             debug!("✉ The node id was not removed");

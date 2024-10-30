@@ -128,7 +128,7 @@ pub struct CheckStorageResponse {
     /// The list of pending messages.
     pub messages: Vec<Notification>,
     /// All the messages up to this timestamp
-    pub timestamp: Option<u64>,
+    pub timestamp_ms: Option<u64>,
 }
 
 /// A user data record.
@@ -140,7 +140,8 @@ pub struct User {
     #[serde(serialize_with = "uuid_serializer")]
     pub uaid: Uuid,
     /// Time in milliseconds that the user last connected at
-    pub connected_at: u64,
+    #[serde(rename = "connected_at")]
+    pub connected_at_ms: u64,
     /// Router type of the user
     pub router_type: String,
     /// Router-specific data
@@ -151,11 +152,11 @@ pub struct User {
     /// Record version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_version: Option<u64>,
-    /// the timestamp of the last notification sent to the user
+    /// the ms timestamp of the last notification sent to the user
     /// This field is exclusive to the Bigtable data scheme
     //TODO: rename this to `last_notification_timestamp`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_timestamp: Option<u64>,
+    #[serde(rename = "current_timestamp", skip_serializing_if = "Option::is_none")]
+    pub current_timestamp_ms: Option<u64>,
     /// UUID4 version number for optimistic locking of updates on Bigtable
     #[serde(skip_serializing)]
     pub version: Option<Uuid>,
@@ -180,12 +181,12 @@ impl Default for User {
         //trace!(">>> Setting default uaid: {:?}", &uaid);
         Self {
             uaid,
-            connected_at: ms_since_epoch(),
+            connected_at_ms: ms_since_epoch(),
             router_type: "webpush".to_string(),
             router_data: None,
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
-            current_timestamp: None,
+            current_timestamp_ms: None,
             version: Some(Uuid::new_v4()),
             priv_channels: HashSet::new(),
         }
@@ -219,15 +220,15 @@ pub struct NotificationRecord {
     chidmessageid: String,
     /// Magic entry stored in the first Message record that indicates the highest
     /// non-topic timestamp we've read into
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_timestamp: Option<u64>,
+    #[serde(rename = "current_timestamp", skip_serializing_if = "Option::is_none")]
+    pub current_timestamp_unk: Option<u64>,
     /// Magic entry stored in the first Message record that indicates the valid
     /// channel id's
     #[serde(skip_serializing)]
     pub chids: Option<HashSet<String>>,
     /// Time in seconds from epoch
-    #[serde(skip_serializing_if = "Option::is_none")]
-    timestamp: Option<u64>,
+    #[serde(rename = "timestamp", skip_serializing_if = "Option::is_none")]
+    recv_timestamp_s: Option<u64>,
     /// Expiration timestamp
     expiry: u64,
     /// TTL value provided by application server for the message
@@ -278,7 +279,7 @@ impl NotificationRecord {
                 Ok(RangeKey {
                     channel_id,
                     topic: Some(topic.to_string()),
-                    sortkey_timestamp: None,
+                    sortkey_timestamp_ms: None,
                     legacy_version: None,
                 })
             }
@@ -292,7 +293,7 @@ impl NotificationRecord {
                 Ok(RangeKey {
                     channel_id,
                     topic: None,
-                    sortkey_timestamp: Some(sortkey.parse()?),
+                    sortkey_timestamp_ms: Some(sortkey.parse()?),
                     legacy_version: None,
                 })
             }
@@ -308,7 +309,7 @@ impl NotificationRecord {
                 Ok(RangeKey {
                     channel_id,
                     topic: None,
-                    sortkey_timestamp: None,
+                    sortkey_timestamp_ms: None,
                     legacy_version: Some(legacy_version.to_string()),
                 })
             }
@@ -329,14 +330,14 @@ impl NotificationRecord {
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),
-            timestamp: self
-                .timestamp
+            recv_timestamp_s: self
+                .recv_timestamp_s
                 .ok_or("No timestamp found")
                 .map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?,
             topic: key.topic,
             data: self.data,
             headers: self.headers.map(|m| m.into()),
-            sortkey_timestamp: key.sortkey_timestamp,
+            sortkey_timestamp_ms: key.sortkey_timestamp_ms,
             reliability_id: None,
         })
     }
@@ -346,7 +347,7 @@ impl NotificationRecord {
         Self {
             uaid: *uaid,
             chidmessageid: val.chidmessageid(),
-            timestamp: Some(val.timestamp),
+            recv_timestamp_s: Some(val.recv_timestamp_s),
             expiry: sec_since_epoch() + min(val.ttl, MAX_NOTIFICATION_TTL),
             ttl: Some(val.ttl),
             data: val.data,
@@ -363,8 +364,8 @@ mod tests {
 
     #[test]
     fn user_defaults() {
-        let user = User::builder().current_timestamp(22).build().unwrap();
-        assert_eq!(user.current_timestamp, Some(22));
+        let user = User::builder().current_timestamp_ms(22).build().unwrap();
+        assert_eq!(user.current_timestamp_ms, Some(22));
         assert_eq!(user.router_type, "webpush".to_owned());
         assert_eq!(user.record_version, Some(USER_RECORD_VERSION));
     }

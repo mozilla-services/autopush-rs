@@ -11,7 +11,7 @@ use crate::notification::Notification;
 
 #[derive(Default, Debug)]
 pub struct FetchMessageResponse {
-    pub timestamp: Option<u64>,
+    pub timestamp_ms: Option<u64>,
     pub messages: Vec<Notification>,
 }
 
@@ -78,12 +78,12 @@ pub trait DbClient: Send + Sync {
     async fn fetch_timestamp_messages(
         &self,
         uaid: &Uuid,
-        timestamp: Option<u64>,
+        timestamp_ms: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse>;
 
     /// Update the last read timestamp for a user
-    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()>;
+    async fn increment_storage(&self, uaid: &Uuid, timestamp_ms: u64) -> DbResult<()>;
 
     /// Delete a notification
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;

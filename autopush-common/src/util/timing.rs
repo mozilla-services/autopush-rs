@@ -19,13 +19,6 @@ pub fn ms_utc_midnight() -> u64 {
         .timestamp_millis() as u64
 }
 
-/// Get the time since the UNIX epoch in microseconds
-#[allow(dead_code)]
-pub fn us_since_epoch() -> u64 {
-    let now = Utc::now();
-    (now.timestamp() as u64) * 1_000_000 + (now.timestamp_subsec_micros() as u64)
-}
-
 /// Display a formatted date-time string from a SystemTime
 ///
 /// (This is useful in dev/debugging)

@@ -150,11 +150,11 @@ fn version_filter(version: &Uuid) -> Vec<data::RowFilter> {
 }
 
 /// Return a newly generated `version` column `Cell`
-fn new_version_cell(timestamp: SystemTime) -> cell::Cell {
+fn new_version_cell(timestamp_ms: SystemTime) -> cell::Cell {
     cell::Cell {
         qualifier: "version".to_owned(),
         value: Uuid::new_v4().into(),
-        timestamp,
+        timestamp_st: timestamp_ms,
         ..Default::default()
     }
 }
@@ -234,7 +234,7 @@ fn channels_to_cells(channels: Cow<HashSet<Uuid>>, expiry: SystemTime) -> Vec<ce
         }
         cells.push(cell::Cell {
             qualifier: format!("chid:{}", channel_id.as_hyphenated()),
-            timestamp: expiry,
+            timestamp_st: expiry,
             ..Default::default()
         });
     }
@@ -545,8 +545,8 @@ impl BigTableClientImpl {
             for cell in cells {
                 let mut mutation = data::Mutation::default();
                 let mut set_cell = data::Mutation_SetCell::default();
-                let timestamp = cell
-                    .timestamp
+                let timestamp_st = cell
+                    .timestamp_st
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
                 set_cell.family_name.clone_from(&family_id);
@@ -554,8 +554,8 @@ impl BigTableClientImpl {
                 set_cell.set_value(cell.value);
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
                 // a `Timestamp granularity mismatch` error
-                set_cell.set_timestamp_micros((timestamp.as_millis() * 1000) as i64);
-                debug!("🉑 expiring in {:?}", timestamp.as_millis());
+                set_cell.set_timestamp_micros((timestamp_st.as_millis() * 1000) as i64);
+                debug!("🉑 expiring in {:?}", timestamp_st.as_millis());
                 mutation.set_set_cell(set_cell);
                 mutations.push(mutation);
             }
@@ -724,10 +724,10 @@ impl BigTableClientImpl {
         let mut notif = Notification {
             channel_id: range_key.channel_id,
             topic: range_key.topic,
-            sortkey_timestamp: range_key.sortkey_timestamp,
+            sortkey_timestamp_ms: range_key.sortkey_timestamp_ms,
             version: to_string(row.take_required_cell("version")?.value, "version")?,
             ttl: to_u64(row.take_required_cell("ttl")?.value, "ttl")?,
-            timestamp: to_u64(row.take_required_cell("timestamp")?.value, "timestamp")?,
+            recv_timestamp_s: to_u64(row.take_required_cell("timestamp")?.value, "timestamp")?,
             ..Default::default()
         };
 
@@ -763,14 +763,14 @@ impl BigTableClientImpl {
         let mut cells: Vec<cell::Cell> = vec![
             cell::Cell {
                 qualifier: "connected_at".to_owned(),
-                value: user.connected_at.to_be_bytes().to_vec(),
-                timestamp: expiry,
+                value: user.connected_at_ms.to_be_bytes().to_vec(),
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "router_type".to_owned(),
                 value: user.router_type.clone().into_bytes(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
@@ -780,13 +780,13 @@ impl BigTableClientImpl {
                     .unwrap_or(USER_RECORD_VERSION)
                     .to_be_bytes()
                     .to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "version".to_owned(),
                 value: (*version).into(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
         ];
@@ -795,15 +795,15 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "router_data".to_owned(),
                 value: json!(router_data).to_string().as_bytes().to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         };
-        if let Some(current_timestamp) = user.current_timestamp {
+        if let Some(current_timestamp_ms) = user.current_timestamp_ms {
             cells.push(cell::Cell {
                 qualifier: "current_timestamp".to_owned(),
-                value: current_timestamp.to_be_bytes().to_vec(),
-                timestamp: expiry,
+                value: current_timestamp_ms.to_be_bytes().to_vec(),
+                timestamp_st: expiry,
                 ..Default::default()
             });
         };
@@ -811,7 +811,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "node_id".to_owned(),
                 value: node_id.as_bytes().to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         };
@@ -974,7 +974,7 @@ impl DbClient for BigTableClientImpl {
 
         let mut result = User {
             uaid: *uaid,
-            connected_at: to_u64(connected_at_cell.value, "connected_at")?,
+            connected_at_ms: to_u64(connected_at_cell.value, "connected_at")?,
             router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
             record_version: Some(to_u64(
                 row.take_required_cell("record_version")?.value,
@@ -1002,7 +1002,7 @@ impl DbClient for BigTableClientImpl {
         }
 
         if let Some(cell) = row.take_cell("current_timestamp") {
-            result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
+            result.current_timestamp_ms = Some(to_u64(cell.value, "current_timestamp")?)
         }
 
         // Read the channels last, after removal of all non channel cells
@@ -1126,8 +1126,8 @@ impl DbClient for BigTableClientImpl {
         let row_key = format!("{}#{}", uaid.simple(), message.chidmessageid());
         debug!("🗄️ Saving message {} :: {:?}", &row_key, &message);
         trace!(
-            "🉑 timestamp: {:?}",
-            &message.timestamp.to_be_bytes().to_vec()
+            "🉑 received timestamp: {:?}",
+            &message.recv_timestamp_s.to_be_bytes().to_vec()
         );
         let mut row = Row::new(row_key);
 
@@ -1154,19 +1154,19 @@ impl DbClient for BigTableClientImpl {
             cell::Cell {
                 qualifier: "ttl".to_owned(),
                 value: message.ttl.to_be_bytes().to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "timestamp".to_owned(),
-                value: message.timestamp.to_be_bytes().to_vec(),
-                timestamp: expiry,
+                value: message.recv_timestamp_s.to_be_bytes().to_vec(),
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "version".to_owned(),
                 value: message.version.into_bytes(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
         ]);
@@ -1175,7 +1175,7 @@ impl DbClient for BigTableClientImpl {
                 cells.push(cell::Cell {
                     qualifier: "headers".to_owned(),
                     value: json!(headers).to_string().into_bytes(),
-                    timestamp: expiry,
+                    timestamp_st: expiry,
                     ..Default::default()
                 });
             }
@@ -1184,7 +1184,7 @@ impl DbClient for BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "data".to_owned(),
                 value: data.into_bytes(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         }
@@ -1193,7 +1193,7 @@ impl DbClient for BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "reliability_id".to_owned(),
                 value: reliability_id.into_bytes(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         }
@@ -1234,12 +1234,12 @@ impl DbClient for BigTableClientImpl {
     /// the `current_timestamp` to determine what records to return, since we return
     /// records with timestamps later than `current_timestamp`.
     ///
-    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
+    async fn increment_storage(&self, uaid: &Uuid, timestamp_ms: u64) -> DbResult<()> {
         let row_key = uaid.simple().to_string();
         debug!(
             "🉑 Updating {} current_timestamp:  {:?}",
             &row_key,
-            timestamp.to_be_bytes().to_vec()
+            timestamp_ms.to_be_bytes().to_vec()
         );
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
         let mut row = Row::new(row_key.clone());
@@ -1249,8 +1249,8 @@ impl DbClient for BigTableClientImpl {
             vec![
                 cell::Cell {
                     qualifier: "current_timestamp".to_owned(),
-                    value: timestamp.to_be_bytes().to_vec(),
-                    timestamp: expiry,
+                    value: timestamp_ms.to_be_bytes().to_vec(),
+                    timestamp_st: expiry,
                     ..Default::default()
                 },
                 new_version_cell(expiry),
@@ -1322,7 +1322,7 @@ impl DbClient for BigTableClientImpl {
         // from [get_user].
         Ok(FetchMessageResponse {
             messages,
-            timestamp: None,
+            timestamp_ms: None,
         })
     }
 
@@ -1331,7 +1331,7 @@ impl DbClient for BigTableClientImpl {
     async fn fetch_timestamp_messages(
         &self,
         uaid: &Uuid,
-        timestamp: Option<u64>,
+        timestamp_ms: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
@@ -1341,7 +1341,7 @@ impl DbClient for BigTableClientImpl {
         let mut rows = data::RowSet::default();
         let mut row_range = data::RowRange::default();
 
-        let start_key = if let Some(ts) = timestamp {
+        let start_key = if let Some(ts) = timestamp_ms {
             // Fetch everything after the last message with timestamp: the "z"
             // moves past the last message's channel_id's 1st hex digit
             format!("{}#02:{}z", uaid.simple(), ts)
@@ -1380,17 +1380,17 @@ impl DbClient for BigTableClientImpl {
         let rows = self.read_rows(req).await?;
         debug!(
             "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s) of {}",
-            timestamp,
+            timestamp_ms,
             rows.len(),
             limit,
         );
 
         let messages = self.rows_to_notifications(rows)?;
         // The timestamp of the last message read
-        let timestamp = messages.last().and_then(|m| m.sortkey_timestamp);
+        let timestamp_ms = messages.last().and_then(|m| m.sortkey_timestamp_ms);
         Ok(FetchMessageResponse {
             messages,
-            timestamp,
+            timestamp_ms,
         })
     }
 
@@ -1506,7 +1506,7 @@ mod tests {
     async fn run_gauntlet() -> DbResult<()> {
         let client = new_client()?;
 
-        let connected_at = ms_since_epoch();
+        let connected_at_ms = ms_since_epoch();
 
         let uaid = Uuid::parse_str(TEST_USER).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
@@ -1520,7 +1520,7 @@ mod tests {
         let test_user = User {
             uaid,
             router_type: "webpush".to_owned(),
-            connected_at,
+            connected_at_ms,
             router_data: None,
             node_id: Some(node_id.clone()),
             ..Default::default()
@@ -1568,7 +1568,7 @@ mod tests {
         // prior. first ensure that we can't update a user that's before the
         // time we set prior to the last write
         let mut updated = User {
-            connected_at,
+            connected_at_ms,
             ..test_user.clone()
         };
         let result = client.update_user(&mut updated).await;
@@ -1577,43 +1577,37 @@ mod tests {
 
         // Make sure that the `connected_at` wasn't modified
         let fetched2 = client.get_user(&fetched.uaid).await?.unwrap();
-        assert_eq!(fetched.connected_at, fetched2.connected_at);
+        assert_eq!(fetched.connected_at_ms, fetched2.connected_at_ms);
 
         // and make sure we can update a record with a later connected_at time.
         let mut updated = User {
-            connected_at: fetched.connected_at + 300,
+            connected_at_ms: fetched.connected_at_ms + 300,
             ..fetched2
         };
         let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
         assert_ne!(
-            fetched2.connected_at,
-            client.get_user(&uaid).await?.unwrap().connected_at
+            fetched2.connected_at_ms,
+            client.get_user(&uaid).await?.unwrap().connected_at_ms
         );
 
         // can we increment the storage for the user?
         client
-            .increment_storage(
-                &fetched.uaid,
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            )
+            .increment_storage(&fetched.uaid, ms_since_epoch())
             .await?;
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
-        let timestamp = now();
-        let sort_key = now();
+        let timestamp_s = now();
+        let sort_key_ms = now();
         // Can we store a message?
         let test_notification = crate::db::Notification {
             channel_id: chid,
             version: "test".to_owned(),
             ttl: 300,
-            timestamp,
+            recv_timestamp_s: timestamp_s,
             data: Some(test_data.clone()),
-            sortkey_timestamp: Some(sort_key),
+            sortkey_timestamp_ms: Some(sort_key_ms),
             ..Default::default()
         };
         let res = client.save_message(&uaid, test_notification.clone()).await;
@@ -1627,13 +1621,13 @@ mod tests {
 
         // Grab all 1 of the messages that were submmited within the past 10 seconds.
         let fetched = client
-            .fetch_timestamp_messages(&uaid, Some(timestamp - 10), 999)
+            .fetch_timestamp_messages(&uaid, Some(timestamp_s - 10), 999)
             .await?;
         assert_ne!(fetched.messages.len(), 0);
 
         // Try grabbing a message for 10 seconds from now.
         let fetched = client
-            .fetch_timestamp_messages(&uaid, Some(timestamp + 10), 999)
+            .fetch_timestamp_messages(&uaid, Some(timestamp_s + 10), 999)
             .await?;
         assert_eq!(fetched.messages.len(), 0);
 
@@ -1648,7 +1642,7 @@ mod tests {
         // Now, can we do all that with topic messages
         client.add_channel(&uaid, &topic_chid).await?;
         let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
-        let timestamp = now();
+        let timestamp_s = now();
         let sort_key = now();
         // Can we store a message?
         let test_notification = crate::db::Notification {
@@ -1656,9 +1650,9 @@ mod tests {
             version: "test".to_owned(),
             ttl: 300,
             topic: Some("topic".to_owned()),
-            timestamp,
+            recv_timestamp_s: timestamp_s,
             data: Some(test_data.clone()),
-            sortkey_timestamp: Some(sort_key),
+            sortkey_timestamp_ms: Some(sort_key),
             ..Default::default()
         };
         assert!(client
@@ -1846,13 +1840,7 @@ mod tests {
             .unwrap();
 
         client
-            .increment_storage(
-                &uaid,
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            )
+            .increment_storage(&uaid, ms_since_epoch())
             .await
             .unwrap();
 
@@ -1863,13 +1851,13 @@ mod tests {
 
         // Ensure the initial cell expiry (timestamp) of all the cells
         // in the row has been updated
-        let ca_expiry = row.take_required_cell("connected_at").unwrap().timestamp;
+        let ca_expiry = row.take_required_cell("connected_at").unwrap().timestamp_st;
         for mut cells in row.cells.into_values() {
             let Some(cell) = cells.pop() else {
                 continue;
             };
             assert!(
-                cell.timestamp >= ca_expiry,
+                cell.timestamp_st >= ca_expiry,
                 "{} cell timestamp should >= connected_at's",
                 cell.qualifier
             );
@@ -1887,7 +1875,7 @@ mod tests {
             panic!("Expected row");
         };
 
-        let ca_expiry2 = row.take_required_cell("connected_at").unwrap().timestamp;
+        let ca_expiry2 = row.take_required_cell("connected_at").unwrap().timestamp_st;
 
         assert!(ca_expiry2 > ca_expiry);
 
@@ -1896,7 +1884,7 @@ mod tests {
                 continue;
             };
             assert!(
-                cell.timestamp >= ca_expiry2,
+                cell.timestamp_st >= ca_expiry2,
                 "{} cell timestamp expiry should exceed connected_at's",
                 cell.qualifier
             );
