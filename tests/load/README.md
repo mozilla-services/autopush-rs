@@ -137,7 +137,7 @@ functionality as SSH is not supported in this environment.
 * To apply new changes to an existing GCP Cluster, execute the `setup_k8s.sh` file and
   select the **setup** option.
     * This option will consider the local commit history, creating new containers and
-      deploying them (see [Container Registry][16])
+      deploying them (see [Artifact Registry][16])
 
 ### Run Test Session
 
@@ -412,6 +412,6 @@ are set in step 1, the load test will stop automatically.
 [13]: https://docs.locust.io/en/stable/writing-a-locustfile.html#wait-time
 [14]: https://docs.locust.io/en/stable/writing-a-locustfile.html#task-decorator
 [15]: https://console.cloud.google.com/home/dashboard?q=search&referrer=search&project=spheric-keel-331521&cloudshell=false
-[16]: https://console.cloud.google.com/gcr/images/spheric-keel-331521/global/locust-autopush?project=spheric-keel-331521
+[16]: https://console.cloud.google.com/artifacts/docker/spheric-keel-331521/us-central1/autopush?project=spheric-keel-331521
 [17]: https://earthangel-b40313e5.influxcloud.net/d/do4mmwcVz/autopush-gcp?orgId=1&refresh=1m
 [18]: https://console.cloud.google.com/kubernetes/list/overview?cloudshell=false&project=spheric-keel-331521
