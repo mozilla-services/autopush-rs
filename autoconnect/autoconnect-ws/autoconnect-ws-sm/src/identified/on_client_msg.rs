@@ -185,11 +185,15 @@ impl WebPushClient {
             // Check the list of unacked "direct" (unstored) notifications. We only want to
             // ack messages we've not yet seen and we have the right version, otherwise we could
             // have gotten an older, inaccurate ACK.
+            // Since the `version` is the `message_id` which is an encrypted string containing
+            // the uaid, channel_id, and message timestamp in ms, it should be unique enough
+            // that we do not need any other values.
+
             let pos = self
                 .ack_state
                 .unacked_direct_notifs
                 .iter()
-                .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
+                .position(|n| n.version == notif.version);
             if let Some(code) = &notif.code {
                 codes.insert(*code, codes.get(code).unwrap_or(&0) + 1);
             }
@@ -210,7 +214,7 @@ impl WebPushClient {
                 .ack_state
                 .unacked_stored_notifs
                 .iter()
-                .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
+                .position(|n| n.version == notif.version);
             if let Some(pos) = pos {
                 debug!(
                     "✅ Ack (Stored)";

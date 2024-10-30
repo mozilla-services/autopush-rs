@@ -149,7 +149,7 @@ pub struct User {
     /// Last node/port the client was or may be connected to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
-    /// Record version
+    /// Storage format version for this record (See [crate::db::USER_RECORD_VERSION] )
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_version: Option<u64>,
     /// the ms timestamp of the last notification sent to the user

@@ -14,7 +14,7 @@ use uuid::Uuid;
 /// Extracts notification data from `Subscription` and request data
 #[derive(Clone, Debug)]
 pub struct Notification {
-    /// Unique message_id for this notification
+    /// Unique message_id for this notification generated from the UAID, ChannelID, and other key elements.
     pub message_id: String,
     /// The subscription information block
     pub subscription: Subscription,

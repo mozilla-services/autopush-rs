@@ -14,6 +14,7 @@ use crate::util::ms_since_epoch;
 pub struct Notification {
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
+    /// This is taken from the [crate::db::NotificationRecord] `message_id`
     pub version: String,
     #[serde(default = "default_ttl", skip_serializing)]
     pub ttl: u64,
