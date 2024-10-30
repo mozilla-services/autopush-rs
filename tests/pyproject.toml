@@ -9,9 +9,10 @@ skip_gitignore = true
 # skips asserts
 # B101: https://bandit.readthedocs.io/en/latest/plugins/b101_assert_used.html#
 # B104: https://bandit.readthedocs.io/en/latest/plugins/b104_hardcoded_bind_all_interfaces.html
-# B311: https://bandit.readthedocs.io/en/latest/blacklists/blacklist_calls.html#b311-random 
+# B113: https://bandit.readthedocs.io/en/latest/plugins/b113_request_without_timeout.html
+# B311: https://bandit.readthedocs.io/en/latest/blacklists/blacklist_calls.html#b311-random
 # B404: https://bandit.readthedocs.io/en/latest/blacklists/blacklist_imports.html#b404-import-subprocess
-skips = ["B101", "B104", "B311", "B404"]
+skips = ["B101", "B104", "B113", "B311", "B404"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -47,41 +48,42 @@ version = "0.1.0"
 description = "Autopush test solutions"
 authors = ["Mozilla"]
 license = "Mozilla Public License Version 2.0"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.12"
-websocket-client = "^1.7.0"
+websocket-client = "^1.8.0"
 websockets = "^12.0"
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.4.2"
+black = "^24.10.0"
 isort = "^5.13.2"
 # flake8 configs in .flake8 file. Doesn't support .toml
 flake8 = "^6.1.0"
-mypy = "^1.9.1"
+mypy = "^1.13.0"
 pydocstyle = "^6.3.0"
-bandit = "^1.7.8"
+bandit = "^1.7.10"
 
 
 [tool.poetry.group.integration.dependencies]
-cryptography = "^43.0.1"
+cryptography = "^43.0.3"
 jws = "^0.1.3"
-psutil = "^5.9.6"
-pytest = "^8.2.0"
+psutil = "^5.9.8"
+pytest = "^8.3.3"
+pytest-asyncio = "^0.23.8"
+pytest-order = "^1.3.0"
 python-jose = "^3.3.0"
-pytest-asyncio = "^0.23.6"
-pytest-order = "^1.2.1" 
-httpx = "^0.27.0"
-fastapi = "^0.111.0"
+httpx = "^0.27.2"
+fastapi = "^0.111.1"
 uvicorn = {extras = ["standard"], version="^0.29.0"}
 
 [tool.poetry.group.load.dependencies]
-locust = "^2.20.0"
-numpy = "^1.26.2"
-pydantic = "^2.7.1"
+locust = "^2.32.1"
+numpy = "^1.26.4"
+pydantic = "^2.9.2"
 
 [build-system]
-requires = ["poetry-core>=1.8.1"]
+requires = ["poetry-core>=1.9.1"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
