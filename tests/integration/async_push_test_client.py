@@ -222,7 +222,7 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         log.debug(f"  headers: {headers}")
         async with httpx.AsyncClient() as httpx_client:
             resp = await httpx_client.request(
-                method=method, url=url.geturl(), content=body, headers=headers
+                method=method, url=url.geturl(), content=body, headers=headers, timeout=30
             )
         log.debug(f"{method} Response ({resp.status_code}): {resp.text}")
         assert resp.status_code == status, f"Expected {status}, got {resp.status_code}"

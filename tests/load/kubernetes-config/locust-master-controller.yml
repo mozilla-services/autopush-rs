@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: locust-master
-          image: gcr.io/[PROJECT_ID]/locust-autopush:[LOCUST_IMAGE_TAG]
+          image: us-central1-docker.pkg.dev/[PROJECT_ID]/autopush/locust-autopush:[LOCUST_IMAGE_TAG]
           env:
             - name: LOCUST_MODE_MASTER
               value: "true"
