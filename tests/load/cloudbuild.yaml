@@ -1,4 +1,4 @@
 steps:
 - name: "gcr.io/cloud-builders/docker"
-  args: ["build", "-t", "gcr.io/$PROJECT_ID/locust-autopush:$TAG_NAME", "-f", "./tests/load/Dockerfile", "."]
-images: ["gcr.io/$PROJECT_ID/locust-autopush:$TAG_NAME"]
+  args: ["build", "-t", "us-central1-docker.pkg.dev/$PROJECT_ID/autopush/locust-autopush:$TAG_NAME", "-f", "./tests/load/Dockerfile", "."]
+images: ["us-central1-docker.pkg.dev/$PROJECT_ID/autopush/locust-autopush:$TAG_NAME"]
