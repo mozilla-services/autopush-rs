@@ -222,7 +222,9 @@ keyid="http://example.org/bob/keys/123";salt="XZwpw6o37R-6qoZjw6KwAw=="\
         method: str = "POST"
         log.debug(f"{method} body: {body}")
         log.debug(f"  headers: {headers}")
-        resp = httpx.request(method=method, url=url.geturl(), content=body, headers=headers)
+        resp = httpx.request(
+            method=method, url=url.geturl(), content=body, headers=headers, timeout=30
+        )
         log.debug(f"{method} Response ({resp.status_code}): {resp.text}")
         assert resp.status_code == status, f"Expected {status}, got {resp.status_code}"
         self.notif_response = resp
