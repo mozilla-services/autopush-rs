@@ -32,7 +32,7 @@ pub fn date_string_from_systemtime(ts: std::time::SystemTime) -> String {
 ///
 /// (This is useful in dev/debugging)
 #[allow(dead_code)]
-pub fn date_string_from_utc_ms(offset: u64) -> String {
+pub fn date_string_from_utc(offset: u64) -> String {
     let utc = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(offset);
     date_string_from_systemtime(utc)
 }

@@ -150,11 +150,11 @@ fn version_filter(version: &Uuid) -> Vec<data::RowFilter> {
 }
 
 /// Return a newly generated `version` column `Cell`
-fn new_version_cell(timestamp_ms: SystemTime) -> cell::Cell {
+fn new_version_cell(timestamp: SystemTime) -> cell::Cell {
     cell::Cell {
         qualifier: "version".to_owned(),
         value: Uuid::new_v4().into(),
-        timestamp_st: timestamp_ms,
+        timestamp_st: timestamp,
         ..Default::default()
     }
 }
@@ -724,10 +724,10 @@ impl BigTableClientImpl {
         let mut notif = Notification {
             channel_id: range_key.channel_id,
             topic: range_key.topic,
-            sortkey_timestamp_ms: range_key.sortkey_timestamp_ms,
+            sortkey_timestamp: range_key.sortkey_timestamp,
             version: to_string(row.take_required_cell("version")?.value, "version")?,
             ttl: to_u64(row.take_required_cell("ttl")?.value, "ttl")?,
-            recv_timestamp_s: to_u64(row.take_required_cell("timestamp")?.value, "timestamp")?,
+            recv_timestamp: to_u64(row.take_required_cell("timestamp")?.value, "timestamp")?,
             ..Default::default()
         };
 
@@ -763,7 +763,7 @@ impl BigTableClientImpl {
         let mut cells: Vec<cell::Cell> = vec![
             cell::Cell {
                 qualifier: "connected_at".to_owned(),
-                value: user.connected_at_ms.to_be_bytes().to_vec(),
+                value: user.connected_at.to_be_bytes().to_vec(),
                 timestamp_st: expiry,
                 ..Default::default()
             },
@@ -799,10 +799,10 @@ impl BigTableClientImpl {
                 ..Default::default()
             });
         };
-        if let Some(current_timestamp_ms) = user.current_timestamp_ms {
+        if let Some(current_timestamp) = user.current_timestamp {
             cells.push(cell::Cell {
                 qualifier: "current_timestamp".to_owned(),
-                value: current_timestamp_ms.to_be_bytes().to_vec(),
+                value: current_timestamp.to_be_bytes().to_vec(),
                 timestamp_st: expiry,
                 ..Default::default()
             });
@@ -974,7 +974,7 @@ impl DbClient for BigTableClientImpl {
 
         let mut result = User {
             uaid: *uaid,
-            connected_at_ms: to_u64(connected_at_cell.value, "connected_at")?,
+            connected_at: to_u64(connected_at_cell.value, "connected_at")?,
             router_type: to_string(row.take_required_cell("router_type")?.value, "router_type")?,
             record_version: Some(to_u64(
                 row.take_required_cell("record_version")?.value,
@@ -1002,7 +1002,7 @@ impl DbClient for BigTableClientImpl {
         }
 
         if let Some(cell) = row.take_cell("current_timestamp") {
-            result.current_timestamp_ms = Some(to_u64(cell.value, "current_timestamp")?)
+            result.current_timestamp = Some(to_u64(cell.value, "current_timestamp")?)
         }
 
         // Read the channels last, after removal of all non channel cells
@@ -1127,7 +1127,7 @@ impl DbClient for BigTableClientImpl {
         debug!("🗄️ Saving message {} :: {:?}", &row_key, &message);
         trace!(
             "🉑 received timestamp: {:?}",
-            &message.recv_timestamp_s.to_be_bytes().to_vec()
+            &message.recv_timestamp.to_be_bytes().to_vec()
         );
         let mut row = Row::new(row_key);
 
@@ -1159,7 +1159,7 @@ impl DbClient for BigTableClientImpl {
             },
             cell::Cell {
                 qualifier: "timestamp".to_owned(),
-                value: message.recv_timestamp_s.to_be_bytes().to_vec(),
+                value: message.recv_timestamp.to_be_bytes().to_vec(),
                 timestamp_st: expiry,
                 ..Default::default()
             },
@@ -1234,12 +1234,12 @@ impl DbClient for BigTableClientImpl {
     /// the `current_timestamp` to determine what records to return, since we return
     /// records with timestamps later than `current_timestamp`.
     ///
-    async fn increment_storage(&self, uaid: &Uuid, timestamp_ms: u64) -> DbResult<()> {
+    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
         let row_key = uaid.simple().to_string();
         debug!(
             "🉑 Updating {} current_timestamp:  {:?}",
             &row_key,
-            timestamp_ms.to_be_bytes().to_vec()
+            timestamp.to_be_bytes().to_vec()
         );
         let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
         let mut row = Row::new(row_key.clone());
@@ -1249,7 +1249,7 @@ impl DbClient for BigTableClientImpl {
             vec![
                 cell::Cell {
                     qualifier: "current_timestamp".to_owned(),
-                    value: timestamp_ms.to_be_bytes().to_vec(),
+                    value: timestamp.to_be_bytes().to_vec(),
                     timestamp_st: expiry,
                     ..Default::default()
                 },
@@ -1322,7 +1322,7 @@ impl DbClient for BigTableClientImpl {
         // from [get_user].
         Ok(FetchMessageResponse {
             messages,
-            timestamp_ms: None,
+            timestamp: None,
         })
     }
 
@@ -1331,7 +1331,7 @@ impl DbClient for BigTableClientImpl {
     async fn fetch_timestamp_messages(
         &self,
         uaid: &Uuid,
-        timestamp_ms: Option<u64>,
+        timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
         let mut req = ReadRowsRequest::default();
@@ -1341,7 +1341,7 @@ impl DbClient for BigTableClientImpl {
         let mut rows = data::RowSet::default();
         let mut row_range = data::RowRange::default();
 
-        let start_key = if let Some(ts) = timestamp_ms {
+        let start_key = if let Some(ts) = timestamp {
             // Fetch everything after the last message with timestamp: the "z"
             // moves past the last message's channel_id's 1st hex digit
             format!("{}#02:{}z", uaid.simple(), ts)
@@ -1380,17 +1380,17 @@ impl DbClient for BigTableClientImpl {
         let rows = self.read_rows(req).await?;
         debug!(
             "🉑 Fetch Timestamp Messages ({:?}) Found {} row(s) of {}",
-            timestamp_ms,
+            timestamp,
             rows.len(),
             limit,
         );
 
         let messages = self.rows_to_notifications(rows)?;
         // The timestamp of the last message read
-        let timestamp_ms = messages.last().and_then(|m| m.sortkey_timestamp_ms);
+        let timestamp = messages.last().and_then(|m| m.sortkey_timestamp);
         Ok(FetchMessageResponse {
             messages,
-            timestamp_ms,
+            timestamp,
         })
     }
 
@@ -1506,7 +1506,7 @@ mod tests {
     async fn run_gauntlet() -> DbResult<()> {
         let client = new_client()?;
 
-        let connected_at_ms = ms_since_epoch();
+        let connected_at = ms_since_epoch();
 
         let uaid = Uuid::parse_str(TEST_USER).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
@@ -1520,7 +1520,7 @@ mod tests {
         let test_user = User {
             uaid,
             router_type: "webpush".to_owned(),
-            connected_at_ms,
+            connected_at,
             router_data: None,
             node_id: Some(node_id.clone()),
             ..Default::default()
@@ -1568,7 +1568,7 @@ mod tests {
         // prior. first ensure that we can't update a user that's before the
         // time we set prior to the last write
         let mut updated = User {
-            connected_at_ms,
+            connected_at,
             ..test_user.clone()
         };
         let result = client.update_user(&mut updated).await;
@@ -1577,19 +1577,19 @@ mod tests {
 
         // Make sure that the `connected_at` wasn't modified
         let fetched2 = client.get_user(&fetched.uaid).await?.unwrap();
-        assert_eq!(fetched.connected_at_ms, fetched2.connected_at_ms);
+        assert_eq!(fetched.connected_at, fetched2.connected_at);
 
         // and make sure we can update a record with a later connected_at time.
         let mut updated = User {
-            connected_at_ms: fetched.connected_at_ms + 300,
+            connected_at: fetched.connected_at + 300,
             ..fetched2
         };
         let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
         assert_ne!(
-            fetched2.connected_at_ms,
-            client.get_user(&uaid).await?.unwrap().connected_at_ms
+            fetched2.connected_at,
+            client.get_user(&uaid).await?.unwrap().connected_at
         );
 
         // can we increment the storage for the user?
@@ -1598,16 +1598,16 @@ mod tests {
             .await?;
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
-        let timestamp_s = now();
-        let sort_key_ms = now();
+        let timestamp = now();
+        let sort_key = now();
         // Can we store a message?
         let test_notification = crate::db::Notification {
             channel_id: chid,
             version: "test".to_owned(),
             ttl: 300,
-            recv_timestamp_s: timestamp_s,
+            recv_timestamp: timestamp,
             data: Some(test_data.clone()),
-            sortkey_timestamp_ms: Some(sort_key_ms),
+            sortkey_timestamp: Some(sort_key),
             ..Default::default()
         };
         let res = client.save_message(&uaid, test_notification.clone()).await;
@@ -1621,13 +1621,13 @@ mod tests {
 
         // Grab all 1 of the messages that were submmited within the past 10 seconds.
         let fetched = client
-            .fetch_timestamp_messages(&uaid, Some(timestamp_s - 10), 999)
+            .fetch_timestamp_messages(&uaid, Some(timestamp - 10), 999)
             .await?;
         assert_ne!(fetched.messages.len(), 0);
 
         // Try grabbing a message for 10 seconds from now.
         let fetched = client
-            .fetch_timestamp_messages(&uaid, Some(timestamp_s + 10), 999)
+            .fetch_timestamp_messages(&uaid, Some(timestamp + 10), 999)
             .await?;
         assert_eq!(fetched.messages.len(), 0);
 
@@ -1642,7 +1642,7 @@ mod tests {
         // Now, can we do all that with topic messages
         client.add_channel(&uaid, &topic_chid).await?;
         let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
-        let timestamp_s = now();
+        let timestamp = now();
         let sort_key = now();
         // Can we store a message?
         let test_notification = crate::db::Notification {
@@ -1650,9 +1650,9 @@ mod tests {
             version: "test".to_owned(),
             ttl: 300,
             topic: Some("topic".to_owned()),
-            recv_timestamp_s: timestamp_s,
+            recv_timestamp: timestamp,
             data: Some(test_data.clone()),
-            sortkey_timestamp_ms: Some(sort_key),
+            sortkey_timestamp: Some(sort_key),
             ..Default::default()
         };
         assert!(client

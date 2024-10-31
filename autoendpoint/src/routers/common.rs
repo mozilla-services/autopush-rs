@@ -203,7 +203,7 @@ pub fn incr_success_metrics(
     metrics
         .time_with_tags(
             "notification.total_request_time",
-            (autopush_common::util::sec_since_epoch() - notification.recv_timestamp_s) * 1000,
+            (autopush_common::util::sec_since_epoch() - notification.recv_timestamp) * 1000,
         )
         .with_tag("platform", platform)
         .with_tag("app_id", app_id)
@@ -255,8 +255,8 @@ pub mod tests {
                 encryption_key: Some("test-encryption-key".to_string()),
                 crypto_key: Some("test-crypto-key".to_string()),
             },
-            recv_timestamp_s: 0,
-            sort_key_timestamp_ms: 0,
+            recv_timestamp: 0,
+            sort_key_timestamp: 0,
             data,
         }
     }

@@ -52,7 +52,7 @@ pub(crate) struct RangeKey {
     /// The optional topic identifier
     pub(crate) topic: Option<String>,
     /// The encoded sortkey and timestamp
-    pub(crate) sortkey_timestamp_ms: Option<u64>,
+    pub(crate) sortkey_timestamp: Option<u64>,
     /// Which version of this message are we handling
     pub(crate) legacy_version: Option<String>,
 }
@@ -70,18 +70,18 @@ mod tests {
         let key = NotificationRecord::parse_chidmessageid(&chidmessageid).unwrap();
         assert_eq!(key.topic, Some("mytopic".to_string()));
         assert_eq!(key.channel_id, chid);
-        assert_eq!(key.sortkey_timestamp_ms, None);
+        assert_eq!(key.sortkey_timestamp, None);
     }
 
     #[test]
     fn test_parse_sort_key_ver2() {
         let chid = Uuid::new_v4();
-        let sortkey_timestamp_ms = ms_since_epoch();
-        let chidmessageid = format!("02:{}:{}", sortkey_timestamp_ms, chid.hyphenated());
+        let sortkey_timestamp = ms_since_epoch();
+        let chidmessageid = format!("02:{}:{}", sortkey_timestamp, chid.hyphenated());
         let key = NotificationRecord::parse_chidmessageid(&chidmessageid).unwrap();
         assert_eq!(key.topic, None);
         assert_eq!(key.channel_id, chid);
-        assert_eq!(key.sortkey_timestamp_ms, Some(sortkey_timestamp_ms));
+        assert_eq!(key.sortkey_timestamp, Some(sortkey_timestamp));
     }
 
     #[test]

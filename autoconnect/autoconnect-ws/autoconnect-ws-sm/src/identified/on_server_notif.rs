@@ -91,7 +91,7 @@ impl WebPushClient {
         let CheckStorageResponse {
             include_topic,
             mut messages,
-            timestamp_ms,
+            timestamp,
         } = self.do_check_storage().await?;
 
         debug!(
@@ -100,11 +100,11 @@ impl WebPushClient {
                  unacked_stored_highest: {:?} -> {:?}",
             self.flags.include_topic,
             include_topic,
-            self.ack_state.unacked_stored_highest_ms,
-            timestamp_ms
+            self.ack_state.unacked_stored_highest,
+            timestamp
         );
         self.flags.include_topic = include_topic;
-        self.ack_state.unacked_stored_highest_ms = timestamp_ms;
+        self.ack_state.unacked_stored_highest = timestamp;
 
         if messages.is_empty() {
             trace!("🗄️ WebPushClient::check_storage_advance finished");
@@ -121,7 +121,7 @@ impl WebPushClient {
             if !msg.expired(now_sec) {
                 return true;
             }
-            if msg.sortkey_timestamp_ms.is_none() {
+            if msg.sortkey_timestamp.is_none() {
                 expired_topic_sort_keys.push(msg.chidmessageid());
             }
             false
@@ -135,7 +135,7 @@ impl WebPushClient {
                 .await?;
         }
 
-        self.flags.increment_storage = !include_topic && timestamp_ms.is_some();
+        self.flags.increment_storage = !include_topic && timestamp.is_some();
 
         if messages.is_empty() {
             trace!("🗄️ WebPushClient::check_storage_advance empty response (filtered expired)");
@@ -175,11 +175,11 @@ impl WebPushClient {
     /// online.
     async fn do_check_storage(&self) -> Result<CheckStorageResponse, SMError> {
         // start at the latest unacked timestamp or the previous, latest timestamp.
-        let timestamp_ms = self
+        let timestamp = self
             .ack_state
-            .unacked_stored_highest_ms
-            .or(self.current_timestamp_ms);
-        trace!("🗄️ WebPushClient::do_check_storage {:?}", &timestamp_ms);
+            .unacked_stored_highest
+            .or(self.current_timestamp);
+        trace!("🗄️ WebPushClient::do_check_storage {:?}", &timestamp);
         // if we're to include topic messages, do those first.
         // NOTE: Bigtable can't fetch `current_timestamp`, so we can't rely on
         // `fetch_topic_messages()` returning a reasonable timestamp.
@@ -210,26 +210,26 @@ impl WebPushClient {
             return Ok(CheckStorageResponse {
                 include_topic: true,
                 messages: topic_resp.messages,
-                timestamp_ms: topic_resp.timestamp_ms,
+                timestamp: topic_resp.timestamp,
             });
         }
         // No topic messages, so carry on with normal ones, starting from the latest timestamp.
-        let timestamp_ms = if self.flags.include_topic {
+        let timestamp = if self.flags.include_topic {
             // See above, but Bigtable doesn't return the last message read timestamp when polling
             // for topic messages. Instead, we'll use the explicitly set one we store in the User
             // record and copy into the WebPushClient struct.
-            topic_resp.timestamp_ms.or(self.current_timestamp_ms)
+            topic_resp.timestamp.or(self.current_timestamp)
         } else {
-            timestamp_ms
+            timestamp
         };
         trace!(
             "🗄️ WebPushClient::do_check_storage: fetch_timestamp_messages timestamp: {:?}",
-            timestamp_ms
+            timestamp
         );
         let timestamp_resp = self
             .app_state
             .db
-            .fetch_timestamp_messages(&self.uaid, timestamp_ms, 10)
+            .fetch_timestamp_messages(&self.uaid, timestamp, 10)
             .await?;
         if !timestamp_resp.messages.is_empty() {
             trace!(
@@ -251,7 +251,7 @@ impl WebPushClient {
             messages: timestamp_resp.messages,
             // If we didn't get a timestamp off the last query, use the
             // original value if passed one
-            timestamp_ms: timestamp_resp.timestamp_ms.or(timestamp_ms),
+            timestamp: timestamp_resp.timestamp.or(timestamp),
         })
     }
 
@@ -263,18 +263,18 @@ impl WebPushClient {
     pub(super) async fn increment_storage(&mut self) -> Result<(), SMError> {
         trace!(
             "🗄️ WebPushClient::increment_storage: unacked_stored_highest: {:?}",
-            self.ack_state.unacked_stored_highest_ms
+            self.ack_state.unacked_stored_highest
         );
-        let Some(timestamp_ms) = self.ack_state.unacked_stored_highest_ms else {
+        let Some(timestamp) = self.ack_state.unacked_stored_highest else {
             return Err(SMErrorKind::Internal(
                 "increment_storage w/ no unacked_stored_highest".to_owned(),
             )
             .into());
         };
-        self.current_timestamp_ms = Some(timestamp_ms);
+        self.current_timestamp = Some(timestamp);
         self.app_state
             .db
-            .increment_storage(&self.uaid, timestamp_ms)
+            .increment_storage(&self.uaid, timestamp)
             .await?;
         self.flags.increment_storage = false;
         Ok(())

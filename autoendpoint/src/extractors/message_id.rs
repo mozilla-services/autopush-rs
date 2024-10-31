@@ -21,7 +21,7 @@ pub enum MessageId {
     WithoutTopic {
         uaid: Uuid,
         channel_id: Uuid,
-        timestamp_ms: u64,
+        timestamp: u64,
     },
 }
 
@@ -60,13 +60,13 @@ impl MessageId {
             MessageId::WithoutTopic {
                 uaid,
                 channel_id,
-                timestamp_ms,
+                timestamp,
             } => format!(
                 "{}:{}:{}:{}",
                 STANDARD_NOTIFICATION_PREFIX,
                 uaid.as_simple(),
                 channel_id.as_simple(),
-                timestamp_ms
+                timestamp
             ),
         };
 
@@ -97,7 +97,7 @@ impl MessageId {
             "02" => Ok(MessageId::WithoutTopic {
                 uaid: Uuid::parse_str(uaid).map_err(|_| ApiErrorKind::InvalidMessageId)?,
                 channel_id: Uuid::parse_str(chid).map_err(|_| ApiErrorKind::InvalidMessageId)?,
-                timestamp_ms: topic_or_timestamp
+                timestamp: topic_or_timestamp
                     .parse()
                     .map_err(|_| ApiErrorKind::InvalidMessageId)?,
             }),
@@ -126,12 +126,12 @@ impl MessageId {
             ),
             MessageId::WithoutTopic {
                 channel_id,
-                timestamp_ms,
+                timestamp,
                 ..
             } => format!(
                 "{}:{}:{}",
                 STANDARD_NOTIFICATION_PREFIX,
-                timestamp_ms,
+                timestamp,
                 channel_id.as_hyphenated()
             ),
         }

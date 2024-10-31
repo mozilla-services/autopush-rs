@@ -115,8 +115,8 @@ impl UnidentifiedClient {
             self.ua,
             broadcast_subs,
             flags,
-            user.connected_at_ms,
-            user.current_timestamp_ms,
+            user.connected_at,
+            user.current_timestamp,
             (!existing_user).then_some(user),
             self.app_state,
         )
@@ -135,7 +135,7 @@ impl UnidentifiedClient {
     /// Lookup a User or return a new User record if the lookup failed
     async fn get_or_create_user(&self, uaid: Option<Uuid>) -> Result<GetOrCreateUser, SMError> {
         trace!("❓UnidentifiedClient::get_or_create_user");
-        let connected_at_ms = ms_since_epoch();
+        let connected_at = ms_since_epoch();
 
         if let Some(uaid) = uaid {
             if let Some(mut user) = self.app_state.db.get_user(&uaid).await? {
@@ -144,15 +144,15 @@ impl UnidentifiedClient {
                     old_record_version: user
                         .record_version
                         .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
-                    emit_channel_metrics: user.connected_at_ms < ms_utc_midnight(),
+                    emit_channel_metrics: user.connected_at < ms_utc_midnight(),
                     ..Default::default()
                 };
                 user.node_id = Some(self.app_state.router_url.to_owned());
-                if user.connected_at_ms > connected_at_ms {
+                if user.connected_at > connected_at {
                     let _ = self.app_state.metrics.incr("ua.already_connected");
                     return Err(SMErrorKind::AlreadyConnected.into());
                 }
-                user.connected_at_ms = connected_at_ms;
+                user.connected_at = connected_at;
                 if !self.app_state.db.update_user(&mut user).await? {
                     let _ = self.app_state.metrics.incr("ua.already_connected");
                     return Err(SMErrorKind::AlreadyConnected.into());
@@ -171,7 +171,7 @@ impl UnidentifiedClient {
 
         let user = User::builder()
             .node_id(self.app_state.router_url.to_owned())
-            .connected_at_ms(connected_at_ms)
+            .connected_at(connected_at)
             .build()
             .map_err(|e| SMErrorKind::Internal(format!("User::builder error: {e}")))?;
         Ok(GetOrCreateUser {

@@ -21,9 +21,9 @@ pub struct Notification {
     /// Set of associated crypto headers
     pub headers: NotificationHeaders,
     /// UNIX timestamp in seconds
-    pub recv_timestamp_s: u64,
+    pub recv_timestamp: u64,
     /// UNIX timestamp in milliseconds
-    pub sort_key_timestamp_ms: u64,
+    pub sort_key_timestamp: u64,
     /// The encrypted notification body
     pub data: Option<String>,
 }
@@ -58,14 +58,14 @@ impl FromRequest for Notification {
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
-            let recv_timestamp_s = sec_since_epoch();
-            let sort_key_timestamp_ms = ms_since_epoch();
+            let recv_timestamp = sec_since_epoch();
+            let sort_key_timestamp = ms_since_epoch();
             let message_id = Self::generate_message_id(
                 &app_state.fernet,
                 subscription.user.uaid,
                 subscription.channel_id,
                 headers.topic.as_deref(),
-                sort_key_timestamp_ms,
+                sort_key_timestamp,
             );
 
             // Record the encoding if we have an encrypted payload
@@ -82,8 +82,8 @@ impl FromRequest for Notification {
                 message_id,
                 subscription,
                 headers,
-                recv_timestamp_s,
-                sort_key_timestamp_ms,
+                recv_timestamp,
+                sort_key_timestamp,
                 data,
             })
         }
@@ -94,17 +94,15 @@ impl FromRequest for Notification {
 impl From<Notification> for autopush_common::notification::Notification {
     fn from(notification: Notification) -> Self {
         let topic = notification.headers.topic.clone();
-        let sortkey_timestamp_ms = topic
-            .is_none()
-            .then_some(notification.sort_key_timestamp_ms);
+        let sortkey_timestamp = topic.is_none().then_some(notification.sort_key_timestamp);
         autopush_common::notification::Notification {
             channel_id: notification.subscription.channel_id,
             version: notification.message_id,
             ttl: notification.headers.ttl as u64,
             topic,
-            recv_timestamp_s: notification.recv_timestamp_s,
+            recv_timestamp: notification.recv_timestamp,
             data: notification.data,
-            sortkey_timestamp_ms,
+            sortkey_timestamp,
             reliability_id: notification.subscription.reliability_id,
             headers: {
                 let headers: HashMap<String, String> = notification.headers.into();
@@ -128,13 +126,13 @@ impl Notification {
     ///
     /// For non-topic messages, a sort_key version of 02 is used:
     ///
-    ///     Encrypted('02' : uaid.hex : channel_id.hex : timestamp_ms)
+    ///     Encrypted('02' : uaid.hex : channel_id.hex : timestamp)
     fn generate_message_id(
         fernet: &MultiFernet,
         uaid: Uuid,
         channel_id: Uuid,
         topic: Option<&str>,
-        timestamp_ms: u64,
+        timestamp: u64,
     ) -> String {
         let message_id = if let Some(topic) = topic {
             MessageId::WithTopic {
@@ -146,7 +144,7 @@ impl Notification {
             MessageId::WithoutTopic {
                 uaid,
                 channel_id,
-                timestamp_ms,
+                timestamp,
             }
         };
 
@@ -173,7 +171,7 @@ impl Notification {
         map.insert("version", serde_json::to_value(&self.message_id)?);
         map.insert("ttl", serde_json::to_value(self.headers.ttl)?);
         map.insert("topic", serde_json::to_value(&self.headers.topic)?);
-        map.insert("timestamp", serde_json::to_value(self.recv_timestamp_s)?);
+        map.insert("timestamp", serde_json::to_value(self.recv_timestamp)?);
         if let Some(reliability_id) = &self.subscription.reliability_id {
             map.insert("reliability_id", serde_json::to_value(reliability_id)?);
         }

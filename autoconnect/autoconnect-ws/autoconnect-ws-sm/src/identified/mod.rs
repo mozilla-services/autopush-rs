@@ -64,7 +64,7 @@ pub struct WebPushClient {
     last_ping: u64,
     /// The last notification timestamp.
     // TODO: RENAME THIS TO `last_notification_timestamp`
-    current_timestamp_ms: Option<u64>,
+    current_timestamp: Option<u64>,
 
     app_state: Arc<AppState>,
 }
@@ -95,7 +95,7 @@ impl WebPushClient {
         broadcast_subs: BroadcastSubs,
         flags: ClientFlags,
         connected_at: u64,
-        current_timestamp_ms: Option<u64>,
+        current_timestamp: Option<u64>,
         deferred_add_user: Option<User>,
         app_state: Arc<AppState>,
     ) -> Result<(Self, Vec<ServerMessage>), SMError> {
@@ -113,7 +113,7 @@ impl WebPushClient {
             ack_state: Default::default(),
             sent_from_storage: Default::default(),
             connected_at,
-            current_timestamp_ms,
+            current_timestamp,
             deferred_add_user,
             last_ping: Default::default(),
             stats,
@@ -225,7 +225,7 @@ impl WebPushClient {
         // legacy during conversion and still get the correct default us_time
         // when saving
         for notif in &mut notifs {
-            notif.sortkey_timestamp_ms = Some(0);
+            notif.sortkey_timestamp = Some(0);
         }
 
         let app_state = Arc::clone(&self.app_state);
@@ -239,7 +239,7 @@ impl WebPushClient {
                     "User not found for unacked direct notifs: {uaid}"
                 )));
             };
-            if connected_at == user.connected_at_ms {
+            if connected_at == user.connected_at {
                 return Ok(());
             }
             if let Some(node_id) = user.node_id {
@@ -354,7 +354,7 @@ struct AckState {
     ///
     /// c) written back to `current_timestamp` in storage via
     /// `increment_storage`
-    unacked_stored_highest_ms: Option<u64>,
+    unacked_stored_highest: Option<u64>,
 }
 
 impl AckState {
@@ -404,8 +404,8 @@ mod tests {
         Notification {
             channel_id: *channel_id,
             ttl,
-            recv_timestamp_s: sec_since_epoch(),
-            sortkey_timestamp_ms: Some(ms_since_epoch()),
+            recv_timestamp: sec_since_epoch(),
+            sortkey_timestamp: Some(ms_since_epoch()),
             ..Default::default()
         }
     }
@@ -421,14 +421,14 @@ mod tests {
     async fn expired_increments_storage() {
         let mut db = MockDbClient::new();
         let mut seq = mockall::Sequence::new();
-        let timestamp_ms = ms_since_epoch();
+        let timestamp = ms_since_epoch();
         // No topic messages
         db.expect_fetch_topic_messages()
             .times(1)
             .in_sequence(&mut seq)
             .return_once(move |_, _| {
                 Ok(FetchMessageResponse {
-                    timestamp_ms: None,
+                    timestamp: None,
                     messages: vec![],
                 })
             });
@@ -439,7 +439,7 @@ mod tests {
             .withf(move |_, ts, _| ts.is_none())
             .return_once(move |_, _, _| {
                 Ok(FetchMessageResponse {
-                    timestamp_ms: Some(timestamp_ms),
+                    timestamp: Some(timestamp),
                     messages: vec![
                         new_timestamp_notif(&DUMMY_CHID, 0),
                         new_timestamp_notif(&DUMMY_CHID, 0),
@@ -450,10 +450,10 @@ mod tests {
         db.expect_fetch_timestamp_messages()
             .times(1)
             .in_sequence(&mut seq)
-            .withf(move |_, ts, _| ts == &Some(timestamp_ms))
+            .withf(move |_, ts, _| ts == &Some(timestamp))
             .return_once(|_, _, _| {
                 Ok(FetchMessageResponse {
-                    timestamp_ms: None,
+                    timestamp: None,
                     messages: vec![],
                 })
             });
@@ -463,7 +463,7 @@ mod tests {
         db.expect_increment_storage()
             .times(1)
             .in_sequence(&mut seq)
-            .withf(move |_, ts| ts == &timestamp_ms)
+            .withf(move |_, ts| ts == &timestamp)
             .return_once(|_, _| Ok(()));
         // No check_storage called here (via default ClientFlags)
         let (mut client, _) = wpclient(

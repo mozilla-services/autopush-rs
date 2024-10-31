@@ -79,18 +79,16 @@ impl DbClient for Arc<MockDbClient> {
     async fn fetch_timestamp_messages(
         &self,
         uaid: &Uuid,
-        timestamp_ms: Option<u64>,
+        timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
         Arc::as_ref(self)
-            .fetch_timestamp_messages(uaid, timestamp_ms, limit)
+            .fetch_timestamp_messages(uaid, timestamp, limit)
             .await
     }
 
-    async fn increment_storage(&self, uaid: &Uuid, timestamp_ms: u64) -> DbResult<()> {
-        Arc::as_ref(self)
-            .increment_storage(uaid, timestamp_ms)
-            .await
+    async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
+        Arc::as_ref(self).increment_storage(uaid, timestamp).await
     }
 
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {

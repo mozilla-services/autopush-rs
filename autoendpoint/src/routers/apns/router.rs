@@ -450,7 +450,7 @@ impl Router for ApnsRouter {
                 apns_topic: Some(topic),
                 apns_collapse_id: None,
                 apns_expiration: Some(
-                    notification.recv_timestamp_s + notification.headers.ttl as u64,
+                    notification.recv_timestamp + notification.headers.ttl as u64,
                 ),
                 ..Default::default()
             },

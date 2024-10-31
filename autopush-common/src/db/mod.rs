@@ -128,7 +128,7 @@ pub struct CheckStorageResponse {
     /// The list of pending messages.
     pub messages: Vec<Notification>,
     /// All the messages up to this timestamp
-    pub timestamp_ms: Option<u64>,
+    pub timestamp: Option<u64>,
 }
 
 /// A user data record.
@@ -141,7 +141,7 @@ pub struct User {
     pub uaid: Uuid,
     /// Time in milliseconds that the user last connected at
     #[serde(rename = "connected_at")]
-    pub connected_at_ms: u64,
+    pub connected_at: u64,
     /// Router type of the user
     pub router_type: String,
     /// Router-specific data
@@ -156,7 +156,7 @@ pub struct User {
     /// This field is exclusive to the Bigtable data scheme
     //TODO: rename this to `last_notification_timestamp`
     #[serde(rename = "current_timestamp", skip_serializing_if = "Option::is_none")]
-    pub current_timestamp_ms: Option<u64>,
+    pub current_timestamp: Option<u64>,
     /// UUID4 version number for optimistic locking of updates on Bigtable
     #[serde(skip_serializing)]
     pub version: Option<Uuid>,
@@ -181,12 +181,12 @@ impl Default for User {
         //trace!(">>> Setting default uaid: {:?}", &uaid);
         Self {
             uaid,
-            connected_at_ms: ms_since_epoch(),
+            connected_at: ms_since_epoch(),
             router_type: "webpush".to_string(),
             router_data: None,
             node_id: None,
             record_version: Some(USER_RECORD_VERSION),
-            current_timestamp_ms: None,
+            current_timestamp: None,
             version: Some(Uuid::new_v4()),
             priv_channels: HashSet::new(),
         }
@@ -228,7 +228,7 @@ pub struct NotificationRecord {
     pub chids: Option<HashSet<String>>,
     /// Time in seconds from epoch
     #[serde(rename = "timestamp", skip_serializing_if = "Option::is_none")]
-    recv_timestamp_s: Option<u64>,
+    recv_timestamp: Option<u64>,
     /// Expiration timestamp
     expiry: u64,
     /// TTL value provided by application server for the message
@@ -279,7 +279,7 @@ impl NotificationRecord {
                 Ok(RangeKey {
                     channel_id,
                     topic: Some(topic.to_string()),
-                    sortkey_timestamp_ms: None,
+                    sortkey_timestamp: None,
                     legacy_version: None,
                 })
             }
@@ -293,7 +293,7 @@ impl NotificationRecord {
                 Ok(RangeKey {
                     channel_id,
                     topic: None,
-                    sortkey_timestamp_ms: Some(sortkey.parse()?),
+                    sortkey_timestamp: Some(sortkey.parse()?),
                     legacy_version: None,
                 })
             }
@@ -309,7 +309,7 @@ impl NotificationRecord {
                 Ok(RangeKey {
                     channel_id,
                     topic: None,
-                    sortkey_timestamp_ms: None,
+                    sortkey_timestamp: None,
                     legacy_version: Some(legacy_version.to_string()),
                 })
             }
@@ -330,14 +330,14 @@ impl NotificationRecord {
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),
-            recv_timestamp_s: self
-                .recv_timestamp_s
+            recv_timestamp: self
+                .recv_timestamp
                 .ok_or("No timestamp found")
                 .map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?,
             topic: key.topic,
             data: self.data,
             headers: self.headers.map(|m| m.into()),
-            sortkey_timestamp_ms: key.sortkey_timestamp_ms,
+            sortkey_timestamp: key.sortkey_timestamp,
             reliability_id: None,
         })
     }
@@ -347,7 +347,7 @@ impl NotificationRecord {
         Self {
             uaid: *uaid,
             chidmessageid: val.chidmessageid(),
-            recv_timestamp_s: Some(val.recv_timestamp_s),
+            recv_timestamp: Some(val.recv_timestamp),
             expiry: sec_since_epoch() + min(val.ttl, MAX_NOTIFICATION_TTL),
             ttl: Some(val.ttl),
             data: val.data,
@@ -364,8 +364,8 @@ mod tests {
 
     #[test]
     fn user_defaults() {
-        let user = User::builder().current_timestamp_ms(22).build().unwrap();
-        assert_eq!(user.current_timestamp_ms, Some(22));
+        let user = User::builder().current_timestamp(22).build().unwrap();
+        assert_eq!(user.current_timestamp, Some(22));
         assert_eq!(user.router_type, "webpush".to_owned());
         assert_eq!(user.record_version, Some(USER_RECORD_VERSION));
     }
