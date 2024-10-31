@@ -2,7 +2,6 @@
 
 import logging
 import time
-from typing import Any
 
 import imgcompare
 import pytest

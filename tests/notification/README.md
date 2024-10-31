@@ -2,7 +2,7 @@
 
 ## About
 
-Notification in Firefox are a crucial part of its functionality. Firefox uses [autopush](https://github.com/mozilla-services/autopush) for this. This repo contains a set of tests to check the functionaility of thhese notifications.
+Notifications in Firefox are a crucial part of its functionality. Firefox uses [autopush](https://github.com/mozilla-services/autopush) for this. This directory  contains a set of tests to check the functionality of these notifications.
 
 ## Technology
 

@@ -39,7 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgconf-2-4 \
     libfontconfig1 \
     libdbus-glib-1-2 \
-    && apt-get clean
+    && apt-get clean -y
 
 # Download and install the latest Firefox release
 RUN wget -O firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US" \
@@ -56,8 +56,10 @@ RUN wget https://github.com/mozilla/geckodriver/releases/download/v${GECKODRIVER
 RUN curl -sSL https://install.python-poetry.org | python3 -
 
 WORKDIR /code
-ADD . /code
+ADD notification/ /code
+ADD ../poetry.lock /code
+ADD ../pyproject.toml /code
 
-RUN poetry install
+RUN poetry install --only=notification
 
 CMD xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" poetry run pytest --driver Firefox --env ${ENV}

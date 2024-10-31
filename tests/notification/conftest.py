@@ -13,14 +13,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 @pytest.fixture
 def autopush_env(pytestconfig: pytest.Config) -> str:
     """Autopush websocket URLs."""
-    url: str = ""
-    if pytestconfig.getoption("env") == "stage":
-        url = "wss://autopush.stage.mozaws.net"
-    elif pytestconfig.getoption("env") == "dev":
-        url = "wss://autopush.dev.mozaws.net/"
-    elif pytestconfig.getoption("env") == "prod":
-        url = "wss://push.services.mozilla.com/"
-    return url
+    urls: dict[str, str] = {
+        "dev": "wss://autopush.dev.mozaws.net/",
+        "stage": "wss://autopush.stage.mozaws.net",
+        "prod": "wss://push.services.mozilla.com/",
+    }
+    return urls.get(pytestconfig.getoption("env"), "")
 
 
 @pytest.fixture
