@@ -103,6 +103,8 @@ pub enum ApcErrorKind {
     BroadcastError(String),
     #[error("Payload Error: {0}")]
     PayloadError(String),
+    #[error("Invalid message ID")]
+    InvalidMessageId,
     #[error("General Error: {0}")]
     GeneralError(String),
 }
