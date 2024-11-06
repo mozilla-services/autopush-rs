@@ -4,12 +4,15 @@ services:
     expose:
       - "8201"
     network_mode: host
+    platform: linux/amd64
+
   tests:
     environment:
       SERVER_URL: server
     build:
       context: ..
-      dockerfile: notification/dockerfile
+      dockerfile: notification/Dockerfile
     depends_on: 
       - server
     network_mode: host
+    platform: linux/amd64
