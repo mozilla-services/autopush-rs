@@ -45,6 +45,8 @@ pub mod util;
 /// Autopush in 60 days can be discarded.
 ///
 /// The maximum TTL for notifications, 30 days in seconds
-pub const MAX_NOTIFICATION_TTL: u64 = 30 * 24 * 60 * 60;
+pub const MAX_NOTIFICATION_TTL: u64 = 30 * 86_400;
+/// FCM sets the max TTL for notifications to be 4 weeks.
+pub const MAX_MOBILE_NOTIFICATION_TTL: u64 = 4 * 7 * 86_400;
 /// The maximum TTL for router records, 60 days in seconds
 pub const MAX_ROUTER_TTL: u64 = 2 * MAX_NOTIFICATION_TTL;

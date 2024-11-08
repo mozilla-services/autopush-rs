@@ -1,4 +1,4 @@
-use autopush_common::{db::client::DbClient, MAX_NOTIFICATION_TTL};
+use autopush_common::{db::client::DbClient, MAX_MOBILE_NOTIFICATION_TTL};
 
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
@@ -153,8 +153,8 @@ impl Router for FcmRouter {
 
         let (routing_token, app_id) =
             self.routing_info(router_data, &notification.subscription.user.uaid)?;
-        let ttl =
-            MAX_NOTIFICATION_TTL.min(self.settings.min_ttl.max(notification.headers.ttl as u64));
+        let ttl = MAX_MOBILE_NOTIFICATION_TTL
+            .min(self.settings.min_ttl.max(notification.headers.ttl as u64));
 
         // Send the notification to FCM
         let client = self
