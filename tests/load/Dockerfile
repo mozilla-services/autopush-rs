@@ -24,7 +24,7 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0
 RUN python -m pip install --no-cache-dir --quiet poetry
 COPY ./tests/pyproject.toml ./tests/poetry.lock ./
-RUN poetry install --without dev,integration --no-interaction --no-ansi
+RUN poetry install --without dev,integration,notification --no-interaction --no-ansi
 
 RUN useradd --create-home locust
 WORKDIR /home/locust

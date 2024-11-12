@@ -1,5 +1,7 @@
 """Conftest file for notification tests."""
 
+import logging
+
 import pytest
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.firefox.webdriver import WebDriver
@@ -13,12 +15,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 @pytest.fixture
 def autopush_env(pytestconfig: pytest.Config) -> str:
     """Autopush websocket URLs."""
+    environment = pytestconfig.getoption("env")
     urls: dict[str, str] = {
         "dev": "wss://autopush.dev.mozaws.net/",
         "stage": "wss://autopush.stage.mozaws.net",
         "prod": "wss://push.services.mozilla.com/",
     }
-    return urls.get(pytestconfig.getoption("env"), "")
+    logging.info(f"Testing ENVIRONMENT: {environment}")
+    return urls.get(environment, "")
 
 
 @pytest.fixture

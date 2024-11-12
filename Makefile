@@ -30,23 +30,25 @@ upgrade:
 
 integration-test-legacy:
 	$(POETRY) -V
-	$(POETRY) install --without dev,load
+	$(POETRY) install --without dev,load,notification --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
 		-v $(PYTEST_ARGS)
 
 integration-test:
 	$(POETRY) -V
-	$(POETRY) install --without dev,load
-	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
+	$(POETRY) install --without dev,load,notification --no-root
+		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
 
 notification-test:
 	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml build
 	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml up -d server
-	ENV=$(ENV) $(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml run -it --name notification-tests tests
+	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml run -e ENV=$(ENV) -it --name notification-tests tests
 	docker cp notification-tests:/code/notification-tests.xml $(NOTIFICATION_TEST_DIR)
+
+notification-test-clean:
 	docker rm notification-tests
 
 .PHONY: format
