@@ -2,7 +2,7 @@ SHELL := /bin/sh
 CARGO = cargo
 TESTS_DIR := tests
 TEST_RESULTS_DIR ?= workspace/test-results
-PYTEST_ARGS ?=
+PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
 INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
 LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
@@ -29,15 +29,15 @@ upgrade:
 
 integration-test-legacy:
 	$(POETRY) -V
-	$(POETRY) install --without dev,load --no-root
+	$(POETRY) install --without dev,load
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
 		-v $(PYTEST_ARGS)
 
 integration-test:
 	$(POETRY) -V
-	$(POETRY) install --without dev,load --no-root
-		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
+	$(POETRY) install --without dev,load
+	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
 
@@ -72,7 +72,7 @@ pydocstyle: $(INSTALL_STAMP)  ##  Run pydocstyle
 
 lint:
 	$(POETRY) -V
-	$(POETRY) install --no-root
+	$(POETRY) install
 	$(POETRY) run isort --sp $(PYPROJECT_TOML) -c $(TESTS_DIR)
 	$(POETRY) run black --quiet --diff --config $(PYPROJECT_TOML) --check $(TESTS_DIR)
 	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)

@@ -634,12 +634,12 @@ async def fixture_registered_test_client(ws_config) -> AsyncGenerator:
     log.debug("🐍 Test Client Disconnected")
 
 
+@pytest.mark.sentry
+# Selectively include or exclude this test based on `mark` See
+# https://docs.pytest.org/en/7.1.x/example/markers.html
 @pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
 async def test_sentry_output_autoconnect(test_client: AsyncPushTestClient) -> None:
     """Test sentry output for autoconnect."""
-    if os.getenv("SKIP_SENTRY"):
-        log.debug("Skipping test_sentry_output_autoconnect")
-        pytest.skip("Skipping test_sentry_output_autoconnect")
     # Ensure bad data doesn't throw errors
     await test_client.connect()
     await test_client.hello()
@@ -665,12 +665,10 @@ async def test_sentry_output_autoconnect(test_client: AsyncPushTestClient) -> No
     assert event1["exception"]["values"][0]["value"] == "LogCheck"
 
 
+@pytest.mark.sentry
 @pytest.mark.parametrize("fixture_max_endpoint_logs", [1], indirect=True)
 async def test_sentry_output_autoendpoint(registered_test_client: AsyncPushTestClient) -> None:
     """Test sentry output for autoendpoint."""
-    if os.getenv("SKIP_SENTRY"):
-        log.debug("Skipping test_sentry_output_autoendpoint")
-        pytest.skip("Skipping test_sentry_output_autoendpoint")
     endpoint = registered_test_client.get_host_client_endpoint()
     await registered_test_client.disconnect()
     async with httpx.AsyncClient() as httpx_client:
@@ -692,13 +690,10 @@ async def test_sentry_output_autoendpoint(registered_test_client: AsyncPushTestC
     assert sorted(values) == ["ERROR:Success", "LogCheck"]
 
 
+@pytest.mark.sentry
 @pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
 async def test_no_sentry_output(ws_url: str) -> None:
     """Test for no Sentry output."""
-    if os.getenv("SKIP_SENTRY"):
-        log.debug("Skipping test_no_sentry_output")
-        pytest.skip("Skipping test_no_sentry_output")
-
     ws_url = urlparse(ws_url)._replace(scheme="http").geturl()
 
     try:
@@ -1571,13 +1566,11 @@ async def test_broadcast_no_changes(test_client_broadcast: AsyncPushTestClient) 
 # Stub Tests
 # these tests are only really useful for testing the stub system and are
 # not required for production CI testing.
+@pytest.mark.stub
 async def test_mobile_register_v1(test_client: AsyncPushTestClient) -> None:
     """Test that the mobile "hello" request returns an unsigned endpoint
     if no `key` is included in the body
     """
-    if not os.getenv("TEST_STUB"):
-        pytest.skip("Skipping stub test test_mobile_register_v1")
-
     endpoint = test_client.get_host_client_endpoint()
     async with httpx.AsyncClient() as httpx_client:
         resp = await httpx_client.request(
@@ -1595,12 +1588,11 @@ async def test_mobile_register_v1(test_client: AsyncPushTestClient) -> None:
         assert response.get("uaid") is not None
 
 
+@pytest.mark.stub
 async def test_mobile_register_v2(test_client: AsyncPushTestClient) -> None:
     """Test that a signed endpoint is returned if a valid VAPID public
     key is included in the body.
     """
-    if not os.getenv("TEST_STUB"):
-        pytest.skip("Skipping stub test test_mobile_register_v2")
     vapid_pub = (
         "BBO5r087l4d3kxx9INyRenewaA5WOWiaSFqy77UXN7ZRVxr3gNtyWeP"
         "CjUbOerY1xUUcUFCtVoT5vdElIxTLlCc"
