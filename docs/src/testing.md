@@ -84,6 +84,15 @@ You can alter the verbosity and logging output by adding command line flags to t
 
 The test output is then emitted in your terminal instance. This includes the name of the tests, whether they pass or fail and any exceptions that are triggered during the test run.
 
+The integration tests make use of [pytest markers][pytest_markers] for filtering tests. These can be
+used with the `-m` pytest option, or can be used through the following environment variables and
+`integration-test` make command.
+
+| ENVIRONMENT VARIABLE | RELATED MARKER | DESCRIPTION                                                       |
+|----------------------|----------------|-------------------------------------------------------------------|
+| SKIP_SENTRY          | sentry         | If set will exclude all tests marked with `sentry` from execution |
+| TEST_STUB            | stub           | If set will include all tests marked with `stub` in execution     |
+
 Integration tests in CI will be triggered automatically whenever a commit is pushed to a branch as a part of the CI PR workflow.
 
 ### Debugging
@@ -136,3 +145,4 @@ For more details see the [README.md][load_tests_docs] file in the `tests/load` d
 [integration_tests_docs]: ./testing.md#integration-tests
 [load_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/tests/load
 [load_tests_docs]: https://github.com/mozilla-services/autopush-rs/blob/master/tests/load/README.md
+[pytest_markers]: https://docs.pytest.org/en/stable/example/markers.html
