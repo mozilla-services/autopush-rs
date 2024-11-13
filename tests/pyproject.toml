@@ -88,3 +88,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Pytest marker documentation: https://docs.pytest.org/en/7.1.x/example/markers.html
+markers = [
+    "stub: mark a test for the stub system",
+    "sentry: mark a test for the sentry integration"
+]
