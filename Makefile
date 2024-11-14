@@ -45,7 +45,7 @@ integration-test:
 notification-test:
 	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml build
 	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml up -d server
-	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml run -e ENV=$(ENV) -it --name notification-tests tests
+	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml run -e NOTIFICATION_TEST_ENV=$(NOTIFICATION_TEST_ENV) --remove-orphans -it --name notification-tests tests
 	docker cp notification-tests:/code/notification-tests.xml $(NOTIFICATION_TEST_DIR)
 
 notification-test-clean:
@@ -85,6 +85,7 @@ lint:
 	$(POETRY) install
 	$(POETRY) run isort --sp $(PYPROJECT_TOML) -c $(TESTS_DIR)
 	$(POETRY) run black --quiet --diff --config $(PYPROJECT_TOML) --check $(TESTS_DIR)
+	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)
 	$(POETRY) run bandit --quiet -r -c $(PYPROJECT_TOML) $(TESTS_DIR)
 	$(POETRY) run pydocstyle --config=$(PYPROJECT_TOML) $(TESTS_DIR)
 	$(POETRY) run mypy $(TESTS_DIR) --config-file=$(PYPROJECT_TOML)

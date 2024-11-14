@@ -15,19 +15,19 @@ Make sure you have installed [docker-compose](https://docs.docker.com/compose/) 
 ```sh
 docker compose build
 docker compose up server
-ENV="dev" docker compose run -it tests
+NOTIFICATION_TEST_ENV="dev" docker compose run -it tests
 ```
 
 You can also use the `Makefile` at the root of the project like so:
 ```sh
-ENV="stage" make notification-test
+NOTIFICATION_TEST_ENV="stage" make notification-test
 ```
 
-Be sure to run `make notification-test-clean` between successive test runs. 
+Be sure to run `make notification-test-clean` between successive test runs.
 
 ### Command line options
 
-```ENV``` : stage, dev, prod. This controls the URL that is set for the push server.
+```NOTIFICATION_TEST_ENV``` : stage, dev, prod. This controls the URL that is set for the push server.
 - stage: wss://autopush.stage.mozaws.net
 - dev: wss://autopush.dev.mozaws.net/
 - prod: wss://push.services.mozilla.com/
