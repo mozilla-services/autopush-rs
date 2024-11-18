@@ -50,7 +50,7 @@ impl RouterResponse {
     /// Build a successful (200 OK) router response
     pub fn success(location: String, ttl: usize) -> Self {
         RouterResponse {
-            status: StatusCode::OK,
+            status: StatusCode::CREATED,
             headers: {
                 let mut map = HashMap::new();
                 map.insert("Location", location);
