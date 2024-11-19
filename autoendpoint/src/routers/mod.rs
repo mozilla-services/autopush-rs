@@ -47,7 +47,8 @@ pub struct RouterResponse {
 }
 
 impl RouterResponse {
-    /// Build a successful (200 OK) router response
+    /// Build a successful (201 CREATED) router response
+    /// (Note, we return a 201 here for [RFC](https://datatracker.ietf.org/doc/html/rfc8030#section-5) compliance)
     pub fn success(location: String, ttl: usize) -> Self {
         RouterResponse {
             status: StatusCode::CREATED,
