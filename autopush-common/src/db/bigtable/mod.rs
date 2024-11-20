@@ -166,9 +166,25 @@ impl TryFrom<&str> for BigTableDbSettings {
         // specify the default string "default" if it's not specified.
         // There's a small chance that this could be reported as "unspecified", so this
         // removes that confusion.
-        if me.app_profile_id.is_empty() {
-            "default".clone_into(&mut me.app_profile_id);
-        }
+        // Looking at the python-bigtable code, this appears to be a unique value per instance
+        // https://github.com/googleapis/python-bigtable/blob/7ea3c23d7fd06a64dc87b5bad93134f05efb847b/docs/classic_client/snippets.py#L50
+        // with `unique_resource_id()` defined at
+        // https://github.com/googleapis/python-test-utils/blob/d7e04575661fab82167d2292653a541ec4a88699/test_utils/system.py#L70
+        // When we specified a simple static "default", we noticed a higher level of
+        // "Connection Resets" from the production Bigtable servers.
+        me.app_profile_id = format!(
+            "app-prof-{}-{}",
+            if me.app_profile_id.is_empty() {
+                "default".to_owned()
+            } else {
+                me.app_profile_id
+            },
+            // Python uses a string based on a ms timestamp, but since we deploy A LOT of these at the same time,
+            // I'm wondering if there's a risk for collision. Thus I'm using higher entropy UUIDv4.
+            // Forcing hyphenation to stay consistent. (Hopefully there's no string length limits, but since
+            // we aren't getting direction and the emulator doesn't care, YOLO!)
+            uuid::Uuid::new_v4().hyphenated()
+        );
 
         Ok(me)
     }
