@@ -255,8 +255,8 @@ mod tests {
             returned_header.unwrap().claims(),
             Ok(VapidClaims {
                 exp: 1713564872,
-                aud: Some("https://push.services.mozilla.com".to_string()),
-                sub: Some("mailto:admin@example.com".to_string())
+                aud: Some("https://push.services.mozilla.com".to_owned()),
+                sub: Some("mailto:admin@example.com".to_owned())
             })
         );
 
@@ -264,7 +264,7 @@ mod tests {
         let returned_header = VapidHeader::parse(VALID_HEADER);
         assert_eq!(
             returned_header.unwrap().insecure_sub(),
-            Ok("mailto:admin@example.com".to_string())
+            Ok("mailto:admin@example.com".to_owned())
         )
     }
 }
