@@ -3,7 +3,6 @@ use std::fmt;
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
 use crate::headers::util::split_key_value;
@@ -15,23 +14,23 @@ pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 The Assertion block for the VAPID header.
 
 Please note: We require the `sub` claim in addition to the `exp` and `aud`.
-See [HTTP Endpoints for Notficiations::Lexicon::{vapid_key}](https://mozilla-services.github.io/autopush-rs/http.html#lexicon-1)
+See [HTTP Endpoints for Notifications::Lexicon::{vapid_key}](https://mozilla-services.github.io/autopush-rs/http.html#lexicon-1)
 for details.
 
  */
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct VapidClaims {
     pub exp: u64,
-    pub aud: String,
-    pub sub: String,
+    pub aud: Option<String>,
+    pub sub: Option<String>,
 }
 
 impl Default for VapidClaims {
     fn default() -> Self {
         Self {
             exp: VapidClaims::default_exp(),
-            aud: "No audience".to_owned(),
-            sub: "No sub".to_owned(),
+            aud: None,
+            sub: None,
         }
     }
 }
@@ -143,25 +142,27 @@ impl VapidHeader {
         }
     }
 
-    pub fn sub(&self) -> Result<String, VapidError> {
-        let data: HashMap<String, Value> = serde_json::from_str(&self.token).map_err(|e| {
-            warn!("🔐 Vapid: {:?}", e);
-            VapidError::SubInvalid
+    /// Return the claimed `sub` after doing some minimal checks for validity.
+    /// WARNING: THIS FUNCTION DOES NOT VALIDATE THE VAPID HEADER AND SHOULD
+    /// ONLY BE USED FOR LOGGING AND METRIC REPORTING FUNCTIONS.
+    /// Proper validation should be done by [crate::extractors::subscription::validate_vapid_jwt()]
+    pub fn insecure_sub(&self) -> Result<String, VapidError> {
+        // This parses the VAPID header string
+        let data = VapidClaims::try_from(self.clone()).inspect_err(|e| {
+            warn!("🔐 Vapid: {:?} {:?}", e, &self.token);
         })?;
 
-        if let Some(sub_candiate) = data.get("sub") {
-            if let Some(sub) = sub_candiate.as_str() {
-                if !sub.starts_with("mailto:") || !sub.starts_with("https://") {
-                    info!("🔐 Vapid: Bad Format {:?}", sub);
-                    return Err(VapidError::SubBadFormat);
-                }
-                if sub.is_empty() {
-                    info!("🔐 Empty Vapid sub");
-                    return Err(VapidError::SubEmpty);
-                }
-                info!("🔐 Vapid: sub: {:?}", sub);
-                return Ok(sub.to_owned());
+        if let Some(sub) = data.sub {
+            if !sub.starts_with("mailto:") && !sub.starts_with("https://") {
+                info!("🔐 Vapid: Bad Format {:?}", sub);
+                return Err(VapidError::SubBadFormat);
             }
+            if sub.is_empty() {
+                info!("🔐 Empty Vapid sub");
+                return Err(VapidError::SubEmpty);
+            }
+            info!("🔐 Vapid: sub: {:?}", sub);
+            return Ok(sub.to_owned());
         }
         Err(VapidError::SubMissing)
     }
@@ -254,9 +255,16 @@ mod tests {
             returned_header.unwrap().claims(),
             Ok(VapidClaims {
                 exp: 1713564872,
-                aud: "https://push.services.mozilla.com".to_string(),
-                sub: "mailto:admin@example.com".to_string()
+                aud: Some("https://push.services.mozilla.com".to_string()),
+                sub: Some("mailto:admin@example.com".to_string())
             })
+        );
+
+        // Ensure the parent `.sub()` returns a valid value.
+        let returned_header = VapidHeader::parse(VALID_HEADER);
+        assert_eq!(
+            returned_header.unwrap().insecure_sub(),
+            Ok("mailto:admin@example.com".to_string())
         )
     }
 }
