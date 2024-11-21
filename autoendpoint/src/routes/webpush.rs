@@ -6,7 +6,7 @@ use crate::extractors::notification::Notification;
 use crate::extractors::routers::{RouterType, Routers};
 use crate::server::AppState;
 use actix_web::web::Data;
-use actix_web::HttpResponse;
+use actix_web::{HttpRequest, HttpResponse};
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 pub async fn webpush_route(
@@ -30,9 +30,11 @@ pub async fn webpush_route(
 
 /// Handle the `DELETE /m/{message_id}` route
 pub async fn delete_notification_route(
-    message_id: MessageId,
+    req: HttpRequest,
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
+    let message_id = MessageId::from_request(&app_state.fernet, req)
+        .map_err(|_| ApiErrorKind::InvalidMessageId)?;
     let sort_key = message_id.sort_key();
     debug!("Deleting notification with sort-key {}", sort_key);
     trace!("message_id = {:?}", message_id);
