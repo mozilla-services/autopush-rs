@@ -216,7 +216,8 @@ impl WebPushRouter {
                             vapid
                                 .vapid
                                 .claims()
-                                .map(|c| c.sub.unwrap_or_default())
+                                .ok()
+                                .and_then(|c| c.sub)
                                 .unwrap_or_default()
                         }),
                     )),
