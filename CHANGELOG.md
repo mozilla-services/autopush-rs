@@ -1,3 +1,29 @@
+<a name="1.72.1"></a>
+## 1.72.1 (2024-11-21)
+
+
+#### Bug Fixes
+
+*   Address insecure sub header fetch.  (#803) ([53d90aa9](https://github.com/mozilla-services/autopush-rs/commit/53d90aa9c15a58b6878be854622e058c98c56b21))
+*   Do not return status 200 for router messages (#801) ([a3d23013](https://github.com/mozilla-services/autopush-rs/commit/a3d230131a02a29c1a91a5125192540361b7593d), closes [#800](https://github.com/mozilla-services/autopush-rs/issues/800))
+
+#### Chore
+
+*   update actix-ws to 0.3 (#799) ([6141a905](https://github.com/mozilla-services/autopush-rs/commit/6141a9052a5b6e8054d5bcd9acbb2152b82ee081))
+* **deps-dev:**  bump werkzeug from 3.0.3 to 3.0.6 in /tests (#790) ([50ab4a01](https://github.com/mozilla-services/autopush-rs/commit/50ab4a01ee9980208a8f3b856146ca1747998906))
+* **load:**  update scripts to use artifact registry (#792) ([d64178f4](https://github.com/mozilla-services/autopush-rs/commit/d64178f478d2b333c6c785448c94bb30004d153d))
+* **notification-tests:**  specify platform linux/amd64 in docker-compose.yml so that Docker knows to use an emulation layer when running on an arm based machine ([ae303044](https://github.com/mozilla-services/autopush-rs/commit/ae303044ba8d3ee77493a0541f318aac56c122b5))
+
+#### Refactor
+
+* **integration:**  replace pytest.skip with pytest markers (#798) ([84f1fe8e](https://github.com/mozilla-services/autopush-rs/commit/84f1fe8eb863d802d20ae9ff321d78b4aabaf303))
+
+#### Features
+
+*   Add database tracking and report for Push Reliability (#769) ([e95063cc](https://github.com/mozilla-services/autopush-rs/commit/e95063cc0fba45bc961cac8a665cdc0fa4008546))
+
+
+
 <a name="1.72.0"></a>
 ## 1.72.0 (2024-10-11)
 
