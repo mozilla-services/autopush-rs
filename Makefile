@@ -2,8 +2,9 @@ SHELL := /bin/sh
 CARGO = cargo
 TESTS_DIR := tests
 TEST_RESULTS_DIR ?= workspace/test-results
-PYTEST_ARGS ?=
+PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
 INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
+NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
@@ -29,17 +30,26 @@ upgrade:
 
 integration-test-legacy:
 	$(POETRY) -V
-	$(POETRY) install --without dev,load --no-root
+	$(POETRY) install --without dev,load,notification --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
 		-v $(PYTEST_ARGS)
 
 integration-test:
 	$(POETRY) -V
-	$(POETRY) install --without dev,load --no-root
+	$(POETRY) install --without dev,load,notification --no-root
 		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
+
+notification-test:
+	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml build
+	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml up -d server
+	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml run -e NOTIFICATION_TEST_ENV=$(NOTIFICATION_TEST_ENV) --remove-orphans -it --name notification-tests tests
+	docker cp notification-tests:/code/notification-tests.xml $(NOTIFICATION_TEST_DIR)
+
+notification-test-clean:
+	docker rm notification-tests
 
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code
@@ -72,7 +82,7 @@ pydocstyle: $(INSTALL_STAMP)  ##  Run pydocstyle
 
 lint:
 	$(POETRY) -V
-	$(POETRY) install --no-root
+	$(POETRY) install
 	$(POETRY) run isort --sp $(PYPROJECT_TOML) -c $(TESTS_DIR)
 	$(POETRY) run black --quiet --diff --config $(PYPROJECT_TOML) --check $(TESTS_DIR)
 	$(POETRY) run flake8 --config $(FLAKE8_CONFIG) $(TESTS_DIR)

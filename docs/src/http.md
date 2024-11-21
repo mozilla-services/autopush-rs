@@ -125,14 +125,22 @@ spec](https://tools.ietf.org/html/draft-thomson-webpush-http2-02#section-5).
 
 **Return Codes:**
 
+_**Note**_
+The [Push RFC](https://datatracker.ietf.org/doc/html/rfc8030#section-5) notes the HTTP response codes that should be returned.
+Autopush cannot support the [Push Message Receipt](https://datatracker.ietf.org/doc/html/rfc8030#section-5.1) at this time, so
+Autopush should only return a 201 response. (Previously, Autopush would return a 202 indicating that the message was stored for
+later retrieval.) Autopush cannot guarantee end-to-end delivery of a message due to the nature of how it handles subscription
+updates to mobile devices. The "Bridge" protocols do not support this feature, and if possible, Autopush should not disclose
+the type of UserAgent to the Subscription provider.
+
 - statuscode 404  
   Push subscription is invalid.
 
-- statuscode 202  
- Message stored for delivery to client at a later time.
+- statuscode 410
+  Push subscription is no longer available.
 
-- statuscode 200  
- Message delivered to node client is connected to.
+- statuscode 201  
+ Message delivered to node or bridge the client is connected to.
 
 ### Message Topics
 

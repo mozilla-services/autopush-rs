@@ -35,7 +35,7 @@ pub mod util;
 /// That gets back to the concept that Push messages are supposed to be "timely".
 /// A user may not appreciate that they have an undelivered calendar reminder from
 /// 58 days ago, nor should they be interested in a meeting alert that happened last
-/// month. When a User Agent (UA) connects, it recieves all pending messages. If
+/// month. When a User Agent (UA) connects, it receives all pending messages. If
 /// a user has not used the User Agent in more than
 /// [60 days](https://searchfox.org/mozilla-central/search?q=OFFER_PROFILE_RESET_INTERVAL_MS),
 /// the User Agent suggest "refreshing Firefox", which essentially throws away one's
@@ -45,7 +45,10 @@ pub mod util;
 /// "abandoned" and any router info assigned to a User Agent that has not contacted
 /// Autopush in 60 days can be discarded.
 ///
+const ONE_DAY_IN_SECONDS: u64 = 24 * 60 * 60;
 /// The maximum TTL for notifications, 30 days in seconds
-pub const MAX_NOTIFICATION_TTL: u64 = 30 * 24 * 60 * 60;
+pub const MAX_NOTIFICATION_TTL: u64 = 30 * ONE_DAY_IN_SECONDS;
+/// FCM has a max TTL of 4 weeks.
+pub const MAX_FCM_NOTIFICATION_TTL: u64 = 4 * 7 * ONE_DAY_IN_SECONDS;
 /// The maximum TTL for router records, 60 days in seconds
 pub const MAX_ROUTER_TTL: u64 = 2 * MAX_NOTIFICATION_TTL;
