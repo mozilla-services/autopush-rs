@@ -50,8 +50,14 @@ pub struct BigTableDbSettings {
     pub table_name: String,
     /// Routing replication profile id.
     /// Should be used everywhere we set `table_name` when creating requests
+    /// NOTE: We set this value to "default" and noticed an uptick in server
+    /// errors. We decided to make this an optional setting to see if providing
+    /// this value was the cause of the server errors. It is not clear what
+    /// this value is used for by the Bigtable server, nor what values we should
+    /// use, and the `set_app_profile_id()` function may be doing something
+    /// different than what we expect.
     #[serde(default)]
-    pub app_profile_id: String,
+    pub app_profile_id: Option<String>,
     #[serde(default)]
     pub router_family: String,
     #[serde(default)]
@@ -154,7 +160,7 @@ impl BigTableDbSettings {
 impl TryFrom<&str> for BigTableDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
-        let mut me: Self = serde_json::from_str(setting_string)
+        let me: Self = serde_json::from_str(setting_string)
             .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))?;
 
         if me.table_name.starts_with('/') {
@@ -162,13 +168,6 @@ impl TryFrom<&str> for BigTableDbSettings {
                 "Table name path begins with a '/'".to_owned(),
             ));
         };
-
-        // specify the default string "default" if it's not specified.
-        // There's a small chance that this could be reported as "unspecified", so this
-        // removes that confusion.
-        if me.app_profile_id.is_empty() {
-            "default".clone_into(&mut me.app_profile_id);
-        }
 
         Ok(me)
     }
