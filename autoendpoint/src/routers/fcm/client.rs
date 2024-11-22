@@ -117,6 +117,7 @@ impl FcmClient {
             .http_client
             .post(self.endpoint.clone())
             .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/json")
             .json(&message)
             .timeout(self.timeout)
             .send()
@@ -150,10 +151,13 @@ impl FcmClient {
             return Err(match (status, data.error) {
                 (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
                 (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
-                (_, Some(error)) => RouterError::Upstream {
-                    status: error.status,
-                    message: error.message,
-                },
+                (_, Some(error)) => {
+                    info!("🌉Bridge Error: {:?}, {:?}", error.message, &self.endpoint);
+                    RouterError::Upstream {
+                        status: error.status,
+                        message: error.message,
+                    }
+                }
                 (status, None) => RouterError::Upstream {
                     status: status.to_string(),
                     message: "Unknown reason".to_string(),
