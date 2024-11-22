@@ -585,11 +585,9 @@ mod tests {
             settings: ApnsSettings::default(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
-            db,
+            db: db.clone(),
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(
-                PushReliability::new(&None, Box::new(MockDbClient::new())).unwrap(),
-            ),
+            reliability: Arc::new(PushReliability::new(&None, db.clone()).unwrap()),
         }
     }
 

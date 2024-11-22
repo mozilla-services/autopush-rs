@@ -266,9 +266,9 @@ mod tests {
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
-            db,
+            db.clone(),
             #[cfg(feature = "reliable_report")]
-            Arc::new(PushReliability::new(&None, Box::new(MockDbClient::new())).unwrap()),
+            Arc::new(PushReliability::new(&None, db.clone()).unwrap()),
         )
         .await
         .unwrap()

@@ -380,20 +380,19 @@ mod test {
 
     fn make_router(db: Box<dyn DbClient>) -> WebPushRouter {
         WebPushRouter {
-            db,
+            db: db.box_clone(),
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(
-                PushReliability::new(&None, Box::new(MockDbClient::new())).unwrap(),
-            ),
+            reliability: Arc::new(PushReliability::new(&None, db).unwrap()),
         }
     }
 
     #[tokio::test]
     async fn pass_extras() {
-        let router = make_router(Box::new(MockDbClient::new()));
+        let db = MockDbClient::new().into_boxed_arc();
+        let router = make_router(db);
         let sub = "foo@example.com";
         let vapid = make_vapid(
             sub,

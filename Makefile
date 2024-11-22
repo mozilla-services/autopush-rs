@@ -2,7 +2,19 @@ SHELL := /bin/sh
 CARGO = cargo
 TESTS_DIR := tests
 TEST_RESULTS_DIR ?= workspace/test-results
-PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
+# Markers are "clever", and work by including multiple markers with " and ".
+# This uses makefile magic to construct the set of items.
+# technically `$(eval )` would work here, but I've not had it work consistently.
+# The following is taken from [the makefile manual](https://www.gnu.org/software/make/manual/make.html#Syntax-of-Functions)
+NOOP :=
+SPACE :=$(NOOP) $(NOOP)
+PYTEST_AND :=" and "
+# specify the tests to NOT run
+# NOTE: passing `-m not` to pytest will cause an error be sure at least one of these is set.
+NEG_PYTEST_ARGS ?= $(if $(SKIP_SENTRY),sentry) $(if $(TEST_STUB),,stub) $(if $(TEST_RELIABILITY),,reliable_report) # Stub tests do not work in CI
+# Now compose the pytest args by gluing the above items together
+NEG_PYTEST_ARGS := "not $(subst $(SPACE), and not ,$(strip $(NEG_PYTEST_ARGS)))"
+PYTEST_ARGS := -m $(NEG_PYTEST_ARGS)
 INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
@@ -38,7 +50,7 @@ integration-test-legacy:
 integration-test:
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
-		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
+	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
 

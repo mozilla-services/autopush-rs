@@ -276,7 +276,7 @@ mod tests {
     fn extract_sub() {
         let header = VapidHeader::parse(VALID_HEADER).unwrap();
         assert_eq!(
-            header.sub().unwrap(),
+            header.insecure_sub().unwrap(),
             "mailto:admin@example.com".to_string()
         );
     }
