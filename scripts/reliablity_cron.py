@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 import os
-import pdb
 import time
 from typing import cast
 
@@ -43,9 +42,6 @@ class Counter:
 
     def __init__(self, log: logging.Logger, settings: argparse.Namespace):
         try:
-            import pdb
-
-            pdb.set_trace()
             self.redis = redis.Redis.from_url(settings.reliability_dsn)
             self.bigtable = BigtableDataClientAsync(
                 project=settings.bigtable["project"]
@@ -66,7 +62,6 @@ class Counter:
         log_family = self.settings.log_family
 
         # Fetch the candidates to purge.
-        pdb.set_trace()
         mutations = list()
         purged = cast(
             list[bytes], self.redis.zrange(expiry, -1, int(start), byscore=True)

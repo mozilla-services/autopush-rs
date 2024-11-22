@@ -746,7 +746,7 @@ impl BigTableClientImpl {
             }
             if let Some(cell) = row.take_cell("reliable_state") {
                 notif.reliable_state = Some(
-                    crate::reliability::PushReliabilityState::from_str(&to_string(
+                    crate::reliability::ReliabilityState::from_str(&to_string(
                         cell.value,
                         "reliable_state",
                     )?)
@@ -1455,7 +1455,7 @@ impl DbClient for BigTableClientImpl {
     async fn log_report(
         &self,
         reliability_id: &str,
-        new_state: crate::reliability::PushReliabilityState,
+        new_state: crate::reliability::ReliabilityState,
     ) -> DbResult<()> {
         let row_key = reliability_id.to_owned();
 

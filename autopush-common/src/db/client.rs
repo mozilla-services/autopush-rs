@@ -112,7 +112,7 @@ pub trait DbClient: Send + Sync {
     async fn log_report(
         &self,
         reliability_id: &str,
-        state: crate::reliability::PushReliabilityState,
+        state: crate::reliability::ReliabilityState,
     ) -> DbResult<()>;
 
     fn box_clone(&self) -> Box<dyn DbClient>;

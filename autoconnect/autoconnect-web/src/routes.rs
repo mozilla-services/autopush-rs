@@ -21,38 +21,35 @@ pub async fn push_route(
     notif: web::Json<Notification>,
     app_state: web::Data<AppState>,
 ) -> HttpResponse {
-    #[allow(unused_mut)] // Needed for "reliable_report"
-    let mut notif = notif.into_inner();
-    #[cfg(feature = "reliable_report")]
-    {
-        notif.reliable_state = app_state
-            .reliability
-            .record(
-                &notif.reliability_id,
-                autopush_common::reliability::PushReliabilityState::IntAccepted,
-                &notif.reliable_state,
-                Some(notif.timestamp + notif.ttl),
-            )
-            .await;
-    }
     trace!(
         "⏩ in push_route, uaid: {} channel_id: {}",
         uaid,
         notif.channel_id,
     );
     #[cfg(feature = "reliable_report")]
-    let expiry = {
+    let (mut notif, expiry) = {
+        let mut notif = notif.into_inner();
+        let expiry = Some(notif.timestamp + notif.ttl);
+        notif.reliable_state = app_state
+            .reliability
+            .record(
+                &notif.reliability_id,
+                autopush_common::reliability::ReliabilityState::IntAccepted,
+                &notif.reliable_state,
+                expiry,
+            )
+            .await;
         // Set "transmitted" a bit early since we can't do this inside of `notify`.
         notif.reliable_state = app_state
             .reliability
             .record(
                 &notif.reliability_id,
-                autopush_common::reliability::PushReliabilityState::Transmitted,
+                autopush_common::reliability::ReliabilityState::Transmitted,
                 &notif.reliable_state,
-                Some(notif.timestamp + notif.ttl),
+                expiry,
             )
             .await;
-        Some(notif.timestamp + notif.ttl)
+        (notif, expiry)
     };
     // Attempt to send the notification to the UA using WebSocket protocol, or store on failure.
     let result = app_state
@@ -67,7 +64,7 @@ pub async fn push_route(
                 .reliability
                 .record(
                     &notif.reliability_id,
-                    autopush_common::reliability::PushReliabilityState::Accepted,
+                    autopush_common::reliability::ReliabilityState::Accepted,
                     &notif.reliable_state,
                     expiry,
                 )

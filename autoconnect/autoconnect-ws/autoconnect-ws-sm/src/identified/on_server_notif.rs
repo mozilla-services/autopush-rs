@@ -168,11 +168,10 @@ impl WebPushClient {
     async fn record_state(
         &self,
         messages: &mut Vec<Notification>,
-        state: autopush_common::reliability::PushReliabilityState,
+        state: autopush_common::reliability::ReliabilityState,
     ) {
         // *Note* because `.map()` is sync
         // we can't call the async func without additional hoops.
-        // I'm guessing that there's a more elegant way to do this, but this works for now.
         for message in messages {
             let expiry = message.timestamp + message.ttl;
             message.reliable_state = self
@@ -221,7 +220,7 @@ impl WebPushClient {
             // Since we pulled these from storage, mark them as "retrieved"
             self.record_state(
                 &mut messages.messages,
-                autopush_common::reliability::PushReliabilityState::Retreived,
+                autopush_common::reliability::ReliabilityState::Retrieved,
             )
             .await;
             messages
@@ -284,7 +283,7 @@ impl WebPushClient {
             // Since we pulled these from storage, mark them as "retrieved"
             self.record_state(
                 &mut timestamp_resp.messages,
-                autopush_common::reliability::PushReliabilityState::Retreived,
+                autopush_common::reliability::ReliabilityState::Retrieved,
             )
             .await;
         }

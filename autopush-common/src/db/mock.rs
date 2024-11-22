@@ -99,7 +99,7 @@ impl DbClient for Arc<MockDbClient> {
     async fn log_report(
         &self,
         reliability_id: &str,
-        state: crate::reliability::PushReliabilityState,
+        state: crate::reliability::ReliabilityState,
     ) -> DbResult<()> {
         Arc::as_ref(self).log_report(reliability_id, state).await
     }

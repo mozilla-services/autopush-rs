@@ -1,5 +1,5 @@
 #[cfg(feature = "reliable_report")]
-use autopush_common::reliability::{PushReliability, PushReliabilityState};
+use autopush_common::reliability::{PushReliability, ReliabilityState};
 use autopush_common::{db::client::DbClient, MAX_NOTIFICATION_TTL};
 
 use crate::error::ApiResult;
@@ -193,7 +193,7 @@ impl Router for FcmRouter {
         self.reliability
             .record(
                 &notification.subscription.reliability_id,
-                PushReliabilityState::Transmitted,
+                ReliabilityState::Transmitted,
                 &notification.reliable_state,
                 notification.expiry,
             )
@@ -268,7 +268,7 @@ mod tests {
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             db,
             #[cfg(feature = "reliable_report")]
-            Arc::new(PushReliability::new(&None, &None).unwrap()),
+            Arc::new(PushReliability::new(&None, Box::new(MockDbClient::new())).unwrap()),
         )
         .await
         .unwrap()

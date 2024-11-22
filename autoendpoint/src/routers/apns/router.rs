@@ -1,6 +1,6 @@
 use autopush_common::db::client::DbClient;
 #[cfg(feature = "reliable_report")]
-use autopush_common::reliability::{PushReliability, PushReliabilityState};
+use autopush_common::reliability::{PushReliability, ReliabilityState};
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
@@ -489,7 +489,7 @@ impl Router for ApnsRouter {
             self.reliability
                 .record(
                     &notification.subscription.reliability_id,
-                    PushReliabilityState::Transmitted,
+                    ReliabilityState::Transmitted,
                     &notification.reliable_state,
                     notification.expiry,
                 )
@@ -587,7 +587,9 @@ mod tests {
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             db,
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(PushReliability::new(&None, &None).unwrap()),
+            reliability: Arc::new(
+                PushReliability::new(&None, Box::new(MockDbClient::new())).unwrap(),
+            ),
         }
     }
 

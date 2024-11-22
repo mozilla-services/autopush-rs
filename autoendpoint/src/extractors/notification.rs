@@ -28,7 +28,7 @@ pub struct Notification {
     pub data: Option<String>,
     #[cfg(feature = "reliable_report")]
     /// The current state the message was in (if tracked)
-    pub reliable_state: Option<autopush_common::reliability::PushReliabilityState>,
+    pub reliable_state: Option<autopush_common::reliability::ReliabilityState>,
     #[cfg(feature = "reliable_report")]
     /// The UTC expiration timestamp for this message
     pub expiry: Option<u64>,
@@ -89,7 +89,7 @@ impl FromRequest for Notification {
                     .reliability
                     .record(
                         &subscription.reliability_id,
-                        autopush_common::reliability::PushReliabilityState::Received,
+                        autopush_common::reliability::ReliabilityState::Received,
                         &None,
                         expiry,
                     )

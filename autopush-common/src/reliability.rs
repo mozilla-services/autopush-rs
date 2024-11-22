@@ -15,35 +15,36 @@ pub const COUNTS: &str = "state_counts";
 pub const EXPIRY: &str = "expiry";
 
 /// The various states that a message may transit on the way from reception to delivery.
+// Note: "Message" in this context refers to the Subscription Update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-pub enum PushReliabilityState {
+pub enum ReliabilityState {
     #[serde(rename = "received")]
-    Received, // Subscription was received by the Push Server
+    Received, // Message was received by the Push Server
     #[serde(rename = "stored")]
-    Stored, // Subscription was stored because it could not be delivered immediately
-    #[serde(rename = "retreived")]
-    Retreived, // Subscription was taken from storage for delivery
+    Stored, // Message was stored because it could not be delivered immediately
+    #[serde(rename = "retrieved")]
+    Retrieved, // Message was taken from storage for delivery
     #[serde(rename = "transmitted_webpush")]
-    IntTransmitted, // Subscription was handed off between autoendpoint and autoconnect
+    IntTransmitted, // Message was handed off between autoendpoint and autoconnect
     #[serde(rename = "accepted_webpush")]
-    IntAccepted, // Subscription was accepted by autoconnect from autopendpoint
+    IntAccepted, // Message was accepted by autoconnect from autopendpoint
     #[serde(rename = "transmitted")]
-    Transmitted, // Subscription was handed off for delivery to the UA
+    Transmitted, // Message was handed off for delivery to the UA
     #[serde(rename = "accepted")]
-    Accepted, // Subscription was accepted for delivery by the UA
+    Accepted, // Message was accepted for delivery by the UA
     #[serde(rename = "delivered")]
-    Delivered, // Subscription was provided to the WebApp recipient by the UA
+    Delivered, // Message was provided to the WebApp recipient by the UA
     #[serde(rename = "expired")]
-    Expired, // Subscription expired naturally (e.g. TTL=0)
+    Expired, // Message expired naturally (e.g. TTL=0)
 }
 
 // TODO: Differentiate between "transmitted via webpush" and "transmitted via bridge"?
-impl std::fmt::Display for PushReliabilityState {
+impl std::fmt::Display for ReliabilityState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Received => "received",
             Self::Stored => "stored",
-            Self::Retreived => "retrieved",
+            Self::Retrieved => "retrieved",
             Self::Transmitted => "transmitted",
             Self::IntTransmitted => "transmitted_webpush",
             Self::IntAccepted => "accepted_webpush",
@@ -54,14 +55,14 @@ impl std::fmt::Display for PushReliabilityState {
     }
 }
 
-impl std::str::FromStr for PushReliabilityState {
+impl std::str::FromStr for ReliabilityState {
     type Err = ApcError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
             "received" => Self::Received,
             "stored" => Self::Stored,
-            "retrieved" => Self::Retreived,
+            "retrieved" => Self::Retrieved,
             "transmitted" => Self::Transmitted,
             "accepted" => Self::Accepted,
             "transmitted_webpush" => Self::IntTransmitted,
@@ -77,7 +78,7 @@ impl std::str::FromStr for PushReliabilityState {
     }
 }
 
-impl serde::Serialize for PushReliabilityState {
+impl serde::Serialize for ReliabilityState {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -86,18 +87,21 @@ impl serde::Serialize for PushReliabilityState {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct PushReliability {
     client: Option<Arc<redis::Client>>,
-    db: Option<Box<dyn DbClient>>,
+    db: Box<dyn DbClient>,
 }
 
 impl PushReliability {
     // Do the magic to make a report instance, whatever that will be.
-    pub fn new(reliability_dsn: &Option<String>, db: &Option<Box<dyn DbClient>>) -> Result<Self> {
+    pub fn new(reliability_dsn: &Option<String>, db: Box<dyn DbClient>) -> Result<Self> {
         if reliability_dsn.is_none() {
             debug!("🔍 No reliability DSN declared.");
-            return Ok(Self::default());
+            return Ok(Self {
+                client: None,
+                db: db.clone(),
+            });
         };
 
         let client = if let Some(dsn) = reliability_dsn {
@@ -119,14 +123,13 @@ impl PushReliability {
     pub async fn record(
         &self,
         reliability_id: &Option<String>,
-        new: PushReliabilityState,
-        old: &Option<PushReliabilityState>,
+        new: ReliabilityState,
+        old: &Option<ReliabilityState>,
         expr: Option<u64>,
-    ) -> Option<PushReliabilityState> {
-        if reliability_id.is_none() {
+    ) -> Option<ReliabilityState> {
+        let Some(id) = reliability_id else {
             return None;
-        }
-        let id = reliability_id.clone().unwrap();
+        };
         if let Some(client) = &self.client {
             debug!(
                 "🔍 {} from {} to {}",
@@ -155,13 +158,11 @@ impl PushReliability {
                     });
             }
         };
-        if let Some(db) = &self.db {
-            // Errors are not fatal, and should not impact message flow, but
-            // we should record them somewhere.
-            let _ = db.log_report(&id, new).await.inspect_err(|e| {
-                warn!("🔍 Unable to record reliability state: {:?}", e);
-            });
-        }
+        // Errors are not fatal, and should not impact message flow, but
+        // we should record them somewhere.
+        let _ = self.db.log_report(id, new).await.inspect_err(|e| {
+            warn!("🔍 Unable to record reliability state: {:?}", e);
+        });
         Some(new)
     }
 

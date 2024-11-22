@@ -70,7 +70,7 @@ impl Router for WebPushRouter {
                     .reliability
                     .record(
                         &notification.reliability_id,
-                        autopush_common::reliability::PushReliabilityState::IntTransmitted,
+                        autopush_common::reliability::ReliabilityState::IntTransmitted,
                         &notification.reliable_state,
                         notification.expiry,
                     )
@@ -143,7 +143,7 @@ impl Router for WebPushRouter {
                     .reliability
                     .record(
                         &notification.reliability_id,
-                        autopush_common::reliability::PushReliabilityState::Expired,
+                        autopush_common::reliability::ReliabilityState::Expired,
                         &notification.reliable_state,
                         notification.expiry,
                     )
@@ -288,7 +288,7 @@ impl WebPushRouter {
                 .reliability
                 .record(
                     &notification.subscription.reliability_id,
-                    autopush_common::reliability::PushReliabilityState::Stored,
+                    autopush_common::reliability::ReliabilityState::Stored,
                     &notification.reliable_state,
                     notification.expiry,
                 )
@@ -380,7 +380,9 @@ mod test {
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(PushReliability::new(&None, &None).unwrap()),
+            reliability: Arc::new(
+                PushReliability::new(&None, Box::new(MockDbClient::new())).unwrap(),
+            ),
         }
     }
 

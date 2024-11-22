@@ -72,36 +72,23 @@ impl FromRequest for Subscription {
                 .transpose()?;
             trace!("raw vapid: {:?}", &vapid);
             // Validate the VAPID JWT token, fetch the claims, and record the version
-            let vapid = if let Some(with_key) = vapid {
+            if let Some(with_key) = vapid.clone() {
                 // Validate the VAPID JWT token and record the version
                 validate_vapid_jwt(&with_key, &app_state.settings, &app_state.metrics)?;
                 app_state.metrics.incr(&format!(
                     "updates.vapid.draft{:02}",
                     with_key.vapid.version()
                 ))?;
-                Some(with_key)
-            } else {
-                None
             };
-
+            // If this is a known VAPID key, create a reliability_id from
+            // either the content of the vapid assertions, or the request
+            // header value, or just make one up.
             let reliability_id: Option<String> = vapid.as_ref().and_then(|v| {
                 app_state
                     .reliability_filter
                     .is_trackable(v)
                     .then(|| app_state.reliability_filter.get_id(req.headers()))
             });
-            debug!("🔍 Assigning Reliability ID: {reliability_id:?}");
-
-            trace!("🔐 raw vapid: {:?}", &vapid);
-            let reliability_id = vapid
-                .as_ref()
-                .map(|v| {
-                    app_state
-                        .reliability_filter
-                        .is_trackable(v)
-                        .then(|| app_state.reliability_filter.get_id(req.headers()))
-                })
-                .unwrap_or_default();
             trace!("🔍 track_id: {:?}", reliability_id);
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub

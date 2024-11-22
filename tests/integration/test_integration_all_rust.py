@@ -827,13 +827,12 @@ async def test_basic_delivery_with_vapid(
         assert result.get("reliability_id") is None, "Tracking unknown message"
 
 
+@pytest.mark.reliable_report
 async def test_basic_delivery_with_tracked_vapid(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
 ) -> None:
     """Test delivery of a basic push message with a VAPID header."""
-    if os.environ.get("RELIABLE_REPORT") is None:
-        pytest.skip("RELIABLE_REPORT not set, skipping test.")
     # TODO: connect to test redis server and redis.flushall()
     uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(key=TRACKING_KEY, payload=vapid_payload)
