@@ -1,0 +1,13 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: autopush
+  description: Mozilla's Web Push server
+spec:
+  type: url
+  lifecycle: production
+  owner: push-admin@mozilla.com
+  system: sync-ecosystem
+  targets:
+    - ./autoconnect/catalog-info.yaml
+    - ./autoendpoint/catalog-info.yaml
