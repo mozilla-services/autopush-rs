@@ -512,9 +512,8 @@ impl BigTableClientImpl {
                     let resp: grpcio::ClientSStreamReceiver<bigtable::ReadRowsResponse> = bigtable
                         .conn
                         .read_rows_opt(&req, call_opts(self.metadata.clone()))
-                        .map_err(|e| {
+                        .inspect_err(|e| {
                             warn!("🉑 Read Rows failed: {:?}", &e);
-                            e
                         })?;
                     merge::RowMerger::process_chunks(resp).await.map_err(|e| {
                         warn!("🉑 Process Chunks failed {:?}", e);
