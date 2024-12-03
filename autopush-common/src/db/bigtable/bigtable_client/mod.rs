@@ -509,15 +509,23 @@ impl BigTableClientImpl {
         let resp = retry_policy(self.settings.retry_count)
             .retry_if(
                 || async {
-                    bigtable
+                    let resp: grpcio::ClientSStreamReceiver<bigtable::ReadRowsResponse> = bigtable
                         .conn
                         .read_rows_opt(&req, call_opts(self.metadata.clone()))
+                        .map_err(|e| {
+                            warn!("🉑 Read Rows failed: {:?}", &e);
+                            e
+                        })?;
+                    merge::RowMerger::process_chunks(resp).await.map_err(|e| {
+                        warn!("🉑 Process Chunks failed {:?}", e);
+                        grpcio::Error::RemoteStopped
+                    })
                 },
                 retryable_error(self.metrics.clone()),
             )
             .await
             .map_err(error::BigTableError::Read)?;
-        merge::RowMerger::process_chunks(resp).await
+        Ok(resp)
     }
 
     /// write a given row.
@@ -531,7 +539,18 @@ impl BigTableClientImpl {
         // below. For now, let's just presume a write and be done.
         let mutations = self.get_mutations(row.cells)?;
         req.set_mutations(mutations);
-        self.mutate_row(req).await?;
+        retry_policy(self.settings.retry_count)
+            .retry_if(
+                || async {
+                    self.mutate_row(req.clone()).await.map_err(|e| {
+                        warn!("🉑 write row failed {:?}", &e);
+                        grpcio::Error::RemoteStopped
+                    })
+                },
+                retryable_error(self.metrics.clone()),
+            )
+            .await
+            .map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
