@@ -404,7 +404,7 @@ mod tests {
         Notification {
             channel_id: *channel_id,
             ttl,
-            timestamp: sec_since_epoch(),
+            recv_timestamp: sec_since_epoch(),
             sortkey_timestamp: Some(ms_since_epoch()),
             ..Default::default()
         }
@@ -421,7 +421,7 @@ mod tests {
     async fn expired_increments_storage() {
         let mut db = MockDbClient::new();
         let mut seq = mockall::Sequence::new();
-        let timestamp = sec_since_epoch();
+        let timestamp = ms_since_epoch();
         // No topic messages
         db.expect_fetch_topic_messages()
             .times(1)
@@ -465,7 +465,6 @@ mod tests {
             .in_sequence(&mut seq)
             .withf(move |_, ts| ts == &timestamp)
             .return_once(|_, _| Ok(()));
-
         // No check_storage called here (via default ClientFlags)
         let (mut client, _) = wpclient(
             DUMMY_UAID,

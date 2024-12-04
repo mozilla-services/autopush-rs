@@ -29,7 +29,7 @@ pub(crate) struct PartialCell {
     /// Timestamps are returned as microseconds, but need to be
     /// specified as milliseconds (even though the function asks
     /// for microseconds, you * 1000 the mls).
-    pub(crate) timestamp: SystemTime,
+    pub(crate) timestamp_st: SystemTime,
     /// Not sure if or how these are used
     pub(crate) labels: Vec<String>,
     /// The data buffer.
@@ -43,7 +43,7 @@ impl Default for PartialCell {
         Self {
             family: String::default(),
             qualifier: String::default(),
-            timestamp: SystemTime::now(),
+            timestamp_st: SystemTime::now(),
             labels: Vec::new(),
             value: Vec::new(),
             value_index: 0,
@@ -210,7 +210,7 @@ impl RowMerger {
         // record the timestamp for this cell. (Note: this is not the clock time that it was
         // created, but the timestamp that was used for it's creation. It is used by the
         // garbage collector.)
-        cell.timestamp =
+        cell.timestamp_st =
             SystemTime::UNIX_EPOCH + Duration::from_micros(chunk.timestamp_micros as u64);
 
         // If there are additional labels for this cell, record them.
@@ -320,7 +320,7 @@ impl RowMerger {
             row_in_progress.last_qualifier.clone_from(&qualifier);
             let qualifier_cells = vec![Cell {
                 family: cell_in_progress.family.clone(),
-                timestamp: cell_in_progress.timestamp,
+                timestamp_st: cell_in_progress.timestamp_st,
                 labels: cell_in_progress.labels.clone(),
                 qualifier: cell_in_progress.qualifier.clone(),
                 value: cell_in_progress.value.clone(),
@@ -336,7 +336,7 @@ impl RowMerger {
         }
 
         // reset the cell in progress
-        cell_in_progress.timestamp = SystemTime::now();
+        cell_in_progress.timestamp_st = SystemTime::now();
         cell_in_progress.value.clear();
         cell_in_progress.value_index = 0;
 

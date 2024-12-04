@@ -90,6 +90,7 @@ pub struct ClientAck {
     pub channel_id: Uuid,
     // The corresponding version number for the message.
     pub version: String,
+    pub code: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]

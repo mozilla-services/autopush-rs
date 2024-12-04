@@ -17,7 +17,7 @@ pub struct Cell {
     pub value_index: usize,
     /// "Timestamp" in milliseconds. This value is used by the family
     /// garbage collection rules and may not reflect reality.
-    pub timestamp: SystemTime,
+    pub timestamp_st: SystemTime,
     pub labels: Vec<String>, // not sure if these are used?
 }
 
@@ -26,7 +26,7 @@ impl Default for Cell {
         Self {
             family: String::default(),
             qualifier: String::default(),
-            timestamp: SystemTime::now(),
+            timestamp_st: SystemTime::now(),
             labels: Vec::new(),
             value: Vec::new(),
             value_index: 0,
@@ -41,7 +41,7 @@ impl From<PartialCell> for Cell {
             qualifier: partial.qualifier,
             value: partial.value,
             value_index: partial.value_index,
-            timestamp: partial.timestamp,
+            timestamp_st: partial.timestamp_st,
             labels: partial.labels,
         }
     }

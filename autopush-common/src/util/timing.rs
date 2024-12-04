@@ -19,13 +19,6 @@ pub fn ms_utc_midnight() -> u64 {
         .timestamp_millis() as u64
 }
 
-/// Get the time since the UNIX epoch in microseconds
-#[allow(dead_code)]
-pub fn us_since_epoch() -> u64 {
-    let now = Utc::now();
-    (now.timestamp() as u64) * 1_000_000 + (now.timestamp_subsec_micros() as u64)
-}
-
 /// Display a formatted date-time string from a SystemTime
 ///
 /// (This is useful in dev/debugging)
@@ -39,7 +32,7 @@ pub fn date_string_from_systemtime(ts: std::time::SystemTime) -> String {
 ///
 /// (This is useful in dev/debugging)
 #[allow(dead_code)]
-pub fn date_string_from_utc_ms(offset: u64) -> String {
+pub fn date_string_from_utc(offset: u64) -> String {
     let utc = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(offset);
     date_string_from_systemtime(utc)
 }

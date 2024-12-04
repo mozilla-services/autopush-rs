@@ -139,7 +139,8 @@ impl Router for WebPushRouter {
                     self.metrics
                         .time_with_tags(
                             "notification.total_request_time",
-                            (notification.timestamp - autopush_common::util::sec_since_epoch())
+                            (notification.recv_timestamp
+                                - autopush_common::util::sec_since_epoch())
                                 * 1000,
                         )
                         .with_tag("platform", "websocket")

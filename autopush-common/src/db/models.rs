@@ -60,7 +60,7 @@ pub(crate) struct RangeKey {
 #[cfg(test)]
 mod tests {
     use crate::db::NotificationRecord;
-    use crate::util::us_since_epoch;
+    use crate::util::ms_since_epoch;
     use uuid::Uuid;
 
     #[test]
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_parse_sort_key_ver2() {
         let chid = Uuid::new_v4();
-        let sortkey_timestamp = us_since_epoch();
+        let sortkey_timestamp = ms_since_epoch();
         let chidmessageid = format!("02:{}:{}", sortkey_timestamp, chid.hyphenated());
         let key = NotificationRecord::parse_chidmessageid(&chidmessageid).unwrap();
         assert_eq!(key.topic, None);
