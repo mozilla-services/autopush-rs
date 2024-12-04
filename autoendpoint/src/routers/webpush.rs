@@ -169,7 +169,9 @@ impl WebPushRouter {
         let mut err = ApiError::from(error);
         if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
             let mut extras = err.extras.unwrap_or_default();
-            extras.extend([("sub".to_owned(), claims.sub)]);
+            if let Some(sub) = claims.sub {
+                extras.extend([("sub".to_owned(), sub)]);
+            }
             err.extras = Some(extras);
         };
         err
@@ -210,12 +212,15 @@ impl WebPushRouter {
                 self.handle_error(
                     ApiErrorKind::Router(RouterError::SaveDb(
                         e,
-                        // try to extract the `sub` from the VAPID clamis.
-                        notification
-                            .subscription
-                            .vapid
-                            .as_ref()
-                            .map(|vapid| vapid.vapid.claims().map(|c| c.sub).unwrap_or_default()),
+                        // try to extract the `sub` from the VAPID claims.
+                        notification.subscription.vapid.as_ref().map(|vapid| {
+                            vapid
+                                .vapid
+                                .claims()
+                                .ok()
+                                .and_then(|c| c.sub)
+                                .unwrap_or_default()
+                        }),
                     )),
                     notification.subscription.vapid.clone(),
                 )
