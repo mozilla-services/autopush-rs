@@ -87,7 +87,7 @@ impl FromRequest for Subscription {
             if let Some(ref header) = vapid {
                 let sub = header
                     .vapid
-                    .sub()
+                    .insecure_sub()
                     .map_err(|e: VapidError| {
                         // Capture the type of error and add it to metrics.
                         let mut tags = Tags::default();
@@ -332,6 +332,9 @@ fn validate_vapid_jwt(
             jsonwebtoken::errors::ErrorKind::InvalidAudience => {
                 return Err(VapidError::InvalidAudience.into());
             }
+            jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(e) => {
+                return Err(VapidError::InvalidVapid(format!("Missing required {}", e)).into());
+            }
             _ => {
                 // Attempt to match up the majority of ErrorKind variants.
                 // The third-party errors all defer to the source, so we can
@@ -423,8 +426,8 @@ pub mod tests {
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = VapidClaims {
             exp,
-            aud: aud.to_string(),
-            sub: sub.to_string(),
+            aud: Some(aud.to_string()),
+            sub: Some(sub.to_string()),
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
 
@@ -566,8 +569,8 @@ pub mod tests {
         let enc_key = jsonwebtoken::EncodingKey::from_ec_der(&PRIV_KEY);
         let claims = VapidClaims {
             exp: VapidClaims::default_exp() - 100,
-            aud: domain.to_owned(),
-            sub: "mailto:admin@example.com".to_owned(),
+            aud: Some(domain.to_owned()),
+            sub: Some("mailto:admin@example.com".to_owned()),
         };
         let token = jsonwebtoken::encode(&jwk_header, &claims, &enc_key).unwrap();
         // try standard form with padding

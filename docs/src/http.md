@@ -95,10 +95,19 @@ to replace previously sent, unreceived subscription updates. See
 
 **Call:**
 
+```
+https://updates.push.services.mozilla.com/wpush/v1/...
+```
+
+
+
 If the client is using webpush style data delivery, then the body in
 its entirety will be regarded as the data payload for the message per
 [the WebPush
 spec](https://tools.ietf.org/html/draft-thomson-webpush-http2-02#section-5).
+
+> _**Note**_
+> Mozilla reserves the right to change the endpoint at any time. Please do not "optimize" by only storing the last token element of the URI. There will be tears.
 
 > _**Note**_
 > Some bridged connections require data transcription and may limit the
@@ -116,14 +125,22 @@ spec](https://tools.ietf.org/html/draft-thomson-webpush-http2-02#section-5).
 
 **Return Codes:**
 
+_**Note**_
+The [Push RFC](https://datatracker.ietf.org/doc/html/rfc8030#section-5) notes the HTTP response codes that should be returned.
+Autopush cannot support the [Push Message Receipt](https://datatracker.ietf.org/doc/html/rfc8030#section-5.1) at this time, so
+Autopush should only return a 201 response. (Previously, Autopush would return a 202 indicating that the message was stored for
+later retrieval.) Autopush cannot guarantee end-to-end delivery of a message due to the nature of how it handles subscription
+updates to mobile devices. The "Bridge" protocols do not support this feature, and if possible, Autopush should not disclose
+the type of UserAgent to the Subscription provider.
+
 - statuscode 404  
   Push subscription is invalid.
 
-- statuscode 202  
- Message stored for delivery to client at a later time.
+- statuscode 410
+  Push subscription is no longer available.
 
-- statuscode 200  
- Message delivered to node client is connected to.
+- statuscode 201  
+ Message delivered to node or bridge the client is connected to.
 
 ### Message Topics
 
@@ -167,6 +184,12 @@ message count.
 Delete the message given the `message_id`.
 
 **Call:**
+
+```
+https://updates.push.services.mozilla.com/wpush/v1/...
+```
+
+
 
 **Parameters:**
 
@@ -249,6 +272,7 @@ An example of the Authorization header would be:
 ```html
     Authorization: Bearer 00secret00
 ```
+
 **{vapidKey}**  
 _The [VAPID Key](https://datatracker.ietf.org/doc/html/rfc8292#section-3.2) provided by the subscribing third party_
 
@@ -281,6 +305,10 @@ to use Web Push in your application.
 
 **Call:**
 
+```http
+POST /v1/{type}/{appid}/registration
+```
+
 This call requires no Authorization header.
 
 **Parameters:**
@@ -288,7 +316,7 @@ This call requires no Authorization header.
 `{"token":{instance_id},
   "key": {vapidkey}}`
 
-> _**Notes**_
+> _**Note**_
 > * The VAPID key is optional
 > * If additional information is required for the bridge, it may be
 > included in the parameters as JSON elements. Currently, no additional
@@ -329,8 +357,9 @@ since we are updating existing information. (See
 
 **Call:**
 
-```html
-    Authorization: Bearer {secret}
+```http
+  PUT /v1/{type}/{appid}/registration/{uaid}
+  Authorization: Bearer {secret}
 ```
 
 **Parameters:**
@@ -375,15 +404,16 @@ Acquire a new ChannelID for a given UAID. (See
 
 **Call:**
 
-```html
-    Authorization: Bearer {secret}
+```http
+  POST /v1/{type}/{app_id}/registration/{uaid}/subscription
+  Authorization: Bearer {secret}
 ```
 
 **Parameters:**
 
 `{key: {vapidKey}}`
 
-**Note**
+> _**Note**_
 > VAPID key is optional
 
 **Reply:**
@@ -418,8 +448,9 @@ is no longer valid. (See
 
 **Call:**
 
-```html
-    Authorization: Bearer {secret}
+```http
+  DELETE /v1/{type}/{app_id}/registration/{uaid}
+  Authorization: Bearer {secret}
 ```
 
 **Parameters:**
@@ -444,7 +475,8 @@ Remove a given ChannelID subscription from a UAID. (See:
 **Call:**
 
 ```html
-    Authorization: Bearer {secret}
+  DELETE /v1/{type}/{app_id}/registration/{uaid}/subscription/{CHID}
+  Authorization: Bearer {secret}
 ```
 
 **Parameters:**
@@ -470,7 +502,10 @@ empty set of channelIDs will be returned. (See:
 
 **Call:**
 
-`Authorization: Bearer {secret}`
+```http
+  GET /v1/{type}/{app_id}/registration/{UAID}/
+  Authorization: Bearer {secret}
+```
 
 **Parameters:**
 
