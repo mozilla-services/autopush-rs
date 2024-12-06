@@ -165,6 +165,10 @@ jobs:
           username: $DOCKER_USER
           password: $DOCKER_PASS
         command: gcloud beta emulators bigtable start --host-port=localhost:8086
+      # - image: redis/redis-stack-server
+      #  auth:
+      #    username: $DOCKER_USER
+      #    password: $DOCKER_PASS
     resource_class: large
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
