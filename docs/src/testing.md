@@ -87,11 +87,13 @@ The test output is then emitted in your terminal instance. This includes the nam
 The integration tests make use of [pytest markers][pytest_markers] for filtering tests. These can be
 used with the `-m` pytest option, or can be used through the following environment variables and
 `integration-test` make command.
+Please note, when specifying multiple markers, you need to combine them using `and`. For example, to exclude both _sentry_ and _stub_ you would specify the marker as `-m "not sentry and not stub"`. As of pytest version 8.3.3, the `-m` CLI arguments do not stack.
 
-| ENVIRONMENT VARIABLE | RELATED MARKER | DESCRIPTION                                                       |
-|----------------------|----------------|-------------------------------------------------------------------|
-| SKIP_SENTRY          | sentry         | If set will exclude all tests marked with `sentry` from execution |
-| TEST_STUB            | stub           | If set will include all tests marked with `stub` in execution     |
+| ENVIRONMENT VARIABLE | RELATED MARKER  | DESCRIPTION                                                              |
+|----------------------|-----------------|--------------------------------------------------------------------------|
+| SKIP_SENTRY          | sentry          | If set will exclude all tests marked with `sentry` from execution        |
+| TEST_STUB            | stub            | If set will include all tests marked with `stub` in execution            |
+| TEST_RELIABILITY     | reliable_report | If set will include all tests marked with `reliable_report` in execution |
 
 Integration tests in CI will be triggered automatically whenever a commit is pushed to a branch as a part of the CI PR workflow.
 

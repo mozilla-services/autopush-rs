@@ -9,12 +9,14 @@ TEST_RESULTS_DIR ?= workspace/test-results
 NOOP :=
 SPACE :=$(NOOP) $(NOOP)
 PYTEST_AND :=" and "
-# specify the tests to NOT run
-# NOTE: passing `-m not` to pytest will cause an error be sure at least one of these is set.
-NEG_PYTEST_ARGS ?= $(if $(SKIP_SENTRY),sentry) $(if $(TEST_STUB),,stub) $(if $(TEST_RELIABILITY),,reliable_report) # Stub tests do not work in CI
-# Now compose the pytest args by gluing the above items together
-NEG_PYTEST_ARGS := "not $(subst $(SPACE), and not ,$(strip $(NEG_PYTEST_ARGS)))"
-PYTEST_ARGS := -m $(NEG_PYTEST_ARGS)
+# Run sentry UNLESS "SKIP_SENTRY" is specified.
+PYTEST_MARKERS := $(if $(SKIP_SENTRY),not sentry,)
+# Do not run "stub" unless "TEST_STUB" specified (Stub does not work in CI currently)
+PYTEST_MARKERS := $(if $(TEST_STUB),,$(if $(strip $(PYTEST_MARKERS)),and ,)not stub)
+# Do not run "push reliability" unless "TEST_RELIABLITY" specified (This is a feature in progress)
+PYTEST_MARKERS := $(if $(TEST_RELIABILITY),,$(if $(strip $(PYTEST_MARKERS)),and ,)not reliable_report)
+# Compile the pytest arguments if any have been specified.
+PYTEST_ARGS := $(if $(strip $(PYTEST_MARKERS)), -m "$(strip $(PYTEST_MARKERS))",)
 INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
