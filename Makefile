@@ -12,9 +12,9 @@ PYTEST_AND :=" and "
 # Run sentry UNLESS "SKIP_SENTRY" is specified.
 PYTEST_MARKERS := $(if $(SKIP_SENTRY),not sentry,)
 # Do not run "stub" unless "TEST_STUB" specified (Stub does not work in CI currently)
-PYTEST_MARKERS := $(if $(TEST_STUB),,$(if $(strip $(PYTEST_MARKERS)),and ,)not stub)
+PYTEST_MARKERS += $(if $(TEST_STUB),,$(if $(strip $(PYTEST_MARKERS)),and ,)not stub)
 # Do not run "push reliability" unless "TEST_RELIABLITY" specified (This is a feature in progress)
-PYTEST_MARKERS := $(if $(TEST_RELIABILITY),,$(if $(strip $(PYTEST_MARKERS)),and ,)not reliable_report)
+PYTEST_MARKERS += $(if $(TEST_RELIABILITY),,$(if $(strip $(PYTEST_MARKERS)),and ,)not reliable_report)
 # Compile the pytest arguments if any have been specified.
 PYTEST_ARGS := $(if $(strip $(PYTEST_MARKERS)), -m "$(strip $(PYTEST_MARKERS))",)
 INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
