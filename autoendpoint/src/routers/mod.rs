@@ -207,12 +207,8 @@ impl ReportableError for RouterError {
             RouterError::Apns(e) => e.metric_label(),
             RouterError::Fcm(e) => e.metric_label(),
             RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),
-            RouterError::Upstream { status, .. } => {
-                if status == "RESOURCE_EXHAUSTED" {
-                    Some("notification.bridge.error.resource_exhausted")
-                } else {
-                    None
-                }
+            RouterError::Upstream { status, .. } if status == "RESOURCE_EXHAUSTED" => {
+                Some("notification.bridge.error.resource_exhausted")
             }
             _ => None,
         }
