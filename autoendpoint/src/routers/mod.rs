@@ -202,11 +202,18 @@ impl ReportableError for RouterError {
     fn metric_label(&self) -> Option<&'static str> {
         // NOTE: Some metrics are emitted for other Errors via handle_error
         // callbacks, whereas some are emitted via this method. These 2 should
-        // be consoliated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
+        // be consolidated: https://mozilla-hub.atlassian.net/browse/SYNC-3695
         match self {
             RouterError::Apns(e) => e.metric_label(),
             RouterError::Fcm(e) => e.metric_label(),
             RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),
+            RouterError::Upstream { status, .. } => {
+                if status == "RESOURCE_EXHAUSTED" {
+                    Some("notification.bridge.error.resource_exhausted")
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
