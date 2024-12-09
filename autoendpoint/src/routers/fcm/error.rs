@@ -36,6 +36,9 @@ pub enum FcmError {
 
     #[error("User has invalid app ID {0}")]
     InvalidAppId(String),
+
+    #[error("Upstream error, {status}: {message}")]
+    Upstream { status: String, message: String },
 }
 
 impl FcmError {
@@ -53,7 +56,8 @@ impl FcmError {
 
             FcmError::DeserializeResponse(_)
             | FcmError::EmptyResponse(_)
-            | FcmError::InvalidResponse(_, _, _) => StatusCode::BAD_GATEWAY,
+            | FcmError::InvalidResponse(_, _, _)
+            | FcmError::Upstream { .. } => StatusCode::BAD_GATEWAY,
         }
     }
 
@@ -64,13 +68,7 @@ impl FcmError {
                 Some(106)
             }
 
-            FcmError::CredentialDecode(_)
-            | FcmError::OAuthClientBuild(_)
-            | FcmError::OAuthToken(_)
-            | FcmError::DeserializeResponse(_)
-            | FcmError::EmptyResponse(_)
-            | FcmError::InvalidResponse(_, _, _)
-            | FcmError::NoOAuthToken => None,
+            _ => None,
         }
     }
 }
@@ -90,6 +88,9 @@ impl ReportableError for FcmError {
         match &self {
             FcmError::InvalidAppId(_) | FcmError::NoAppId => {
                 Some("notification.bridge.error.fcm.badappid")
+            }
+            FcmError::Upstream { status, .. } if status == "RESOURCE_EXHAUSTED" => {
+                Some("notification.bridge.error.fcm.resource_exhausted")
             }
             _ => None,
         }
