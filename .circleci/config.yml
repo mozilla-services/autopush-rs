@@ -154,15 +154,14 @@ jobs:
 
   test-integration:
     docker:
-      - image: docker:18.03.0-ce
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
+      - image: cimg/base:2024.06
         environment:
           RUST_BACKTRACE: 1
     resource_class: large
     steps:
       - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
       - create_test_result_workspace
       - run:
           name: Integration tests (Bigtable)
