@@ -173,8 +173,6 @@ jobs:
           destination: integration_test_results.xml
       - store_test_results:
           path: workspace/test-results
-      - save_test_cache:
-          cache_key: rust-v1-integration-test-cache-{{ checksum "Cargo.lock" }}
 
   test-unit:
     docker:
@@ -331,6 +329,26 @@ jobs:
           paths:
             - autopush-locust.tar
 
+  build-integration-test:
+    docker:
+      - image: cimg/base:2024.06
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build Image
+          command: docker build -t autopush-integration-tests -f ./tests/integration/Dockerfile .
+      - run:
+          name: Save Docker Image to Workspace
+          command: |
+            mkdir -p /tmp/workspace
+            docker save -o /tmp/workspace/autopush-integration-tests.tar autopush-integration-tests
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - autopush-integration-tests.tar
+
   deploy:
     executor: gcp-gcr/default
     parameters:
@@ -457,6 +475,13 @@ workflows:
           filters:
             tags:
               only: /.*/
+
+      - build-integration-test:
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
 
       # Comment out the following two sections for local CircleCI testing.
       - deploy:
