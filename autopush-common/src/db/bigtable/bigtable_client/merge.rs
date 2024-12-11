@@ -388,6 +388,11 @@ impl RowMerger {
 
         while let (Some(row_resp_res), s) = stream.into_future().await {
             stream = s;
+
+            // Bigtable's responses are not reliable.
+            // A read can fail for any number of reasons and return either 500 class errors or a corrupted data block,
+            // depending on what system failed on the Bigtable side.
+            // We want to retry the read in those cases and pick up from where we left off.
             let row = match row_resp_res {
                 Ok(v) => v,
                 Err(e) => return Err(BigTableError::InvalidRowResponse(e)),

@@ -509,15 +509,33 @@ impl BigTableClientImpl {
         let resp = retry_policy(self.settings.retry_count)
             .retry_if(
                 || async {
-                    bigtable
+                    let resp: grpcio::ClientSStreamReceiver<bigtable::ReadRowsResponse> = bigtable
                         .conn
                         .read_rows_opt(&req, call_opts(self.metadata.clone()))
+                        .inspect_err(|e| {
+                            warn!("🉑 Read Rows failed: {:?}", &e);
+                        })?;
+                    merge::RowMerger::process_chunks(resp)
+                        .await
+                        .map_err(|e| match e {
+                            error::BigTableError::GRPC(e) | error::BigTableError::Read(e) => {
+                                info!("🉑 Retrying process chunks");
+                                e
+                            }
+                            _ => {
+                                warn!("🉑 Process Chunks failed {:?}", e);
+                                grpcio::Error::RpcFailure(RpcStatus::with_message(
+                                    RpcStatusCode::UNKNOWN,
+                                    e.to_string(),
+                                ))
+                            }
+                        })
                 },
                 retryable_error(self.metrics.clone()),
             )
             .await
-            .map_err(error::BigTableError::Read)?;
-        merge::RowMerger::process_chunks(resp).await
+            .map_err(error::BigTableError::GRPC)?;
+        Ok(resp)
     }
 
     /// write a given row.
