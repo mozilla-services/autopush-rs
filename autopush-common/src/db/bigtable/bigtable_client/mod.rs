@@ -515,15 +515,26 @@ impl BigTableClientImpl {
                         .inspect_err(|e| {
                             warn!("🉑 Read Rows failed: {:?}", &e);
                         })?;
-                    merge::RowMerger::process_chunks(resp).await.map_err(|e| {
-                        warn!("🉑 Process Chunks failed {:?}", e);
-                        grpcio::Error::RemoteStopped
-                    })
+                    merge::RowMerger::process_chunks(resp)
+                        .await
+                        .map_err(|e| match e {
+                            error::BigTableError::GRPC(e) | error::BigTableError::Read(e) => {
+                                info!("🉑 Retrying process chunks");
+                                e
+                            }
+                            _ => {
+                                warn!("🉑 Process Chunks failed {:?}", e);
+                                grpcio::Error::RpcFailure(RpcStatus::with_message(
+                                    RpcStatusCode::UNKNOWN,
+                                    e.to_string(),
+                                ))
+                            }
+                        })
                 },
                 retryable_error(self.metrics.clone()),
             )
             .await
-            .map_err(error::BigTableError::Read)?;
+            .map_err(error::BigTableError::GRPC)?;
         Ok(resp)
     }
 
@@ -538,18 +549,7 @@ impl BigTableClientImpl {
         // below. For now, let's just presume a write and be done.
         let mutations = self.get_mutations(row.cells)?;
         req.set_mutations(mutations);
-        retry_policy(self.settings.retry_count)
-            .retry_if(
-                || async {
-                    self.mutate_row(req.clone()).await.map_err(|e| {
-                        warn!("🉑 write row failed {:?}", &e);
-                        grpcio::Error::RemoteStopped
-                    })
-                },
-                retryable_error(self.metrics.clone()),
-            )
-            .await
-            .map_err(error::BigTableError::Write)?;
+        self.mutate_row(req).await?;
         Ok(())
     }
 
