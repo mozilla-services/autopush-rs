@@ -1,5 +1,6 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at http://mozilla.org/MPL/2.0
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 FROM python:3.12-slim-bookworm
 
@@ -58,4 +59,4 @@ RUN cargo build --features=emulator
 
 RUN chmod +x scripts/setup_bt.sh
 
-CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v ${PYTEST_ARGS}"]
+CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v -m 'not stub' ${PYTEST_ARGS}"]

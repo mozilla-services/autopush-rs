@@ -1,5 +1,6 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at http://mozilla.org/MPL/2.0
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 services:
   google_cbt:
@@ -7,10 +8,11 @@ services:
     network_mode: host
     platform: linux/amd64
     command: gcloud beta emulators bigtable start --host-port=localhost:8086
-  integration-tests:
+  tests:
     environment:
       - BIGTABLE_EMULATOR_HOST=localhost:8086
       - DB_DSN=grpc://localhost:8086
+      - RUST_LOG=autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
     build:
       context: ../..
       dockerfile: tests/integration/Dockerfile
