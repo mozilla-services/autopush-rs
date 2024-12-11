@@ -12,7 +12,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PATH=$PATH:/root/.cargo/bin
 ENV PYTHON_VENV=/venv
 ENV PYTEST_ARGS=""
-ENV RUST_LOG=autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
+ENV RUST_LOG="autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn"
 ENV DB_DSN=grpc://localhost:8086
 
 # Add gcc since there are no wheels for some packages for arm64/aarch64

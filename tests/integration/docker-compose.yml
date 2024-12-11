@@ -12,7 +12,6 @@ services:
     environment:
       - BIGTABLE_EMULATOR_HOST=localhost:8086
       - DB_DSN=grpc://localhost:8086
-      - RUST_LOG=autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
     build:
       context: ../..
       dockerfile: tests/integration/Dockerfile

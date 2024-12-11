@@ -167,7 +167,7 @@ jobs:
           name: Integration tests (Bigtable)
           command: |
             make integration-test
-            cp ~/project/tests/integration ~/project/workspace/test-results
+            cp -r ~/project/tests/integration ~/project/workspace/test-results
       - store_artifacts:
           path: ~/project/workspace/test-results/integration_test_results.xml
           destination: integration_test_results.xml
