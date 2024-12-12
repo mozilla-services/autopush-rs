@@ -9,6 +9,8 @@ use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use super::fcm::error::FcmError;
+
 /// Convert a notification into a WebPush message
 pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'static str, String>> {
     let mut message_data = HashMap::new();
@@ -65,17 +67,6 @@ pub async fn handle_error(
                 error.errno(),
             );
         }
-        RouterError::GCMAuthentication => {
-            warn!("GCM Authentication error");
-            incr_error_metric(
-                metrics,
-                platform,
-                app_id,
-                "gcm authentication",
-                error.status(),
-                error.errno(),
-            );
-        }
         RouterError::RequestTimeout => {
             // Bridge timeouts are common.
             info!("Bridge timeout");
@@ -114,17 +105,6 @@ pub async fn handle_error(
                 warn!("Error while removing user due to bridge not_found: {}", e);
             }
         }
-        RouterError::Upstream { .. } => {
-            warn!("{}", error.to_string());
-            incr_error_metric(
-                metrics,
-                platform,
-                app_id,
-                "server_error",
-                error.status(),
-                error.errno(),
-            );
-        }
         RouterError::TooMuchData(_) => {
             // Do not log this error since it's fairly common.
             incr_error_metric(
@@ -136,6 +116,15 @@ pub async fn handle_error(
                 error.errno(),
             );
         }
+        RouterError::Fcm(FcmError::Upstream { status, .. }) => incr_error_metric(
+            metrics,
+            platform,
+            app_id,
+            &format!("upstream_{}", status),
+            error.status(),
+            error.errno(),
+        ),
+
         _ => {
             warn!("Unknown error while sending bridge request: {}", error);
             incr_error_metric(

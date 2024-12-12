@@ -102,9 +102,6 @@ pub enum RouterError {
     #[error("Bridge authentication error")]
     Authentication,
 
-    #[error("GCM Bridge authentication error")]
-    GCMAuthentication,
-
     #[error("Bridge request timeout")]
     RequestTimeout,
 
@@ -113,9 +110,6 @@ pub enum RouterError {
 
     #[error("Bridge reports user was not found")]
     NotFound,
-
-    #[error("Bridge error, {status}: {message}")]
-    Upstream { status: String, message: String },
 }
 
 impl RouterError {
@@ -133,11 +127,9 @@ impl RouterError {
 
             RouterError::TooMuchData(_) => StatusCode::PAYLOAD_TOO_LARGE,
 
-            RouterError::Authentication
-            | RouterError::GCMAuthentication
-            | RouterError::RequestTimeout
-            | RouterError::Connect(_)
-            | RouterError::Upstream { .. } => StatusCode::BAD_GATEWAY,
+            RouterError::Authentication | RouterError::RequestTimeout | RouterError::Connect(_) => {
+                StatusCode::BAD_GATEWAY
+            }
         }
     }
 
@@ -163,10 +155,6 @@ impl RouterError {
             RouterError::Connect(_) => Some(902),
 
             RouterError::RequestTimeout => Some(903),
-
-            RouterError::GCMAuthentication => Some(904),
-
-            RouterError::Upstream { .. } => None,
         }
     }
 }
@@ -188,12 +176,10 @@ impl ReportableError for RouterError {
             RouterError::Fcm(e) => e.is_sentry_event(),
             // common handle_error emits metrics for these
             RouterError::Authentication
-            | RouterError::GCMAuthentication
             | RouterError::Connect(_)
             | RouterError::NotFound
             | RouterError::RequestTimeout
-            | RouterError::TooMuchData(_)
-            | RouterError::Upstream { .. } => false,
+            | RouterError::TooMuchData(_) => false,
             RouterError::SaveDb(e, _) => e.is_sentry_event(),
             _ => true,
         }
@@ -207,9 +193,6 @@ impl ReportableError for RouterError {
             RouterError::Apns(e) => e.metric_label(),
             RouterError::Fcm(e) => e.metric_label(),
             RouterError::TooMuchData(_) => Some("notification.bridge.error.too_much_data"),
-            RouterError::Upstream { status, .. } if status == "RESOURCE_EXHAUSTED" => {
-                Some("notification.bridge.error.resource_exhausted")
-            }
             _ => None,
         }
     }
