@@ -3,7 +3,8 @@ CARGO = cargo
 TESTS_DIR := tests
 TEST_RESULTS_DIR ?= workspace/test-results
 PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
-INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
+INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
+INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
@@ -28,6 +29,15 @@ upgrade:
 	$(CARGO) upgrade
 	$(CARGO) update
 
+integration-test:
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml build
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
+	docker cp integration-tests:/code/integration_test_results.xml $(INTEGRATION_TEST_DIR)
+
+integration-test-clean:
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml down
+	docker rm integration-tests
+
 integration-test-legacy:
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
@@ -35,7 +45,7 @@ integration-test-legacy:
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
 		-v $(PYTEST_ARGS)
 
-integration-test:
+integration-test-local:
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
 		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
