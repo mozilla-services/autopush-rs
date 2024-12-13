@@ -274,7 +274,7 @@ pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
     metric.send();
 }
 
-pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) -> bool {
+pub fn retryable_error(metrics: &Arc<StatsdClient>) -> impl Fn(&grpcio::Error) -> bool + '_ {
     move |err| {
         debug!("🉑 Checking grpcio::Error...{err}");
         match err {
@@ -308,14 +308,16 @@ pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) ->
     }
 }
 
-pub fn retryable_error2(metrics: Arc<StatsdClient>) -> impl Fn(&error::BigTableError) -> bool {
+pub fn retryable_error2(
+    metrics: &Arc<StatsdClient>,
+) -> impl Fn(&error::BigTableError) -> bool + '_ {
     move |err| {
         debug!("🉑 Checking BigTableError...{err}");
         match err {
             error::BigTableError::InvalidRowResponse(e)
             | error::BigTableError::Read(e)
             | error::BigTableError::Write(e)
-            | error::BigTableError::GRPC(e) => retryable_error(metrics.clone())(e),
+            | error::BigTableError::GRPC(e) => retryable_error(metrics)(e),
             _ => false,
         }
     }
@@ -433,7 +435,7 @@ impl BigTableClientImpl {
                         .conn
                         .mutate_row_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_error(self.metrics.clone()),
+                retryable_error(&self.metrics),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -455,7 +457,7 @@ impl BigTableClientImpl {
                         .conn
                         .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_error(self.metrics.clone()),
+                retryable_error(&self.metrics),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -528,7 +530,7 @@ impl BigTableClientImpl {
                         .map_err(error::BigTableError::Read)?;
                     merge::RowMerger::process_chunks(resp).await
                 },
-                retryable_error2(self.metrics.clone()),
+                retryable_error2(&self.metrics),
             )
             .await?;
         Ok(resp)
@@ -615,7 +617,7 @@ impl BigTableClientImpl {
                         .conn
                         .check_and_mutate_row_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_error(self.metrics.clone()),
+                retryable_error(&self.metrics),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -883,7 +885,7 @@ impl BigtableDb {
                     self.conn
                         .read_rows_opt(&req, call_opts(self.health_metadata.clone()))
                 },
-                retryable_error(metrics.clone()),
+                retryable_error(&metrics),
             )
             .await
             .map_err(error::BigTableError::Read)?;
