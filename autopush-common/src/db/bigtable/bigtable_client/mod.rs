@@ -518,7 +518,9 @@ impl BigTableClientImpl {
                     merge::RowMerger::process_chunks(resp)
                         .await
                         .map_err(|e| match e {
-                            error::BigTableError::GRPC(e) | error::BigTableError::Read(e) => {
+                            error::BigTableError::GRPC(e)
+                            | error::BigTableError::Read(e)
+                            | error::BigTableError::InvalidRowResponse(e) => {
                                 info!("🉑 Retrying process chunks");
                                 e
                             }
