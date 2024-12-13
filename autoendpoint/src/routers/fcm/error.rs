@@ -86,9 +86,7 @@ impl ReportableError for FcmError {
 
     fn metric_label(&self) -> Option<&'static str> {
         match &self {
-            FcmError::InvalidAppId(_) | FcmError::NoAppId | FcmError::Upstream { .. } => {
-                Some("notification.bridge.error")
-            }
+            FcmError::InvalidAppId(_) | FcmError::NoAppId => Some("notification.bridge.error"),
             _ => None,
         }
     }

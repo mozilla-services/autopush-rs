@@ -46,6 +46,12 @@ pub fn message_size_check(data: &[u8], max_data: usize) -> Result<(), RouterErro
 }
 
 /// Handle a bridge error by logging, updating metrics, etc
+/// This function uses the standard `slog` recording mechanisms and
+/// optionally calls a generic metric recording function for some
+/// types of errors. The error is returned by this function for later
+/// processing. This can include being called by the sentry middleware,
+/// which uses the `RecordableError` trait to optionally record metrics.
+/// see [autopush_common::middleware::sentry::SentryWrapperMiddleware].`call()` method
 pub async fn handle_error(
     error: RouterError,
     metrics: &StatsdClient,
