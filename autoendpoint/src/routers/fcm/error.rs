@@ -86,12 +86,7 @@ impl ReportableError for FcmError {
 
     fn metric_label(&self) -> Option<&'static str> {
         match &self {
-            FcmError::InvalidAppId(_) | FcmError::NoAppId => {
-                Some("notification.bridge.error.fcm.badappid")
-            }
-            FcmError::Upstream { status, .. } if status == "RESOURCE_EXHAUSTED" => {
-                Some("notification.bridge.error.fcm.resource_exhausted")
-            }
+            FcmError::InvalidAppId(_) | FcmError::NoAppId => Some("notification.bridge.error"),
             _ => None,
         }
     }
@@ -99,13 +94,19 @@ impl ReportableError for FcmError {
     fn extras(&self) -> Vec<(&str, String)> {
         match self {
             FcmError::InvalidAppId(appid) => {
-                vec![("app_id", appid.to_string())]
+                vec![
+                    ("status", "bad_appid".to_owned()),
+                    ("app_id", appid.to_string()),
+                ]
             }
             FcmError::EmptyResponse(status) => {
                 vec![("status", status.to_string())]
             }
             FcmError::InvalidResponse(_, body, status) => {
                 vec![("status", status.to_string()), ("body", body.to_owned())]
+            }
+            FcmError::Upstream { status, .. } => {
+                vec![("status", status.clone())]
             }
             _ => vec![],
         }

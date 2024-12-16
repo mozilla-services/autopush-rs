@@ -9,6 +9,8 @@ use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use super::fcm::error::FcmError;
+
 /// Convert a notification into a WebPush message
 pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'static str, String>> {
     let mut message_data = HashMap::new();
@@ -44,6 +46,12 @@ pub fn message_size_check(data: &[u8], max_data: usize) -> Result<(), RouterErro
 }
 
 /// Handle a bridge error by logging, updating metrics, etc
+/// This function uses the standard `slog` recording mechanisms and
+/// optionally calls a generic metric recording function for some
+/// types of errors. The error is returned by this function for later
+/// processing. This can include being called by the sentry middleware,
+/// which uses the `RecordableError` trait to optionally record metrics.
+/// see [autopush_common::middleware::sentry::SentryWrapperMiddleware].`call()` method
 pub async fn handle_error(
     error: RouterError,
     metrics: &StatsdClient,
@@ -61,17 +69,6 @@ pub async fn handle_error(
                 platform,
                 app_id,
                 "authentication",
-                error.status(),
-                error.errno(),
-            );
-        }
-        RouterError::GCMAuthentication => {
-            warn!("GCM Authentication error");
-            incr_error_metric(
-                metrics,
-                platform,
-                app_id,
-                "gcm authentication",
                 error.status(),
                 error.errno(),
             );
@@ -114,17 +111,6 @@ pub async fn handle_error(
                 warn!("Error while removing user due to bridge not_found: {}", e);
             }
         }
-        RouterError::Upstream { .. } => {
-            warn!("{}", error.to_string());
-            incr_error_metric(
-                metrics,
-                platform,
-                app_id,
-                "server_error",
-                error.status(),
-                error.errno(),
-            );
-        }
         RouterError::TooMuchData(_) => {
             // Do not log this error since it's fairly common.
             incr_error_metric(
@@ -136,6 +122,15 @@ pub async fn handle_error(
                 error.errno(),
             );
         }
+        RouterError::Fcm(FcmError::Upstream { status, .. }) => incr_error_metric(
+            metrics,
+            platform,
+            app_id,
+            &format!("upstream_{}", status),
+            error.status(),
+            error.errno(),
+        ),
+
         _ => {
             warn!("Unknown error while sending bridge request: {}", error);
             incr_error_metric(
