@@ -153,15 +153,17 @@ impl FcmClient {
                 (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
                 (_, Some(error)) => {
                     info!("🌉Bridge Error: {:?}, {:?}", error.message, &self.endpoint);
-                    RouterError::Upstream {
+                    FcmError::Upstream {
                         status: error.status,
                         message: error.message,
                     }
+                    .into()
                 }
-                (status, None) => RouterError::Upstream {
+                (status, None) => FcmError::Upstream {
                     status: status.to_string(),
                     message: "Unknown reason".to_string(),
-                },
+                }
+                .into(),
             });
         }
 
@@ -183,6 +185,7 @@ struct FcmErrorResponse {
 #[cfg(test)]
 pub mod tests {
     use crate::routers::fcm::client::FcmClient;
+    use crate::routers::fcm::error::FcmError;
     use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
     use crate::routers::RouterError;
     use std::collections::HashMap;
@@ -368,7 +371,7 @@ pub mod tests {
         assert!(
             matches!(
                 result.as_ref().unwrap_err(),
-                RouterError::Upstream { status, message }
+                RouterError::Fcm(FcmError::Upstream{ status, message })
                     if status == "TEST_ERROR" && message == "test-message"
             ),
             "result = {result:?}"
@@ -403,7 +406,7 @@ pub mod tests {
         assert!(
             matches!(
                 result.as_ref().unwrap_err(),
-                RouterError::Upstream { status, message }
+                RouterError::Fcm(FcmError::Upstream { status, message })
                     if status == "400 Bad Request" && message == "Unknown reason"
             ),
             "result = {result:?}"
