@@ -1,5 +1,4 @@
 [advisories]
 ignore = [
     "RUSTSEC-2021-0124", # Bound by tokio restrictions, cargo, reqwest, hyper...
-    "RUSTSEC-2024-0402", # Bound by config 0.14, h2 0.4, reqwest 0.12-
 ]
