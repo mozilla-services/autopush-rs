@@ -36,6 +36,9 @@ pub enum FcmError {
 
     #[error("User has invalid app ID {0}")]
     InvalidAppId(String),
+
+    #[error("Upstream error, {error_code}: {message}")]
+    Upstream { error_code: String, message: String },
 }
 
 impl FcmError {
@@ -53,7 +56,8 @@ impl FcmError {
 
             FcmError::DeserializeResponse(_)
             | FcmError::EmptyResponse(_)
-            | FcmError::InvalidResponse(_, _, _) => StatusCode::BAD_GATEWAY,
+            | FcmError::InvalidResponse(_, _, _)
+            | FcmError::Upstream { .. } => StatusCode::BAD_GATEWAY,
         }
     }
 
@@ -64,13 +68,7 @@ impl FcmError {
                 Some(106)
             }
 
-            FcmError::CredentialDecode(_)
-            | FcmError::OAuthClientBuild(_)
-            | FcmError::OAuthToken(_)
-            | FcmError::DeserializeResponse(_)
-            | FcmError::EmptyResponse(_)
-            | FcmError::InvalidResponse(_, _, _)
-            | FcmError::NoOAuthToken => None,
+            _ => None,
         }
     }
 }
@@ -88,9 +86,7 @@ impl ReportableError for FcmError {
 
     fn metric_label(&self) -> Option<&'static str> {
         match &self {
-            FcmError::InvalidAppId(_) | FcmError::NoAppId => {
-                Some("notification.bridge.error.fcm.badappid")
-            }
+            FcmError::InvalidAppId(_) | FcmError::NoAppId => Some("notification.bridge.error"),
             _ => None,
         }
     }
@@ -98,13 +94,19 @@ impl ReportableError for FcmError {
     fn extras(&self) -> Vec<(&str, String)> {
         match self {
             FcmError::InvalidAppId(appid) => {
-                vec![("app_id", appid.to_string())]
+                vec![
+                    ("status", "bad_appid".to_owned()),
+                    ("app_id", appid.to_string()),
+                ]
             }
             FcmError::EmptyResponse(status) => {
                 vec![("status", status.to_string())]
             }
             FcmError::InvalidResponse(_, body, status) => {
                 vec![("status", status.to_string()), ("body", body.to_owned())]
+            }
+            FcmError::Upstream { error_code, .. } => {
+                vec![("status", error_code.clone())]
             }
             _ => vec![],
         }
