@@ -162,9 +162,17 @@ impl FcmClient {
                 // In this case, we've gotten an error, but FCM hasn't returned a body.
                 // (This may happen in the case where FCM terminates the connection abruptly
                 // or a similar event.) Treat that as an INTERNAL error.
-                (_, None) => FcmError::Upstream {
-                    error_code: "INTERNAL".to_string(),
-                    message: format!("Unknown reason: {:?}", status.to_string()),
+                (_, None) => {
+                    warn!(
+                        "🌉Unknown Bridge Error: {:?}, <{:?}>, [{:?}]",
+                        status.to_string(),
+                        &self.endpoint,
+                        raw_data,
+                    );
+                    FcmError::Upstream {
+                        error_code: "UNKNOWN".to_string(),
+                        message: format!("Unknown reason: {:?}", status.to_string()),
+                    }
                 }
                 .into(),
             });
@@ -412,7 +420,7 @@ pub mod tests {
             matches!(
                 result.as_ref().unwrap_err(),
                 RouterError::Fcm(FcmError::Upstream { error_code, message })
-                    if error_code == "INTERNAL" && message.starts_with("Unknown reason")
+                    if error_code == "UNKNOWN" && message.starts_with("Unknown reason")
             ),
             "result = {result:?}"
         );
