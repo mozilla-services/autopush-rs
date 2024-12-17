@@ -449,7 +449,9 @@ impl Router for ApnsRouter {
                 apns_priority: Some(Priority::High),
                 apns_topic: Some(topic),
                 apns_collapse_id: None,
-                apns_expiration: Some(notification.timestamp + notification.headers.ttl as u64),
+                apns_expiration: Some(
+                    notification.recv_timestamp + notification.headers.ttl as u64,
+                ),
                 ..Default::default()
             },
         );

@@ -140,6 +140,7 @@ pub struct User {
     #[serde(serialize_with = "uuid_serializer")]
     pub uaid: Uuid,
     /// Time in milliseconds that the user last connected at
+    #[serde(rename = "connected_at")]
     pub connected_at: u64,
     /// Router type of the user
     pub router_type: String,
@@ -148,13 +149,13 @@ pub struct User {
     /// Last node/port the client was or may be connected to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
-    /// Record version
+    /// Storage format version for this record (See [crate::db::USER_RECORD_VERSION] )
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_version: Option<u64>,
-    /// the timestamp of the last notification sent to the user
+    /// the ms timestamp of the last notification sent to the user
     /// This field is exclusive to the Bigtable data scheme
     //TODO: rename this to `last_notification_timestamp`
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "current_timestamp", skip_serializing_if = "Option::is_none")]
     pub current_timestamp: Option<u64>,
     /// UUID4 version number for optimistic locking of updates on Bigtable
     #[serde(skip_serializing)]
@@ -219,15 +220,15 @@ pub struct NotificationRecord {
     chidmessageid: String,
     /// Magic entry stored in the first Message record that indicates the highest
     /// non-topic timestamp we've read into
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_timestamp: Option<u64>,
+    #[serde(rename = "current_timestamp", skip_serializing_if = "Option::is_none")]
+    pub current_timestamp_unk: Option<u64>,
     /// Magic entry stored in the first Message record that indicates the valid
     /// channel id's
     #[serde(skip_serializing)]
     pub chids: Option<HashSet<String>>,
     /// Time in seconds from epoch
-    #[serde(skip_serializing_if = "Option::is_none")]
-    timestamp: Option<u64>,
+    #[serde(rename = "timestamp", skip_serializing_if = "Option::is_none")]
+    recv_timestamp: Option<u64>,
     /// Expiration timestamp
     expiry: u64,
     /// TTL value provided by application server for the message
@@ -329,8 +330,8 @@ impl NotificationRecord {
             channel_id: key.channel_id,
             version,
             ttl: self.ttl.unwrap_or(0),
-            timestamp: self
-                .timestamp
+            recv_timestamp: self
+                .recv_timestamp
                 .ok_or("No timestamp found")
                 .map_err(|e| ApcErrorKind::GeneralError(e.to_string()))?,
             topic: key.topic,
@@ -346,7 +347,7 @@ impl NotificationRecord {
         Self {
             uaid: *uaid,
             chidmessageid: val.chidmessageid(),
-            timestamp: Some(val.timestamp),
+            recv_timestamp: Some(val.recv_timestamp),
             expiry: sec_since_epoch() + min(val.ttl, MAX_NOTIFICATION_TTL),
             ttl: Some(val.ttl),
             data: val.data,

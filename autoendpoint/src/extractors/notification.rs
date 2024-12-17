@@ -14,14 +14,14 @@ use uuid::Uuid;
 /// Extracts notification data from `Subscription` and request data
 #[derive(Clone, Debug)]
 pub struct Notification {
-    /// Unique message_id for this notification
+    /// Unique message_id for this notification generated from the UAID, ChannelID, and other key elements.
     pub message_id: String,
     /// The subscription information block
     pub subscription: Subscription,
     /// Set of associated crypto headers
     pub headers: NotificationHeaders,
     /// UNIX timestamp in seconds
-    pub timestamp: u64,
+    pub recv_timestamp: u64,
     /// UNIX timestamp in milliseconds
     pub sort_key_timestamp: u64,
     /// The encrypted notification body
@@ -58,7 +58,7 @@ impl FromRequest for Notification {
             };
 
             let headers = NotificationHeaders::from_request(&req, data.is_some())?;
-            let timestamp = sec_since_epoch();
+            let recv_timestamp = sec_since_epoch();
             let sort_key_timestamp = ms_since_epoch();
             let message_id = Self::generate_message_id(
                 &app_state.fernet,
@@ -82,7 +82,7 @@ impl FromRequest for Notification {
                 message_id,
                 subscription,
                 headers,
-                timestamp,
+                recv_timestamp,
                 sort_key_timestamp,
                 data,
             })
@@ -100,7 +100,7 @@ impl From<Notification> for autopush_common::notification::Notification {
             version: notification.message_id,
             ttl: notification.headers.ttl as u64,
             topic,
-            timestamp: notification.timestamp,
+            recv_timestamp: notification.recv_timestamp,
             data: notification.data,
             sortkey_timestamp,
             reliability_id: notification.subscription.reliability_id,
@@ -171,7 +171,7 @@ impl Notification {
         map.insert("version", serde_json::to_value(&self.message_id)?);
         map.insert("ttl", serde_json::to_value(self.headers.ttl)?);
         map.insert("topic", serde_json::to_value(&self.headers.topic)?);
-        map.insert("timestamp", serde_json::to_value(self.timestamp)?);
+        map.insert("timestamp", serde_json::to_value(self.recv_timestamp)?);
         if let Some(reliability_id) = &self.subscription.reliability_id {
             map.insert("reliability_id", serde_json::to_value(reliability_id)?);
         }

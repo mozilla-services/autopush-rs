@@ -14,13 +14,15 @@ use crate::util::ms_since_epoch;
 pub struct Notification {
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
+    /// This is taken from the [crate::db::NotificationRecord] `message_id`
     pub version: String,
     #[serde(default = "default_ttl", skip_serializing)]
     pub ttl: u64,
     #[serde(skip_serializing)]
     pub topic: Option<String>,
     #[serde(skip_serializing)]
-    pub timestamp: u64,
+    #[serde(rename = "timestamp")]
+    pub recv_timestamp: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
     #[serde(skip_serializing)]
@@ -69,7 +71,7 @@ impl Notification {
     /// Convenience function to determine if the notification
     /// has aged out.
     pub fn expired(&self, at_sec: u64) -> bool {
-        at_sec >= self.timestamp + self.ttl
+        at_sec >= self.recv_timestamp + self.ttl
     }
 }
 

@@ -154,7 +154,7 @@ fn new_version_cell(timestamp: SystemTime) -> cell::Cell {
     cell::Cell {
         qualifier: "version".to_owned(),
         value: Uuid::new_v4().into(),
-        timestamp,
+        timestamp_st: timestamp,
         ..Default::default()
     }
 }
@@ -234,7 +234,7 @@ fn channels_to_cells(channels: Cow<HashSet<Uuid>>, expiry: SystemTime) -> Vec<ce
         }
         cells.push(cell::Cell {
             qualifier: format!("chid:{}", channel_id.as_hyphenated()),
-            timestamp: expiry,
+            timestamp_st: expiry,
             ..Default::default()
         });
     }
@@ -561,8 +561,8 @@ impl BigTableClientImpl {
             for cell in cells {
                 let mut mutation = data::Mutation::default();
                 let mut set_cell = data::Mutation_SetCell::default();
-                let timestamp = cell
-                    .timestamp
+                let timestamp_st = cell
+                    .timestamp_st
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
                 set_cell.family_name.clone_from(&family_id);
@@ -570,8 +570,8 @@ impl BigTableClientImpl {
                 set_cell.set_value(cell.value);
                 // Yes, this is passing milli bounded time as a micro. Otherwise I get
                 // a `Timestamp granularity mismatch` error
-                set_cell.set_timestamp_micros((timestamp.as_millis() * 1000) as i64);
-                debug!("🉑 expiring in {:?}", timestamp.as_millis());
+                set_cell.set_timestamp_micros((timestamp_st.as_millis() * 1000) as i64);
+                debug!("🉑 expiring in {:?}", timestamp_st.as_millis());
                 mutation.set_set_cell(set_cell);
                 mutations.push(mutation);
             }
@@ -743,7 +743,7 @@ impl BigTableClientImpl {
             sortkey_timestamp: range_key.sortkey_timestamp,
             version: to_string(row.take_required_cell("version")?.value, "version")?,
             ttl: to_u64(row.take_required_cell("ttl")?.value, "ttl")?,
-            timestamp: to_u64(row.take_required_cell("timestamp")?.value, "timestamp")?,
+            recv_timestamp: to_u64(row.take_required_cell("timestamp")?.value, "timestamp")?,
             ..Default::default()
         };
 
@@ -780,13 +780,13 @@ impl BigTableClientImpl {
             cell::Cell {
                 qualifier: "connected_at".to_owned(),
                 value: user.connected_at.to_be_bytes().to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "router_type".to_owned(),
                 value: user.router_type.clone().into_bytes(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
@@ -796,13 +796,13 @@ impl BigTableClientImpl {
                     .unwrap_or(USER_RECORD_VERSION)
                     .to_be_bytes()
                     .to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "version".to_owned(),
                 value: (*version).into(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
         ];
@@ -811,7 +811,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "router_data".to_owned(),
                 value: json!(router_data).to_string().as_bytes().to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         };
@@ -819,7 +819,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "current_timestamp".to_owned(),
                 value: current_timestamp.to_be_bytes().to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         };
@@ -827,7 +827,7 @@ impl BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "node_id".to_owned(),
                 value: node_id.as_bytes().to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         };
@@ -1142,8 +1142,8 @@ impl DbClient for BigTableClientImpl {
         let row_key = format!("{}#{}", uaid.simple(), message.chidmessageid());
         debug!("🗄️ Saving message {} :: {:?}", &row_key, &message);
         trace!(
-            "🉑 timestamp: {:?}",
-            &message.timestamp.to_be_bytes().to_vec()
+            "🉑 received timestamp: {:?}",
+            &message.recv_timestamp.to_be_bytes().to_vec()
         );
         let mut row = Row::new(row_key);
 
@@ -1170,19 +1170,19 @@ impl DbClient for BigTableClientImpl {
             cell::Cell {
                 qualifier: "ttl".to_owned(),
                 value: message.ttl.to_be_bytes().to_vec(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "timestamp".to_owned(),
-                value: message.timestamp.to_be_bytes().to_vec(),
-                timestamp: expiry,
+                value: message.recv_timestamp.to_be_bytes().to_vec(),
+                timestamp_st: expiry,
                 ..Default::default()
             },
             cell::Cell {
                 qualifier: "version".to_owned(),
                 value: message.version.into_bytes(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             },
         ]);
@@ -1191,7 +1191,7 @@ impl DbClient for BigTableClientImpl {
                 cells.push(cell::Cell {
                     qualifier: "headers".to_owned(),
                     value: json!(headers).to_string().into_bytes(),
-                    timestamp: expiry,
+                    timestamp_st: expiry,
                     ..Default::default()
                 });
             }
@@ -1200,7 +1200,7 @@ impl DbClient for BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "data".to_owned(),
                 value: data.into_bytes(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         }
@@ -1209,7 +1209,7 @@ impl DbClient for BigTableClientImpl {
             cells.push(cell::Cell {
                 qualifier: "reliability_id".to_owned(),
                 value: reliability_id.into_bytes(),
-                timestamp: expiry,
+                timestamp_st: expiry,
                 ..Default::default()
             });
         }
@@ -1266,7 +1266,7 @@ impl DbClient for BigTableClientImpl {
                 cell::Cell {
                     qualifier: "current_timestamp".to_owned(),
                     value: timestamp.to_be_bytes().to_vec(),
-                    timestamp: expiry,
+                    timestamp_st: expiry,
                     ..Default::default()
                 },
                 new_version_cell(expiry),
@@ -1610,13 +1610,7 @@ mod tests {
 
         // can we increment the storage for the user?
         client
-            .increment_storage(
-                &fetched.uaid,
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            )
+            .increment_storage(&fetched.uaid, ms_since_epoch())
             .await?;
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
@@ -1627,7 +1621,7 @@ mod tests {
             channel_id: chid,
             version: "test".to_owned(),
             ttl: 300,
-            timestamp,
+            recv_timestamp: timestamp,
             data: Some(test_data.clone()),
             sortkey_timestamp: Some(sort_key),
             ..Default::default()
@@ -1672,7 +1666,7 @@ mod tests {
             version: "test".to_owned(),
             ttl: 300,
             topic: Some("topic".to_owned()),
-            timestamp,
+            recv_timestamp: timestamp,
             data: Some(test_data.clone()),
             sortkey_timestamp: Some(sort_key),
             ..Default::default()
@@ -1862,13 +1856,7 @@ mod tests {
             .unwrap();
 
         client
-            .increment_storage(
-                &uaid,
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            )
+            .increment_storage(&uaid, ms_since_epoch())
             .await
             .unwrap();
 
@@ -1879,13 +1867,13 @@ mod tests {
 
         // Ensure the initial cell expiry (timestamp) of all the cells
         // in the row has been updated
-        let ca_expiry = row.take_required_cell("connected_at").unwrap().timestamp;
+        let ca_expiry = row.take_required_cell("connected_at").unwrap().timestamp_st;
         for mut cells in row.cells.into_values() {
             let Some(cell) = cells.pop() else {
                 continue;
             };
             assert!(
-                cell.timestamp >= ca_expiry,
+                cell.timestamp_st >= ca_expiry,
                 "{} cell timestamp should >= connected_at's",
                 cell.qualifier
             );
@@ -1903,7 +1891,7 @@ mod tests {
             panic!("Expected row");
         };
 
-        let ca_expiry2 = row.take_required_cell("connected_at").unwrap().timestamp;
+        let ca_expiry2 = row.take_required_cell("connected_at").unwrap().timestamp_st;
 
         assert!(ca_expiry2 > ca_expiry);
 
@@ -1912,7 +1900,7 @@ mod tests {
                 continue;
             };
             assert!(
-                cell.timestamp >= ca_expiry2,
+                cell.timestamp_st >= ca_expiry2,
                 "{} cell timestamp expiry should exceed connected_at's",
                 cell.qualifier
             );

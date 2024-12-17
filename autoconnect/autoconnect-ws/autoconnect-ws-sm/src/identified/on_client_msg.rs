@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cadence::CountedExt;
+use cadence::{Counted, CountedExt};
 use uuid::Uuid;
 
 use autoconnect_common::{
@@ -179,22 +179,30 @@ impl WebPushClient {
     /// Acknowledge receipt of one or more Push Notifications
     async fn ack(&mut self, updates: &[ClientAck]) -> Result<Vec<ServerMessage>, SMError> {
         trace!("✅ WebPushClient:ack");
-        let _ = self.app_state.metrics.incr("ua.command.ack");
+        let mut codes: HashMap<u32, u32> = HashMap::new();
 
         for notif in updates {
             // Check the list of unacked "direct" (unstored) notifications. We only want to
             // ack messages we've not yet seen and we have the right version, otherwise we could
             // have gotten an older, inaccurate ACK.
+            // Since the `version` is the `message_id` which is an encrypted string containing
+            // the uaid, channel_id, and message timestamp in ms, it should be unique enough
+            // that we do not need any other values.
+
             let pos = self
                 .ack_state
                 .unacked_direct_notifs
                 .iter()
-                .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
+                .position(|n| n.version == notif.version);
+            if let Some(code) = &notif.code {
+                codes.insert(*code, codes.get(code).unwrap_or(&0) + 1);
+            }
             // We found one, so delete it from our list of unacked messages
             if let Some(pos) = pos {
                 debug!("✅ Ack (Direct)";
                        "channel_id" => notif.channel_id.as_hyphenated().to_string(),
-                       "version" => &notif.version
+                       "version" => &notif.version,
+                       "code" => &notif.code.unwrap_or_default(),
                 );
                 self.ack_state.unacked_direct_notifs.remove(pos);
                 self.stats.direct_acked += 1;
@@ -206,7 +214,7 @@ impl WebPushClient {
                 .ack_state
                 .unacked_stored_notifs
                 .iter()
-                .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
+                .position(|n| n.version == notif.version);
             if let Some(pos) = pos {
                 debug!(
                     "✅ Ack (Stored)";
@@ -237,8 +245,26 @@ impl WebPushClient {
                 self.stats.stored_acked += 1;
                 continue;
             };
+
+            // The client returned an ACK for a message that we don't recognize. This shouldn't happen,
+            // so we should raise a bit of a stink.
+            info!("✖️🟥 Found unknown ACK: {:?}", &notif.version);
+            let _ = self
+                .app_state
+                .metrics
+                .incr("ua.command.ack.unknown_version");
         }
 
+        // Return metrics associated with the various possible return codes.
+        if !codes.is_empty() {
+            for (key, val) in codes.into_iter() {
+                self.app_state
+                    .metrics
+                    .count_with_tags("ua.command.ack", val)
+                    .with_tag("code", &key.to_string())
+                    .send();
+            }
+        }
         if self.ack_state.unacked_notifs() {
             // Wait for the Client to Ack all notifications before further
             // processing
