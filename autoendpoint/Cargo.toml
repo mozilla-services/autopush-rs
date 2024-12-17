@@ -75,6 +75,8 @@ bigtable = ["autopush_common/bigtable"]
 # enable emulator to call locally run data store.
 emulator = ["bigtable"]
 
+redis = ["autopush_common/redis"]
+
 # Enable "stub" router for local testing purposes.
 # The "stub" will return specified error strings or success
 # depending on which `app_id` client is called based on the registration

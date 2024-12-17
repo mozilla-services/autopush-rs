@@ -13,6 +13,8 @@ use serde_json::json;
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(feature = "redis")]
+use autopush_common::db::redis::RedisClientImpl;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::PushReliability;
 use autopush_common::{
@@ -80,6 +82,8 @@ impl Server {
                 client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
+            #[cfg(feature = "redis")]
+            StorageType::Redis => Box::new(RedisClientImpl::new(metrics.clone(), &db_settings)?),
             _ => {
                 debug!("No idea what {:?} is", &db_settings.dsn);
                 return Err(ApiErrorKind::General(

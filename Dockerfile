@@ -2,6 +2,7 @@
 # RUST_VER
 FROM rust:1.83-bookworm AS builder
 ARG CRATE
+ARG BUILD_ARGS
 
 ADD . /app
 WORKDIR /app
@@ -16,7 +17,7 @@ RUN \
     cargo --version && \
     rustc --version && \
     mkdir -m 755 bin && \
-    cargo install --path $CRATE --locked --root /app
+    cargo install --path $CRATE $BUILD_ARGS --locked --root /app
 
 
 FROM debian:bookworm-slim
