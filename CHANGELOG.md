@@ -1,3 +1,20 @@
+<a name="1.72.2"></a>
+## 1.72.2 (2024-12-17)
+
+
+#### Features
+
+*   Call out the "RESOURCE_EXHAUSTED" error metric (#808) ([ebc5704b](https://github.com/mozilla-services/autopush-rs/commit/ebc5704b39d8c20b81199a6e5da49b45b5eac3dd))
+*   Containerize integration tests. (#809) ([f8763040](https://github.com/mozilla-services/autopush-rs/commit/f8763040772c9b55e95e3bea8b3a5284df50bdaa))
+*   Move BT chunk processing into retry (#806) ([7edbcc76](https://github.com/mozilla-services/autopush-rs/commit/7edbcc76a2d46a9aea401de5abd4bebcba4fdd28))
+*   Containerize integration tests. ([11710e11](https://github.com/mozilla-services/autopush-rs/commit/11710e11a359d3b1ba015073c9f1bad433586282))
+
+#### Doc
+
+* **test:**  update test strategy to include links to metrics (#810) ([8cda9ac1](https://github.com/mozilla-services/autopush-rs/commit/8cda9ac19cadf43764ae392b3450f865ea8444ed))
+
+
+
 <a name="1.72.1"></a>
 ## 1.72.1 (2024-11-21)
 
