@@ -122,7 +122,9 @@ pub async fn handle_error(
                 error.errno(),
             );
         }
-        RouterError::Fcm(FcmError::Upstream { status, .. }) => incr_error_metric(
+        RouterError::Fcm(FcmError::Upstream {
+            error_code: status, ..
+        }) => incr_error_metric(
             metrics,
             platform,
             app_id,

@@ -37,8 +37,8 @@ pub enum FcmError {
     #[error("User has invalid app ID {0}")]
     InvalidAppId(String),
 
-    #[error("Upstream error, {status}: {message}")]
-    Upstream { status: String, message: String },
+    #[error("Upstream error, {error_code}: {message}")]
+    Upstream { error_code: String, message: String },
 }
 
 impl FcmError {
@@ -105,8 +105,8 @@ impl ReportableError for FcmError {
             FcmError::InvalidResponse(_, body, status) => {
                 vec![("status", status.to_string()), ("body", body.to_owned())]
             }
-            FcmError::Upstream { status, .. } => {
-                vec![("status", status.clone())]
+            FcmError::Upstream { error_code, .. } => {
+                vec![("status", error_code.clone())]
             }
             _ => vec![],
         }
