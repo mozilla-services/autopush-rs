@@ -251,7 +251,7 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
         .with_jitter(true)
 }
 
-fn retryable_internal_error(status: &RpcStatus) -> bool {
+fn retryable_internal_err(status: &RpcStatus) -> bool {
     match status.code() {
         RpcStatusCode::UNKNOWN => {
             "error occurred when fetching oauth2 token." == status.message().to_ascii_lowercase()
@@ -278,20 +278,20 @@ pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
     metric.send();
 }
 
-pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) -> bool {
+pub fn retryable_grpcio_err(metrics: &Arc<StatsdClient>) -> impl Fn(&grpcio::Error) -> bool + '_ {
     move |err| {
-        debug!("🉑 Checking error...{err}");
+        debug!("🉑 Checking grpcio::Error...{err}");
         match err {
             grpcio::Error::RpcFailure(status) => {
                 info!("GRPC Failure :{:?}", status);
-                let retry = retryable_internal_error(status);
+                let retry = retryable_internal_err(status);
                 if retry {
-                    metric(&metrics, "RpcFailure", Some(&status.code().to_string()));
+                    metric(metrics, "RpcFailure", Some(&status.code().to_string()));
                 }
                 retry
             }
             grpcio::Error::BindFail(_) => {
-                metric(&metrics, "BindFail", None);
+                metric(metrics, "BindFail", None);
                 true
             }
             // The parameter here is a [grpcio_sys::grpc_call_error] enum
@@ -300,13 +300,28 @@ pub fn retryable_error(metrics: Arc<StatsdClient>) -> impl Fn(&grpcio::Error) ->
                 let retry = grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR;
                 if retry {
                     metric(
-                        &metrics,
+                        metrics,
                         "CallFailure",
                         Some(&format!("{:?}", grpc_call_status)),
                     );
                 }
                 retry
             }
+            _ => false,
+        }
+    }
+}
+
+pub fn retryable_bt_err(
+    metrics: &Arc<StatsdClient>,
+) -> impl Fn(&error::BigTableError) -> bool + '_ {
+    move |err| {
+        debug!("🉑 Checking BigTableError...{err}");
+        match err {
+            error::BigTableError::InvalidRowResponse(e)
+            | error::BigTableError::Read(e)
+            | error::BigTableError::Write(e)
+            | error::BigTableError::GRPC(e) => retryable_grpcio_err(metrics)(e),
             _ => false,
         }
     }
@@ -424,7 +439,7 @@ impl BigTableClientImpl {
                         .conn
                         .mutate_row_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_error(self.metrics.clone()),
+                retryable_grpcio_err(&self.metrics),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -446,7 +461,7 @@ impl BigTableClientImpl {
                         .conn
                         .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_error(self.metrics.clone()),
+                retryable_grpcio_err(&self.metrics),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -513,15 +528,16 @@ impl BigTableClientImpl {
         let resp = retry_policy(self.settings.retry_count)
             .retry_if(
                 || async {
-                    bigtable
+                    let resp: grpcio::ClientSStreamReceiver<bigtable::ReadRowsResponse> = bigtable
                         .conn
                         .read_rows_opt(&req, call_opts(self.metadata.clone()))
+                        .map_err(error::BigTableError::Read)?;
+                    merge::RowMerger::process_chunks(resp).await
                 },
-                retryable_error(self.metrics.clone()),
+                retryable_bt_err(&self.metrics),
             )
-            .await
-            .map_err(error::BigTableError::Read)?;
-        merge::RowMerger::process_chunks(resp).await
+            .await?;
+        Ok(resp)
     }
 
     /// write a given row.
@@ -605,7 +621,7 @@ impl BigTableClientImpl {
                         .conn
                         .check_and_mutate_row_opt(&req, call_opts(self.metadata.clone()))
                 },
-                retryable_error(self.metrics.clone()),
+                retryable_grpcio_err(&self.metrics),
             )
             .await
             .map_err(error::BigTableError::Write)?;
@@ -893,7 +909,7 @@ impl BigtableDb {
                     self.conn
                         .read_rows_opt(&req, call_opts(self.health_metadata.clone()))
                 },
-                retryable_error(metrics.clone()),
+                retryable_grpcio_err(metrics),
             )
             .await
             .map_err(error::BigTableError::Read)?;
