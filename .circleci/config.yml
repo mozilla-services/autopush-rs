@@ -154,54 +154,25 @@ jobs:
 
   test-integration:
     docker:
-      - image: python:3.12-slim-bookworm
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
+      - image: cimg/base:2024.06
         environment:
           RUST_BACKTRACE: 1
-      - image: google/cloud-sdk:latest
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        command: gcloud beta emulators bigtable start --host-port=localhost:8086
-      # - image: redis/redis-stack-server
-      #  auth:
-      #    username: $DOCKER_USER
-      #    password: $DOCKER_PASS
     resource_class: large
-    environment:
-      BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
-      - restore_test_cache:
-          cache_key: rust-v1-integration-test-{{ checksum "Cargo.lock" }}
+      - setup_remote_docker:
+          docker_layer_caching: true
       - create_test_result_workspace
-      - setup_rust
-      - build_applications
-      - run:
-          name: Set up system
-          command: |
-            apt update
-            apt install libssl-dev apt-transport-https ca-certificates gnupg curl cmake -y
-      - setup_cbt
-      - setup_python
-      - setup_bigtable
       - run:
           name: Integration tests (Bigtable)
-          command: make integration-test
-          environment:
-            RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
-            # PYTEST_ARGS: -sv
-            DB_DSN: grpc://localhost:8086
-            TEST_RESULTS_DIR: workspace/test-results
+          command: |
+            make integration-test
+            cp -r ~/project/tests/integration ~/project/workspace/test-results
       - store_artifacts:
           path: ~/project/workspace/test-results/integration_test_results.xml
           destination: integration_test_results.xml
       - store_test_results:
           path: workspace/test-results
-      - save_test_cache:
-          cache_key: rust-v1-integration-test-cache-{{ checksum "Cargo.lock" }}
 
   test-unit:
     docker:
@@ -358,6 +329,26 @@ jobs:
           paths:
             - autopush-locust.tar
 
+  build-integration-test:
+    docker:
+      - image: cimg/base:2024.06
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build Image
+          command: docker build -t autopush-integration-tests -f ./tests/integration/Dockerfile .
+      - run:
+          name: Save Docker Image to Workspace
+          command: |
+            mkdir -p /tmp/workspace
+            docker save -o /tmp/workspace/autopush-integration-tests.tar autopush-integration-tests
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - autopush-integration-tests.tar
+
   deploy:
     executor: gcp-gcr/default
     parameters:
@@ -484,6 +475,13 @@ workflows:
           filters:
             tags:
               only: /.*/
+
+      - build-integration-test:
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
 
       # Comment out the following two sections for local CircleCI testing.
       - deploy:
