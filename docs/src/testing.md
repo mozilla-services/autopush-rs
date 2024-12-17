@@ -83,7 +83,7 @@ $ pyenv activate push-312
 5. Run `poetry install` to install all dependencies for testing.
 
 ### Running Integration Tests
-To run the integration tests, simply run `make integration-tests` from your terminal at the root of the project.
+To run the integration tests, simply run `make integration-tests-local` from your terminal at the root of the project.
 
 You can alter the verbosity and logging output by adding command line flags to the `PYTEST_ARGS ?=` variable in the root project Makefile. For example, for greater verbosity and stdout printing, add `-vv -s`.
 
@@ -91,7 +91,7 @@ The test output is then emitted in your terminal instance. This includes the nam
 
 The integration tests make use of [pytest markers][pytest_markers] for filtering tests. These can be
 used with the `-m` pytest option, or can be used through the following environment variables and
-`integration-test` make command.
+`integration-test-local` make command.
 
 | ENVIRONMENT VARIABLE | RELATED MARKER | DESCRIPTION                                                       |
 |----------------------|----------------|-------------------------------------------------------------------|
@@ -99,6 +99,9 @@ used with the `-m` pytest option, or can be used through the following environme
 | TEST_STUB            | stub           | If set will include all tests marked with `stub` in execution     |
 
 Integration tests in CI will be triggered automatically whenever a commit is pushed to a branch as a part of the CI PR workflow.
+
+#### Using Docker to run the Integration Tests.
+If you aren't needing to run specific tests you can use the containerized version of the integration tests with the following make command: `make integration-test`. This will build a docker image and set up the Big Table emulator as well as execute a default set of tests with the `not stub` marker.
 
 ### Debugging
 In some instances after making test changes, the test client can potentially hang in a dangling process. This can result in inaccurate results or tests not running correctly. You can run the following commands to determine the PID's of the offending processes and terminate them:
