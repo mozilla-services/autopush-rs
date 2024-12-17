@@ -6,8 +6,13 @@ Autopush is tested using a combination of functional, integration, and performan
 
 Unit tests are written in the same Rust module as the code they are testing. Integration and Load Test code are in the `tests/` directory, both written in Python.
 
-Presently, the Autopush test strategy does not require a minimum test coverage percentage for unit and integration tests. However, it is the goal that the service eventually have defined minimum coverage.
-Load tests results should not go below a minimum performance threshold.
+Presently, the Autopush test strategy does not require a minimum test coverage percentage for unit
+tests. However, the recommended minimum performance threshold is 60%.
+
+Test metrics are generated from Junit XML and coverage JSON files that are produced in CI/CD and
+consumed by the ETE test metric pipeline. Visualizations of the metrics are available on the
+[Autopush-rs Looker Dashboard][dashboard]. For more information on test metrics and the pipeline
+see the [ETE team documentation][ete_docs].
 
 The functional test strategy is three-tiered, composed of: 
 
@@ -141,6 +146,8 @@ discretion of the Autopush Engineering Team.
 
 For more details see the [README.md][load_tests_docs] file in the `tests/load` directory.
 
+[dashboard]: https://mozilla.cloud.looker.com/dashboards/1977
+[ete_docs]: https://mozilla.github.io/ecosystem-test-scripts/introduction.html
 [unit_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/
 [unit_tests_docs]: ./testing.md#unit-tests
 [bigtable_docs]: ./bigtable-emulation.md
