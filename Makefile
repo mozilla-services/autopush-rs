@@ -4,11 +4,6 @@ TESTS_DIR := tests
 TEST_RESULTS_DIR ?= workspace/test-results
 # Markers are "clever", and work by including multiple markers with " and ".
 # This uses makefile magic to construct the set of items.
-# technically `$(eval )` would work here, but I've not had it work consistently.
-# The following is taken from [the makefile manual](https://www.gnu.org/software/make/manual/make.html#Syntax-of-Functions)
-NOOP :=
-SPACE :=$(NOOP) $(NOOP)
-PYTEST_AND :=" and "
 # Run sentry UNLESS "SKIP_SENTRY" is specified.
 PYTEST_MARKERS := $(if $(SKIP_SENTRY),not sentry,)
 # Do not run "stub" unless "TEST_STUB" specified (Stub does not work in CI currently)
