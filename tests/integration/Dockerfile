@@ -58,5 +58,5 @@ RUN cargo build --features=emulator
 
 RUN chmod +x scripts/setup_bt.sh
 
-# Pytest markers are defined in the `pytest.ini` file. 
-CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v"]
+# Pytest markers are defined in the `pytest.ini` file.
+CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --config-file=tests/pytest.ini --junit-xml=integration_test_results.xml -v"]
