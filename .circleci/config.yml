@@ -168,11 +168,21 @@ jobs:
           command: |
             make integration-test
             cp -r ~/project/tests/integration ~/project/workspace/test-results
+      - run:
+          name: Save Docker Image to Workspace
+          command: |
+            mkdir -p /tmp/cache
+            docker tag integration-tests autopush-integration-tests
+            docker save -o /tmp/cache/autopush-integration-tests.tar autopush-integration-tests
       - store_artifacts:
           path: ~/project/workspace/test-results/integration_test_results.xml
           destination: integration_test_results.xml
       - store_test_results:
           path: workspace/test-results
+      - persist_to_workspace:
+          root: /tmp/cache
+          paths:
+            - autopush-integration-tests.tar
 
   test-unit:
     docker:
@@ -303,9 +313,9 @@ jobs:
       # required since Workflows do not have the same remote docker instance.
       - run:
           name: docker save <<parameters.image>>
-          command: mkdir -p /cache; docker save -o /cache/<<parameters.image>>.tar "<<parameters.image>>"
+          command: mkdir -p /tmp/cache; docker save -o /tmp/cache/<<parameters.image>>.tar "<<parameters.image>>"
       - persist_to_workspace:
-          root: /cache
+          root: /tmp/cache
           paths:
             - <<parameters.image>>.tar
 
@@ -325,10 +335,10 @@ jobs:
       - run:
           name: Save Docker Image to Workspace
           command: |
-            mkdir -p /cache
-            docker save -o /cache/<< parameters.image >>.tar << parameters.image >>
+            mkdir -p /tmp/cache
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>
       - persist_to_workspace:
-          root: /cache
+          root: /tmp/cache
           paths:
             - << parameters.image >>.tar
 
@@ -340,7 +350,6 @@ jobs:
         default: build
       image:
         type: string
-        default: docker
       registry-url:
         type: string
         default: us-docker.pkg.dev
@@ -387,29 +396,6 @@ jobs:
           registry-url: <<parameters.registry-url>>
           tag: $GAR_TAG,latest
 
-  deploy-load-test:
-    docker:
-      - image: cimg/base:2024.06
-    steps:
-      - checkout
-      - attach_workspace:
-          at: /tmp/workspace
-      - setup_remote_docker
-      - run:
-          name: Load Docker Image From Workspace
-          command: docker load -i /tmp/workspace/autopush-locust.tar
-      - docker_login:
-          load: True
-      - run:
-          name: Push to Docker Hub
-          command: |
-            echo ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
-            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
-            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:latest
-            docker images
-            docker push "${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}"
-            docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
-
 workflows:
   build-test-deploy:
     jobs:
@@ -454,15 +440,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-
-      - build-test-container:
-          name: Build Integration Test Image
-          image: autopush-integration-test
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only: master
       - build-test-container:
           name: Build Load Test Image
           image: autopush-load-test
@@ -470,7 +447,7 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only: sync-4559
       - build-test-container:
           name: Build Notification Test Image
           image: autopush-notification-test
@@ -478,7 +455,7 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only: sync-4559
 
       # Comment out the following two sections for local CircleCI testing.
       - deploy:
@@ -510,7 +487,7 @@ workflows:
               only: master
       - deploy:
           name: Push Load Test Image
-          image: autopush-load-test
+          image: autopush-load-tests
           requires:
             - Build Load Test Image
             - python-checks
@@ -518,10 +495,10 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only: sync-4559
       - deploy:
           name: Push Notification Test Image
-          image: autopush-notification-test
+          image: autopush-notification-tests
           requires:
             - Build Notification Test Image
             - python-checks
@@ -529,15 +506,15 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only: sync-4559
       - deploy:
           name: Push Integration Test Image
-          image: autopush-integration-test
+          image: autopush-integration-tests
           requires:
-            - Build Integration Test Image
+            - Integration Tests
             - python-checks
           filters:
             tags:
               only: /.*/
             branches:
-              only: master
+              only: sync-4559
