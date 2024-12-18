@@ -11,23 +11,23 @@ ENV PYTHONUNBUFFERED=1
 
 ENV PATH=$PATH:/root/.cargo/bin
 ENV PYTHON_VENV=/venv
-ENV PYTEST_ARGS=""
+ENV PYTEST_ARGS=${PYTEST_ARGS}
 ENV RUST_LOG="autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn"
 ENV DB_DSN=grpc://localhost:8086
 
 # Add gcc since there are no wheels for some packages for arm64/aarch64
 # (g++/make for gevent on pypy)
 RUN apt-get update && apt install -y --no-install-recommends \
-    git \
-    gpg \
-    build-essential \
-    python3-dev \
-    curl \
-    libstdc++6 \
-    libstdc++-12-dev \
-    libssl-dev \
-    pkg-config \
-    cmake
+  git \
+  gpg \
+  build-essential \
+  python3-dev \
+  curl \
+  libstdc++6 \
+  libstdc++-12-dev \
+  libssl-dev \
+  pkg-config \
+  cmake
 
 RUN python -m venv ${PYTHON_VENV}
 ENV PATH="${PYTHON_VENV}/bin:${PATH}"
@@ -59,4 +59,4 @@ RUN cargo build --features=emulator
 
 RUN chmod +x scripts/setup_bt.sh
 
-CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v -m 'not stub' ${PYTEST_ARGS}"]
+CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v ${PYTEST_ARGS}"]

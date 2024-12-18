@@ -2,7 +2,14 @@ SHELL := /bin/sh
 CARGO = cargo
 TESTS_DIR := tests
 TEST_RESULTS_DIR ?= workspace/test-results
-PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
+# Run sentry UNLESS "SKIP_SENTRY" is specified.
+PYTEST_MARKERS := $(if $(SKIP_SENTRY),not sentry,)
+# Do not run "stub" unless "TEST_STUB" specified (Stub does not work in CI currently)
+PYTEST_MARKERS += $(if $(TEST_STUB),,$(if $(strip $(PYTEST_MARKERS)),and ,)not stub)
+# Do not run "push reliability" unless "TEST_RELIABILITY" specified (This is a feature in progress)
+PYTEST_MARKERS += $(if $(TEST_RELIABILITY),,$(if $(strip $(PYTEST_MARKERS)),and ,)not reliable_report)
+# Compile the pytest arguments if any have been specified.
+PYTEST_ARGS := $(if $(strip $(PYTEST_MARKERS)), -m "$(strip $(PYTEST_MARKERS))",)
 INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
 INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
@@ -31,7 +38,7 @@ upgrade:
 
 integration-test:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml build
-	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
+	PYTEST_ARGS='$(PYTEST_ARGS)' $(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
 	docker cp integration-tests:/code/integration_test_results.xml $(INTEGRATION_TEST_DIR)
 
 integration-test-clean:
