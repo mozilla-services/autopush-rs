@@ -85,13 +85,14 @@ $ pyenv activate push-312
 ### Running Integration Tests
 To run the integration tests, simply run `make integration-tests-local` from your terminal at the root of the project.
 
-You can alter the verbosity and logging output by adding command line flags to the `PYTEST_ARGS ?=` variable in the root project Makefile. For example, for greater verbosity and stdout printing, add `-vv -s`.
+You can alter the verbosity and logging output by adding command line flags to the `PYTEST_ARGS ?=` variable in the root project Makefile. For example, for greater verbosity and stdout printing, add `-vv -s`. (Note: This may be unreliable due to several hand-offs during the
+make / docker build process. For reliability, you may which to modify the `tests/pytest.ini` file to include the options.)
 
 The test output is then emitted in your terminal instance. This includes the name of the tests, whether they pass or fail and any exceptions that are triggered during the test run.
 
 The integration tests make use of [pytest markers][pytest_markers] for filtering tests. These can be
-used with the `-m` pytest option, or can be used through the following environment variables and
-`integration-test-local` make command.
+used with the `-m` pytest option specified in the `tests/pytest.ini` file , or can be used through the
+following environment variables and `integration-test-local` make command.
 
 | ENVIRONMENT VARIABLE | RELATED MARKER  | DESCRIPTION                                                              |
 |----------------------|-----------------|--------------------------------------------------------------------------|

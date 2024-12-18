@@ -11,7 +11,6 @@ ENV PYTHONUNBUFFERED=1
 
 ENV PATH=$PATH:/root/.cargo/bin
 ENV PYTHON_VENV=/venv
-ENV PYTEST_ARGS=${PYTEST_ARGS}
 ENV RUST_LOG="autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn"
 ENV DB_DSN=grpc://localhost:8086
 
@@ -59,4 +58,5 @@ RUN cargo build --features=emulator
 
 RUN chmod +x scripts/setup_bt.sh
 
-CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v ${PYTEST_ARGS}"]
+# Pytest markers are defined in the `pytest.ini` file. 
+CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v"]

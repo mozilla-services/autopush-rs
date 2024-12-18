@@ -2,14 +2,11 @@ SHELL := /bin/sh
 CARGO = cargo
 TESTS_DIR := tests
 TEST_RESULTS_DIR ?= workspace/test-results
-# Run sentry UNLESS "SKIP_SENTRY" is specified.
-PYTEST_MARKERS := $(if $(SKIP_SENTRY),not sentry,)
-# Do not run "stub" unless "TEST_STUB" specified (Stub does not work in CI currently)
-PYTEST_MARKERS += $(if $(TEST_STUB),,$(if $(strip $(PYTEST_MARKERS)),and ,)not stub)
-# Do not run "push reliability" unless "TEST_RELIABILITY" specified (This is a feature in progress)
-PYTEST_MARKERS += $(if $(TEST_RELIABILITY),,$(if $(strip $(PYTEST_MARKERS)),and ,)not reliable_report)
-# Compile the pytest arguments if any have been specified.
-PYTEST_ARGS := $(if $(strip $(PYTEST_MARKERS)), -m "$(strip $(PYTEST_MARKERS))",)
+# NOTE: Do not be clever.
+# The integration tests (and a few others) use pytest markers to control
+# the tests that are being run. These markers are set and defined within
+# the `.tests/pytest.ini`. That is the single source of truth.
+PYTEST_ARGS := ${PYTEST_ARGS}
 INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
 INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
@@ -36,23 +33,23 @@ upgrade:
 	$(CARGO) upgrade
 	$(CARGO) update
 
-integration-test:
+integration-test:  ## pytest markers are stored in `tests/pytest.ini`
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml build
-	PYTEST_ARGS='$(PYTEST_ARGS)' $(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
 	docker cp integration-tests:/code/integration_test_results.xml $(INTEGRATION_TEST_DIR)
 
 integration-test-clean:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml down
 	docker rm integration-tests
 
-integration-test-legacy:
+integration-test-legacy: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
 		-v $(PYTEST_ARGS)
 
-integration-test-local:
+integration-test-local: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
