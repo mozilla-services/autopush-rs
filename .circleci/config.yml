@@ -162,27 +162,24 @@ jobs:
       - checkout
       - setup_remote_docker:
           docker_layer_caching: true
+      - attach_workspace:
+          at: /tmp/cache
       - create_test_result_workspace
+      - run:
+          name: Restore Docker image cache
+          command: |
+            docker load -i /tmp/cache/autopush-integration-tests.tar
+            docker tag autopush-integration-tests:build integration-tests
       - run:
           name: Integration tests (Bigtable)
           command: |
             make integration-test
             cp -r ~/project/tests/integration ~/project/workspace/test-results
-      - run:
-          name: Save Docker Image to Workspace
-          command: |
-            mkdir -p /tmp/cache
-            docker tag integration-tests autopush-integration-tests
-            docker save -o /tmp/cache/autopush-integration-tests.tar autopush-integration-tests
       - store_artifacts:
           path: ~/project/workspace/test-results/integration_test_results.xml
           destination: integration_test_results.xml
       - store_test_results:
           path: workspace/test-results
-      - persist_to_workspace:
-          root: /tmp/cache
-          paths:
-            - autopush-integration-tests.tar
 
   test-unit:
     docker:
@@ -331,12 +328,12 @@ jobs:
           docker_layer_caching: true
       - run:
           name: Build Image
-          command: docker build -t << parameters.image >> -f ./tests/integration/Dockerfile .
+          command: docker build -t << parameters.image >>:build -f ./tests/integration/Dockerfile .
       - run:
           name: Save Docker Image to Workspace
           command: |
             mkdir -p /tmp/cache
-            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>:build
       - persist_to_workspace:
           root: /tmp/cache
           paths:
@@ -409,6 +406,9 @@ workflows:
               only: /.*/
       - test-integration:
           name: Integration Tests
+          requires:
+            - Build Integration Test Image
+            - python-checks
           filters:
             tags:
               only: /.*/
@@ -442,7 +442,7 @@ workflows:
               only: /.*/
       - build-test-container:
           name: Build Load Test Image
-          image: autopush-load-test
+          image: autopush-load-tests
           filters:
             tags:
               only: /.*/
@@ -450,7 +450,15 @@ workflows:
               only: sync-4559
       - build-test-container:
           name: Build Notification Test Image
-          image: autopush-notification-test
+          image: autopush-notification-tests
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: sync-4559
+      - build-test-container:
+          name: Build Integration Test Image
+          image: autopush-integration-tests
           filters:
             tags:
               only: /.*/
@@ -511,6 +519,7 @@ workflows:
           name: Push Integration Test Image
           image: autopush-integration-tests
           requires:
+            - Build Integration Test Image
             - Integration Tests
             - python-checks
           filters:
