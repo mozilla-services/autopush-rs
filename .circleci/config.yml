@@ -303,51 +303,34 @@ jobs:
       # required since Workflows do not have the same remote docker instance.
       - run:
           name: docker save <<parameters.image>>
-          command: mkdir -p /cache; docker save -o /cache/docker.tar "<<parameters.image>>"
+          command: mkdir -p /cache; docker save -o /cache/<<parameters.image>>.tar "<<parameters.image>>"
       - persist_to_workspace:
           root: /cache
           paths:
-            - docker.tar
+            - <<parameters.image>>.tar
 
-  build-load-test:
+  build-test-container:
     docker:
       - image: cimg/base:2024.06
+    parameters:
+      image:
+        type: string
     steps:
       - checkout
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
           name: Build Image
-          command: docker build -t autopush-locust -f ./tests/load/Dockerfile .
+          command: docker build -t << parameters.image >> -f ./tests/integration/Dockerfile .
       - run:
           name: Save Docker Image to Workspace
           command: |
-            mkdir -p /tmp/workspace
-            docker save -o /tmp/workspace/autopush-locust.tar autopush-locust
+            mkdir -p /cache
+            docker save -o /cache/<< parameters.image >>.tar << parameters.image >>
       - persist_to_workspace:
-          root: /tmp/workspace
+          root: /cache
           paths:
-            - autopush-locust.tar
-
-  build-integration-test:
-    docker:
-      - image: cimg/base:2024.06
-    steps:
-      - checkout
-      - setup_remote_docker:
-          docker_layer_caching: true
-      - run:
-          name: Build Image
-          command: docker build -t autopush-integration-tests -f ./tests/integration/Dockerfile .
-      - run:
-          name: Save Docker Image to Workspace
-          command: |
-            mkdir -p /tmp/workspace
-            docker save -o /tmp/workspace/autopush-integration-tests.tar autopush-integration-tests
-      - persist_to_workspace:
-          root: /tmp/workspace
-          paths:
-            - autopush-integration-tests.tar
+            - << parameters.image >>.tar
 
   deploy:
     executor: gcp-gcr/default
@@ -357,6 +340,7 @@ jobs:
         default: build
       image:
         type: string
+        default: docker
       registry-url:
         type: string
         default: us-docker.pkg.dev
@@ -376,7 +360,7 @@ jobs:
           at: /tmp/cache
       - run:
           name: Restore Docker image cache
-          command: docker load -i /tmp/cache/docker.tar
+          command: docker load -i /tmp/cache/<<parameters.image>>.tar
       # This is the easiest way to tag multiple images using different
       # conditions for the GAR_TAG variable in the smallest amount of code.
       #
@@ -471,12 +455,25 @@ workflows:
             tags:
               only: /.*/
 
-      - build-load-test:
+      - build-test-container:
+          name: Build Integration Test Image
+          image: autopush-integration-test
           filters:
             tags:
               only: /.*/
-
-      - build-integration-test:
+            branches:
+              only: master
+      - build-test-container:
+          name: Build Load Test Image
+          image: autopush-load-test
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+      - build-test-container:
+          name: Build Notification Test Image
+          image: autopush-notification-test
           filters:
             tags:
               only: /.*/
@@ -511,10 +508,33 @@ workflows:
               only: /.*/
             branches:
               only: master
-
-      - deploy-load-test:
+      - deploy:
+          name: Push Load Test Image
+          image: autopush-load-test
           requires:
-            - build-load-test
+            - Build Load Test Image
+            - python-checks
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+      - deploy:
+          name: Push Notification Test Image
+          image: autopush-notification-test
+          requires:
+            - Build Notification Test Image
+            - python-checks
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+      - deploy:
+          name: Push Integration Test Image
+          image: autopush-integration-test
+          requires:
+            - Build Integration Test Image
             - python-checks
           filters:
             tags:
