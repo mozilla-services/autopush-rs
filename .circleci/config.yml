@@ -450,7 +450,7 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: sync-4559
+              only: master
       - build-test-container:
           name: Build Notification Test Image
           image: autopush-notification-tests
@@ -459,7 +459,7 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: sync-4559
+              only: master
       - build-test-container:
           name: Build Integration Test Image
           image: autopush-integration-tests
@@ -467,8 +467,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-            branches:
-              only: sync-4559
 
       # Comment out the following two sections for local CircleCI testing.
       - deploy:
@@ -508,7 +506,7 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: sync-4559
+              only: master
       - deploy:
           name: Push Notification Test Image
           image: autopush-notification-tests
@@ -519,7 +517,7 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: sync-4559
+              only: master
       - deploy:
           name: Push Integration Test Image
           image: autopush-integration-tests
@@ -531,4 +529,4 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: sync-4559
+              only: master

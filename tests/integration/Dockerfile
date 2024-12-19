@@ -26,7 +26,11 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN \
     apt-get -qq update && \
     apt-get -qq install --no-install-recommends -y \
-      cmake libssl-dev ca-certificates pkg-config build-essential
+      cmake \
+      libssl-dev \
+      ca-certificates \
+      pkg-config \
+      build-essential
 
 RUN cargo chef cook --recipe-path recipe.json
 
@@ -38,7 +42,12 @@ ARG APT_CACHE_BUST
 RUN mkdir -m 755 bin
 RUN apt-get -qq update && \
     apt-get -qq upgrade && apt-get -qq install --no-install-recommends -y \
-      cmake libssl-dev ca-certificates libstdc++6 libstdc++-12-dev
+      cmake \
+      libssl-dev \
+      ca-certificates \
+      libstdc++6 \
+      libstdc++-12-dev
+
 RUN cargo --version && \
     rustc --version
 COPY . .
