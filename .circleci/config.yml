@@ -344,6 +344,7 @@ jobs:
   build-integration-test-container:
     docker:
       - image: cimg/base:2024.06
+    resource_class: large
     parameters:
       image:
         type: string
