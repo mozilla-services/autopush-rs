@@ -1,0 +1,51 @@
+services:
+  autoconnect:
+    build:
+      context: .
+      args:
+        BUILD_ARGS: "--no-default-features --features redis"
+        CRATE: autoconnect
+        BINARY: autoconnect
+    environment:
+      - "AUTOCONNECT__DB_DSN=redis://redis"
+      - "AUTOCONNECT__CRYPTO_KEY=[tlLWgjoAT-vV4q0nR0uiU3ANhI5uQ10GH2fKCgWrxaU=]" # Replace with output of `./scripts/fernet_key.py`
+      - "AUTOCONNECT__ENDPOINT_SCHEME=http" # The ENDPOINT* var are for the public facing autoendpoint url
+      - "AUTOCONNECT__ENDPOINT_HOSTNAME=localhost"
+      - "AUTOCONNECT__ENDPOINT_PORT=8000"
+      - "AUTOCONNECT__ROUTER_HOSTNAME=autoconnect" # This is used by autoendpoint to reach this autoconnect
+      - "RUST_BACKTRACE=1"
+      - "RUST_LOG=trace"
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      - redis
+
+
+  autoendpoint:
+    build:
+      context: .
+      args:
+        BUILD_ARGS: "--no-default-features --features redis"
+        CRATE: autoendpoint
+        BINARY: autoendpoint
+    environment:
+      - "AUTOEND__DB_DSN=redis://redis"
+      - 'AUTOEND__CRYPTO_KEYS=[tlLWgjoAT-vV4q0nR0uiU3ANhI5uQ10GH2fKCgWrxaU=]' # This is the same value as AUTOCONNECT__CRYPTO_KEY
+      - "RUST_BACKTRACE=1"
+      - "RUST_LOG=trace"
+      - "AUTOEND__HOST=0.0.0.0" # autoendpoint must listen on 0.0.0.0 with docker
+      - "AUTOEND__PORT=8000" # This is the port we listen on
+      - "AUTOEND__ENDPOINT_URL=http://localhost:8000" # This is the public facing url to reach autoendpoint
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - autoconnect
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    command: redis-server
+    ports:
+      - "6379:6379"
