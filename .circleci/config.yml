@@ -341,6 +341,35 @@ jobs:
           paths:
             - << parameters.image >>.tar
 
+  build-integration-test-container:
+    docker:
+      - image: cimg/base:2024.06
+    parameters:
+      image:
+        type: string
+      path:
+        type: string
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build Image
+          command: |
+            docker buildx build --target planner -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target cacher -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target builder -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target integration-tests -t << parameters.image >>:build -f ./tests/<< parameters.path >>/Dockerfile .
+      - run:
+          name: Save Docker Image to Workspace
+          command: |
+            mkdir -p /tmp/cache
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>:build
+      - persist_to_workspace:
+          root: /tmp/cache
+          paths:
+            - << parameters.image >>.tar
+
   deploy:
     executor: gcp-gcr/default
     parameters:
@@ -460,7 +489,7 @@ workflows:
               only: /.*/
             branches:
               only: master
-      - build-test-container:
+      - build-integration-test-container:
           name: Build Integration Test Image
           image: autopush-integration-tests
           path: integration

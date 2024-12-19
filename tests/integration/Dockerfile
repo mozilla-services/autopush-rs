@@ -56,7 +56,7 @@ COPY --from=cacher $CARGO_HOME $CARGO_HOME
 
 RUN cargo build --features=emulator
 
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm AS integration-tests
 
 # =============================================================================
 # Setup Integration test image
