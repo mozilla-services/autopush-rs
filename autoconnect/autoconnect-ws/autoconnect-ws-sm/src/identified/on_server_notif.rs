@@ -163,6 +163,30 @@ impl WebPushClient {
         Ok(smsgs)
     }
 
+    #[cfg(feature = "reliable_report")]
+    /// Record and transition the state for trackable messages.
+    async fn record_state(
+        &self,
+        messages: &mut Vec<Notification>,
+        state: autopush_common::reliability::ReliabilityState,
+    ) {
+        // *Note* because `.map()` is sync
+        // we can't call the async func without additional hoops.
+        for message in messages {
+            let expiry = message.timestamp + message.ttl;
+            message.reliable_state = self
+                .app_state
+                .reliability
+                .record(
+                    &message.reliability_id,
+                    state,
+                    &message.reliable_state,
+                    Some(expiry),
+                )
+                .await;
+        }
+    }
+
     /// Read a chunk (max count 10 returned) of Notifications from storage
     ///
     /// This alternates between reading Topic Notifications and Timestamp
@@ -186,10 +210,20 @@ impl WebPushClient {
         let topic_resp = if self.flags.include_topic {
             trace!("🗄️ WebPushClient::do_check_storage: fetch_topic_messages");
             // Get the most recent max 11 messages.
-            self.app_state
+            #[allow(unused_mut)]
+            let mut messages = self
+                .app_state
                 .db
                 .fetch_topic_messages(&self.uaid, 11)
-                .await?
+                .await?;
+            #[cfg(feature = "reliable_report")]
+            // Since we pulled these from storage, mark them as "retrieved"
+            self.record_state(
+                &mut messages.messages,
+                autopush_common::reliability::ReliabilityState::Retrieved,
+            )
+            .await;
+            messages
         } else {
             Default::default()
         };
@@ -226,7 +260,8 @@ impl WebPushClient {
             "🗄️ WebPushClient::do_check_storage: fetch_timestamp_messages timestamp: {:?}",
             timestamp
         );
-        let timestamp_resp = self
+        #[allow(unused_mut)]
+        let mut timestamp_resp = self
             .app_state
             .db
             .fetch_timestamp_messages(&self.uaid, timestamp, 10)
@@ -244,6 +279,13 @@ impl WebPushClient {
                 )
                 .with_tag("topic", "false")
                 .send();
+            #[cfg(feature = "reliable_report")]
+            // Since we pulled these from storage, mark them as "retrieved"
+            self.record_state(
+                &mut timestamp_resp.messages,
+                autopush_common::reliability::ReliabilityState::Retrieved,
+            )
+            .await;
         }
 
         Ok(CheckStorageResponse {

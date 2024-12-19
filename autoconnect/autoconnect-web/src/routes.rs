@@ -22,15 +22,55 @@ pub async fn push_route(
     app_state: web::Data<AppState>,
 ) -> HttpResponse {
     trace!(
-        "⏩ push_route, uaid: {} channel_id: {}",
+        "⏩ in push_route, uaid: {} channel_id: {}",
         uaid,
-        notif.channel_id
+        notif.channel_id,
     );
+    #[cfg(feature = "reliable_report")]
+    let (mut notif, expiry) = {
+        let mut notif = notif.into_inner();
+        let expiry = Some(notif.timestamp + notif.ttl);
+        notif.reliable_state = app_state
+            .reliability
+            .record(
+                &notif.reliability_id,
+                autopush_common::reliability::ReliabilityState::IntAccepted,
+                &notif.reliable_state,
+                expiry,
+            )
+            .await;
+        // Set "transmitted" a bit early since we can't do this inside of `notify`.
+        notif.reliable_state = app_state
+            .reliability
+            .record(
+                &notif.reliability_id,
+                autopush_common::reliability::ReliabilityState::Transmitted,
+                &notif.reliable_state,
+                expiry,
+            )
+            .await;
+        (notif, expiry)
+    };
+    // Attempt to send the notification to the UA using WebSocket protocol, or store on failure.
     let result = app_state
         .clients
-        .notify(uaid.into_inner(), notif.into_inner())
+        .notify(uaid.into_inner(), notif.clone())
         .await;
     if result.is_ok() {
+        #[cfg(feature = "reliable_report")]
+        {
+            // Set "transmitted" a bit early since we can't do this inside of `notify`.
+            notif.reliable_state = app_state
+                .reliability
+                .record(
+                    &notif.reliability_id,
+                    autopush_common::reliability::ReliabilityState::Accepted,
+                    &notif.reliable_state,
+                    expiry,
+                )
+                .await;
+        }
+
         HttpResponse::Ok().finish()
     } else {
         HttpResponse::NotFound().body("Client not available")

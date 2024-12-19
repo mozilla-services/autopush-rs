@@ -107,6 +107,14 @@ pub trait DbClient: Send + Sync {
         None
     }
 
+    /// Record the Reliability Report to long term storage.
+    #[cfg(feature = "reliable_report")]
+    async fn log_report(
+        &self,
+        reliability_id: &str,
+        state: crate::reliability::ReliabilityState,
+    ) -> DbResult<()>;
+
     fn box_clone(&self) -> Box<dyn DbClient>;
 }
 

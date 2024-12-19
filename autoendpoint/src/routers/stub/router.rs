@@ -89,7 +89,7 @@ impl Router for StubRouter {
         Ok(router_data)
     }
 
-    async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+    async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse> {
         debug!(
             "Sending Test notification to UAID {}",
             notification.subscription.user.uaid

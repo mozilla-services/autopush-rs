@@ -59,6 +59,7 @@ WORKDIR /code
 ADD notification/ /code
 ADD ../poetry.lock /code
 ADD ../pyproject.toml /code
+ADD ../pytest.ini /code
 
 RUN poetry install --only=notification
 

@@ -1,3 +1,4 @@
+use core::str;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -127,6 +128,8 @@ impl VapidHeader {
             (data, VapidVersionData::Version1)
         };
 
+        // Validate the JWT here
+
         Ok(Self {
             scheme,
             token,
@@ -164,6 +167,7 @@ impl VapidHeader {
             info!("🔐 Vapid: sub: {:?}", sub);
             return Ok(sub.to_owned());
         }
+
         Err(VapidError::SubMissing)
     }
 
@@ -266,5 +270,14 @@ mod tests {
             returned_header.unwrap().insecure_sub(),
             Ok("mailto:admin@example.com".to_owned())
         )
+    }
+
+    #[test]
+    fn extract_sub() {
+        let header = VapidHeader::parse(VALID_HEADER).unwrap();
+        assert_eq!(
+            header.insecure_sub().unwrap(),
+            "mailto:admin@example.com".to_string()
+        );
     }
 }
