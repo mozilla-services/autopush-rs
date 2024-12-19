@@ -41,7 +41,7 @@ RUN rustc --version
 ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0
 RUN python -m pip install --no-cache-dir --quiet poetry
-COPY ./tests/pyproject.toml ./tests/poetry.lock ./
+COPY ./tests/pyproject.toml ./tests/poetry.lock ./tests/pytest.ini ./
 RUN poetry install --only=integration --no-interaction --no-ansi
 
 # Setup cloud big table
@@ -59,4 +59,4 @@ RUN cargo build --features=emulator
 RUN chmod +x scripts/setup_bt.sh
 
 # Pytest markers are defined in the `pytest.ini` file.
-CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --config-file=tests/pytest.ini --junit-xml=integration_test_results.xml -v"]
+CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --config-file=pytest.ini --junit-xml=integration_test_results.xml -v"]
