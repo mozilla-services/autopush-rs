@@ -68,7 +68,8 @@ ENV DB_DSN=grpc://localhost:8086
 RUN apt-get update && apt install -y --no-install-recommends \
     git \
     build-essential \
-    curl
+    curl \
+    gpg
 
 RUN python -m venv ${PYTHON_VENV}
 ENV PATH="${PYTHON_VENV}/bin:${PATH}"
