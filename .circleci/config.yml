@@ -162,7 +162,14 @@ jobs:
       - checkout
       - setup_remote_docker:
           docker_layer_caching: true
+      - attach_workspace:
+          at: /tmp/cache
       - create_test_result_workspace
+      - run:
+          name: Restore Docker image cache
+          command: |
+            docker load -i /tmp/cache/autopush-integration-tests.tar
+            docker tag autopush-integration-tests:build integration-tests
       - run:
           name: Integration tests (Bigtable)
           command: |
@@ -303,51 +310,66 @@ jobs:
       # required since Workflows do not have the same remote docker instance.
       - run:
           name: docker save <<parameters.image>>
-          command: mkdir -p /cache; docker save -o /cache/docker.tar "<<parameters.image>>"
+          command: mkdir -p /tmp/cache; docker save -o /tmp/cache/<<parameters.image>>.tar "<<parameters.image>>"
       - persist_to_workspace:
-          root: /cache
+          root: /tmp/cache
           paths:
-            - docker.tar
+            - <<parameters.image>>.tar
 
-  build-load-test:
+  build-test-container:
     docker:
       - image: cimg/base:2024.06
+    parameters:
+      image:
+        type: string
+      path:
+        type: string
     steps:
       - checkout
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
           name: Build Image
-          command: docker build -t autopush-locust -f ./tests/load/Dockerfile .
+          command: docker build -t << parameters.image >>:build -f ./tests/<< parameters.path >>/Dockerfile .
       - run:
           name: Save Docker Image to Workspace
           command: |
-            mkdir -p /tmp/workspace
-            docker save -o /tmp/workspace/autopush-locust.tar autopush-locust
+            mkdir -p /tmp/cache
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>:build
       - persist_to_workspace:
-          root: /tmp/workspace
+          root: /tmp/cache
           paths:
-            - autopush-locust.tar
+            - << parameters.image >>.tar
 
-  build-integration-test:
+  build-integration-test-container:
     docker:
       - image: cimg/base:2024.06
+    resource_class: large
+    parameters:
+      image:
+        type: string
+      path:
+        type: string
     steps:
       - checkout
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
           name: Build Image
-          command: docker build -t autopush-integration-tests -f ./tests/integration/Dockerfile .
+          command: |
+            docker buildx build --target planner -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target cacher -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target builder -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target integration-tests -t << parameters.image >>:build -f ./tests/<< parameters.path >>/Dockerfile .
       - run:
           name: Save Docker Image to Workspace
           command: |
-            mkdir -p /tmp/workspace
-            docker save -o /tmp/workspace/autopush-integration-tests.tar autopush-integration-tests
+            mkdir -p /tmp/cache
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>:build
       - persist_to_workspace:
-          root: /tmp/workspace
+          root: /tmp/cache
           paths:
-            - autopush-integration-tests.tar
+            - << parameters.image >>.tar
 
   deploy:
     executor: gcp-gcr/default
@@ -376,7 +398,7 @@ jobs:
           at: /tmp/cache
       - run:
           name: Restore Docker image cache
-          command: docker load -i /tmp/cache/docker.tar
+          command: docker load -i /tmp/cache/<<parameters.image>>.tar
       # This is the easiest way to tag multiple images using different
       # conditions for the GAR_TAG variable in the smallest amount of code.
       #
@@ -403,29 +425,6 @@ jobs:
           registry-url: <<parameters.registry-url>>
           tag: $GAR_TAG,latest
 
-  deploy-load-test:
-    docker:
-      - image: cimg/base:2024.06
-    steps:
-      - checkout
-      - attach_workspace:
-          at: /tmp/workspace
-      - setup_remote_docker
-      - run:
-          name: Load Docker Image From Workspace
-          command: docker load -i /tmp/workspace/autopush-locust.tar
-      - docker_login:
-          load: True
-      - run:
-          name: Push to Docker Hub
-          command: |
-            echo ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
-            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
-            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:latest
-            docker images
-            docker push "${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}"
-            docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
-
 workflows:
   build-test-deploy:
     jobs:
@@ -439,6 +438,9 @@ workflows:
               only: /.*/
       - test-integration:
           name: Integration Tests
+          requires:
+            - Build Integration Test Image
+            - python-checks
           filters:
             tags:
               only: /.*/
@@ -470,18 +472,29 @@ workflows:
           filters:
             tags:
               only: /.*/
-
-      - build-load-test:
+      - build-test-container:
+          name: Build Load Test Image
+          image: autopush-load-tests
+          path: load
           filters:
             tags:
               only: /.*/
-
-      - build-integration-test:
+      - build-test-container:
+          name: Build End-To-End Test Image
+          image: autopush-end-to-end-tests
+          path: end-to-end
           filters:
             tags:
               only: /.*/
             branches:
               only: master
+      - build-integration-test-container:
+          name: Build Integration Test Image
+          image: autopush-integration-tests
+          path: integration
+          filters:
+            tags:
+              only: /.*/
 
       # Comment out the following two sections for local CircleCI testing.
       - deploy:
@@ -511,10 +524,34 @@ workflows:
               only: /.*/
             branches:
               only: master
-
-      - deploy-load-test:
+      - deploy:
+          name: Push Load Test Image
+          image: autopush-load-tests
           requires:
-            - build-load-test
+            - Build Load Test Image
+            - python-checks
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+      - deploy:
+          name: Push End-To-End Test Image
+          image: autopush-end-to-end-tests
+          requires:
+            - Build End-To-End Test Image
+            - python-checks
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+      - deploy:
+          name: Push Integration Test Image
+          image: autopush-integration-tests
+          requires:
+            - Build Integration Test Image
+            - Integration Tests
             - python-checks
           filters:
             tags:

@@ -10,8 +10,8 @@ services:
     environment:
       SERVER_URL: server
     build:
-      context: ..
-      dockerfile: notification/Dockerfile
+      context: ../..
+      dockerfile: tests/notification/Dockerfile
     depends_on: 
       - server
     network_mode: host
