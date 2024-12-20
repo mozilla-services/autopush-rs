@@ -479,12 +479,10 @@ workflows:
           filters:
             tags:
               only: /.*/
-            branches:
-              only: master
       - build-test-container:
-          name: Build Notification Test Image
-          image: autopush-notification-tests
-          path: notification
+          name: Build End-To-End Test Image
+          image: autopush-end-to-end-tests
+          path: end-to-end
           filters:
             tags:
               only: /.*/
@@ -538,10 +536,10 @@ workflows:
             branches:
               only: master
       - deploy:
-          name: Push Notification Test Image
-          image: autopush-notification-tests
+          name: Push End-To-End Test Image
+          image: autopush-end-to-end-tests
           requires:
-            - Build Notification Test Image
+            - Build End-To-End Test Image
             - python-checks
           filters:
             tags:
