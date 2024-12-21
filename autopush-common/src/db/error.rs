@@ -26,6 +26,10 @@ pub enum DbError {
     #[error("BigTable error: {0}")]
     BTError(#[from] BigTableError),
 
+    #[cfg(feature = "redis")]
+    #[error("Redis error {0}")]
+    RedisError(#[from] redis::RedisError),
+
     #[error("Connection failure: {0}")]
     ConnectionError(String),
 

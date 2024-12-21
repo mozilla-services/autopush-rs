@@ -56,4 +56,5 @@ docopt = "1.1"
 default = ["bigtable"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
+redis = ["autopush_common/redis", "autoconnect_settings/redis"]
 log_vapid = []
