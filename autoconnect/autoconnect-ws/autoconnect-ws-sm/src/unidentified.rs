@@ -9,7 +9,7 @@ use autoconnect_common::{
 };
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
-    db::{User, USER_RECORD_VERSION},
+    db::{Urgency, User, USER_RECORD_VERSION},
     util::{ms_since_epoch, ms_utc_midnight},
 };
 
@@ -145,6 +145,7 @@ impl UnidentifiedClient {
                         .record_version
                         .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
                     emit_channel_metrics: user.connected_at < ms_utc_midnight(),
+                    min_urgency: user.urgency.unwrap_or(Urgency::VeryLow),
                     ..Default::default()
                 };
                 user.node_id = Some(self.app_state.router_url.to_owned());

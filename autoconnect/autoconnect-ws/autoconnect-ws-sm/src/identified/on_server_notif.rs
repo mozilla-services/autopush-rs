@@ -6,7 +6,10 @@ use autopush_common::{
 };
 
 use super::WebPushClient;
-use crate::error::{SMError, SMErrorKind};
+use crate::{
+    error::{SMError, SMErrorKind},
+    identified::Urgency,
+};
 
 impl WebPushClient {
     /// Handle a `ServerNotification` for this user
@@ -119,7 +122,11 @@ impl WebPushClient {
         let mut expired_topic_sort_keys = vec![];
         messages.retain(|msg| {
             if !msg.expired(now_sec) {
-                return true;
+                if let Some(headers) = msg.headers.as_ref() {
+                    return Urgency::from(headers.get("urgency")) >= self.flags.min_urgency;
+                } else {
+                    return true;
+                }
             }
             if msg.sortkey_timestamp.is_none() {
                 expired_topic_sort_keys.push(msg.chidmessageid());
