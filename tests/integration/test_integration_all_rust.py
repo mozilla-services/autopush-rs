@@ -161,9 +161,6 @@ CONNECTION_CONFIG: dict[str, Any] = dict(
     ),
 )
 
-if os.environ.get("RELIABLE_REPORT") is not None:
-    CONNECTION_CONFIG["reliability_dsn"] = "redis://localhost:6379"
-
 """Connection Megaphone Config:
 For local test debugging, set `AUTOPUSH_MP_CONFIG=_url_` to override
 creation of the local server.
@@ -198,6 +195,11 @@ ENDPOINT_CONFIG = dict(
     tracking_keys=f"[{base64.urlsafe_b64encode((b"\4" + TRACKING_PUB_KEY.to_string())).decode()}]",
 )
 
+# Note: These are only used by the `reliable_report` feature, however, specifying them
+# will trigger autopush to attempt to connect, and may fail if the Redis server is not present.
+# Since pytest marks do not provide a way to examine mark states within the python executable,
+# we have to rely on an environment variable.
+# Once this feature goes stable, we can move these lines to the appropriate configurations.
 if os.environ.get("RELIABLE_REPORT") is not None:
     CONNECTION_CONFIG["reliability_dsn"] = "redis://localhost:6379"
     ENDPOINT_CONFIG["reliability_dsn"] = "redis://localhost:6379"
@@ -821,10 +823,27 @@ async def test_basic_delivery_with_vapid(
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
     assert result["messageType"] == ClientMessageType.NOTIFICATION.value
-    if os.environ.get("RELIABLE_REPORT") is not None:
-        # The key we used should not have been registered, so no tracking should
-        # be occurring.
-        assert result.get("reliability_id") is None, "Tracking unknown message"
+
+
+@pytest.mark.reliable_report
+async def test_basic_delivery_with_vapid_reliable(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+) -> None:
+    """Test delivery of a basic push message with a VAPID header."""
+    uuid_data: str = str(uuid.uuid4())
+    # Since we are not explicity setting the TRACKING_KEY, we should not
+    # track this message.
+    vapid_info = _get_vapid(payload=vapid_payload)
+    result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
+    # The key we used should not have been registered, so no tracking should
+    # be occurring.
+    assert result.get("reliability_id") is None, "Tracking unknown message"
 
 
 @pytest.mark.reliable_report
@@ -857,15 +876,14 @@ async def test_basic_delivery_with_tracked_vapid(
     assert result["data"] == base64url_encode(uuid_data)
     assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     assert result.get("reliability_id") is not None, "missing reliability_id"
-    if os.environ.get("RELIABLE_REPORT") is not None:
-        endpoint = registered_test_client.get_host_client_endpoint()
-        async with httpx.AsyncClient() as httpx_client:
-            resp = await httpx_client.get(f"{endpoint}/__milestones__", timeout=5)
-            log.debug(f"🔍 Milestones: {resp.text}")
-            jresp = json.loads(resp.text)
-            assert jresp["accepted"] == 1
-            for other in ["accepted_webpush", "received", "transmitted_webpush", "transmitted"]:
-                assert jresp[other] == 0, f"reliablity state '{other}' was not 0"
+    endpoint = registered_test_client.get_host_client_endpoint()
+    async with httpx.AsyncClient() as httpx_client:
+        resp = await httpx_client.get(f"{endpoint}/__milestones__", timeout=5)
+        log.debug(f"🔍 Milestones: {resp.text}")
+        jresp = json.loads(resp.text)
+        assert jresp["accepted"] == 1
+        for other in ["accepted_webpush", "received", "transmitted_webpush", "transmitted"]:
+            assert jresp[other] == 0, f"reliablity state '{other}' was not 0"
 
 
 async def test_basic_delivery_with_invalid_vapid(
