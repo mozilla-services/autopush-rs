@@ -5,7 +5,7 @@ TEST_RESULTS_DIR ?= workspace/test-results
 # NOTE: Do not be clever.
 # The integration tests (and a few others) use pytest markers to control
 # the tests that are being run. These markers are set and defined within
-# the `.tests/pytest.ini`. That is the single source of truth.
+# the `./pyproject.toml`. That is the single source of truth.
 PYTEST_ARGS := ${PYTEST_ARGS}
 INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
 INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py

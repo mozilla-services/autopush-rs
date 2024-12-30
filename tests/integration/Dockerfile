@@ -105,5 +105,5 @@ WORKDIR /code
 
 RUN chmod +x scripts/setup_bt.sh
 
-# Pytest markers are defined in the `pytest.ini` file.
-CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --config-file=/code/pytest.ini --junit-xml=integration_test_results.xml -v"]
+# Pytest markers are defined in the `pyproject.toml`:`[tool.pytest.ini_options]` file.
+CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v"]

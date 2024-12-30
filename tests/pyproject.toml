@@ -97,6 +97,11 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 addopts = "-m 'not stub and not sentry and not reliable_report'"
 asyncio_mode = "auto"
+faulthandler_timeout = 99999
+log_cli = 1
+# 10 DEBUG
+# 20 INFO
+log_cli_level = 10
 # Pytest marker documentation: https://docs.pytest.org/en/7.1.x/example/markers.html
 markers = [
     "stub: mark a test for the stub system",
