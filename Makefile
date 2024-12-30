@@ -33,8 +33,10 @@ upgrade:
 	$(CARGO) upgrade
 	$(CARGO) update
 
-integration-test:  ## pytest markers are stored in `tests/pytest.ini`
+build-integration-test:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml build
+
+integration-test:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
 	docker cp integration-tests:/code/integration_test_results.xml $(INTEGRATION_TEST_DIR)
 

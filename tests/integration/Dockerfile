@@ -2,7 +2,64 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-FROM python:3.12-slim-bookworm
+# =============================================================================
+# Pull in the version of cargo-chef we plan to use, so that all the below steps
+# use a consistent set of versions.
+FROM lukemathwalker/cargo-chef:0.1.68-rust-slim-bookworm AS chef
+WORKDIR /app
+
+# =============================================================================
+# Analyze the project, and produce a plan to compile its dependcies. This will
+# be run every time. The output should only change if the dependencies of the
+# project change, or if significant details of the build process change.
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# =============================================================================
+# Use the plan from above to build only the dependencies of the project. This
+# should almost always be pulled straight from cache unless dependencies or the
+# build process change.
+FROM chef AS cacher
+COPY --from=planner /app/recipe.json recipe.json
+
+RUN \
+  apt-get -qq update && \
+  apt-get -qq install --no-install-recommends -y \
+  cmake \
+  libssl-dev \
+  ca-certificates \
+  pkg-config \
+  build-essential
+
+RUN cargo chef cook --recipe-path recipe.json
+
+# =============================================================================
+# Now build the project, taking advantage of the cached dependencies from above.
+FROM chef AS builder
+ARG APT_CACHE_BUST
+
+RUN mkdir -m 755 bin
+RUN apt-get -qq update && \
+  apt-get -qq upgrade && apt-get -qq install --no-install-recommends -y \
+  cmake \
+  libssl-dev \
+  ca-certificates \
+  libstdc++6 \
+  libstdc++-12-dev
+
+RUN cargo --version && \
+  rustc --version
+COPY . .
+COPY --from=cacher /app/target target
+COPY --from=cacher $CARGO_HOME $CARGO_HOME
+
+RUN cargo build --features=emulator
+
+FROM python:3.12-slim-bookworm AS integration-tests
+
+# =============================================================================
+# Setup Integration test image
 
 LABEL org.opencontainers.image.authors="contextual-services-team@mozilla.com"
 
@@ -18,24 +75,14 @@ ENV DB_DSN=grpc://localhost:8086
 # (g++/make for gevent on pypy)
 RUN apt-get update && apt install -y --no-install-recommends \
   git \
-  gpg \
   build-essential \
-  python3-dev \
   curl \
-  libstdc++6 \
-  libstdc++-12-dev \
-  libssl-dev \
-  pkg-config \
-  cmake
+  gpg
 
 RUN python -m venv ${PYTHON_VENV}
 ENV PATH="${PYTHON_VENV}/bin:${PATH}"
 
 RUN python -m pip install --upgrade pip
-
-# Install Rust
-RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.81 -y
-RUN rustc --version
 
 # Setup poetry and install requirements
 ENV POETRY_VIRTUALENVS_CREATE=false \
@@ -51,10 +98,10 @@ RUN apt-get update -y && apt install google-cloud-cli-cbt -y
 
 COPY . /code
 
-WORKDIR /code
+COPY --from=builder /app/target/debug /code/target/debug
+COPY --from=builder /app/version.json /code
 
-# Build app
-RUN cargo build --features=emulator
+WORKDIR /code
 
 RUN chmod +x scripts/setup_bt.sh
 

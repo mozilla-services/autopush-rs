@@ -56,10 +56,9 @@ RUN wget https://github.com/mozilla/geckodriver/releases/download/v${GECKODRIVER
 RUN curl -sSL https://install.python-poetry.org | python3 -
 
 WORKDIR /code
-ADD notification/ /code
-ADD ../poetry.lock /code
-ADD ../pyproject.toml /code
-ADD ../pytest.ini /code
+ADD ./tests/notification/ /code
+ADD ./tests/poetry.lock /code
+ADD ./tests/pyproject.toml /code
 
 RUN poetry install --only=notification
 

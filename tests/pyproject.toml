@@ -95,6 +95,7 @@ requires = ["poetry-core>=1.9.1"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
+addopts = "-m 'not stub and not sentry and not reliable_report'"
 asyncio_mode = "auto"
 # Pytest marker documentation: https://docs.pytest.org/en/7.1.x/example/markers.html
 markers = [
