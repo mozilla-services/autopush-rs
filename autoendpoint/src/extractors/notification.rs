@@ -30,8 +30,6 @@ pub struct Notification {
     /// The current state the message was in (if tracked)
     pub reliable_state: Option<autopush_common::reliability::ReliabilityState>,
     #[cfg(feature = "reliable_report")]
-    /// The UTC expiration timestamp for this message
-    pub expiry: Option<u64>,
     #[cfg(feature = "reliable_report")]
     pub reliability_id: Option<String>,
 }
@@ -77,40 +75,10 @@ impl FromRequest for Notification {
             );
 
             #[cfg(feature = "reliable_report")]
-            let (expiry, current_state) = {
-                let expiry = if subscription.reliability_id.is_some() {
-                    Some(timestamp + headers.ttl as u64)
-                } else {
-                    None
-                };
-
-                // Brand new notification, so record it as "Received"
-                let current_state = app_state
-                    .reliability
-                    .record(
-                        &subscription.reliability_id,
-                        autopush_common::reliability::ReliabilityState::Received,
-                        &None,
-                        expiry,
-                    )
-                    .await;
-                (expiry, current_state)
-            };
-
-            #[cfg(feature = "reliable_report")]
             let reliability_id = subscription.reliability_id.clone();
 
-            // Record the encoding if we have an encrypted payload
-            if let Some(encoding) = &headers.encoding {
-                if data.is_some() {
-                    app_state
-                        .metrics
-                        .incr(&format!("updates.notification.encoding.{encoding}"))
-                        .ok();
-                }
-            }
-
-            Ok(Notification {
+            #[allow(unused_mut)]
+            let mut notif = Notification {
                 message_id,
                 subscription,
                 headers,
@@ -118,12 +86,31 @@ impl FromRequest for Notification {
                 sort_key_timestamp,
                 data,
                 #[cfg(feature = "reliable_report")]
-                reliable_state: current_state,
-                #[cfg(feature = "reliable_report")]
-                expiry,
+                reliable_state: None,
                 #[cfg(feature = "reliable_report")]
                 reliability_id,
-            })
+            };
+
+            #[cfg(feature = "reliable_report")]
+            // Brand new notification, so record it as "Received"
+            notif
+                .record_reliability(
+                    &app_state.reliability,
+                    autopush_common::reliability::ReliabilityState::Received,
+                )
+                .await;
+
+            // Record the encoding if we have an encrypted payload
+            if let Some(encoding) = &notif.headers.encoding {
+                if notif.data.is_some() {
+                    app_state
+                        .metrics
+                        .incr(&format!("updates.notification.encoding.{encoding}"))
+                        .ok();
+                }
+            }
+
+            Ok(notif)
         }
         .boxed_local()
     }

@@ -404,6 +404,7 @@ impl Router for ApnsRouter {
         Ok(router_data)
     }
 
+    #[allow(unused_mut)]
     async fn route_notification(
         &self,
         mut notification: Notification,

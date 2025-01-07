@@ -16,6 +16,7 @@ pub async fn ws_route(
 }
 
 /// Deliver a Push notification directly to a connected client
+#[allow(unused_mut)]
 pub async fn push_route(
     uaid: web::Path<Uuid>,
     mut notif: web::Json<Notification>,
