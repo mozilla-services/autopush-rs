@@ -7,7 +7,7 @@ INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
 INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
-POETRY := poetry --directory $(TESTS_DIR)
+POETRY := poetry --project $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(TESTS_DIR)/pyproject.toml
 POETRY_LOCK := $(TESTS_DIR)/poetry.lock
@@ -22,6 +22,9 @@ $(INSTALL_STAMP): $(PYPROJECT_TOML) $(POETRY_LOCK)
 	@if [ -z $(POETRY) ]; then echo "Poetry could not be found. See https://python-poetry.org/docs/"; exit 2; fi
 	$(POETRY) install
 	touch $(INSTALL_STAMP)
+
+install_poetry:
+	curl -sSL https://install.python-poetry.org | python3 - --version 2.0.0
 
 upgrade:
 	$(CARGO) install cargo-edit ||

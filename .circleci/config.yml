@@ -107,7 +107,7 @@ commands:
           name: Set up Python
           command: |
             pip install --upgrade pip
-            pip install poetry
+            pip install poetry==2.0.0
 
 jobs:
   audit:
@@ -147,7 +147,7 @@ jobs:
           name: Set up Python
           command: |
             pip install --upgrade pip
-            pip install poetry
+            pip install poetry==2.0.0
       - run:
           name: isort, black, flake8, pydocstyle and mypy
           command: make lint
