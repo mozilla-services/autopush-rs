@@ -72,9 +72,9 @@ impl FromRequest for Subscription {
                 .transpose()?;
             trace!("raw vapid: {:?}", &vapid);
             // Validate the VAPID JWT token, fetch the claims, and record the version
-            if let Some(with_key) = vapid.clone() {
+            if let Some(with_key) = &vapid {
                 // Validate the VAPID JWT token and record the version
-                validate_vapid_jwt(&with_key, &app_state.settings, &app_state.metrics)?;
+                validate_vapid_jwt(with_key, &app_state.settings, &app_state.metrics)?;
                 app_state.metrics.incr(&format!(
                     "updates.vapid.draft{:02}",
                     with_key.vapid.version()
@@ -93,7 +93,7 @@ impl FromRequest for Subscription {
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
             // values we get.
-            if let Some(ref header) = &vapid {
+            if let Some(header) = &vapid {
                 let sub = header
                     .vapid
                     .insecure_sub()

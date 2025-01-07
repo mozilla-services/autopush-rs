@@ -404,7 +404,10 @@ impl Router for ApnsRouter {
         Ok(router_data)
     }
 
-    async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse> {
+    async fn route_notification(
+        &self,
+        mut notification: Notification,
+    ) -> ApiResult<RouterResponse> {
         debug!(
             "Sending APNS notification to UAID {}",
             notification.subscription.user.uaid
@@ -480,24 +483,18 @@ impl Router for ApnsRouter {
                 .await);
         }
 
+        trace!("APNS request was successful");
+        incr_success_metrics(&self.metrics, "apns", channel, &notification);
         #[cfg(feature = "reliable_report")]
         {
             // Record that we've sent the message out to APNS.
             // We can't set the state here because the notification isn't
             // mutable, but we are also essentially consuming the
             // notification nothing else should modify it.
-            self.reliability
-                .record(
-                    &notification.subscription.reliability_id,
-                    ReliabilityState::Transmitted,
-                    &notification.reliable_state,
-                    notification.expiry,
-                )
+            notification
+                .record_reliability(&self.reliability, ReliabilityState::Transmitted)
                 .await;
         }
-        // Sent successfully, update metrics and make response
-        trace!("APNS request was successful");
-        incr_success_metrics(&self.metrics, "apns", channel, &notification);
 
         Ok(RouterResponse::success(
             self.endpoint_url

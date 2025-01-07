@@ -214,7 +214,7 @@ impl Notification {
         map.insert("timestamp", serde_json::to_value(self.timestamp)?);
         #[cfg(feature = "reliable_report")]
         {
-            if let Some(reliability_id) = self.subscription.reliability_id.clone() {
+            if let Some(reliability_id) = &self.subscription.reliability_id {
                 map.insert("reliability_id", serde_json::to_value(reliability_id)?);
             }
             if let Some(reliable_state) = self.reliable_state {
@@ -232,5 +232,21 @@ impl Notification {
         }
 
         Ok(map)
+    }
+
+    #[cfg(feature = "reliable_report")]
+    pub async fn record_reliability(
+        &mut self,
+        reliability: &autopush_common::reliability::PushReliability,
+        state: autopush_common::reliability::ReliabilityState,
+    ) {
+        self.reliable_state = reliability
+            .record(
+                &self.reliability_id,
+                state,
+                &self.reliable_state,
+                Some(self.timestamp + self.headers.ttl as u64),
+            )
+            .await;
     }
 }
