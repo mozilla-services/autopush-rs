@@ -259,8 +259,6 @@ pub mod tests {
             #[cfg(feature = "reliable_report")]
             reliable_state: None,
             #[cfg(feature = "reliable_report")]
-            expiry: None,
-            #[cfg(feature = "reliable_report")]
             reliability_id: None,
         }
     }
