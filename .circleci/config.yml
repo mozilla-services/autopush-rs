@@ -330,12 +330,12 @@ jobs:
           docker_layer_caching: true
       - run:
           name: Build Image
-          command: docker build -t << parameters.image >>:build -f ./tests/<< parameters.path >>/Dockerfile .
+          command: docker build -t << parameters.image >> -f ./tests/<< parameters.path >>/Dockerfile .
       - run:
           name: Save Docker Image to Workspace
           command: |
             mkdir -p /tmp/cache
-            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>:build
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>
       - persist_to_workspace:
           root: /tmp/cache
           paths:
@@ -360,12 +360,12 @@ jobs:
             docker buildx build --target planner -f ./tests/<< parameters.path >>/Dockerfile .
             docker buildx build --target cacher -f ./tests/<< parameters.path >>/Dockerfile .
             docker buildx build --target builder -f ./tests/<< parameters.path >>/Dockerfile .
-            docker buildx build --target integration-tests -t << parameters.image >>:build -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target integration-tests -t << parameters.image >> -f ./tests/<< parameters.path >>/Dockerfile .
       - run:
           name: Save Docker Image to Workspace
           command: |
             mkdir -p /tmp/cache
-            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>:build
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>
       - persist_to_workspace:
           root: /tmp/cache
           paths:
