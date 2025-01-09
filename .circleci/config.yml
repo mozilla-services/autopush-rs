@@ -169,7 +169,7 @@ jobs:
           name: Restore Docker image cache
           command: |
             docker load -i /tmp/cache/autopush-integration-tests.tar
-            docker tag autopush-integration-tests:build integration-tests
+            docker tag autopush-integration-tests integration-tests
       - run:
           name: Integration tests (Bigtable)
           command: |
