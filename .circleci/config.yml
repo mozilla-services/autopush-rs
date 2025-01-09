@@ -482,7 +482,7 @@ workflows:
       - build-test-container:
           name: Build End-To-End Test Image
           image: autopush-end-to-end-tests
-          path: end-to-end
+          path: notification
           filters:
             tags:
               only: /.*/
