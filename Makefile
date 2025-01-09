@@ -1,6 +1,9 @@
 SHELL := /bin/sh
 CARGO = cargo
-TESTS_DIR := tests
+# For unknown reasons, poetry on CI will sometimes "forget" what it's current path is, which
+# can confuse relative path lookups.
+# Let's be very explicit about it for now.
+TESTS_DIR := `pwd`/tests
 TEST_RESULTS_DIR ?= workspace/test-results
 PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
 INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
