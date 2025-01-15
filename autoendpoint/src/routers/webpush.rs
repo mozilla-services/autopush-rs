@@ -63,21 +63,14 @@ impl Router for WebPushRouter {
             );
 
             #[cfg(feature = "reliable_report")]
-            let (revert_state, mut notification) = {
-                let revert_state = notification.reliable_state;
-                // The node will set the next state (if successful)
-                notification.reliable_state = self
-                    .reliability
-                    .record(
-                        &notification.reliability_id,
-                        autopush_common::reliability::ReliabilityState::IntTransmitted,
-                        &notification.reliable_state,
-                        notification.expiry,
-                    )
-                    .await;
-
-                (revert_state, notification.clone())
-            };
+            let revert_state = notification.reliable_state;
+            #[cfg(feature = "reliable_report")]
+            notification
+                .record_reliability(
+                    &self.reliability,
+                    autopush_common::reliability::ReliabilityState::IntTransmitted,
+                )
+                .await;
             match self.send_notification(&notification, node_id).await {
                 Ok(response) => {
                     // The node might be busy, make sure it accepted the notification
@@ -114,14 +107,8 @@ impl Router for WebPushRouter {
                     &notification.reliable_state,
                     revert_state
                 );
-                notification.reliable_state = self
-                    .reliability
-                    .record(
-                        &notification.reliability_id,
-                        revert_state,
-                        &notification.reliable_state,
-                        notification.expiry,
-                    )
+                notification
+                    .record_reliability(&self.reliability, revert_state)
                     .await;
             }
         }
@@ -138,17 +125,12 @@ impl Router for WebPushRouter {
                 .with_tag("topic", &topic)
                 .send();
             #[cfg(feature = "reliable_report")]
-            {
-                notification.reliable_state = self
-                    .reliability
-                    .record(
-                        &notification.reliability_id,
-                        autopush_common::reliability::ReliabilityState::Expired,
-                        &notification.reliable_state,
-                        notification.expiry,
-                    )
-                    .await;
-            }
+            notification
+                .record_reliability(
+                    &self.reliability,
+                    autopush_common::reliability::ReliabilityState::Expired,
+                )
+                .await;
             return Ok(self.make_delivered_response(&notification));
         }
 
@@ -288,17 +270,12 @@ impl WebPushRouter {
                 )
             });
         #[cfg(feature = "reliable_report")]
-        {
-            notification.reliable_state = self
-                .reliability
-                .record(
-                    &notification.subscription.reliability_id,
-                    autopush_common::reliability::ReliabilityState::Stored,
-                    &notification.reliable_state,
-                    notification.expiry,
-                )
-                .await;
-        }
+        notification
+            .record_reliability(
+                &self.reliability,
+                autopush_common::reliability::ReliabilityState::Stored,
+            )
+            .await;
         result
     }
 
@@ -380,7 +357,7 @@ mod test {
 
     fn make_router(db: Box<dyn DbClient>) -> WebPushRouter {
         WebPushRouter {
-            db: db.box_clone(),
+            db: db.clone(),
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),

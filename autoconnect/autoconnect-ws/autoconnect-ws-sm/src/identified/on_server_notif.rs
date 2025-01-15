@@ -124,6 +124,7 @@ impl WebPushClient {
             if msg.sortkey_timestamp.is_none() {
                 expired_topic_sort_keys.push(msg.chidmessageid());
             }
+            // XXX: record ReliabilityState::Expired?
             false
         });
         // TODO: A batch remove_messages would be nicer
@@ -173,16 +174,8 @@ impl WebPushClient {
         // *Note* because `.map()` is sync
         // we can't call the async func without additional hoops.
         for message in messages {
-            let expiry = message.timestamp + message.ttl;
-            message.reliable_state = self
-                .app_state
-                .reliability
-                .record(
-                    &message.reliability_id,
-                    state,
-                    &message.reliable_state,
-                    Some(expiry),
-                )
+            message
+                .record_reliability(&self.app_state.reliability, state)
                 .await;
         }
     }

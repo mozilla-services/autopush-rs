@@ -23,4 +23,4 @@ cbt -project $PROJECT -instance $INSTANCE createfamily $TABLE_NAME $RELIABILITY_
 cbt -project $PROJECT -instance $INSTANCE setgcpolicy $TABLE_NAME $MESSAGE_FAMILY "maxage=1s or maxversions=1"
 cbt -project $PROJECT -instance $INSTANCE setgcpolicy $TABLE_NAME $MESSAGE_TOPIC_FAMILY "maxage=1s or maxversions=1"
 cbt -project $PROJECT -instance $INSTANCE setgcpolicy $TABLE_NAME $ROUTER_FAMILY maxversions=1
-cbt -project $PROJECT -instance $INSTANCE setgcpolicy $TABLE_NAME $MESSAGE_TOPIC_FAMILY "maxage=60d or maxversions=1"
+cbt -project $PROJECT -instance $INSTANCE setgcpolicy $TABLE_NAME $RELIABILITY_FAMILY "maxage=1s or maxversions=1"

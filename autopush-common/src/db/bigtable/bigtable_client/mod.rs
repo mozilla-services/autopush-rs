@@ -1173,6 +1173,7 @@ impl DbClient for BigTableClientImpl {
 
         // Remember, `timestamp` is effectively the time to kill the message, not the
         // current time.
+        // TODO: use message.expiry()
         let expiry = SystemTime::now() + Duration::from_secs(message.ttl);
         trace!(
             "🉑 Message Expiry {}",
