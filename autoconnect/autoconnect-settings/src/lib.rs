@@ -133,7 +133,7 @@ impl Default for Settings {
             crypto_key: format!("[{}]", Fernet::generate_key()),
             statsd_host: Some("localhost".to_owned()),
             // Matches the legacy value
-            statsd_label: "autopush".to_owned(),
+            statsd_label: "autoconnect".to_owned(),
             statsd_port: 8125,
             db_dsn: None,
             db_settings: "".to_owned(),
