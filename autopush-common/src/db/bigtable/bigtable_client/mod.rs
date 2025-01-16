@@ -51,6 +51,10 @@ pub type FamilyId = String;
 const ROUTER_FAMILY: &str = "router";
 const MESSAGE_FAMILY: &str = "message"; // The default family for messages
 const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
+#[cfg(feature = "reliable_report")]
+const RELIABLE_LOG_FAMILY: &str = "reliability";
+#[cfg(feature = "reliable_report")]
+const RELIABLE_LOG_TTL: u64 = crate::db::MAX_NOTIFICATION_TTL * 2;
 
 pub(crate) const RETRY_COUNT: usize = 5;
 
@@ -751,6 +755,26 @@ impl BigTableClientImpl {
         if let Some(cell) = row.take_cell("data") {
             notif.data = Some(to_string(cell.value, "data")?);
         }
+        #[cfg(feature = "reliable_report")]
+        {
+            if let Some(cell) = row.take_cell("reliability_id") {
+                notif.reliability_id = Some(to_string(cell.value, "reliability_id")?);
+            }
+            if let Some(cell) = row.take_cell("reliable_state") {
+                notif.reliable_state = Some(
+                    crate::reliability::ReliabilityState::from_str(&to_string(
+                        cell.value,
+                        "reliable_state",
+                    )?)
+                    .map_err(|e| {
+                        DbError::DeserializeString(format!(
+                            "Could not parse reliable_state {:?}",
+                            e
+                        ))
+                    })?,
+                );
+            }
+        }
         if let Some(cell) = row.take_cell("headers") {
             notif.headers = Some(
                 serde_json::from_str::<HashMap<String, String>>(&to_string(cell.value, "headers")?)
@@ -1149,6 +1173,7 @@ impl DbClient for BigTableClientImpl {
 
         // Remember, `timestamp` is effectively the time to kill the message, not the
         // current time.
+        // TODO: use message.expiry()
         let expiry = SystemTime::now() + Duration::from_secs(message.ttl);
         trace!(
             "🉑 Message Expiry {}",
@@ -1196,6 +1221,26 @@ impl DbClient for BigTableClientImpl {
                 });
             }
         }
+        #[cfg(feature = "reliable_report")]
+        {
+            if let Some(reliability_id) = message.reliability_id {
+                trace!("🔍 FOUND RELIABILITY ID: {}", reliability_id);
+                cells.push(cell::Cell {
+                    qualifier: "reliability_id".to_owned(),
+                    value: reliability_id.into_bytes(),
+                    timestamp: expiry,
+                    ..Default::default()
+                });
+            }
+            if let Some(reliable_state) = message.reliable_state {
+                cells.push(cell::Cell {
+                    qualifier: "reliable_state".to_owned(),
+                    value: reliable_state.to_string().into_bytes(),
+                    timestamp: expiry,
+                    ..Default::default()
+                });
+            }
+        }
         if let Some(data) = message.data {
             cells.push(cell::Cell {
                 qualifier: "data".to_owned(),
@@ -1205,14 +1250,6 @@ impl DbClient for BigTableClientImpl {
             });
         }
 
-        if let Some(reliability_id) = message.reliability_id {
-            cells.push(cell::Cell {
-                qualifier: "reliability_id".to_owned(),
-                value: reliability_id.into_bytes(),
-                timestamp: expiry,
-                ..Default::default()
-            });
-        }
         row.add_cells(family, cells);
         trace!("🉑 Adding row");
         self.write_row(row).await?;
@@ -1429,6 +1466,32 @@ impl DbClient for BigTableClientImpl {
     /// by `family`.
     async fn message_table_exists(&self) -> DbResult<bool> {
         Ok(true)
+    }
+
+    #[cfg(feature = "reliable_report")]
+    async fn log_report(
+        &self,
+        reliability_id: &str,
+        new_state: crate::reliability::ReliabilityState,
+    ) -> DbResult<()> {
+        let row_key = reliability_id.to_owned();
+
+        let mut row = Row::new(row_key);
+        let expiry = SystemTime::now() + Duration::from_secs(RELIABLE_LOG_TTL);
+
+        // Log the latest transition time for this id.
+        let cells: Vec<cell::Cell> = vec![cell::Cell {
+            qualifier: new_state.to_string(),
+            value: crate::util::ms_since_epoch().to_be_bytes().to_vec(),
+            timestamp: expiry,
+            ..Default::default()
+        }];
+
+        row.add_cells(RELIABLE_LOG_FAMILY, cells);
+
+        self.write_row(row).await?;
+
+        Ok(())
     }
 
     fn box_clone(&self) -> Box<dyn DbClient> {

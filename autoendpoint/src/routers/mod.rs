@@ -35,7 +35,7 @@ pub trait Router {
     ) -> Result<HashMap<String, serde_json::Value>, RouterError>;
 
     /// Route a notification to the user
-    async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse>;
+    async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse>;
 }
 
 /// The response returned when a router routes a notification

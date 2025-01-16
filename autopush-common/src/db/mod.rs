@@ -338,6 +338,8 @@ impl NotificationRecord {
             headers: self.headers.map(|m| m.into()),
             sortkey_timestamp: key.sortkey_timestamp,
             reliability_id: None,
+            #[cfg(feature = "reliable_report")]
+            reliable_state: None,
         })
     }
 

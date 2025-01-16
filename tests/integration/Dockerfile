@@ -24,13 +24,13 @@ FROM chef AS cacher
 COPY --from=planner /app/recipe.json recipe.json
 
 RUN \
-    apt-get -qq update && \
-    apt-get -qq install --no-install-recommends -y \
-      cmake \
-      libssl-dev \
-      ca-certificates \
-      pkg-config \
-      build-essential
+  apt-get -qq update && \
+  apt-get -qq install --no-install-recommends -y \
+  cmake \
+  libssl-dev \
+  ca-certificates \
+  pkg-config \
+  build-essential
 
 RUN cargo chef cook --recipe-path recipe.json
 
@@ -41,15 +41,15 @@ ARG APT_CACHE_BUST
 
 RUN mkdir -m 755 bin
 RUN apt-get -qq update && \
-    apt-get -qq upgrade && apt-get -qq install --no-install-recommends -y \
-      cmake \
-      libssl-dev \
-      ca-certificates \
-      libstdc++6 \
-      libstdc++-12-dev
+  apt-get -qq upgrade && apt-get -qq install --no-install-recommends -y \
+  cmake \
+  libssl-dev \
+  ca-certificates \
+  libstdc++6 \
+  libstdc++-12-dev
 
 RUN cargo --version && \
-    rustc --version
+  rustc --version
 COPY . .
 COPY --from=cacher /app/target target
 COPY --from=cacher $CARGO_HOME $CARGO_HOME
@@ -68,17 +68,16 @@ ENV PYTHONUNBUFFERED=1
 
 ENV PATH=$PATH:/root/.cargo/bin
 ENV PYTHON_VENV=/venv
-ENV PYTEST_ARGS=""
 ENV RUST_LOG="autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn"
 ENV DB_DSN=grpc://localhost:8086
 
 # Add gcc since there are no wheels for some packages for arm64/aarch64
 # (g++/make for gevent on pypy)
 RUN apt-get update && apt install -y --no-install-recommends \
-    git \
-    build-essential \
-    curl \
-    gpg
+  git \
+  build-essential \
+  curl \
+  gpg
 
 RUN python -m venv ${PYTHON_VENV}
 ENV PATH="${PYTHON_VENV}/bin:${PATH}"
@@ -106,4 +105,5 @@ WORKDIR /code
 
 RUN chmod +x scripts/setup_bt.sh
 
-CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v -m 'not stub' ${PYTEST_ARGS}"]
+# Pytest markers are defined in the `pyproject.toml`:`[tool.pytest.ini_options]` file.
+CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v"]

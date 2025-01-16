@@ -199,11 +199,11 @@ impl BroadcastChangeTracker {
             }
             *ver = broadcast.version;
         } else {
-            trace!("📢 Not found: {}", &b_id);
+            trace!("📢 Not found: {b_id}");
             return Err(ApcErrorKind::BroadcastError("Broadcast not found".into()).into());
         }
 
-        trace!("📢 New version of {}", &b_id);
+        trace!("📢 New version of {b_id}");
         // Check to see if this broadcast has been updated since initialization
         let bcast_index = self
             .broadcast_list

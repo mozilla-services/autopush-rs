@@ -29,6 +29,8 @@ pub struct Notification {
     pub headers: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reliability_id: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    pub reliable_state: Option<crate::reliability::ReliabilityState>,
 }
 
 pub const TOPIC_NOTIFICATION_PREFIX: &str = "01";
@@ -66,10 +68,30 @@ impl Notification {
         }
     }
 
+    pub fn expiry(&self) -> u64 {
+        self.timestamp + self.ttl
+    }
+
     /// Convenience function to determine if the notification
     /// has aged out.
     pub fn expired(&self, at_sec: u64) -> bool {
-        at_sec >= self.timestamp + self.ttl
+        at_sec >= self.expiry()
+    }
+
+    #[cfg(feature = "reliable_report")]
+    pub async fn record_reliability(
+        &mut self,
+        reliability: &crate::reliability::PushReliability,
+        state: crate::reliability::ReliabilityState,
+    ) {
+        self.reliable_state = reliability
+            .record(
+                &self.reliability_id,
+                state,
+                &self.reliable_state,
+                Some(self.expiry()),
+            )
+            .await;
     }
 }
 

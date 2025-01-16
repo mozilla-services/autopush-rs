@@ -5,7 +5,11 @@ CARGO = cargo
 # Let's be very explicit about it for now.
 TESTS_DIR := `pwd`/tests
 TEST_RESULTS_DIR ?= workspace/test-results
-PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
+# NOTE: Do not be clever.
+# The integration tests (and a few others) use pytest markers to control
+# the tests that are being run. These markers are set and defined within
+# the `./pyproject.toml`. That is the single source of truth.
+PYTEST_ARGS := ${PYTEST_ARGS}
 INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
 INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
@@ -46,17 +50,17 @@ integration-test-clean:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml down
 	docker rm integration-tests
 
-integration-test-legacy:
+integration-test-legacy: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
 		-v $(PYTEST_ARGS)
 
-integration-test-local:
+integration-test-local: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
-		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
+	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
 

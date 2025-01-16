@@ -230,7 +230,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         assert self.ws
         data = self.ws.recv()
         if not isinstance(data, str):
-            logger.error("recv_message unexpectedly recieved bytes")
+            logger.error("recv_message unexpectedly received bytes")
             data = str(data)
         self.on_ws_message(self.ws, data)
 

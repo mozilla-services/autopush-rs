@@ -138,6 +138,11 @@ impl WebPushClient {
         &self.app_state.settings
     }
 
+    #[cfg(feature = "reliable_report")]
+    pub fn app_reliability(&self) -> &autopush_common::reliability::PushReliability {
+        &self.app_state.reliability
+    }
+
     /// Connect this `WebPushClient` to the `ClientRegistry`
     ///
     /// Returning a `Stream` of `ServerNotification`s from the `ClientRegistry`
@@ -233,6 +238,7 @@ impl WebPushClient {
         let connected_at = self.connected_at;
         rt::spawn(async move {
             app_state.db.save_messages(&uaid, notifs).await?;
+            // XXX: record reliability
             debug!("Finished saving unacked direct notifs, checking for reconnect");
             let Some(user) = app_state.db.get_user(&uaid).await? else {
                 return Err(SMErrorKind::Internal(format!(

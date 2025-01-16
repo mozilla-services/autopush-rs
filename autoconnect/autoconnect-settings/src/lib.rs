@@ -108,6 +108,11 @@ pub struct Settings {
     ///
     /// By default, the number of available physical CPUs is used as the worker count.
     pub actix_workers: Option<usize>,
+    #[cfg(feature = "reliable_report")]
+    /// The DNS for the reliability data store. This is normally a Redis compatible
+    /// storage system. See [Connection Parameters](https://docs.rs/redis/latest/redis/#connection-parameters)
+    /// for details.
+    pub reliability_dsn: Option<String>,
 }
 
 impl Default for Settings {
@@ -139,6 +144,8 @@ impl Default for Settings {
             msg_limit: 150,
             actix_max_connections: None,
             actix_workers: None,
+            #[cfg(feature = "reliable_report")]
+            reliability_dsn: None,
         }
     }
 }

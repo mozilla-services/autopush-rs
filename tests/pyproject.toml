@@ -40,7 +40,7 @@ add-select = ["D212"]
 # D203 as it conflicts with D211 https://github.com/PyCQA/pydocstyle/issues/141
 # D205 1 blank line required between summary line and description, awkward spacing
 # D400 First line should end with a period, doesn't work when sentence spans 2 lines
-add-ignore = ["D105","D107","D203", "D205", "D400"]
+add-ignore = ["D105", "D107", "D203", "D205", "D400"]
 
 [tool.poetry]
 name = "tests"
@@ -75,7 +75,7 @@ pytest-order = "^1.3.0"
 python-jose = "^3.3.0"
 httpx = "^0.27.2"
 fastapi = "^0.111.1"
-uvicorn = {extras = ["standard"], version="^0.29.0"}
+uvicorn = { extras = ["standard"], version = "^0.29.0" }
 
 [tool.poetry.group.load.dependencies]
 locust = "^2.32.1"
@@ -95,9 +95,16 @@ requires = ["poetry-core>=1.9.1"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
+addopts = "-m 'not stub and not sentry and not reliable_report'"
 asyncio_mode = "auto"
+faulthandler_timeout = 99999
+log_cli = 1
+# 10 DEBUG
+# 20 INFO
+log_cli_level = 10
 # Pytest marker documentation: https://docs.pytest.org/en/7.1.x/example/markers.html
 markers = [
     "stub: mark a test for the stub system",
-    "sentry: mark a test for the sentry integration"
+    "sentry: mark a test for the sentry integration",
+    "reliable_report: enable tests for reliability reporting",
 ]

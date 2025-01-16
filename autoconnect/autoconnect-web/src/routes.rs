@@ -16,21 +16,45 @@ pub async fn ws_route(
 }
 
 /// Deliver a Push notification directly to a connected client
+#[allow(unused_mut)]
 pub async fn push_route(
     uaid: web::Path<Uuid>,
-    notif: web::Json<Notification>,
+    mut notif: web::Json<Notification>,
     app_state: web::Data<AppState>,
 ) -> HttpResponse {
     trace!(
-        "⏩ push_route, uaid: {} channel_id: {}",
+        "⏩ in push_route, uaid: {} channel_id: {}",
         uaid,
-        notif.channel_id
+        notif.channel_id,
     );
+    #[cfg(feature = "reliable_report")]
+    {
+        notif
+            .record_reliability(
+                &app_state.reliability,
+                autopush_common::reliability::ReliabilityState::IntAccepted,
+            )
+            .await;
+        notif
+            .record_reliability(
+                &app_state.reliability,
+                autopush_common::reliability::ReliabilityState::Transmitted,
+            )
+            .await;
+    }
+    // Attempt to send the notification to the UA using WebSocket protocol, or store on failure.
     let result = app_state
         .clients
-        .notify(uaid.into_inner(), notif.into_inner())
+        .notify(uaid.into_inner(), notif.clone())
         .await;
     if result.is_ok() {
+        #[cfg(feature = "reliable_report")]
+        notif
+            .record_reliability(
+                &app_state.reliability,
+                autopush_common::reliability::ReliabilityState::Accepted,
+            )
+            .await;
         HttpResponse::Ok().finish()
     } else {
         HttpResponse::NotFound().body("Client not available")
