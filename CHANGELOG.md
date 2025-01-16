@@ -1,3 +1,23 @@
+<a name="1.73.0"></a>
+## 1.73.0 (2025-01-15)
+
+
+#### Features
+
+*   rename autopush prefix metrics to autoconnect (#822) ([9a166def](https://github.com/mozilla-services/autopush-rs/commit/9a166deff77531810cd6c401d4f41a756b509d53))
+
+#### Bug Fixes
+
+* **ci:**
+  *  remove all tagging of images on CI before deploy stages. (#821) ([a6fc8cdb](https://github.com/mozilla-services/autopush-rs/commit/a6fc8cdb678e4bc538e68bab601f801ef8c4b2af))
+  *  remove all tagging of images on CI before deploy stages. ([54420559](https://github.com/mozilla-services/autopush-rs/commit/544205593aa0511dd4cb29cf2138f863628bc399))
+  *  Fix test containers not depolying. (#820) ([20c65f88](https://github.com/mozilla-services/autopush-rs/commit/20c65f889ece0bfcc7a861c034192abfa320cab4))
+  *  Fix test containers not depolying. ([92af405d](https://github.com/mozilla-services/autopush-rs/commit/92af405d8ef48c3ce4b1657c6e81f48335427591))
+  *  Fix auto connect/endpoint deployments from circleci. (#819) ([bde05a10](https://github.com/mozilla-services/autopush-rs/commit/bde05a10f211db31fa7bc9cca3cc77a0c25362c2))
+  *  Fix auto connect/endpoint deployments from circleci. ([be7b2136](https://github.com/mozilla-services/autopush-rs/commit/be7b2136e22f24892eba41fe566bb400aae62bc4))
+
+
+
 <a name="1.72.2"></a>
 ## 1.72.2 (2024-12-17)
 
