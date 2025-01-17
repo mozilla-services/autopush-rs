@@ -1,6 +1,6 @@
+use lazy_static::lazy_static;
 use regex::RegexSet;
 use std::collections::HashMap;
-use uuid::Uuid;
 
 use crate::errors::{ApcErrorKind, Result};
 use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
