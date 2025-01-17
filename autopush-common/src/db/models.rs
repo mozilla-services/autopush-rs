@@ -1,5 +1,9 @@
+use regex::RegexSet;
 use std::collections::HashMap;
+use uuid::Uuid;
 
+use crate::errors::{ApcErrorKind, Result};
+use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -55,6 +59,71 @@ pub(crate) struct RangeKey {
     pub(crate) sortkey_timestamp: Option<u64>,
     /// Which version of this message are we handling
     pub(crate) legacy_version: Option<String>,
+}
+
+impl RangeKey {
+    /// read the custom sort_key and convert it into something the database can use.
+    pub(crate) fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
+        lazy_static! {
+            static ref RE: RegexSet = RegexSet::new([
+                format!("^{}:\\S+:\\S+$", TOPIC_NOTIFICATION_PREFIX).as_str(),
+                format!("^{}:\\d+:\\S+$", STANDARD_NOTIFICATION_PREFIX).as_str(),
+                "^\\S{3,}:\\S+$"
+            ])
+            .unwrap();
+        }
+        if !RE.is_match(key) {
+            return Err(ApcErrorKind::GeneralError("Invalid chidmessageid".into()).into());
+        }
+
+        let v: Vec<&str> = key.split(':').collect();
+        match v[0] {
+            // This is a topic message (There Can Only Be One. <guitar riff>)
+            "01" => {
+                if v.len() != 3 {
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
+                }
+                let (channel_id, topic) = (v[1], v[2]);
+                let channel_id = Uuid::parse_str(channel_id)?;
+                Ok(RangeKey {
+                    channel_id,
+                    topic: Some(topic.to_string()),
+                    sortkey_timestamp: None,
+                    legacy_version: None,
+                })
+            }
+            // A "normal" pending message.
+            "02" => {
+                if v.len() != 3 {
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
+                }
+                let (sortkey, channel_id) = (v[1], v[2]);
+                let channel_id = Uuid::parse_str(channel_id)?;
+                Ok(RangeKey {
+                    channel_id,
+                    topic: None,
+                    sortkey_timestamp: Some(sortkey.parse()?),
+                    legacy_version: None,
+                })
+            }
+            // Ok, that's odd, but try to make some sense of it.
+            // (This is a bit of legacy code that we should be
+            // able to drop.)
+            _ => {
+                if v.len() != 2 {
+                    return Err(ApcErrorKind::GeneralError("Invalid topic key".into()).into());
+                }
+                let (channel_id, legacy_version) = (v[0], v[1]);
+                let channel_id = Uuid::parse_str(channel_id)?;
+                Ok(RangeKey {
+                    channel_id,
+                    topic: None,
+                    sortkey_timestamp: None,
+                    legacy_version: Some(legacy_version.to_string()),
+                })
+            }
+        }
+    }
 }
 
 #[cfg(test)]
