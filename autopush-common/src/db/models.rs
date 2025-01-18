@@ -128,7 +128,7 @@ impl RangeKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::db::NotificationRecord;
+    use crate::db::RangeKey;
     use crate::util::us_since_epoch;
     use uuid::Uuid;
 

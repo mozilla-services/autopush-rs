@@ -203,54 +203,6 @@ impl User {
     }
 }
 
-/// A stored Notification record. This is a notification that is to be stored
-/// until the User Agent reconnects. These are then converted to publishable
-/// [crate::db::Notification] records.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct NotificationRecord {
-    /// The UserAgent Identifier (UAID)
-    #[serde(serialize_with = "uuid_serializer")]
-    uaid: Uuid,
-    // Format:
-    //    Topic Messages:
-    //        {TOPIC_NOTIFICATION_PREFIX}:{channel id}:{topic}
-    //    New Messages:
-    //        {STANDARD_NOTIFICATION_PREFIX}:{timestamp int in microseconds}:{channel id}
-    chidmessageid: String,
-    /// Magic entry stored in the first Message record that indicates the highest
-    /// non-topic timestamp we've read into
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_timestamp: Option<u64>,
-    /// Magic entry stored in the first Message record that indicates the valid
-    /// channel id's
-    #[serde(skip_serializing)]
-    pub chids: Option<HashSet<String>>,
-    /// Time in seconds from epoch
-    #[serde(skip_serializing_if = "Option::is_none")]
-    timestamp: Option<u64>,
-    /// Expiration timestamp
-    expiry: u64,
-    /// TTL value provided by application server for the message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ttl: Option<u64>,
-    /// The message data
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<String>,
-    /// Selected, associated message headers. These can contain additional
-    /// decryption information for the UserAgent.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    headers: Option<NotificationHeaders>,
-    /// This is the acknowledgement-id used for clients to ack that they have received the
-    /// message. Autoendpoint refers to this as a message_id. Endpoints generate this
-    /// value before sending it to storage or a connection node.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    updateid: Option<String>,
-    /// Internal Push Reliability tracking id. (Applied only to subscription updates generated
-    /// by Mozilla owned and consumed messages, like SendTab updates.)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reliability_id: Option<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::{User, USER_RECORD_VERSION};

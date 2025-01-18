@@ -25,7 +25,7 @@ use crate::db::RangeKey;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, NotificationRecord, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
+    DbSettings, Notification, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
 };
 
 pub use self::metadata::MetadataBuilder;
