@@ -21,6 +21,7 @@ use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
 
+use crate::db::RangeKey;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
@@ -733,7 +734,7 @@ impl BigTableClientImpl {
                 None,
             ));
         };
-        let range_key = NotificationRecord::parse_chidmessageid(chidmessageid).map_err(|e| {
+        let range_key = RangeKey::parse_chidmessageid(chidmessageid).map_err(|e| {
             DbError::Integrity(
                 format!("rows_to_notification expected chidmessageid: {e}"),
                 None,

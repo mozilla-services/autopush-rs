@@ -3,7 +3,7 @@ use regex::RegexSet;
 use std::collections::HashMap;
 
 use crate::errors::{ApcErrorKind, Result};
-use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
+use crate::notification::{STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -136,7 +136,7 @@ mod tests {
     fn test_parse_sort_key_ver1() {
         let chid = Uuid::new_v4();
         let chidmessageid = format!("01:{}:mytopic", chid.hyphenated());
-        let key = NotificationRecord::parse_chidmessageid(&chidmessageid).unwrap();
+        let key = RangeKey::parse_chidmessageid(&chidmessageid).unwrap();
         assert_eq!(key.topic, Some("mytopic".to_string()));
         assert_eq!(key.channel_id, chid);
         assert_eq!(key.sortkey_timestamp, None);
@@ -147,7 +147,7 @@ mod tests {
         let chid = Uuid::new_v4();
         let sortkey_timestamp = us_since_epoch();
         let chidmessageid = format!("02:{}:{}", sortkey_timestamp, chid.hyphenated());
-        let key = NotificationRecord::parse_chidmessageid(&chidmessageid).unwrap();
+        let key = RangeKey::parse_chidmessageid(&chidmessageid).unwrap();
         assert_eq!(key.topic, None);
         assert_eq!(key.channel_id, chid);
         assert_eq!(key.sortkey_timestamp, Some(sortkey_timestamp));
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn test_parse_sort_key_bad_values() {
         for val in &["02j3i2o", "03:ffas:wef", "01::mytopic", "02:oops:ohnoes"] {
-            let key = NotificationRecord::parse_chidmessageid(val);
+            let key = RangeKey::parse_chidmessageid(val);
             assert!(key.is_err());
         }
     }
