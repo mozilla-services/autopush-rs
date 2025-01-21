@@ -94,10 +94,10 @@ impl FromRequest for Subscription {
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
             // values we get.
             if let Some(header) = &vapid {
-                let sub = header
+                if let Some(sub) = header
                     .vapid
                     .insecure_sub()
-                    .map_err(|e: VapidError| {
+                    .inspect_err(|e: &VapidError| {
                         // Capture the type of error and add it to metrics.
                         let mut tags = Tags::default();
                         tags.tags
@@ -108,10 +108,12 @@ impl FromRequest for Subscription {
                             .with_tag("error", e.as_metric())
                             .send();
                     })
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                {
+                    info!("VAPID sub: {sub}");
+                };
                 // For now, record that we had a good (?) VAPID sub,
                 app_state.metrics.incr("notification.auth.ok")?;
-                info!("VAPID sub: {:?}", sub)
             };
 
             match token_info.api_version {
@@ -304,7 +306,7 @@ fn validate_vapid_jwt(
     // Set the audiences we allow. This obsoletes the need to manually match
     // against values later.
     validation.set_audience(&[settings.endpoint_url().origin().ascii_serialization()]);
-    validation.set_required_spec_claims(&["exp", "aud", "sub"]);
+    validation.set_required_spec_claims(&["exp", "aud"]);
 
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
@@ -653,13 +655,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let vv = validate_vapid_jwt(&header, &test_settings, &Metrics::sink())
-            .unwrap_err()
-            .kind;
-        assert!(matches![
-            vv,
-            ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
-        ])
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::sink()).is_ok());
     }
 
     #[test]
