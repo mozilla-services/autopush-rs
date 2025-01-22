@@ -9,19 +9,13 @@ use crate::headers::util::split_key_value;
 use autopush_common::util::{sec_since_epoch, ONE_DAY_IN_SECONDS};
 
 pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
+const DEFAULT_SUB: &str = "mailto:";
 
-/*
-The Assertion block for the VAPID header.
-
-Please note: We require the `sub` claim in addition to the `exp` and `aud`.
-See [HTTP Endpoints for Notifications::Lexicon::{vapid_key}](https://mozilla-services.github.io/autopush-rs/http.html#lexicon-1)
-for details.
-
- */
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct VapidClaims {
     pub exp: u64,
     pub aud: Option<String>,
+    #[serde(default = "VapidClaims::default_sub")]
     pub sub: Option<String>,
 }
 
@@ -30,7 +24,7 @@ impl Default for VapidClaims {
         Self {
             exp: VapidClaims::default_exp(),
             aud: None,
-            sub: None,
+            sub: VapidClaims::default_sub(),
         }
     }
 }
@@ -38,6 +32,10 @@ impl Default for VapidClaims {
 impl VapidClaims {
     pub fn default_exp() -> u64 {
         sec_since_epoch() + ONE_DAY_IN_SECONDS
+    }
+
+    pub fn default_sub() -> Option<String> {
+        Some(DEFAULT_SUB.into())
     }
 }
 
@@ -153,13 +151,13 @@ impl VapidHeader {
         })?;
 
         if let Some(sub) = data.sub {
-            if !sub.starts_with("mailto:") && !sub.starts_with("https://") {
-                info!("🔐 Vapid: Bad Format {:?}", sub);
-                return Err(VapidError::SubBadFormat);
-            }
             if sub.is_empty() {
                 info!("🔐 Empty Vapid sub");
                 return Err(VapidError::SubEmpty);
+            }
+            if !sub.starts_with("mailto:") && !sub.starts_with("https://") {
+                info!("🔐 Vapid: Bad Format {:?}", sub);
+                return Err(VapidError::SubBadFormat);
             }
             info!("🔐 Vapid: sub: {:?}", sub);
             return Ok(sub.to_owned());
@@ -225,6 +223,8 @@ impl VapidError {
 #[cfg(test)]
 mod tests {
 
+    use crate::headers::vapid::VapidError;
+
     use super::{VapidClaims, VapidHeader, VapidVersionData};
 
     // This was generated externally using the py_vapid package.
@@ -234,6 +234,27 @@ mod tests {
         -UeqSC58xu96Mc9tUVifQu1zAAndHYwvMd3-u--PuUo3S_VrqYXEaIlNIOOrGd3iUBA,k=B\
         LMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtM\
         oNHsAGDlDB6X7vI";
+
+    const VAPID_HEADER_NO_SUB: &str = "vapid t=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpX\
+        VCJ9.eyJpYXQiOjE3Mzc1MzIyNjYsImV4cCI6MTczNzUzNjc2NiwibmJmIjoxNzM3NTMyMj\
+        Y2LCJhdWQiOiJodHRwOi8vbG9jYWxob3N0In0.162KXmtpTkug2VeCANg4tWjLAkgDn0FiA\
+        f89BMNNv5cPi1vIzFclHd6p2xfiqzr-eaUGkPapgzEoEZsVRrNn7Q,k=BOniQ9xHBPNY9gn\
+        QW4o-16vHqOb40pEIMifyUdFsxAgyzVkFMguxw0QrdbZcq8hRjN2zpeInRvKVPlkzABvuTn\
+        I";
+
+    const VAPID_HEADER_EMPTY_SUB: &str = "vapid t=eyJhbGciOiJFUzI1NiIsInR5cCI6I\
+        kpXVCJ9.eyJpYXQiOjE3Mzc1MzMzNTksImV4cCI6MTczNzUzNzg1OSwibmJmIjoxNzM3NTM\
+        zMzU5LCJzdWIiOiIiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0In0.GI7wpI0tGwaOJjlVpd\
+        MMaVsb4S3eFTS4txC_WFW_Q4eRaspLfbWjkIzMSzdPo8WKB0UwSaMocZQrU4Omjba4_g,k=\
+        BOniQ9xHBPNY9gnQW4o-16vHqOb40pEIMifyUdFsxAgyzVkFMguxw0QrdbZcq8hRjN2zpeI\
+        nRvKVPlkzABvuTnI";
+
+    const VAPID_HEADER_WRONG_SCHEME: &str = "vapid t=eyJhbGciOiJFUzI1NiIsInR5cC\
+        I6IkpXVCJ9.eyJpYXQiOjE3Mzc1MzM1MDEsImV4cCI6MTczNzUzODAwMSwibmJmIjoxNzM3\
+        NTMzNTAxLCJzdWIiOiJzbWI6Ly9ub3RfYWxsb3dlZCIsImF1ZCI6Imh0dHA6Ly9sb2NhbGh\
+        vc3QifQ.3NP0HiCQGyW8orAJ0Cc2WaEbPbetox1aU4vS1ndU-n-t-fnln4TurqPOvXD3shV\
+        uyT02vYiBBA6cGThGraeOag,k=BOniQ9xHBPNY9gnQW4o-16vHqOb40pEIMifyUdFsxAgyz\
+        VkFMguxw0QrdbZcq8hRjN2zpeInRvKVPlkzABvuTnI";
 
     #[test]
     fn parse_succeeds() {
@@ -266,5 +287,32 @@ mod tests {
             returned_header.unwrap().insecure_sub(),
             Ok("mailto:admin@example.com".to_owned())
         )
+    }
+
+    #[test]
+    fn parse_no_sub() {
+        let returned_header = VapidHeader::parse(VAPID_HEADER_NO_SUB);
+        assert_eq!(
+            returned_header.unwrap().insecure_sub(),
+            Ok("mailto:".to_owned())
+        )
+    }
+
+    #[test]
+    fn parse_wrong_sub() {
+        {
+            let returned_header = VapidHeader::parse(VAPID_HEADER_EMPTY_SUB);
+            assert_eq!(
+                returned_header.unwrap().insecure_sub(),
+                Err(VapidError::SubEmpty)
+            )
+        }
+        {
+            let returned_header = VapidHeader::parse(VAPID_HEADER_WRONG_SCHEME);
+            assert_eq!(
+                returned_header.unwrap().insecure_sub(),
+                Err(VapidError::SubBadFormat)
+            )
+        }
     }
 }
