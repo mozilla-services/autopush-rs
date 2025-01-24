@@ -151,7 +151,9 @@ pub async fn handle_error(
 
     if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
         let mut extras = err.extras.unwrap_or_default();
-        extras.extend([("sub".to_owned(), claims.sub.unwrap_or_default())]);
+        if let Some(sub) = claims.sub {
+            extras.extend([("sub".to_owned(), sub)]);
+        }
         err.extras = Some(extras);
     };
     err
