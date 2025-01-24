@@ -5,14 +5,18 @@
 /// and where messages expire early. Message expiration can lead to message loss
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use redis::Commands;
 
 use crate::db::client::DbClient;
 use crate::errors::{ApcError, ApcErrorKind, Result};
+use crate::util::timing::sec_since_epoch;
 
 pub const COUNTS: &str = "state_counts";
 pub const EXPIRY: &str = "expiry";
+
+const CONNECTION_EXPIRATION: u64 = 10;
 
 /// The various states that a message may transit on the way from reception to delivery.
 // Note: "Message" in this context refers to the Subscription Update.
@@ -138,7 +142,9 @@ impl PushReliability {
                     .unwrap_or_else(|| "None".to_owned()),
                 new
             );
-            if let Ok(mut con) = client.get_connection() {
+            if let Ok(mut con) =
+                client.get_connection_with_timeout(Duration::from_secs(CONNECTION_EXPIRATION))
+            {
                 let mut pipeline = redis::Pipeline::new();
                 let pipeline = pipeline.hincr(COUNTS, new.to_string(), 1);
                 let pipeline = if let Some(old) = old {
@@ -164,6 +170,26 @@ impl PushReliability {
             warn!("🔍 Unable to record reliability state: {:?}", e);
         });
         Some(new)
+    }
+
+    pub async fn gc(&self) -> Result<()> {
+        if let Some(client) = &self.client {
+            debug!("🔍 performing pre-report garbage collection");
+            if let Ok(mut conn) =
+                client.get_connection_with_timeout(Duration::from_secs(CONNECTION_EXPIRATION))
+            {
+                let purged: Vec<String> = conn.zrange("items", -1, sec_since_epoch() as isize)?;
+                let mut pipeline = redis::Pipeline::new();
+                for key in purged {
+                    let parts: Vec<&str> = key.splitn(2, '#').collect();
+                    let state = parts.first();
+                    pipeline.hincr("state_counts", state, -1);
+                    pipeline.zrem("items", key);
+                }
+                pipeline.exec(&mut conn).unwrap();
+            }
+        }
+        Ok(())
     }
 
     // Return a snapshot of milestone states
