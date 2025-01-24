@@ -1378,7 +1378,7 @@ async def test_with_key(test_client: AsyncPushTestClient) -> None:
     claims = {
         "aud": f"http://127.0.0.1:{ENDPOINT_PORT}",
         "exp": int(time.time()) + 86400,
-        "sub": "a@example.com",
+        "sub": "mailto:a@example.com",
     }
     vapid = _get_vapid(private_key, claims)
     pk_hex = vapid["crypto-key"]
@@ -1395,6 +1395,24 @@ async def test_with_key(test_client: AsyncPushTestClient) -> None:
     vapid = _get_vapid(new_key, claims)
 
     await test_client.send_notification(vapid=vapid, status=401)
+
+
+async def test_empty_vapid(test_client: AsyncPushTestClient) -> None:
+    """Test with a minimal VAPID assertion set"""
+    private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+    claims = {
+        "aud": f"http://127.0.0.1:{ENDPOINT_PORT}",
+        "exp": int(time.time()) + 86400,
+    }
+    vapid = _get_vapid(private_key, claims)
+    pk_hex = vapid["crypto-key"]
+    chid = str(uuid.uuid4())
+    await test_client.connect()
+    await test_client.hello()
+    await test_client.register(channel_id=chid, key=pk_hex)
+
+    # Send an update with a properly formatted key.
+    await test_client.send_notification(vapid=vapid)
 
 
 async def test_with_bad_key(test_client: AsyncPushTestClient):
