@@ -13,6 +13,7 @@ backtrace.workspace = true
 base64.workspace = true
 cadence.workspace = true
 config.workspace = true
+chrono.workspace = true
 docopt.workspace = true
 fernet.workspace = true
 futures.workspace = true
@@ -68,7 +69,8 @@ tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
-default = ["bigtable"]
+# TODO: REVERT
+default = ["bigtable", "reliable_report"]
 # data store types
 bigtable = ["autopush_common/bigtable"]
 

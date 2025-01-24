@@ -85,7 +85,7 @@ impl ClientRegistry {
     pub async fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> Result<()> {
         trace!("ClientRegistry::disconnect");
         let mut clients = self.clients.write().await;
-        let client_exists = clients.get(uaid).map_or(false, |client| client.uid == *uid);
+        let client_exists = clients.get(uaid).is_some_and(|client| client.uid == *uid);
         if client_exists {
             clients.remove(uaid).expect("Couldn't remove client?");
             return Ok(());

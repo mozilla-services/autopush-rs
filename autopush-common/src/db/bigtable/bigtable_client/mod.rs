@@ -253,9 +253,9 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
 
 fn retryable_internal_err(status: &RpcStatus) -> bool {
     match status.code() {
-        RpcStatusCode::UNKNOWN => {
-            "error occurred when fetching oauth2 token." == status.message().to_ascii_lowercase()
-        }
+        RpcStatusCode::UNKNOWN => status
+            .message()
+            .eq_ignore_ascii_case("error occurred when fetching oauth2 token."),
         RpcStatusCode::INTERNAL => [
             "rst_stream",
             "rst stream",

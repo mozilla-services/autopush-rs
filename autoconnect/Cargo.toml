@@ -53,7 +53,8 @@ actix-service = "2.0"
 docopt = "1.1"
 
 [features]
-default = ["bigtable"]
+# TODO: REVERT
+default = ["bigtable", "reliable_report"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
 log_vapid = []

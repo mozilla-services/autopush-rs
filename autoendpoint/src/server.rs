@@ -213,7 +213,7 @@ impl Server {
                 .service(web::resource("/__version__").route(web::get().to(version_route)));
             #[cfg(feature = "reliable_report")]
             let app = app.service(
-                web::resource("/__milestones__")
+                web::resource("/export")
                     .route(web::get().to(crate::routes::reliability::report_handler)),
             );
             app
