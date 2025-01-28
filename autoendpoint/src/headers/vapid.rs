@@ -156,14 +156,14 @@ impl VapidHeader {
         })?;
 
         let Some(sub) = data.sub else { return Ok(None) };
-        if !sub.starts_with("mailto:") && !sub.starts_with("https://") {
-            info!("🔐 Vapid: Bad Format {sub:?}");
-            return Err(VapidError::SubBadFormat);
-        };
         if sub.is_empty() {
             info!("🔐 Empty Vapid sub");
             return Err(VapidError::SubEmpty);
         }
+        if !sub.starts_with("mailto:") && !sub.starts_with("https://") {
+            info!("🔐 Vapid: Bad Format {sub:?}");
+            return Err(VapidError::SubBadFormat);
+        };
         info!("🔐 Vapid: sub: {sub}");
         Ok(Some(sub))
     }
@@ -267,6 +267,14 @@ mod tests {
             returned_header.unwrap().insecure_sub(),
             Ok(Some("mailto:admin@example.com".to_owned()))
         )
+    }
+
+    #[test]
+    fn parse_no_sub() {
+        const VAPID_HEADER_NO_SUB:&str = "vapid t=eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJodHRwczovL3B1c2guc2VydmljZXMubW96aWxsYS5jb20iLCJleHAiOjE3MzgxMTE1OTN9.v3oneNnU-VWJK3rI0gNAvstaZHfbA57WdrYHEq0P2Od9nGsdpi1xN2aNS8412wJpdzsriYvLyEWdPEdsu3luAw,k=BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7vI";
+
+        let returned_header = VapidHeader::parse(VAPID_HEADER_NO_SUB);
+        assert_eq!(returned_header.unwrap().insecure_sub(), Ok(None))
     }
 
     #[test]
