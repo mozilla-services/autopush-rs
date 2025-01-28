@@ -8,13 +8,10 @@
 /// functions. Each of the data stores are VERY
 /// different, although the requested functions
 /// are fairly simple.
-use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
 
 use derive_builder::Builder;
-use lazy_static::lazy_static;
-use regex::RegexSet;
 use serde::Serializer;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -32,11 +29,10 @@ pub mod mock;
 
 pub use reporter::spawn_pool_periodic_reporter;
 
-use crate::errors::{ApcErrorKind, Result};
-use crate::notification::{Notification, STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
-use crate::util::timing::{ms_since_epoch, sec_since_epoch};
+use crate::notification::Notification;
+use crate::util::timing::ms_since_epoch;
 use crate::{MAX_NOTIFICATION_TTL, MAX_ROUTER_TTL};
-use models::{NotificationHeaders, RangeKey};
+use models::RangeKey;
 
 pub const USER_RECORD_VERSION: u64 = 1;
 

@@ -58,6 +58,7 @@ pub(crate) struct RangeKey {
     /// The encoded sortkey and timestamp
     pub(crate) sortkey_timestamp: Option<u64>,
     /// Which version of this message are we handling
+    #[allow(unused)]
     pub(crate) legacy_version: Option<String>,
 }
 
