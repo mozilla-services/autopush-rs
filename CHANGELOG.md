@@ -1,3 +1,66 @@
+<a name="1.73.0"></a>
+## 1.73.0 (2025-01-15)
+
+
+#### Features
+
+*   rename autopush prefix metrics to autoconnect (#822) ([9a166def](https://github.com/mozilla-services/autopush-rs/commit/9a166deff77531810cd6c401d4f41a756b509d53))
+
+#### Bug Fixes
+
+* **ci:**
+  *  remove all tagging of images on CI before deploy stages. (#821) ([a6fc8cdb](https://github.com/mozilla-services/autopush-rs/commit/a6fc8cdb678e4bc538e68bab601f801ef8c4b2af))
+  *  remove all tagging of images on CI before deploy stages. ([54420559](https://github.com/mozilla-services/autopush-rs/commit/544205593aa0511dd4cb29cf2138f863628bc399))
+  *  Fix test containers not depolying. (#820) ([20c65f88](https://github.com/mozilla-services/autopush-rs/commit/20c65f889ece0bfcc7a861c034192abfa320cab4))
+  *  Fix test containers not depolying. ([92af405d](https://github.com/mozilla-services/autopush-rs/commit/92af405d8ef48c3ce4b1657c6e81f48335427591))
+  *  Fix auto connect/endpoint deployments from circleci. (#819) ([bde05a10](https://github.com/mozilla-services/autopush-rs/commit/bde05a10f211db31fa7bc9cca3cc77a0c25362c2))
+  *  Fix auto connect/endpoint deployments from circleci. ([be7b2136](https://github.com/mozilla-services/autopush-rs/commit/be7b2136e22f24892eba41fe566bb400aae62bc4))
+
+
+
+<a name="1.72.2"></a>
+## 1.72.2 (2024-12-17)
+
+
+#### Features
+
+*   Call out the "RESOURCE_EXHAUSTED" error metric (#808) ([ebc5704b](https://github.com/mozilla-services/autopush-rs/commit/ebc5704b39d8c20b81199a6e5da49b45b5eac3dd))
+*   Containerize integration tests. (#809) ([f8763040](https://github.com/mozilla-services/autopush-rs/commit/f8763040772c9b55e95e3bea8b3a5284df50bdaa))
+*   Move BT chunk processing into retry (#806) ([7edbcc76](https://github.com/mozilla-services/autopush-rs/commit/7edbcc76a2d46a9aea401de5abd4bebcba4fdd28))
+*   Containerize integration tests. ([11710e11](https://github.com/mozilla-services/autopush-rs/commit/11710e11a359d3b1ba015073c9f1bad433586282))
+
+#### Doc
+
+* **test:**  update test strategy to include links to metrics (#810) ([8cda9ac1](https://github.com/mozilla-services/autopush-rs/commit/8cda9ac19cadf43764ae392b3450f865ea8444ed))
+
+
+
+<a name="1.72.1"></a>
+## 1.72.1 (2024-11-21)
+
+
+#### Bug Fixes
+
+*   Address insecure sub header fetch.  (#803) ([53d90aa9](https://github.com/mozilla-services/autopush-rs/commit/53d90aa9c15a58b6878be854622e058c98c56b21))
+*   Do not return status 200 for router messages (#801) ([a3d23013](https://github.com/mozilla-services/autopush-rs/commit/a3d230131a02a29c1a91a5125192540361b7593d), closes [#800](https://github.com/mozilla-services/autopush-rs/issues/800))
+
+#### Chore
+
+*   update actix-ws to 0.3 (#799) ([6141a905](https://github.com/mozilla-services/autopush-rs/commit/6141a9052a5b6e8054d5bcd9acbb2152b82ee081))
+* **deps-dev:**  bump werkzeug from 3.0.3 to 3.0.6 in /tests (#790) ([50ab4a01](https://github.com/mozilla-services/autopush-rs/commit/50ab4a01ee9980208a8f3b856146ca1747998906))
+* **load:**  update scripts to use artifact registry (#792) ([d64178f4](https://github.com/mozilla-services/autopush-rs/commit/d64178f478d2b333c6c785448c94bb30004d153d))
+* **notification-tests:**  specify platform linux/amd64 in docker-compose.yml so that Docker knows to use an emulation layer when running on an arm based machine ([ae303044](https://github.com/mozilla-services/autopush-rs/commit/ae303044ba8d3ee77493a0541f318aac56c122b5))
+
+#### Refactor
+
+* **integration:**  replace pytest.skip with pytest markers (#798) ([84f1fe8e](https://github.com/mozilla-services/autopush-rs/commit/84f1fe8eb863d802d20ae9ff321d78b4aabaf303))
+
+#### Features
+
+*   Add database tracking and report for Push Reliability (#769) ([e95063cc](https://github.com/mozilla-services/autopush-rs/commit/e95063cc0fba45bc961cac8a665cdc0fa4008546))
+
+
+
 <a name="1.72.0"></a>
 ## 1.72.0 (2024-10-11)
 

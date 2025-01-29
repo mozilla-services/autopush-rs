@@ -54,7 +54,14 @@ pub struct Settings {
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
     #[cfg(feature = "stub")]
+    /// "Stub" is a predictable Mock bridge that allows us to "send" data and return an expected
+    /// result.
     pub stub: StubSettings,
+    #[cfg(feature = "reliable_report")]
+    /// The DNS for the reliability data store. This is normally a Redis compatible
+    /// storage system. See [Connection Parameters](https://docs.rs/redis/latest/redis/#connection-parameters)
+    /// for details.
+    pub reliability_dsn: Option<String>,
 }
 
 impl Default for Settings {
@@ -86,6 +93,8 @@ impl Default for Settings {
             apns: ApnsSettings::default(),
             #[cfg(feature = "stub")]
             stub: StubSettings::default(),
+            #[cfg(feature = "reliable_report")]
+            reliability_dsn: None,
         }
     }
 }

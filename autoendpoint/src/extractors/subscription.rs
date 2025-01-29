@@ -7,6 +7,7 @@ use autopush_common::{
     tags::Tags,
     util::{b64_decode_std, b64_decode_url},
 };
+
 use cadence::{CountedExt, StatsdClient};
 use futures::{future::LocalBoxFuture, FutureExt};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
@@ -22,7 +23,6 @@ use crate::headers::{
     crypto_key::CryptoKeyHeader,
     vapid::{VapidClaims, VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData},
 };
-use crate::metrics::Metrics;
 use crate::server::AppState;
 
 use crate::settings::Settings;
@@ -54,7 +54,6 @@ impl FromRequest for Subscription {
             trace!("🔐 Token info: {:?}", &token_info);
             let app_state: Data<AppState> =
                 Data::extract(&req).await.expect("No server state found");
-            let metrics = Metrics::from(&app_state);
 
             // Decrypt the token
             let token = app_state
@@ -71,36 +70,50 @@ impl FromRequest for Subscription {
             let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &app_state.metrics)?
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
-
             trace!("raw vapid: {:?}", &vapid);
+            // Validate the VAPID JWT token, fetch the claims, and record the version
+            if let Some(with_key) = &vapid {
+                // Validate the VAPID JWT token and record the version
+                validate_vapid_jwt(with_key, &app_state.settings, &app_state.metrics)?;
+                app_state.metrics.incr(&format!(
+                    "updates.vapid.draft{:02}",
+                    with_key.vapid.version()
+                ))?;
+            };
+            // If this is a known VAPID key, create a reliability_id from
+            // either the content of the vapid assertions, or the request
+            // header value, or just make one up.
             let reliability_id: Option<String> = vapid.as_ref().and_then(|v| {
                 app_state
-                    .vapid_tracker
+                    .reliability_filter
                     .is_trackable(v)
-                    .then(|| app_state.vapid_tracker.get_id(req.headers()))
+                    .then(|| app_state.reliability_filter.get_id(req.headers()))
             });
-            debug!("🔍 Assigning Reliability ID: {reliability_id:?}");
-
+            trace!("🔍 track_id: {:?}", reliability_id);
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
             // values we get.
-            if let Some(ref header) = vapid {
-                let sub = header
+            if let Some(header) = &vapid {
+                if let Some(sub) = header
                     .vapid
                     .insecure_sub()
-                    .map_err(|e: VapidError| {
+                    .inspect_err(|e: &VapidError| {
                         // Capture the type of error and add it to metrics.
                         let mut tags = Tags::default();
                         tags.tags
                             .insert("error".to_owned(), e.as_metric().to_owned());
-                        metrics
-                            .clone()
-                            .incr_with_tags("notification.auth.error", Some(tags));
+                        app_state
+                            .metrics
+                            .incr_with_tags("notification.auth.error")
+                            .with_tag("error", e.as_metric())
+                            .send();
                     })
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                {
+                    info!("VAPID sub: {sub}");
+                };
                 // For now, record that we had a good (?) VAPID sub,
-                metrics.clone().incr("notification.auth.ok");
-                info!("VAPID sub: {:?}", sub)
+                app_state.metrics.incr("notification.auth.ok")?;
             };
 
             match token_info.api_version {
@@ -127,7 +140,7 @@ impl FromRequest for Subscription {
 
             // Validate the VAPID JWT token and record the version
             if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid, &app_state.settings, &metrics)?;
+                validate_vapid_jwt(vapid, &app_state.settings, &app_state.metrics)?;
 
                 app_state
                     .metrics
@@ -284,8 +297,8 @@ fn term_to_label(term: &str) -> String {
 fn validate_vapid_jwt(
     vapid: &VapidHeaderWithKey,
     settings: &Settings,
-    metrics: &Metrics,
-) -> ApiResult<()> {
+    metrics: &StatsdClient,
+) -> ApiResult<VapidClaims> {
     let VapidHeaderWithKey { vapid, public_key } = vapid;
 
     let public_key = decode_public_key(public_key)?;
@@ -293,7 +306,7 @@ fn validate_vapid_jwt(
     // Set the audiences we allow. This obsoletes the need to manually match
     // against values later.
     validation.set_audience(&[settings.endpoint_url().origin().ascii_serialization()]);
-    validation.set_required_spec_claims(&["exp", "aud", "sub"]);
+    validation.set_required_spec_claims(&["exp", "aud"]);
 
     let token_data = match jsonwebtoken::decode::<VapidClaims>(
         &vapid.token,
@@ -304,20 +317,18 @@ fn validate_vapid_jwt(
         Err(e) => match e.kind() {
             // NOTE: This will fail if `exp` is specified as anything instead of a numeric or if a required field is empty
             jsonwebtoken::errors::ErrorKind::Json(e) => {
-                let mut tags = Tags::default();
-                tags.tags.insert(
-                    "error".to_owned(),
-                    match e.classify() {
-                        serde_json::error::Category::Io => "IO_ERROR",
-                        serde_json::error::Category::Syntax => "SYNTAX_ERROR",
-                        serde_json::error::Category::Data => "DATA_ERROR",
-                        serde_json::error::Category::Eof => "EOF_ERROR",
-                    }
-                    .to_owned(),
-                );
                 metrics
-                    .clone()
-                    .incr_with_tags("notification.auth.bad_vapid.json", Some(tags));
+                    .incr_with_tags("notification.auth.bad_vapid.json")
+                    .with_tag(
+                        "error",
+                        match e.classify() {
+                            serde_json::error::Category::Io => "IO_ERROR",
+                            serde_json::error::Category::Syntax => "SYNTAX_ERROR",
+                            serde_json::error::Category::Data => "DATA_ERROR",
+                            serde_json::error::Category::Eof => "EOF_ERROR",
+                        },
+                    )
+                    .send();
                 if e.is_data() {
                     debug!("VAPID data warning: {:?}", e);
                     return Err(VapidError::InvalidVapid(
@@ -339,7 +350,6 @@ fn validate_vapid_jwt(
                 // Attempt to match up the majority of ErrorKind variants.
                 // The third-party errors all defer to the source, so we can
                 // use that to differentiate for actual errors.
-                let mut tags = Tags::default();
                 let label = if e.source().is_none() {
                     // These two have the most cardinality, so we need to handle
                     // them separately.
@@ -358,10 +368,10 @@ fn validate_vapid_jwt(
                     // If you need to dig into these, there's always the logs.
                     "Other".to_owned()
                 };
-                tags.tags.insert("error".to_owned(), label);
                 metrics
-                    .clone()
-                    .incr_with_tags("notification.auth.bad_vapid.other", Some(tags));
+                    .incr_with_tags("notification.auth.bad_vapid.other")
+                    .with_tag("error", &label)
+                    .send();
                 error!("Bad Aud: Unexpected VAPID error: {:?}", &e);
                 return Err(e.into());
             }
@@ -390,7 +400,7 @@ fn validate_vapid_jwt(
         return Err(VapidError::FutureExpirationToken.into());
     }
 
-    Ok(())
+    Ok(token_data.claims)
 }
 
 #[cfg(test)]
@@ -467,7 +477,7 @@ pub mod tests {
             VapidClaims::default_exp() - 100,
             public_key,
         );
-        let result = validate_vapid_jwt(&header, &test_settings, &Metrics::noop());
+        let result = validate_vapid_jwt(&header, &test_settings, &Metrics::sink());
         assert!(result.is_ok());
     }
 
@@ -485,7 +495,7 @@ pub mod tests {
             PUB_KEY.to_owned(),
         );
         assert!(matches!(
-            validate_vapid_jwt(&header, &test_settings, &Metrics::noop())
+            validate_vapid_jwt(&header, &test_settings, &Metrics::sink())
                 .unwrap_err()
                 .kind,
             ApiErrorKind::VapidError(VapidError::InvalidAudience)
@@ -505,7 +515,7 @@ pub mod tests {
             VapidClaims::default_exp() - 100,
             PUB_KEY.to_owned(),
         );
-        let result = validate_vapid_jwt(&header, &test_settings, &Metrics::noop());
+        let result = validate_vapid_jwt(&header, &test_settings, &Metrics::sink());
         assert!(result.is_ok());
     }
 
@@ -539,7 +549,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let vv = validate_vapid_jwt(&header, &test_settings, &Metrics::noop())
+        let vv = validate_vapid_jwt(&header, &test_settings, &Metrics::sink())
             .unwrap_err()
             .kind;
         assert!(matches![
@@ -582,7 +592,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::noop()).is_ok());
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::sink()).is_ok());
         // try standard form with no padding
         let header = VapidHeaderWithKey {
             public_key: public_key_standard.trim_end_matches('=').to_owned(),
@@ -592,7 +602,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::noop()).is_ok());
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::sink()).is_ok());
         // try URL safe form with padding
         let header = VapidHeaderWithKey {
             public_key: public_key_url_safe.clone(),
@@ -602,7 +612,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::noop()).is_ok());
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::sink()).is_ok());
         // try URL safe form without padding
         let header = VapidHeaderWithKey {
             public_key: public_key_url_safe.trim_end_matches('=').to_owned(),
@@ -612,7 +622,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::noop()).is_ok());
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::sink()).is_ok());
     }
 
     #[test]
@@ -645,13 +655,7 @@ pub mod tests {
                 version_data: VapidVersionData::Version1,
             },
         };
-        let vv = validate_vapid_jwt(&header, &test_settings, &Metrics::noop())
-            .unwrap_err()
-            .kind;
-        assert!(matches![
-            vv,
-            ApiErrorKind::VapidError(VapidError::InvalidVapid(_))
-        ])
+        assert!(validate_vapid_jwt(&header, &test_settings, &Metrics::sink()).is_ok());
     }
 
     #[test]

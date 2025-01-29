@@ -6,8 +6,13 @@ Autopush is tested using a combination of functional, integration, and performan
 
 Unit tests are written in the same Rust module as the code they are testing. Integration and Load Test code are in the `tests/` directory, both written in Python.
 
-Presently, the Autopush test strategy does not require a minimum test coverage percentage for unit and integration tests. However, it is the goal that the service eventually have defined minimum coverage.
-Load tests results should not go below a minimum performance threshold.
+Presently, the Autopush test strategy does not require a minimum test coverage percentage for unit
+tests. However, the recommended minimum performance threshold is 60%.
+
+Test metrics are generated from Junit XML and coverage JSON files that are produced in CI/CD and
+consumed by the ETE test metric pipeline. Visualizations of the metrics are available on the
+[Autopush-rs Looker Dashboard][dashboard]. For more information on test metrics and the pipeline
+see the [ETE team documentation][ete_docs].
 
 The functional test strategy is three-tiered, composed of: 
 
@@ -78,22 +83,27 @@ $ pyenv activate push-312
 5. Run `poetry install` to install all dependencies for testing.
 
 ### Running Integration Tests
-To run the integration tests, simply run `make integration-tests` from your terminal at the root of the project.
+To run the integration tests, simply run `make integration-tests-local` from your terminal at the root of the project.
 
-You can alter the verbosity and logging output by adding command line flags to the `PYTEST_ARGS ?=` variable in the root project Makefile. For example, for greater verbosity and stdout printing, add `-vv -s`.
+You can alter the verbosity and logging output by adding command line flags to the `PYTEST_ARGS ?=` variable in the root project Makefile. For example, for greater verbosity and stdout printing, add `-vv -s`. (Note: This may be unreliable due to several hand-offs during the
+make / docker build process. For reliability, you may which to modify the `pyproject.toml`:`[tool.pytest.ini_options]` file to include the options.)
 
 The test output is then emitted in your terminal instance. This includes the name of the tests, whether they pass or fail and any exceptions that are triggered during the test run.
 
 The integration tests make use of [pytest markers][pytest_markers] for filtering tests. These can be
-used with the `-m` pytest option, or can be used through the following environment variables and
-`integration-test` make command.
+used with the `-m` pytest option specified in the `pyproject.toml`:`[tool.pytest.ini_options]` file , or can be used through the
+following environment variables and `integration-test-local` make command.
 
-| ENVIRONMENT VARIABLE | RELATED MARKER | DESCRIPTION                                                       |
-|----------------------|----------------|-------------------------------------------------------------------|
-| SKIP_SENTRY          | sentry         | If set will exclude all tests marked with `sentry` from execution |
-| TEST_STUB            | stub           | If set will include all tests marked with `stub` in execution     |
+| ENVIRONMENT VARIABLE | RELATED MARKER  | DESCRIPTION                                                              |
+|----------------------|-----------------|--------------------------------------------------------------------------|
+| SKIP_SENTRY          | sentry          | If set will exclude all tests marked with `sentry` from execution        |
+| TEST_STUB            | stub            | If set will include all tests marked with `stub` in execution            |
+| TEST_RELIABILITY     | reliable_report | If set will include all tests marked with `reliable_report` in execution |
 
 Integration tests in CI will be triggered automatically whenever a commit is pushed to a branch as a part of the CI PR workflow.
+
+#### Using Docker to run the Integration Tests.
+If you aren't needing to run specific tests you can use the containerized version of the integration tests with the following make command: `make integration-test`. This will build a docker image and set up the Big Table emulator as well as execute a default set of tests with the `not stub` marker.
 
 ### Debugging
 In some instances after making test changes, the test client can potentially hang in a dangling process. This can result in inaccurate results or tests not running correctly. You can run the following commands to determine the PID's of the offending processes and terminate them:
@@ -138,6 +148,8 @@ discretion of the Autopush Engineering Team.
 
 For more details see the [README.md][load_tests_docs] file in the `tests/load` directory.
 
+[dashboard]: https://mozilla.cloud.looker.com/dashboards/1977
+[ete_docs]: https://mozilla.github.io/ecosystem-test-scripts/introduction.html
 [unit_tests]: https://github.com/mozilla-services/autopush-rs/tree/master/
 [unit_tests_docs]: ./testing.md#unit-tests
 [bigtable_docs]: ./bigtable-emulation.md

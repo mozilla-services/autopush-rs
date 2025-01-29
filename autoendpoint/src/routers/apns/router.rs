@@ -1,4 +1,6 @@
 use autopush_common::db::client::DbClient;
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::{PushReliability, ReliabilityState};
 
 use crate::error::{ApiError, ApiResult};
 use crate::extractors::notification::Notification;
@@ -34,6 +36,8 @@ pub struct ApnsRouter {
     endpoint_url: Url,
     metrics: Arc<StatsdClient>,
     db: Box<dyn DbClient>,
+    #[cfg(feature = "reliable_report")]
+    reliability: Arc<PushReliability>,
 }
 
 struct ApnsClientData {
@@ -115,6 +119,7 @@ impl ApnsRouter {
         endpoint_url: Url,
         metrics: Arc<StatsdClient>,
         db: Box<dyn DbClient>,
+        #[cfg(feature = "reliable_report")] reliability: Arc<PushReliability>,
     ) -> Result<Self, ApnsError> {
         let channels = settings.channels()?;
 
@@ -130,6 +135,8 @@ impl ApnsRouter {
             endpoint_url,
             metrics,
             db,
+            #[cfg(feature = "reliable_report")]
+            reliability,
         })
     }
 
@@ -397,7 +404,11 @@ impl Router for ApnsRouter {
         Ok(router_data)
     }
 
-    async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+    #[allow(unused_mut)]
+    async fn route_notification(
+        &self,
+        mut notification: Notification,
+    ) -> ApiResult<RouterResponse> {
         debug!(
             "Sending APNS notification to UAID {}",
             notification.subscription.user.uaid
@@ -420,7 +431,7 @@ impl Router for ApnsRouter {
             .and_then(Value::as_str)
             .ok_or(ApnsError::NoReleaseChannel)?;
         let aps_json = router_data.get("aps").cloned();
-        let mut message_data = build_message_data(notification)?;
+        let mut message_data = build_message_data(&notification)?;
         message_data.insert("ver", notification.message_id.clone());
 
         // Get client and build payload
@@ -473,9 +484,18 @@ impl Router for ApnsRouter {
                 .await);
         }
 
-        // Sent successfully, update metrics and make response
         trace!("APNS request was successful");
-        incr_success_metrics(&self.metrics, "apns", channel, notification);
+        incr_success_metrics(&self.metrics, "apns", channel, &notification);
+        #[cfg(feature = "reliable_report")]
+        {
+            // Record that we've sent the message out to APNS.
+            // We can't set the state here because the notification isn't
+            // mutable, but we are also essentially consuming the
+            // notification nothing else should modify it.
+            notification
+                .record_reliability(&self.reliability, ReliabilityState::Transmitted)
+                .await;
+        }
 
         Ok(RouterResponse::success(
             self.endpoint_url
@@ -501,6 +521,8 @@ mod tests {
     use async_trait::async_trait;
     use autopush_common::db::client::DbClient;
     use autopush_common::db::mock::MockDbClient;
+    #[cfg(feature = "reliable_report")]
+    use autopush_common::reliability::PushReliability;
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
@@ -561,7 +583,9 @@ mod tests {
             settings: ApnsSettings::default(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
-            db,
+            db: db.clone(),
+            #[cfg(feature = "reliable_report")]
+            reliability: Arc::new(PushReliability::new(&None, db.clone()).unwrap()),
         }
     }
 
@@ -607,7 +631,7 @@ mod tests {
         let router = make_router(client, db);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(
             result.unwrap(),
@@ -646,7 +670,7 @@ mod tests {
         let data = "test-data".to_string();
         let notification = make_notification(default_router_data(), Some(data), RouterType::APNS);
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(
             result.unwrap(),
@@ -668,7 +692,7 @@ mod tests {
         );
         let notification = make_notification(router_data, None, RouterType::APNS);
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_err());
         assert!(
             matches!(
@@ -701,7 +725,7 @@ mod tests {
             .return_once(|_| Ok(()));
         let router = make_router(client, db.into_boxed_arc());
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_err());
         assert!(
             matches!(
@@ -729,7 +753,7 @@ mod tests {
         let router = make_router(client, db);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_err());
         assert!(
             matches!(
@@ -762,7 +786,7 @@ mod tests {
         );
         let notification = make_notification(router_data, None, RouterType::APNS);
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_err());
         assert!(
             matches!(

@@ -14,6 +14,8 @@ pub mod message_id;
 pub mod metrics;
 pub mod middleware;
 pub mod notification;
+#[cfg(feature = "reliable_report")]
+pub mod reliability;
 pub mod sentry;
 pub mod tags;
 pub mod test_support;

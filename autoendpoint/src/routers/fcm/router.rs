@@ -1,3 +1,5 @@
+#[cfg(feature = "reliable_report")]
+use autopush_common::reliability::{PushReliability, ReliabilityState};
 use autopush_common::{db::client::DbClient, MAX_FCM_NOTIFICATION_TTL};
 
 use crate::error::ApiResult;
@@ -24,6 +26,8 @@ pub struct FcmRouter {
     db: Box<dyn DbClient>,
     /// A map from application ID to an authenticated FCM client
     clients: HashMap<String, FcmClient>,
+    #[cfg(feature = "reliable_report")]
+    reliability: Arc<PushReliability>,
 }
 
 impl FcmRouter {
@@ -34,6 +38,7 @@ impl FcmRouter {
         http: reqwest::Client,
         metrics: Arc<StatsdClient>,
         db: Box<dyn DbClient>,
+        #[cfg(feature = "reliable_report")] reliability: Arc<PushReliability>,
     ) -> Result<Self, FcmError> {
         let server_credentials = settings.credentials()?;
         let clients = Self::create_clients(&settings, server_credentials, http.clone())
@@ -45,6 +50,8 @@ impl FcmRouter {
             metrics,
             db,
             clients,
+            #[cfg(feature = "reliable_report")]
+            reliability,
         })
     }
 
@@ -137,7 +144,11 @@ impl Router for FcmRouter {
         Ok(router_data)
     }
 
-    async fn route_notification(&self, notification: &Notification) -> ApiResult<RouterResponse> {
+    #[allow(unused_mut)]
+    async fn route_notification(
+        &self,
+        mut notification: Notification,
+    ) -> ApiResult<RouterResponse> {
         debug!(
             "Sending FCM notification to UAID {}",
             notification.subscription.user.uaid
@@ -162,7 +173,7 @@ impl Router for FcmRouter {
             .get(&app_id)
             .ok_or_else(|| FcmError::InvalidAppId(app_id.clone()))?;
 
-        let message_data = build_message_data(notification)?;
+        let message_data = build_message_data(&notification)?;
         let platform = "fcmv1";
         trace!("Sending message to {platform}: [{:?}]", &app_id);
         if let Err(e) = client.send(message_data, routing_token, ttl).await {
@@ -177,7 +188,15 @@ impl Router for FcmRouter {
             )
             .await);
         };
-        incr_success_metrics(&self.metrics, platform, &app_id, notification);
+        incr_success_metrics(&self.metrics, platform, &app_id, &notification);
+        #[cfg(feature = "reliable_report")]
+        // Record that we've sent the message out to FCM.
+        // We can't set the state here because the notification isn't
+        // mutable, but we are also essentially consuming the
+        // notification nothing else should modify it.
+        notification
+            .record_reliability(&self.reliability, ReliabilityState::Transmitted)
+            .await;
         // Sent successfully, update metrics and make response
         trace!("Send request was successful");
 
@@ -207,6 +226,8 @@ mod tests {
     use crate::routers::{Router, RouterResponse};
     use autopush_common::db::client::DbClient;
     use autopush_common::db::mock::MockDbClient;
+    #[cfg(feature = "reliable_report")]
+    use autopush_common::reliability::PushReliability;
     use std::sync::Arc;
 
     use cadence::StatsdClient;
@@ -244,7 +265,9 @@ mod tests {
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
-            db,
+            db.clone(),
+            #[cfg(feature = "reliable_report")]
+            Arc::new(PushReliability::new(&None, db.clone()).unwrap()),
         )
         .await
         .unwrap()
@@ -291,7 +314,7 @@ mod tests {
             .create();
         let notification = make_notification(default_router_data(), None, RouterType::FCM);
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(
             result.unwrap(),
@@ -335,7 +358,7 @@ mod tests {
         let data = "test-data".to_string();
         let notification = make_notification(default_router_data(), Some(data), RouterType::FCM);
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_ok(), "result = {result:?}");
         assert_eq!(
             result.unwrap(),
@@ -366,7 +389,7 @@ mod tests {
         );
         let notification = make_notification(router_data, None, RouterType::FCM);
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_err());
         assert!(
             matches!(
@@ -405,7 +428,7 @@ mod tests {
             .create_async()
             .await;
 
-        let result = router.route_notification(&notification).await;
+        let result = router.route_notification(notification).await;
         assert!(result.is_err());
         assert!(
             matches!(

@@ -1,3 +1,4 @@
+use core::str;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -127,6 +128,8 @@ impl VapidHeader {
             (data, VapidVersionData::Version1)
         };
 
+        // Validate the JWT here
+
         Ok(Self {
             scheme,
             token,
@@ -146,25 +149,23 @@ impl VapidHeader {
     /// WARNING: THIS FUNCTION DOES NOT VALIDATE THE VAPID HEADER AND SHOULD
     /// ONLY BE USED FOR LOGGING AND METRIC REPORTING FUNCTIONS.
     /// Proper validation should be done by [crate::extractors::subscription::validate_vapid_jwt()]
-    pub fn insecure_sub(&self) -> Result<String, VapidError> {
+    pub fn insecure_sub(&self) -> Result<Option<String>, VapidError> {
         // This parses the VAPID header string
         let data = VapidClaims::try_from(self.clone()).inspect_err(|e| {
             warn!("🔐 Vapid: {:?} {:?}", e, &self.token);
         })?;
 
-        if let Some(sub) = data.sub {
-            if !sub.starts_with("mailto:") && !sub.starts_with("https://") {
-                info!("🔐 Vapid: Bad Format {:?}", sub);
-                return Err(VapidError::SubBadFormat);
-            }
-            if sub.is_empty() {
-                info!("🔐 Empty Vapid sub");
-                return Err(VapidError::SubEmpty);
-            }
-            info!("🔐 Vapid: sub: {:?}", sub);
-            return Ok(sub.to_owned());
+        let Some(sub) = data.sub else { return Ok(None) };
+        if !sub.starts_with("mailto:") && !sub.starts_with("https://") {
+            info!("🔐 Vapid: Bad Format {sub:?}");
+            return Err(VapidError::SubBadFormat);
+        };
+        if sub.is_empty() {
+            info!("🔐 Empty Vapid sub");
+            return Err(VapidError::SubEmpty);
         }
-        Err(VapidError::SubMissing)
+        info!("🔐 Vapid: sub: {sub}");
+        Ok(Some(sub))
     }
 
     pub fn claims(&self) -> Result<VapidClaims, VapidError> {
@@ -264,7 +265,16 @@ mod tests {
         let returned_header = VapidHeader::parse(VALID_HEADER);
         assert_eq!(
             returned_header.unwrap().insecure_sub(),
-            Ok("mailto:admin@example.com".to_owned())
+            Ok(Some("mailto:admin@example.com".to_owned()))
         )
+    }
+
+    #[test]
+    fn extract_sub() {
+        let header = VapidHeader::parse(VALID_HEADER).unwrap();
+        assert_eq!(
+            header.insecure_sub().unwrap(),
+            Some("mailto:admin@example.com".to_string())
+        );
     }
 }

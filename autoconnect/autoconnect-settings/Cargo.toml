@@ -25,3 +25,4 @@ autopush_common.workspace = true
 # specify the default via the calling crate, in order to simplify default chains.
 bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
+reliable_report = ["autopush_common/reliable_report"]

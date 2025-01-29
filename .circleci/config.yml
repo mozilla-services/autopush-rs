@@ -53,7 +53,7 @@ commands:
             apt install build-essential curl libstdc++6 libstdc++-12-dev libssl-dev pkg-config -y
             apt install cmake -y
             # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.81 -y
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.83 -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
@@ -107,13 +107,13 @@ commands:
           name: Set up Python
           command: |
             pip install --upgrade pip
-            pip install poetry
+            pip install poetry==2.0.0
 
 jobs:
   audit:
     docker:
       # NOTE: update version for all # RUST_VER
-      - image: rust:1.81
+      - image: rust:1.83
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
@@ -147,57 +147,39 @@ jobs:
           name: Set up Python
           command: |
             pip install --upgrade pip
-            pip install poetry
+            pip install poetry==2.0.0
       - run:
           name: isort, black, flake8, pydocstyle and mypy
           command: make lint
 
   test-integration:
     docker:
-      - image: python:3.12-slim-bookworm
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
+      - image: cimg/base:2024.06
         environment:
           RUST_BACKTRACE: 1
-      - image: google/cloud-sdk:latest
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        command: gcloud beta emulators bigtable start --host-port=localhost:8086
     resource_class: large
-    environment:
-      BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
-      - restore_test_cache:
-          cache_key: rust-v1-integration-test-{{ checksum "Cargo.lock" }}
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - attach_workspace:
+          at: /tmp/cache
       - create_test_result_workspace
-      - setup_rust
-      - build_applications
       - run:
-          name: Set up system
+          name: Restore Docker image cache
           command: |
-            apt update
-            apt install libssl-dev apt-transport-https ca-certificates gnupg curl cmake -y
-      - setup_cbt
-      - setup_python
-      - setup_bigtable
+            docker load -i /tmp/cache/autopush-integration-tests.tar
+            docker tag autopush-integration-tests integration-tests
       - run:
           name: Integration tests (Bigtable)
-          command: make integration-test
-          environment:
-            RUST_LOG: autopush=debug,autopush_common=debug,autoendpoint=debug,autoconnect=debug,slog_mozlog_json=info,warn
-            # PYTEST_ARGS: -sv
-            DB_DSN: grpc://localhost:8086
-            TEST_RESULTS_DIR: workspace/test-results
+          command: |
+            make integration-test
+            cp ~/project/tests/integration/integration_test_results.xml ~/project/workspace/test-results/integration_test_results.xml
       - store_artifacts:
           path: ~/project/workspace/test-results/integration_test_results.xml
           destination: integration_test_results.xml
       - store_test_results:
           path: workspace/test-results
-      - save_test_cache:
-          cache_key: rust-v1-integration-test-cache-{{ checksum "Cargo.lock" }}
 
   test-unit:
     docker:
@@ -328,31 +310,66 @@ jobs:
       # required since Workflows do not have the same remote docker instance.
       - run:
           name: docker save <<parameters.image>>
-          command: mkdir -p /cache; docker save -o /cache/docker.tar "<<parameters.image>>"
+          command: mkdir -p /tmp/cache; docker save -o /tmp/cache/<<parameters.image>>.tar "<<parameters.image>>"
       - persist_to_workspace:
-          root: /cache
+          root: /tmp/cache
           paths:
-            - docker.tar
+            - <<parameters.image>>.tar
 
-  build-load-test:
+  build-test-container:
     docker:
       - image: cimg/base:2024.06
+    parameters:
+      image:
+        type: string
+      path:
+        type: string
     steps:
       - checkout
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
           name: Build Image
-          command: docker build -t autopush-locust -f ./tests/load/Dockerfile .
+          command: docker build -t << parameters.image >> -f ./tests/<< parameters.path >>/Dockerfile .
       - run:
           name: Save Docker Image to Workspace
           command: |
-            mkdir -p /tmp/workspace
-            docker save -o /tmp/workspace/autopush-locust.tar autopush-locust
+            mkdir -p /tmp/cache
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>
       - persist_to_workspace:
-          root: /tmp/workspace
+          root: /tmp/cache
           paths:
-            - autopush-locust.tar
+            - << parameters.image >>.tar
+
+  build-integration-test-container:
+    docker:
+      - image: cimg/base:2024.06
+    resource_class: large
+    parameters:
+      image:
+        type: string
+      path:
+        type: string
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build Image
+          command: |
+            docker buildx build --target planner -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target cacher -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target builder -f ./tests/<< parameters.path >>/Dockerfile .
+            docker buildx build --target integration-tests -t << parameters.image >> -f ./tests/<< parameters.path >>/Dockerfile .
+      - run:
+          name: Save Docker Image to Workspace
+          command: |
+            mkdir -p /tmp/cache
+            docker save -o /tmp/cache/<< parameters.image >>.tar << parameters.image >>
+      - persist_to_workspace:
+          root: /tmp/cache
+          paths:
+            - << parameters.image >>.tar
 
   deploy:
     executor: gcp-gcr/default
@@ -381,7 +398,7 @@ jobs:
           at: /tmp/cache
       - run:
           name: Restore Docker image cache
-          command: docker load -i /tmp/cache/docker.tar
+          command: docker load -i /tmp/cache/<<parameters.image>>.tar
       # This is the easiest way to tag multiple images using different
       # conditions for the GAR_TAG variable in the smallest amount of code.
       #
@@ -398,8 +415,8 @@ jobs:
             fi
               echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_GAR_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
-              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:$GAR_TAG
-              docker tag <<parameters.image>>:<<parameters.build_tag>> $GAR_IMAGE:latest
+              docker tag <<parameters.image>> $GAR_IMAGE:$GAR_TAG
+              docker tag <<parameters.image>> $GAR_IMAGE:latest
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
@@ -407,29 +424,6 @@ jobs:
           google-project-id: GCP_GAR_PROJECT_ID
           registry-url: <<parameters.registry-url>>
           tag: $GAR_TAG,latest
-
-  deploy-load-test:
-    docker:
-      - image: cimg/base:2024.06
-    steps:
-      - checkout
-      - attach_workspace:
-          at: /tmp/workspace
-      - setup_remote_docker
-      - run:
-          name: Load Docker Image From Workspace
-          command: docker load -i /tmp/workspace/autopush-locust.tar
-      - docker_login:
-          load: True
-      - run:
-          name: Push to Docker Hub
-          command: |
-            echo ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
-            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}
-            docker tag autopush-locust ${DOCKERHUB_LOAD_TEST_REPO}:latest
-            docker images
-            docker push "${DOCKERHUB_LOAD_TEST_REPO}:${CIRCLE_SHA1}"
-            docker push "${DOCKERHUB_LOAD_TEST_REPO}:latest"
 
 workflows:
   build-test-deploy:
@@ -444,6 +438,9 @@ workflows:
               only: /.*/
       - test-integration:
           name: Integration Tests
+          requires:
+            - Build Integration Test Image
+            - python-checks
           filters:
             tags:
               only: /.*/
@@ -460,7 +457,7 @@ workflows:
 
       - build:
           name: build-autoconnect
-          image: autoconnect:build
+          image: autoconnect
           crate: autoconnect
           binary: autoconnect
           filters:
@@ -469,14 +466,32 @@ workflows:
 
       - build:
           name: build-autoendpoint
-          image: autoendpoint:build
+          image: autoendpoint
           crate: autoendpoint
           binary: autoendpoint
           filters:
             tags:
               only: /.*/
-
-      - build-load-test:
+      - build-test-container:
+          name: Build Load Test Image
+          image: autopush-load-tests
+          path: load
+          filters:
+            tags:
+              only: /.*/
+      - build-test-container:
+          name: Build End-To-End Test Image
+          image: autopush-end-to-end-tests
+          path: notification
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+      - build-integration-test-container:
+          name: Build Integration Test Image
+          image: autopush-integration-tests
+          path: integration
           filters:
             tags:
               only: /.*/
@@ -509,10 +524,34 @@ workflows:
               only: /.*/
             branches:
               only: master
-
-      - deploy-load-test:
+      - deploy:
+          name: Push Load Test Image
+          image: autopush-load-tests
           requires:
-            - build-load-test
+            - Build Load Test Image
+            - python-checks
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+      - deploy:
+          name: Push End-To-End Test Image
+          image: autopush-end-to-end-tests
+          requires:
+            - Build End-To-End Test Image
+            - python-checks
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+      - deploy:
+          name: Push Integration Test Image
+          image: autopush-integration-tests
+          requires:
+            - Build Integration Test Image
+            - Integration Tests
             - python-checks
           filters:
             tags:

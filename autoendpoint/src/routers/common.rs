@@ -9,6 +9,8 @@ use cadence::{Counted, CountedExt, StatsdClient, Timed};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use super::fcm::error::FcmError;
+
 /// Convert a notification into a WebPush message
 pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'static str, String>> {
     let mut message_data = HashMap::new();
@@ -21,7 +23,8 @@ pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'st
         message_data.insert_opt("enc", notification.headers.encryption.as_ref());
         message_data.insert_opt("cryptokey", notification.headers.crypto_key.as_ref());
         message_data.insert_opt("enckey", notification.headers.encryption_key.as_ref());
-        // Report the data to the UA. How this value is reported back is still a work in progress.
+        // Report the data to the UA. How this value is reported back is still a work in progress, but
+        // we do set the state to "accepted" on desktop "ACK" at least.
         trace!(
             "🔍 Sending Reliability ID: {:?}",
             notification.subscription.reliability_id
@@ -44,6 +47,12 @@ pub fn message_size_check(data: &[u8], max_data: usize) -> Result<(), RouterErro
 }
 
 /// Handle a bridge error by logging, updating metrics, etc
+/// This function uses the standard `slog` recording mechanisms and
+/// optionally calls a generic metric recording function for some
+/// types of errors. The error is returned by this function for later
+/// processing. This can include being called by the sentry middleware,
+/// which uses the `RecordableError` trait to optionally record metrics.
+/// see [autopush_common::middleware::sentry::SentryWrapperMiddleware].`call()` method
 pub async fn handle_error(
     error: RouterError,
     metrics: &StatsdClient,
@@ -61,17 +70,6 @@ pub async fn handle_error(
                 platform,
                 app_id,
                 "authentication",
-                error.status(),
-                error.errno(),
-            );
-        }
-        RouterError::GCMAuthentication => {
-            warn!("GCM Authentication error");
-            incr_error_metric(
-                metrics,
-                platform,
-                app_id,
-                "gcm authentication",
                 error.status(),
                 error.errno(),
             );
@@ -114,17 +112,6 @@ pub async fn handle_error(
                 warn!("Error while removing user due to bridge not_found: {}", e);
             }
         }
-        RouterError::Upstream { .. } => {
-            warn!("{}", error.to_string());
-            incr_error_metric(
-                metrics,
-                platform,
-                app_id,
-                "server_error",
-                error.status(),
-                error.errno(),
-            );
-        }
         RouterError::TooMuchData(_) => {
             // Do not log this error since it's fairly common.
             incr_error_metric(
@@ -136,6 +123,17 @@ pub async fn handle_error(
                 error.errno(),
             );
         }
+        RouterError::Fcm(FcmError::Upstream {
+            error_code: status, ..
+        }) => incr_error_metric(
+            metrics,
+            platform,
+            app_id,
+            &format!("upstream_{}", status),
+            error.status(),
+            error.errno(),
+        ),
+
         _ => {
             warn!("Unknown error while sending bridge request: {}", error);
             incr_error_metric(
@@ -153,7 +151,9 @@ pub async fn handle_error(
 
     if let Some(Ok(claims)) = vapid.map(|v| v.vapid.claims()) {
         let mut extras = err.extras.unwrap_or_default();
-        extras.extend([("sub".to_owned(), claims.sub.unwrap_or_default())]);
+        if let Some(sub) = claims.sub {
+            extras.extend([("sub".to_owned(), sub)]);
+        }
         err.extras = Some(extras);
     };
     err
@@ -258,6 +258,10 @@ pub mod tests {
             timestamp: 0,
             sort_key_timestamp: 0,
             data,
+            #[cfg(feature = "reliable_report")]
+            reliable_state: None,
+            #[cfg(feature = "reliable_report")]
+            reliability_id: None,
         }
     }
 }

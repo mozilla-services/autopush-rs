@@ -154,6 +154,11 @@ CONNECTION_CONFIG: dict[str, Any] = dict(
     # new autoconnect
     db_dsn=os.environ.get("DB_DSN", "grpc://localhost:8086"),
     db_settings=get_db_settings(),
+    tracking_keys="[{}]".format(
+        base64.urlsafe_b64encode(
+            cast(ecdsa.VerifyingKey, TRACKING_KEY.get_verifying_key()).to_string()
+        ).decode()
+    ),
 )
 
 """Connection Megaphone Config:
@@ -189,6 +194,15 @@ ENDPOINT_CONFIG = dict(
     # convert to x692 format
     tracking_keys=f"[{base64.urlsafe_b64encode((b"\4" + TRACKING_PUB_KEY.to_string())).decode()}]",
 )
+
+# Note: These are only used by the `reliable_report` feature, however, specifying them
+# will trigger autopush to attempt to connect, and may fail if the Redis server is not present.
+# Since pytest marks do not provide a way to examine mark states within the python executable,
+# we have to rely on an environment variable.
+# Once this feature goes stable, we can move these lines to the appropriate configurations.
+if os.environ.get("RELIABLE_REPORT") is not None:
+    CONNECTION_CONFIG["reliability_dsn"] = "redis://localhost:6379"
+    ENDPOINT_CONFIG["reliability_dsn"] = "redis://localhost:6379"
 
 
 def _get_vapid(
@@ -800,6 +814,26 @@ async def test_basic_delivery_with_vapid(
 ) -> None:
     """Test delivery of a basic push message with a VAPID header."""
     uuid_data: str = str(uuid.uuid4())
+    # Since we are not explicity setting the TRACKING_KEY, we should not
+    # track this message.
+    vapid_info = _get_vapid(payload=vapid_payload)
+    result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
+    # the following presumes that only `salt` is padded.
+    clean_header = registered_test_client._crypto_key.replace('"', "").rstrip("=")
+    assert result["headers"]["encryption"] == clean_header
+    assert result["data"] == base64url_encode(uuid_data)
+    assert result["messageType"] == ClientMessageType.NOTIFICATION.value
+
+
+@pytest.mark.reliable_report
+async def test_basic_delivery_with_vapid_reliable(
+    registered_test_client: AsyncPushTestClient,
+    vapid_payload: dict[str, int | str],
+) -> None:
+    """Test delivery of a basic push message with a VAPID header."""
+    uuid_data: str = str(uuid.uuid4())
+    # Since we are not explicity setting the TRACKING_KEY, we should not
+    # track this message.
     vapid_info = _get_vapid(payload=vapid_payload)
     result = await registered_test_client.send_notification(data=uuid_data, vapid=vapid_info)
     # the following presumes that only `salt` is padded.
@@ -809,15 +843,16 @@ async def test_basic_delivery_with_vapid(
     assert result["messageType"] == ClientMessageType.NOTIFICATION.value
     # The key we used should not have been registered, so no tracking should
     # be occurring.
-    log.debug(f"🔍 Reliability: {result.get("reliability_id")}")
-    assert result.get("reliability_id") is None
+    assert result.get("reliability_id") is None, "Tracking unknown message"
 
 
+@pytest.mark.reliable_report
 async def test_basic_delivery_with_tracked_vapid(
     registered_test_client: AsyncPushTestClient,
     vapid_payload: dict[str, int | str],
 ) -> None:
     """Test delivery of a basic push message with a VAPID header."""
+    # TODO: connect to test redis server and redis.flushall()
     uuid_data: str = str(uuid.uuid4())
     vapid_info = _get_vapid(key=TRACKING_KEY, payload=vapid_payload)
     # quick sanity check to ensure that the keys match.
@@ -840,8 +875,15 @@ async def test_basic_delivery_with_tracked_vapid(
     assert result["headers"]["encryption"] == clean_header
     assert result["data"] == base64url_encode(uuid_data)
     assert result["messageType"] == ClientMessageType.NOTIFICATION.value
-    log.debug(f"🔍 reliability {result}")
-    assert result["reliability_id"] is not None
+    assert result.get("reliability_id") is not None, "missing reliability_id"
+    endpoint = registered_test_client.get_host_client_endpoint()
+    async with httpx.AsyncClient() as httpx_client:
+        resp = await httpx_client.get(f"{endpoint}/__milestones__", timeout=5)
+        log.debug(f"🔍 Milestones: {resp.text}")
+        jresp = json.loads(resp.text)
+        assert jresp["accepted"] == 1
+        for other in ["accepted_webpush", "received", "transmitted_webpush", "transmitted"]:
+            assert jresp[other] == 0, f"reliablity state '{other}' was not 0"
 
 
 async def test_basic_delivery_with_invalid_vapid(
@@ -1296,8 +1338,6 @@ async def test_big_message(registered_test_client: AsyncPushTestClient) -> None:
     block that was 5624 bytes long. We'll skip the binary bit for a
     4216 block of "text" we then b64 encode to send.
     """
-    import base64
-
     bulk = "".join(
         random.choice(string.ascii_letters + string.digits + string.punctuation)
         for _ in range(0, 4216)
@@ -1341,7 +1381,7 @@ async def test_with_key(test_client: AsyncPushTestClient) -> None:
     claims = {
         "aud": f"http://127.0.0.1:{ENDPOINT_PORT}",
         "exp": int(time.time()) + 86400,
-        "sub": "a@example.com",
+        "sub": "mailto:a@example.com",
     }
     vapid = _get_vapid(private_key, claims)
     pk_hex = vapid["crypto-key"]
@@ -1358,6 +1398,24 @@ async def test_with_key(test_client: AsyncPushTestClient) -> None:
     vapid = _get_vapid(new_key, claims)
 
     await test_client.send_notification(vapid=vapid, status=401)
+
+
+async def test_empty_vapid(test_client: AsyncPushTestClient) -> None:
+    """Test with a minimal VAPID assertion set"""
+    private_key = ecdsa.SigningKey.generate(curve=ecdsa.NIST256p)
+    claims = {
+        "aud": f"http://127.0.0.1:{ENDPOINT_PORT}",
+        "exp": int(time.time()) + 86400,
+    }
+    vapid = _get_vapid(private_key, claims)
+    pk_hex = vapid["crypto-key"]
+    chid = str(uuid.uuid4())
+    await test_client.connect()
+    await test_client.hello()
+    await test_client.register(channel_id=chid, key=pk_hex)
+
+    # Send an update with a properly formatted key.
+    await test_client.send_notification(vapid=vapid)
 
 
 async def test_with_bad_key(test_client: AsyncPushTestClient):

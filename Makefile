@@ -1,12 +1,20 @@
 SHELL := /bin/sh
 CARGO = cargo
-TESTS_DIR := tests
+# For unknown reasons, poetry on CI will sometimes "forget" what it's current path is, which
+# can confuse relative path lookups.
+# Let's be very explicit about it for now.
+TESTS_DIR := `pwd`/tests
 TEST_RESULTS_DIR ?= workspace/test-results
-PYTEST_ARGS ?= $(if $(SKIP_SENTRY),-m "not sentry") $(if $(TEST_STUB),,-m "not stub") # Stub tests do not work in CI
-INTEGRATION_TEST_FILE := $(TESTS_DIR)/integration/test_integration_all_rust.py
+# NOTE: Do not be clever.
+# The integration tests (and a few others) use pytest markers to control
+# the tests that are being run. These markers are set and defined within
+# the `./pyproject.toml`. That is the single source of truth.
+PYTEST_ARGS := ${PYTEST_ARGS}
+INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
+INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
-POETRY := poetry --directory $(TESTS_DIR)
+POETRY := poetry --project $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(TESTS_DIR)/pyproject.toml
 POETRY_LOCK := $(TESTS_DIR)/poetry.lock
@@ -22,23 +30,37 @@ $(INSTALL_STAMP): $(PYPROJECT_TOML) $(POETRY_LOCK)
 	$(POETRY) install
 	touch $(INSTALL_STAMP)
 
+install_poetry:
+	curl -sSL https://install.python-poetry.org | python3 - --version 2.0.0
+
 upgrade:
 	$(CARGO) install cargo-edit ||
 		echo "\n$(CARGO) install cargo-edit failed, continuing.."
 	$(CARGO) upgrade
 	$(CARGO) update
 
-integration-test-legacy:
+build-integration-test:
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml build
+
+integration-test:
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
+	docker cp integration-tests:/code/integration_test_results.xml $(INTEGRATION_TEST_DIR)
+
+integration-test-clean:
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml down
+	docker rm integration-tests
+
+integration-test-legacy: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
 		-v $(PYTEST_ARGS)
 
-integration-test:
+integration-test-local: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
-		$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
+	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
 		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
 		-v $(PYTEST_ARGS)
 
