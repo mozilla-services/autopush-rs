@@ -13,6 +13,7 @@ pub mod logging;
 pub mod metrics;
 pub mod middleware;
 pub mod notification;
+pub mod otel;
 #[cfg(feature = "reliable_report")]
 pub mod reliability;
 pub mod sentry;

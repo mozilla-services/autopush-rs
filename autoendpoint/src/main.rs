@@ -18,7 +18,7 @@ use docopt::Docopt;
 use serde::Deserialize;
 use std::error::Error;
 
-use autopush_common::logging;
+use autopush_common::{logging, otel};
 
 const USAGE: &str = "
 Usage: autoendpoint [options]
@@ -46,6 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         env!("CARGO_PKG_VERSION"),
     )
     .expect("Logging failed to initialize");
+    otel::init_tracer();
     debug!("Starting up autoendpoint...");
 
     let _sentry = sentry::init(sentry::ClientOptions {
