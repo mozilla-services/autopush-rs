@@ -9,10 +9,7 @@ use crate::server::AppState;
 
 use actix_web::web::Data;
 use actix_web::HttpResponse;
-use opentelemetry::{
-    global,
-    trace::{Span, SpanKind, Tracer},
-};
+use opentelemetry::{global, trace::{Tracer, SpanKind}}};
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 /// This is the endpoint for all incoming Push subscription updates.
@@ -34,7 +31,7 @@ pub async fn webpush_route(
     let mut span = tracer
         .span_builder("wpush")
         .with_kind(SpanKind::Server)
-        .start_with_context(&tracer, &cx.cx);
+        .start_with_context(&tracer, &cx);
     span.add_event("POST notification", vec![]);
 
     let router = routers.get(
