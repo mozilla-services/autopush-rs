@@ -26,14 +26,6 @@ pub async fn webpush_route(
             notification.subscription.user.uaid.to_string().into(),
         );
     });
-
-    let tracer = global::tracer("autoendpoint");
-    let mut span = tracer
-        .span_builder("wpush")
-        .with_kind(SpanKind::Internal)
-        .start(&tracer);
-    //span.add_event("POST notification", vec![]);
-
     let router = routers.get(
         RouterType::from_str(&notification.subscription.user.router_type)
             .map_err(|_| ApiErrorKind::InvalidRouterType)?,
