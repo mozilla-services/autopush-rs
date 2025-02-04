@@ -3,20 +3,21 @@ use std::str::FromStr;
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::message_id::MessageId;
 use crate::extractors::notification::Notification;
-use crate::extractors::otel_context::OtelContext;
 use crate::extractors::routers::{RouterType, Routers};
 use crate::server::AppState;
 
 use actix_web::web::Data;
 use actix_web::HttpResponse;
-use opentelemetry::{global, trace::{Tracer, SpanKind}}};
+use opentelemetry::{
+    global,
+    trace::{Span, SpanKind, Tracer},
+};
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 /// This is the endpoint for all incoming Push subscription updates.
 pub async fn webpush_route(
     notification: Notification,
     routers: Routers,
-    cx: OtelContext,
     _app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
     sentry::configure_scope(|scope| {
@@ -31,7 +32,7 @@ pub async fn webpush_route(
     let mut span = tracer
         .span_builder("wpush")
         .with_kind(SpanKind::Server)
-        .start_with_context(&tracer, &cx);
+        .start(&tracer);
     span.add_event("POST notification", vec![]);
 
     let router = routers.get(
