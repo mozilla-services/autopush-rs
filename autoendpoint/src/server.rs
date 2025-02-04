@@ -4,9 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix_cors::Cors;
-use actix_web::{
-    dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data, App, HttpServer,
-};
+use actix_web::{dev, http::StatusCode, middleware, web, web::Data, App, HttpServer};
 use cadence::StatsdClient;
 use fernet::MultiFernet;
 use serde_json::json;
@@ -17,6 +15,7 @@ use autopush_common::db::bigtable::BigTableClientImpl;
 use autopush_common::reliability::PushReliability;
 use autopush_common::{
     db::{client::DbClient, spawn_pool_periodic_reporter, DbSettings, StorageType},
+    middleware::otel::otel_middleware,
     middleware::sentry::SentryWrapper,
 };
 
@@ -164,7 +163,14 @@ impl Server {
                 .app_data(web::PayloadConfig::new(app_state.settings.max_data_bytes))
                 .app_data(web::JsonConfig::default().limit(app_state.settings.max_data_bytes))
                 // Middleware
-                .wrap(ErrorHandlers::new().handler(StatusCode::NOT_FOUND, ApiError::render_404))
+                .wrap(
+                    middleware::ErrorHandlers::new()
+                        .handler(StatusCode::NOT_FOUND, ApiError::render_404),
+                )
+                // OpenTelemetry
+                .wrap(middleware::from_fn(|req, next| {
+                    otel_middleware("autoendpoint", req, next)
+                }))
                 // Our modified Sentry wrapper which does some blocking of non-reportable errors.
                 .wrap(SentryWrapper::<ApiError>::new(
                     metrics.clone(),
