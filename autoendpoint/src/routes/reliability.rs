@@ -103,7 +103,6 @@ mod tests {
         report.insert(trns.clone(), 444);
 
         let generated = gen_report(Some(report));
-        dbg!(&generated);
         // We don't really care if the `Created` or `HELP` lines are included
         assert!(generated.contains(&format!("# TYPE {METRIC_NAME}")));
         // sample the first and last values.
