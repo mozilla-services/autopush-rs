@@ -51,7 +51,7 @@ again = { version = "0.1.2", default-features = false, features = [
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
 jsonwebtoken = "9.3.0"
-prometheus-client = { version = "0.23", optional = true }
+
 validator = "0.19"
 validator_derive = "0.19"
 
@@ -70,7 +70,7 @@ tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
-default = ["bigtable"]
+default = ["bigtable", "reliable_report"]
 # data store types
 bigtable = ["autopush_common/bigtable"]
 
@@ -85,4 +85,4 @@ stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []
 
-reliable_report = ["autopush_common/reliable_report", "dep:prometheus-client"]
+reliable_report = ["autopush_common/reliable_report"]
