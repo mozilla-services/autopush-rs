@@ -142,7 +142,7 @@ jobs:
           command: |
             apt update
             apt install git -y
-            apt install cmake -y
+            apt install cmake clang -y
       - run:
           name: Set up Python
           command: |
@@ -286,7 +286,7 @@ jobs:
       # Install these packages before checkout because git may not exist or work
       - run:
           name: Install Docker build dependencies
-          command: apk add --no-cache openssh-client git
+          command: apk add --no-cache openssh-client git clang
       - checkout
       - setup_remote_docker
       - docker_login

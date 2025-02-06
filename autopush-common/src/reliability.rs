@@ -22,7 +22,7 @@ pub const COUNTS: &str = "state_counts";
 pub const ITEMS: &str = "items";
 pub const EXPIRY: &str = "expiry";
 
-const CONNECTION_EXPIRATION: u64 = 10;
+const CONNECTION_EXPIRATION: Duration = Duration::from_secs(10);
 
 /// The various states that a message may transit on the way from reception to delivery.
 // Note: "Message" in this context refers to the Subscription Update.
@@ -148,9 +148,7 @@ impl PushReliability {
                     .unwrap_or_else(|| "None".to_owned()),
                 new
             );
-            if let Ok(mut conn) =
-                client.get_connection_with_timeout(Duration::from_secs(CONNECTION_EXPIRATION))
-            {
+            if let Ok(mut conn) = client.get_connection_with_timeout(CONNECTION_EXPIRATION) {
                 self.internal_record(&mut conn, old, new, expr, id).await;
             }
         };
@@ -192,9 +190,7 @@ impl PushReliability {
     pub async fn gc(&self) -> Result<()> {
         if let Some(client) = &self.client {
             debug!("🔍 performing pre-report garbage collection");
-            if let Ok(mut conn) =
-                client.get_connection_with_timeout(Duration::from_secs(CONNECTION_EXPIRATION))
-            {
+            if let Ok(mut conn) = client.get_connection_with_timeout(CONNECTION_EXPIRATION) {
                 return self.internal_gc(&mut conn, sec_since_epoch()).await;
             }
         }
@@ -206,29 +202,32 @@ impl PushReliability {
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
-        let purged: Vec<String> = conn.zrange(ITEMS, -1, expr as isize)?;
+        let purged: Vec<String> = conn.zrange(ITEMS, 0, expr as isize)?;
         let mut pipeline = redis::Pipeline::new();
         for key in purged {
-            let parts: Vec<&str> = key.splitn(2, '#').collect();
-            let state = parts.first();
+            let Some((state, _id)) = key.split_once('#') else {
+                let err = "Invalid key stored in Reliability datastore";
+                error!("🔍🟥 {} [{:?}]", &err, &key);
+                return Err(ApcErrorKind::GeneralError(err.to_owned()).into());
+            };
             pipeline.hincr(COUNTS, state, -1);
             pipeline.zrem(ITEMS, key);
         }
-        pipeline.exec(conn).unwrap();
+        pipeline.exec(conn)?;
         Ok(())
     }
 
     // Return a snapshot of milestone states
     // This will probably not be called directly, but useful for debugging.
-    pub async fn report(&self) -> Result<Option<HashMap<String, i32>>> {
+    pub async fn report(&self) -> Result<HashMap<String, i32>> {
         if let Some(client) = &self.client {
             if let Ok(mut conn) = client.get_connection() {
-                return Ok(Some(conn.hgetall(COUNTS).map_err(|e| {
+                return Ok(conn.hgetall(COUNTS).map_err(|e| {
                     ApcErrorKind::GeneralError(format!("Could not read report {:?}", e))
-                })?));
+                })?);
             }
         }
-        Ok(None)
+        Ok(HashMap::new())
     }
 }
 
@@ -258,32 +257,32 @@ const METRIC_NAME: &str = "autopush_reliability";
 /// ignored by Prometheus, and is only provided to ensure that there is no intermediate
 /// caching occurring.
 ///
-pub fn gen_report(report: Option<HashMap<String, i32>>) -> String {
+pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
     let mut registry = Registry::default();
 
-    if let Some(values) = report {
-        // A "family" is a grouping of metrics.
-        // we specify this as the ("label", "label value") which index to a Gauge.
-        let family = Family::<Vec<(&str, String)>, Gauge>::default();
-        // This creates the top level association of the elements in the family with the metric.
-        registry.register(
-            METRIC_NAME,
-            "Count of messages at given states",
-            family.clone(),
-        );
-        for (milestone, value) in values.into_iter() {
-            // Specify the static "state" label name with the given milestone, and add the
-            // value as the gauge value.
-            family
-                .get_or_create(&vec![("state", milestone)])
-                .set(value.into());
-        }
+    // A "family" is a grouping of metrics.
+    // we specify this as the ("label", "label value") which index to a Gauge.
+    let family = Family::<Vec<(&str, String)>, Gauge>::default();
+    // This creates the top level association of the elements in the family with the metric.
+    registry.register(
+        METRIC_NAME,
+        "Count of messages at given states",
+        family.clone(),
+    );
+    for (milestone, value) in values.into_iter() {
+        // Specify the static "state" label name with the given milestone, and add the
+        // value as the gauge value.
+        family
+            .get_or_create(&vec![("state", milestone)])
+            .set(value.into());
     }
 
     // Return the formatted string that Prometheus will eventually read.
     let mut encoded = String::new();
-    encode(&mut encoded, &registry).unwrap();
-    encoded
+    encode(&mut encoded, &registry).map_err(|e| {
+        ApcErrorKind::GeneralError(format!("Could not generate Reliability report {:?}", e))
+    })?;
+    Ok(encoded)
 }
 
 pub async fn report_handler(reliability: &Arc<PushReliability>) -> HttpResponse {
@@ -294,9 +293,12 @@ pub async fn report_handler(reliability: &Arc<PushReliability>) -> HttpResponse 
             .body(format!("# ERROR: {err}\n"));
     };
     match reliability.report().await {
-        Ok(report) => HttpResponse::Ok()
-            .content_type("text/plain")
-            .body(gen_report(report)),
+        Ok(values) => match gen_report(values) {
+            Ok(report) => HttpResponse::Ok().content_type("text/plain").body(report),
+            Err(e) => HttpResponse::InternalServerError()
+                .content_type("text/plain")
+                .body(format!("# ERROR: {e}\n")),
+        },
         Err(e) => {
             error!("🔍🟥 Reporting, Error {:?}", &e);
             // NOTE: This will NOT be read by Prometheus, but serves as a diagnostic message.
@@ -326,7 +328,7 @@ mod tests {
         report.insert(ReliabilityState::Retrieved.to_string(), 333);
         report.insert(trns.clone(), 444);
 
-        let generated = gen_report(Some(report));
+        let generated = gen_report(report).unwrap();
         // We don't really care if the `Created` or `HELP` lines are included
         assert!(generated.contains(&format!("# TYPE {METRIC_NAME}")));
         // sample the first and last values.
@@ -392,7 +394,7 @@ mod tests {
             .ignore();
         let mut conn = MockRedisConnection::new(vec![
             MockCmd::new(
-                redis::cmd("ZRANGE").arg(ITEMS).arg(-1).arg(expr),
+                redis::cmd("ZRANGE").arg(ITEMS).arg(0).arg(expr),
                 Ok(response),
             ),
             MockCmd::new(mock_pipe, Ok("Okay")),
