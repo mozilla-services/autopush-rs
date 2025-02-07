@@ -13,6 +13,9 @@ use backtrace::Backtrace;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use thiserror::Error;
 
+#[cfg(feature = "reliable_report")]
+use redis::RedisError;
+
 pub type Result<T> = std::result::Result<T, ApcError>;
 
 /// Render a 404 response
@@ -99,6 +102,9 @@ pub enum ApcErrorKind {
     ParseUrlError(#[from] url::ParseError),
     #[error(transparent)]
     ConfigError(#[from] config::ConfigError),
+    #[cfg(feature = "reliable_report")]
+    #[error(transparent)]
+    RedisError(#[from] RedisError),
     #[error("Broadcast Error: {0}")]
     BroadcastError(String),
     #[error("Payload Error: {0}")]

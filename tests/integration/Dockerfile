@@ -27,6 +27,7 @@ RUN \
   apt-get -qq update && \
   apt-get -qq install --no-install-recommends -y \
   cmake \
+  clang \
   libssl-dev \
   ca-certificates \
   pkg-config \
@@ -43,6 +44,7 @@ RUN mkdir -m 755 bin
 RUN apt-get -qq update && \
   apt-get -qq upgrade && apt-get -qq install --no-install-recommends -y \
   cmake \
+  clang \
   libssl-dev \
   ca-certificates \
   libstdc++6 \
