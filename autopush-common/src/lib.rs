@@ -24,6 +24,8 @@ pub mod test_support;
 #[macro_use]
 pub mod util;
 
+use std::time::Duration;
+
 /// Define some global TTLs.
 ///
 /// [RFC8030 notes](https://datatracker.ietf.org/doc/html/rfc8030#section-5.2) that
@@ -48,10 +50,10 @@ pub mod util;
 /// "abandoned" and any router info assigned to a User Agent that has not contacted
 /// Autopush in 60 days can be discarded.
 ///
-const ONE_DAY_IN_SECONDS: u64 = 24 * 60 * 60;
+const ONE_DAY_IN_SECONDS: u64 = Duration::from_days(1).as_secs() as u64;
 /// The maximum TTL for notifications, 30 days in seconds
-pub const MAX_NOTIFICATION_TTL: u64 = 30 * ONE_DAY_IN_SECONDS;
-/// FCM has a max TTL of 4 weeks.
-pub const MAX_FCM_NOTIFICATION_TTL: u64 = 4 * 7 * ONE_DAY_IN_SECONDS;
+pub const MAX_NOTIFICATION_TTL: u64 = Duration::from_days(30).as_secs() as u64;
+/// FCM has a max TTL of 4 weeks (28 days), in seconds.
+pub const MAX_FCM_NOTIFICATION_TTL: u64 = Duration::from_days(28).as_secs() as u64;
 /// The maximum TTL for router records, 60 days in seconds
-pub const MAX_ROUTER_TTL: u64 = 2 * MAX_NOTIFICATION_TTL;
+pub const MAX_ROUTER_TTL: u64 = Duration::from_days(60).as_secs() as u64;
