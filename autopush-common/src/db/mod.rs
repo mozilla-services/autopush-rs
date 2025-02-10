@@ -12,6 +12,8 @@ use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
 
 use derive_builder::Builder;
+use lazy_static::lazy_static;
+use regex::RegexSet;
 use serde::Serializer;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -144,6 +146,9 @@ pub struct User {
     /// Last node/port the client was or may be connected to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
+    /// Last minimum urgency set by the client
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub urgency: Option<Urgency>,
     /// Record version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_version: Option<u64>,
@@ -180,6 +185,7 @@ impl Default for User {
             router_type: "webpush".to_string(),
             router_data: None,
             node_id: None,
+            urgency: None,
             record_version: Some(USER_RECORD_VERSION),
             current_timestamp: None,
             version: Some(Uuid::new_v4()),
@@ -196,6 +202,33 @@ impl User {
 
     pub fn channel_count(&self) -> usize {
         self.priv_channels.len()
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, PartialEq, PartialOrd, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+pub enum Urgency {
+    VeryLow = 0,
+    Low = 1,
+    Normal = 2,
+    High = 3,
+}
+
+impl From<&str> for Urgency {
+    fn from(value: &str) -> Self {
+        match value.to_lowercase().as_str() {
+            "high" => Urgency::High,
+            "low" => Urgency::Low,
+            "very-low" => Urgency::VeryLow,
+            _ => Urgency::Normal,
+        }
+    }
+}
+
+impl From<Option<&String>> for Urgency {
+    fn from(value: Option<&String>) -> Self {
+        Urgency::from(value.and_then(|v| Some(v.as_str())).unwrap_or(""))
     }
 }
 
