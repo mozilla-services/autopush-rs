@@ -24,7 +24,7 @@ pub mod test_support;
 #[macro_use]
 pub mod util;
 
-use std::time::Duration;
+use chrono::Duration;
 
 /// Define some global TTLs.
 ///
@@ -50,10 +50,10 @@ use std::time::Duration;
 /// "abandoned" and any router info assigned to a User Agent that has not contacted
 /// Autopush in 60 days can be discarded.
 ///
-const ONE_DAY_IN_SECONDS: u64 = Duration::from_days(1).as_secs() as u64;
+pub const ONE_DAY_IN_SECONDS: u64 = Duration::days(1).num_seconds() as u64;
 /// The maximum TTL for notifications, 30 days in seconds
-pub const MAX_NOTIFICATION_TTL: u64 = Duration::from_days(30).as_secs() as u64;
+pub const MAX_NOTIFICATION_TTL: u64 = Duration::days(30).num_seconds() as u64;
 /// FCM has a max TTL of 4 weeks (28 days), in seconds.
-pub const MAX_FCM_NOTIFICATION_TTL: u64 = Duration::from_days(28).as_secs() as u64;
+pub const MAX_FCM_NOTIFICATION_TTL: u64 = Duration::days(28).num_seconds() as u64;
 /// The maximum TTL for router records, 60 days in seconds
-pub const MAX_ROUTER_TTL: u64 = Duration::from_days(60).as_secs() as u64;
+pub const MAX_ROUTER_TTL: u64 = Duration::days(60).num_seconds() as u64;

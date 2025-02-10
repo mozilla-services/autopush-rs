@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::headers::util::split_key_value;
-use autopush_common::util::{sec_since_epoch, ONE_DAY_IN_SECONDS};
+use autopush_common::util::sec_since_epoch;
+use autopush_common::ONE_DAY_IN_SECONDS;
 
 pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 
