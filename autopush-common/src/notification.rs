@@ -17,7 +17,6 @@ pub struct Notification {
     pub ttl: u64,
     #[serde(skip_serializing)]
     pub topic: Option<String>,
-    #[serde(skip_serializing)]
     pub timestamp: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
@@ -47,6 +46,7 @@ impl Notification {
     ///     {chid}:{message_id}
     pub fn chidmessageid(&self) -> String {
         let chid = self.channel_id.as_hyphenated();
+
         if let Some(ref topic) = self.topic {
             format!("{TOPIC_NOTIFICATION_PREFIX}:{chid}:{topic}")
         } else if let Some(sortkey_timestamp) = self.sortkey_timestamp {

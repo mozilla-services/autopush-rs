@@ -11,7 +11,6 @@ use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
-use serde_json::json;
 
 use autopush_common::util::deserialize_u32_to_duration;
 
@@ -225,6 +224,7 @@ impl Settings {
         Ok(())
     }
 
+    #[cfg(feature = "bigtable")]
     pub fn test_settings() -> Self {
         let db_dsn = Some("grpc://localhost:8086".to_string());
         // BigTable DB_SETTINGS.
@@ -235,6 +235,17 @@ impl Settings {
             "message_topic_family":"message_topic",
         })
         .to_string();
+        Self {
+            db_dsn,
+            db_settings,
+            ..Default::default()
+        }
+    }
+
+    #[cfg(all(feature = "redis", not(feature = "bigtable")))]
+    pub fn test_settings() -> Self {
+        let db_dsn = Some("redis://localhost".to_string());
+        let db_settings = "".to_string();
         Self {
             db_dsn,
             db_settings,
