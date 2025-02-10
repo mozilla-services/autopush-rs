@@ -294,7 +294,9 @@ pub async fn report_handler(reliability: &Arc<PushReliability>) -> HttpResponse 
     };
     match reliability.report().await {
         Ok(values) => match gen_report(values) {
-            Ok(report) => HttpResponse::Ok().content_type("text/plain").body(report),
+            Ok(report) => HttpResponse::Ok()
+                .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
+                .body(report),
             Err(e) => HttpResponse::InternalServerError()
                 .content_type("text/plain")
                 .body(format!("# ERROR: {e}\n")),
