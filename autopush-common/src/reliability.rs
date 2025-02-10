@@ -36,6 +36,8 @@ pub enum ReliabilityState {
     Delivered, // Message was provided to the WebApp recipient by the UA
     #[serde(rename = "expired")]
     Expired, // Message expired naturally (e.g. TTL=0)
+    #[serde(rename = "errored")]
+    Errored, // Message errored out for some reason during delivery.
 }
 
 // TODO: Differentiate between "transmitted via webpush" and "transmitted via bridge"?
@@ -51,6 +53,7 @@ impl std::fmt::Display for ReliabilityState {
             Self::Accepted => "accepted",
             Self::Delivered => "delivered",
             Self::Expired => "expired",
+            Self::Errored => "errored",
         })
     }
 }
@@ -69,6 +72,7 @@ impl std::str::FromStr for ReliabilityState {
             "accepted_webpush" => Self::IntAccepted,
             "delivered" => Self::Delivered,
             "expired" => Self::Expired,
+            "errored" => Self::Errored,
             _ => {
                 return Err(
                     ApcErrorKind::GeneralError(format!("Unknown tracker state \"{}\"", s)).into(),
