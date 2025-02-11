@@ -27,7 +27,6 @@ use crate::db::{
     error::{DbError, DbResult},
     DbSettings, Notification, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
 };
-use crate::MAX_NOTIFICATION_TTL;
 
 pub use self::metadata::MetadataBuilder;
 use self::row::{Row, RowCells};
@@ -56,7 +55,7 @@ const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 #[cfg(feature = "reliable_report")]
 const RELIABLE_LOG_FAMILY: &str = "reliability";
 #[cfg(feature = "reliable_report")]
-const RELIABLE_LOG_TTL: u64 = crate::db::MAX_NOTIFICATION_TTL * 2;
+const RELIABLE_LOG_TTL: u64 = crate::MAX_NOTIFICATION_TTL * 2;
 
 pub(crate) const RETRY_COUNT: usize = 5;
 
