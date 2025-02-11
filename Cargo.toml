@@ -103,7 +103,7 @@ autoconnect_settings = { path = "./autoconnect/autoconnect-settings" }
 autoconnect_web = { path = "./autoconnect/autoconnect-web" }
 autoconnect_ws = { path = "./autoconnect/autoconnect-ws" }
 autoconnect_ws_clientsm = { path = "./autoconnect/autoconnect-ws/autoconnect-ws-clientsm" }
-autopush_common = { path = "./autopush-common", features = ["bigtable"] }
+autopush_common = { path = "./autopush-common" }
 
 [profile.release]
 debug = 1

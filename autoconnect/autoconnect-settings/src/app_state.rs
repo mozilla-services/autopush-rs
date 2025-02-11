@@ -2,6 +2,8 @@ use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(feature = "redis")]
+use autopush_common::db::redis::RedisClientImpl;
 use cadence::StatsdClient;
 use config::ConfigError;
 use fernet::{Fernet, MultiFernet};
@@ -83,6 +85,11 @@ impl AppState {
                 client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
+            #[cfg(feature = "redis")]
+            StorageType::Redis => Box::new(
+                RedisClientImpl::new(metrics.clone(), &db_settings)
+                    .map_err(|e| ConfigError::Message(e.to_string()))?,
+            ),
             _ => panic!(
                 "Invalid Storage type {:?}. Check {}__DB_DSN.",
                 storage_type,
