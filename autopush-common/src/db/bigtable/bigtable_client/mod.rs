@@ -27,6 +27,7 @@ use crate::db::{
     error::{DbError, DbResult},
     DbSettings, Notification, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
 };
+use crate::MAX_NOTIFICATION_TTL;
 
 pub use self::metadata::MetadataBuilder;
 use self::row::{Row, RowCells};
