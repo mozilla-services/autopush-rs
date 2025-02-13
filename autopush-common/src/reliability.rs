@@ -202,7 +202,7 @@ impl PushReliability {
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
-        let purged: Vec<String> = conn.zrange(ITEMS, 0, expr as isize)?;
+        let purged: Vec<String> = conn.zrangebyscore(ITEMS, 0, expr as isize)?;
         let mut pipeline = redis::Pipeline::new();
         for key in purged {
             let Some((state, _id)) = key.split_once('#') else {

@@ -51,7 +51,6 @@ again = { version = "0.1.2", default-features = false, features = [
 async-trait = "0.1"
 autopush_common = { path = "../autopush-common" }
 jsonwebtoken = "9.3.0"
-
 validator = "0.19"
 validator_derive = "0.19"
 
