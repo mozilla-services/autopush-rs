@@ -396,7 +396,7 @@ mod tests {
             .ignore();
         let mut conn = MockRedisConnection::new(vec![
             MockCmd::new(
-                redis::cmd("ZRANGE").arg(ITEMS).arg(0).arg(expr),
+                redis::cmd("ZRANGEBYSCORE").arg(ITEMS).arg(0).arg(expr),
                 Ok(response),
             ),
             MockCmd::new(mock_pipe, Ok("Okay")),
