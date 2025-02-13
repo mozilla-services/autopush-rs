@@ -421,7 +421,8 @@ impl Router for ApnsRouter {
             .user
             .router_data
             .as_ref()
-            .ok_or(ApnsError::NoDeviceToken)?;
+            .ok_or(ApnsError::NoDeviceToken)?
+            .clone();
         let token = router_data
             .get("token")
             .and_then(Value::as_str)
@@ -479,6 +480,13 @@ impl Router for ApnsRouter {
         // Send to APNS
         trace!("Sending message to APNS: {:?}", payload);
         if let Err(e) = client.send(payload).await {
+            #[cfg(feature = "reliable_report")]
+            notification
+                .record_reliability(
+                    &self.reliability,
+                    autopush_common::reliability::ReliabilityState::Errored,
+                )
+                .await;
             return Err(self
                 .handle_error(e, notification.subscription.user.uaid, channel)
                 .await);
