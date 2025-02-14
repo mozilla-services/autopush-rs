@@ -64,7 +64,7 @@ log = { version = "0.4", features = [
 ] }
 mockall = "0.12"
 mozsvc-common = "0.2"
-openssl = { version = "0.10" }
+openssl = { version = "0.10.70" }
 rand = "0.8"
 regex = "1.4"
 reqwest = { version = "0.12", features = ["json", "blocking"] }
