@@ -57,16 +57,19 @@ google-cloud-rust-raw = { version = "0.16", default-features = false, features =
 ], optional = true }
 grpcio = { version = "=0.13.0", features = ["openssl"], optional = true }
 grpcio-sys = { version = "=0.13.0", optional = true }
+prometheus-client = { version = "0.23", optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 form_urlencoded = { version = "1.2", optional = true }
 
-redis = { version = "0.27", optional = true }
+redis = { version = "0.28", optional = true }
+redis-module = { version = "2.0", optional = true }
 
 [dev-dependencies]
+actix-rt = "2.8"
 mockito = "0.31"
+redis-test = "0.8"
 tempfile = "3.2.0"
 tokio = { workspace = true, features = ["macros"] }
-actix-rt = "2.8"
 
 [features]
 # NOTE: Do not set a `default` here, rather specify them in the calling library.
@@ -82,4 +85,4 @@ bigtable = [
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.
-reliable_report = ["dep:redis"]
+reliable_report = ["dep:redis", "dep:prometheus-client", "dep:redis-module"]

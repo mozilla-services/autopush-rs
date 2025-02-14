@@ -53,7 +53,7 @@ actix-service = "2.0"
 docopt = "1.1"
 
 [features]
-default = ["bigtable"]
+default = ["bigtable", "reliable_report"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
 urgency = ["autoconnect_ws/urgency"]
