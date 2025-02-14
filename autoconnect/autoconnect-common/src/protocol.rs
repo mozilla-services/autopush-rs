@@ -14,6 +14,9 @@ use uuid::Uuid;
 
 use autopush_common::notification::Notification;
 
+#[cfg(feature = "urgency")]
+use autopush_common::db::Urgency;
+
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum BroadcastValue {
@@ -64,6 +67,11 @@ pub enum ClientMessage {
     Nack {
         code: Option<i32>,
         version: String,
+    },
+
+    #[cfg(feature = "urgency")]
+    Urgency {
+        min: Urgency,
     },
 
     Ping,
@@ -122,6 +130,11 @@ pub enum ServerMessage {
     },
 
     Notification(Notification),
+
+    #[cfg(feature = "urgency")]
+    Urgency {
+        status: u32,
+    },
 
     Ping,
 }
