@@ -12,8 +12,6 @@ use std::collections::{HashMap, HashSet};
 use std::result::Result as StdResult;
 
 use derive_builder::Builder;
-use lazy_static::lazy_static;
-use regex::RegexSet;
 use serde::Serializer;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -228,7 +226,7 @@ impl From<&str> for Urgency {
 
 impl From<Option<&String>> for Urgency {
     fn from(value: Option<&String>) -> Self {
-        Urgency::from(value.and_then(|v| Some(v.as_str())).unwrap_or(""))
+        Urgency::from(value.map(|v| v.as_str()).unwrap_or(""))
     }
 }
 
