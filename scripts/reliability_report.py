@@ -1,4 +1,4 @@
-#! python3
+#! /bin/env python3
 
 """
 Generate longer form reports from the collected reliability logging data.
@@ -20,7 +20,6 @@ from collections import OrderedDict
 from datetime import datetime
 
 import jinja2
-import statsd
 import toml
 from google.cloud.bigtable.data import (
     BigtableDataClientAsync,
@@ -78,17 +77,19 @@ class BigtableScanner:
         min_time = 1000
         mean_time = 0
         start_time = time.time()
+        milestone_log = {}
+        frequency = {}
 
         # Meta information about all records
         success_count = fail_count = row_count = expired_count = 0
-        frequency = {"total": len(raw_rows)}
 
+        # Iterate over the rows and collect interesting bits of info
         for row in raw_rows:
             row_count += 1
-            print_row = {"milestones": OrderedDict()}
             milestones = OrderedDict()
             successful = False
             expired = False
+            total_time = 0
             for cell in row.cells:
                 milestone = bytearray(cell.qualifier).decode()
                 timestamp = int.from_bytes(cell.value) * 0.000000001
@@ -104,22 +105,35 @@ class BigtableScanner:
                 else:
                     # Records are marked as "expired" by the `gc` function.
                     expired |= milestone == "expired"
-            print_row["milestones"] = OrderedDict(sorted(milestones.items()))
-            key_list = list(dict(print_row["milestones"]).keys())
-            print_row["total_time"] = key_list[-1] - key_list[0]
+            timed_milestones = OrderedDict(sorted(milestones.items()))
+            milestone_keys = timed_milestones.keys()
+            for index, timestamp in enumerate(milestone_keys):
+                milestone = milestones.get(timestamp)
+                try:
+                    operation_length = list(milestone_keys)[index + 1] - timestamp
+                except IndexError:
+                    operation_length = 0
+                original = milestone_log.get(milestone, {})
+                milestone_log[milestone] = {
+                    "count": original.get("count", 0) + 1,
+                    "total_time": original.get("total_time", 0) + operation_length,
+                    "average_time": (original.get("average_time", 0) + operation_length)
+                    / original.get("count", 1),
+                }
+
+            key_list = list(timed_milestones.keys())
+            total_time = key_list[-1] - key_list[0]
             if successful:
-                if print_row["total_time"] < min_time:
-                    min_time = print_row["total_time"]
-                if print_row["total_time"] > max_time:
-                    max_time = print_row["total_time"]
+                if total_time < min_time:
+                    min_time = total_time
+                if total_time > max_time:
+                    max_time = total_time
                 success_count += 1
             else:
                 fail_count += 1
             if expired:
                 expired_count += 1
-            mean_time = mean_time + print_row["total_time"] / row_count
-            last_milestone = list(print_row["milestones"].values())[-1]
-            frequency[last_milestone] = frequency.get(last_milestone, 0) + 1
+            mean_time = mean_time + total_time / row_count
             # Should we ever want to return "all":
             # result[row.row_key] = print_row
         result["meta"] = OrderedDict(
@@ -127,11 +141,11 @@ class BigtableScanner:
             longest=max_time,
             shortest=min_time,
             mean_time=mean_time,
-            frequency=frequency,
             success_count=success_count,
             fail_count=fail_count,
             total_count=row_count,
             expired_count=expired_count,
+            milestones=milestone_log,
         )
         return result
 
