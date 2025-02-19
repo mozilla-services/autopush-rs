@@ -1,3 +1,5 @@
+use std::mem;
+
 use cadence::{Counted, CountedExt};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
@@ -116,24 +118,34 @@ impl WebPushClient {
         // Filter out TTL expired messages
         let now_sec = sec_since_epoch();
         // Topic messages require immediate deletion from the db
-        let mut expired_topic_sort_keys = vec![];
+        let mut expired_messages = vec![];
+        // NOTE: Vec::extract_if (stabilizing soon) can negate the need for the
+        // inner msg.clone()
         messages.retain(|msg| {
             if !msg.expired(now_sec) {
                 return true;
             }
             if msg.sortkey_timestamp.is_none() {
-                expired_topic_sort_keys.push(msg.chidmessageid());
+                expired_messages.push(msg.clone());
             }
             // XXX: record ReliabilityState::Expired?
             false
         });
         // TODO: A batch remove_messages would be nicer
-        for sort_key in expired_topic_sort_keys {
-            trace!("🉑 removing expired topic sort key: {sort_key}");
+        #[allow(unused_mut)]
+        for mut msg in expired_messages {
+            let chidmessageid = msg.chidmessageid();
+            trace!("🉑 removing expired topic chidmessageid: {chidmessageid}");
             self.app_state
                 .db
-                .remove_message(&self.uaid, &sort_key)
+                .remove_message(&self.uaid, &chidmessageid)
                 .await?;
+            #[cfg(feature = "reliable_report")]
+            msg.record_reliability(
+                &self.app_state.reliability,
+                autopush_common::reliability::ReliabilityState::Expired,
+            )
+            .await;
         }
 
         self.flags.increment_storage = !include_topic && timestamp.is_some();
@@ -311,6 +323,15 @@ impl WebPushClient {
             .db
             .increment_storage(&self.uaid, timestamp)
             .await?;
+        #[cfg(feature = "reliable_report")]
+        {
+            let mut notifs = mem::take(&mut self.ack_state.acked_stored_timestamp_notifs);
+            self.record_state(
+                &mut notifs,
+                autopush_common::reliability::ReliabilityState::Delivered,
+            )
+            .await;
+        }
         self.flags.increment_storage = false;
         Ok(())
     }

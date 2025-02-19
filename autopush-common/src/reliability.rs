@@ -285,30 +285,12 @@ pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
     Ok(encoded)
 }
 
-pub async fn report_handler(reliability: &Arc<PushReliability>) -> HttpResponse {
-    if let Err(err) = reliability.gc().await {
-        error!("🔍🟥 Reporting, Error {:?}", &err);
-        return HttpResponse::InternalServerError()
-            .content_type("text/plain")
-            .body(format!("# ERROR: {err}\n"));
-    };
-    match reliability.report().await {
-        Ok(values) => match gen_report(values) {
-            Ok(report) => HttpResponse::Ok()
-                .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
-                .body(report),
-            Err(e) => HttpResponse::InternalServerError()
-                .content_type("text/plain")
-                .body(format!("# ERROR: {e}\n")),
-        },
-        Err(e) => {
-            error!("🔍🟥 Reporting, Error {:?}", &e);
-            // NOTE: This will NOT be read by Prometheus, but serves as a diagnostic message.
-            HttpResponse::InternalServerError()
-                .content_type("text/plain")
-                .body(format!("# ERROR: {e}\n"))
-        }
-    }
+pub async fn report_handler(reliability: &Arc<PushReliability>) -> Result<HttpResponse> {
+    reliability.gc().await?;
+    let report = gen_report(reliability.report().await?)?;
+    Ok(HttpResponse::Ok()
+        .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
+        .body(report))
 }
 
 #[cfg(test)]
