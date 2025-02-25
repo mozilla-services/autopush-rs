@@ -33,3 +33,4 @@ autoconnect_common = { workspace = true, features = ["test-support"] }
 
 [features]
 reliable_report = []
+urgency = ["autoconnect_common/urgency"]
