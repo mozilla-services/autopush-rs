@@ -6,8 +6,8 @@ CARGO = cargo
 TESTS_DIR := `pwd`/tests
 TEST_RESULTS_DIR ?= workspace/test-results
 
-# In order to be consumed by the ETE Test Metric Pipeline, files need to follow a strict naming
-# convention: {job_number}__{utc_epoch_datetime}__{workflow}__{test_suite}__results{-index}.xml
+# In order to be consumed by the ETE Test Metric Pipeline, files need to follow a strict naming convention:
+# {job_number}__{utc_epoch_datetime}__{repository}__{workflow}__{test_suite}__results{-index}.xml
 WORKFLOW := build-test-deploy
 EPOCH_TIME := $(shell date +"%s")
 TEST_FILE_PREFIX := $(if $(CIRCLECI),$(CIRCLE_BUILD_NUM)__$(EPOCH_TIME)__$(CIRCLE_PROJECT_REPONAME)__$(WORKFLOW)__)
