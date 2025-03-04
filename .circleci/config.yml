@@ -20,7 +20,62 @@
 version: 2.1
 
 orbs:
+  gcp-cli: circleci/gcp-cli@3.3.0
   gcp-gcr: circleci/gcp-gcr@0.16.3
+
+executors:
+  audit-executor:
+    docker:
+      # NOTE: update version for all # RUST_VER
+      - image: rust:1.85
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+  python-checks-executor:
+    docker:
+      - image: python:3.12-slim-bookworm
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+  rust-checks-executor:
+    docker:
+      - image: python:3.12-slim-bookworm
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        environment:
+          RUST_BACKTRACE: 1
+          RUST_TEST_THREADS: 1
+  unit-test-executor:
+    docker:
+      - image: python:3.12-slim-bookworm
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        environment:
+          RUST_BACKTRACE: 1
+          RUST_TEST_THREADS: 1
+      - image: google/cloud-sdk:latest
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+        command: gcloud beta emulators bigtable start --host-port=localhost:8086
+  integration-test-executor:
+    docker:
+      - image: cimg/base:2025.02
+        environment:
+          RUST_BACKTRACE: 1
+  build-executor:
+    docker:
+      - image: docker:18.03.0-ce
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
+  build-test-container-executor:
+    docker:
+      - image: cimg/base:2025.02
+
+
 
 commands:
   docker_login:
@@ -53,14 +108,14 @@ commands:
             apt install build-essential curl libstdc++6 libstdc++-12-dev clang libssl-dev pkg-config -y
             apt install cmake -y
             # RUST_VER
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.83 -y
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain 1.85 -y
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
   build_applications:
     steps:
       - run:
-          name: Build Applicatins
+          name: Build Applications
           command: cargo build --features=emulator
   setup_bigtable:
     steps:
@@ -109,15 +164,34 @@ commands:
             pip install --upgrade pip
             pip install poetry==2.0.0
 
+  upload_to_gcs:
+    parameters:
+      source:
+        type: string
+      destination:
+        type: string
+      extension:
+        type: enum
+        enum: ["xml", "json"]
+    steps:
+      - run:
+          name: Upload << parameters.source >> << parameters.extension >> Files to GCS
+          when: always  # Ensure the step runs even if previous steps, like test runs, fail
+          command: |
+            if [ "$CIRCLE_BRANCH" = "master" ]; then
+              FILES=$(ls -1 << parameters.source>>/*.<< parameters.extension>> )
+              if [ -z "$FILES" ]; then
+                echo "No << parameters.extension >> files found in << parameters.source >>/"
+                exit 1
+              fi
+              gsutil cp $FILES << parameters.destination >>
+            else
+              echo "Skipping artifact upload, not on 'master' branch."
+            fi
+
 jobs:
   audit:
-    docker:
-      # NOTE: update version for all # RUST_VER
-      - image: rust:1.83
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-
+    executor: audit-executor
     resource_class: large
     steps:
       - checkout
@@ -130,11 +204,7 @@ jobs:
           command: cargo audit
 
   python-checks:
-    docker:
-      - image: python:3.12-slim-bookworm
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
+    executor: python-checks-executor
     steps:
       - checkout
       - run:
@@ -153,13 +223,11 @@ jobs:
           command: make lint
 
   test-integration:
-    docker:
-      - image: cimg/base:2024.06
-        environment:
-          RUST_BACKTRACE: 1
+    executor: integration-test-executor
     resource_class: large
     steps:
       - checkout
+      - gcp-cli/setup
       - setup_remote_docker:
           docker_layer_caching: true
       - attach_workspace:
@@ -171,36 +239,23 @@ jobs:
             docker load -i /tmp/cache/autopush-integration-tests.tar
             docker tag autopush-integration-tests integration-tests
       - run:
-          name: Integration tests (Bigtable)
-          command: |
-            make integration-test
-            cp ~/project/tests/integration/integration_test_results.xml ~/project/workspace/test-results/integration_test_results.xml
-      - store_artifacts:
-          path: ~/project/workspace/test-results/integration_test_results.xml
-          destination: integration_test_results.xml
+          name: Integration tests
+          command: make integration-test
       - store_test_results:
           path: workspace/test-results
+      - upload_to_gcs:
+          source: workspace/test-results
+          destination: gs://ecosystem-test-eng-metrics/autopush-rs/junit
+          extension: xml
 
   test-unit:
-    docker:
-      - image: python:3.12-slim-bookworm
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        environment:
-          RUST_BACKTRACE: 1
-          RUST_TEST_THREADS: 1
-      - image: google/cloud-sdk:latest
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        command: gcloud beta emulators bigtable start --host-port=localhost:8086
+    executor: unit-test-executor
     resource_class: 2xlarge
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
-      # Need to download the poetry.lock files so we can use their
+      # Need to download the poetry.lock files, so we can use their
       # checksums in restore_cache.
       - restore_test_cache:
           cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
@@ -208,6 +263,7 @@ jobs:
       - setup_rust
       - setup_cbt
       - setup_bigtable
+      - gcp-cli/setup
       - run:
           name: Install cargo-nextest
           command: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
@@ -218,41 +274,36 @@ jobs:
       - run:
           name: Install cargo-llvm-cov
           command: cargo install cargo-llvm-cov
-      # Note: This build can potentially exceed the amount of memory availble to the CircleCI instance.
+      # Note: This build can potentially exceed the amount of memory available to the CircleCI instance.
       # We've seen that limiting the number of jobs helps reduce the frequency of this. (Note that
       # when doing discovery, we found that the docker image `meminfo` and `cpuinfo` often report
       # the machine level memory and CPU which are far higher than the memory allocated to the docker
       # instance. This may be causing rust to be overly greedy triggering the VM to OOM the process.)
       - run:
-          name: Report tests and coverage
+          name: Unit tests
           command: |
-            cargo llvm-cov --summary-only --json --output-path workspace/test-results/cov.json nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
-      - store_artifacts:
-          path: ~/project/workspace/test-results/cov.json
-          destination: cov.json
-      - store_artifacts:
-          path: ~/project/target/nextest/ci/junit.xml
-          destination: junit.xml
+            make unit-test
       - store_test_results:
-          path: target/nextest/ci
+          path: workspace/test-results
+      - upload_to_gcs:
+          source: workspace/test-results
+          destination: gs://ecosystem-test-eng-metrics/autopush-rs/junit
+          extension: xml
+      - upload_to_gcs:
+          source: workspace/test-results
+          destination: gs://ecosystem-test-eng-metrics/autopush-rs/coverage
+          extension: json
       - save_test_cache:
           cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
 
   rust-checks:
-    docker:
-      - image: python:3.12-slim-bookworm
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
-        environment:
-          RUST_BACKTRACE: 1
-          RUST_TEST_THREADS: 1
+    executor: rust-checks-executor
     resource_class: large
     environment:
       BIGTABLE_EMULATOR_HOST: localhost:8086
     steps:
       - checkout
-      # Need to download the poetry.lock files so we can use their
+      # Need to download the poetry.lock files, so we can use their
       # checksums in restore_cache.
       - restore_test_cache:
           cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
@@ -268,11 +319,7 @@ jobs:
             cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
 
   build:
-    docker:
-      - image: docker:18.03.0-ce
-        auth:
-          username: $DOCKER_USER
-          password: $DOCKER_PASS
+    executor: build-executor
     resource_class: large
     working_directory: /dockerflow
     parameters:
@@ -317,8 +364,7 @@ jobs:
             - <<parameters.image>>.tar
 
   build-test-container:
-    docker:
-      - image: cimg/base:2024.06
+    executor: build-test-container-executor
     parameters:
       image:
         type: string
@@ -342,8 +388,7 @@ jobs:
             - << parameters.image >>.tar
 
   build-integration-test-container:
-    docker:
-      - image: cimg/base:2024.06
+    executor: build-test-container-executor
     resource_class: large
     parameters:
       image:
@@ -445,7 +490,7 @@ workflows:
             tags:
               only: /.*/
       - test-unit:
-          name: Rust Unit Tests
+          name: Unit Tests
           filters:
             tags:
               only: /.*/
@@ -454,7 +499,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-
       - build:
           name: build-autoconnect
           image: autoconnect
@@ -463,7 +507,6 @@ workflows:
           filters:
             tags:
               only: /.*/
-
       - build:
           name: build-autoendpoint
           image: autoendpoint
@@ -502,8 +545,8 @@ workflows:
           image: autoconnect
           requires:
             - build-autoconnect
+            - Unit Tests
             - Integration Tests
-            - Rust Unit Tests
             - Rust Formatting Check
           filters:
             tags:
@@ -516,8 +559,8 @@ workflows:
           image: autoendpoint
           requires:
             - build-autoendpoint
+            - Unit Tests
             - Integration Tests
-            - Rust Unit Tests
             - Rust Formatting Check
           filters:
             tags:
