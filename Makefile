@@ -5,6 +5,17 @@ CARGO = cargo
 # Let's be very explicit about it for now.
 TESTS_DIR := `pwd`/tests
 TEST_RESULTS_DIR ?= workspace/test-results
+
+# In order to be consumed by the ETE Test Metric Pipeline, files need to follow a strict naming convention:
+# {job_number}__{utc_epoch_datetime}__{repository}__{workflow}__{test_suite}__results{-index}.xml
+WORKFLOW := build-test-deploy
+EPOCH_TIME := $(shell date +"%s")
+TEST_FILE_PREFIX := $(if $(CIRCLECI),$(CIRCLE_BUILD_NUM)__$(EPOCH_TIME)__$(CIRCLE_PROJECT_REPONAME)__$(WORKFLOW)__)
+UNIT_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)unit__results.xml
+UNIT_COVERAGE_JSON := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)unit__coverage.json
+INTEGRATION_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integration__results.xml
+INTEGRATION_JUNIT_XML_LEGACY := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integration__legacy-results.xml
+
 # NOTE: Do not be clever.
 # The integration tests (and a few others) use pytest markers to control
 # the tests that are being run. These markers are set and defined within
@@ -39,12 +50,23 @@ upgrade:
 	$(CARGO) upgrade
 	$(CARGO) update
 
+.ONESHELL:
+unit-test:
+	cargo llvm-cov --summary-only --json --output-path $(UNIT_COVERAGE_JSON) \
+	  nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
+	exit_code=$?
+	mv target/nextest/ci/junit.xml $(UNIT_JUNIT_XML)
+	exit $$exit_code
+
 build-integration-test:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml build
 
+.ONESHELL:
 integration-test:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
-	docker cp integration-tests:/code/integration_test_results.xml $(INTEGRATION_TEST_DIR)
+	exit_code=$?
+	docker cp integration-tests:/code/integration__results.xml $(INTEGRATION_JUNIT_XML)
+	exit $$exit_code
 
 integration-test-clean:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml down
@@ -54,14 +76,14 @@ integration-test-legacy: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
-		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_legacy_results.xml \
+		--junit-xml=$(INTEGRATION_JUNIT_XML_LEGACY) \
 		-v $(PYTEST_ARGS)
 
 integration-test-local: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
 	$(POETRY) run pytest $(INTEGRATION_TEST_FILE) \
-		--junit-xml=$(TEST_RESULTS_DIR)/integration_test_results.xml \
+		--junit-xml=$(INTEGRATION_JUNIT_XML) \
 		-v $(PYTEST_ARGS)
 
 notification-test:
