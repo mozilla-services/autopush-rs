@@ -86,7 +86,7 @@ pub trait DbClient: Send + Sync {
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()>;
 
     /// Delete a notification
-    async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()>;
+    async fn remove_message(&self, uaid: &Uuid, chidmessageid: &str) -> DbResult<()>;
 
     /// Check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool>;

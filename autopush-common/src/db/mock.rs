@@ -91,8 +91,8 @@ impl DbClient for Arc<MockDbClient> {
         Arc::as_ref(self).increment_storage(uaid, timestamp).await
     }
 
-    async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        Arc::as_ref(self).remove_message(uaid, sort_key).await
+    async fn remove_message(&self, uaid: &Uuid, chidmessageid: &str) -> DbResult<()> {
+        Arc::as_ref(self).remove_message(uaid, chidmessageid).await
     }
 
     #[cfg(feature = "reliable_report")]
