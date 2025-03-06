@@ -128,7 +128,6 @@ impl WebPushClient {
             if msg.sortkey_timestamp.is_none() {
                 expired_messages.push(msg.clone());
             }
-            // XXX: record ReliabilityState::Expired?
             false
         });
         // TODO: A batch remove_messages would be nicer

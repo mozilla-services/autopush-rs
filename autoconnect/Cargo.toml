@@ -58,6 +58,7 @@ bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
 log_vapid = []
 reliable_report = [
+    "autoconnect_common/reliable_report",
     "autoconnect_settings/reliable_report",
     "autoconnect_web/reliable_report",
     "autoconnect_ws/reliable_report",
