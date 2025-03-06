@@ -53,8 +53,7 @@ upgrade:
 .ONESHELL:
 unit-test:
 	cargo llvm-cov --summary-only --json --output-path $(UNIT_COVERAGE_JSON) \
-	  nextest --features=emulator --features=bigtable --jobs=2 --profile=ci
-	exit_code=$?
+	  nextest --features=emulator --features=bigtable --jobs=2 --profile=ci || { exit_code=$$?; }
 	mv target/nextest/ci/junit.xml $(UNIT_JUNIT_XML)
 	exit $$exit_code
 
@@ -63,8 +62,7 @@ build-integration-test:
 
 .ONESHELL:
 integration-test:
-	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests
-	exit_code=$?
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests || { exit_code=$$?; }
 	docker cp integration-tests:/code/integration__results.xml $(INTEGRATION_JUNIT_XML)
 	exit $$exit_code
 
