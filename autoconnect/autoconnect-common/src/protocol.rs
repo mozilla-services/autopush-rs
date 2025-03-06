@@ -85,11 +85,13 @@ impl FromStr for ClientMessage {
 ///
 #[derive(Debug, Deserialize)]
 pub struct ClientAck {
-    // The channel_id which received messages
+    /// The channel_id which received messages
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
-    // The corresponding version number for the message.
+    /// The corresponding version number for the message.
     pub version: String,
+    /// An optional code categorizing the status of the ACK
+    pub code: Option<u16>,
 }
 
 #[derive(Debug, Serialize)]
