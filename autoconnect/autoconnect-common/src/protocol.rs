@@ -94,6 +94,17 @@ pub struct ClientAck {
     pub code: Option<u16>,
 }
 
+impl ClientAck {
+    #[cfg(feature = "reliable_report")]
+    pub fn reliability_state(&self) -> autopush_common::reliability::ReliabilityState {
+        match self.code.unwrap_or(100) {
+            101 => autopush_common::reliability::ReliabilityState::Delivered,
+            102 => autopush_common::reliability::ReliabilityState::Delivered,
+            _ => autopush_common::reliability::ReliabilityState::Delivered,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "messageType", rename_all = "snake_case")]
 pub enum ServerMessage {

@@ -44,6 +44,10 @@ pub enum ReliabilityState {
     Accepted, // Message was accepted for delivery by the UA
     #[serde(rename = "delivered")]
     Delivered, // Message was provided to the WebApp recipient by the UA
+    #[serde(rename = "decryption_error")]
+    DecryptionError, // XXX: Message was provided to the WebApp recipient by the UA
+    #[serde(rename = "not_delivered")]
+    NotDelivered, // XXX: Message was provided to the WebApp recipient by the UA
     #[serde(rename = "expired")]
     Expired, // Message expired naturally (e.g. TTL=0)
 }
