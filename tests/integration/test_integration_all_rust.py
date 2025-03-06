@@ -1477,7 +1477,6 @@ async def test_internal_endpoints(
         async with httpx.AsyncClient() as httpx_client:
             res = await httpx_client.put(url, timeout=30)
             res.raise_for_status()
-
     try:
         async with httpx.AsyncClient() as httpx_client:
             res = await httpx_client.put(parsed.geturl(), timeout=30)
@@ -1488,6 +1487,7 @@ async def test_internal_endpoints(
         assert e.response.status_code == 404
     else:
         assert False
+    assert False #TODO remove
 
 
 @pytest.mark.parametrize(
