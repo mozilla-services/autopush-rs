@@ -64,6 +64,8 @@ impl std::fmt::Display for ReliabilityState {
             Self::IntAccepted => "accepted_webpush",
             Self::Accepted => "accepted",
             Self::Delivered => "delivered",
+            Self::DecryptionError => "decryption_error",
+            Self::NotDelivered => "not_delivered",
             Self::Expired => "expired",
         })
     }
@@ -82,6 +84,8 @@ impl std::str::FromStr for ReliabilityState {
             "transmitted_webpush" => Self::IntTransmitted,
             "accepted_webpush" => Self::IntAccepted,
             "delivered" => Self::Delivered,
+            "decryption_error" => Self::DecryptionError,
+            "not_delivered" => Self::NotDelivered,
             "expired" => Self::Expired,
             _ => {
                 return Err(
@@ -300,6 +304,7 @@ pub async fn report_handler(reliability: &Arc<PushReliability>) -> Result<HttpRe
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     use super::*;
     use redis_test::{MockCmd, MockRedisConnection};
@@ -322,6 +327,31 @@ mod tests {
         // sample the first and last values.
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{acpt}\"}} 111")));
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{trns}\"}} 444")));
+    }
+
+    #[test]
+    fn state_ser() {
+        assert_eq!(
+            ReliabilityState::from_str("delivered").unwrap(),
+            ReliabilityState::Delivered
+        );
+        assert_eq!(
+            ReliabilityState::from_str("accepted_webpush").unwrap(),
+            ReliabilityState::IntAccepted
+        );
+        assert_eq!(
+            serde_json::from_str::<ReliabilityState>(r#""accepted_webpush""#).unwrap(),
+            ReliabilityState::IntAccepted
+        );
+
+        assert_eq!(
+            ReliabilityState::IntAccepted.to_string(),
+            "accepted_webpush"
+        );
+        assert_eq!(
+            serde_json::to_string(&ReliabilityState::IntAccepted).unwrap(),
+            r#""accepted_webpush""#
+        );
     }
 
     #[actix_rt::test]

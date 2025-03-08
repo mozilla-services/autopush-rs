@@ -98,8 +98,9 @@ impl ClientAck {
     #[cfg(feature = "reliable_report")]
     pub fn reliability_state(&self) -> autopush_common::reliability::ReliabilityState {
         match self.code.unwrap_or(100) {
-            101 => autopush_common::reliability::ReliabilityState::Delivered,
-            102 => autopush_common::reliability::ReliabilityState::Delivered,
+            101 => autopush_common::reliability::ReliabilityState::DecryptionError,
+            102 => autopush_common::reliability::ReliabilityState::NotDelivered,
+            // 100 (ignore/treat anything else as 100)
             _ => autopush_common::reliability::ReliabilityState::Delivered,
         }
     }
