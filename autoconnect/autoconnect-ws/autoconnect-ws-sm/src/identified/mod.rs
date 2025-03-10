@@ -12,7 +12,7 @@ use autoconnect_common::{
 
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
-    db::User,
+    db::{Urgency, User},
     notification::Notification,
     util::{ms_since_epoch, user_agent::UserAgentInfo},
 };
@@ -297,6 +297,8 @@ pub struct ClientFlags {
     pub old_record_version: bool,
     /// First time a user has connected "today"
     pub emit_channel_metrics: bool,
+    /// Minimum urgency
+    pub min_urgency: Urgency,
 }
 
 impl Default for ClientFlags {
@@ -307,6 +309,7 @@ impl Default for ClientFlags {
             check_storage: false,
             old_record_version: false,
             emit_channel_metrics: false,
+            min_urgency: Urgency::VeryLow,
         }
     }
 }
