@@ -52,6 +52,7 @@ pub enum ReliabilityState {
     DecryptionError, // Message was provided to the UA and it reported a decryption error
     NotDelivered,    // Message was provided to the UA and it reported a not delivered error
     Expired,         // Message expired naturally (e.g. TTL=0)
+    Errored,         // Message resulted in an Error state and failed to be delivered.
 }
 
 #[derive(Clone)]
