@@ -39,6 +39,7 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
+strum.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 url.workspace = true

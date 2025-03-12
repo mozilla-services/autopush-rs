@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     gnupg2 \
+    xz-utils \
     libgtk-3-0 \
     libdbus-glib-1-2 \
     libxt6 \
@@ -33,7 +34,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdrm2 \
     libgbm1 \
     libatspi2.0-0 \
-    bzip2 \
     libglib2.0-0 \
     libnss3 \
     libgconf-2-4 \
@@ -42,9 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean -y
 
 # Download and install the latest Firefox release
-RUN wget -O firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US" \
-    && tar -xjf firefox.tar.bz2 -C /opt/ \
-    && rm firefox.tar.bz2 \
+RUN wget -O - "https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US" | tar -xJ -C /opt/ \
     && ln -s /opt/firefox/firefox /usr/local/bin/firefox
 
 # Install GeckoDriver

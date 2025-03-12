@@ -14,7 +14,7 @@ use prometheus_client::{
 use redis::{Commands, ConnectionLike};
 
 use crate::db::client::DbClient;
-use crate::errors::{ApcError, ApcErrorKind, Result};
+use crate::errors::{ApcErrorKind, Result};
 use crate::util::timing::sec_since_epoch;
 
 // Redis Keys
@@ -26,79 +26,32 @@ const CONNECTION_EXPIRATION: Duration = Duration::from_secs(10);
 
 /// The various states that a message may transit on the way from reception to delivery.
 // Note: "Message" in this context refers to the Subscription Update.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-pub enum ReliabilityState {
-    #[serde(rename = "received")]
-    Received, // Message was received by the Push Server
-    #[serde(rename = "stored")]
-    Stored, // Message was stored because it could not be delivered immediately
-    #[serde(rename = "retrieved")]
-    Retrieved, // Message was taken from storage for delivery
-    #[serde(rename = "transmitted_webpush")]
-    IntTransmitted, // Message was handed off between autoendpoint and autoconnect
-    #[serde(rename = "accepted_webpush")]
-    IntAccepted, // Message was accepted by autoconnect from autopendpoint
-    #[serde(rename = "transmitted")]
-    Transmitted, // Message was handed off for delivery to the UA
-    #[serde(rename = "accepted")]
-    Accepted, // Message was accepted for delivery by the UA
-    #[serde(rename = "delivered")]
-    Delivered, // Message was provided to the WebApp recipient by the UA
-    #[serde(rename = "expired")]
-    Expired, // Message expired naturally (e.g. TTL=0)
-    #[serde(rename = "errored")]
-    Errored, // Message errored out for some reason during delivery.
-}
-
 // TODO: Differentiate between "transmitted via webpush" and "transmitted via bridge"?
-impl std::fmt::Display for ReliabilityState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Received => "received",
-            Self::Stored => "stored",
-            Self::Retrieved => "retrieved",
-            Self::Transmitted => "transmitted",
-            Self::IntTransmitted => "transmitted_webpush",
-            Self::IntAccepted => "accepted_webpush",
-            Self::Accepted => "accepted",
-            Self::Delivered => "delivered",
-            Self::Expired => "expired",
-            Self::Errored => "errored",
-        })
-    }
-}
-
-impl std::str::FromStr for ReliabilityState {
-    type Err = ApcError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(match s.to_lowercase().as_str() {
-            "received" => Self::Received,
-            "stored" => Self::Stored,
-            "retrieved" => Self::Retrieved,
-            "transmitted" => Self::Transmitted,
-            "accepted" => Self::Accepted,
-            "transmitted_webpush" => Self::IntTransmitted,
-            "accepted_webpush" => Self::IntAccepted,
-            "delivered" => Self::Delivered,
-            "expired" => Self::Expired,
-            "errored" => Self::Errored,
-            _ => {
-                return Err(
-                    ApcErrorKind::GeneralError(format!("Unknown tracker state \"{}\"", s)).into(),
-                );
-            }
-        })
-    }
-}
-
-impl serde::Serialize for ReliabilityState {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Deserialize,
+    serde::Serialize,
+    strum::Display,
+    strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ReliabilityState {
+    Received,        // Message was received by the Push Server
+    Stored,          // Message was stored because it could not be delivered immediately
+    Retrieved,       // Message was taken from storage for delivery
+    IntTransmitted,  // Message was handed off between autoendpoint and autoconnect
+    IntAccepted,     // Message was accepted by autoconnect from autopendpoint
+    Transmitted,     // Message was handed off for delivery to the UA
+    Accepted,        // Message was accepted for delivery by the UA
+    Delivered,       // Message was provided to the WebApp recipient by the UA
+    DecryptionError, // Message was provided to the UA and it reported a decryption error
+    NotDelivered,    // Message was provided to the UA and it reported a not delivered error
+    Expired,         // Message expired naturally (e.g. TTL=0)
 }
 
 #[derive(Clone)]
@@ -289,35 +242,18 @@ pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
     Ok(encoded)
 }
 
-pub async fn report_handler(reliability: &Arc<PushReliability>) -> HttpResponse {
-    if let Err(err) = reliability.gc().await {
-        error!("🔍🟥 Reporting, Error {:?}", &err);
-        return HttpResponse::InternalServerError()
-            .content_type("text/plain")
-            .body(format!("# ERROR: {err}\n"));
-    };
-    match reliability.report().await {
-        Ok(values) => match gen_report(values) {
-            Ok(report) => HttpResponse::Ok()
-                .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
-                .body(report),
-            Err(e) => HttpResponse::InternalServerError()
-                .content_type("text/plain")
-                .body(format!("# ERROR: {e}\n")),
-        },
-        Err(e) => {
-            error!("🔍🟥 Reporting, Error {:?}", &e);
-            // NOTE: This will NOT be read by Prometheus, but serves as a diagnostic message.
-            HttpResponse::InternalServerError()
-                .content_type("text/plain")
-                .body(format!("# ERROR: {e}\n"))
-        }
-    }
+pub async fn report_handler(reliability: &Arc<PushReliability>) -> Result<HttpResponse> {
+    reliability.gc().await?;
+    let report = gen_report(reliability.report().await?)?;
+    Ok(HttpResponse::Ok()
+        .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
+        .body(report))
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     use super::*;
     use redis_test::{MockCmd, MockRedisConnection};
@@ -340,6 +276,28 @@ mod tests {
         // sample the first and last values.
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{acpt}\"}} 111")));
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{trns}\"}} 444")));
+    }
+
+    #[test]
+    fn state_ser() {
+        assert_eq!(
+            ReliabilityState::from_str("delivered").unwrap(),
+            ReliabilityState::Delivered
+        );
+        assert_eq!(
+            ReliabilityState::from_str("int_accepted").unwrap(),
+            ReliabilityState::IntAccepted
+        );
+        assert_eq!(
+            serde_json::from_str::<ReliabilityState>(r#""int_accepted""#).unwrap(),
+            ReliabilityState::IntAccepted
+        );
+
+        assert_eq!(ReliabilityState::IntAccepted.to_string(), "int_accepted");
+        assert_eq!(
+            serde_json::to_string(&ReliabilityState::IntAccepted).unwrap(),
+            r#""int_accepted""#
+        );
     }
 
     #[actix_rt::test]

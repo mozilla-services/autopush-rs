@@ -73,22 +73,18 @@ class BigtableScanner:
         raw_rows = await table.read_rows(query=rrquery)
         result = {}
         # Meta information about each record
-        max_time = 0
+        max_time = mean_time = 0
         min_time = 1000
-        mean_time = 0
         start_time = time.time()
         milestone_log = {}
-        frequency = {}
 
         # Meta information about all records
         success_count = fail_count = row_count = expired_count = 0
 
         # Iterate over the rows and collect interesting bits of info
-        for row in raw_rows:
-            row_count += 1
+        for row_count, row in enumerate(raw_rows, start=1):
             milestones = OrderedDict()
-            successful = False
-            expired = False
+            successful = expired = False
             total_time = 0
             for cell in row.cells:
                 milestone = bytearray(cell.qualifier).decode()
@@ -200,8 +196,8 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         "-b",
         help="Database DSN connection string",
         default=env_args.get(
-            "AUTOEND_DB_DSN",
-            env_args.get("AUTOCONNECT_DB_DSN", "grpc://localhost:8086"),
+            "AUTOEND__DB_DSN",
+            env_args.get("AUTOCONNECT__DB_DSN", "grpc://localhost:8086"),
         ),
     )
     parser.add_argument(
@@ -209,9 +205,9 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         "-s",
         help="Database settings",
         default=env_args.get(
-            "AUTOEND_DB_SETTINGS",
+            "AUTOEND__DB_SETTINGS",
             env_args.get(
-                "AUTOCONNECT_DB_SETTINGS",
+                "AUTOCONNECT__DB_SETTINGS",
                 '{"message_family":"message","router_family":"router", "table_name":"projects/test/instances/test/tables/autopush"}',
             ),
         ),
