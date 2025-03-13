@@ -88,7 +88,7 @@ class BigtableScanner:
             total_time = 0
             for cell in row.cells:
                 milestone = bytearray(cell.qualifier).decode()
-                timestamp = int.from_bytes(cell.value) * 0.000000001
+                timestamp = int.from_bytes(cell.value) * 0.001
                 if timestamp < start_time:
                     start_time = timestamp
                 # record by timestamp so we can determine how long things took
