@@ -16,7 +16,7 @@ import logging
 import os
 import time
 from typing import cast
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from datetime import datetime
 
 import jinja2
@@ -76,7 +76,7 @@ class BigtableScanner:
         max_time = mean_time = 0
         min_time = 1000
         start_time = time.time()
-        milestone_log = {}
+        milestone_log = defaultdict(lambda: dict(count=0, total_time=0, average_time=0))
 
         # Meta information about all records
         success_count = fail_count = row_count = expired_count = 0
@@ -109,13 +109,12 @@ class BigtableScanner:
                     operation_length = list(milestone_keys)[index + 1] - timestamp
                 except IndexError:
                     operation_length = 0
-                original = milestone_log.get(milestone, {})
-                milestone_log[milestone] = {
-                    "count": original.get("count", 0) + 1,
-                    "total_time": original.get("total_time", 0) + operation_length,
-                    "average_time": (original.get("average_time", 0) + operation_length)
-                    / original.get("count", 1),
-                }
+                log = milestone_log[milestone]
+                log["count"] += 1
+                log["total_time"] += operation_length
+                log["average_time"] = (log["average_time"] + operation_length) / log[
+                    "count"
+                ]
 
             key_list = list(timed_milestones.keys())
             total_time = key_list[-1] - key_list[0]
