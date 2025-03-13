@@ -85,11 +85,25 @@ impl FromStr for ClientMessage {
 ///
 #[derive(Debug, Deserialize)]
 pub struct ClientAck {
-    // The channel_id which received messages
+    /// The channel_id which received messages
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
-    // The corresponding version number for the message.
+    /// The corresponding version number for the message.
     pub version: String,
+    /// An optional code categorizing the status of the ACK
+    pub code: Option<u16>,
+}
+
+impl ClientAck {
+    #[cfg(feature = "reliable_report")]
+    pub fn reliability_state(&self) -> autopush_common::reliability::ReliabilityState {
+        match self.code.unwrap_or(100) {
+            101 => autopush_common::reliability::ReliabilityState::DecryptionError,
+            102 => autopush_common::reliability::ReliabilityState::NotDelivered,
+            // 100 (ignore/treat anything else as 100)
+            _ => autopush_common::reliability::ReliabilityState::Delivered,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]

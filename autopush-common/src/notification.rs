@@ -28,6 +28,7 @@ pub struct Notification {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reliability_id: Option<String>,
     #[cfg(feature = "reliable_report")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reliable_state: Option<crate::reliability::ReliabilityState>,
 }
 
