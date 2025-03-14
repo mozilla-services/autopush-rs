@@ -235,11 +235,8 @@ impl WebPushClient {
                     // ack'd (removed/unable to be resurrected) until increment_storage is called,
                     // so their reliability is recorded there
                     #[cfg(feature = "reliable_report")]
-                    n.record_reliability(
-                        &self.app_state.reliability,
-                        autopush_common::reliability::ReliabilityState::Delivered,
-                    )
-                    .await;
+                    n.record_reliability(&self.app_state.reliability, notif.reliability_state())
+                        .await;
                 }
                 let n = self.ack_state.unacked_stored_notifs.remove(pos);
                 #[cfg(feature = "reliable_report")]

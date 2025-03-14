@@ -57,6 +57,13 @@ pub async fn push_route(
             .await;
         HttpResponse::Ok().finish()
     } else {
+        #[cfg(feature = "reliable_report")]
+        notif
+            .record_reliability(
+                &app_state.reliability,
+                autopush_common::reliability::ReliabilityState::Errored,
+            )
+            .await;
         HttpResponse::NotFound().body("Client not available")
     }
 }

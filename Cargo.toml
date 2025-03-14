@@ -88,6 +88,7 @@ slog-mozlog-json = "0.1"
 slog-scope = "4.4"
 slog-stdlog = "4.1"
 slog-term = "2.6"
+strum = { version = "0.27", features = ["derive"] }
 thiserror = "1.0"
 tokio = "1.38"
 tokio-compat-02 = "0.2"
