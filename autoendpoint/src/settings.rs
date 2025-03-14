@@ -16,7 +16,6 @@ pub const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct Settings {
     pub scheme: String,
     pub host: String,
@@ -135,6 +134,7 @@ impl Settings {
             }
         })?;
 
+        dbg!(&built);
         Ok(built)
     }
 
