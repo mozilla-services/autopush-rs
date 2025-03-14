@@ -134,7 +134,6 @@ impl Settings {
             }
         })?;
 
-        dbg!(&built);
         Ok(built)
     }
 
