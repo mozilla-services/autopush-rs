@@ -145,6 +145,7 @@ impl PushReliability {
             });
     }
 
+    /// Perform a garbage collection cycle on a reliability object.
     pub async fn gc(&self) -> Result<()> {
         if let Some(client) = &self.client {
             debug!("🔍 performing pre-report garbage collection");
@@ -155,6 +156,10 @@ impl PushReliability {
         Ok(())
     }
 
+    /// Perform the `garbage collection` cycle. This will scan the currently known timetamp
+    /// indexed entries in redis looking for "expired" data, and then rectify the counts to
+    /// indicate the final states. This is because many of the storage systems do not provide
+    /// indicators when data reaches a TTL.
     pub(crate) async fn internal_gc<C: ConnectionLike>(
         &self,
         conn: &mut C,
@@ -215,6 +220,10 @@ const METRIC_NAME: &str = "autopush_reliability";
 /// ignored by Prometheus, and is only provided to ensure that there is no intermediate
 /// caching occurring.
 ///
+/// The report endpoint currently is only provided by `autoendpoint`, even though the report
+/// is inclusive for all push milestones. This is done for simplicity, both for serving the
+/// data and for collection and management of the metrics.
+///
 pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
     let mut registry = Registry::default();
 
@@ -243,6 +252,7 @@ pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
     Ok(encoded)
 }
 
+/// Handle the `/metrics` request by returning a Prometheus compatible report.
 pub async fn report_handler(reliability: &Arc<PushReliability>) -> Result<HttpResponse> {
     reliability.gc().await?;
     let report = gen_report(reliability.report().await?)?;
