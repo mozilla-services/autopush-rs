@@ -1,3 +1,17 @@
+<a name="1.74.1"></a>
+## 1.74.1 (2025-03-18)
+
+
+#### Bug Fixes
+
+*   switch metrics to `/metrics` endpoint (#861) ([57eedaf4](https://github.com/mozilla-services/autopush-rs/commit/57eedaf4de899b3b66157ebc772b99a84fe7cc2c))
+
+#### Chore
+
+*   tag 1.74.0 (#860) ([17bbf04a](https://github.com/mozilla-services/autopush-rs/commit/17bbf04a3d6d0e6303a85bd6796f87971e832bc2))
+
+
+
 <a name="1.74.0"></a>
 ## 1.74.0 (2025-03-17)
 
