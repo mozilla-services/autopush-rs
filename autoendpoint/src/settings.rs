@@ -6,6 +6,8 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
+use autopush_common::util;
+
 use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
@@ -175,13 +177,18 @@ impl Settings {
     // TODO: this should return a Vec<[u8]> so that key formatting errors do not cause
     // false rejections. This is not a problem now since we have access to the source
     // public key, but that may not always be true.
-    pub fn tracking_keys(&self) -> Vec<String> {
+    pub fn tracking_keys(&self) -> Result<Vec<Vec<u8>>, ConfigError> {
         let keys = &self.tracking_keys.replace(['"', ' '], "");
-        let result = Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
-            .map(|v| v.to_owned().replace("=", ""))
-            .collect();
+        // I'm sure there's a more clever way to do this. I don't care. I want simple.
+        let mut result = Vec::new();
+        for v in Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS") {
+            result.push(
+                util::b64_decode(v)
+                    .map_err(|e| ConfigError::Message(format!("Invalid tracking key: {:?}", e)))?,
+            );
+        }
         trace!("🔍 tracking_keys: {result:?}");
-        result
+        Ok(result)
     }
 
     /// Get the URL for this endpoint server
@@ -196,16 +203,24 @@ impl Settings {
 }
 
 #[derive(Clone, Debug)]
-pub struct VapidTracker(pub Vec<String>);
+pub struct VapidTracker(pub Vec<Vec<u8>>);
 impl VapidTracker {
     /// Very simple string check to see if the Public Key specified in the Vapid header
     /// matches the set of trackable keys.
     pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
         // ideally, [Settings.with_env_and_config_file()] does the work of pre-populating
         // the Settings.tracking_vapid_pubs cache, but we can't rely on that.
-        let key = vapid.public_key.replace('=', "");
+        let key = match util::b64_decode(&vapid.public_key) {
+            Ok(v) => v,
+            Err(e) => {
+                // This error is not fatal, and should not happen often. During preliminary
+                // runs, however, we do want to try and spot them.
+                warn!("VAPID: tracker failure {e}");
+                return false;
+            }
+        };
         let result = self.0.contains(&key);
-        debug!("🔍 Checking {key} {}", {
+        debug!("🔍 Checking {:?} {}", util::b64_encode_url(&key), {
             if result {
                 "Match!"
             } else {
@@ -322,8 +337,9 @@ mod tests {
 
     #[test]
     fn test_tracking_keys() -> ApiResult<()> {
+        // Handle the case where the settings may use Standard encoding instead of Base64 encoding.
         let settings = Settings{
-            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7"]"#.to_owned(),
+            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon+H/boHTzMtMoNHsAGDlDB6X"]"#.to_owned(),
             ..Default::default()
         };
 
@@ -333,10 +349,10 @@ mod tests {
                 token: "".to_owned(),
                 version_data: crate::headers::vapid::VapidVersionData::Version1,
             },
-            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7==".to_owned()
+            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X==".to_owned()
         };
 
-        let key_set = settings.tracking_keys();
+        let key_set = settings.tracking_keys().unwrap();
         assert!(!key_set.is_empty());
 
         let reliability = VapidTracker(key_set);

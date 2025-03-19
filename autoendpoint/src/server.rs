@@ -61,7 +61,11 @@ impl Server {
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();
-        let reliability_filter = VapidTracker(settings.tracking_keys());
+        let reliability_filter = VapidTracker(
+            settings
+                .tracking_keys()
+                .map_err(|e| ApiErrorKind::General(format!("Configuration Error: {e}")))?,
+        );
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
             db_settings: if settings.db_settings.is_empty() {

@@ -45,6 +45,11 @@ pub fn b64_encode_std(input: &Vec<u8>) -> String {
     base64::engine::general_purpose::STANDARD_NO_PAD.encode(input)
 }
 
+/// Try to decode the string, first as URL safe, then as STD.
+pub fn b64_decode(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    b64_decode_url(input).or_else(|_| b64_decode_std(input))
+}
+
 pub fn deserialize_u32_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
