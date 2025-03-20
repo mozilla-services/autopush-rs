@@ -173,10 +173,10 @@ impl Settings {
             .collect()
     }
 
-    /// Get the list of tracking public keys
-    // TODO: this should return a Vec<[u8]> so that key formatting errors do not cause
-    // false rejections. This is not a problem now since we have access to the source
-    // public key, but that may not always be true.
+    /// Get the list of tracking public keys converted to raw, x962 format byte arrays.
+    /// (This avoids problems with formatting, padding, and other concerns. x962 precedes the
+    /// EC key pair with a `\04` byte. We'll keep that value in place for now, since the value we
+    /// are comparing against will also have the same prefix.)
     pub fn tracking_keys(&self) -> Result<Vec<Vec<u8>>, ConfigError> {
         let keys = &self.tracking_keys.replace(['"', ' '], "");
         // I'm sure there's a more clever way to do this. I don't care. I want simple.
