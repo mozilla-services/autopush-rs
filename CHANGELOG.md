@@ -1,3 +1,18 @@
+<a name="1.74.2"></a>
+## 1.74.2 (2025-03-20)
+
+
+#### Chore
+
+*   tag 1.74.1 (#862) ([d07ee886](https://github.com/mozilla-services/autopush-rs/commit/d07ee8866a04bda426508e59d1b3fa4657b1f3f1))
+
+#### Bug Fixes
+
+*   compare tracking keys in raw form. (#863) ([49a466b8](https://github.com/mozilla-services/autopush-rs/commit/49a466b89aba59640654c84e884f6839364ad636))
+*   Autoendpoint should be less strict about config options (#859) ([8598172d](https://github.com/mozilla-services/autopush-rs/commit/8598172d84a7139f2038f9b95ec1bca0413b3c9f))
+
+
+
 <a name="1.74.1"></a>
 ## 1.74.1 (2025-03-18)
 
