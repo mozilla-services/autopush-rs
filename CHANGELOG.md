@@ -1,3 +1,17 @@
+<a name="1.74.3"></a>
+## 1.74.3 (2025-03-21)
+
+
+#### Chore
+
+*   tag 1.74.2 (#864) ([cc0d8ee4](https://github.com/mozilla-services/autopush-rs/commit/cc0d8ee4ee7072a32ccc03243d6e9ce60897aa50))
+
+#### Bug Fixes
+
+*   Add diagnostic for stage (#865) ([470ea1c3](https://github.com/mozilla-services/autopush-rs/commit/470ea1c3556d7bb68a8d947d153a67969eba218e))
+
+
+
 <a name="1.74.2"></a>
 ## 1.74.2 (2025-03-20)
 
