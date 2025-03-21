@@ -177,6 +177,10 @@ impl Router for FcmRouter {
         let platform = "fcmv1";
         trace!("Sending message to {platform}: [{:?}]", &app_id);
         if let Err(e) = client.send(message_data, routing_token, ttl).await {
+            #[cfg(feature = "reliable_report")]
+            notification
+                .record_reliability(&self.reliability, ReliabilityState::Errored)
+                .await;
             return Err(handle_error(
                 e,
                 &self.metrics,

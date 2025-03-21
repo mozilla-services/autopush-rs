@@ -45,6 +45,26 @@ pub fn b64_encode_std(input: &Vec<u8>) -> String {
     base64::engine::general_purpose::STANDARD_NO_PAD.encode(input)
 }
 
+/// Try to decode the string, first as URL safe, then as STD.
+pub fn b64_decode(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    // This is very verbose, but for some reason the key on stage is failing.
+    // This code should help identify the cause and should be temporary.
+    match b64_decode_url(input) {
+        Ok(v) => Ok(v),
+        Err(base64::DecodeError::InvalidByte(pos, chr)) => {
+            warn!(
+                "Decode: invalid byte {:?} at {} in {:?}",
+                chr as char, pos, input
+            );
+            b64_decode_std(input)
+        }
+        Err(e) => {
+            warn!("Decode: Unexpected error {:?} for {:?}", &e, input);
+            Err(e)
+        }
+    }
+}
+
 pub fn deserialize_u32_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,

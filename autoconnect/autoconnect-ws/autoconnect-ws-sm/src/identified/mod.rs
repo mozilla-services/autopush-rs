@@ -237,8 +237,20 @@ impl WebPushClient {
         let uaid = self.uaid;
         let connected_at = self.connected_at;
         rt::spawn(async move {
+            #[cfg(not(feature = "reliable_report"))]
             app_state.db.save_messages(&uaid, notifs).await?;
-            // XXX: record reliability
+            #[cfg(feature = "reliable_report")]
+            {
+                app_state.db.save_messages(&uaid, notifs.clone()).await?;
+                for mut notif in notifs {
+                    notif
+                        .record_reliability(
+                            &app_state.reliability,
+                            autopush_common::reliability::ReliabilityState::Stored,
+                        )
+                        .await;
+                }
+            }
             debug!("Finished saving unacked direct notifs, checking for reconnect");
             let Some(user) = app_state.db.get_user(&uaid).await? else {
                 return Err(SMErrorKind::Internal(format!(
@@ -345,6 +357,10 @@ struct AckState {
     unacked_direct_notifs: Vec<Notification>,
     /// List of unAck'd sent notifications from storage
     unacked_stored_notifs: Vec<Notification>,
+    /// List of Ack'd timestamp notifications from storage, cleared
+    /// via `increment_storage`
+    #[cfg(feature = "reliable_report")]
+    acked_stored_timestamp_notifs: Vec<Notification>,
     /// Either the `current_timestamp` value in storage (returned from
     /// `fetch_messages`) or the last unAck'd timestamp Message's
     /// `sortkey_timestamp` (returned from `fetch_timestamp_messages`).

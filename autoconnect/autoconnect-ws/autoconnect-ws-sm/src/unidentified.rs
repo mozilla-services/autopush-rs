@@ -143,7 +143,7 @@ impl UnidentifiedClient {
                     check_storage: true,
                     old_record_version: user
                         .record_version
-                        .map_or(true, |rec_ver| rec_ver < USER_RECORD_VERSION),
+                        .is_none_or(|rec_ver| rec_ver < USER_RECORD_VERSION),
                     emit_channel_metrics: user.connected_at < ms_utc_midnight(),
                     min_urgency: user.urgency.unwrap_or(Urgency::VeryLow),
                     ..Default::default()

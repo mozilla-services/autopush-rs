@@ -219,16 +219,15 @@ impl WebPushClient {
                     "version" => &notif.version
                 );
                 // Get the stored notification record.
-                let n = &self.ack_state.unacked_stored_notifs[pos];
+                let n = &mut self.ack_state.unacked_stored_notifs[pos];
+                let is_topic = n.topic.is_some();
                 debug!("✅ Ack notif: {:?}", &n);
-                // TODO: Record "ack'd" reliability_id, if present.
                 // Only force delete Topic messages, since they don't have a timestamp.
                 // Other messages persist in the database, to be, eventually, cleaned up by their
                 // TTL. We will need to update the `CurrentTimestamp` field for the channel
                 // record. Use that field to set the baseline timestamp for when to pull messages
                 // in the future.
-                // Topic/legacy messages have no sortkey_timestamp
-                if n.sortkey_timestamp.is_none() {
+                if is_topic {
                     debug!(
                         "✅ WebPushClient:ack removing Stored, sort_key: {}",
                         &n.chidmessageid()
@@ -237,8 +236,18 @@ impl WebPushClient {
                         .db
                         .remove_message(&self.uaid, &n.chidmessageid())
                         .await?;
+                    // NOTE: timestamp messages may still be in state of flux: they're not fully
+                    // ack'd (removed/unable to be resurrected) until increment_storage is called,
+                    // so their reliability is recorded there
+                    #[cfg(feature = "reliable_report")]
+                    n.record_reliability(&self.app_state.reliability, notif.reliability_state())
+                        .await;
                 }
-                self.ack_state.unacked_stored_notifs.remove(pos);
+                let n = self.ack_state.unacked_stored_notifs.remove(pos);
+                #[cfg(feature = "reliable_report")]
+                if !is_topic {
+                    self.ack_state.acked_stored_timestamp_notifs.push(n);
+                }
                 self.stats.stored_acked += 1;
                 continue;
             };
