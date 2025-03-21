@@ -210,6 +210,7 @@ impl VapidTracker {
     pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
         // ideally, [Settings.with_env_and_config_file()] does the work of pre-populating
         // the Settings.tracking_vapid_pubs cache, but we can't rely on that.
+
         let key = match util::b64_decode(&vapid.public_key) {
             Ok(v) => v,
             Err(e) => {
@@ -220,7 +221,10 @@ impl VapidTracker {
             }
         };
         let result = self.0.contains(&key);
-        debug!("🔍 Checking {:?} {}", util::b64_encode_url(&key), {
+
+        // The following has been elevated for diagnostic purposes and should be returned as `debug` once
+        // reliability issues are addressed
+        warn!("🔍 Checking {:?} {}", &vapid.public_key, {
             if result {
                 "Match!"
             } else {
@@ -350,6 +354,32 @@ mod tests {
                 version_data: crate::headers::vapid::VapidVersionData::Version1,
             },
             public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X==".to_owned()
+        };
+
+        let key_set = settings.tracking_keys().unwrap();
+        assert!(!key_set.is_empty());
+
+        let reliability = VapidTracker(key_set);
+        assert!(reliability.is_trackable(&test_header));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_multi_tracking_keys() -> ApiResult<()> {
+        // Handle the case where the settings may use Standard encoding instead of Base64 encoding.
+        let settings = Settings{
+            tracking_keys: r#"[BLbZTvXsQr0rdvLQr73ETRcseSpoof5xV83NiPK9U-Qi00DjNJct1N6EZtTBMD0uh-nNjtLAxik1XP9CZXrKtTg,BHDgfiL1hz4oIBFaxxS9jkzyAVing-W9jjt_7WUeFjWS5Invalid5EjC8TQKddJNP3iow7UW6u8JE3t7u_y3Plc]"#.to_owned(),
+            ..Default::default()
+        };
+
+        let test_header = VapidHeaderWithKey {
+            vapid: VapidHeader {
+                scheme: "".to_owned(),
+                token: "".to_owned(),
+                version_data: crate::headers::vapid::VapidVersionData::Version1,
+            },
+            public_key: "BLbZTvXsQr0rdvLQr73ETRcseSpoof5xV83NiPK9U-Qi00DjNJct1N6EZtTBMD0uh-nNjtLAxik1XP9CZXrKtTg".to_owned()
         };
 
         let key_set = settings.tracking_keys().unwrap();
