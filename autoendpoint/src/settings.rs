@@ -222,9 +222,7 @@ impl VapidTracker {
         };
         let result = self.0.contains(&key);
 
-        // The following has been elevated for diagnostic purposes and should be returned as `debug` once
-        // reliability issues are addressed
-        warn!("🔍 Checking {:?} {}", &vapid.public_key, {
+        debug!("🔍 Checking {:?} {}", &vapid.public_key, {
             if result {
                 "Match!"
             } else {
