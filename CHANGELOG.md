@@ -1,3 +1,81 @@
+<a name="1.74.3"></a>
+## 1.74.3 (2025-03-21)
+
+
+#### Chore
+
+*   tag 1.74.2 (#864) ([cc0d8ee4](https://github.com/mozilla-services/autopush-rs/commit/cc0d8ee4ee7072a32ccc03243d6e9ce60897aa50))
+
+#### Bug Fixes
+
+*   Add diagnostic for stage (#865) ([470ea1c3](https://github.com/mozilla-services/autopush-rs/commit/470ea1c3556d7bb68a8d947d153a67969eba218e))
+
+
+
+<a name="1.74.2"></a>
+## 1.74.2 (2025-03-20)
+
+
+#### Chore
+
+*   tag 1.74.1 (#862) ([d07ee886](https://github.com/mozilla-services/autopush-rs/commit/d07ee8866a04bda426508e59d1b3fa4657b1f3f1))
+
+#### Bug Fixes
+
+*   compare tracking keys in raw form. (#863) ([49a466b8](https://github.com/mozilla-services/autopush-rs/commit/49a466b89aba59640654c84e884f6839364ad636))
+*   Autoendpoint should be less strict about config options (#859) ([8598172d](https://github.com/mozilla-services/autopush-rs/commit/8598172d84a7139f2038f9b95ec1bca0413b3c9f))
+
+
+
+<a name="1.74.1"></a>
+## 1.74.1 (2025-03-18)
+
+
+#### Bug Fixes
+
+*   switch metrics to `/metrics` endpoint (#861) ([57eedaf4](https://github.com/mozilla-services/autopush-rs/commit/57eedaf4de899b3b66157ebc772b99a84fe7cc2c))
+
+#### Chore
+
+*   tag 1.74.0 (#860) ([17bbf04a](https://github.com/mozilla-services/autopush-rs/commit/17bbf04a3d6d0e6303a85bd6796f87971e832bc2))
+
+
+
+<a name="1.74.0"></a>
+## 1.74.0 (2025-03-17)
+
+
+#### Chore
+
+*   Update to rust 1.85 (#847) ([59f6eb23](https://github.com/mozilla-services/autopush-rs/commit/59f6eb23259b3081480af9b6d5e8ed7239b75110))
+*   upload test artifacts to ETE pipeline (#843) ([866ec954](https://github.com/mozilla-services/autopush-rs/commit/866ec95455ba709e4fcda45363284d8ef37d8bbb))
+*   fix for firefox moving to xz packages (#846) ([b56b076f](https://github.com/mozilla-services/autopush-rs/commit/b56b076f4cc9265c93cee4f5c3101f4afe12af12))
+*   tag 1.73.0 (#824) ([49b2986d](https://github.com/mozilla-services/autopush-rs/commit/49b2986dd76aef2be7dd0581f851b4fbd53efa24))
+* **Makefile:**  fix comment for ete pipeline naming convention (#851) ([da3fe571](https://github.com/mozilla-services/autopush-rs/commit/da3fe571b5d6aebebc2842667bf3d38a287974ce))
+
+#### Features
+
+*   Add "long term" report summary generator for push reliability (#845) ([d49b3005](https://github.com/mozilla-services/autopush-rs/commit/d49b3005b2d3f94485f7d5b9881509d160223bdd))
+*   add reliability states for different ack type codes (#857) ([87954a2f](https://github.com/mozilla-services/autopush-rs/commit/87954a2f8e17f4ddf0da2b7e60dfc4c29b628c2f))
+*   record a couple more state changes, particularly Delivered (#853) ([abd911a5](https://github.com/mozilla-services/autopush-rs/commit/abd911a5098146278ff03c466fa3f18e50b6236f))
+*   Add Prometheus exporter (#834) ([4d252b41](https://github.com/mozilla-services/autopush-rs/commit/4d252b415ee2b57c034afe8df1f1528e19d85b9f))
+*   remove notification record struct (#827) ([2aaf9f22](https://github.com/mozilla-services/autopush-rs/commit/2aaf9f223afe30b5835af8ca44ab69807661465e))
+*   Add redis based reliability reporting (#778) ([4f35545d](https://github.com/mozilla-services/autopush-rs/commit/4f35545d4a985c6bb8b82ade708e1233bd03e99f))
+
+#### Bug Fixes
+
+*   typo in cron script name (#858) ([ad47ca22](https://github.com/mozilla-services/autopush-rs/commit/ad47ca22ed4c4dbedbc592bdbda663f6209d39fe))
+*   check empty VAPID sub first (#835) ([c13717b8](https://github.com/mozilla-services/autopush-rs/commit/c13717b8420b68475fbf86ee0e9939040836e425))
+*   Make VAPID sub assertion optional (#831) ([b5224c5f](https://github.com/mozilla-services/autopush-rs/commit/b5224c5fe4c183c61972662ba68da05d318bb8fa))
+*   Disable "reliable_report" as default feature (#826) ([4b298e44](https://github.com/mozilla-services/autopush-rs/commit/4b298e449a3d2b57eaa13534f534099ea4a4f07f))
+* **ci:**
+  *  false positive when unit or integration tests fail - take 2 (#856) ([26e374fa](https://github.com/mozilla-services/autopush-rs/commit/26e374fad07c9f48388018b8750a5d63c8d9f38f))
+  *  false positive when unit or integration tests fail - take 2 ([a8052f46](https://github.com/mozilla-services/autopush-rs/commit/a8052f46633cfd9b6662b896fcca260d162a5a84))
+  *  false positive when unit or integration tests fail (#855) ([b9f0f2e7](https://github.com/mozilla-services/autopush-rs/commit/b9f0f2e7c06130af9eb76713dd43cd4e722a951b))
+  *  path for integration test artifact (#832) ([3e139662](https://github.com/mozilla-services/autopush-rs/commit/3e13966205ead02ab7b44ccbbf65df3151aca1dc))
+
+
+
 <a name="1.73.0"></a>
 ## 1.73.0 (2025-01-15)
 

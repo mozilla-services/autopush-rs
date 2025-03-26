@@ -61,7 +61,11 @@ impl Server {
         let bind_address = format!("{}:{}", settings.host, settings.port);
         let fernet = settings.make_fernet();
         let endpoint_url = settings.endpoint_url();
-        let reliability_filter = VapidTracker(settings.tracking_keys());
+        let reliability_filter = VapidTracker(
+            settings
+                .tracking_keys()
+                .map_err(|e| ApiErrorKind::General(format!("Configuration Error: {e}")))?,
+        );
         let db_settings = DbSettings {
             dsn: settings.db_dsn.clone(),
             db_settings: if settings.db_settings.is_empty() {
@@ -212,8 +216,11 @@ impl Server {
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
                 .service(web::resource("/__version__").route(web::get().to(version_route)));
             #[cfg(feature = "reliable_report")]
+            // Note: Only the endpoint returns the Prometheus "/metrics" collection report. This report contains all metrics for both
+            // connection and endpoint, inclusive. It is served here mostly for simplicity's sake (since the endpoint handles more
+            // HTTP requests than the connection server, and this will simplify metric collection and reporting.)
             let app = app.service(
-                web::resource("/export")
+                web::resource("/metrics")
                     .route(web::get().to(crate::routes::reliability::report_handler)),
             );
             app
