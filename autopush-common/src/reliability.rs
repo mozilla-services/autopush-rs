@@ -19,7 +19,6 @@ use crate::util::timing::sec_since_epoch;
 
 // Redis Keys
 pub const COUNTS: &str = "state_counts";
-pub const ITEMS: &str = "items";
 pub const EXPIRY: &str = "expiry";
 
 const CONNECTION_EXPIRATION: Duration = Duration::from_secs(10);
@@ -76,8 +75,21 @@ impl PushReliability {
             let redis_client = redis::Client::open(dsn.clone()).map_err(|e| {
                 ApcErrorKind::GeneralError(format!("Could not connect to redis server: {:?}", e))
             })?;
-            Some(Arc::new(redis_client))
+            //Verify that we can connect to the server.
+            match redis_client.get_connection_with_timeout(CONNECTION_EXPIRATION) {
+                Ok(_) => {
+                    info!("🔍 Connected to reliability server at {dsn}");
+                    Some(Arc::new(redis_client))
+                }
+                Err(e) => {
+                    // This is a "soft" error. It does impact whether or not reliability will work but it's
+                    // not something that should prevent the server from running.
+                    error!("🔍 Invalid reliability DNS specified: {e} for DSN: {dsn}.");
+                    None
+                }
+            }
         } else {
+            trace!("🔍 Empty Redis DSN?");
             None
         };
 
@@ -106,14 +118,15 @@ impl PushReliability {
                     .unwrap_or_else(|| "None".to_owned()),
                 new
             );
-            if let Ok(mut conn) = client.get_connection_with_timeout(CONNECTION_EXPIRATION) {
-                self.internal_record(&mut conn, old, new, expr, id).await;
-            }
+            match client.get_connection_with_timeout(CONNECTION_EXPIRATION) {
+                Ok(mut conn) => self.internal_record(&mut conn, old, new, expr, id).await,
+                Err(e) => warn!("🔍⚠️ Unable to record reliability state: {:?}", e),
+            };
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
         let _ = self.db.log_report(id, new).await.inspect_err(|e| {
-            warn!("🔍 Unable to record reliability state: {:?}", e);
+            warn!("🔍⚠️ Unable to record reliability state: {:?}", e);
         });
         Some(new)
     }
@@ -137,12 +150,13 @@ impl PushReliability {
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
-        let _ = pipeline
+        let cc = pipeline
             .zadd(EXPIRY, format!("{}#{}", new, id), expr.unwrap_or_default())
             .exec(conn)
             .inspect_err(|e| {
                 warn!("🔍 Failed to write to storage: {:?}", e);
             });
+        trace!("🔍 internal record result: {:?}", cc);
     }
 
     /// Perform a garbage collection cycle on a reliability object.
@@ -156,7 +170,7 @@ impl PushReliability {
         Ok(())
     }
 
-    /// Perform the `garbage collection` cycle. This will scan the currently known timetamp
+    /// Perform the `garbage collection` cycle. This will scan the currently known timestamp
     /// indexed entries in redis looking for "expired" data, and then rectify the counts to
     /// indicate the final states. This is because many of the storage systems do not provide
     /// indicators when data reaches a TTL.
@@ -165,7 +179,7 @@ impl PushReliability {
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
-        let purged: Vec<String> = conn.zrangebyscore(ITEMS, 0, expr as isize)?;
+        let purged: Vec<String> = conn.zrangebyscore(EXPIRY, 0, expr as isize)?;
         let mut pipeline = redis::Pipeline::new();
         for key in purged {
             let Some((state, _id)) = key.split_once('#') else {
@@ -174,7 +188,7 @@ impl PushReliability {
                 return Err(ApcErrorKind::GeneralError(err.to_owned()).into());
             };
             pipeline.hincr(COUNTS, state, -1);
-            pipeline.zrem(ITEMS, key);
+            pipeline.zrem(EXPIRY, key);
         }
         pipeline.exec(conn)?;
         Ok(())
@@ -364,12 +378,12 @@ mod tests {
             .arg(-1)
             .ignore()
             .cmd("ZREM")
-            .arg(ITEMS)
+            .arg(EXPIRY)
             .arg(key)
             .ignore();
         let mut conn = MockRedisConnection::new(vec![
             MockCmd::new(
-                redis::cmd("ZRANGEBYSCORE").arg(ITEMS).arg(0).arg(expr),
+                redis::cmd("ZRANGEBYSCORE").arg(EXPIRY).arg(0).arg(expr),
                 Ok(response),
             ),
             MockCmd::new(mock_pipe, Ok("Okay")),

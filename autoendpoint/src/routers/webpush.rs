@@ -102,7 +102,7 @@ impl Router for WebPushRouter {
             // Couldn't send the message! So revert to the prior state if we have one
             if let Some(revert_state) = revert_state {
                 trace!(
-                    "🔎 Revert {:?} from {:?} to {:?}",
+                    "🔎⚠️ Revert {:?} from {:?} to {:?}",
                     &notification.reliability_id,
                     &notification.reliable_state,
                     revert_state
