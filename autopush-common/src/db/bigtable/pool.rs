@@ -200,18 +200,14 @@ impl Manager for BigtableClientManager {
         if let Some(timeout) = self.settings.database_pool_connection_ttl {
             if Instant::now() - metrics.created > timeout {
                 debug!("🏊 Recycle requested (old).");
-                return Err(RecycleError::Message(
-                    "Connection too old".to_owned().into(),
-                ));
+                return Err(RecycleError::message("Connection too old"));
             }
         }
         if let Some(timeout) = self.settings.database_pool_max_idle {
             if let Some(recycled) = metrics.recycled {
                 if Instant::now() - recycled > timeout {
                     debug!("🏊 Recycle requested (idle).");
-                    return Err(RecycleError::Message(
-                        "Connection too idle".to_owned().into(),
-                    ));
+                    return Err(RecycleError::message("Connection too idle"));
                 }
             }
         }
@@ -222,9 +218,7 @@ impl Manager for BigtableClientManager {
             .inspect_err(|e| debug!("🏊 Recycle requested (health). {:?}", e))?
         {
             debug!("🏊 Health check failed");
-            return Err(RecycleError::Message(
-                "Health check failed".to_owned().into(),
-            ));
+            return Err(RecycleError::message("Health check failed"));
         }
 
         Ok(())
