@@ -47,7 +47,7 @@ url.workspace = true
 again = "0.1"
 async-trait = "0.1"
 derive_builder = "0.20"
-gethostname = "0.4"
+gethostname = "1.0"
 num_cpus = "1.16"
 woothee = "0.13"
 
@@ -62,13 +62,13 @@ prometheus-client = { version = "0.23", optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 form_urlencoded = { version = "1.2", optional = true }
 
-redis = { version = "0.28", optional = true }
+redis = { version = "0.29", optional = true }
 redis-module = { version = "2.0", optional = true }
 
 [dev-dependencies]
 actix-rt = "2.8"
-mockito = "0.31"
-redis-test = "0.8"
+mockito = "0.31"  # mockito > 0.31 will require significant reworking of the tests and is not critical yet.
+redis-test = "0.9"
 tempfile = "3.2.0"
 tokio = { workspace = true, features = ["macros"] }
 

@@ -5,7 +5,6 @@ use std::{
 };
 
 use actix_web::rt;
-use async_trait::async_trait;
 use cadence::StatsdClient;
 use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, RecycleError, Timeouts};
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
@@ -175,11 +174,9 @@ impl fmt::Debug for BigtableClientManager {
     }
 }
 
-#[async_trait]
 impl Manager for BigtableClientManager {
     type Error = BigTableError;
     type Type = BigtableDb;
-    // TODO: Deadpool 0.11+ introduces new lifetime constratints.
 
     /// Create a new Bigtable Client with it's own channel.
     /// `BigtableClient` is the most atomic we can go.
@@ -203,14 +200,18 @@ impl Manager for BigtableClientManager {
         if let Some(timeout) = self.settings.database_pool_connection_ttl {
             if Instant::now() - metrics.created > timeout {
                 debug!("🏊 Recycle requested (old).");
-                return Err(RecycleError::Message("Connection too old".to_owned()));
+                return Err(RecycleError::Message(
+                    "Connection too old".to_owned().into(),
+                ));
             }
         }
         if let Some(timeout) = self.settings.database_pool_max_idle {
             if let Some(recycled) = metrics.recycled {
                 if Instant::now() - recycled > timeout {
                     debug!("🏊 Recycle requested (idle).");
-                    return Err(RecycleError::Message("Connection too idle".to_owned()));
+                    return Err(RecycleError::Message(
+                        "Connection too idle".to_owned().into(),
+                    ));
                 }
             }
         }
@@ -221,7 +222,9 @@ impl Manager for BigtableClientManager {
             .inspect_err(|e| debug!("🏊 Recycle requested (health). {:?}", e))?
         {
             debug!("🏊 Health check failed");
-            return Err(RecycleError::Message("Health check failed".to_owned()));
+            return Err(RecycleError::Message(
+                "Health check failed".to_owned().into(),
+            ));
         }
 
         Ok(())
