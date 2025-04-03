@@ -8,7 +8,10 @@ use autopush_common::{
 };
 
 use super::WebPushClient;
-use crate::error::{SMError, SMErrorKind};
+use crate::{
+    error::{SMError, SMErrorKind},
+    identified::Urgency,
+};
 
 impl WebPushClient {
     /// Handle a `ServerNotification` for this user
@@ -123,7 +126,11 @@ impl WebPushClient {
         // inner msg.clone()
         messages.retain(|msg| {
             if !msg.expired(now_sec) {
-                return true;
+                if let Some(headers) = msg.headers.as_ref() {
+                    return Urgency::from(headers.get("urgency")) >= self.flags.min_urgency;
+                } else {
+                    return true;
+                }
             }
             if msg.sortkey_timestamp.is_none() {
                 expired_messages.push(msg.clone());
