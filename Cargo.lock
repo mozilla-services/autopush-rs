@@ -784,6 +784,7 @@ dependencies = [
  "chrono",
  "config",
  "deadpool",
+ "deadpool-redis",
  "derive_builder",
  "fernet",
  "form_urlencoded",
@@ -804,6 +805,7 @@ dependencies = [
  "protobuf",
  "rand 0.9.0",
  "redis",
+ "redis-async",
  "redis-module",
  "redis-test",
  "regex",
@@ -1141,7 +1143,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes",
+ "futures-core",
  "memchr",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1328,6 +1334,16 @@ dependencies = [
  "deadpool-runtime",
  "num_cpus",
  "tokio",
+]
+
+[[package]]
+name = "deadpool-redis"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c136f185b3ca9d1f4e4e19c11570e1002f4bfdd592d589053e225716d613851f"
+dependencies = [
+ "deadpool",
+ "redis",
 ]
 
 [[package]]
@@ -3103,6 +3119,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pin-project"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "677f1add503faace112b9f1373e43e9e054bfdd22ff1a63c1bc485eaec6a6a8a"
+dependencies = [
+ "pin-project-internal",
+]
+
+[[package]]
+name = "pin-project-internal"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e918e4ff8c4549eb882f14b3a4bc8c8bc93de829416eacf579f1207a8fbf861"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.40",
+ "syn 2.0.100",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3375,14 +3411,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b110459d6e323b7cda23980c46c77157601199c9da6241552b284cd565a7a133"
 dependencies = [
  "arc-swap",
+ "bytes",
  "combine",
+ "futures-util",
  "itoa",
  "num-bigint",
  "percent-encoding",
+ "pin-project-lite",
  "ryu",
  "sha1_smol",
  "socket2",
+ "tokio",
+ "tokio-util",
  "url",
+]
+
+[[package]]
+name = "redis-async"
+version = "0.17.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e44d2172ccb44736798c4cdc8690fb0a3776a74daa502bfe124708ffc144909c"
+dependencies = [
+ "bytes",
+ "futures-channel",
+ "futures-sink",
+ "futures-util",
+ "log",
+ "pin-project",
+ "socket2",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -3426,6 +3484,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27f3dafa5ba24e7ad63516ee55f80418b9fb60b82333c90d0a1df5305cb82066"
 dependencies = [
+ "futures 0.3.31",
  "rand 0.9.0",
  "redis",
  "socket2",

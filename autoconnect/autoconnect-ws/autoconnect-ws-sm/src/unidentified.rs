@@ -233,7 +233,7 @@ mod tests {
 
     #[tokio::test]
     async fn reject_not_hello() {
-        let client = uclient(Default::default());
+        let client = uclient(AppState::async_default().await);
         let err = client
             .on_client_msg(ClientMessage::Ping)
             .await
@@ -241,7 +241,7 @@ mod tests {
             .unwrap();
         assert!(matches!(err.kind, SMErrorKind::InvalidMessage(_)));
 
-        let client = uclient(Default::default());
+        let client = uclient(AppState::async_default().await);
         let err = client
             .on_client_msg(ClientMessage::Register {
                 channel_id: DUMMY_CHID.to_string(),
@@ -257,7 +257,7 @@ mod tests {
     async fn hello_existing_user() {
         let client = uclient(AppState {
             db: hello_again_db(DUMMY_UAID).into_boxed_arc(),
-            ..Default::default()
+            ..AppState::async_default().await
         });
         // Use a constructed JSON structure here to capture the sort of input we expect,
         // which may not match what we derive into.
@@ -278,7 +278,7 @@ mod tests {
         let client = uclient(AppState {
             // Simple hello_db ensures no writes to the db
             db: hello_db().into_boxed_arc(),
-            ..Default::default()
+            ..AppState::async_default().await
         });
         // Ensure that we do not need to pass the "use_webpush" flag.
         // (yes, this could just be passing the string, but I want to be
@@ -291,7 +291,7 @@ mod tests {
 
     #[tokio::test]
     async fn hello_empty_uaid() {
-        let client = uclient(Default::default());
+        let client = uclient(AppState::async_default().await);
         let msg = ClientMessage::Hello {
             uaid: Some("".to_owned()),
             _channel_ids: None,
@@ -302,7 +302,7 @@ mod tests {
 
     #[tokio::test]
     async fn hello_invalid_uaid() {
-        let client = uclient(Default::default());
+        let client = uclient(AppState::async_default().await);
         let msg = ClientMessage::Hello {
             uaid: Some("invalid".to_owned()),
             _channel_ids: None,
