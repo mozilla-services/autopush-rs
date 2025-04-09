@@ -116,8 +116,9 @@ impl PushReliability {
                     .unwrap_or_else(|| "None".to_owned()),
                 new
             );
-            if let Ok(mut conn) = pool.get().await {
-                self.internal_record(&mut conn, old, new, expr, id).await;
+            match pool.get().await {
+                Ok(mut conn) => self.internal_record(&mut conn, old, new, expr, id).await,
+                Err(e) => warn!("🔍⚠️ Unable to record reliability state, {:?}", e),
             }
         };
         // Errors are not fatal, and should not impact message flow, but
@@ -370,6 +371,7 @@ mod tests {
                 .arg(expr),
             Ok(""),
         )]);
+
         let int_test_id = test_id.clone();
         db.expect_log_report()
             .times(1)
