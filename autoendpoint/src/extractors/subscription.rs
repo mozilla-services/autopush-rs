@@ -62,7 +62,7 @@ impl FromRequest for Subscription {
                 .map_err(|e| {
                     // Since we're decrypting and endpoint, we get a lot of spam links.
                     // This can fill our logs.
-                    trace!("🔐 fernet: {:?}", e);
+                    trace!("🔐 fernet: {:?}", e.to_string());
                     ApiErrorKind::InvalidToken
                 })?;
 
