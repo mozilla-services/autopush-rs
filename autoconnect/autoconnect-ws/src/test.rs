@@ -43,7 +43,7 @@ async fn handshake_timeout() {
 async fn basic() {
     let client = uclient(AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::default()
+        ..Default::default()
     });
     let mut session = MockSession::new();
     session

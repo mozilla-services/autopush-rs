@@ -355,7 +355,7 @@ mod test {
     use super::*;
     use autopush_common::db::mock::MockDbClient;
 
-    async fn make_router(db: Box<dyn DbClient>) -> WebPushRouter {
+    fn make_router(db: Box<dyn DbClient>) -> WebPushRouter {
         WebPushRouter {
             db: db.clone(),
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
@@ -369,7 +369,7 @@ mod test {
     #[tokio::test]
     async fn pass_extras() {
         let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(db).await;
+        let router = make_router(db);
         let sub = "foo@example.com";
         let vapid = make_vapid(
             sub,

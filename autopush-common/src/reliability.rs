@@ -363,7 +363,6 @@ mod tests {
         let old = None;
         let expr = 1;
 
-        //*
         let mut conn = MockRedisConnection::new(vec![MockCmd::new(
             redis::cmd("ZADD")
                 .arg(EXPIRY)
@@ -371,7 +370,6 @@ mod tests {
                 .arg(expr),
             Ok(""),
         )]);
-        // */
         let int_test_id = test_id.clone();
         db.expect_log_report()
             .times(1)
