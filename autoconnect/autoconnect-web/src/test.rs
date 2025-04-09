@@ -37,7 +37,7 @@ async fn json_msg(
 pub async fn hello_new_user() {
     let mut srv = test_server(AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::async_default().await
+        ..AppState::default()
     });
 
     let mut framed = srv.ws().await.unwrap();
@@ -58,7 +58,7 @@ pub async fn hello_new_user() {
 pub async fn hello_again() {
     let mut srv = test_server(AppState {
         db: hello_again_db(DUMMY_UAID).into_boxed_arc(),
-        ..AppState::async_default().await
+        ..AppState::default()
     });
 
     let mut framed = srv.ws().await.unwrap();
@@ -74,7 +74,7 @@ pub async fn hello_again() {
 
 #[actix_rt::test]
 pub async fn unsupported_websocket_message() {
-    let mut srv = test_server(AppState::async_default().await);
+    let mut srv = test_server(AppState::default());
 
     let mut framed = srv.ws().await.unwrap();
     framed
@@ -94,7 +94,7 @@ pub async fn unsupported_websocket_message() {
 pub async fn invalid_webpush_message() {
     let mut srv = test_server(AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::async_default().await
+        ..AppState::default()
     });
 
     let mut framed = srv.ws().await.unwrap();
@@ -117,7 +117,7 @@ pub async fn invalid_webpush_message() {
 pub async fn malformed_webpush_message() {
     let mut srv = test_server(AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::async_default().await
+        ..AppState::default()
     });
 
     let mut framed = srv.ws().await.unwrap();
@@ -141,7 +141,7 @@ pub async fn malformed_webpush_message() {
 pub async fn direct_notif() {
     let app_state = AppState {
         db: hello_again_db(DUMMY_UAID).into_boxed_arc(),
-        ..AppState::async_default().await
+        ..AppState::default()
     };
     let mut srv = test_server(app_state.clone());
 
@@ -181,7 +181,7 @@ pub async fn broadcast_after_ping() {
     };
     let app_state = AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::from_settings(settings).await.unwrap()
+        ..AppState::from_settings(settings).unwrap()
     };
     let broadcaster = &app_state.broadcaster;
     broadcaster

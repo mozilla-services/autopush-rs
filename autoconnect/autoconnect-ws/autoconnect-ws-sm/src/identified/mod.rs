@@ -434,7 +434,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn webpush_ping() {
-        let (mut client, _) = wpclient(DUMMY_UAID, AppState::async_default().await).await;
+        let (mut client, _) = wpclient(DUMMY_UAID, AppState::default()).await;
         let pong = client.on_client_msg(ClientMessage::Ping).await.unwrap();
         assert!(matches!(pong.as_slice(), [ServerMessage::Ping]));
     }
@@ -493,7 +493,7 @@ mod tests {
             DUMMY_UAID,
             AppState {
                 db: db.into_boxed_arc(),
-                ..AppState::async_default().await
+                ..AppState::default()
             },
         )
         .await;

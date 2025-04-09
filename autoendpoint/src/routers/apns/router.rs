@@ -593,7 +593,7 @@ mod tests {
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             db: db.clone(),
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(PushReliability::new(&None, db.clone()).await.unwrap()),
+            reliability: Arc::new(PushReliability::new(&None, db.clone()).unwrap()),
         }
     }
 

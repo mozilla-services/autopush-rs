@@ -27,7 +27,7 @@ async fn handshake_timeout() {
         open_handshake_timeout: Duration::from_secs_f32(0.15),
         ..Settings::test_settings()
     };
-    let client = uclient(AppState::from_settings(settings).await.unwrap());
+    let client = uclient(AppState::from_settings(settings).unwrap());
     let s = stream! {
         tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
         yield Ok(actix_ws::Message::Text(HELLO.into()));
@@ -43,7 +43,7 @@ async fn handshake_timeout() {
 async fn basic() {
     let client = uclient(AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::async_default().await
+        ..AppState::default()
     });
     let mut session = MockSession::new();
     session
@@ -70,7 +70,7 @@ async fn websocket_ping() {
     };
     let client = uclient(AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::from_settings(settings).await.unwrap()
+        ..AppState::from_settings(settings).unwrap()
     });
     let mut session = MockSession::new();
     session.expect_text().times(1).return_once(|_| Ok(()));
@@ -95,7 +95,7 @@ async fn auto_ping_timeout() {
     };
     let client = uclient(AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::from_settings(settings).await.unwrap()
+        ..AppState::from_settings(settings).unwrap()
     });
     let mut session = MockSession::new();
     session.expect_text().times(1).return_once(|_| Ok(()));
@@ -119,7 +119,7 @@ async fn auto_ping_timeout_after_pong() {
     };
     let client = uclient(AppState {
         db: hello_db().into_boxed_arc(),
-        ..AppState::from_settings(settings).await.unwrap()
+        ..AppState::from_settings(settings).unwrap()
     });
     let mut session = MockSession::new();
     session.expect_text().times(1).return_once(|_| Ok(()));

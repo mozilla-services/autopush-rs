@@ -1,13 +1,13 @@
 //! Health and Dockerflow routes
-use std::collections::HashMap;
 use std::thread;
+use std::{collections::HashMap, str::FromStr};
 
 use actix_web::{
     web::{Data, Json},
     HttpResponse,
 };
 use reqwest::StatusCode;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use autopush_common::db::error::DbResult;
 
@@ -22,14 +22,32 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
-    let health = json!({
-    "status": "OK",
-    "version": env!("CARGO_PKG_VERSION"),
-    "router_table": router_health,
-    "message_table": message_health,
-    "routers": routers});
+    let mut health: HashMap<&str, Value> = HashMap::new();
+    health.insert("status", Value::from_str("OK").unwrap());
+    health.insert(
+        "version",
+        Value::from_str(env!("CARGO_PKG_VERSION")).unwrap(),
+    );
+    health.insert("router_table", router_health);
+    health.insert("message_table", message_health);
+    health.insert("routers", Value::from_iter(routers));
 
-    Json(health)
+    #[cfg(feature = "reliable_report")]
+    {
+        health.insert(
+            "reliability",
+            Value::from_str(match state.reliability.health_check().await {
+                Ok(_) => "up",
+                Err(e) => {
+                    // errors are non-fatal, but should be reported.
+                    error!("🔍Reliability check failed: {:?}", e);
+                    "down"
+                }
+            })
+            .unwrap(),
+        );
+    }
+    Json(json!(health))
 }
 
 /// Convert the result of a DB health check to JSON

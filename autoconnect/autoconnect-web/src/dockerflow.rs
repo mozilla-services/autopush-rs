@@ -1,11 +1,13 @@
 //! Health and Dockerflow routes
+use std::collections::HashMap;
+use std::str::FromStr;
 use std::thread;
 
 use actix_web::{
     web::{self, Data, Json},
     HttpResponse, ResponseError,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 
 use autoconnect_settings::AppState;
 
@@ -27,19 +29,46 @@ pub fn config(config: &mut web::ServiceConfig) {
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
-    let healthy = state
-        .db
-        .health_check()
-        .await
-        .map_err(|e| {
-            error!("Autoconnect Health Error: {:?}", e);
-            e
-        })
-        .is_ok();
-    Json(json!({
-        "status": if healthy { "OK" } else { "ERROR" },
-        "version": env!("CARGO_PKG_VERSION"),
-    }))
+    let mut health: HashMap<&str, Value> = HashMap::new();
+
+    health.insert(
+        "version",
+        Value::from_str(env!("CARGO_PKG_VERSION")).unwrap(),
+    );
+    health.insert(
+        "status",
+        Value::from(
+            state
+                .db
+                .health_check()
+                .await
+                .map_err(|e| {
+                    error!("Autoconnect Health Error: {:?}", e);
+                    e
+                })
+                .is_ok(),
+        ),
+    );
+
+    #[cfg(feature = "reliable_report")]
+    {
+        health.insert(
+            "reliability",
+            Value::from_str(match state.reliability.health_check().await {
+                Ok(_) => "up",
+                Err(e) => {
+                    {
+                        // errors are non-fatal, but should be reported.
+                        error!("🔍Reliability check failed: {:?}", e);
+                        "down"
+                    }
+                }
+            })
+            .unwrap(),
+        );
+    }
+
+    Json(json!(health))
 }
 
 /// Handle the `/status` route

@@ -40,7 +40,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn from_settings(settings: Settings) -> Result<Self, ConfigError> {
+    pub fn from_settings(settings: Settings) -> Result<Self, ConfigError> {
         let crypto_key = &settings.crypto_key;
         if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
             return Err(ConfigError::Message(format!(
@@ -92,11 +92,9 @@ impl AppState {
 
         #[cfg(feature = "reliable_report")]
         let reliability = Arc::new(
-            PushReliability::new(&settings.reliability_dsn, db.clone())
-                .await
-                .map_err(|e| {
-                    ConfigError::Message(format!("Could not start Reliability connection: {:?}", e))
-                })?,
+            PushReliability::new(&settings.reliability_dsn, db.clone()).map_err(|e| {
+                ConfigError::Message(format!("Could not start Reliability connection: {:?}", e))
+            })?,
         );
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
@@ -150,10 +148,8 @@ impl AppState {
 
 /// For tests
 #[cfg(debug_assertions)]
-impl AppState {
-    pub async fn async_default() -> Self {
-        Self::from_settings(Settings::test_settings())
-            .await
-            .unwrap()
+impl Default for AppState {
+    fn default() -> Self {
+        Self::from_settings(Settings::test_settings()).unwrap()
     }
 }

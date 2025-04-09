@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
     let router_port = settings.router_port;
     let actix_max_connections = settings.actix_max_connections;
     let actix_workers = settings.actix_workers;
-    let app_state = AppState::from_settings(settings).await?;
+    let app_state = AppState::from_settings(settings)?;
     app_state.init_and_spawn_megaphone_updater().await?;
     spawn_pool_periodic_reporter(
         Duration::from_secs(10),

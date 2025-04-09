@@ -94,14 +94,9 @@ impl Server {
         };
         #[cfg(feature = "reliable_report")]
         let reliability = Arc::new(
-            PushReliability::new(&settings.reliability_dsn, db.clone())
-                .await
-                .map_err(|e| {
-                    ApiErrorKind::General(format!(
-                        "Could not initialize Reliability Report: {:?}",
-                        e
-                    ))
-                })?,
+            PushReliability::new(&settings.reliability_dsn, db.clone()).map_err(|e| {
+                ApiErrorKind::General(format!("Could not initialize Reliability Report: {:?}", e))
+            })?,
         );
         let http = reqwest::ClientBuilder::new()
             .connect_timeout(Duration::from_millis(settings.connection_timeout_millis))

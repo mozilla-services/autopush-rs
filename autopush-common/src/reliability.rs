@@ -21,7 +21,6 @@ use crate::util::timing::sec_since_epoch;
 
 // Redis Keys
 pub const COUNTS: &str = "state_counts";
-pub const ITEMS: &str = "items";
 pub const EXPIRY: &str = "expiry";
 
 const CONNECTION_EXPIRATION: Duration = Duration::from_secs(10);
@@ -65,7 +64,7 @@ pub struct PushReliability {
 
 impl PushReliability {
     // Do the magic to make a report instance, whatever that will be.
-    pub async fn new(reliability_dsn: &Option<String>, db: Box<dyn DbClient>) -> Result<Self> {
+    pub fn new(reliability_dsn: &Option<String>, db: Box<dyn DbClient>) -> Result<Self> {
         if reliability_dsn.is_none() {
             debug!("🔍 No reliability DSN declared.");
             return Ok(Self {
@@ -89,14 +88,7 @@ impl PushReliability {
                 .map_err(|e| {
                     ApcErrorKind::GeneralError(format!("Could not build reliability pool {:?}", e))
                 })?;
-            if let Ok(mut conn) = pool.get().await {
-                conn.ping::<()>().await.map_err(|e| {
-                    ApcErrorKind::GeneralError(format!("Could not connect to Redis: {:?}", e))
-                })?;
-                Some(pool)
-            } else {
-                None
-            }
+            Some(pool)
         };
 
         Ok(Self {
@@ -131,7 +123,7 @@ impl PushReliability {
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
         let _ = self.db.log_report(id, new).await.inspect_err(|e| {
-            warn!("🔍 Unable to record reliability state: {:?}", e);
+            warn!("🔍⚠️ Unable to record reliability state: {:?}", e);
         });
         Some(new)
     }
@@ -182,7 +174,7 @@ impl PushReliability {
         Ok(())
     }
 
-    /// Perform the `garbage collection` cycle. This will scan the currently known timetamp
+    /// Perform the `garbage collection` cycle. This will scan the currently known timestamp
     /// indexed entries in redis looking for "expired" data, and then rectify the counts to
     /// indicate the final states. This is because many of the storage systems do not provide
     /// indicators when data reaches a TTL.
@@ -193,7 +185,7 @@ impl PushReliability {
     ) -> Result<()> {
         // First, get the list of values that are to be purged.
         let mut purge_pipe = redis::Pipeline::new();
-        purge_pipe.zrangebyscore(ITEMS, 0, expr as isize);
+        purge_pipe.zrangebyscore(EXPIRY, 0, expr as isize);
         let result_list: Vec<Vec<redis::Value>> = purge_pipe.query_async(conn).await?;
 
         // Now purge each of the values by resetting the counts and removing the item from the purge set.
@@ -207,7 +199,7 @@ impl PushReliability {
                     return Err(ApcErrorKind::GeneralError(err.to_owned()).into());
                 };
                 pipeline.hincr(COUNTS, state, -1);
-                pipeline.zrem(ITEMS, key);
+                pipeline.zrem(EXPIRY, key);
             }
         }
         pipeline.exec_async(conn).await?;
@@ -225,6 +217,24 @@ impl PushReliability {
             }
         }
         Ok(HashMap::new())
+    }
+
+    pub async fn health_check(&self) -> Result<()> {
+        if let Some(pool) = &self.pool {
+            let mut conn = pool.get().await.map_err(|e| {
+                ApcErrorKind::GeneralError(format!(
+                    "Could not connect to reliability datastore: {:?}",
+                    e,
+                ))
+            })?;
+            // Add a type here, even though we're tossing the value, in order to prevent the `FromRedisValue` warning.
+            let _: String = conn.ping().await.map_err(|e| {
+                ApcErrorKind::GeneralError(format!("Could not ping reliability datastore: {:?}", e))
+            })?;
+            Ok(())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -368,9 +378,7 @@ mod tests {
             .withf(move |id, state| id == int_test_id && state == &ReliabilityState::Accepted)
             .return_once(|_, _| Ok(()));
         // test the main report function (note, this does not test redis)
-        let pr = PushReliability::new(&None, Box::new(Arc::new(db)))
-            .await
-            .unwrap();
+        let pr = PushReliability::new(&None, Box::new(Arc::new(db))).unwrap();
         pr.record(&Some(test_id.clone()), new, &None, Some(expr))
             .await;
 
@@ -401,21 +409,19 @@ mod tests {
             .arg(-1)
             .ignore()
             .cmd("ZREM")
-            .arg(ITEMS)
+            .arg(EXPIRY)
             .arg(key)
             .ignore();
         let mut conn = MockRedisConnection::new(vec![
             MockCmd::new(
-                redis::cmd("ZRANGEBYSCORE").arg(ITEMS).arg(0).arg(expr),
+                redis::cmd("ZRANGEBYSCORE").arg(EXPIRY).arg(0).arg(expr),
                 Ok(response),
             ),
             MockCmd::new(mock_pipe, Ok("Okay")),
         ]);
 
         // test the main report function (note, this does not test redis)
-        let pr = PushReliability::new(&None, Box::new(Arc::new(db)))
-            .await
-            .unwrap();
+        let pr = PushReliability::new(&None, Box::new(Arc::new(db))).unwrap();
         // functionally a no-op, but it does exercise lines.
         pr.gc().await?;
 
