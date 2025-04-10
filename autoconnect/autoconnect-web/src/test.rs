@@ -74,7 +74,7 @@ pub async fn hello_again() {
 
 #[actix_rt::test]
 pub async fn unsupported_websocket_message() {
-    let mut srv = test_server(Default::default());
+    let mut srv = test_server(AppState::default());
 
     let mut framed = srv.ws().await.unwrap();
     framed

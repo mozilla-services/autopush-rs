@@ -216,7 +216,7 @@ impl PushReliability {
                 ))
             })?;
             // Add a type here, even though we're tossing the value, in order to prevent the `FromRedisValue` warning.
-            let _: String = conn.ping().await.map_err(|e| {
+            conn.ping::<()>().await.map_err(|e| {
                 ApcErrorKind::GeneralError(format!("Could not ping reliability datastore: {:?}", e))
             })?;
             Ok("up")
