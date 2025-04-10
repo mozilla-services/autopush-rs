@@ -7,6 +7,7 @@ use actix_web::{
     web::{self, Data, Json},
     HttpResponse, ResponseError,
 };
+use cadence::CountedExt;
 use serde_json::{json, Value};
 
 use autoconnect_settings::AppState;
@@ -54,17 +55,16 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     {
         health.insert(
             "reliability",
-            Value::from_str(match state.reliability.health_check().await {
-                Ok(_) => "up",
-                Err(e) => {
-                    {
-                        // errors are non-fatal, but should be reported.
-                        error!("🔍Reliability check failed: {:?}", e);
-                        "down"
-                    }
-                }
-            })
-            .unwrap(),
+            Value::from_str(state.reliability.health_check().await.unwrap_or_else(|e| {
+                state
+                    .metrics
+                    .incr_with_tags("error.redis.unavailable")
+                    .with_tag("application", "autoconnect")
+                    .send();
+                error!("🔍🟥 Reliability reporting down: {:?}", e);
+                "down"
+            }))
+            .expect("Could not post reliability status"),
         );
     }
 

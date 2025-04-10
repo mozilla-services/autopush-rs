@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix_web::HttpResponse;
-use deadpool_redis::{redis::cmd, Config};
+use deadpool_redis::Config;
 use prometheus_client::{
     encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
 };
@@ -137,28 +137,15 @@ impl PushReliability {
         expr: Option<u64>,
         id: &str,
     ) {
-        // According to `redis::aio::MultiplexedConnection`, the way that you send Pipeline commands is via
-        // `send_packed_commands()`, which takes a `pipe` that strings together `.cmd()` and `.arg()` values.
         let mut pipeline = redis::pipe();
-        pipeline.add_command(cmd("HINCR").arg(COUNTS).arg(new.to_string()).arg(1).clone());
+        pipeline.hincr(COUNTS, new.to_string(), 1);
 
         if let Some(old) = old {
-            pipeline.add_command(
-                cmd("HINCR")
-                    .arg(COUNTS)
-                    .arg(old.to_string().as_bytes())
-                    .arg(-1)
-                    .clone(),
-            );
+            pipeline.hincr(COUNTS, old.to_string(), -1);
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
-        pipeline.add_command(
-            cmd("ZADD")
-                .arg(format!("{}#{}", new, id).as_bytes())
-                .arg(expr.unwrap_or_default())
-                .clone(),
-        );
+        pipeline.zadd(EXPIRY, format!("{}#{}", new, id), expr.unwrap_or_default());
         let _ = pipeline.exec_async(conn).await.inspect_err(|e| {
             warn!("🔍 Failed to write to storage: {:?}", e);
         });
@@ -220,7 +207,7 @@ impl PushReliability {
         Ok(HashMap::new())
     }
 
-    pub async fn health_check(&self) -> Result<()> {
+    pub async fn health_check<'a>(&self) -> Result<&'a str> {
         if let Some(pool) = &self.pool {
             let mut conn = pool.get().await.map_err(|e| {
                 ApcErrorKind::GeneralError(format!(
@@ -232,9 +219,9 @@ impl PushReliability {
             let _: String = conn.ping().await.map_err(|e| {
                 ApcErrorKind::GeneralError(format!("Could not ping reliability datastore: {:?}", e))
             })?;
-            Ok(())
+            Ok("up")
         } else {
-            Ok(())
+            Ok("up")
         }
     }
 }
