@@ -58,7 +58,7 @@ pub enum ReliabilityState {
 
 #[derive(Clone)]
 pub struct PushReliability {
-    pool: Option<deadpool::managed::Pool<deadpool_redis::Manager, deadpool_redis::Connection>>,
+    pool: Option<deadpool_redis::Pool>,
     db: Box<dyn DbClient>,
 }
 
@@ -73,9 +73,6 @@ impl PushReliability {
             });
         };
 
-        let mut pool_config = deadpool_redis::PoolConfig::default();
-        pool_config.timeouts.create = Some(CONNECTION_EXPIRATION);
-
         let pool = {
             let config: deadpool_redis::Config = Config::from_url(reliability_dsn.clone().unwrap());
             let pool = config
@@ -84,6 +81,7 @@ impl PushReliability {
                     ApcErrorKind::GeneralError(format!("Could not config reliability pool {:?}", e))
                 })?
                 .create_timeout(Some(CONNECTION_EXPIRATION))
+                .runtime(deadpool::Runtime::Tokio1)
                 .build()
                 .map_err(|e| {
                     ApcErrorKind::GeneralError(format!("Could not build reliability pool {:?}", e))

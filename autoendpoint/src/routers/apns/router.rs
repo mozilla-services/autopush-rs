@@ -575,7 +575,7 @@ mod tests {
     }
 
     /// Create a router for testing, using the given APNS client
-    async fn make_router(client: MockApnsClient, db: Box<dyn DbClient>) -> ApnsRouter {
+    fn make_router(client: MockApnsClient, db: Box<dyn DbClient>) -> ApnsRouter {
         ApnsRouter {
             clients: {
                 let mut map = HashMap::new();
@@ -636,7 +636,7 @@ mod tests {
         });
         let mdb = MockDbClient::new();
         let db = mdb.into_boxed_arc();
-        let router = make_router(client, db).await;
+        let router = make_router(client, db);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
         let result = router.route_notification(notification).await;
@@ -674,7 +674,7 @@ mod tests {
         });
         let mdb = MockDbClient::new();
         let db = mdb.into_boxed_arc();
-        let router = make_router(client, db).await;
+        let router = make_router(client, db);
         let data = "test-data".to_string();
         let notification = make_notification(default_router_data(), Some(data), RouterType::APNS);
 
@@ -692,7 +692,7 @@ mod tests {
     async fn missing_client() {
         let client = MockApnsClient::new(|_| panic!("The notification should not be sent"));
         let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(client, db).await;
+        let router = make_router(client, db);
         let mut router_data = default_router_data();
         router_data.insert(
             "rel_channel".to_string(),
@@ -731,7 +731,7 @@ mod tests {
             .with(predicate::eq(notification.subscription.user.uaid))
             .times(1)
             .return_once(|_| Ok(()));
-        let router = make_router(client, db.into_boxed_arc()).await;
+        let router = make_router(client, db.into_boxed_arc());
 
         let result = router.route_notification(notification).await;
         assert!(result.is_err());
@@ -758,7 +758,7 @@ mod tests {
             }))
         });
         let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(client, db).await;
+        let router = make_router(client, db);
         let notification = make_notification(default_router_data(), None, RouterType::APNS);
 
         let result = router.route_notification(notification).await;
@@ -786,7 +786,7 @@ mod tests {
     async fn invalid_aps_data() {
         let client = MockApnsClient::new(|_| panic!("The notification should not be sent"));
         let db = MockDbClient::new().into_boxed_arc();
-        let router = make_router(client, db).await;
+        let router = make_router(client, db);
         let mut router_data = default_router_data();
         router_data.insert(
             "aps".to_string(),

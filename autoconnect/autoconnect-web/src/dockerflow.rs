@@ -1,6 +1,4 @@
 //! Health and Dockerflow routes
-use std::collections::HashMap;
-use std::str::FromStr;
 use std::thread;
 
 use actix_web::{
@@ -8,7 +6,7 @@ use actix_web::{
     HttpResponse, ResponseError,
 };
 use cadence::CountedExt;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use autoconnect_settings::AppState;
 
@@ -30,45 +28,33 @@ pub fn config(config: &mut web::ServiceConfig) {
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
-    let mut health: HashMap<&str, Value> = HashMap::new();
-
-    health.insert(
-        "version",
-        Value::from_str(env!("CARGO_PKG_VERSION")).unwrap(),
-    );
-    health.insert(
-        "status",
-        Value::from(
-            state
-                .db
-                .health_check()
-                .await
-                .map_err(|e| {
-                    error!("Autoconnect Health Error: {:?}", e);
-                    e
-                })
-                .is_ok(),
-        ),
-    );
+    let mut health = json!({
+        "status": if state
+        .db
+        .health_check()
+        .await
+        .map_err(|e| {
+            error!("Autoconnect Health Error: {:?}", e);
+            e
+        })
+        .is_ok() { "OK" } else {"ERROR"},
+        "version": env!("CARGO_PKG_VERSION"),
+    });
 
     #[cfg(feature = "reliable_report")]
     {
-        health.insert(
-            "reliability",
-            Value::from_str(state.reliability.health_check().await.unwrap_or_else(|e| {
-                state
-                    .metrics
-                    .incr_with_tags("error.redis.unavailable")
-                    .with_tag("application", "autoconnect")
-                    .send();
-                error!("🔍🟥 Reliability reporting down: {:?}", e);
-                "down"
-            }))
-            .expect("Could not post reliability status"),
-        );
+        health["reliability"] = json!(state.reliability.health_check().await.unwrap_or_else(|e| {
+            state
+                .metrics
+                .incr_with_tags("error.redis.unavailable")
+                .with_tag("application", "autoconnect")
+                .send();
+            error!("🔍🟥 Reliability reporting down: {:?}", e);
+            "down"
+        }));
     }
 
-    Json(json!(health))
+    Json(health)
 }
 
 /// Handle the `/status` route

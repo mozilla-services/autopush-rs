@@ -23,33 +23,27 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
-    let mut health: HashMap<&str, Value> = HashMap::new();
-    health.insert("status", Value::from_str("OK").unwrap());
-    health.insert(
-        "version",
-        Value::from_str(env!("CARGO_PKG_VERSION")).unwrap(),
-    );
-    health.insert("router_table", router_health);
-    health.insert("message_table", message_health);
-    health.insert("routers", Value::from_iter(routers));
+    let mut health = json!({
+        "status": Value::from_str("OK").unwrap(),
+        "version": Value::from_str(env!("CARGO_PKG_VERSION")).unwrap(),
+        "router_table": router_health,
+        "message_table": message_health,
+        "routers": routers,
+    });
 
     #[cfg(feature = "reliable_report")]
     {
-        health.insert(
-            "reliability",
-            Value::from_str(state.reliability.health_check().await.unwrap_or_else(|e| {
-                state
-                    .metrics
-                    .incr_with_tags("error.redis.unavailable")
-                    .with_tag("application", "autoendpoint")
-                    .send();
-                error!("🔍🟥 Reliability reporting down: {:?}", e);
-                "down"
-            }))
-            .expect("Could not post reliability status"),
-        );
+        health["reliability"] = json!(state.reliability.health_check().await.unwrap_or_else(|e| {
+            state
+                .metrics
+                .incr_with_tags("error.redis.unavailable")
+                .with_tag("application", "autoendpoint")
+                .send();
+            error!("🔍🟥 Reliability reporting down: {:?}", e);
+            "down"
+        }));
     }
-    Json(json!(health))
+    Json(health)
 }
 
 /// Convert the result of a DB health check to JSON
