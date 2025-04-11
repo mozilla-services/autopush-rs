@@ -8,10 +8,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix_web::HttpResponse;
+use deadpool_redis::Config;
 use prometheus_client::{
     encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
 };
-use redis::{Commands, ConnectionLike};
+use redis::aio::ConnectionLike;
+use redis::AsyncCommands;
 
 use crate::db::client::DbClient;
 use crate::errors::{ApcErrorKind, Result};
@@ -56,7 +58,7 @@ pub enum ReliabilityState {
 
 #[derive(Clone)]
 pub struct PushReliability {
-    client: Option<Arc<redis::Client>>,
+    pool: Option<deadpool_redis::Pool>,
     db: Box<dyn DbClient>,
 }
 
@@ -66,35 +68,29 @@ impl PushReliability {
         if reliability_dsn.is_none() {
             debug!("🔍 No reliability DSN declared.");
             return Ok(Self {
-                client: None,
+                pool: None,
                 db: db.clone(),
             });
         };
 
-        let client = if let Some(dsn) = reliability_dsn {
-            let redis_client = redis::Client::open(dsn.clone()).map_err(|e| {
-                ApcErrorKind::GeneralError(format!("Could not connect to redis server: {:?}", e))
-            })?;
-            //Verify that we can connect to the server.
-            match redis_client.get_connection_with_timeout(CONNECTION_EXPIRATION) {
-                Ok(_) => {
-                    info!("🔍 Connected to reliability server at {dsn}");
-                    Some(Arc::new(redis_client))
-                }
-                Err(e) => {
-                    // This is a "soft" error. It does impact whether or not reliability will work but it's
-                    // not something that should prevent the server from running.
-                    error!("🔍 Invalid reliability DNS specified: {e} for DSN: {dsn}.");
-                    None
-                }
-            }
-        } else {
-            trace!("🔍 Empty Redis DSN?");
-            None
+        let pool = {
+            let config: deadpool_redis::Config = Config::from_url(reliability_dsn.clone().unwrap());
+            let pool = config
+                .builder()
+                .map_err(|e| {
+                    ApcErrorKind::GeneralError(format!("Could not config reliability pool {:?}", e))
+                })?
+                .create_timeout(Some(CONNECTION_EXPIRATION))
+                .runtime(deadpool::Runtime::Tokio1)
+                .build()
+                .map_err(|e| {
+                    ApcErrorKind::GeneralError(format!("Could not build reliability pool {:?}", e))
+                })?;
+            Some(pool)
         };
 
         Ok(Self {
-            client,
+            pool,
             db: db.clone(),
         })
     }
@@ -110,7 +106,7 @@ impl PushReliability {
         let Some(id) = reliability_id else {
             return None;
         };
-        if let Some(client) = &self.client {
+        if let Some(pool) = &self.pool {
             debug!(
                 "🔍 {} from {} to {}",
                 id,
@@ -118,10 +114,10 @@ impl PushReliability {
                     .unwrap_or_else(|| "None".to_owned()),
                 new
             );
-            match client.get_connection_with_timeout(CONNECTION_EXPIRATION) {
+            match pool.get().await {
                 Ok(mut conn) => self.internal_record(&mut conn, old, new, expr, id).await,
-                Err(e) => warn!("🔍⚠️ Unable to record reliability state: {:?}", e),
-            };
+                Err(e) => warn!("🔍⚠️ Unable to record reliability state, {:?}", e),
+            }
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
@@ -139,31 +135,25 @@ impl PushReliability {
         expr: Option<u64>,
         id: &str,
     ) {
-        let mut pipeline = redis::Pipeline::new();
-        let pipeline = pipeline.hincr(COUNTS, new.to_string(), 1);
-        let pipeline = if let Some(old) = old {
-            pipeline
-                .hincr(COUNTS, old.to_string(), -1)
-                .zrem(EXPIRY, format!("{}#{}", &old, id))
-        } else {
-            pipeline
+        let mut pipeline = redis::pipe();
+        pipeline.hincr(COUNTS, new.to_string(), 1);
+
+        if let Some(old) = old {
+            pipeline.hincr(COUNTS, old.to_string(), -1);
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
-        let cc = pipeline
-            .zadd(EXPIRY, format!("{}#{}", new, id), expr.unwrap_or_default())
-            .exec(conn)
-            .inspect_err(|e| {
-                warn!("🔍 Failed to write to storage: {:?}", e);
-            });
-        trace!("🔍 internal record result: {:?}", cc);
+        pipeline.zadd(EXPIRY, format!("{}#{}", new, id), expr.unwrap_or_default());
+        let _ = pipeline.exec_async(conn).await.inspect_err(|e| {
+            warn!("🔍 Failed to write to storage: {:?}", e);
+        });
     }
 
     /// Perform a garbage collection cycle on a reliability object.
     pub async fn gc(&self) -> Result<()> {
-        if let Some(client) = &self.client {
-            debug!("🔍 performing pre-report garbage collection");
-            if let Ok(mut conn) = client.get_connection_with_timeout(CONNECTION_EXPIRATION) {
+        if let Some(pool) = &self.pool {
+            if let Ok(mut conn) = pool.get().await {
+                debug!("🔍 performing pre-report garbage collection");
                 return self.internal_gc(&mut conn, sec_since_epoch()).await;
             }
         }
@@ -179,32 +169,58 @@ impl PushReliability {
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
-        let purged: Vec<String> = conn.zrangebyscore(EXPIRY, 0, expr as isize)?;
+        // First, get the list of values that are to be purged.
+        let mut purge_pipe = redis::Pipeline::new();
+        purge_pipe.zrangebyscore(EXPIRY, 0, expr as isize);
+        let result_list: Vec<Vec<redis::Value>> = purge_pipe.query_async(conn).await?;
+
+        // Now purge each of the values by resetting the counts and removing the item from the purge set.
         let mut pipeline = redis::Pipeline::new();
-        for key in purged {
-            let Some((state, _id)) = key.split_once('#') else {
-                let err = "Invalid key stored in Reliability datastore";
-                error!("🔍🟥 {} [{:?}]", &err, &key);
-                return Err(ApcErrorKind::GeneralError(err.to_owned()).into());
-            };
-            pipeline.hincr(COUNTS, state, -1);
-            pipeline.zrem(EXPIRY, key);
+        for result_values in result_list {
+            for purged in result_values {
+                let key = redis::from_redis_value::<String>(&purged)?;
+                let Some((state, _id)) = key.split_once('#') else {
+                    let err = "Invalid key stored in Reliability datastore";
+                    error!("🔍🟥 {} [{:?}]", &err, &key);
+                    return Err(ApcErrorKind::GeneralError(err.to_owned()).into());
+                };
+                pipeline.hincr(COUNTS, state, -1);
+                pipeline.zrem(EXPIRY, key);
+            }
         }
-        pipeline.exec(conn)?;
+        pipeline.exec_async(conn).await?;
         Ok(())
     }
 
     // Return a snapshot of milestone states
     // This will probably not be called directly, but useful for debugging.
     pub async fn report(&self) -> Result<HashMap<String, i32>> {
-        if let Some(client) = &self.client {
-            if let Ok(mut conn) = client.get_connection() {
-                return Ok(conn.hgetall(COUNTS).map_err(|e| {
+        if let Some(pool) = &self.pool {
+            if let Ok(mut conn) = pool.get().await {
+                return Ok(conn.hgetall(COUNTS).await.map_err(|e| {
                     ApcErrorKind::GeneralError(format!("Could not read report {:?}", e))
                 })?);
             }
         }
         Ok(HashMap::new())
+    }
+
+    pub async fn health_check<'a>(&self) -> Result<&'a str> {
+        if let Some(pool) = &self.pool {
+            let mut conn = pool.get().await.map_err(|e| {
+                ApcErrorKind::GeneralError(format!(
+                    "Could not connect to reliability datastore: {:?}",
+                    e,
+                ))
+            })?;
+            // Add a type here, even though we're tossing the value, in order to prevent the `FromRedisValue` warning.
+            conn.ping::<()>().await.map_err(|e| {
+                ApcErrorKind::GeneralError(format!("Could not ping reliability datastore: {:?}", e))
+            })?;
+            Ok("up")
+        } else {
+            Ok("up")
+        }
     }
 }
 
