@@ -1,6 +1,6 @@
 //! Health and Dockerflow routes
+use std::collections::HashMap;
 use std::thread;
-use std::{collections::HashMap, str::FromStr};
 
 use actix_web::{
     web::{Data, Json},
@@ -8,7 +8,7 @@ use actix_web::{
 };
 use cadence::CountedExt;
 use reqwest::StatusCode;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use autopush_common::db::error::DbResult;
 
@@ -24,8 +24,8 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("fcm", state.fcm_router.active());
 
     let mut health = json!({
-        "status": Value::from_str("OK").unwrap(),
-        "version": Value::from_str(env!("CARGO_PKG_VERSION")).unwrap(),
+        "status": "OK",
+        "version": env!("CARGO_PKG_VERSION"),
         "router_table": router_health,
         "message_table": message_health,
         "routers": routers,
@@ -40,7 +40,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
                 .with_tag("application", "autoendpoint")
                 .send();
             error!("🔍🟥 Reliability reporting down: {:?}", e);
-            "down"
+            "ERROR"
         }));
     }
     Json(health)

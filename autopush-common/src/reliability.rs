@@ -65,7 +65,7 @@ pub struct PushReliability {
 impl PushReliability {
     // Do the magic to make a report instance, whatever that will be.
     pub fn new(reliability_dsn: &Option<String>, db: Box<dyn DbClient>) -> Result<Self> {
-        if reliability_dsn.is_none() {
+        let Some(reliability_dsn) = reliability_dsn else {
             debug!("🔍 No reliability DSN declared.");
             return Ok(Self {
                 pool: None,
@@ -73,9 +73,9 @@ impl PushReliability {
             });
         };
 
-        let pool = {
-            let config: deadpool_redis::Config = Config::from_url(reliability_dsn.clone().unwrap());
-            let pool = config
+        let config: deadpool_redis::Config = Config::from_url(reliability_dsn);
+        let pool = Some(
+            config
                 .builder()
                 .map_err(|e| {
                     ApcErrorKind::GeneralError(format!("Could not config reliability pool {:?}", e))
@@ -85,9 +85,8 @@ impl PushReliability {
                 .build()
                 .map_err(|e| {
                     ApcErrorKind::GeneralError(format!("Could not build reliability pool {:?}", e))
-                })?;
-            Some(pool)
-        };
+                })?,
+        );
 
         Ok(Self {
             pool,
@@ -160,22 +159,41 @@ impl PushReliability {
         Ok(())
     }
 
-    /// Perform the `garbage collection` cycle. This will scan the currently known timestamp
-    /// indexed entries in redis looking for "expired" data, and then rectify the counts to
-    /// indicate the final states. This is because many of the storage systems do not provide
-    /// indicators when data reaches a TTL.
+    // Perform the `garbage collection` cycle. This will scan the currently known timestamp
+    // indexed entries in redis looking for "expired" data, and then rectify the counts to
+    // indicate the final states. This is because many of the storage systems do not provide
+    // indicators when data reaches a TTL.
+
+    // A few notes about redis:
+    // "pipeline" essentially stitches commands together. Each command executes in turn, but the data store
+    // remains open for other operations to occur.
+    // `atomic()` wraps things in a transaction, essentially locking the data store while the command executes.
+    // Sadly, there's no way to create a true transaction where you read and write in a single operation, so we
+    // have to presume some "slop" here.
     pub(crate) async fn internal_gc<C: ConnectionLike>(
         &self,
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
         // First, get the list of values that are to be purged.
-        let mut purge_pipe = redis::Pipeline::new();
-        purge_pipe.zrangebyscore(EXPIRY, 0, expr as isize);
-        let result_list: Vec<Vec<redis::Value>> = purge_pipe.query_async(conn).await?;
+        // NOTE: this does not need to be atomic since it's a single command.
+        // This also makes testing a bit easier, since mocking the response would become
+        // far more complicated.
+        let result_list: Vec<Vec<redis::Value>> = redis::Pipeline::new()
+            .zrangebyscore(EXPIRY, 0, expr as isize)
+            .query_async(conn)
+            .await?;
+
+        // insta-bail if there's nothing to do.
+        if result_list.is_empty() {
+            return Ok(());
+        }
 
         // Now purge each of the values by resetting the counts and removing the item from the purge set.
+        // Here, we use the `Pipeline` construct which strings together multiple commands into one transaction.
         let mut pipeline = redis::Pipeline::new();
+        // Since we're adjusting values, let's make this atomic so that others don't goof with things.
+        pipeline.atomic();
         for result_values in result_list {
             for purged in result_values {
                 let key = redis::from_redis_value::<String>(&purged)?;
@@ -184,7 +202,9 @@ impl PushReliability {
                     error!("🔍🟥 {} [{:?}]", &err, &key);
                     return Err(ApcErrorKind::GeneralError(err.to_owned()).into());
                 };
+                // Adjust the COUNTS and then remove the record from the list of expired rows.
                 pipeline.hincr(COUNTS, state, -1);
+                pipeline.hincr(COUNTS, ReliabilityState::Expired.to_string(), 1);
                 pipeline.zrem(EXPIRY, key);
             }
         }
@@ -217,9 +237,9 @@ impl PushReliability {
             conn.ping::<()>().await.map_err(|e| {
                 ApcErrorKind::GeneralError(format!("Could not ping reliability datastore: {:?}", e))
             })?;
-            Ok("up")
+            Ok("OK")
         } else {
-            Ok("up")
+            Ok("OK")
         }
     }
 }
@@ -388,21 +408,51 @@ mod tests {
 
         let mut mock_pipe = redis::Pipeline::new();
         mock_pipe
+            .cmd("MULTI")
+            .ignore()
             .cmd("HINCRBY")
             .arg(COUNTS)
             .arg(test_id.to_string())
             .arg(-1)
             .ignore()
+            .cmd("HINCRBY")
+            .arg(COUNTS)
+            .arg(ReliabilityState::Expired.to_string())
+            .arg(1)
+            .ignore()
             .cmd("ZREM")
             .arg(EXPIRY)
             .arg(key)
+            .ignore()
+            .cmd("EXEC")
             .ignore();
+
+        // Remember, we're not doing this atomically
         let mut conn = MockRedisConnection::new(vec![
             MockCmd::new(
                 redis::cmd("ZRANGEBYSCORE").arg(EXPIRY).arg(0).arg(expr),
                 Ok(response),
             ),
-            MockCmd::new(mock_pipe, Ok("Okay")),
+            // NOTE: Technically, since we `.ignore()` these, we could just have a
+            // Vec containing just `Okay`. I'm being a bit pedantic here because I know
+            // that this will come back to haunt me if I'm not, and because figuring out
+            // the proper response for this was annoying.
+            MockCmd::new(
+                mock_pipe,
+                Ok(redis::Value::Array(vec![
+                    redis::Value::Okay,
+                    // Match the number of commands that are being held for processing
+                    redis::Value::SimpleString("QUEUED".to_owned()),
+                    redis::Value::SimpleString("QUEUED".to_owned()),
+                    redis::Value::SimpleString("QUEUED".to_owned()),
+                    // the exec has been called, return an array containing the results.
+                    redis::Value::Array(vec![
+                        redis::Value::Okay,
+                        redis::Value::Okay,
+                        redis::Value::Okay,
+                    ]),
+                ])),
+            ),
         ]);
 
         // test the main report function (note, this does not test redis)

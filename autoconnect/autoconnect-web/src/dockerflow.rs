@@ -28,6 +28,7 @@ pub fn config(config: &mut web::ServiceConfig) {
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
+    #[allow(unused_mut)]
     let mut health = json!({
         "status": if state
         .db
@@ -50,7 +51,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
                 .with_tag("application", "autoconnect")
                 .send();
             error!("🔍🟥 Reliability reporting down: {:?}", e);
-            "down"
+            "ERROR"
         }));
     }
 
