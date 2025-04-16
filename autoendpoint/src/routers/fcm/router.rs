@@ -249,6 +249,8 @@ mod tests {
         db: Box<dyn DbClient>,
     ) -> FcmRouter {
         let url = &server.url();
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+
         FcmRouter::new(
             FcmSettings {
                 base_url: Url::parse(url).unwrap(),
@@ -271,7 +273,7 @@ mod tests {
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             db.clone(),
             #[cfg(feature = "reliable_report")]
-            Arc::new(PushReliability::new(&None, db.clone()).unwrap()),
+            Arc::new(PushReliability::new(&None, db.clone(), &metrics).unwrap()),
         )
         .await
         .unwrap()

@@ -36,7 +36,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
         health["reliability"] = json!(state.reliability.health_check().await.unwrap_or_else(|e| {
             state
                 .metrics
-                .incr_with_tags("error.redis.unavailable")
+                .incr_with_tags("reliability.error.redis_unavailable")
                 .with_tag("application", "autoendpoint")
                 .send();
             error!("🔍🟥 Reliability reporting down: {:?}", e);

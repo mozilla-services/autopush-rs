@@ -356,13 +356,14 @@ mod test {
     use autopush_common::db::mock::MockDbClient;
 
     fn make_router(db: Box<dyn DbClient>) -> WebPushRouter {
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
         WebPushRouter {
             db: db.clone(),
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(PushReliability::new(&None, db).unwrap()),
+            reliability: Arc::new(PushReliability::new(&None, db, &metrics).unwrap()),
         }
     }
 

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix_web::HttpResponse;
+use cadence::{CountedExt, StatsdClient};
 use deadpool_redis::Config;
 use prometheus_client::{
     encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
@@ -60,16 +61,22 @@ pub enum ReliabilityState {
 pub struct PushReliability {
     pool: Option<deadpool_redis::Pool>,
     db: Box<dyn DbClient>,
+    metrics: Arc<StatsdClient>,
 }
 
 impl PushReliability {
     // Do the magic to make a report instance, whatever that will be.
-    pub fn new(reliability_dsn: &Option<String>, db: Box<dyn DbClient>) -> Result<Self> {
+    pub fn new(
+        reliability_dsn: &Option<String>,
+        db: Box<dyn DbClient>,
+        metrics: &Arc<StatsdClient>,
+    ) -> Result<Self> {
         let Some(reliability_dsn) = reliability_dsn else {
             debug!("🔍 No reliability DSN declared.");
             return Ok(Self {
                 pool: None,
                 db: db.clone(),
+                metrics: metrics.clone(),
             });
         };
 
@@ -91,6 +98,7 @@ impl PushReliability {
         Ok(Self {
             pool,
             db: db.clone(),
+            metrics: metrics.clone(),
         })
     }
 
@@ -170,45 +178,47 @@ impl PushReliability {
     // `atomic()` wraps things in a transaction, essentially locking the data store while the command executes.
     // Sadly, there's no way to create a true transaction where you read and write in a single operation, so we
     // have to presume some "slop" here.
-    pub(crate) async fn internal_gc<C: ConnectionLike>(
+    pub(crate) async fn internal_gc<C: ConnectionLike + AsyncCommands>(
         &self,
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
-        // First, get the list of values that are to be purged.
-        // NOTE: this does not need to be atomic since it's a single command.
-        // This also makes testing a bit easier, since mocking the response would become
-        // far more complicated.
-        let result_list: Vec<Vec<redis::Value>> = redis::Pipeline::new()
-            .zrangebyscore(EXPIRY, 0, expr as isize)
-            .query_async(conn)
+        let result: redis::Value =
+            crate::redis_util::transaction(conn, &[EXPIRY], async |conn, pipe| {
+                // First, get the list of values that are to be purged.
+                let purged: Vec<String> = conn.zrangebyscore(EXPIRY, 0, expr as isize).await?;
+                // insta-bail if there's nothing to do.
+                if purged.is_empty() {
+                    return Ok(Some(redis::Value::Nil));
+                }
+
+                // Now purge each of the values by resetting the counts and removing the item from
+                // the purge set.
+                for key in purged {
+                    let Some((state, _id)) = key.split_once('#') else {
+                        let err = "Invalid key stored in Reliability datastore";
+                        error!("🔍🟥 {} [{:?}]", &err, &key);
+                        return Err(ApcErrorKind::GeneralError(err.to_owned()));
+                    };
+                    // Adjust the COUNTS and then remove the record from the list of expired rows.
+                    pipe.hincr(COUNTS, state, -1);
+                    pipe.hincr(COUNTS, ReliabilityState::Expired.to_string(), 1);
+                    pipe.zrem(EXPIRY, key);
+                }
+                Ok(pipe.query_async(conn).await?)
+            })
             .await?;
-
-        // insta-bail if there's nothing to do.
-        if result_list.is_empty() {
-            return Ok(());
-        }
-
-        // Now purge each of the values by resetting the counts and removing the item from the purge set.
-        // Here, we use the `Pipeline` construct which strings together multiple commands into one transaction.
-        let mut pipeline = redis::Pipeline::new();
-        // Since we're adjusting values, let's make this atomic so that others don't goof with things.
-        pipeline.atomic();
-        for result_values in result_list {
-            for purged in result_values {
-                let key = redis::from_redis_value::<String>(&purged)?;
-                let Some((state, _id)) = key.split_once('#') else {
-                    let err = "Invalid key stored in Reliability datastore";
-                    error!("🔍🟥 {} [{:?}]", &err, &key);
-                    return Err(ApcErrorKind::GeneralError(err.to_owned()).into());
-                };
-                // Adjust the COUNTS and then remove the record from the list of expired rows.
-                pipeline.hincr(COUNTS, state, -1);
-                pipeline.hincr(COUNTS, ReliabilityState::Expired.to_string(), 1);
-                pipeline.zrem(EXPIRY, key);
-            }
-        }
-        pipeline.exec_async(conn).await?;
+        self.metrics
+            .incr_with_tags("reliability.gc")
+            .with_tag(
+                "status",
+                if result == redis::Value::Nil {
+                    "error"
+                } else {
+                    "success"
+                },
+            )
+            .send();
         Ok(())
     }
 
@@ -377,13 +387,15 @@ mod tests {
             Ok(""),
         )]);
 
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+
         let int_test_id = test_id.clone();
         db.expect_log_report()
             .times(1)
             .withf(move |id, state| id == int_test_id && state == &ReliabilityState::Accepted)
             .return_once(|_, _| Ok(()));
         // test the main report function (note, this does not test redis)
-        let pr = PushReliability::new(&None, Box::new(Arc::new(db))).unwrap();
+        let pr = PushReliability::new(&None, Box::new(Arc::new(db)), &metrics).unwrap();
         pr.record(&Some(test_id.clone()), new, &None, Some(expr))
             .await;
 
@@ -401,6 +413,7 @@ mod tests {
         let new = ReliabilityState::Accepted;
         let key = format!("{}#{}", &test_id, &new);
         let expr = 1;
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
 
         let response: redis::Value = redis::Value::Array(vec![redis::Value::SimpleString(
             format!("{}#{}", test_id, new.clone()),
@@ -456,7 +469,7 @@ mod tests {
         ]);
 
         // test the main report function (note, this does not test redis)
-        let pr = PushReliability::new(&None, Box::new(Arc::new(db))).unwrap();
+        let pr = PushReliability::new(&None, Box::new(Arc::new(db)), &metrics).unwrap();
         // functionally a no-op, but it does exercise lines.
         pr.gc().await?;
 

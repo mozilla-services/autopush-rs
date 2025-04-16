@@ -94,7 +94,7 @@ impl Server {
         };
         #[cfg(feature = "reliable_report")]
         let reliability = Arc::new(
-            PushReliability::new(&settings.reliability_dsn, db.clone()).map_err(|e| {
+            PushReliability::new(&settings.reliability_dsn, db.clone(), &metrics).map_err(|e| {
                 ApiErrorKind::General(format!("Could not initialize Reliability Report: {:?}", e))
             })?,
         );
