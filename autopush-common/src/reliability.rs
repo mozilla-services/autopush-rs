@@ -170,45 +170,36 @@ impl PushReliability {
     // `atomic()` wraps things in a transaction, essentially locking the data store while the command executes.
     // Sadly, there's no way to create a true transaction where you read and write in a single operation, so we
     // have to presume some "slop" here.
-    pub(crate) async fn internal_gc<C: ConnectionLike>(
+    pub(crate) async fn internal_gc<C: ConnectionLike + AsyncCommands>(
         &self,
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
-        // First, get the list of values that are to be purged.
-        // NOTE: this does not need to be atomic since it's a single command.
-        // This also makes testing a bit easier, since mocking the response would become
-        // far more complicated.
-        let result_list: Vec<Vec<redis::Value>> = redis::Pipeline::new()
-            .zrangebyscore(EXPIRY, 0, expr as isize)
-            .query_async(conn)
+        let _: redis::Value =
+            crate::redis_util::transaction(conn, &[EXPIRY], async |conn, pipe| {
+                // First, get the list of values that are to be purged.
+                let purged: Vec<String> = conn.zrangebyscore(EXPIRY, 0, expr as isize).await?;
+                // insta-bail if there's nothing to do.
+                if purged.is_empty() {
+                    return Ok(Some(redis::Value::Nil));
+                }
+
+                // Now purge each of the values by resetting the counts and removing the item from
+                // the purge set.
+                for key in purged {
+                    let Some((state, _id)) = key.split_once('#') else {
+                        let err = "Invalid key stored in Reliability datastore";
+                        error!("🔍🟥 {} [{:?}]", &err, &key);
+                        return Err(ApcErrorKind::GeneralError(err.to_owned()));
+                    };
+                    // Adjust the COUNTS and then remove the record from the list of expired rows.
+                    pipe.hincr(COUNTS, state, -1);
+                    pipe.hincr(COUNTS, ReliabilityState::Expired.to_string(), 1);
+                    pipe.zrem(EXPIRY, key);
+                }
+                Ok(pipe.query_async(conn).await?)
+            })
             .await?;
-
-        // insta-bail if there's nothing to do.
-        if result_list.is_empty() {
-            return Ok(());
-        }
-
-        // Now purge each of the values by resetting the counts and removing the item from the purge set.
-        // Here, we use the `Pipeline` construct which strings together multiple commands into one transaction.
-        let mut pipeline = redis::Pipeline::new();
-        // Since we're adjusting values, let's make this atomic so that others don't goof with things.
-        pipeline.atomic();
-        for result_values in result_list {
-            for purged in result_values {
-                let key = redis::from_redis_value::<String>(&purged)?;
-                let Some((state, _id)) = key.split_once('#') else {
-                    let err = "Invalid key stored in Reliability datastore";
-                    error!("🔍🟥 {} [{:?}]", &err, &key);
-                    return Err(ApcErrorKind::GeneralError(err.to_owned()).into());
-                };
-                // Adjust the COUNTS and then remove the record from the list of expired rows.
-                pipeline.hincr(COUNTS, state, -1);
-                pipeline.hincr(COUNTS, ReliabilityState::Expired.to_string(), 1);
-                pipeline.zrem(EXPIRY, key);
-            }
-        }
-        pipeline.exec_async(conn).await?;
         Ok(())
     }
 
