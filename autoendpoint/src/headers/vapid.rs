@@ -38,8 +38,9 @@ impl Default for VapidClaims {
 }
 
 impl VapidClaims {
+    /// Returns default expiration of one day from creation (in seconds).
     pub fn default_exp() -> u64 {
-        sec_since_epoch() + ONE_DAY_IN_SECONDS
+        sec_since_epoch() + ONE_DAY_IN_SECONDS.num_seconds() as u64
     }
 }
 

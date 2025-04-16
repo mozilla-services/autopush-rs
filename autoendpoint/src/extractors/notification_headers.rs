@@ -3,6 +3,7 @@ use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
 use autopush_common::{util::InsertOpt, MAX_NOTIFICATION_TTL};
+use chrono::TimeDelta;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::cmp::min;
@@ -70,7 +71,7 @@ impl NotificationHeaders {
             // Enforce a maximum TTL, but don't error
             // NOTE: In order to trap for negative TTLs, this should be a
             // signed value, otherwise we will error out with NO_TTL.
-            .map(|ttl| min(ttl, MAX_NOTIFICATION_TTL as i64))
+            .map(|ttl| min(ttl, MAX_NOTIFICATION_TTL.num_seconds() as i64))
             .ok_or(ApiErrorKind::NoTTL)?;
         let topic = get_owned_header(req, "topic");
 
@@ -218,6 +219,7 @@ mod tests {
     use crate::error::{ApiErrorKind, ApiResult};
     use actix_web::test::TestRequest;
     use autopush_common::MAX_NOTIFICATION_TTL;
+    use chrono::TimeDelta;
 
     /// Assert that a result is a validation error and check its serialization
     /// against the JSON value.
@@ -283,12 +285,20 @@ mod tests {
     #[test]
     fn maximum_ttl() {
         let req = TestRequest::post()
-            .insert_header(("TTL", (MAX_NOTIFICATION_TTL + 1).to_string()))
+            .insert_header((
+                "TTL",
+                (MAX_NOTIFICATION_TTL + TimeDelta::seconds(1))
+                    .num_seconds()
+                    .to_string(),
+            ))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL as i64);
+        assert_eq!(
+            result.unwrap().ttl,
+            MAX_NOTIFICATION_TTL.num_seconds() as i64
+        );
     }
 
     /// A valid topic results in no errors
