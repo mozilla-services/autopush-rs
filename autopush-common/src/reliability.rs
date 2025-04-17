@@ -162,9 +162,22 @@ impl PushReliability {
 
     /// Perform a garbage collection cycle on a reliability object.
     pub async fn gc(&self) -> Result<()> {
+<<<<<<< HEAD
         if let Some(pool) = &self.pool {
             if let Ok(mut conn) = pool.get().await {
                 debug!("🔍 performing pre-report garbage collection");
+=======
+        if let Some(client) = &self.client {
+            debug!("🔍 performing pre-report garbage collection");
+            if let Ok(mut conn) =
+                client.get_connection_with_timeout(CONNECTION_EXPIRATION.to_std().map_err(|e| {
+                    ApcErrorKind::GeneralError(format!(
+                        "Could not convert CONNECTION_EXPIRATION to std::time {:?}",
+                        e
+                    ))
+                })?)
+            {
+>>>>>>> 7991e3f8 (reliability error handling replacing unwrap)
                 return self.internal_gc(&mut conn, sec_since_epoch()).await;
             }
         }
