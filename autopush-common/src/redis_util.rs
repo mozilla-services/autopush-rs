@@ -1,4 +1,8 @@
-use redis::{aio::ConnectionLike, cmd, pipe, AsyncCommands, Pipeline, RedisError, ToRedisArgs};
+use redis::{
+    aio::ConnectionLike, cmd, pipe, AsyncCommands, ErrorKind, Pipeline, RedisError, ToRedisArgs,
+};
+
+const MAX_TRANSACTION_LOOP: u8 = 10;
 
 /// Async version of [redis::transaction]
 ///
@@ -17,7 +21,7 @@ pub async fn transaction<
     func: F,
 ) -> Result<T, E> {
     let mut func = func;
-    loop {
+    for _i in [0..MAX_TRANSACTION_LOOP] {
         cmd("WATCH").arg(keys).exec_async(con).await?;
         let mut p = pipe();
         let response: Option<T> = func(con, p.atomic()).await?;
@@ -33,4 +37,10 @@ pub async fn transaction<
             }
         }
     }
+
+    // The transaction failed, so return an error.
+    // We're using `Client` here because it's the closest that I could think of since
+    // it implies an error BEFORE the script was executed. An alternate might be
+    // `ExecAbortError` but that meant that the script failed in process.)
+    Err(RedisError::from((ErrorKind::ClientError, "Could not complete transaction")).into())
 }
