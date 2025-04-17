@@ -294,10 +294,7 @@ mod tests {
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(
-            result.unwrap().ttl,
-            MAX_NOTIFICATION_TTL.num_seconds() as i64
-        );
+        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL.num_seconds());
     }
 
     /// A valid topic results in no errors
