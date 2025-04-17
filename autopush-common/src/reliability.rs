@@ -187,6 +187,7 @@ impl PushReliability {
             crate::redis_util::transaction(conn, &[EXPIRY], async |conn, pipe| {
                 // First, get the list of values that are to be purged.
                 let purged: Vec<String> = conn.zrangebyscore(EXPIRY, 0, expr as isize).await?;
+                dbg!("here 1", &purged);
                 // insta-bail if there's nothing to do.
                 if purged.is_empty() {
                     return Ok(Some(redis::Value::Nil));
@@ -205,7 +206,12 @@ impl PushReliability {
                     pipe.hincr(COUNTS, ReliabilityState::Expired.to_string(), 1);
                     pipe.zrem(EXPIRY, key);
                 }
-                Ok(pipe.query_async(conn).await?)
+                dbg!("here 2");
+                let result = pipe.query_async(conn).await.inspect_err(|e| {
+                    dbg!(&e);
+                });
+                dbg!(&result);
+                Ok(result?)
             })
             .await?;
         self.metrics
@@ -419,6 +425,11 @@ mod tests {
             format!("{}#{}", test_id, new.clone()),
         )]);
 
+        // Construct the Pipeline.
+        // A redis "pipeline" is a set of instructions that are executed in order. These
+        // are not truly atomic, as other actions can interrupt a pipeline, but they
+        // are guaranteed to happen in sequence. Transactions essentially check that the
+        // WATCH key is not altered before the pipeline is executed.
         let mut mock_pipe = redis::Pipeline::new();
         mock_pipe
             .cmd("MULTI")
@@ -440,8 +451,15 @@ mod tests {
             .cmd("EXEC")
             .ignore();
 
-        // Remember, we're not doing this atomically
+        // This mocks the "conn"ection, so all commands sent to the connection need
+        // to be separated out. This includes the transaction "WATCH" and "UNWATCH".
+        // The "meat" of the functions are handled via a Pipeline, which conjoins the
+        // commands into one group (see above). Pipelines return an array of
+        // results, one entry for each pipeline command.
+        // In other words, the `internal_gc` commands are probably in the pipeline,
+        // all the others are probably in the conn.
         let mut conn = MockRedisConnection::new(vec![
+            MockCmd::new(redis::cmd("WATCH").arg(EXPIRY), Ok(redis::Value::Okay)),
             MockCmd::new(
                 redis::cmd("ZRANGEBYSCORE").arg(EXPIRY).arg(0).arg(expr),
                 Ok(response),
@@ -466,6 +484,8 @@ mod tests {
                     ]),
                 ])),
             ),
+            // If the transaction fails, this should return a redis::Value::Nil
+            MockCmd::new(redis::cmd("UNWATCH"), Ok(redis::Value::Okay)),
         ]);
 
         // test the main report function (note, this does not test redis)
