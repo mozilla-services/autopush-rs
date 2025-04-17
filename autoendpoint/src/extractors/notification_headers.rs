@@ -3,7 +3,6 @@ use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
 use autopush_common::{util::InsertOpt, MAX_NOTIFICATION_TTL};
-use chrono::TimeDelta;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::cmp::min;

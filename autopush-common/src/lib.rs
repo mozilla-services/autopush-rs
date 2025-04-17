@@ -24,7 +24,7 @@ pub mod test_support;
 #[macro_use]
 pub mod util;
 
-use chrono::Duration;
+use chrono::{Duration, TimeDelta};
 
 /// Define some global TTLs.
 ///
@@ -49,11 +49,19 @@ use chrono::Duration;
 /// To that end, messages left unread for more than 30 days should be considered
 /// "abandoned" and any router info assigned to a User Agent that has not contacted
 /// Autopush in 60 days can be discarded.
-///
-pub const ONE_DAY_IN_SECONDS: u64 = Duration::days(1).num_seconds() as u64;
-/// The maximum TTL for notifications, 30 days in seconds
-pub const MAX_NOTIFICATION_TTL: u64 = Duration::days(30).num_seconds() as u64;
-/// FCM has a max TTL of 4 weeks (28 days), in seconds.
-pub const MAX_FCM_NOTIFICATION_TTL: u64 = Duration::days(28).num_seconds() as u64;
-/// The maximum TTL for router records, 60 days in seconds
-pub const MAX_ROUTER_TTL: u64 = Duration::days(60).num_seconds() as u64;
+
+/// One day defined as chrono TimeDelta/Duration.
+/// In most use cases, converted to seconds through .num_seconds().
+pub const ONE_DAY: TimeDelta = Duration::days(1);
+
+/// The maximum TTL for notifications (30 days).
+/// /// In most use cases, converted to seconds through .num_seconds().
+pub const MAX_NOTIFICATION_TTL: TimeDelta = Duration::days(30);
+
+/// FCM has a max TTL of 4 weeks (28 days).
+/// /// In most use cases, converted to seconds through .num_seconds().
+pub const MAX_FCM_NOTIFICATION_TTL: TimeDelta = Duration::days(28);
+
+/// The maximum TTL for router records (60 days).
+/// /// In most use cases, converted to seconds through .num_seconds().
+pub const MAX_ROUTER_TTL: TimeDelta = Duration::days(60);

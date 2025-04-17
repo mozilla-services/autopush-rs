@@ -9,6 +9,8 @@ use std::time::{Duration, SystemTime};
 use again::RetryPolicy;
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
+use chrono::Duration as ChronoDuration;
+use chrono::TimeDelta;
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
@@ -55,7 +57,9 @@ const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 #[cfg(feature = "reliable_report")]
 const RELIABLE_LOG_FAMILY: &str = "reliability";
 #[cfg(feature = "reliable_report")]
-const RELIABLE_LOG_TTL: u64 = crate::MAX_NOTIFICATION_TTL * 2;
+/// The maximum TTL for reliability logging (60 days).
+/// /// In most use cases, converted to seconds through .num_seconds().
+pub const RELIABLE_LOG_TTL: TimeDelta = ChronoDuration::days(60);
 
 pub(crate) const RETRY_COUNT: usize = 5;
 
@@ -799,7 +803,8 @@ impl BigTableClientImpl {
     fn user_to_row(&self, user: &User, version: &Uuid) -> Row {
         let row_key = user.uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let expiry =
+            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
 
         let mut cells: Vec<cell::Cell> = vec![
             cell::Cell {
@@ -1081,7 +1086,8 @@ impl DbClient for BigTableClientImpl {
         // easy/efficient
         let row_key = uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let expiry =
+            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
 
         // Note: updating the version column isn't necessary here because this
         // write only adds a new (or updates an existing) column with a 0 byte
@@ -1124,7 +1130,8 @@ impl DbClient for BigTableClientImpl {
 
         // and write a new version cell
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let expiry =
+            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
         row.cells
             .insert(ROUTER_FAMILY.to_owned(), vec![new_version_cell(expiry)]);
         mutations.extend(self.get_mutations(row.cells)?);
@@ -1295,7 +1302,8 @@ impl DbClient for BigTableClientImpl {
             &row_key,
             timestamp.to_be_bytes().to_vec()
         );
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let expiry =
+            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
         let mut row = Row::new(row_key.clone());
 
         row.cells.insert(
@@ -1478,7 +1486,7 @@ impl DbClient for BigTableClientImpl {
         let row_key = reliability_id.to_owned();
 
         let mut row = Row::new(row_key);
-        let expiry = SystemTime::now() + Duration::from_secs(RELIABLE_LOG_TTL);
+        let expiry = SystemTime::now() + Duration::from_secs(RELIABLE_LOG_TTL.num_seconds() as u64);
 
         // Log the latest transition time for this id.
         let cells: Vec<cell::Cell> = vec![cell::Cell {
