@@ -187,7 +187,6 @@ impl PushReliability {
             crate::redis_util::transaction(conn, &[EXPIRY], async |conn, pipe| {
                 // First, get the list of values that are to be purged.
                 let purged: Vec<String> = conn.zrangebyscore(EXPIRY, 0, expr as isize).await?;
-                dbg!("here 1", &purged);
                 // insta-bail if there's nothing to do.
                 if purged.is_empty() {
                     return Ok(Some(redis::Value::Nil));
@@ -206,12 +205,7 @@ impl PushReliability {
                     pipe.hincr(COUNTS, ReliabilityState::Expired.to_string(), 1);
                     pipe.zrem(EXPIRY, key);
                 }
-                dbg!("here 2");
-                let result = pipe.query_async(conn).await.inspect_err(|e| {
-                    dbg!(&e);
-                });
-                dbg!(&result);
-                Ok(result?)
+                Ok(pipe.query_async(conn).await?)
             })
             .await?;
         self.metrics
