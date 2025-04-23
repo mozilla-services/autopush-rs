@@ -408,7 +408,7 @@ mod tests {
             &None,
             Box::new(Arc::new(db)),
             &metrics,
-            super::MAX_TRANSACTION_LOOP,
+            crate::redis_util::MAX_TRANSACTION_LOOP,
         )
         .unwrap();
         pr.record(&Some(test_id.clone()), new, &None, Some(expr))
@@ -502,7 +502,7 @@ mod tests {
             &None,
             Box::new(Arc::new(db)),
             &metrics,
-            super::MAX_TRANSACTION_LOOP,
+            crate::redis_util::MAX_TRANSACTION_LOOP,
         )
         .unwrap();
         // functionally a no-op, but it does exercise lines.
