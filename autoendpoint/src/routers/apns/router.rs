@@ -530,7 +530,7 @@ mod tests {
     use autopush_common::db::client::DbClient;
     use autopush_common::db::mock::MockDbClient;
     #[cfg(feature = "reliable_report")]
-    use autopush_common::reliability::PushReliability;
+    use autopush_common::{redis_util::MAX_TRANSACTION_LOOP, reliability::PushReliability};
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
@@ -576,6 +576,8 @@ mod tests {
 
     /// Create a router for testing, using the given APNS client
     fn make_router(client: MockApnsClient, db: Box<dyn DbClient>) -> ApnsRouter {
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+
         ApnsRouter {
             clients: {
                 let mut map = HashMap::new();
@@ -593,7 +595,9 @@ mod tests {
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             db: db.clone(),
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(PushReliability::new(&None, db.clone()).unwrap()),
+            reliability: Arc::new(
+                PushReliability::new(&None, db.clone(), &metrics, MAX_TRANSACTION_LOOP).unwrap(),
+            ),
         }
     }
 

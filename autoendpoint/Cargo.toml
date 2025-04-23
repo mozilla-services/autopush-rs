@@ -55,7 +55,7 @@ validator = "0.20"
 validator_derive = "0.20"
 
 yup-oauth2 = "8.1"
-# Updating to 9+ requires configuring rust-tls (See https://github.com/dermesser/yup-oauth2/issues/235)
+# Updating to 9+ requires configuring rust-tls (See https://github.com/dermesser/yup-oauth2/issues/235) <- this ticket is resolved, update
 # yup-oauth2 = { version = "10.0.1", features = ["hyper-rustls"] }
 
 # For mockito test debugging

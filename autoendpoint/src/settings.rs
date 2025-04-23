@@ -63,6 +63,9 @@ pub struct Settings {
     /// storage system. See [Connection Parameters](https://docs.rs/redis/latest/redis/#connection-parameters)
     /// for details.
     pub reliability_dsn: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    /// Max number of retries for retries for Redis transactions
+    pub reliability_retry_count: usize,
 }
 
 impl Default for Settings {
@@ -96,6 +99,7 @@ impl Default for Settings {
             stub: StubSettings::default(),
             #[cfg(feature = "reliable_report")]
             reliability_dsn: None,
+            reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
         }
     }
 }
