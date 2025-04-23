@@ -231,7 +231,7 @@ mod tests {
     use autopush_common::db::client::DbClient;
     use autopush_common::db::mock::MockDbClient;
     #[cfg(feature = "reliable_report")]
-    use autopush_common::reliability::PushReliability;
+    use autopush_common::{redis_util::MAX_TRANSACTION_LOOP, reliability::PushReliability};
     use std::sync::Arc;
 
     use cadence::StatsdClient;
@@ -273,7 +273,9 @@ mod tests {
             Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             db.clone(),
             #[cfg(feature = "reliable_report")]
-            Arc::new(PushReliability::new(&None, db.clone(), &metrics).unwrap()),
+            Arc::new(
+                PushReliability::new(&None, db.clone(), &metrics, MAX_TRANSACTION_LOOP).unwrap(),
+            ),
         )
         .await
         .unwrap()

@@ -350,7 +350,7 @@ mod test {
     use crate::headers::vapid::VapidClaims;
     use autopush_common::errors::ReportableError;
     #[cfg(feature = "reliable_report")]
-    use autopush_common::reliability::PushReliability;
+    use autopush_common::{redis_util::MAX_TRANSACTION_LOOP, reliability::PushReliability};
 
     use super::*;
     use autopush_common::db::mock::MockDbClient;
@@ -363,7 +363,9 @@ mod test {
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(PushReliability::new(&None, db, &metrics).unwrap()),
+            reliability: Arc::new(
+                PushReliability::new(&None, db, &metrics, MAX_TRANSACTION_LOOP).unwrap(),
+            ),
         }
     }
 

@@ -62,6 +62,7 @@ pub struct PushReliability {
     pool: Option<deadpool_redis::Pool>,
     db: Box<dyn DbClient>,
     metrics: Arc<StatsdClient>,
+    retries: usize,
 }
 
 impl PushReliability {
@@ -70,6 +71,7 @@ impl PushReliability {
         reliability_dsn: &Option<String>,
         db: Box<dyn DbClient>,
         metrics: &Arc<StatsdClient>,
+        retries: usize,
     ) -> Result<Self> {
         let Some(reliability_dsn) = reliability_dsn else {
             debug!("🔍 No reliability DSN declared.");
@@ -77,6 +79,7 @@ impl PushReliability {
                 pool: None,
                 db: db.clone(),
                 metrics: metrics.clone(),
+                retries,
             });
         };
 
@@ -99,6 +102,7 @@ impl PushReliability {
             pool,
             db: db.clone(),
             metrics: metrics.clone(),
+            retries,
         })
     }
 
@@ -183,8 +187,12 @@ impl PushReliability {
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
-        let result: redis::Value =
-            crate::redis_util::transaction(conn, &[EXPIRY], async |conn, pipe| {
+        let result: redis::Value = crate::redis_util::transaction(
+            conn,
+            &[EXPIRY],
+            self.retries,
+            || ApcErrorKind::GeneralError("Exceeded gc retry attempts".to_owned()),
+            async |conn, pipe| {
                 // First, get the list of values that are to be purged.
                 let purged: Vec<String> = conn.zrangebyscore(EXPIRY, 0, expr as isize).await?;
                 // insta-bail if there's nothing to do.
@@ -206,8 +214,9 @@ impl PushReliability {
                     pipe.zrem(EXPIRY, key);
                 }
                 Ok(pipe.query_async(conn).await?)
-            })
-            .await?;
+            },
+        )
+        .await?;
         self.metrics
             .incr_with_tags("reliability.gc")
             .with_tag(
@@ -395,7 +404,13 @@ mod tests {
             .withf(move |id, state| id == int_test_id && state == &ReliabilityState::Accepted)
             .return_once(|_, _| Ok(()));
         // test the main report function (note, this does not test redis)
-        let pr = PushReliability::new(&None, Box::new(Arc::new(db)), &metrics).unwrap();
+        let pr = PushReliability::new(
+            &None,
+            Box::new(Arc::new(db)),
+            &metrics,
+            super::MAX_TRANSACTION_LOOP,
+        )
+        .unwrap();
         pr.record(&Some(test_id.clone()), new, &None, Some(expr))
             .await;
 
@@ -483,7 +498,13 @@ mod tests {
         ]);
 
         // test the main report function (note, this does not test redis)
-        let pr = PushReliability::new(&None, Box::new(Arc::new(db)), &metrics).unwrap();
+        let pr = PushReliability::new(
+            &None,
+            Box::new(Arc::new(db)),
+            &metrics,
+            super::MAX_TRANSACTION_LOOP,
+        )
+        .unwrap();
         // functionally a no-op, but it does exercise lines.
         pr.gc().await?;
 

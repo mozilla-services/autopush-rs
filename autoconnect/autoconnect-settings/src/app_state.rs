@@ -92,7 +92,13 @@ impl AppState {
 
         #[cfg(feature = "reliable_report")]
         let reliability = Arc::new(
-            PushReliability::new(&settings.reliability_dsn, db.clone(), &metrics).map_err(|e| {
+            PushReliability::new(
+                &settings.reliability_dsn,
+                db.clone(),
+                &metrics,
+                settings.reliability_retry_count,
+            )
+            .map_err(|e| {
                 ConfigError::Message(format!("Could not start Reliability connection: {:?}", e))
             })?,
         );
