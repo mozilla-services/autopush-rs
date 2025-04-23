@@ -9,15 +9,18 @@ pub async fn transaction<
     C: ConnectionLike + AsyncCommands,
     K: ToRedisArgs,
     T,
+    R: FnOnce() -> E,
     F: AsyncFnMut(&mut C, &mut Pipeline) -> Result<Option<T>, E>,
     E: From<RedisError>,
 >(
     con: &mut C,
     keys: &[K],
+    retries: usize,
+    retry_err: R,
     func: F,
 ) -> Result<T, E> {
     let mut func = func;
-    loop {
+    for _ in 0..retries {
         cmd("WATCH").arg(keys).exec_async(con).await?;
         let mut p = pipe();
         let response: Option<T> = func(con, p.atomic()).await?;
@@ -33,4 +36,5 @@ pub async fn transaction<
             }
         }
     }
+    Err(retry_err())
 }

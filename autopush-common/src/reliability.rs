@@ -25,6 +25,7 @@ pub const COUNTS: &str = "state_counts";
 pub const EXPIRY: &str = "expiry";
 
 const CONNECTION_EXPIRATION: Duration = Duration::from_secs(10);
+const MAX_GC_RETRIES: usize = 10;
 
 /// The various states that a message may transit on the way from reception to delivery.
 // Note: "Message" in this context refers to the Subscription Update.
@@ -183,8 +184,12 @@ impl PushReliability {
         conn: &mut C,
         expr: u64,
     ) -> Result<()> {
-        let result: redis::Value =
-            crate::redis_util::transaction(conn, &[EXPIRY], async |conn, pipe| {
+        let result: redis::Value = crate::redis_util::transaction(
+            conn,
+            &[EXPIRY],
+            MAX_GC_RETRIES,
+            || ApcErrorKind::GeneralError("Exceeded gc retry attempts".to_owned()),
+            async |conn, pipe| {
                 // First, get the list of values that are to be purged.
                 let purged: Vec<String> = conn.zrangebyscore(EXPIRY, 0, expr as isize).await?;
                 // insta-bail if there's nothing to do.
@@ -206,8 +211,9 @@ impl PushReliability {
                     pipe.zrem(EXPIRY, key);
                 }
                 Ok(pipe.query_async(conn).await?)
-            })
-            .await?;
+            },
+        )
+        .await?;
         self.metrics
             .incr_with_tags("reliability.gc")
             .with_tag(
