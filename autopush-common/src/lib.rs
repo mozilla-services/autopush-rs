@@ -24,7 +24,7 @@ pub mod test_support;
 #[macro_use]
 pub mod util;
 
-use chrono::{Duration, TimeDelta};
+use chrono::TimeDelta;
 
 // Define some global TTLs.
 //
@@ -52,12 +52,12 @@ use chrono::{Duration, TimeDelta};
 
 /// The maximum TTL for notifications (30 days).
 /// In most use cases, converted to seconds through .num_seconds().
-pub const MAX_NOTIFICATION_TTL: TimeDelta = Duration::days(30);
+pub const MAX_NOTIFICATION_TTL: TimeDelta = TimeDelta::days(30);
 
 /// FCM has a max TTL of 4 weeks (28 days).
 /// In most use cases, converted to seconds through .num_seconds().
-pub const MAX_FCM_NOTIFICATION_TTL: TimeDelta = Duration::days(28);
+pub const MAX_FCM_NOTIFICATION_TTL: TimeDelta = TimeDelta::days(28);
 
 /// The maximum TTL for router records (60 days).
 /// In most use cases, converted to seconds through .num_seconds().
-pub const MAX_ROUTER_TTL: TimeDelta = Duration::days(60);
+pub const MAX_ROUTER_TTL: TimeDelta = TimeDelta::days(60);

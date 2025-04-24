@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use base64::Engine;
-use chrono::Duration;
+use chrono::TimeDelta;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -40,7 +40,7 @@ impl Default for VapidClaims {
 impl VapidClaims {
     /// Returns default expiration of one day from creation (in seconds).
     pub fn default_exp() -> u64 {
-        sec_since_epoch() + Duration::days(1).num_seconds() as u64
+        sec_since_epoch() + TimeDelta::days(1).num_seconds() as u64
     }
 }
 

@@ -9,7 +9,6 @@ use std::time::{Duration, SystemTime};
 use again::RetryPolicy;
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
-use chrono::Duration as ChronoDuration;
 use chrono::TimeDelta;
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
@@ -59,7 +58,7 @@ const RELIABLE_LOG_FAMILY: &str = "reliability";
 #[cfg(feature = "reliable_report")]
 /// The maximum TTL for reliability logging (60 days).
 /// /// In most use cases, converted to seconds through .num_seconds().
-pub const RELIABLE_LOG_TTL: TimeDelta = ChronoDuration::days(60);
+pub const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
 pub(crate) const RETRY_COUNT: usize = 5;
 
