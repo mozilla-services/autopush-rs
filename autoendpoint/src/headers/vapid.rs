@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use std::fmt;
 
 use base64::Engine;
+use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::headers::util::split_key_value;
 use autopush_common::util::sec_since_epoch;
-use autopush_common::ONE_DAY;
 
 pub const ALLOWED_SCHEMES: [&str; 3] = ["bearer", "webpush", "vapid"];
 
@@ -40,7 +40,7 @@ impl Default for VapidClaims {
 impl VapidClaims {
     /// Returns default expiration of one day from creation (in seconds).
     pub fn default_exp() -> u64 {
-        sec_since_epoch() + ONE_DAY.num_seconds() as u64
+        sec_since_epoch() + Duration::days(1).num_seconds() as u64
     }
 }
 

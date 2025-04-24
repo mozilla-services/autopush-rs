@@ -50,10 +50,6 @@ use chrono::{Duration, TimeDelta};
 // "abandoned" and any router info assigned to a User Agent that has not contacted
 // Autopush in 60 days can be discarded.
 
-/// One day defined as chrono TimeDelta/Duration.
-/// In most use cases, converted to seconds through .num_seconds().
-pub const ONE_DAY: TimeDelta = Duration::days(1);
-
 /// The maximum TTL for notifications (30 days).
 /// In most use cases, converted to seconds through .num_seconds().
 pub const MAX_NOTIFICATION_TTL: TimeDelta = Duration::days(30);
