@@ -14,23 +14,35 @@ import datetime
 import json
 import logging
 import os
+import statistics
 import time
-from typing import cast
+from typing import cast, Dict, List
 from collections import OrderedDict, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import jinja2
+import redis.asyncio as redis_async
 import toml
 from google.cloud.bigtable.data import (
     BigtableDataClientAsync,
+    RowMutationEntry,
     ReadRowsQuery,
     RowRange,
+    SetCell,
 )
 from google.cloud.bigtable.data.row_filters import FamilyNameRegexFilter
+from google.cloud import storage
 
 RELIABILITY_FAMILY = "reliability"
 
+
 """
+This file is a combination tool that performs daily maintenance of the Push Reliability
+data, as well as generate a daily report of the stats. These reports are stored in a
+GCP Storage Bucket in both JSON and human readable Markdown format, by default. Originally,
+these were separate scripts, but due to the daily requirement for both, it was decided to
+merge scripts into one tool.
+
 Reliability data is stored in bigtable under the `reliability_id` key.
 The `reliability_id` is an opaque string that can be passed from an outside source,
 but by default it's a UUID4() string, so we can make some presumptions.
@@ -103,6 +115,7 @@ class BigtableScanner:
                     expired |= milestone == "expired"
             timed_milestones = OrderedDict(sorted(milestones.items()))
             milestone_keys = timed_milestones.keys()
+            times = []
             for index, timestamp in enumerate(milestone_keys):
                 milestone = milestones.get(timestamp)
                 try:
@@ -112,9 +125,8 @@ class BigtableScanner:
                 log = milestone_log[milestone]
                 log["count"] += 1
                 log["total_time"] += operation_length
-                log["average_time"] = (log["average_time"] + operation_length) / log[
-                    "count"
-                ]
+                times.append(operation_length)
+            log["average_time"] = statistics.mean(times)
 
             key_list = list(timed_milestones.keys())
             total_time = key_list[-1] - key_list[0]
@@ -144,7 +156,7 @@ class BigtableScanner:
         )
         return result
 
-    async def output(self, output_type):
+    async def output(self, output_type) -> str:
         match output_type.lower():
             case "json":
                 return await self.as_json()
@@ -153,11 +165,11 @@ class BigtableScanner:
             case _:
                 return await self.as_md()
 
-    async def as_raw(self):
+    async def as_raw(self) -> str:
         """Return the data as a raw python dict dump"""
-        print(await self.collect())
+        return str(await self.collect())
 
-    async def as_json(self):
+    async def as_json(self) -> str:
         """Return as a formatted JSON string"""
         collected = await self.collect()
         meta = collected.get("meta")
@@ -170,7 +182,7 @@ class BigtableScanner:
             self.log.error(ex)
         return json.dumps(meta, indent=2)
 
-    async def as_md(self):
+    async def as_md(self) -> str:
         """Return as a MarkDown formatted document"""
         env = jinja2.Environment(
             loader=jinja2.PackageLoader("reliability_report"),
@@ -184,12 +196,230 @@ class BigtableScanner:
         )
 
 
+class Counter:
+    """Manage Redis-like storage counts
+
+    Current milestone counts are managed in a Redis-like storage system.
+    There are two parts required, one is the active milestone count (as
+    an HINCR). The other is a ZHash that contains the expiration
+    timestamp for records.
+    Our 'garbage collection' goes through the ZHash looking for expired
+    records and removes them while decrementing the associated HINCR count,
+    indicating that the record expired "in place".
+
+    We also update the Bigtable message log indicating that a message
+    failed to be delivered.
+    """
+
+    def __init__(self, log: logging.Logger, settings: argparse.Namespace):
+        try:
+            self.redis: redis_async.Redis = redis_async.Redis.from_url(
+                settings.reliability_dsn
+            )
+            self.bigtable = BigtableDataClientAsync(
+                project=settings.bigtable["project"]
+            )
+            self.log = log
+            self.settings = settings
+        except Exception as e:
+            log.error(e)
+
+    async def gc(self) -> Dict[str, int | float]:
+        """Perform quick garbage collection. This includes pruning expired elements,
+        decrementing counters and potentially logging the result.
+        This sort of garbage collection should happen quite frequently.
+        """
+        start = time.time()
+        # The table of counts
+        counts = self.settings.count_table
+        # The table of expirations
+        expiry = self.settings.expiry_table
+        # the BigTable reliability family
+        log_family = self.settings.log_family
+
+        # Fetch the candidates to purge.
+        mutations = list()
+        purged = cast(
+            list[bytes], await self.redis.zrange(expiry, -1, int(start), byscore=True)
+        )
+        # Fix up the counts
+        async with self.redis.pipeline() as pipeline:
+            for key in purged:
+                # clean up the counts.
+                parts = key.split(b"#", 2)
+                state = parts[0]
+                self.log.debug(f"🪦 decr {state.decode()}")
+                pipeline.hincrby(counts, state.decode(), -1)
+                pipeline.zrem(expiry, key)
+                # and add the log info.
+                mutations.append(
+                    RowMutationEntry(
+                        key, SetCell(log_family, "expired", int(start * 1000))
+                    )
+                )
+                mutations.append(
+                    RowMutationEntry(
+                        key,
+                        SetCell(
+                            log_family,
+                            "error",
+                            "expired",
+                        ),
+                    )
+                )
+            if len(purged) > 0:
+                # make the changes to redis,
+                await pipeline.execute()
+                # then add the bigtable logs
+                if self.bigtable:
+                    table = self.bigtable.get_table(
+                        self.settings.bigtable.get("instance"),
+                        self.settings.bigtable.get("table"),
+                    )
+                    await table.bulk_mutate_rows(mutations)
+
+        result = {
+            "trimmed": len(purged),
+            "time": int(start * 1000) - (time.time() * 1000),
+        }
+        if len(purged):
+            self.log.info(
+                f"🪦 Trimmed {result.get("trimmed")} in {result.get("time")}ms"
+            )
+        return result
+
+    async def get_counts(self) -> Dict[str, int]:
+        """Return the current milestone counts (this should happen shortly after a gc)"""
+        return cast(dict[str, int], await self.redis.hgetall(self.settings.count_table))
+
+    async def adjust_counts(
+        self,
+        start_of_day: datetime,
+    ):
+        """Adjust counts to remove records we no longer care about."""
+        try:
+            self.log.info(f"🧹 Generating daily snapshot for {start_of_day}")
+            # get all the unresolved terminals (since we remove them after we process them.)
+            terminals = await self.redis.zrange(
+                self.settings.terminal_table,
+                -1,
+                int(start_of_day.timestamp()),
+                withscores=True,
+            )
+            if not terminals:
+                self.log.warning("🧹 No old data found, nothing to clean")
+                return
+            self.log.debug(f"🧹 Clearing Terminals: {terminals}")
+            pipe = self.redis.pipeline()
+            for terms, score in terminals:
+                try:
+                    vals = json.loads(terms)
+                    self.log.debug(f"🧹 For {score}, clearing: {vals}")
+                    for key in vals:
+                        pipe.hincrby(self.settings.count_table, key, 0 - vals.get(key))
+                except ValueError as e:
+                    self.log.error(f"Could not parse terminal line: {e} :: {terms}")
+                except Exception as e:
+                    self.log.error(f"Unknown error occurred in decrement: {e}")
+                    raise
+            if terminals:
+                start_score = terminals[0][1]
+                end_score = terminals[-1][1]
+                self.log.debug(
+                    f"🧹 Clearing from {start_score} to {end_score} from {self.settings.terminal_table}"
+                )
+                pipe.zremrangebyscore(
+                    self.settings.terminal_table, int(start_score), int(end_score)
+                )
+            # automatically executes as a transaction.
+            result = await pipe.execute()
+            self.log.debug(f"🧹 Result: {result}")
+        except Exception as e:
+            self.log.error(f"Unknown error in terminal_snapshot {e}")
+            raise
+
+    async def terminal_snapshot(self) -> Dict[str, int]:
+        """Take a daily snapshot of the terminal counts for message states.
+        "Terminal" means that the message has reached it's presumed final state, and that
+        no further state change is possible. These are cleared after the max holding period to
+        prevent the terminal counts from endlessly incrementing.
+        """
+        start_of_day = datetime.now(tz=timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
+        # These are defined in autopush-common::reliability::ReliabilityState::is_terminal().
+        # Make sure to use the `snake_case` string variant.
+        terminal_states = [
+            "decryption_error",
+            "delivered",
+            "errored",
+            "expired",
+            "not_delivered",
+        ]
+
+        # Check to see if there are any pending fixups we need to process.
+        await self.adjust_counts(start_of_day)
+
+        # Bulk get the current counts and then store them into the terminal table.
+        # Since we're getting all the counts in one action, no transaction is required.
+        vals = await self.redis.hmget(self.settings.count_table, terminal_states)
+        # redis returns a str:bytes, so can't just call dict(vals)
+        term_counts = {
+            k: v for (k, v) in dict(zip(terminal_states, vals)).items() if v is not None
+        }
+        if term_counts:
+            self.log.info(
+                f"🧹 Recording expired data: {term_counts} for {start_of_day}"
+            )
+            expiry = start_of_day + timedelta(days=self.settings.max_retention)
+            # Write the values to storage.
+            await self.redis.zadd(
+                self.settings.terminal_table,
+                {str(int(expiry.timestamp())): json.dumps(term_counts)},
+            )
+        else:
+            self.log.info(f"🧹 No matching terminal states found?")
+        return term_counts
+
+
+async def write_report(
+    log: logging.Logger,
+    settings: argparse.Namespace,
+    bigtable: BigtableScanner,
+    bucket: storage.Bucket,
+):
+    """Write the reports to the bucket"""
+    today = datetime.date.today()
+    for style in settings.output:
+        blob_name = f"{today.strftime(f"%Y-%m-%d")}.{style}"
+        log.info(f"Creating {blob_name}")
+        bucket.blob(blob_name).open("w").write(await bigtable.output(style))
+
+
+async def clean_bucket(
+    log: logging.Logger, settings: argparse.Namespace, bucket: storage.Bucket
+):
+    """Remove old reports from the bucket"""
+    start_date = (
+        datetime.today().date() - timedelta(days=settings.bucket_retention_days)
+    ).strftime("%Y-%m-%d")
+    blobs = bucket.list_blobs(start_offset=start_date)
+    for blob in blobs:
+        log.info(f"🗑 Deleting {blob}")
+        blob.delete()
+
+
 def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     """Read the configuration from the args and environment."""
+    report_choices = ["json", "md", "raw"]
+
     parser = argparse.ArgumentParser(
         description="Manage Autopush Reliability Tracking Redis data."
     )
+
     parser.add_argument("-c", "--config", help="configuration_file", action="append")
+
     parser.add_argument(
         "--db_dsn",
         "-b",
@@ -199,6 +429,7 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
             env_args.get("AUTOCONNECT__DB_DSN", "grpc://localhost:8086"),
         ),
     )
+
     parser.add_argument(
         "--db_settings",
         "-s",
@@ -211,17 +442,85 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
             ),
         ),
     )
+
     parser.add_argument(
         "--track_family",
         help="Name of Bigtable reliability logging family",
         default=env_args.get("AUTOTRACK_FAMILY", RELIABILITY_FAMILY),
     )
+
+    parser.add_argument(
+        "--bucket_name",
+        help="GCP Storage Bucket name",
+        default=env_args.get("AUTOTRACK_BUCKET_NAME"),
+    )
+
+    parser.add_argument(
+        "--bucket_retention_days",
+        help="Number of days to retain generated reports in the Bucket",
+        default=env_args.get("AUTOTRACK_BUCKET_RETENTION_DAYS", 30),
+    )
+
     parser.add_argument(
         "--output",
-        help="Output format: md (MarkDown text), json (Formatted JSON), raw (python dump)",
-        default="md",
-        choices=["md", "json", "raw"],
+        help="Output formats: md (MarkDown text), json (Formatted JSON), raw (python dump) (e.g. `--output md json`)",
+        nargs="+",
+        action="extend",
+        # SEE DEFAULT HANDLER BELOW
+        choices=report_choices,
     )
+
+    parser.add_argument(
+        "--reliability_dsn",
+        "-r",
+        help="DSN to connect to the Redis like service.",
+        default=env_args.get(
+            "AUTOEND_RELIABILITY_DSN",
+            env_args.get("AUTOCONNECT_RELIABILITY_DSN", "redis://localhost"),
+        ),
+    )
+
+    parser.add_argument(
+        "--count_table",
+        help="Name of Redis table of milestone counts",
+        default=env_args.get("AUTOTRACK_COUNTS", "state_counts"),
+    )
+
+    parser.add_argument(
+        "--expiry_table",
+        help="Name of Redis table of milestone expirations",
+        default=env_args.get("AUTOTRACK_EXPIRY", "expiry"),
+    )
+
+    parser.add_argument(
+        "--terminal_table",
+        help="Name of the terminal snap-shot table",
+        default=env_args.get("AUTOTRACK_TERMINAL_TABLE", "terminus"),
+    )
+
+    # A note about the retention period.
+    # Redis is not reliable storage. The system can go down for any number of reasons.
+    # In order to not tempt the fates more than necessary, we'll "trim" the terminated
+    # records after 24 hours. If you want to look at any longer range data, that's what
+    # the daily report is for.
+    parser.add_argument(
+        "--terminal_max_retention_days",
+        help="Number of days that data will be retained",
+        default=env_args.get("AUTOTRACK_TERM_MAX_RETENTION_DAYS", 1),
+    )
+
+    parser.add_argument(
+        "--report_max_retention_days",
+        help="Number of days to retain reports in the reliability bucket",
+        default=env_args.get("AUTOTRACK_REPORT_MAX_RETENTION_DAYS", 30),
+    )
+
+    parser.add_argument(
+        "--report_bucket",
+        help="Name of the bucket to store reliability reports",
+        default=env_args.get("AUTOTRACK_REPORT_BUCKET", "autopush-reliability"),
+    )
+
     args = parser.parse_args()
 
     # if we have a config file, read from that and then reload.
@@ -239,6 +538,12 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
             # `projects`, `instances`, & `tables`
             bt_settings[parts[i].rstrip("s")] = parts[i + 1]
         args.bigtable = bt_settings
+    if args.bucket_report is None:
+        report = os.environ.get("AUTOTRACK_OUTPUT")
+        if report:
+            args.bucket_report = list(
+                filter(lambda x: x in report_choices, report.split(" "))
+            )
     return args
 
 
@@ -253,7 +558,20 @@ def init_logs():
 async def amain(log: logging.Logger, settings: argparse.Namespace):
     """Async main loop"""
     bigtable = BigtableScanner(log, settings)
-    print(await bigtable.output(settings.output))
+    # do the Redis counter cleanup.
+    counter = Counter(log, settings)
+    await counter.gc()
+    await counter.terminal_snapshot()
+    # if we have a bucket to write to, write the reports to the bucket.
+    if settings.bucket_name:
+        client = storage.Client()
+        bucket = client.create_bucket(settings.bucket_name)
+        await write_report(log, settings, bigtable, bucket)
+        await clean_bucket(log, settings, bucket)
+    else:
+        for style in settings.output:
+            print(await bigtable.output(style))
+            print("\f")
 
 
 def main():

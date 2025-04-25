@@ -13,8 +13,7 @@ use deadpool_redis::Config;
 use prometheus_client::{
     encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
 };
-use redis::aio::ConnectionLike;
-use redis::AsyncCommands;
+use redis::{aio::ConnectionLike, AsyncCommands};
 
 use crate::db::client::DbClient;
 use crate::errors::{ApcErrorKind, Result};
@@ -55,6 +54,22 @@ pub enum ReliabilityState {
     NotDelivered,    // Message was provided to the UA and it reported a not delivered error
     Expired,         // Message expired naturally (e.g. TTL=0)
     Errored,         // Message resulted in an Error state and failed to be delivered.
+}
+
+impl ReliabilityState {
+    ///  Has the message reached a state where no further transitions should be possible?
+    pub fn is_terminal(self) -> bool {
+        // NOTE: this list should match the daily snapshot captured by `reliability_cron.py`
+        // which will trim these counts after the max message TTL has expired.
+        matches!(
+            self,
+            ReliabilityState::DecryptionError
+                | ReliabilityState::Delivered
+                | ReliabilityState::Errored
+                | ReliabilityState::Expired
+                | ReliabilityState::NotDelivered
+        )
+    }
 }
 
 #[derive(Clone)]
@@ -154,10 +169,18 @@ impl PushReliability {
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
-        pipeline.zadd(EXPIRY, format!("{}#{}", new, id), expr.unwrap_or_default());
-        let _ = pipeline.exec_async(conn).await.inspect_err(|e| {
-            warn!("🔍 Failed to write to storage: {:?}", e);
-        });
+        if !new.is_terminal() {
+            // Write the expiration only if the state is non-terminal. Otherwise we run the risk of
+            // messages reporting a false "expired" state even if they were "successful".
+            let cc = pipeline
+                .zadd(EXPIRY, format!("{}#{}", new, id), expr.unwrap_or_default())
+                .exec_async(conn)
+                .await
+                .inspect_err(|e| {
+                    warn!("🔍 Failed to write to storage: {:?}", e);
+                });
+            trace!("🔍 internal record result: {:?}", cc);
+        }
     }
 
     /// Perform a garbage collection cycle on a reliability object.
