@@ -164,7 +164,7 @@ impl Router for FcmRouter {
 
         let (routing_token, app_id) =
             self.routing_info(router_data, &notification.subscription.user.uaid)?;
-        let ttl = MAX_FCM_NOTIFICATION_TTL
+        let ttl = (MAX_FCM_NOTIFICATION_TTL.num_seconds() as u64)
             .min(self.settings.min_ttl.max(notification.headers.ttl as u64));
 
         // Send the notification to FCM
