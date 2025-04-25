@@ -5,11 +5,12 @@
 /// and where messages expire early. Message expiration can lead to message loss
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use actix_web::HttpResponse;
 use cadence::{CountedExt, StatsdClient};
+use chrono::TimeDelta;
 use deadpool_redis::Config;
+
 use prometheus_client::{
     encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
 };
@@ -23,7 +24,7 @@ use crate::util::timing::sec_since_epoch;
 pub const COUNTS: &str = "state_counts";
 pub const EXPIRY: &str = "expiry";
 
-const CONNECTION_EXPIRATION: Duration = Duration::from_secs(10);
+const CONNECTION_EXPIRATION: TimeDelta = TimeDelta::seconds(10);
 
 /// The various states that a message may transit on the way from reception to delivery.
 // Note: "Message" in this context refers to the Subscription Update.
@@ -105,7 +106,7 @@ impl PushReliability {
                 .map_err(|e| {
                     ApcErrorKind::GeneralError(format!("Could not config reliability pool {:?}", e))
                 })?
-                .create_timeout(Some(CONNECTION_EXPIRATION))
+                .create_timeout(Some(CONNECTION_EXPIRATION.to_std().unwrap()))
                 .runtime(deadpool::Runtime::Tokio1)
                 .build()
                 .map_err(|e| {

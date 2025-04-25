@@ -70,7 +70,7 @@ impl NotificationHeaders {
             // Enforce a maximum TTL, but don't error
             // NOTE: In order to trap for negative TTLs, this should be a
             // signed value, otherwise we will error out with NO_TTL.
-            .map(|ttl| min(ttl, MAX_NOTIFICATION_TTL as i64))
+            .map(|ttl| min(ttl, MAX_NOTIFICATION_TTL.num_seconds()))
             .ok_or(ApiErrorKind::NoTTL)?;
         let topic = get_owned_header(req, "topic");
 
@@ -218,6 +218,7 @@ mod tests {
     use crate::error::{ApiErrorKind, ApiResult};
     use actix_web::test::TestRequest;
     use autopush_common::MAX_NOTIFICATION_TTL;
+    use chrono::TimeDelta;
 
     /// Assert that a result is a validation error and check its serialization
     /// against the JSON value.
@@ -283,12 +284,17 @@ mod tests {
     #[test]
     fn maximum_ttl() {
         let req = TestRequest::post()
-            .insert_header(("TTL", (MAX_NOTIFICATION_TTL + 1).to_string()))
+            .insert_header((
+                "TTL",
+                (MAX_NOTIFICATION_TTL + TimeDelta::seconds(1))
+                    .num_seconds()
+                    .to_string(),
+            ))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL as i64);
+        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL.num_seconds());
     }
 
     /// A valid topic results in no errors
