@@ -112,7 +112,7 @@ impl Router for WebPushRouter {
             // Couldn't send the message! So revert to the prior state if we have one
             if let Some(revert_state) = revert_state {
                 trace!(
-                    "🔎 Revert {:?} from {:?} to {:?}",
+                    "🔎⚠️ Revert {:?} from {:?} to {:?}",
                     &notification.reliability_id,
                     &notification.reliable_state,
                     revert_state
@@ -360,19 +360,22 @@ mod test {
     use crate::headers::vapid::VapidClaims;
     use autopush_common::errors::ReportableError;
     #[cfg(feature = "reliable_report")]
-    use autopush_common::reliability::PushReliability;
+    use autopush_common::{redis_util::MAX_TRANSACTION_LOOP, reliability::PushReliability};
 
     use super::*;
     use autopush_common::db::mock::MockDbClient;
 
     fn make_router(db: Box<dyn DbClient>) -> WebPushRouter {
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
         WebPushRouter {
             db: db.clone(),
             metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             #[cfg(feature = "reliable_report")]
-            reliability: Arc::new(PushReliability::new(&None, db).unwrap()),
+            reliability: Arc::new(
+                PushReliability::new(&None, db, &metrics, MAX_TRANSACTION_LOOP).unwrap(),
+            ),
         }
     }
 

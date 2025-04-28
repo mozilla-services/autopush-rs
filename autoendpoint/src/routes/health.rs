@@ -6,6 +6,7 @@ use actix_web::{
     web::{Data, Json},
     HttpResponse,
 };
+use cadence::CountedExt;
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -22,13 +23,26 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
-    let health = json!({
-    "status": "OK",
-    "version": env!("CARGO_PKG_VERSION"),
-    "router_table": router_health,
-    "message_table": message_health,
-    "routers": routers});
+    let mut health = json!({
+        "status": "OK",
+        "version": env!("CARGO_PKG_VERSION"),
+        "router_table": router_health,
+        "message_table": message_health,
+        "routers": routers,
+    });
 
+    #[cfg(feature = "reliable_report")]
+    {
+        health["reliability"] = json!(state.reliability.health_check().await.unwrap_or_else(|e| {
+            state
+                .metrics
+                .incr_with_tags("reliability.error.redis_unavailable")
+                .with_tag("application", "autoendpoint")
+                .send();
+            error!("🔍🟥 Reliability reporting down: {:?}", e);
+            "ERROR"
+        }));
+    }
     Json(health)
 }
 

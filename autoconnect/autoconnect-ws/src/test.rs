@@ -28,7 +28,6 @@ async fn handshake_timeout() {
         ..Settings::test_settings()
     };
     let client = uclient(AppState::from_settings(settings).unwrap());
-
     let s = stream! {
         tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
         yield Ok(actix_ws::Message::Text(HELLO.into()));

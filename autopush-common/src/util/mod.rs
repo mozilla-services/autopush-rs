@@ -11,8 +11,6 @@ pub mod user_agent;
 
 pub use self::timing::{ms_since_epoch, ms_utc_midnight, sec_since_epoch, us_since_epoch};
 
-pub const ONE_DAY_IN_SECONDS: u64 = 60 * 60 * 24;
-
 pub trait InsertOpt<K: Eq + Hash, V> {
     /// Insert an item only if it exists
     fn insert_opt(&mut self, key: impl Into<K>, value: Option<impl Into<V>>);
@@ -47,22 +45,7 @@ pub fn b64_encode_std(input: &Vec<u8>) -> String {
 
 /// Try to decode the string, first as URL safe, then as STD.
 pub fn b64_decode(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
-    // This is very verbose, but for some reason the key on stage is failing.
-    // This code should help identify the cause and should be temporary.
-    match b64_decode_url(input) {
-        Ok(v) => Ok(v),
-        Err(base64::DecodeError::InvalidByte(pos, chr)) => {
-            warn!(
-                "Decode: invalid byte {:?} at {} in {:?}",
-                chr as char, pos, input
-            );
-            b64_decode_std(input)
-        }
-        Err(e) => {
-            warn!("Decode: Unexpected error {:?} for {:?}", &e, input);
-            Err(e)
-        }
-    }
+    b64_decode_url(input).or_else(|_| b64_decode_std(input))
 }
 
 pub fn deserialize_u32_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
