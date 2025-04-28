@@ -11,6 +11,7 @@ recommended for frequent execution. (Daily should be sufficient.)
 import argparse
 import asyncio
 import datetime
+import flask
 import json
 import logging
 import os
@@ -29,6 +30,8 @@ from google.cloud.bigtable.data import (
 from google.cloud.bigtable.data.row_filters import FamilyNameRegexFilter
 
 RELIABILITY_FAMILY = "reliability"
+
+app = flask.Flask(__name__)
 
 """
 Reliability data is stored in bigtable under the `reliability_id` key.
@@ -254,6 +257,17 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
     """Async main loop"""
     bigtable = BigtableScanner(log, settings)
     print(await bigtable.output(settings.output))
+
+
+# AppEngine presumes a web service. We're using an absolutely minimal web service here to
+# perform the required tasks.
+@app.route("/gen_report")
+def root():
+    """Handle all requests the same way. (Note, probably want to limit access to this.)"""
+    log = init_logs()
+    log.info("Responding to request...")
+    asyncio.run(amain(log, config()))
+    return "Ok"
 
 
 def main():
