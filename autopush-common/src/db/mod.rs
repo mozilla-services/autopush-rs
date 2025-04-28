@@ -144,6 +144,7 @@ pub struct User {
     /// Last node/port the client was or may be connected to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
+    #[cfg(feature = "urgency")]
     /// Last minimum urgency set by the client
     #[serde(skip_serializing_if = "Option::is_none")]
     pub urgency: Option<Urgency>,
@@ -183,6 +184,7 @@ impl Default for User {
             router_type: "webpush".to_string(),
             router_data: None,
             node_id: None,
+            #[cfg(feature = "urgency")]
             urgency: None,
             record_version: Some(USER_RECORD_VERSION),
             current_timestamp: None,
@@ -203,6 +205,7 @@ impl User {
     }
 }
 
+#[cfg(feature = "urgency")]
 #[repr(u8)]
 #[derive(Debug, PartialEq, PartialOrd, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "kebab-case")]
@@ -213,6 +216,7 @@ pub enum Urgency {
     High = 3,
 }
 
+#[cfg(feature = "urgency")]
 impl From<&str> for Urgency {
     fn from(value: &str) -> Self {
         match value.to_lowercase().as_str() {
@@ -224,6 +228,7 @@ impl From<&str> for Urgency {
     }
 }
 
+#[cfg(feature = "urgency")]
 impl From<Option<&String>> for Urgency {
     fn from(value: Option<&String>) -> Self {
         Urgency::from(value.map(|v| v.as_str()).unwrap_or(""))

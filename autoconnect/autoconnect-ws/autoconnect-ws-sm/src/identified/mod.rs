@@ -11,8 +11,10 @@ use autoconnect_common::{
 };
 
 use autoconnect_settings::{AppState, Settings};
+#[cfg(feature = "urgency")]
+use autopush_common::db::Urgency;
 use autopush_common::{
-    db::{Urgency, User},
+    db::User,
     notification::Notification,
     util::{ms_since_epoch, user_agent::UserAgentInfo},
 };
@@ -309,6 +311,7 @@ pub struct ClientFlags {
     pub old_record_version: bool,
     /// First time a user has connected "today"
     pub emit_channel_metrics: bool,
+    #[cfg(feature = "urgency")]
     /// Minimum urgency
     pub min_urgency: Urgency,
 }
@@ -321,6 +324,7 @@ impl Default for ClientFlags {
             check_storage: false,
             old_record_version: false,
             emit_channel_metrics: false,
+            #[cfg(feature = "urgency")]
             min_urgency: Urgency::VeryLow,
         }
     }

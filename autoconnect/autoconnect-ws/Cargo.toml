@@ -39,4 +39,4 @@ reliable_report = [
     "autopush_common/reliable_report",
     "autoconnect_ws_sm/reliable_report",
 ]
-urgency = ["autoconnect_ws_sm/urgency"]
+urgency = ["autoconnect_ws_sm/urgency", "autopush_common/urgency"]
