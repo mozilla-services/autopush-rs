@@ -61,24 +61,26 @@ impl Router for WebPushRouter {
         // capture that potential here.
         let skip_send = {
             #[cfg(feature = "urgency")]
-            // If the notification urgency is lower than the user one, we do not send it
-            // If the user hasn't set a minimum urgency, we accept all notifications
-            let notif_urgency = Urgency::from(notification.headers.urgency.as_ref());
-            if notif_urgency < user.urgency.unwrap_or(Urgency::VeryLow) {
-                trace!(
-                    "✉ Notification has an urgency lower than the user one: {:?} < {:?}",
-                    &notif_urgency,
-                    &user.urgency
-                );
-                true
-            } else {
-                false
+            {
+                // If the notification urgency is lower than the user one, we do not send it
+                // If the user hasn't set a minimum urgency, we accept all notifications
+                let notif_urgency = Urgency::from(notification.headers.urgency.as_ref());
+                if notif_urgency < user.urgency.unwrap_or(Urgency::VeryLow) {
+                    trace!(
+                        "✉ Notification has an urgency lower than the user one: {:?} < {:?}",
+                        &notif_urgency,
+                        &user.urgency
+                    );
+                    true
+                } else {
+                    false
+                }
             }
             #[cfg(not(feature = "urgency"))]
             false
         };
         // Check if there is a node connected to the client
-        if skip_send {
+        if !skip_send {
             if let Some(node_id) = &user.node_id {
                 trace!(
                     "✉ User has a node ID, sending notification to node: {}",
