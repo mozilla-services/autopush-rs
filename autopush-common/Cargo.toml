@@ -76,6 +76,7 @@ tokio = { workspace = true, features = ["macros"] }
 [features]
 # NOTE: Do not set a `default` here, rather specify them in the calling library.
 # This is to reduce complexity around feature specification.
+urgency = []
 
 bigtable = [
     "dep:google-cloud-rust-raw",

@@ -8,6 +8,8 @@ use autoconnect_common::{
     protocol::{BroadcastValue, ClientMessage, ServerMessage},
 };
 use autoconnect_settings::{AppState, Settings};
+#[cfg(feature = "urgency")]
+use autopush_common::db::Urgency;
 use autopush_common::{
     db::{User, USER_RECORD_VERSION},
     util::{ms_since_epoch, ms_utc_midnight},
@@ -145,6 +147,8 @@ impl UnidentifiedClient {
                         .record_version
                         .is_none_or(|rec_ver| rec_ver < USER_RECORD_VERSION),
                     emit_channel_metrics: user.connected_at < ms_utc_midnight(),
+                    #[cfg(feature = "urgency")]
+                    min_urgency: user.urgency.unwrap_or(Urgency::VeryLow),
                     ..Default::default()
                 };
                 user.node_id = Some(self.app_state.router_url.to_owned());

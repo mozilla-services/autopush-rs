@@ -83,5 +83,6 @@ emulator = ["bigtable"]
 stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []
+urgency = ["autopush_common/urgency"]
 
 reliable_report = ["autopush_common/reliable_report"]

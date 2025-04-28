@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+#[cfg(feature = "urgency")]
+use autopush_common::db::Urgency;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::PushReliability;
 use cadence::{Counted, CountedExt, StatsdClient, Timed};
@@ -55,61 +57,85 @@ impl Router for WebPushRouter {
         );
         trace!("✉ Notification = {:?}", notification);
 
-        // Check if there is a node connected to the client
-        if let Some(node_id) = &user.node_id {
-            trace!(
-                "✉ User has a node ID, sending notification to node: {}",
-                &node_id
-            );
-
-            #[cfg(feature = "reliable_report")]
-            let revert_state = notification.reliable_state;
-            #[cfg(feature = "reliable_report")]
-            notification
-                .record_reliability(
-                    &self.reliability,
-                    autopush_common::reliability::ReliabilityState::IntTransmitted,
-                )
-                .await;
-            match self.send_notification(&notification, node_id).await {
-                Ok(response) => {
-                    // The node might be busy, make sure it accepted the notification
-                    if response.status() == 200 {
-                        // The node has received the notification
-                        trace!("✉ Node received notification");
-                        return Ok(self.make_delivered_response(&notification));
-                    }
+        // Urgency feature may short-cut immediate internal routing,
+        // capture that potential here.
+        let skip_send = {
+            #[cfg(feature = "urgency")]
+            {
+                // If the notification urgency is lower than the user one, we do not send it
+                // If the user hasn't set a minimum urgency, we accept all notifications
+                let notif_urgency = Urgency::from(notification.headers.urgency.as_ref());
+                if notif_urgency < user.urgency.unwrap_or(Urgency::VeryLow) {
                     trace!(
-                        "✉ Node did not receive the notification, response = {:?}",
-                        response
+                        "✉ Notification has an urgency lower than the user one: {:?} < {:?}",
+                        &notif_urgency,
+                        &user.urgency
                     );
-                }
-                Err(error) => {
-                    if let ApiErrorKind::ReqwestError(error) = &error.kind {
-                        if error.is_timeout() {
-                            self.metrics.incr("error.node.timeout")?;
-                        };
-                        if error.is_connect() {
-                            self.metrics.incr("error.node.connect")?;
-                        };
-                    };
-                    debug!("✉ Error while sending webpush notification: {}", error);
-                    self.remove_node_id(user, node_id).await?
+                    true
+                } else {
+                    false
                 }
             }
-
-            #[cfg(feature = "reliable_report")]
-            // Couldn't send the message! So revert to the prior state if we have one
-            if let Some(revert_state) = revert_state {
+            #[cfg(not(feature = "urgency"))]
+            false
+        };
+        // Check if there is a node connected to the client
+        if !skip_send {
+            if let Some(node_id) = &user.node_id {
                 trace!(
-                    "🔎⚠️ Revert {:?} from {:?} to {:?}",
-                    &notification.reliability_id,
-                    &notification.reliable_state,
-                    revert_state
+                    "✉ User has a node ID, sending notification to node: {}",
+                    &node_id
                 );
+
+                #[cfg(feature = "reliable_report")]
+                let revert_state = notification.reliable_state;
+                #[cfg(feature = "reliable_report")]
                 notification
-                    .record_reliability(&self.reliability, revert_state)
+                    .record_reliability(
+                        &self.reliability,
+                        autopush_common::reliability::ReliabilityState::IntTransmitted,
+                    )
                     .await;
+                match self.send_notification(&notification, node_id).await {
+                    Ok(response) => {
+                        // The node might be busy, make sure it accepted the notification
+                        if response.status() == 200 {
+                            // The node has received the notification
+                            trace!("✉ Node received notification");
+                            return Ok(self.make_delivered_response(&notification));
+                        }
+                        trace!(
+                            "✉ Node did not receive the notification, response = {:?}",
+                            response
+                        );
+                    }
+                    Err(error) => {
+                        if let ApiErrorKind::ReqwestError(error) = &error.kind {
+                            if error.is_timeout() {
+                                self.metrics.incr("error.node.timeout")?;
+                            };
+                            if error.is_connect() {
+                                self.metrics.incr("error.node.connect")?;
+                            };
+                        };
+                        debug!("✉ Error while sending webpush notification: {}", error);
+                        self.remove_node_id(user, node_id).await?
+                    }
+                }
+
+                #[cfg(feature = "reliable_report")]
+                // Couldn't send the message! So revert to the prior state if we have one
+                if let Some(revert_state) = revert_state {
+                    trace!(
+                        "🔎⚠️ Revert {:?} from {:?} to {:?}",
+                        &notification.reliability_id,
+                        &notification.reliable_state,
+                        revert_state
+                    );
+                    notification
+                        .record_reliability(&self.reliability, revert_state)
+                        .await;
+                }
             }
         }
 
