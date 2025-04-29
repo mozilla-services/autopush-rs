@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "autopush-reliability-report"
+version = "0.1.0"
+description = "Generate the Autopush Reliability Report"
+authors = ["jrconlin <jr+git@mozilla.com>"]
+license = "MPL2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+jinja2 = "*"
+google-cloud-bigtable = "*"
+toml = "*"
+aiohttp = "*"
+cryptography = "*"
+flask = "*"                 # required by AppEngine
+redis = "*"
+statsd = "*"
+google-auth = "*"
+google-cloud-redis = "*"
+google-cloud-storage = "*"
+gunicorn = "*"              # required by AppEngine
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
