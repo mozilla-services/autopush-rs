@@ -599,6 +599,7 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
             ):
                 await write_report(log, settings, bigtable, bucket, report_name)
                 await clean_bucket(log, settings, bucket)
+        counter.release_lock()
     else:
         log.debug("Could not get lock, skipping...")
     # Maybe we're just interested in getting a report?
