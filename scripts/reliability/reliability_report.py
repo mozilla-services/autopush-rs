@@ -425,7 +425,7 @@ async def clean_bucket(
 
 def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     """Read the configuration from the args and environment."""
-    report_choices = ["json", "md", "raw"]
+    report_formats = ["json", "md", "raw"]
 
     parser = argparse.ArgumentParser(
         description="Manage Autopush Reliability Tracking Redis data."
@@ -480,7 +480,7 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         nargs="+",
         action="extend",
         # SEE DEFAULT HANDLER BELOW
-        choices=report_choices,
+        choices=report_formats,
     )
 
     parser.add_argument(
@@ -488,8 +488,8 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         "-r",
         help="DSN to connect to the Redis like service.",
         default=env_args.get(
-            "AUTOEND_RELIABILITY_DSN",
-            env_args.get("AUTOCONNECT_RELIABILITY_DSN", "redis://localhost"),
+            "AUTOEND__RELIABILITY_DSN",
+            env_args.get("AUTOCONNECT__RELIABILITY_DSN", "redis://localhost"),
         ),
     )
 
@@ -529,9 +529,9 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--report_bucket",
+        "--report_bucket_name",
         help="Name of the bucket to store reliability reports",
-        default=env_args.get("AUTOTRACK_REPORT_BUCKET", "autopush-reliability"),
+        default=env_args.get("AUTOTRACK_REPORT_BUCKET_NAME", "autopush_reliability"),
     )
 
     parser.add_argument(
@@ -554,7 +554,8 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
             with open(filename, "r") as f:
                 args = parser.set_defaults(**toml.load(f))
     args = parser.parse_args()
-    # fixup the bigtable settings so that they're easier for this script to deal with.
+    # fixup the bigtable settings so that they're easier for this script to deal with and
+    # more human readable.
     if args.db_settings is not None:
         bt_settings = json.loads(args.db_settings)
         parts = bt_settings.get("table_name").split("/")
@@ -563,11 +564,16 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
             # `projects`, `instances`, & `tables`
             bt_settings[parts[i].rstrip("s")] = parts[i + 1]
         args.bigtable = bt_settings
-    if args.bucket_report is None:
-        report = os.environ.get("AUTOTRACK_OUTPUT")
-        if report:
-            args.bucket_report = list(
-                filter(lambda x: x in report_choices, report.split(" "))
+    # If we have a bucket, we'll write the report there.
+    # Filter the provided output formats to ones we know.
+    # The reports will be date stamped and stored in the bucket with the output prefixes.
+    if args.report_bucket_name is not None:
+        formats = os.environ.get("AUTOTRACK_OUTPUT")
+        if formats:
+            setattr(
+                args,
+                "output",
+                list(filter(lambda x: x in report_formats, formats.split(" "))),
             )
     return args
 
@@ -609,6 +615,7 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
             print("\f")
 
 
+# This can also act as a Flask app entry point.
 def main():
     """Configure and start async main loop"""
     log = init_logs()

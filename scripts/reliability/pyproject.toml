@@ -1,0 +1,19 @@
+[project]
+name = "autopush-reliability-report"
+description = "Generate the Autopush Reliability Report"
+version = "0.1.0"
+requires-python = ">= 3.12"
+authors = [{ name = "jr conlin", email = "src+autopush@jrconlin.com" }]
+dependencies = [
+    "aiohttp",
+    "cryptography",
+    "google-auth",
+    "google-cloud-bigtable",
+    "google-cloud-redis",
+    "google-cloud-storage",
+    "jinja2",
+    "redis",
+    "toml",
+]
+license = "MPL-2.0"
+readme = "README.md"
