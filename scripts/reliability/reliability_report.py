@@ -35,7 +35,6 @@ from google.cloud import storage
 
 RELIABILITY_FAMILY = "reliability"
 
-
 """
 This file is a combination tool that performs daily maintenance of the Push Reliability
 data, as well as generate a daily report of the stats. These reports are stored in a
@@ -196,7 +195,7 @@ class BigtableScanner:
         )
 
 
-class Counter:
+class Redis:
     """Manage Redis-like storage counts
 
     Current milestone counts are managed in a Redis-like storage system.
@@ -382,17 +381,31 @@ class Counter:
             self.log.info(f"🧹 No matching terminal states found?")
         return term_counts
 
+    async def get_lock(self) -> bool:
+        """Use RedLock locking"""
+        lock_name = datetime.now().isoformat()
+        # set the default hold time fairly short, we'll extend the lock later if we succeed.
+        self.lock = self.redis.lock(lock_name, timeout=self.settings.lock_hold_time)
+        # Fail the lock check quickly.
+        if await self.lock.acquire(blocking_timeout=1):
+            await self.lock.extend(self.settings.hold_time)
+            return True
+        return False
+
+    def release_lock(self):
+        self.lock.release()
+
 
 async def write_report(
     log: logging.Logger,
     settings: argparse.Namespace,
     bigtable: BigtableScanner,
     bucket: storage.Bucket,
+    report_name: str,
 ):
     """Write the reports to the bucket"""
-    today = datetime.date.today()
     for style in settings.output:
-        blob_name = f"{today.strftime(f"%Y-%m-%d")}.{style}"
+        blob_name = f"{report_name}.{style}"
         log.info(f"Creating {blob_name}")
         bucket.blob(blob_name).open("w").write(await bigtable.output(style))
 
@@ -521,6 +534,18 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         default=env_args.get("AUTOTRACK_REPORT_BUCKET", "autopush-reliability"),
     )
 
+    parser.add_argument(
+        "--lock_hold_time",
+        help="seconds to hold the lock, once acquired (lock expires in # seconds)",
+        default=env_args.get("AUTOTRACK__LOCK_HOLD_TIME", 600),
+    )
+
+    parser.add_argument(
+        "--lock_acquire_time",
+        help="seconds to hold the lock for initial acquisition",
+        default=env_args.get("AUTOTRACK__LOCK_ACQUISITION_TIME", 10),
+    )
+
     args = parser.parse_args()
 
     # if we have a config file, read from that and then reload.
@@ -559,16 +584,25 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
     """Async main loop"""
     bigtable = BigtableScanner(log, settings)
     # do the Redis counter cleanup.
-    counter = Counter(log, settings)
+    counter = Redis(log, settings)
     await counter.gc()
-    await counter.terminal_snapshot()
-    # if we have a bucket to write to, write the reports to the bucket.
-    if settings.bucket_name:
-        client = storage.Client()
-        bucket = client.create_bucket(settings.bucket_name)
-        await write_report(log, settings, bigtable, bucket)
-        await clean_bucket(log, settings, bucket)
+    if await counter.get_lock():
+        await counter.terminal_snapshot()
+        # if we have a bucket to write to, write the reports to the bucket.
+        if settings.bucket_name:
+            client = storage.Client()
+            bucket = client.create_bucket(settings.bucket_name)
+            report_name = f"{datetime.date.today()}"
+            if (
+                len(await bucket.list_blobs(prefix=report_name)) == 0
+                and counter.get_lock()
+            ):
+                await write_report(log, settings, bigtable, bucket, report_name)
+                await clean_bucket(log, settings, bucket)
     else:
+        log.debug("Could not get lock, skipping...")
+    # Maybe we're just interested in getting a report?
+    if not settings.bucket_name:
         for style in settings.output:
             print(await bigtable.output(style))
             print("\f")
@@ -579,6 +613,7 @@ def main():
     log = init_logs()
     log.info("Starting up...")
     asyncio.run(amain(log, config()))
+    return "Ok"
 
 
 if __name__ == "__main__":
