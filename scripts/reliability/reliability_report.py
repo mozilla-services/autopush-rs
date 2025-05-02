@@ -16,7 +16,7 @@ import logging
 import os
 import statistics
 import time
-from typing import cast, Dict, List
+from typing import Any, cast, Dict, List
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -65,7 +65,7 @@ class BigtableScanner:
             log.error(e)
             raise
 
-    async def collect(self):
+    async def collect(self) -> Dict[str, Any]:
         """Collect the data elements. (NOTE: This does a table scan. )"""
         table = self.bigtable.get_table(
             self.settings.bigtable.get("instance"),
@@ -143,7 +143,7 @@ class BigtableScanner:
             # Should we ever want to return "all":
             # result[row.row_key] = print_row
         result["meta"] = OrderedDict(
-            since=datetime.fromtimestamp(start_time),
+            since=datetime.fromtimestamp(start_time).isoformat(),
             longest=max_time,
             shortest=min_time,
             mean_time=mean_time,
@@ -171,14 +171,9 @@ class BigtableScanner:
     async def as_json(self) -> str:
         """Return as a formatted JSON string"""
         collected = await self.collect()
-        meta = collected.get("meta")
-        try:
-            # convert the instance to a string.
-            cast(OrderedDict, meta)["since"] = cast(
-                datetime, cast(OrderedDict, meta).get("since", datetime.now())
-            ).strftime("%Y-%m-%d %H:%M:%S.%f %Z")
-        except Exception as ex:
-            self.log.error(ex)
+        meta = cast(OrderedDict, collected.get("meta"))
+        # ensure the "since" is set.
+        meta["since"] = meta.get("since", datetime.now().isoformat)
         return json.dumps(meta, indent=2)
 
     async def as_md(self) -> str:
@@ -385,15 +380,15 @@ class Redis:
         """Use RedLock locking"""
         lock_name = datetime.now().isoformat()
         # set the default hold time fairly short, we'll extend the lock later if we succeed.
-        self.lock = self.redis.lock(lock_name, timeout=self.settings.lock_hold_time)
+        self.lock = self.redis.lock(lock_name, timeout=self.settings.lock_acquire_time)
         # Fail the lock check quickly.
         if await self.lock.acquire(blocking_timeout=1):
-            await self.lock.extend(self.settings.hold_time)
+            await self.lock.extend(self.settings.lock_hold_time)
             return True
         return False
 
-    def release_lock(self):
-        self.lock.release()
+    async def release_lock(self):
+        await self.lock.release()
 
 
 async def write_report(
@@ -414,12 +409,13 @@ async def clean_bucket(
     log: logging.Logger, settings: argparse.Namespace, bucket: storage.Bucket
 ):
     """Remove old reports from the bucket"""
+    end_offset = datetime.now().strftime("%Y-%m-%d")
     start_date = (
-        datetime.today().date() - timedelta(days=settings.bucket_retention_days)
+        datetime.now() - timedelta(days=settings.bucket_retention_days)
     ).strftime("%Y-%m-%d")
-    blobs = bucket.list_blobs(start_offset=start_date)
+    blobs = bucket.list_blobs(start_offset=start_date, end_offset=end_offset)
     for blob in blobs:
-        log.info(f"🗑 Deleting {blob}")
+        log.info(f"🗑 Deleting {blob.name} -> {blob.id}")
         blob.delete()
 
 
@@ -511,6 +507,12 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         default=env_args.get("AUTOTRACK_TERMINAL_TABLE", "terminus"),
     )
 
+    parser.add_argument(
+        "--log_family",
+        help="Name of the reliability report logging family, must match `autopush_common::db::bigtable::bigtable_client::RELIABLE_LOG_FAMILY`",
+        default=env_args.get("AUTOTRACK_LOG_FAMILY", "reliability"),
+    )
+
     # A note about the retention period.
     # Redis is not reliable storage. The system can go down for any number of reasons.
     # In order to not tempt the fates more than necessary, we'll "trim" the terminated
@@ -531,7 +533,9 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     parser.add_argument(
         "--report_bucket_name",
         help="Name of the bucket to store reliability reports",
-        default=env_args.get("AUTOTRACK_REPORT_BUCKET_NAME", "autopush_reliability"),
+        default=env_args.get(
+            "AUTOTRACK_REPORT_BUCKET_NAME", "autopush-dev-reliability"
+        ),
     )
 
     parser.add_argument(
@@ -568,7 +572,7 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     # Filter the provided output formats to ones we know.
     # The reports will be date stamped and stored in the bucket with the output prefixes.
     if args.report_bucket_name is not None:
-        formats = os.environ.get("AUTOTRACK_OUTPUT")
+        formats = os.environ.get("AUTOTRACK_OUTPUT", "md json")
         if formats:
             setattr(
                 args,
@@ -597,17 +601,22 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
         # if we have a bucket to write to, write the reports to the bucket.
         if settings.bucket_name:
             client = storage.Client()
-            bucket = client.create_bucket(settings.bucket_name)
-            report_name = f"{datetime.date.today()}"
-            if (
-                len(await bucket.list_blobs(prefix=report_name)) == 0
-                and counter.get_lock()
-            ):
-                await write_report(log, settings, bigtable, bucket, report_name)
-                await clean_bucket(log, settings, bucket)
-        counter.release_lock()
-    else:
-        log.debug("Could not get lock, skipping...")
+            bucket = client.lookup_bucket(bucket_name=settings.bucket_name)
+            if bucket:
+                report_name = datetime.now().strftime("%Y-%m-%d")
+                # technically, `bucket.list_blobs` can return `.num_results` but since this is
+                # an iterator for the actual call and the call is only performed on demand, that
+                # would return 0.
+                reports = [blob for blob in bucket.list_blobs(prefix=report_name)]
+                if len(reports) == 0:
+                    if await counter.get_lock():
+                        await write_report(log, settings, bigtable, bucket, report_name)
+                        await clean_bucket(log, settings, bucket)
+                        await counter.release_lock()
+                    else:
+                        log.debug("Could not get lock, skipping...")
+                else:
+                    log.debug("Reports already generated, skipping...")
     # Maybe we're just interested in getting a report?
     if not settings.bucket_name:
         for style in settings.output:
