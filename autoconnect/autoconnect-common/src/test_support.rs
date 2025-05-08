@@ -1,5 +1,6 @@
 use uuid::Uuid;
 
+use crate::protocol::MessageType;
 use autopush_common::{
     db::{mock::MockDbClient, User},
     util::timing::ms_since_epoch,
@@ -13,10 +14,20 @@ pub const DUMMY_CHID: Uuid = Uuid::from_u128(0xdeadbeef_0000_0000_abad_1dea00000
 
 /// A minimal websocket Push "hello" message, used by an unregistered UA with
 /// no existing channel subscriptions
-pub const HELLO: &str = r#"{"messageType": "hello", "use_webpush": true}"#;
-/// A post initial registration response
-pub const HELLO_AGAIN: &str = r#"{"messageType": "hello", "use_webpush": true,
-                                  "uaid": "deadbeef-0000-0000-deca-fbad00000000"}"#;
+pub fn hello_json() -> String {
+    format!(
+        r#"{{"messageType": "{}", "use_webpush": true}}"#,
+        MessageType::Hello.as_str()
+    )
+}
+
+pub fn hello_again_json() -> String {
+    format!(
+        r#"{{"messageType": "{}", "use_webpush": true,
+                "uaid": "deadbeef-0000-0000-deca-fbad00000000"}}"#,
+        MessageType::Hello.as_str()
+    )
+}
 
 pub const CURRENT_MONTH: &str = "message_2018_06";
 

@@ -10,9 +10,48 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use serde_derive::{Deserialize, Serialize};
+use strum_macros::{AsRefStr, Display, EnumString};
 use uuid::Uuid;
 
 use autopush_common::notification::Notification;
+
+/// Message types for WebPush protocol messages.
+///
+/// This enum should be used instead of string literals when referring to message types.
+/// String serialization is handled automatically via the strum traits.
+///
+/// Example:
+/// ```
+///  use autoconnect_common::protocol::MessageType;
+///
+/// let message_type = MessageType::Hello;
+/// let message_str = message_type.as_str();  // Returns "hello"
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, Display, EnumString)]
+#[strum(serialize_all = "snake_case")]
+pub enum MessageType {
+    Hello,
+    Register,
+    Unregister,
+    BroadcastSubscribe,
+    Ack,
+    Nack,
+    Ping,
+    Notification,
+    Broadcast,
+}
+
+impl MessageType {
+    /// Converts the enum to its string representation
+    pub fn as_str(&self) -> &str {
+        self.as_ref()
+    }
+
+    /// Returns the expected message type string for error messages
+    pub fn expected_msg(&self) -> String {
+        format!(r#"Expected messageType="{}""#, self.as_str())
+    }
+}
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -67,6 +106,21 @@ pub enum ClientMessage {
     },
 
     Ping,
+}
+
+impl ClientMessage {
+    /// Get the message type of this message
+    pub fn message_type(&self) -> MessageType {
+        match self {
+            ClientMessage::Hello { .. } => MessageType::Hello,
+            ClientMessage::Register { .. } => MessageType::Register,
+            ClientMessage::Unregister { .. } => MessageType::Unregister,
+            ClientMessage::BroadcastSubscribe { .. } => MessageType::BroadcastSubscribe,
+            ClientMessage::Ack { .. } => MessageType::Ack,
+            ClientMessage::Nack { .. } => MessageType::Nack,
+            ClientMessage::Ping => MessageType::Ping,
+        }
+    }
 }
 
 impl FromStr for ClientMessage {
@@ -141,11 +195,22 @@ pub enum ServerMessage {
 }
 
 impl ServerMessage {
+    /// Get the message type of this message
+    pub fn message_type(&self) -> MessageType {
+        match self {
+            ServerMessage::Hello { .. } => MessageType::Hello,
+            ServerMessage::Register { .. } => MessageType::Register,
+            ServerMessage::Unregister { .. } => MessageType::Unregister,
+            ServerMessage::Broadcast { .. } => MessageType::Broadcast,
+            ServerMessage::Notification(..) => MessageType::Notification,
+            ServerMessage::Ping => MessageType::Ping,
+        }
+    }
+
     pub fn to_json(&self) -> Result<String, serde_json::error::Error> {
         match self {
-            // clients recognize {"messageType": "ping"} but traditionally both
-            // client/server send the empty object version
-            ServerMessage::Ping => Ok("{}".to_owned()),
+            // Traditionally both client/server send the empty object version for ping
+            ServerMessage::Ping => Ok("{}".to_string()),
             _ => serde_json::to_string(self),
         }
     }

@@ -1,6 +1,6 @@
 use actix_web::web::{Data, Json};
 use actix_web::{HttpRequest, HttpResponse};
-use cadence::{CountedExt, Histogrammed, StatsdClient};
+use cadence::{Histogrammed, StatsdClient};
 use uuid::Uuid;
 
 use crate::error::{ApiErrorKind, ApiResult};
@@ -15,6 +15,8 @@ use crate::server::AppState;
 
 use autopush_common::db::User;
 use autopush_common::endpoint::make_endpoint;
+use autopush_common::metric_name::MetricName;
+use autopush_common::metrics::StatsdClientExt;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
 pub async fn register_uaid_route(
@@ -32,7 +34,7 @@ pub async fn register_uaid_route(
     trace!("🌍 token = {}", router_data_input.token);
     let router = routers.get(path_args.router_type);
     let router_data = router.register(&router_data_input, &path_args.app_id)?;
-    incr_metric("ua.command.register", &app_state.metrics, &request);
+    incr_metric(MetricName::UaCommandRegister, &app_state.metrics, &request);
 
     // Register user and channel in database
     let user = User::builder()
@@ -185,7 +187,7 @@ pub async fn get_channels_route(
         // use the "metrics" version since we need to consider cardinality.
         app_state
             .metrics
-            .incr_with_tags("ua.connection.check")
+            .incr_with_tags(MetricName::UaConnectionCheck)
             .with_tag("os", &os)
             .with_tag("browser", &browser)
             .send();
@@ -194,7 +196,10 @@ pub async fn get_channels_route(
 
     app_state
         .metrics
-        .histogram_with_tags("ua.connection.channel_count", channel_ids.len() as u64)
+        .histogram_with_tags(
+            MetricName::UaConnectionChannelCount.as_ref(),
+            channel_ids.len() as u64,
+        )
         .with_tag_value("mobile")
         .send();
 
@@ -220,7 +225,11 @@ pub async fn unregister_channel_route(
     let uaid = path_args.user.uaid;
     debug!("🌍 Unregistering CHID {channel_id} for UAID {uaid}");
 
-    incr_metric("ua.command.unregister", &app_state.metrics, &request);
+    incr_metric(
+        MetricName::UaCommandUnregister,
+        &app_state.metrics,
+        &request,
+    );
     let channel_did_exist = app_state.db.remove_channel(&uaid, &channel_id).await?;
 
     if channel_did_exist {
@@ -232,9 +241,9 @@ pub async fn unregister_channel_route(
 }
 
 /// Increment a metric with data from the request
-fn incr_metric(name: &str, metrics: &StatsdClient, request: &HttpRequest) {
+fn incr_metric(metric: MetricName, metrics: &StatsdClient, request: &HttpRequest) {
     metrics
-        .incr_with_tags(name)
+        .incr_with_tags(metric)
         .with_tag(
             "user_agent",
             get_header(request, "User-Agent").unwrap_or("unknown"),
