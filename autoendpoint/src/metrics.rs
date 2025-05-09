@@ -128,8 +128,8 @@ impl Metrics {
     }
 
     // increment a counter with no tags data.
-    pub fn incr(self, metric: MetricName, tags: Option<Tags>) {
-        self.incr_with_tags(metric, tags)
+    pub fn incr(self, metric: MetricName) {
+        self.incr_with_tags(metric, None)
     }
 
     pub fn incr_with_tags(self, metric: MetricName, tags: Option<Tags>) {

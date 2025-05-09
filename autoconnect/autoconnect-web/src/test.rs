@@ -44,13 +44,10 @@ pub async fn hello_new_user() {
     });
 
     let mut framed = srv.ws().await.unwrap();
-    framed
-        .send(ws::Message::Text(hello_json().into()))
-        .await
-        .unwrap();
+    framed.send(ws::Message::Text(hello_json())).await.unwrap();
 
     let msg = json_msg(&mut framed).await;
-    assert_eq!(msg["messageType"], MessageType::Hello.as_str());
+    assert_eq!(msg["messageType"], MessageType::Hello.as_ref());
     assert_eq!(msg["status"], 200);
     // Ensure that the outbound response to the client includes the
     // `use_webpush` flag set to `true`
@@ -69,12 +66,12 @@ pub async fn hello_again() {
 
     let mut framed = srv.ws().await.unwrap();
     framed
-        .send(ws::Message::Text(hello_again_json().into()))
+        .send(ws::Message::Text(hello_again_json()))
         .await
         .unwrap();
 
     let msg = json_msg(&mut framed).await;
-    assert_eq!(msg["messageType"], MessageType::Hello.as_str());
+    assert_eq!(msg["messageType"], MessageType::Hello.as_ref());
     assert_eq!(msg["uaid"], DUMMY_UAID.as_simple().to_string());
 }
 
@@ -84,7 +81,7 @@ pub async fn unsupported_websocket_message() {
 
     let mut framed = srv.ws().await.unwrap();
     framed
-        .send(ws::Message::Binary(hello_json().into()))
+        .send(ws::Message::Binary(hello_json().into_bytes()))
         .await
         .unwrap();
 
@@ -104,18 +101,12 @@ pub async fn invalid_webpush_message() {
     });
 
     let mut framed = srv.ws().await.unwrap();
-    framed
-        .send(ws::Message::Text(hello_json().into()))
-        .await
-        .unwrap();
+    framed.send(ws::Message::Text(hello_json())).await.unwrap();
 
     let msg = json_msg(&mut framed).await;
     assert_eq!(msg["status"], 200);
 
-    framed
-        .send(ws::Message::Text(hello_json().into()))
-        .await
-        .unwrap();
+    framed.send(ws::Message::Text(hello_json())).await.unwrap();
 
     let item = framed.next().await.unwrap().unwrap();
     let ws::Frame::Close(Some(close_reason)) = item else {
@@ -159,12 +150,12 @@ pub async fn direct_notif() {
 
     let mut framed = srv.ws().await.unwrap();
     framed
-        .send(ws::Message::Text(hello_again_json().into()))
+        .send(ws::Message::Text(hello_again_json()))
         .await
         .unwrap();
 
     let msg = json_msg(&mut framed).await;
-    assert_eq!(msg["messageType"], MessageType::Hello.as_str());
+    assert_eq!(msg["messageType"], MessageType::Hello.as_ref());
 
     app_state
         .clients
@@ -180,7 +171,7 @@ pub async fn direct_notif() {
 
     // Is a small sleep/tick needed here?
     let msg = json_msg(&mut framed).await;
-    assert_eq!(msg["messageType"], MessageType::Notification.as_str());
+    assert_eq!(msg["messageType"], MessageType::Notification.as_ref());
     assert_eq!(msg["data"], "foo");
 }
 
@@ -202,7 +193,7 @@ pub async fn broadcast_after_ping() {
         .add_broadcast(("foo/bar".to_owned(), "v1".to_owned()).into());
     let mut srv = test_server(app_state.clone());
 
-    let hello = json!({"messageType": MessageType::Hello.as_str(), "use_webpush": true,
+    let hello = json!({"messageType": MessageType::Hello.as_ref(), "use_webpush": true,
                        "broadcasts": {"foo/bar": "v1"}});
     let mut framed = srv.ws().await.unwrap();
     framed
@@ -211,7 +202,7 @@ pub async fn broadcast_after_ping() {
         .unwrap();
 
     let msg = json_msg(&mut framed).await;
-    assert_eq!(msg["messageType"], MessageType::Hello.as_str());
+    assert_eq!(msg["messageType"], MessageType::Hello.as_ref());
     let broadcasts = msg["broadcasts"]
         .as_object()
         .expect("!broadcasts.is_object()");
@@ -235,7 +226,7 @@ pub async fn broadcast_after_ping() {
     tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
     let msg = json_msg(&mut framed).await;
     assert_eq!(msg.as_object().map_or(0, |o| o.len()), 2);
-    assert_eq!(msg["messageType"], MessageType::Broadcast.as_str());
+    assert_eq!(msg["messageType"], MessageType::Broadcast.as_ref());
     let broadcasts = msg["broadcasts"]
         .as_object()
         .expect("!broadcasts.is_object()");

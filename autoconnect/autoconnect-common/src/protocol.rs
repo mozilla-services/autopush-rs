@@ -25,7 +25,7 @@ use autopush_common::notification::Notification;
 ///  use autoconnect_common::protocol::MessageType;
 ///
 /// let message_type = MessageType::Hello;
-/// let message_str = message_type.as_str();  // Returns "hello"
+/// let message_str = message_type.as_ref();  // Returns "hello"
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, Display, EnumString)]
 #[strum(serialize_all = "snake_case")]
@@ -42,14 +42,9 @@ pub enum MessageType {
 }
 
 impl MessageType {
-    /// Converts the enum to its string representation
-    pub fn as_str(&self) -> &str {
-        self.as_ref()
-    }
-
     /// Returns the expected message type string for error messages
     pub fn expected_msg(&self) -> String {
-        format!(r#"Expected messageType="{}""#, self.as_str())
+        format!(r#"Expected messageType="{}""#, self.as_ref())
     }
 }
 
@@ -209,7 +204,8 @@ impl ServerMessage {
 
     pub fn to_json(&self) -> Result<String, serde_json::error::Error> {
         match self {
-            // Traditionally both client/server send the empty object version for ping
+            // Both client and server understand the verbose `{"messageType": "ping"}` and the abbreviated `{}`
+            // as valid ping messages. The server defaults to the shorter `{}` form.
             ServerMessage::Ping => Ok("{}".to_string()),
             _ => serde_json::to_string(self),
         }

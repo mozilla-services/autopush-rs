@@ -70,7 +70,7 @@ impl UnidentifiedClient {
         };
         debug!(
             "👋UnidentifiedClient::on_client_msg {} from uaid?: {:?}",
-            MessageType::Hello.as_str(),
+            MessageType::Hello.as_ref(),
             uaid
         );
 
@@ -85,7 +85,7 @@ impl UnidentifiedClient {
         let uaid = user.uaid;
         debug!(
             "💬UnidentifiedClient::on_client_msg {}! uaid: {} existing_user: {}",
-            MessageType::Hello.as_str(),
+            MessageType::Hello.as_ref(),
             uaid,
             existing_user,
         );
@@ -144,7 +144,7 @@ impl UnidentifiedClient {
     async fn get_or_create_user(&self, uaid: Option<Uuid>) -> Result<GetOrCreateUser, SMError> {
         trace!(
             "❓UnidentifiedClient::get_or_create_user for {}",
-            MessageType::Hello.as_str()
+            MessageType::Hello.as_ref()
         );
         let connected_at = ms_since_epoch();
 
@@ -199,7 +199,7 @@ impl UnidentifiedClient {
     ) -> (BroadcastSubs, HashMap<String, BroadcastValue>) {
         trace!(
             "UnidentifiedClient::broadcast_init for {}",
-            MessageType::Hello.as_str()
+            MessageType::Hello.as_ref()
         );
         let bc = self.app_state.broadcaster.read().await;
         let BroadcastSubsInit(broadcast_subs, delta) = bc.broadcast_delta(broadcasts);
@@ -224,13 +224,12 @@ struct GetOrCreateUser {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
     use std::sync::Arc;
 
     use autoconnect_common::{
         protocol::{ClientMessage, MessageType},
-        test_support::{
-            hello_again_db, hello_again_json, hello_db, hello_json, DUMMY_CHID, DUMMY_UAID, UA,
-        },
+        test_support::{hello_again_db, hello_again_json, hello_db, DUMMY_CHID, DUMMY_UAID, UA},
     };
     use autoconnect_settings::AppState;
 
@@ -258,7 +257,7 @@ mod tests {
             .unwrap();
         assert!(matches!(err.kind, SMErrorKind::InvalidMessage(_)));
         // Verify error message contains expected message type
-        assert!(format!("{}", err).contains(MessageType::Hello.as_str()));
+        assert!(format!("{}", err).contains(MessageType::Hello.as_ref()));
 
         // Test with Register message
         let client = uclient(Default::default());
@@ -272,7 +271,7 @@ mod tests {
             .unwrap();
         assert!(matches!(err.kind, SMErrorKind::InvalidMessage(_)));
         // Verify error message contains expected message type
-        assert!(format!("{}", err).contains(MessageType::Hello.as_str()));
+        assert!(format!("{}", err).contains(MessageType::Hello.as_ref()));
     }
 
     #[tokio::test]
@@ -294,9 +293,12 @@ mod tests {
             db: hello_db().into_boxed_arc(),
             ..Default::default()
         });
-        // Using hello_json helper ensures consistent message type strings
-        let raw = hello_json();
-        let msg = raw.parse::<ClientMessage>().unwrap();
+        // Ensure that we do not need to pass the "use_webpush" flag.
+        // (yes, this could just be passing the string, but I want to be
+        // very explicit here.)
+        let json = serde_json::json!({"messageType":"hello"});
+        let raw = json.to_string();
+        let msg = ClientMessage::from_str(&raw).unwrap();
         client.on_client_msg(msg).await.expect("Hello failed");
     }
 

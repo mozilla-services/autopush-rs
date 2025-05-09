@@ -1,3 +1,4 @@
+use bytestring::ByteString;
 use uuid::Uuid;
 
 use crate::protocol::MessageType;
@@ -14,19 +15,22 @@ pub const DUMMY_CHID: Uuid = Uuid::from_u128(0xdeadbeef_0000_0000_abad_1dea00000
 
 /// A minimal websocket Push "hello" message, used by an unregistered UA with
 /// no existing channel subscriptions
-pub fn hello_json() -> String {
+pub fn hello_json() -> ByteString {
     format!(
         r#"{{"messageType": "{}", "use_webpush": true}}"#,
-        MessageType::Hello.as_str()
+        MessageType::Hello.as_ref()
     )
+    .into()
 }
 
-pub fn hello_again_json() -> String {
+pub fn hello_again_json() -> ByteString {
     format!(
         r#"{{"messageType": "{}", "use_webpush": true,
-                "uaid": "deadbeef-0000-0000-deca-fbad00000000"}}"#,
-        MessageType::Hello.as_str()
+                "uaid": "{}"}}"#,
+        MessageType::Hello.as_ref(),
+        DUMMY_UAID
     )
+    .into()
 }
 
 pub const CURRENT_MONTH: &str = "message_2018_06";
