@@ -602,6 +602,7 @@ version = "1.74.3"
 dependencies = [
  "actix-web",
  "autopush_common",
+ "bytestring",
  "cadence",
  "futures 0.3.31",
  "futures-locks",
@@ -613,6 +614,8 @@ dependencies = [
  "serde_json",
  "slog",
  "slog-scope",
+ "strum",
+ "strum_macros 0.27.1",
  "tokio",
  "uuid",
 ]
@@ -822,6 +825,7 @@ dependencies = [
  "slog-stdlog",
  "slog-term",
  "strum",
+ "strum_macros 0.27.1",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",

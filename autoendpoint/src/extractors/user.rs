@@ -5,7 +5,9 @@ use crate::extractors::routers::RouterType;
 use crate::server::AppState;
 use actix_http::StatusCode;
 use autopush_common::db::{client::DbClient, User};
-use cadence::{CountedExt, StatsdClient};
+use autopush_common::metric_name::MetricName;
+use autopush_common::metrics::StatsdClientExt;
+use cadence::StatsdClient;
 use uuid::Uuid;
 
 /// Perform some validations on the user, including:
@@ -37,7 +39,7 @@ pub async fn validate_user(
         // record the bridge error for accounting reasons.
         app_state
             .metrics
-            .incr_with_tags("notification.bridge.error")
+            .incr_with_tags(MetricName::NotificationBridgeError)
             .with_tag("platform", "gcm")
             .with_tag("reason", "gcm_kill")
             .with_tag("error", &StatusCode::GONE.to_string())
@@ -68,7 +70,7 @@ async fn validate_webpush_user(user: &User, channel_id: &Uuid, db: &dyn DbClient
 /// Drop a user and increment associated metric
 pub async fn drop_user(uaid: Uuid, db: &dyn DbClient, metrics: &StatsdClient) -> ApiResult<()> {
     metrics
-        .incr_with_tags("updates.drop_user")
+        .incr_with_tags(MetricName::UpdatesDropUser)
         .with_tag("errno", "102")
         .send();
 

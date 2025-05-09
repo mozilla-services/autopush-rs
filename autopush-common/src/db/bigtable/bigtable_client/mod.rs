@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use again::RetryPolicy;
 use async_trait::async_trait;
-use cadence::{CountedExt, StatsdClient};
+use cadence::StatsdClient;
 use chrono::TimeDelta;
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
@@ -28,6 +28,8 @@ use crate::db::{
     error::{DbError, DbResult},
     DbSettings, Notification, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
 };
+use crate::metric_name::MetricName;
+use crate::metrics::StatsdClientExt;
 
 pub use self::metadata::MetadataBuilder;
 use self::row::{Row, RowCells};
@@ -273,7 +275,7 @@ fn retryable_internal_err(status: &RpcStatus) -> bool {
 
 pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
     let mut metric = metrics
-        .incr_with_tags("database.retry")
+        .incr_with_tags(MetricName::DatabaseRetry)
         .with_tag("error", err_type)
         .with_tag("type", "bigtable");
     if let Some(code) = code {
@@ -1009,7 +1011,7 @@ impl DbClient for BigTableClientImpl {
                 // https://github.com/mozilla-services/autopush-rs/pull/640
                 trace!("🉑 Dropping an incomplete user record for {}", row_key);
                 self.metrics
-                    .incr_with_tags("database.drop_user")
+                    .incr_with_tags(MetricName::DatabaseDropUser)
                     .with_tag("reason", "incomplete_record")
                     .send();
                 self.remove_user(uaid).await?;
@@ -1262,7 +1264,7 @@ impl DbClient for BigTableClientImpl {
         self.write_row(row).await?;
 
         self.metrics
-            .incr_with_tags("notification.message.stored")
+            .incr_with_tags(MetricName::NotificationMessageStored)
             .with_tag("topic", &is_topic.to_string())
             .with_tag("database", &self.name())
             .send();
@@ -1334,7 +1336,7 @@ impl DbClient for BigTableClientImpl {
         debug!("🉑🔥 Deleting message {}", &row_key);
         self.delete_row(&row_key).await?;
         self.metrics
-            .incr_with_tags("notification.message.deleted")
+            .incr_with_tags(MetricName::NotificationMessageDeleted)
             .with_tag("database", &self.name())
             .send();
         Ok(())

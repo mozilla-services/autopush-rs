@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use actix_web::HttpResponse;
-use cadence::{CountedExt, StatsdClient};
+use cadence::StatsdClient;
 use chrono::TimeDelta;
 use deadpool_redis::Config;
 
@@ -19,6 +19,8 @@ use redis::AsyncCommands;
 
 use crate::db::client::DbClient;
 use crate::errors::{ApcErrorKind, Result};
+use crate::metric_name::MetricName;
+use crate::metrics::StatsdClientExt;
 use crate::util::timing::sec_since_epoch;
 
 // Redis Keys
@@ -219,7 +221,7 @@ impl PushReliability {
         )
         .await?;
         self.metrics
-            .incr_with_tags("reliability.gc")
+            .incr_with_tags(MetricName::ReliabilityGc)
             .with_tag(
                 "status",
                 if result == redis::Value::Nil {
