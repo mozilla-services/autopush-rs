@@ -17,3 +17,6 @@ dependencies = [
 ]
 license = "MPL-2.0"
 readme = "README.md"
+
+[tool.setuptools]
+packages = []
