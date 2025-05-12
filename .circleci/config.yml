@@ -390,7 +390,7 @@ jobs:
       - docker_login
       - run:
           name: Build cron docker image
-          command: /
+          command: |
             docker build --tag <<parameters.image>>:<<parameters.tag>> -f ./scripts/reliability/Dockerfile ./scripts/reliability
       - run:
           name: Save cron docker image
