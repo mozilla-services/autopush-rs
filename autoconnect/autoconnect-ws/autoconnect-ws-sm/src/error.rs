@@ -3,7 +3,26 @@ use std::{error::Error, fmt};
 use actix_ws::CloseCode;
 use backtrace::Backtrace;
 
+use autoconnect_common::protocol::{ClientMessage, MessageType, ServerMessage};
 use autopush_common::{db::error::DbError, errors::ApcError, errors::ReportableError};
+
+/// Trait for types that can provide a MessageType
+pub trait MessageTypeProvider {
+    /// Returns the message type of this object
+    fn message_type(&self) -> MessageType;
+}
+
+impl MessageTypeProvider for ClientMessage {
+    fn message_type(&self) -> MessageType {
+        self.message_type()
+    }
+}
+
+impl MessageTypeProvider for ServerMessage {
+    fn message_type(&self) -> MessageType {
+        self.message_type()
+    }
+}
 
 /// WebSocket state machine errors
 #[derive(Debug)]
@@ -47,6 +66,23 @@ impl SMError {
 
     pub fn invalid_message(description: String) -> Self {
         SMErrorKind::InvalidMessage(description).into()
+    }
+
+    /// Creates an invalid message error for an expected message type
+    pub fn expected_message_type(expected: MessageType) -> Self {
+        SMErrorKind::InvalidMessage(expected.expected_msg()).into()
+    }
+
+    /// Validates a message is of the expected type, returning an error if not
+    pub fn validate_message_type<T>(expected: MessageType, msg: &T) -> Result<(), Self>
+    where
+        T: MessageTypeProvider,
+    {
+        if msg.message_type() == expected {
+            Ok(())
+        } else {
+            Err(Self::expected_message_type(expected))
+        }
     }
 }
 

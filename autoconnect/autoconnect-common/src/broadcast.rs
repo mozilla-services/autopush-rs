@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 
 use serde_derive::{Deserialize, Serialize};
+use strum_macros::{AsRefStr, Display};
 
 use autopush_common::errors::{ApcErrorKind, Result};
 
@@ -72,6 +73,12 @@ struct BroadcastRevision {
     broadcast: BroadcastKey,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, Display)]
+pub enum BroadcastErrorKind {
+    #[strum(serialize = "Broadcast not found")]
+    NotFound,
+}
+
 /// A provided Broadcast/Version used for `BroadcastSubsInit`, client comparisons, and outgoing
 /// deltas
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -85,7 +92,7 @@ impl Broadcast {
     pub fn error(self) -> Broadcast {
         Broadcast {
             broadcast_id: self.broadcast_id,
-            version: "Broadcast not found".to_string(),
+            version: BroadcastErrorKind::NotFound.to_string(),
         }
     }
 }
@@ -191,7 +198,9 @@ impl BroadcastChangeTracker {
         let key = self
             .broadcast_registry
             .lookup_key(&broadcast.broadcast_id)
-            .ok_or(ApcErrorKind::BroadcastError("Broadcast not found".into()))?;
+            .ok_or(ApcErrorKind::BroadcastError(
+                BroadcastErrorKind::NotFound.to_string(),
+            ))?;
 
         if let Some(ver) = self.broadcast_versions.get_mut(&key) {
             if *ver == broadcast.version {
@@ -200,7 +209,9 @@ impl BroadcastChangeTracker {
             *ver = broadcast.version;
         } else {
             trace!("📢 Not found: {b_id}");
-            return Err(ApcErrorKind::BroadcastError("Broadcast not found".into()).into());
+            return Err(
+                ApcErrorKind::BroadcastError(BroadcastErrorKind::NotFound.to_string()).into(),
+            );
         }
 
         trace!("📢 New version of {b_id}");
