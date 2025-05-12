@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
-use cadence::CountedExt;
 use uuid::Uuid;
 
 use autoconnect_common::{
     broadcast::Broadcast,
-    protocol::{BroadcastValue, ClientAck, ClientMessage, ServerMessage},
+    protocol::{BroadcastValue, ClientAck, ClientMessage, MessageType, ServerMessage},
 };
-use autopush_common::{endpoint::make_endpoint, util::sec_since_epoch};
+use autopush_common::{
+    endpoint::make_endpoint, metric_name::MetricName, metrics::StatsdClientExt,
+    util::sec_since_epoch,
+};
 
 use super::WebPushClient;
 use crate::error::{SMError, SMErrorKind};
@@ -52,6 +54,7 @@ impl WebPushClient {
                "uaid" => &self.uaid.to_string(),
                "channel_id" => &channel_id_str,
                "key" => &key,
+               "message_type" => MessageType::Register.as_ref(),
         );
         let channel_id = Uuid::try_parse(&channel_id_str).map_err(|_| {
             SMError::invalid_message(format!("Invalid channelID: {channel_id_str}"))
@@ -64,7 +67,10 @@ impl WebPushClient {
 
         let (status, push_endpoint) = match self.do_register(&channel_id, key).await {
             Ok(endpoint) => {
-                let _ = self.app_state.metrics.incr("ua.command.register");
+                let _ = self
+                    .app_state
+                    .metrics
+                    .incr(MetricName::UaCommand(MessageType::Register.to_string()));
                 self.stats.registers += 1;
                 (200, endpoint)
             }
@@ -123,6 +129,7 @@ impl WebPushClient {
                "uaid" => &self.uaid.to_string(),
                "channel_id" => &channel_id.to_string(),
                "code" => &code,
+               "message_type" => MessageType::Unregister.as_ref(),
         );
         // TODO: (copied from previous state machine) unregister should check
         // the format of channel_id like register does
@@ -136,7 +143,7 @@ impl WebPushClient {
             Ok(_) => {
                 self.app_state
                     .metrics
-                    .incr_with_tags("ua.command.unregister")
+                    .incr_with_tags(MetricName::UaCommand(MessageType::Unregister.to_string()))
                     .with_tag("code", &code.unwrap_or(200).to_string())
                     .send();
                 self.stats.unregisters += 1;
@@ -155,7 +162,7 @@ impl WebPushClient {
         &mut self,
         broadcasts: HashMap<String, String>,
     ) -> Result<Option<ServerMessage>, SMError> {
-        trace!("WebPushClient:broadcast_subscribe");
+        trace!("WebPushClient:broadcast_subscribe"; "message_type" => MessageType::BroadcastSubscribe.as_ref());
         let broadcasts = Broadcast::from_hashmap(broadcasts);
         let mut response: HashMap<String, BroadcastValue> = HashMap::new();
 
@@ -178,8 +185,11 @@ impl WebPushClient {
 
     /// Acknowledge receipt of one or more Push Notifications
     async fn ack(&mut self, updates: &[ClientAck]) -> Result<Vec<ServerMessage>, SMError> {
-        trace!("✅ WebPushClient:ack");
-        let _ = self.app_state.metrics.incr("ua.command.ack");
+        trace!("✅ WebPushClient:ack"; "message_type" => MessageType::Ack.as_ref());
+        let _ = self
+            .app_state
+            .metrics
+            .incr(MetricName::UaCommand(MessageType::Ack.to_string()));
 
         for notif in updates {
             // Check the list of unacked "direct" (unstored) notifications. We only want to
@@ -210,8 +220,9 @@ impl WebPushClient {
             if let Some(pos) = pos {
                 debug!(
                     "✅ Ack (Stored)";
-                    "channel_id" => notif.channel_id.as_hyphenated().to_string(),
-                    "version" => &notif.version
+                       "channel_id" => notif.channel_id.as_hyphenated().to_string(),
+                       "version" => &notif.version,
+                       "message_type" => MessageType::Ack.as_ref()
                 );
                 // Get the stored notification record.
                 let n = &mut self.ack_state.unacked_stored_notifs[pos];
@@ -260,14 +271,14 @@ impl WebPushClient {
     /// Negative Acknowledgement (a Client error occurred) of one or more Push
     /// Notifications
     fn nack(&mut self, code: Option<i32>) {
-        trace!("WebPushClient:nack");
+        trace!("WebPushClient:nack"; "message_type" => MessageType::Nack.as_ref());
         // only metric codes expected from the client (or 0)
         let code = code
             .and_then(|code| (301..=303).contains(&code).then_some(code))
             .unwrap_or(0);
         self.app_state
             .metrics
-            .incr_with_tags("ua.command.nack")
+            .incr_with_tags(MetricName::UaCommand(MessageType::Nack.to_string()))
             .with_tag("code", &code.to_string())
             .send();
         self.stats.nacks += 1;
@@ -278,7 +289,7 @@ impl WebPushClient {
     /// Note this is the WebPush Protocol level's Ping: this differs from the
     /// lower level WebSocket Ping frame (handled by the `webpush_ws` handler).
     fn ping(&mut self) -> Result<ServerMessage, SMError> {
-        trace!("WebPushClient:ping");
+        trace!("WebPushClient:ping"; "message_type" => MessageType::Ping.as_ref());
         // TODO: why is this 45 vs the comment describing a minute? and 45
         // should be a setting
         // Clients shouldn't ping > than once per minute or we disconnect them
@@ -299,17 +310,18 @@ impl WebPushClient {
     /// method) before proceeding to read the next batch (or potential other
     /// actions such as `reset_uaid`).
     async fn post_process_all_acked(&mut self) -> Result<Vec<ServerMessage>, SMError> {
-        trace!("▶️ WebPushClient:post_process_all_acked");
+        trace!("▶️ WebPushClient:post_process_all_acked"; "message_type" => MessageType::Notification.as_ref());
         let flags = &self.flags;
         if flags.check_storage {
             if flags.increment_storage {
                 debug!(
-                    "▶️ WebPushClient:post_process_all_acked check_storage && increment_storage"
+                    "▶️ WebPushClient:post_process_all_acked check_storage && increment_storage";
+                    "message_type" => MessageType::Notification.as_ref()
                 );
                 self.increment_storage().await?;
             }
 
-            debug!("▶️ WebPushClient:post_process_all_acked check_storage");
+            debug!("▶️ WebPushClient:post_process_all_acked check_storage"; "message_type" => MessageType::Notification.as_ref());
             let smsgs = self.check_storage_loop().await?;
             if !smsgs.is_empty() {
                 debug_assert!(self.flags.check_storage);
@@ -327,10 +339,10 @@ impl WebPushClient {
         debug_assert!(!self.ack_state.unacked_notifs());
         let flags = &self.flags;
         if flags.old_record_version {
-            debug!("▶️ WebPushClient:post_process_all_acked; resetting uaid");
+            debug!("▶️ WebPushClient:post_process_all_acked; resetting uaid"; "message_type" => MessageType::Notification.as_ref());
             self.app_state
                 .metrics
-                .incr_with_tags("ua.expiration")
+                .incr_with_tags(MetricName::UaExpiration)
                 .with_tag("reason", "old_record_version")
                 .send();
             self.app_state.db.remove_user(&self.uaid).await?;
