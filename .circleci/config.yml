@@ -71,6 +71,12 @@ executors:
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
+  build-reliability-cron:
+    docker:
+      - image: docker:18.03.0-ce
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
   build-test-container-executor:
     docker:
       - image: cimg/base:2025.02
@@ -363,6 +369,39 @@ jobs:
           paths:
             - <<parameters.image>>.tar
 
+  # Create the reliability cron docker image. This is a singleton that does some
+  # clean-up and reporting for the Push Reliability task.
+  build-reliability-cron:
+    executor: build-reliability-cron
+    resource_class: small
+    working_directory: /app
+    parameters:
+      image:
+        type: string
+      tag:
+        type: string
+    steps:
+      # Install these packages before checkout because git may not exist or work
+      - run:
+          name: Install Docker build dependencies
+          command: apk add --no-cache openssh-client git clang
+      - checkout
+      - setup_remote_docker
+      - docker_login
+      - run:
+          name: Build cron docker image
+          command: /
+            docker buildx build --tag <<parameters.tag>> -f ./scripts/reliability/Dockerfile ./scripts/reliability
+      - run:
+          name: Save cron docker image
+          command: |
+            mkdir -p /tmp/cron_cache
+            docker save -o /tmp/cron_cache/<<parameters.image>>.tag <<parameters.image>>
+      - persist_to_workspace:
+          root: /tmp/cron_cache
+          paths:
+            - <<parameters.image>>.tag
+
   build-test-container:
     executor: build-test-container-executor
     parameters:
@@ -515,6 +554,17 @@ workflows:
           filters:
             tags:
               only: /.*/
+
+      - build-reliability-cron:
+          name: build-reliability-cron
+          image: autopush-reliability-cron
+          tag: latest
+          filters:
+            tags:
+              only: /.*/
+            # branches:
+            #  only: master
+
       - build-test-container:
           name: Build Load Test Image
           image: autopush-load-tests
