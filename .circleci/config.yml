@@ -391,7 +391,7 @@ jobs:
       - run:
           name: Build cron docker image
           command: /
-            docker buildx build --tag <<parameters.tag>> -f ./scripts/reliability/Dockerfile ./scripts/reliability
+            docker build --tag <<parameters.image>>:<<parameters.tag>> -f ./scripts/reliability/Dockerfile ./scripts/reliability
       - run:
           name: Save cron docker image
           command: |
