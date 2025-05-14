@@ -23,6 +23,7 @@ services:
       context: ../..
       dockerfile: tests/integration/Dockerfile
     depends_on:
-      - google_cbt
+      google_cbt:
+        condition: service_healthy
     network_mode: host
     platform: linux/amd64
