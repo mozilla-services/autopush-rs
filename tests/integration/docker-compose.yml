@@ -8,6 +8,13 @@ services:
     network_mode: host
     platform: linux/amd64
     command: gcloud beta emulators bigtable start --host-port=localhost:8086
+    healthcheck:
+      test: ["CMD", "curl -f http://localhost:8086"]
+      interval: 2s
+      retries: 10
+      start_period: 20s
+      timeout: 2s
+
   tests:
     environment:
       - BIGTABLE_EMULATOR_HOST=localhost:8086
