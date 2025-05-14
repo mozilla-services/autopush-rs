@@ -1,10 +1,11 @@
 use std::mem;
 
-use cadence::{Counted, CountedExt};
+use cadence::Counted;
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autopush_common::{
-    db::CheckStorageResponse, notification::Notification, util::sec_since_epoch,
+    db::CheckStorageResponse, metric_name::MetricName, metrics::StatsdClientExt,
+    notification::Notification, util::sec_since_epoch,
 };
 
 use super::WebPushClient;
@@ -351,7 +352,7 @@ impl WebPushClient {
             // trigger a re-register
             self.app_state
                 .metrics
-                .incr_with_tags("ua.expiration")
+                .incr_with_tags(MetricName::UaExpiration)
                 .with_tag("reason", "too_many_messages")
                 .send();
             self.app_state.db.remove_user(&self.uaid).await?;
@@ -365,7 +366,7 @@ impl WebPushClient {
         let metrics = &self.app_state.metrics;
         let ua_info = &self.ua_info;
         metrics
-            .incr_with_tags("ua.notification.sent")
+            .incr_with_tags(MetricName::UaNotificationSent)
             .with_tag("source", source)
             .with_tag("topic", &notif.topic.is_some().to_string())
             .with_tag("os", &ua_info.metrics_os)

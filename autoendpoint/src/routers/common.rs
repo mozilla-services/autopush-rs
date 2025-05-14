@@ -4,8 +4,10 @@ use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::RouterError;
 use actix_web::http::StatusCode;
 use autopush_common::db::client::DbClient;
+use autopush_common::metric_name::MetricName;
+use autopush_common::metrics::StatsdClientExt;
 use autopush_common::util::InsertOpt;
-use cadence::{Counted, CountedExt, StatsdClient, Timed};
+use cadence::{Counted, StatsdClient, Timed};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -170,7 +172,7 @@ pub fn incr_error_metric(
 ) {
     // I'd love to extract the status and errno from the passed ApiError, but a2 error handling makes that impossible.
     metrics
-        .incr_with_tags("notification.bridge.error")
+        .incr_with_tags(MetricName::NotificationBridgeError)
         .with_tag("platform", platform)
         .with_tag("app_id", app_id)
         .with_tag("reason", reason)
@@ -187,13 +189,13 @@ pub fn incr_success_metrics(
     notification: &Notification,
 ) {
     metrics
-        .incr_with_tags("notification.bridge.sent")
+        .incr_with_tags(MetricName::NotificationBridgeSent)
         .with_tag("platform", platform)
         .with_tag("app_id", app_id)
         .send();
     metrics
         .count_with_tags(
-            "notification.message_data",
+            MetricName::NotificationMessageData.as_ref(),
             notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
         )
         .with_tag("platform", platform)
@@ -202,7 +204,7 @@ pub fn incr_success_metrics(
         .send();
     metrics
         .time_with_tags(
-            "notification.total_request_time",
+            MetricName::NotificationTotalRequestTime.as_ref(),
             (autopush_common::util::sec_since_epoch() - notification.timestamp) * 1000,
         )
         .with_tag("platform", platform)

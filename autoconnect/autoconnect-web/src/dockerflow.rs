@@ -5,10 +5,11 @@ use actix_web::{
     web::{self, Data, Json},
     HttpResponse, ResponseError,
 };
-use cadence::CountedExt;
 use serde_json::json;
 
 use autoconnect_settings::AppState;
+use autopush_common::metric_name::MetricName;
+use autopush_common::metrics::StatsdClientExt;
 
 use crate::error::ApiError;
 
@@ -47,7 +48,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
         health["reliability"] = json!(state.reliability.health_check().await.unwrap_or_else(|e| {
             state
                 .metrics
-                .incr_with_tags("error.redis.unavailable")
+                .incr_with_tags(MetricName::ErrorRedisUnavailable)
                 .with_tag("application", "autoconnect")
                 .send();
             error!("🔍🟥 Reliability reporting down: {:?}", e);

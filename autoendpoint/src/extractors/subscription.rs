@@ -4,11 +4,13 @@ use std::error::Error;
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
 use autopush_common::{
     db::User,
+    metric_name::MetricName,
+    metrics::StatsdClientExt,
     tags::Tags,
     util::{b64_decode_std, b64_decode_url},
 };
 
-use cadence::{CountedExt, StatsdClient};
+use cadence::StatsdClient;
 use futures::{future::LocalBoxFuture, FutureExt};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
@@ -75,10 +77,13 @@ impl FromRequest for Subscription {
             if let Some(with_key) = &vapid {
                 // Validate the VAPID JWT token and record the version
                 validate_vapid_jwt(with_key, &app_state.settings, &app_state.metrics)?;
-                app_state.metrics.incr(&format!(
-                    "updates.vapid.draft{:02}",
+                // Use the UpdatesVapidDraft metric with a formatted version
+                let vapid_version_metric = format!(
+                    "{}{:02}",
+                    MetricName::UpdatesVapidDraft.as_ref(),
                     with_key.vapid.version()
-                ))?;
+                );
+                app_state.metrics.incr_raw(&vapid_version_metric)?;
             };
             // If this is a known VAPID key, create a reliability_id from
             // either the content of the vapid assertions, or the request
@@ -104,7 +109,7 @@ impl FromRequest for Subscription {
                             .insert("error".to_owned(), e.as_metric().to_owned());
                         app_state
                             .metrics
-                            .incr_with_tags("notification.auth.error")
+                            .incr_with_tags(MetricName::NotificationAuthError)
                             .with_tag("error", e.as_metric())
                             .send();
                     })
@@ -113,7 +118,7 @@ impl FromRequest for Subscription {
                     info!("VAPID sub: {sub}");
                 };
                 // For now, record that we had a good (?) VAPID sub,
-                app_state.metrics.incr("notification.auth.ok")?;
+                app_state.metrics.incr(MetricName::NotificationAuthOk)?;
             };
 
             match token_info.api_version {
@@ -144,7 +149,7 @@ impl FromRequest for Subscription {
 
                 app_state
                     .metrics
-                    .incr(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
+                    .incr_raw(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
             }
 
             Ok(Subscription {
@@ -184,13 +189,13 @@ fn parse_vapid(token_info: &TokenInfo, metrics: &StatsdClient) -> ApiResult<Opti
 
     let vapid = VapidHeader::parse(auth_header).inspect_err(|e| {
         metrics
-            .incr_with_tags("notification.auth.error")
+            .incr_with_tags(MetricName::NotificationAuthError)
             .with_tag("error", e.as_metric())
             .send();
     })?;
 
     metrics
-        .incr_with_tags("notification.auth")
+        .incr_with_tags(MetricName::NotificationAuth)
         .with_tag("vapid", &vapid.version().to_string())
         .with_tag("scheme", &vapid.scheme)
         .send();
@@ -318,7 +323,7 @@ fn validate_vapid_jwt(
             // NOTE: This will fail if `exp` is specified as anything instead of a numeric or if a required field is empty
             jsonwebtoken::errors::ErrorKind::Json(e) => {
                 metrics
-                    .incr_with_tags("notification.auth.bad_vapid.json")
+                    .incr_with_tags(MetricName::NotificationAuthBadVapidJson)
                     .with_tag(
                         "error",
                         match e.classify() {
@@ -369,7 +374,7 @@ fn validate_vapid_jwt(
                     "Other".to_owned()
                 };
                 metrics
-                    .incr_with_tags("notification.auth.bad_vapid.other")
+                    .incr_with_tags(MetricName::NotificationAuthBadVapidOther)
                     .with_tag("error", &label)
                     .send();
                 error!("Bad Aud: Unexpected VAPID error: {:?}", &e);

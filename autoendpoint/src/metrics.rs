@@ -1,10 +1,10 @@
 use std::{sync::Arc, time::Instant};
 
 use actix_web::{dev::Payload, web::Data, FromRequest, HttpMessage, HttpRequest};
-use cadence::{CountedExt, Metric, MetricError, NopMetricSink, StatsdClient, Timed};
+use cadence::{Metric, MetricError, NopMetricSink, StatsdClient, Timed};
 use futures::future;
 
-use autopush_common::tags::Tags;
+use autopush_common::{metric_name::MetricName, metrics::StatsdClientExt, tags::Tags};
 
 use crate::{error::ApiError, server::AppState, settings::Settings};
 
@@ -128,28 +128,25 @@ impl Metrics {
     }
 
     // increment a counter with no tags data.
-    pub fn incr(self, label: &str) {
-        self.incr_with_tags(label, None)
+    pub fn incr(self, metric: MetricName) {
+        self.incr_with_tags(metric, None)
     }
 
-    pub fn incr_with_tags(self, label: &str, tags: Option<Tags>) {
+    pub fn incr_with_tags(self, metric: MetricName, tags: Option<Tags>) {
         if let Some(client) = self.client.as_ref() {
-            let mut tagged = client.incr_with_tags(label);
+            let mut tagged = client.incr_with_tags(metric.clone());
             let mut mtags = self.tags.clone().unwrap_or_default();
             if let Some(t) = tags {
                 mtags.tags.extend(t.tags)
             }
             let tag_keys = mtags.tags.keys();
             for key in tag_keys.clone() {
-                // REALLY wants a static here, or at least a well defined ref.
                 tagged = tagged.with_tag(key, mtags.tags.get(key).unwrap());
             }
-            // Include any "hard coded" tags.
-            // incr = incr.with_tag("version", env!("CARGO_PKG_VERSION"));
             match tagged.try_send() {
                 Err(e) => {
                     // eat the metric, but log the error
-                    warn!("⚠️ Metric {} error: {:?}", label, e; mtags);
+                    warn!("⚠️ Metric {} error: {:?}", metric.as_ref(), e; mtags);
                 }
                 Ok(v) => trace!("☑️ {:?}", v.as_metric_str()),
             }
