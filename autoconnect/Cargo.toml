@@ -7,50 +7,21 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actix.workspace = true
-actix-cors.workspace = true
 actix-http.workspace = true
-actix-rt.workspace = true
-actix-test.workspace = true
+actix-server = "2.3"
+actix-service = "2.0"
 actix-web.workspace = true
-#actix-web-actors.workspace = true
-actix-ws.workspace = true
-bytestring.workspace = true
-cadence.workspace = true
-config.workspace = true
+docopt = "1.1"
 env_logger.workspace = true
-fernet.workspace = true
-futures.workspace = true
-futures-locks.workspace = true
-futures-util.workspace = true
-hex.workspace = true
-lazy_static.workspace = true
-log.workspace = true
-mozsvc-common.workspace = true
-reqwest.workspace = true
 sentry.workspace = true
-sentry-actix.workspace = true
-sentry-core.workspace = true
 serde.workspace = true
-serde_derive.workspace = true
-serde_json.workspace = true
-slog.workspace = true
-slog-async.workspace = true
-slog-mozlog-json.workspace = true
 slog-scope.workspace = true
-slog-stdlog.workspace = true
-slog-term.workspace = true
-uuid.workspace = true
 
+autoconnect_ws.workspace = true
 autoconnect_common.workspace = true
 autoconnect_settings.workspace = true
 autoconnect_web.workspace = true
-autoconnect_ws.workspace = true
 autopush_common.workspace = true
-
-actix-server = "2.3"
-actix-service = "2.0"
-docopt = "1.1"
 
 [features]
 default = ["bigtable", "reliable_report"]
