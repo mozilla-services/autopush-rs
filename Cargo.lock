@@ -26,31 +26,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "actix"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de7fa236829ba0841304542f7614c42b80fca007455315c45c785ccfa873a85b"
-dependencies = [
- "actix-macros",
- "actix-rt",
- "actix_derive",
- "bitflags 2.9.0",
- "bytes",
- "crossbeam-channel",
- "futures-core",
- "futures-sink",
- "futures-task",
- "futures-util",
- "log",
- "once_cell",
- "parking_lot 0.12.3",
- "pin-project-lite",
- "smallvec",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "actix-codec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -331,17 +306,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "actix_derive"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6ac1e58cded18cb28ddc17143c4dea5345b3ad575e14f32f66e4054a56eb271"
-dependencies = [
- "proc-macro2",
- "quote 1.0.40",
- "syn 2.0.100",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -553,47 +517,20 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 name = "autoconnect"
 version = "1.74.3"
 dependencies = [
- "actix",
- "actix-cors",
  "actix-http",
- "actix-rt",
  "actix-server",
  "actix-service",
- "actix-test",
  "actix-web",
- "actix-ws",
  "autoconnect_common",
  "autoconnect_settings",
  "autoconnect_web",
  "autoconnect_ws",
  "autopush_common",
- "bytestring",
- "cadence",
- "config",
  "docopt",
  "env_logger 0.11.8",
- "fernet",
- "futures 0.3.31",
- "futures-locks",
- "futures-util",
- "hex",
- "lazy_static",
- "log",
- "mozsvc-common",
- "reqwest 0.12.15",
  "sentry",
- "sentry-actix",
- "sentry-core",
  "serde",
- "serde_derive",
- "serde_json",
- "slog",
- "slog-async",
- "slog-mozlog-json",
  "slog-scope",
- "slog-stdlog",
- "slog-term",
- "uuid",
 ]
 
 [[package]]
@@ -612,7 +549,6 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "slog",
  "slog-scope",
  "strum",
  "strum_macros 0.27.1",
@@ -649,18 +585,12 @@ dependencies = [
  "actix-rt",
  "actix-test",
  "actix-web",
- "actix-ws",
  "autoconnect_common",
  "autoconnect_settings",
  "autoconnect_ws",
  "autopush_common",
- "backtrace",
- "bytes",
- "bytestring",
- "cadence",
  "ctor",
  "futures-util",
- "reqwest 0.12.15",
  "serde_json",
  "slog-scope",
  "thiserror 2.0.12",
@@ -727,12 +657,10 @@ dependencies = [
  "actix-http",
  "actix-rt",
  "actix-web",
- "again",
  "async-trait",
  "autopush_common",
  "backtrace",
  "base64 0.22.1",
- "bytebuffer",
  "cadence",
  "chrono",
  "config",
@@ -740,29 +668,18 @@ dependencies = [
  "docopt",
  "fernet",
  "futures 0.3.31",
- "futures-util",
  "hex",
  "jsonwebtoken",
  "lazy_static",
- "log",
  "mockall",
  "mockito 1.7.0",
  "openssl",
- "rand 0.9.0",
  "regex",
  "reqwest 0.12.15",
  "sentry",
- "sentry-actix",
- "sentry-core",
  "serde",
- "serde_derive",
  "serde_json",
- "slog",
- "slog-async",
- "slog-mozlog-json",
  "slog-scope",
- "slog-stdlog",
- "slog-term",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
@@ -797,8 +714,6 @@ dependencies = [
  "google-cloud-rust-raw",
  "grpcio",
  "grpcio-sys",
- "hex",
- "httparse",
  "lazy_static",
  "mockall",
  "mockito 0.31.1",
@@ -806,12 +721,10 @@ dependencies = [
  "openssl",
  "prometheus-client",
  "protobuf",
- "rand 0.9.0",
  "redis",
  "redis-module",
  "redis-test",
  "regex",
- "reqwest 0.12.15",
  "sentry",
  "sentry-backtrace",
  "serde",
@@ -999,15 +912,6 @@ name = "bumpalo"
 version = "3.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1628fb46dfa0b37568d12e5edd512553eccf6a22a78e8bde00bb4aed84d5bdbf"
-
-[[package]]
-name = "bytebuffer"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2618ff1f07e000264e355904bff5c0527091fcbad883ff7f71383c5428915f4b"
-dependencies = [
- "byteorder",
-]
 
 [[package]]
 name = "byteorder"
@@ -2492,9 +2396,9 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "jiff"
-version = "0.2.6"
+version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f33145a5cbea837164362c7bd596106eb7c5198f97d1ba6f6ebb3223952e488"
+checksum = "f02000660d30638906021176af16b17498bd0d12813dbfe7b276d8bc7f3c0806"
 dependencies = [
  "jiff-static",
  "log",
@@ -2505,9 +2409,9 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "0.2.6"
+version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43ce13c40ec6956157a3635d97a1ee2df323b263f09ea14165131289cb0f5c19"
+checksum = "f3c30758ddd7188629c6713fc45d1188af4f44c90582311d0c8d8c9907f60c48"
 dependencies = [
  "proc-macro2",
  "quote 1.0.40",
@@ -3898,17 +3802,6 @@ dependencies = [
  "sentry-tracing",
  "tokio",
  "ureq",
-]
-
-[[package]]
-name = "sentry-actix"
-version = "0.36.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4df26563afddf6fa2e158def69d70bbc2e60bd2b158ea6077a0f51358da31806"
-dependencies = [
- "actix-web",
- "futures-util",
- "sentry-core",
 ]
 
 [[package]]
