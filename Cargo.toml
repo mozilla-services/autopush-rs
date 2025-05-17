@@ -110,3 +110,7 @@ autopush_common = { path = "./autopush-common", features = ["bigtable"] }
 
 [profile.release]
 debug = 1
+
+[workspace.lints.clippy]
+# with 1.87+, clippy flags ApiError as very large.
+result_large_err = "allow"

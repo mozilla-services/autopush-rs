@@ -90,3 +90,6 @@ reliable_report = [
     "dep:redis-module",
     "dep:deadpool-redis",
 ]
+
+[lints]
+workspace=true

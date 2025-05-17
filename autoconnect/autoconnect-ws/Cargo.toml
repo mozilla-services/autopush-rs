@@ -39,3 +39,6 @@ reliable_report = [
     "autopush_common/reliable_report",
     "autoconnect_ws_sm/reliable_report",
 ]
+
+[lints]
+workspace = true
