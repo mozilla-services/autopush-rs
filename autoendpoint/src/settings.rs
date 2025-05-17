@@ -99,6 +99,7 @@ impl Default for Settings {
             stub: StubSettings::default(),
             #[cfg(feature = "reliable_report")]
             reliability_dsn: None,
+            #[cfg(feature = "reliable_report")]
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
         }
     }

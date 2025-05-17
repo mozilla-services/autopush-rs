@@ -1,0 +1,26 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+runtime: python313
+
+# this is technically a singleton, so shouldn't really need scaling.
+instance_class: B2
+
+env_variables:
+  # get these from webservices-infra configmap.yaml
+  # AUTOCONNECT__DB_DSN: "grpc://{{ .db_location }}-bigtable.googleapis.com:443"
+  # AUTOCONNECT__DB_SETTINGS: {{ .db_settings | toJson | quote }}
+  # AUTOCONNECT__RELIABILITY_DSN: {{ .reliability_dsn | quote }}
+
+  # for dev/testing us hard-coded values.
+  AUTOCONNECT__DB_SETTINGS: '{"message_family":"message","router_family":"router","table_name":"projects/autopush-nonprod/instances/autopush-nonprod-stage/tables/autopush"}'
+  AUTOCONNECT__DB_DSN: grpc://us-west1-bigtable.googleapis.com:443
+  AUTOCONNECT__RELIABILITY_DSN: "redis://autopush-redis-stage.autopush.nonprod.webservices.mozgcp.net:6379"
+
+  AUTOTRACK_BUCKET_NAME: "autopush-dev-reliability"
+  AUTOTRACK_TERMINAL_MAX_RETENTION_DAYS: 1
+
+handlers:
+- url: /gen_report
+  script: auto
