@@ -33,3 +33,6 @@ autoconnect_common = { workspace = true, features = ["test-support"] }
 
 [features]
 reliable_report = []
+
+[lints]
+workspace = true

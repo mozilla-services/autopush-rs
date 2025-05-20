@@ -26,3 +26,6 @@ autopush_common.workspace = true
 bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
 reliable_report = ["autopush_common/reliable_report"]
+
+[lints]
+workspace = true

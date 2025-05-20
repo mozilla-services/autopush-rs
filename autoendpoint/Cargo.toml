@@ -85,3 +85,6 @@ stub = []
 log_vapid = []
 
 reliable_report = ["autopush_common/reliable_report"]
+
+[lints]
+workspace = true

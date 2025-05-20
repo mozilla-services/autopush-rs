@@ -105,9 +105,9 @@ class BigtableScanner:
                 # record by timestamp so we can determine how long things took
                 # as well as what order milestones were reached.
                 milestones[timestamp] = milestone
-                # if we've made it to either "transmitted" or "delivered"
+                # if we've made it to "transmitted"/"bridge_transmitted" or "delivered"
                 # consider it a success.
-                if milestone in ("delivered", "transmitted"):
+                if milestone in ("delivered", "transmitted", "bridge_transmitted"):
                     successful |= True
                 else:
                     # Records are marked as "expired" by the `gc` function.
@@ -345,6 +345,7 @@ class Redis:
         # These are defined in autopush-common::reliability::ReliabilityState::is_terminal().
         # Make sure to use the `snake_case` string variant.
         terminal_states = [
+            "bridge_transmitted",
             "decryption_error",
             "delivered",
             "errored",

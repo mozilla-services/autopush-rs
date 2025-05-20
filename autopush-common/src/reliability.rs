@@ -45,18 +45,19 @@ const CONNECTION_EXPIRATION: TimeDelta = TimeDelta::seconds(10);
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ReliabilityState {
-    Received,        // Message was received by the Push Server
-    Stored,          // Message was stored because it could not be delivered immediately
-    Retrieved,       // Message was taken from storage for delivery
-    IntTransmitted,  // Message was handed off between autoendpoint and autoconnect
-    IntAccepted,     // Message was accepted by autoconnect from autopendpoint
-    Transmitted,     // Message was handed off for delivery to the UA
-    Accepted,        // Message was accepted for delivery by the UA
-    Delivered,       // Message was provided to the WebApp recipient by the UA
-    DecryptionError, // Message was provided to the UA and it reported a decryption error
-    NotDelivered,    // Message was provided to the UA and it reported a not delivered error
-    Expired,         // Message expired naturally (e.g. TTL=0)
-    Errored,         // Message resulted in an Error state and failed to be delivered.
+    Received,          // Message was received by the Push Server
+    Stored,            // Message was stored because it could not be delivered immediately
+    Retrieved,         // Message was taken from storage for delivery
+    IntTransmitted,    // Message was handed off between autoendpoint and autoconnect
+    IntAccepted,       // Message was accepted by autoconnect from autopendpoint
+    BridgeTransmitted, // Message was handed off to a mobile bridge for eventual delivery
+    Transmitted,       // Message was handed off for delivery to the UA
+    Accepted,          // Message was accepted for delivery by the UA
+    Delivered,         // Message was provided to the WebApp recipient by the UA
+    DecryptionError,   // Message was provided to the UA and it reported a decryption error
+    NotDelivered,      // Message was provided to the UA and it reported a not delivered error
+    Expired,           // Message expired naturally (e.g. TTL=0)
+    Errored,           // Message resulted in an Error state and failed to be delivered.
 }
 
 impl ReliabilityState {
@@ -67,6 +68,7 @@ impl ReliabilityState {
         matches!(
             self,
             ReliabilityState::DecryptionError
+                | ReliabilityState::BridgeTransmitted
                 | ReliabilityState::Delivered
                 | ReliabilityState::Errored
                 | ReliabilityState::Expired
