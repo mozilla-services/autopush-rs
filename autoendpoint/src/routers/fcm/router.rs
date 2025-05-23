@@ -199,7 +199,7 @@ impl Router for FcmRouter {
         // mutable, but we are also essentially consuming the
         // notification nothing else should modify it.
         notification
-            .record_reliability(&self.reliability, ReliabilityState::Transmitted)
+            .record_reliability(&self.reliability, ReliabilityState::BridgeTransmitted)
             .await;
         // Sent successfully, update metrics and make response
         trace!("Send request was successful");
