@@ -1,3 +1,29 @@
+<a name="1.75.0"></a>
+## 1.75.0 (2025-05-23)
+
+
+#### Features
+
+*   Clean up terminal states (#899) ([791e8751](https://github.com/mozilla-services/autopush-rs/commit/791e8751d9f3425a099addc90d074e8f68b260bb))
+*   Remove magic strings and add enum variants instead (#903) ([537513ab](https://github.com/mozilla-services/autopush-rs/commit/537513ab4f3b4789a3e2912a64b425a263def08f))
+*   Remove magic strings and add enum variants instead ([6b4e83ce](https://github.com/mozilla-services/autopush-rs/commit/6b4e83ce0c1145811467dff100cc2fbc28766de9))
+*   normalize durations and timestamps (#837) ([7018f25d](https://github.com/mozilla-services/autopush-rs/commit/7018f25d9bc21415c63176cd57968330d645b5c4))
+*   Switch to using async/pooled Redis (#896) ([bb492e7d](https://github.com/mozilla-services/autopush-rs/commit/bb492e7d72a5586dc874f006494240e758b551c5))
+*   remove stage key debugging code (#867) ([e4c153e7](https://github.com/mozilla-services/autopush-rs/commit/e4c153e7dece3e7cc938ca672bd9cab547bdd7e8))
+
+#### Bug Fixes
+
+*   sentry middleware should use tags w/ metrics (#901) ([96cc7138](https://github.com/mozilla-services/autopush-rs/commit/96cc7138e354878dc0d7e7661dc28f945a8ec638))
+*   Post release fixes for Reliability (#893) ([a9a181e2](https://github.com/mozilla-services/autopush-rs/commit/a9a181e2cdab25f18d73b0e1b0f16d189df8447d))
+
+#### Chore
+
+*   remove unused dependencies (#922) ([1c47ad6d](https://github.com/mozilla-services/autopush-rs/commit/1c47ad6db855ecd88380128ea7b6faba2bfbbb8d))
+*   Version update for March 2025 (#892) ([9380c22f](https://github.com/mozilla-services/autopush-rs/commit/9380c22f9cf166efbd47e854897ddaccd59aef86))
+*   tag 1.74.3 (#866) ([d22de1dc](https://github.com/mozilla-services/autopush-rs/commit/d22de1dc40c5822845fb4b5f0c4b8568dc946883))
+
+
+
 <a name="1.74.3"></a>
 ## 1.74.3 (2025-03-21)
 
