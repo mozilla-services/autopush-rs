@@ -394,11 +394,12 @@ jobs:
             docker build --tag <<parameters.image>>:<<parameters.tag>> -f ./scripts/reliability/Dockerfile ./scripts/reliability
       - run:
           name: Save cron docker image
+          # note: deploy always expects the image to be saved in /tmp/cache
           command: |
-            mkdir -p /tmp/cron_cache
-            docker save -o /tmp/cron_cache/<<parameters.image>>.tag <<parameters.image>>
+            mkdir -p /tmp/cache
+            docker save -o /tmp/ache/<<parameters.image>>.tag <<parameters.image>>
       - persist_to_workspace:
-          root: /tmp/cron_cache
+          root: /tmp/cache
           paths:
             - <<parameters.image>>.tag
 
