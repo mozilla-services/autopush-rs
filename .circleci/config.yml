@@ -394,11 +394,12 @@ jobs:
             docker build --tag <<parameters.image>>:<<parameters.tag>> -f ./scripts/reliability/Dockerfile ./scripts/reliability
       - run:
           name: Save cron docker image
+          # note: deploy always expects the image to be saved in /tmp/cache
           command: |
-            mkdir -p /tmp/cron_cache
-            docker save -o /tmp/cron_cache/<<parameters.image>>.tag <<parameters.image>>
+            mkdir -p /tmp/cache
+            docker save -o /tmp/cache/<<parameters.image>>.tag <<parameters.image>>
       - persist_to_workspace:
-          root: /tmp/cron_cache
+          root: /tmp/cache
           paths:
             - <<parameters.image>>.tag
 
@@ -562,8 +563,8 @@ workflows:
           filters:
             tags:
               only: /.*/
-            # branches:
-            #  only: master
+            branches:
+              only: master
 
       - build-test-container:
           name: Build Load Test Image
@@ -617,6 +618,18 @@ workflows:
               only: /.*/
             branches:
               only: master
+
+      - deploy:
+          name: deploy-reliability-cron
+          image: autopush-reliability-cron
+          requires:
+            - build-reliability-cron
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
       - deploy:
           name: Push Load Test Image
           image: autopush-load-tests
