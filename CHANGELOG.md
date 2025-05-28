@@ -1,3 +1,17 @@
+<a name="1.75.1"></a>
+## 1.75.1 (2025-05-28)
+
+
+#### Bug Fixes
+
+*   Include image deploy script in CI (#974) ([1d5d0b07](https://github.com/mozilla-services/autopush-rs/commit/1d5d0b07c916138b62cea7dea7b72c959a9d6b02))
+
+#### Chore
+
+*   tag 1.75.0 (#973) ([4c77b14a](https://github.com/mozilla-services/autopush-rs/commit/4c77b14a9e145288b9ba48e09d3b2787dc7c3620))
+
+
+
 <a name="1.75.0"></a>
 ## 1.75.0 (2025-05-23)
 
