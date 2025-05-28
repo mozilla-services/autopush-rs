@@ -397,11 +397,11 @@ jobs:
           # note: deploy always expects the image to be saved in /tmp/cache
           command: |
             mkdir -p /tmp/cache
-            docker save -o /tmp/cache/<<parameters.image>>.tag <<parameters.image>>
+            docker save -o /tmp/cache/<<parameters.image>>.tar "<<parameters.image>>"
       - persist_to_workspace:
           root: /tmp/cache
           paths:
-            - <<parameters.image>>.tag
+            - <<parameters.image>>.tar
 
   build-test-container:
     executor: build-test-container-executor
