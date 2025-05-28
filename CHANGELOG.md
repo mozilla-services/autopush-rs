@@ -1,3 +1,12 @@
+<a name="1.75.2"></a>
+## 1.75.2  (2025-05-28)
+
+
+### Bug Fixes
+
+*    Fix typo in circleci/config.yml (#976)
+*    Include image deploy script in CI (#974) 
+
 <a name="1.75.0"></a>
 ## 1.75.0 (2025-05-23)
 
