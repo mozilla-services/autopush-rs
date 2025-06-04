@@ -590,7 +590,7 @@ workflows:
             tags:
               only: /.*/
 
-      # Comment out the following two sections for local CircleCI testing.
+      # Comment out the following three sections for local CircleCI testing.
       - deploy:
           name: deploy-autoconnect
           image: autoconnect
