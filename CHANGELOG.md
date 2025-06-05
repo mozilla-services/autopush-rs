@@ -1,3 +1,18 @@
+<a name="1.75.3"></a>
+## 1.75.3 (2025-06-04)
+
+
+#### Chore
+
+*   tag 1.75.2 (#977) ([9dc9d774](https://github.com/mozilla-services/autopush-rs/commit/9dc9d7749b4418615faf095d171a6ce2840e775d))
+
+#### Bug Fixes
+
+*   Use full paths in compiled docker image (#981) ([11048566](https://github.com/mozilla-services/autopush-rs/commit/1104856605ad35d6113ecd5d1945accee9bab1c9))
+*   Fix typo in circleci config (#976) ([4d259b42](https://github.com/mozilla-services/autopush-rs/commit/4d259b42a66563ce92952b4e385c1f55aab90b1b))
+
+
+
 <a name="1.75.2"></a>
 ## 1.75.2  (2025-05-28)
 
@@ -5,7 +20,7 @@
 ### Bug Fixes
 
 *    Fix typo in circleci/config.yml (#976)
-*    Include image deploy script in CI (#974) 
+*    Include image deploy script in CI (#974)
 
 <a name="1.75.0"></a>
 ## 1.75.0 (2025-05-23)
