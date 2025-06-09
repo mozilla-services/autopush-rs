@@ -437,9 +437,9 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         "-s",
         help="Database settings",
         default=env_args.get(
-            "AUTOEND__DB_SETTINGS",
+            "AUTOCONNECT__DB_SETTINGS",
             env_args.get(
-                "AUTOCONNECT__DB_SETTINGS",
+                "AUTOEND__DB_SETTINGS",
                 '{"message_family":"message","router_family":"router", "table_name":"projects/test/instances/test/tables/autopush"}',
             ),
         ),
