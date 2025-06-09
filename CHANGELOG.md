@@ -1,3 +1,17 @@
+<a name="1.75.4"></a>
+## 1.75.4 (2025-06-09)
+
+
+#### Chore
+
+*   tag 1.75.3 (#982) ([4175c212](https://github.com/mozilla-services/autopush-rs/commit/4175c212fe8268d9f713d5559eb7fd6247687ab9))
+
+#### Bug Fixes
+
+*   Do not set the `GOOGLE_APPLICATION_CREDENTIALS in the reliability docker image (#984) ([20cf810a](https://github.com/mozilla-services/autopush-rs/commit/20cf810a571aac84ca08d983b9e5ecd32cddae7b))
+
+
+
 <a name="1.75.3"></a>
 ## 1.75.3 (2025-06-04)
 
