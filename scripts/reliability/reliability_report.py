@@ -367,7 +367,9 @@ class Redis:
             self.log.info(
                 f"🧹 Recording expired data: {term_counts} for {start_of_day}"
             )
-            expiry = start_of_day + timedelta(days=self.settings.max_retention)
+            expiry = start_of_day + timedelta(
+                days=self.settings.terminal_max_retention_days
+            )
             # Write the values to storage.
             await self.redis.zadd(
                 self.settings.terminal_table,
@@ -431,23 +433,13 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     parser.add_argument("-c", "--config", help="configuration_file", action="append")
 
     parser.add_argument(
-        "--db_dsn",
-        "-b",
-        help="Database DSN connection string",
-        default=env_args.get(
-            "AUTOEND__DB_DSN",
-            env_args.get("AUTOCONNECT__DB_DSN", "grpc://localhost:8086"),
-        ),
-    )
-
-    parser.add_argument(
         "--db_settings",
         "-s",
         help="Database settings",
         default=env_args.get(
-            "AUTOEND__DB_SETTINGS",
+            "AUTOCONNECT__DB_SETTINGS",
             env_args.get(
-                "AUTOCONNECT__DB_SETTINGS",
+                "AUTOEND__DB_SETTINGS",
                 '{"message_family":"message","router_family":"router", "table_name":"projects/test/instances/test/tables/autopush"}',
             ),
         ),
@@ -457,12 +449,6 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         "--track_family",
         help="Name of Bigtable reliability logging family",
         default=env_args.get("AUTOTRACK_FAMILY", RELIABILITY_FAMILY),
-    )
-
-    parser.add_argument(
-        "--bucket_name",
-        help="GCP Storage Bucket name",
-        default=env_args.get("AUTOTRACK_BUCKET_NAME"),
     )
 
     parser.add_argument(
@@ -485,8 +471,8 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
         "-r",
         help="DSN to connect to the Redis like service.",
         default=env_args.get(
-            "AUTOEND__RELIABILITY_DSN",
-            env_args.get("AUTOCONNECT__RELIABILITY_DSN", "redis://localhost"),
+            "AUTOCONNECT__RELIABILITY_DSN",
+            env_args.get("AUTOEND__RELIABILITY_DSN", "redis://localhost"),
         ),
     )
 
@@ -526,17 +512,9 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--report_max_retention_days",
-        help="Number of days to retain reports in the reliability bucket",
-        default=env_args.get("AUTOTRACK_REPORT_MAX_RETENTION_DAYS", 30),
-    )
-
-    parser.add_argument(
         "--report_bucket_name",
         help="Name of the bucket to store reliability reports",
-        default=env_args.get(
-            "AUTOTRACK_REPORT_BUCKET_NAME", "autopush-dev-reliability"
-        ),
+        default=env_args.get("AUTOTRACK_REPORT_BUCKET_NAME", "autopush-reliability"),
     )
 
     parser.add_argument(
@@ -600,9 +578,9 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
     if await counter.get_lock():
         await counter.terminal_snapshot()
         # if we have a bucket to write to, write the reports to the bucket.
-        if settings.bucket_name:
+        if settings.report_bucket_name:
             client = storage.Client()
-            bucket = client.lookup_bucket(bucket_name=settings.bucket_name)
+            bucket = client.lookup_bucket(bucket_name=settings.report_bucket_name)
             if bucket:
                 report_name = datetime.now().strftime("%Y-%m-%d")
                 # technically, `bucket.list_blobs` can return `.num_results` but since this is
@@ -619,7 +597,7 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
                 else:
                     log.debug("Reports already generated, skipping...")
     # Maybe we're just interested in getting a report?
-    if not settings.bucket_name:
+    if not settings.report_bucket_name:
         for style in settings.output:
             print(await bigtable.output(style))
             print("\f")
