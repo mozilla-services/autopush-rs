@@ -30,6 +30,7 @@ from google.cloud.bigtable.data import (
     RowRange,
     SetCell,
 )
+from google_api_core import exceptions as google_exceptions
 from google.cloud.bigtable.data.row_filters import FamilyNameRegexFilter
 from google.cloud import storage
 
@@ -234,7 +235,7 @@ class Redis:
         # Fetch the candidates to purge.
         mutations = list()
         purged = cast(
-            list[bytes], await self.redis.zrange(expiry, -1, int(start), byscore=True)
+            list[bytes], await self.redis.zrange(expiry, 0, int(start), byscore=True)
         )
         # Fix up the counts
         async with self.redis.pipeline() as pipeline:
@@ -278,7 +279,7 @@ class Redis:
         }
         if len(purged):
             self.log.info(
-                f"🪦 Trimmed {result.get("trimmed")} in {result.get("time")}ms"
+                f"🪦 Trimmed {result.get('trimmed')} in {result.get('time')}ms"
             )
         return result
 
@@ -294,9 +295,10 @@ class Redis:
         try:
             self.log.info(f"🧹 Generating daily snapshot for {start_of_day}")
             # get all the unresolved terminals (since we remove them after we process them.)
+            # NOTE: "-1" does NOT indicate all items, it is a literal value.
             terminals = await self.redis.zrange(
                 self.settings.terminal_table,
-                -1,
+                0,
                 int(start_of_day.timestamp()),
                 withscores=True,
             )
@@ -332,7 +334,7 @@ class Redis:
             self.log.error(f"Unknown error in terminal_snapshot {e}")
             raise
 
-    async def terminal_snapshot(self) -> Dict[str, int]:
+    async def terminal_snapshot(self) -> Dict[str, float]:
         """Take a daily snapshot of the terminal counts for message states.
         "Terminal" means that the message has reached it's presumed final state, and that
         no further state change is possible. These are cleared after the max holding period to
@@ -361,7 +363,9 @@ class Redis:
         vals = await self.redis.hmget(self.settings.count_table, terminal_states)
         # redis returns a str:bytes, so can't just call dict(vals)
         term_counts = {
-            k: v for (k, v) in dict(zip(terminal_states, vals)).items() if v is not None
+            k: int(v)
+            for (k, v) in dict(zip(terminal_states, vals)).items()
+            if v is not None
         }
         if term_counts:
             self.log.info(
@@ -370,10 +374,10 @@ class Redis:
             expiry = start_of_day + timedelta(
                 days=self.settings.terminal_max_retention_days
             )
-            # Write the values to storage.
+            # Write the values to storage (note: `zadd` reverses the order of the score and value)
             await self.redis.zadd(
                 self.settings.terminal_table,
-                {str(int(expiry.timestamp())): json.dumps(term_counts)},
+                {json.dumps(term_counts): expiry.timestamp()},
             )
         else:
             self.log.info(f"🧹 No matching terminal states found?")
@@ -579,23 +583,36 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
         await counter.terminal_snapshot()
         # if we have a bucket to write to, write the reports to the bucket.
         if settings.report_bucket_name:
-            client = storage.Client()
-            bucket = client.lookup_bucket(bucket_name=settings.report_bucket_name)
-            if bucket:
-                report_name = datetime.now().strftime("%Y-%m-%d")
-                # technically, `bucket.list_blobs` can return `.num_results` but since this is
-                # an iterator for the actual call and the call is only performed on demand, that
-                # would return 0.
-                reports = [blob for blob in bucket.list_blobs(prefix=report_name)]
-                if len(reports) == 0:
-                    if await counter.get_lock():
-                        await write_report(log, settings, bigtable, bucket, report_name)
-                        await clean_bucket(log, settings, bucket)
-                        await counter.release_lock()
+            try:
+                client = storage.Client()
+                try:
+                    bucket = client.lookup_bucket(
+                        bucket_name=settings.report_bucket_name
+                    )
+                except google_exceptions.NotFound:
+                    try:
+                        bucket = client.create_bucket(settings.report_bucket_name)
+                    except google_exceptions.Conflict:
+                        pass
+                if bucket:
+                    report_name = datetime.now().strftime("%Y-%m-%d")
+                    # technically, `bucket.list_blobs` can return `.num_results` but since this is
+                    # an iterator for the actual call and the call is only performed on demand, that
+                    # would return 0.
+                    reports = [blob for blob in bucket.list_blobs(prefix=report_name)]
+                    if len(reports) == 0:
+                        if await counter.get_lock():
+                            await write_report(
+                                log, settings, bigtable, bucket, report_name
+                            )
+                            await clean_bucket(log, settings, bucket)
+                            await counter.release_lock()
+                        else:
+                            log.debug("Could not get lock, skipping...")
                     else:
-                        log.debug("Could not get lock, skipping...")
-                else:
-                    log.debug("Reports already generated, skipping...")
+                        log.debug("Reports already generated, skipping...")
+            except google_exceptions.Forbidden as e:
+                log.error(f"Bucket {settings.report_bucket_name} access forbidden: {e}")
     # Maybe we're just interested in getting a report?
     if not settings.report_bucket_name:
         for style in settings.output:
