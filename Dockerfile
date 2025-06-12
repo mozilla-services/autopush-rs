@@ -16,7 +16,7 @@ RUN \
     cargo --version && \
     rustc --version && \
     mkdir -m 755 bin && \
-    cargo install --path $CRATE --locked --root /app
+    cargo install -v --path $CRATE --locked --root /app
 
 
 FROM debian:bookworm-slim
