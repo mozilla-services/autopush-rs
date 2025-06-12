@@ -11,9 +11,10 @@ use serde_json::json;
 
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::AppState;
-use autopush_common::db::error::DbResult;
 use autopush_common::metric_name::MetricName;
 use autopush_common::metrics::StatsdClientExt;
+use autopush_common::util::b64_encode_url;
+use autopush_common::{db::error::DbResult, errors::ApcError};
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
@@ -39,23 +40,36 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
 
     #[cfg(feature = "reliable_report")]
     {
-        let mut reliability_health = state.reliability.health_check().await.unwrap_or_else(|e| {
-            state
-                .metrics
-                .incr_with_tags(MetricName::ReliabilityErrorRedisUnavailable)
-                .with_tag("application", "autoendpoint")
-                .send();
-            error!("🔍🟥 Reliability reporting down: {:?}", e);
-            "STORE_ERROR"
-        });
-        if state
-            .settings
-            .tracking_keys()
-            .unwrap_or_default()
-            .is_empty()
-        {
-            reliability_health = "NO_TRACKING_KEYS";
-        }
+        let reliability_health: Result<String, ApcError> = state
+            .reliability
+            .health_check()
+            .await
+            .map(|_| {
+                let keys: Vec<String> = state
+                    .settings
+                    .tracking_keys()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|k|
+                        // Hint the key values
+                        b64_encode_url(k)[..8].to_string())
+                    .collect();
+                if keys.is_empty() {
+                    Ok("NO_TRACKING_KEYS".to_owned())
+                } else {
+                    Ok(format!("OK: {}", keys.join(",")))
+                }
+            })
+            .unwrap_or_else(|e| {
+                // Record that Redis is down.
+                state
+                    .metrics
+                    .incr_with_tags(MetricName::ReliabilityErrorRedisUnavailable)
+                    .with_tag("application", "autoendpoint")
+                    .send();
+                error!("🔍🟥 Reliability reporting down: {:?}", e);
+                Ok("STORE_ERROR".to_owned())
+            });
         health.insert("reliability", json!(reliability_health));
     }
     Json(json!(health))
