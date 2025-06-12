@@ -23,27 +23,42 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
-    let mut health = json!({
-        "status": "OK",
-        "version": env!("CARGO_PKG_VERSION"),
-        "router_table": router_health,
-        "message_table": message_health,
-        "routers": routers,
-    });
+    let mut health: HashMap<&str, serde_json::Value> = HashMap::new();
+    health.insert(
+        "status",
+        json!(if state.db.health_check().await.is_ok() {
+            "OK"
+        } else {
+            "ERROR"
+        }),
+    );
+    health.insert("version", json!(env!("CARGO_PKG_VERSION").to_string()));
+    health.insert("router_table", router_health);
+    health.insert("message_table", message_health);
+    health.insert("routers", json!(routers));
 
     #[cfg(feature = "reliable_report")]
     {
-        health["reliability"] = json!(state.reliability.health_check().await.unwrap_or_else(|e| {
+        let mut reliability_health = state.reliability.health_check().await.unwrap_or_else(|e| {
             state
                 .metrics
                 .incr_with_tags(MetricName::ReliabilityErrorRedisUnavailable)
                 .with_tag("application", "autoendpoint")
                 .send();
             error!("🔍🟥 Reliability reporting down: {:?}", e);
-            "ERROR"
-        }));
+            "STORE_ERROR"
+        });
+        if state
+            .settings
+            .tracking_keys()
+            .unwrap_or_default()
+            .is_empty()
+        {
+            reliability_health = "NO_TRACKING_KEYS";
+        }
+        health.insert("reliability", json!(reliability_health));
     }
-    Json(health)
+    Json(json!(health))
 }
 
 /// Convert the result of a DB health check to JSON
