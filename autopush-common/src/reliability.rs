@@ -147,15 +147,20 @@ impl PushReliability {
             );
             match pool.get().await {
                 Ok(mut conn) => {
-                    let _ = self.internal_record(&mut conn, old, new, expr, id).await;
+                    let _ = self
+                        .internal_record(&mut conn, old, new, expr, id)
+                        .await
+                        .inspect_err(|e| {
+                            warn!("🔍⚠️ Unable to record reliability state: {:?}", e);
+                        });
                 }
-                Err(e) => warn!("🔍⚠️ Unable to record reliability state, {:?}", e),
+                Err(e) => warn!("🔍⚠️ Unable to get reliability state pool, {:?}", e),
             };
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
         let _ = self.db.log_report(id, new).await.inspect_err(|e| {
-            warn!("🔍⚠️ Unable to record reliability state: {:?}", e);
+            warn!("🔍⚠️ Unable to record reliability state log: {:?}", e);
         });
         Some(new)
     }
