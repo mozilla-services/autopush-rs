@@ -175,7 +175,7 @@ impl PushReliability {
                 .unwrap_or_else(|| "None".to_owned()),
             new
         );
-        let _ = crate::redis_util::transaction(
+        crate::redis_util::transaction(
             conn,
             &[COUNTS, EXPIRY],
             self.retries,
