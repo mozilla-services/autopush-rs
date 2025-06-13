@@ -174,17 +174,31 @@ impl PushReliability {
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
+
+        // remove the old state from the expiry set, if it exists.
+        if let Some(old) = old {
+            let key = format!("{}#{}", id, old);
+            let _ = pipeline
+                .zrem(EXPIRY, &key)
+                .exec_async(conn)
+                .await
+                .inspect_err(|e| {
+                    warn!("🔍 Failed to remove old state from storage: {:?}", e);
+                });
+            trace!("🔍 internal remove old state: {:?}", key);
+        }
         if !new.is_terminal() {
             // Write the expiration only if the state is non-terminal. Otherwise we run the risk of
             // messages reporting a false "expired" state even if they were "successful".
-            let cc = pipeline
-                .zadd(EXPIRY, format!("{}#{}", new, id), expr.unwrap_or_default())
+            let key = format!("{}#{}", id, new);
+            let _ = pipeline
+                .zadd(EXPIRY, &key, expr.unwrap_or_default())
                 .exec_async(conn)
                 .await
                 .inspect_err(|e| {
                     warn!("🔍 Failed to write to storage: {:?}", e);
                 });
-            trace!("🔍 internal record result: {:?}", cc);
+            trace!("🔍 internal record result: {:?}", key);
         }
     }
 
