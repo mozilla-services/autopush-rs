@@ -24,19 +24,25 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
-    let mut health: HashMap<&str, serde_json::Value> = HashMap::new();
-    health.insert(
-        "status",
-        json!(if state.db.health_check().await.is_ok() {
+    let mut health = json!({
+        "status": if state
+            .db
+            .health_check()
+            .await
+            .map_err(|e| {
+                error!("Autoendpoint health error: {:?}", e);
+                e
+            })
+            .is_ok() {
             "OK"
         } else {
             "ERROR"
-        }),
-    );
-    health.insert("version", json!(env!("CARGO_PKG_VERSION").to_string()));
-    health.insert("router_table", router_health);
-    health.insert("message_table", message_health);
-    health.insert("routers", json!(routers));
+        },
+        "version": env!("CARGO_PKG_VERSION"),
+        "router_table": router_health,
+        "message_table": message_health,
+        "routers": routers,
+    });
 
     #[cfg(feature = "reliable_report")]
     {
@@ -70,9 +76,9 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
                 error!("🔍🟥 Reliability reporting down: {:?}", e);
                 Ok("STORE_ERROR".to_owned())
             });
-        health.insert("reliability", json!(reliability_health));
+        health["reliability"] = json!(reliability_health);
     }
-    Json(json!(health))
+    Json(health)
 }
 
 /// Convert the result of a DB health check to JSON
