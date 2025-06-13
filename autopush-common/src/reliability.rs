@@ -126,7 +126,7 @@ impl PushReliability {
         })
     }
 
-    // Record the record state change to storage.
+    // Record the message state change to storage.
     pub async fn record(
         &self,
         reliability_id: &Option<String>,
@@ -166,40 +166,40 @@ impl PushReliability {
         expr: Option<u64>,
         id: &str,
     ) {
+        trace!(
+            "🔍 internal record: {} from {} to {}",
+            id,
+            old.map(|v| v.to_string())
+                .unwrap_or_else(|| "None".to_owned()),
+            new
+        );
+        // Start the pipeline (Make sure that there is only one active pipeline.)
         let mut pipeline = redis::pipe();
+        // A pipeline needs at least one command, fortunately, we will always
+        // be incrementing the `new` state.
         pipeline.hincr(COUNTS, new.to_string(), 1);
 
         if let Some(old) = old {
             pipeline.hincr(COUNTS, old.to_string(), -1);
-        };
-        // Errors are not fatal, and should not impact message flow, but
-        // we should record them somewhere.
-
-        // remove the old state from the expiry set, if it exists.
-        if let Some(old) = old {
+            // remove the old state from the expiry set, if it exists.
             let key = format!("{}#{}", id, old);
-            let _ = pipeline
-                .zrem(EXPIRY, &key)
-                .exec_async(conn)
-                .await
-                .inspect_err(|e| {
-                    warn!("🔍 Failed to remove old state from storage: {:?}", e);
-                });
+            pipeline.zrem(EXPIRY, &key);
             trace!("🔍 internal remove old state: {:?}", key);
-        }
+        };
         if !new.is_terminal() {
             // Write the expiration only if the state is non-terminal. Otherwise we run the risk of
             // messages reporting a false "expired" state even if they were "successful".
             let key = format!("{}#{}", id, new);
-            let _ = pipeline
-                .zadd(EXPIRY, &key, expr.unwrap_or_default())
-                .exec_async(conn)
-                .await
-                .inspect_err(|e| {
-                    warn!("🔍 Failed to write to storage: {:?}", e);
-                });
+            let _ = pipeline.zadd(EXPIRY, &key, expr.unwrap_or_default());
             trace!("🔍 internal record result: {:?}", key);
         }
+
+        // execute the commands in the pipeline.
+        // Errors are not fatal, and should not impact message flow, but
+        // we should record them somewhere. We usually run with `RUST_LOG=info`.
+        let _ = pipeline.exec_async(conn).await.inspect_err(|e| {
+            warn!("🔍 Redis internal storage error: {:?}", e);
+        });
     }
 
     /// Perform a garbage collection cycle on a reliability object.
