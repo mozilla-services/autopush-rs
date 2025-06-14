@@ -192,6 +192,10 @@ impl PushReliability {
                 if let Some(old_state) = old {
                     pipe.hincr(COUNTS, old_state.to_string(), -1);
                     // remove the old state from the expiry set, if it exists.
+                    // There should only be one message at a given state in the `expiry` table.
+                    // Since we only use that table to track messages that may expire. (We
+                    // decrement "expired" messages in the `gc` function, so having messages
+                    // in multiple states may decrement counts incorrectly.))
                     let key = format!("{}#{}", id, old_state);
                     pipe.zrem(EXPIRY, &key);
                     trace!("🔍 internal remove old state: {:?}", key);
@@ -203,10 +207,19 @@ impl PushReliability {
                     let _ = pipe.zadd(EXPIRY, &key, expr.unwrap_or_default());
                     trace!("🔍 internal record result: {:?}", key);
                 }
-                let _ = pipe.exec_async(conn).await.inspect_err(|e| {
-                    warn!("🔍 Redis internal storage error: {:?}", e);
-                });
-                Ok(None)
+                // `exec_query` returns `RedisResult<()>`.
+                // `query_async` returns `RedisResult<Option<redis::Value>, RedisError>`.
+                // We really don't care about the returned result here, but transaction
+                // retries if we return Ok(None), so we run the exec and return
+                // a nonce `Some` value.
+                // The turbo-fish is a fallback for edition 2024
+                pipe.query_async::<()>(conn)
+                    .await
+                    .inspect_err(|e| {
+                        warn!("🔍 Redis internal storage error: {:?}", e);
+                    })
+                    .map_err(|e| ApcErrorKind::RedisError(e))?;
+                Ok(Some(redis::Value::Okay))
             },
         )
         .await?;
