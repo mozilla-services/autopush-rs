@@ -386,7 +386,7 @@ class Redis:
 
     async def get_lock(self) -> bool:
         """Use RedLock locking"""
-        lock_name = datetime.now().isoformat()
+        lock_name = f"LOCK_{datetime.now().isoformat()}"
         # set the default hold time fairly short, we'll extend the lock later if we succeed.
         self.lock = self.redis.lock(lock_name, timeout=self.settings.lock_acquire_time)
         # Fail the lock check quickly.
