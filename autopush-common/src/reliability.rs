@@ -218,7 +218,7 @@ impl PushReliability {
                     .inspect_err(|e| {
                         warn!("🔍 Redis internal storage error: {:?}", e);
                     })
-                    .map_err(|e| ApcErrorKind::RedisError(e))?;
+                    .map_err(ApcErrorKind::RedisError)?;
                 Ok(Some(redis::Value::Okay))
             },
         )
