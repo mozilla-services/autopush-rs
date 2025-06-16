@@ -213,11 +213,9 @@ impl PushReliability {
                 // retries if we return Ok(None), so we run the exec and return
                 // a nonce `Some` value.
                 // The turbo-fish is a fallback for edition 2024
-                pipe.query_async::<()>(conn)
-                    .await
-                    .inspect_err(|e| {
-                        warn!("🔍 Redis internal storage error: {:?}", e);
-                    })?;
+                pipe.query_async::<()>(conn).await.inspect_err(|e| {
+                    warn!("🔍 Redis internal storage error: {:?}", e);
+                })?;
                 Ok(Some(redis::Value::Okay))
             },
         )
