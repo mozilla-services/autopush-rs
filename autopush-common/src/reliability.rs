@@ -126,7 +126,7 @@ impl PushReliability {
         })
     }
 
-    // Record the record state change to storage.
+    // Record the message state change to storage.
     pub async fn record(
         &self,
         reliability_id: &Option<String>,
@@ -146,46 +146,81 @@ impl PushReliability {
                 new
             );
             match pool.get().await {
-                Ok(mut conn) => self.internal_record(&mut conn, old, new, expr, id).await,
-                Err(e) => warn!("🔍⚠️ Unable to record reliability state, {:?}", e),
-            }
+                Ok(mut conn) => {
+                    let _ = self
+                        .internal_record(&mut conn, old, new, expr, id)
+                        .await
+                        .inspect_err(|e| {
+                            warn!("🔍⚠️ Unable to record reliability state: {:?}", e);
+                        });
+                }
+                Err(e) => warn!("🔍⚠️ Unable to get reliability state pool, {:?}", e),
+            };
         };
         // Errors are not fatal, and should not impact message flow, but
         // we should record them somewhere.
         let _ = self.db.log_report(id, new).await.inspect_err(|e| {
-            warn!("🔍⚠️ Unable to record reliability state: {:?}", e);
+            warn!("🔍⚠️ Unable to record reliability state log: {:?}", e);
         });
         Some(new)
     }
 
-    pub(crate) async fn internal_record<C: ConnectionLike>(
+    pub(crate) async fn internal_record<C: ConnectionLike + AsyncCommands>(
         &self,
         conn: &mut C,
         old: &Option<ReliabilityState>,
         new: ReliabilityState,
         expr: Option<u64>,
         id: &str,
-    ) {
-        let mut pipeline = redis::pipe();
-        pipeline.hincr(COUNTS, new.to_string(), 1);
-
-        if let Some(old) = old {
-            pipeline.hincr(COUNTS, old.to_string(), -1);
-        };
-        // Errors are not fatal, and should not impact message flow, but
-        // we should record them somewhere.
-        if !new.is_terminal() {
-            // Write the expiration only if the state is non-terminal. Otherwise we run the risk of
-            // messages reporting a false "expired" state even if they were "successful".
-            let cc = pipeline
-                .zadd(EXPIRY, format!("{}#{}", new, id), expr.unwrap_or_default())
-                .exec_async(conn)
-                .await
-                .inspect_err(|e| {
-                    warn!("🔍 Failed to write to storage: {:?}", e);
-                });
-            trace!("🔍 internal record result: {:?}", cc);
-        }
+    ) -> Result<()> {
+        trace!(
+            "🔍 internal record: {} from {} to {}",
+            id,
+            old.map(|v| v.to_string())
+                .unwrap_or_else(|| "None".to_owned()),
+            new
+        );
+        crate::redis_util::transaction(
+            conn,
+            &[COUNTS, EXPIRY],
+            self.retries,
+            || ApcErrorKind::GeneralError("Exceeded reliability record retry attempts".to_owned()),
+            async |conn, pipe| {
+                // First, increment the new state.
+                pipe.hincr(COUNTS, new.to_string(), 1);
+                // If there is an old state, decrement it.
+                if let Some(old_state) = old {
+                    pipe.hincr(COUNTS, old_state.to_string(), -1);
+                    // remove the old state from the expiry set, if it exists.
+                    // There should only be one message at a given state in the `expiry` table.
+                    // Since we only use that table to track messages that may expire. (We
+                    // decrement "expired" messages in the `gc` function, so having messages
+                    // in multiple states may decrement counts incorrectly.))
+                    let key = format!("{}#{}", id, old_state);
+                    pipe.zrem(EXPIRY, &key);
+                    trace!("🔍 internal remove old state: {:?}", key);
+                }
+                if !new.is_terminal() {
+                    // Write the expiration only if the state is non-terminal. Otherwise we run the risk of
+                    // messages reporting a false "expired" state even if they were "successful".
+                    let key = format!("{}#{}", id, new);
+                    let _ = pipe.zadd(EXPIRY, &key, expr.unwrap_or_default());
+                    trace!("🔍 internal record result: {:?}", key);
+                }
+                // `exec_query` returns `RedisResult<()>`.
+                // `query_async` returns `RedisResult<Option<redis::Value>, RedisError>`.
+                // We really don't care about the returned result here, but transaction
+                // retries if we return Ok(None), so we run the exec and return
+                // a nonce `Some` value.
+                // The turbo-fish is a fallback for edition 2024
+                pipe.query_async::<()>(conn).await.inspect_err(|e| {
+                    warn!("🔍 Redis internal storage error: {:?}", e);
+                })?;
+                Ok(Some(redis::Value::Okay))
+            },
+        )
+        .await?;
+        Ok(())
     }
 
     /// Perform a garbage collection cycle on a reliability object.
@@ -443,12 +478,96 @@ mod tests {
             .await;
 
         // and mock the redis call.
-        pr.internal_record(&mut conn, &old, new, Some(expr), &test_id)
+        let _ = pr
+            .internal_record(&mut conn, &old, new, Some(expr), &test_id)
             .await;
 
         Ok(())
     }
 
+    //*
+    #[actix_rt::test]
+    async fn test_push_reliabilty_record() -> Result<()> {
+        let db = crate::db::mock::MockDbClient::new();
+        let test_id = format!("TEST_VALUE_{}", Uuid::new_v4());
+        let new = ReliabilityState::Stored;
+        let old = ReliabilityState::Received;
+        let expr = 1;
+
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+        let new_key = format!("{}#{}", &test_id, &new);
+        let old_key = format!("{}#{}", &test_id, &old);
+        let mut mock_pipe = redis::Pipeline::new();
+        mock_pipe
+            .cmd("MULTI")
+            .ignore()
+            .cmd("HINCRBY")
+            .arg(COUNTS)
+            .arg(new.to_string())
+            .arg(1)
+            .ignore()
+            .cmd("HINCRBY")
+            .arg(COUNTS)
+            .arg(old.to_string())
+            .arg(-1)
+            .ignore()
+            .cmd("ZREM")
+            .arg(EXPIRY)
+            .arg(old_key)
+            .ignore()
+            .cmd("ZADD")
+            .arg(EXPIRY)
+            .arg(new_key)
+            .ignore()
+            .cmd("EXEC")
+            .ignore();
+
+        let mut conn = MockRedisConnection::new(vec![
+            MockCmd::new(
+                redis::cmd("WATCH").arg(COUNTS).arg(EXPIRY),
+                Ok(redis::Value::Okay),
+            ),
+            // NOTE: Technically, since we `.ignore()` these, we could just have a
+            // Vec containing just `Okay`. I'm being a bit pedantic here because I know
+            // that this will come back to haunt me if I'm not, and because figuring out
+            // the proper response for this was annoying.
+            MockCmd::new(
+                mock_pipe,
+                Ok(redis::Value::Array(vec![
+                    redis::Value::Okay,
+                    // Match the number of commands that are being held for processing
+                    redis::Value::SimpleString("QUEUED".to_owned()),
+                    redis::Value::SimpleString("QUEUED".to_owned()),
+                    redis::Value::SimpleString("QUEUED".to_owned()),
+                    redis::Value::SimpleString("QUEUED".to_owned()),
+                    // the exec has been called, return an array containing the results.
+                    redis::Value::Array(vec![
+                        redis::Value::Okay,
+                        redis::Value::Okay,
+                        redis::Value::Okay,
+                        redis::Value::Okay,
+                    ]),
+                ])),
+            ),
+            // If the transaction fails, this should return a redis::Value::Nil
+            MockCmd::new(redis::cmd("UNWATCH"), Ok(redis::Value::Okay)),
+        ]);
+
+        // test the main report function (note, this does not test redis)
+        let pr = PushReliability::new(
+            &None,
+            Box::new(Arc::new(db)),
+            &metrics,
+            crate::redis_util::MAX_TRANSACTION_LOOP,
+        )
+        .unwrap();
+        let _ = pr
+            .internal_record(&mut conn, &Some(old), new, Some(expr), &test_id)
+            .await;
+
+        Ok(())
+    }
+    // */
     #[actix_rt::test]
     async fn test_push_reliability_gc() -> Result<()> {
         let db = crate::db::mock::MockDbClient::new();
