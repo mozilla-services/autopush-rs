@@ -1,3 +1,44 @@
+<a name="1.75.7"></a>
+## 1.75.7 (2025-06-17)
+
+#### Chore
+
+*   tag 1.75.3 (#982)
+
+#### Bug Fixes
+
+*   bug: address Python3.12 issues (#989) ([4e1e7080](https://github.com/mozilla-services/autopush-rs/commit/4e1e7080f8790c790e2486ce61f09452474a1c15))
+*   bug: Fix the report args. (#987) ([393207bf](https://github.com/mozilla-services/autopush-rs/commit/393207bfc0f8cbb5c6bac564b1f614ea607c7d0d))
+*   bug: Do not set the `GOOGLE_APPLICATION_CREDENTIALS in the reliability docker image (#984) ([20cf810a](https://github.com/mozilla-services/autopush-rs/commit/20cf810a571aac84ca08d983b9e5ecd32cddae7b))
+
+#### Features
+
+*   feat: Improve endpoint reliability check (#991) ([e658a2f8524a0f4c075520525759790c04f42a6a](https://github.com/mozilla-services/autopush-rs/commit/e658a2f8524a0f4c075520525759790c04f42a6a))
+
+**note: 1.75.4 - 1.75.5 were not released. This version contains the cumulative fixes.**
+
+
+<a name="1.75.7"></a>
+## 1.75.7 (2025-06-17)
+
+#### Chore
+
+*   tag 1.75.3 (#982)
+
+#### Bug Fixes
+
+*   bug: address Python3.12 issues (#989) ([4e1e7080](https://github.com/mozilla-services/autopush-rs/commit/4e1e7080f8790c790e2486ce61f09452474a1c15))
+*   bug: Fix the report args. (#987) ([393207bf](https://github.com/mozilla-services/autopush-rs/commit/393207bfc0f8cbb5c6bac564b1f614ea607c7d0d))
+*   bug: Do not set the `GOOGLE_APPLICATION_CREDENTIALS in the reliability docker image (#984) ([20cf810a](https://github.com/mozilla-services/autopush-rs/commit/20cf810a571aac84ca08d983b9e5ecd32cddae7b))
+*   bug
+
+#### Features
+
+*   feat: Improve endpoint reliability check (#991) ([e658a2f8](https://github.com/mozilla-services/autopush-rs/commit/e658a2f8524a0f4c075520525759790c04f42a6a))
+
+**note: 1.75.4 - 1.75.6 were not released. This version contains the cumulative fixes.**
+
+
 <a name="1.75.3"></a>
 ## 1.75.3 (2025-06-04)
 
