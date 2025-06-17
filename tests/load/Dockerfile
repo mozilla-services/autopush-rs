@@ -21,7 +21,8 @@ RUN python -m pip install --upgrade pip
 
 # Setup poetry and install requirements
 ENV POETRY_VIRTUALENVS_CREATE=false \
-  POETRY_VERSION=1.7.0
+  POETRY_VERSION=1.7.0 \
+  AUTOPUSH_VAPID_KEY=./keys/private_key.pem
 RUN python -m pip install --no-cache-dir --quiet poetry
 COPY ./tests/pyproject.toml ./tests/poetry.lock ./
 RUN poetry install --without dev,integration,notification --no-interaction --no-ansi
@@ -30,6 +31,7 @@ RUN useradd --create-home locust
 WORKDIR /home/locust
 
 COPY ./tests/load/locustfiles ./tests/load/locustfiles
+COPY ./tests/load/keys ./tests/load/keys
 
 # Expose ports for the web UI and the locust master
 EXPOSE 8089 5557

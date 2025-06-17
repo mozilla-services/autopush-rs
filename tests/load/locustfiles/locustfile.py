@@ -14,6 +14,7 @@ from hashlib import sha1
 from json import JSONDecodeError
 from logging import Logger
 from typing import Any, TypeAlias
+from urllib.parse import urlparse
 
 import gevent
 import websocket
@@ -33,6 +34,7 @@ from models import (
 )
 from pydantic import ValidationError
 from websocket import WebSocket, WebSocketApp, WebSocketConnectionClosedException
+from py_vapid import Vapid02
 
 Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | UnregisterMessage
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
@@ -52,6 +54,12 @@ def _(parser: Any):
         env_var="AUTOPUSH_WAIT_TIME",
         help="AutopushUser wait time between tasks",
         default="25, 30",
+    )
+    parser.add_argument(
+        "--vapid_key",
+        type=str,
+        env_var="AUTOPUSH_VAPID_KEY",
+        help="Use a VAPID key generated from this private key.",
     )
 
 
@@ -79,6 +87,18 @@ class AutopushUser(FastHttpUser):
         self.uaid: str = ""
         self.ws: WebSocketApp | None = None
         self.ws_greenlet: Greenlet | None = None
+        if environment.parsed_options.vapid_key:
+            try:
+                logging.info("Vapid key requested.")
+                self.vapid = Vapid02.from_pem(environment.parsed_options.vapid_key)
+            except ValueError as error:
+                raise LocustError(
+                    f"Invalid VAPID key provided: {error}. "
+                    "Please provide a valid VAPID private key."
+                ) from error
+        else:
+            logging.info("No VAPID key provided, using Autopush without VAPID.")
+            self.vapid = None
 
     def wait_time(self):
         """Return the autopush wait time."""
@@ -232,13 +252,27 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
+        headers = self.REST_HEADERS.copy()
+        if self.vapid:
+            logging.info("Using VAPID key for Autopush notification.")
+            parsed = urlparse(endpoint_url)
+            host = f"{parsed.scheme}://{parsed.netloc}"
+            # The key should already be created.
+            vapid = self.vapid.sign(
+                claims={
+                    "sub": "mailto:loadtest@example.com",
+                    "aud": host,
+                    "exp": int(time.time()) + 86400,
+                }
+            )
+            headers["Authorization"] = f"WebPush {vapid['auth']}"
         self.notification_records[sha1(data.encode()).digest()] = record  # nosec
 
         with self.client.post(
             url=endpoint_url,
             name=message_type,
             data=data,
-            headers=self.REST_HEADERS,
+            headers=headers,
             catch_response=True,
         ) as response:
             if response.status_code == 0:
