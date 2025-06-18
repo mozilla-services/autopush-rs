@@ -92,6 +92,13 @@ impl Notification {
             )
             .await;
     }
+
+    #[cfg(feature = "reliable_report")]
+    pub fn clone_without_reliability_state(&self) -> Self {
+        let mut cloned = self.clone();
+        cloned.reliable_state = None;
+        cloned
+    }
 }
 
 fn default_ttl() -> u64 {

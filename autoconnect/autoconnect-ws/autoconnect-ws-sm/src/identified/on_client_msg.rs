@@ -225,9 +225,9 @@ impl WebPushClient {
                        "message_type" => MessageType::Ack.as_ref()
                 );
                 // Get the stored notification record.
-                let n = &mut self.ack_state.unacked_stored_notifs[pos];
-                let is_topic = n.topic.is_some();
-                debug!("✅ Ack notif: {:?}", &n);
+                let acked_notification = &mut self.ack_state.unacked_stored_notifs[pos];
+                let is_topic = acked_notification.topic.is_some();
+                debug!("✅ Ack notif: {:?}", &acked_notification);
                 // Only force delete Topic messages, since they don't have a timestamp.
                 // Other messages persist in the database, to be, eventually, cleaned up by their
                 // TTL. We will need to update the `CurrentTimestamp` field for the channel
@@ -236,17 +236,18 @@ impl WebPushClient {
                 if is_topic {
                     debug!(
                         "✅ WebPushClient:ack removing Stored, sort_key: {}",
-                        &n.chidmessageid()
+                        &acked_notification.chidmessageid()
                     );
                     self.app_state
                         .db
-                        .remove_message(&self.uaid, &n.chidmessageid())
+                        .remove_message(&self.uaid, &acked_notification.chidmessageid())
                         .await?;
                     // NOTE: timestamp messages may still be in state of flux: they're not fully
                     // ack'd (removed/unable to be resurrected) until increment_storage is called,
                     // so their reliability is recorded there
                     #[cfg(feature = "reliable_report")]
-                    n.record_reliability(&self.app_state.reliability, notif.reliability_state())
+                    acked_notification
+                        .record_reliability(&self.app_state.reliability, notif.reliability_state())
                         .await;
                 }
                 let n = self.ack_state.unacked_stored_notifs.remove(pos);
