@@ -11,6 +11,8 @@ use autoconnect_common::{
     broadcast::BroadcastChangeTracker, megaphone::init_and_spawn_megaphone_updater,
     registry::ClientRegistry,
 };
+#[cfg(debug_assertions)]
+use autopush_common::db::mock::MockDbClient;
 use autopush_common::db::{client::DbClient, DbSettings, StorageType};
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::PushReliability;
@@ -83,11 +85,20 @@ impl AppState {
                 client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
-            _ => panic!(
-                "Invalid Storage type {:?}. Check {}__DB_DSN.",
-                storage_type,
-                ENV_PREFIX.to_uppercase()
-            ),
+            _ => {
+                #[cfg(debug_assertions)]
+                {
+                    MockDbClient::new().into_boxed_arc()
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    panic!(
+                        "Invalid Storage type {:?}. Check {}__DB_DSN.",
+                        storage_type,
+                        ENV_PREFIX.to_uppercase()
+                    )
+                }
+            }
         };
 
         #[cfg(feature = "reliable_report")]

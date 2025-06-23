@@ -106,7 +106,7 @@ autoconnect_settings = { path = "./autoconnect/autoconnect-settings" }
 autoconnect_web = { path = "./autoconnect/autoconnect-web" }
 autoconnect_ws = { path = "./autoconnect/autoconnect-ws" }
 autoconnect_ws_clientsm = { path = "./autoconnect/autoconnect-ws/autoconnect-ws-clientsm" }
-autopush_common = { path = "./autopush-common", features = ["bigtable"] }
+autopush_common = { path = "./autopush-common" }
 
 [workspace.lints.clippy]
 result_large_err = "allow" # 1.87.0 will flag ApiError as too large.

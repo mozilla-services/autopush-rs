@@ -26,7 +26,7 @@ autopush_common.workspace = true
 actix-rt.workspace = true
 ctor.workspace = true
 mockall.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["macros"] }
 serde_json.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
