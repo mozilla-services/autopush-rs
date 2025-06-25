@@ -6,6 +6,7 @@
 
 import json
 import logging
+import os
 import random
 import string
 import time
@@ -66,18 +67,19 @@ def _(parser: Any):
 @events.test_start.add_listener
 def _(environment, **kwargs):
     environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
+    environment.vapid = None
     if environment.parsed_options.vapid_key:
         try:
-            logging.info("Vapid key requested.")
-            environment.vapid = Vapid02.from_file(environment.parsed_options.vapid_key)
+            if os.path.isfile(environment.parsed_options.vapid_key):
+                logging.info(f"Vapid key requested. {environment.parsed_options.vapid_key=}")
+                environment.vapid = Vapid02.from_file(environment.parsed_options.vapid_key)
+            else:
+                logging.error(f"VAPID key file not found: {environment.parsed_options.vapid_key}")
         except ValueError as error:
             raise LocustError(
                 f"Invalid VAPID key provided: {error}. "
                 "Please provide a valid VAPID private key path."
             ) from error
-    else:
-        logging.info("No VAPID key provided, using Autopush without VAPID.")
-        environment.vapid = None
 
 
 class AutopushUser(FastHttpUser):
@@ -99,7 +101,11 @@ class AutopushUser(FastHttpUser):
         self.uaid: str = ""
         self.ws: WebSocketApp | None = None
         self.ws_greenlet: Greenlet | None = None
-        self.vapid: Vapid02 | None = environment.vapid
+        try:
+            vapid = environment.vapid
+        except AttributeError:
+            vapid = None
+        self.vapid: Vapid02 | None = vapid
 
     def wait_time(self):
         """Return the autopush wait time."""

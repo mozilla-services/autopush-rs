@@ -20,9 +20,10 @@ ENV PATH="${PYTHON_VENV}/bin:${PATH}"
 RUN python -m pip install --upgrade pip
 
 # Setup poetry and install requirements
+# `AUTOPUSH_VAPID_TEST` should match what's specified in `setup_k8s.sh`
 ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0 \
-  AUTOPUSH_VAPID_TEST=./keys/private_key.txt
+  AUTOPUSH_VAPID_TEST=./tests/load/keys/private_key.pem
 RUN python -m pip install --no-cache-dir --quiet poetry
 COPY ./tests/pyproject.toml ./tests/poetry.lock ./
 RUN poetry install --without dev,integration,notification --no-interaction --no-ansi
@@ -37,4 +38,4 @@ COPY ./tests/load/keys ./tests/load/keys
 EXPOSE 8089 5557
 
 USER locust
-ENTRYPOINT locust -f "tests/load/locustfiles/locustfile.py,tests/load/locustfiles/stored.py,tests/load/locustfiles/load.py"
+ENTRYPOINT [ "locust", "-f", "tests/load/locustfiles/locustfile.py,tests/load/locustfiles/stored.py,tests/load/locustfiles/load.py" ]
