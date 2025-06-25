@@ -58,14 +58,26 @@ def _(parser: Any):
     parser.add_argument(
         "--vapid_key",
         type=str,
-        env_var="AUTOPUSH_VAPID_KEY",
-        help="Use a VAPID key generated from this private key.",
+        env_var="AUTOPUSH_VAPID_TEST",
+        help="Path to an optional VAPID private key.",
     )
 
 
 @events.test_start.add_listener
 def _(environment, **kwargs):
     environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
+    if environment.parsed_options.vapid_key:
+        try:
+            logging.info("Vapid key requested.")
+            environment.vapid = Vapid02.from_file(environment.parsed_options.vapid_key)
+        except ValueError as error:
+            raise LocustError(
+                f"Invalid VAPID key provided: {error}. "
+                "Please provide a valid VAPID private key path."
+            ) from error
+    else:
+        logging.info("No VAPID key provided, using Autopush without VAPID.")
+        environment.vapid = None
 
 
 class AutopushUser(FastHttpUser):
@@ -87,18 +99,7 @@ class AutopushUser(FastHttpUser):
         self.uaid: str = ""
         self.ws: WebSocketApp | None = None
         self.ws_greenlet: Greenlet | None = None
-        if environment.parsed_options.vapid_key:
-            try:
-                logging.info("Vapid key requested.")
-                self.vapid = Vapid02.from_pem(environment.parsed_options.vapid_key)
-            except ValueError as error:
-                raise LocustError(
-                    f"Invalid VAPID key provided: {error}. "
-                    "Please provide a valid VAPID private key."
-                ) from error
-        else:
-            logging.info("No VAPID key provided, using Autopush without VAPID.")
-            self.vapid = None
+        self.vapid: Vapid02 | None = environment.vapid
 
     def wait_time(self):
         """Return the autopush wait time."""
@@ -252,8 +253,8 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
-        headers = self.REST_HEADERS.copy()
         if self.vapid:
+            headers = self.REST_HEADERS.copy()
             logging.info("Using VAPID key for Autopush notification.")
             parsed = urlparse(endpoint_url)
             host = f"{parsed.scheme}://{parsed.netloc}"
@@ -265,7 +266,7 @@ class AutopushUser(FastHttpUser):
                     "exp": int(time.time()) + 86400,
                 }
             )
-            headers["Authorization"] = f"WebPush {vapid['auth']}"
+            headers["Authorization"] = f"Vapid {vapid['auth']}"
         self.notification_records[sha1(data.encode()).digest()] = record  # nosec
 
         with self.client.post(

@@ -22,7 +22,7 @@ RUN python -m pip install --upgrade pip
 # Setup poetry and install requirements
 ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0 \
-  AUTOPUSH_VAPID_KEY=./keys/private_key.pem
+  AUTOPUSH_VAPID_TEST=./keys/private_key.txt
 RUN python -m pip install --no-cache-dir --quiet poetry
 COPY ./tests/pyproject.toml ./tests/poetry.lock ./
 RUN poetry install --without dev,integration,notification --no-interaction --no-ansi
