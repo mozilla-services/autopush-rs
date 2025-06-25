@@ -15,7 +15,7 @@ impl WebPushClient {
     /// Handle a `ServerNotification` for this user
     ///
     /// `ServerNotification::Disconnect` is emitted by the same autoconnect
-    /// node recieving it when a User has logged into that same node twice to
+    /// node receiving it when a User has logged into that same node twice to
     /// "Ghost" (disconnect) the first user's session for its second session.
     ///
     /// Other variants are emitted by autoendpoint
@@ -43,11 +43,16 @@ impl WebPushClient {
     /// Send a Direct Push Notification to this user
     fn notif(&mut self, notif: Notification) -> Result<ServerMessage, SMError> {
         trace!("WebPushClient::notif Sending a direct notif");
+        // The notification we return here is sent directly to the client.
+        // No reliability state is recorded.
+        let response = notif.clone();
         if notif.ttl != 0 {
-            self.ack_state.unacked_direct_notifs.push(notif.clone());
+            // Consume the original notification by adding it to the
+            // unacked stack. This will eventually record the state.
+            self.ack_state.unacked_direct_notifs.push(notif);
         }
-        self.emit_send_metrics(&notif, "Direct");
-        Ok(ServerMessage::Notification(notif))
+        self.emit_send_metrics(&response, "Direct");
+        Ok(ServerMessage::Notification(response))
     }
 
     /// Top level read of Push Notifications from storage
