@@ -1,3 +1,17 @@
+<a name="1.75.9"></a>
+## 1.75.9 (2025-06-25)
+
+
+#### Chore
+
+*   tag 1.75.8 (#995) ([893733bf](https://github.com/mozilla-services/autopush-rs/commit/893733bf7472612f1751035f43a7bef0013778e6))
+
+#### Bug Fixes
+
+*   Address potential double counting reliability (#997) ([854071e9](https://github.com/mozilla-services/autopush-rs/commit/854071e9a4260dbef39cd7a4d3108b895eb93cfd))
+
+
+
 <a name="1.75.8"></a>
 ## 1.75.8 (2025-06-18)
 
