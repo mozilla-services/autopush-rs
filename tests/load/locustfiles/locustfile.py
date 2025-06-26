@@ -272,7 +272,7 @@ class AutopushUser(FastHttpUser):
                     "exp": int(time.time()) + 86400,
                 }
             )
-            headers["Authorization"] = f"Vapid {vapid['auth']}"
+            headers.update(vapid)
         self.notification_records[sha1(data.encode()).digest()] = record  # nosec
 
         with self.client.post(
