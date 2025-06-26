@@ -630,7 +630,7 @@ mod tests {
         let response: redis::Value = redis::Value::Array(vec![redis::Value::SimpleString(
             ExpiryKey {
                 id: test_id.clone(),
-                state: new.clone(),
+                state: new,
             }
             .to_string(),
         )]);
