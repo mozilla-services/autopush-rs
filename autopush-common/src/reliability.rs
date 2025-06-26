@@ -4,6 +4,7 @@
 /// mozilla generated and consumed) so that we can identify potential trouble spots
 /// and where messages expire early. Message expiration can lead to message loss
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use actix_web::HttpResponse;
@@ -17,7 +18,7 @@ use prometheus_client::{
 use redis::{aio::ConnectionLike, AsyncCommands};
 
 use crate::db::client::DbClient;
-use crate::errors::{ApcErrorKind, Result};
+use crate::errors::{ApcError, ApcErrorKind, Result};
 use crate::metric_name::MetricName;
 use crate::metrics::StatsdClientExt;
 use crate::util::timing::sec_since_epoch;
@@ -83,6 +84,36 @@ pub struct PushReliability {
     db: Box<dyn DbClient>,
     metrics: Arc<StatsdClient>,
     retries: usize,
+}
+
+// Define a struct to hold the expiry key, since it's easy to flub the order.
+pub struct ExpiryKey {
+    pub id: String,
+    pub state: ReliabilityState,
+}
+
+impl std::fmt::Display for ExpiryKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}#{}", self.id, self.state)
+    }
+}
+
+impl TryFrom<String> for ExpiryKey {
+    type Error = ApcError;
+    fn try_from(value: String) -> Result<Self> {
+        let (id, state) = value.split_once('#').ok_or_else(|| {
+            ApcErrorKind::GeneralError("ExpiryKey must be in the format 'id#state'".to_owned())
+        })?;
+        let state: ReliabilityState = ReliabilityState::from_str(state).map_err(|_| {
+            ApcErrorKind::GeneralError(
+                "Invalid state in ExpiryKey, must be a valid ReliabilityState".to_owned(),
+            )
+        })?;
+        Ok(Self {
+            id: id.to_owned(),
+            state,
+        })
+    }
 }
 
 impl PushReliability {
@@ -196,14 +227,22 @@ impl PushReliability {
                     // Since we only use that table to track messages that may expire. (We
                     // decrement "expired" messages in the `gc` function, so having messages
                     // in multiple states may decrement counts incorrectly.))
-                    let key = format!("{}#{}", id, old_state);
+                    let key = ExpiryKey {
+                        id: id.to_owned(),
+                        state: old_state.to_owned(),
+                    }
+                    .to_string();
                     pipe.zrem(EXPIRY, &key);
                     trace!("🔍 internal remove old state: {:?}", key);
                 }
                 if !new.is_terminal() {
                     // Write the expiration only if the state is non-terminal. Otherwise we run the risk of
                     // messages reporting a false "expired" state even if they were "successful".
-                    let key = format!("{}#{}", id, new);
+                    let key = ExpiryKey {
+                        id: id.to_owned(),
+                        state: new.to_owned(),
+                    }
+                    .to_string();
                     let _ = pipe.zadd(EXPIRY, &key, expr.unwrap_or_default());
                     trace!("🔍 internal record result: {:?}", key);
                 }
@@ -266,13 +305,13 @@ impl PushReliability {
                 // Now purge each of the values by resetting the counts and removing the item from
                 // the purge set.
                 for key in purged {
-                    let Some((state, _id)) = key.split_once('#') else {
+                    let Ok(expiry_key) = ExpiryKey::try_from(key.clone()) else {
                         let err = "Invalid key stored in Reliability datastore";
                         error!("🔍🟥 {} [{:?}]", &err, &key);
                         return Err(ApcErrorKind::GeneralError(err.to_owned()));
                     };
                     // Adjust the COUNTS and then remove the record from the list of expired rows.
-                    pipe.hincr(COUNTS, state, -1);
+                    pipe.hincr(COUNTS, expiry_key.state.to_string(), -1);
                     pipe.hincr(COUNTS, ReliabilityState::Expired.to_string(), 1);
                     pipe.zrem(EXPIRY, key);
                 }
@@ -451,11 +490,14 @@ mod tests {
         let old = None;
         let expr = 1;
 
+        let exp_key = ExpiryKey {
+            id: test_id.clone(),
+            state: new,
+        }
+        .to_string();
+
         let mut conn = MockRedisConnection::new(vec![MockCmd::new(
-            redis::cmd("ZADD")
-                .arg(EXPIRY)
-                .arg(format!("{}#{}", test_id, new.clone()))
-                .arg(expr),
+            redis::cmd("ZADD").arg(EXPIRY).arg(exp_key).arg(expr),
             Ok(""),
         )]);
 
@@ -495,8 +537,16 @@ mod tests {
         let expr = 1;
 
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
-        let new_key = format!("{}#{}", &test_id, &new);
-        let old_key = format!("{}#{}", &test_id, &old);
+        let new_key = ExpiryKey {
+            id: test_id.clone(),
+            state: new,
+        }
+        .to_string();
+        let old_key = ExpiryKey {
+            id: test_id.clone(),
+            state: old,
+        }
+        .to_string();
         let mut mock_pipe = redis::Pipeline::new();
         mock_pipe
             .cmd("MULTI")
@@ -578,7 +628,11 @@ mod tests {
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
 
         let response: redis::Value = redis::Value::Array(vec![redis::Value::SimpleString(
-            format!("{}#{}", test_id, new.clone()),
+            ExpiryKey {
+                id: test_id.clone(),
+                state: new,
+            }
+            .to_string(),
         )]);
 
         // Construct the Pipeline.
@@ -592,7 +646,7 @@ mod tests {
             .ignore()
             .cmd("HINCRBY")
             .arg(COUNTS)
-            .arg(test_id.to_string())
+            .arg(new.to_string())
             .arg(-1)
             .ignore()
             .cmd("HINCRBY")
