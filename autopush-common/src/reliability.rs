@@ -490,11 +490,14 @@ mod tests {
         let old = None;
         let expr = 1;
 
+        let exp_key = ExpiryKey {
+            id: test_id.clone(),
+            state: new,
+        }
+        .to_string();
+
         let mut conn = MockRedisConnection::new(vec![MockCmd::new(
-            redis::cmd("ZADD")
-                .arg(EXPIRY)
-                .arg(format!("{}#{}", test_id, new.clone()))
-                .arg(expr),
+            redis::cmd("ZADD").arg(EXPIRY).arg(exp_key).arg(expr),
             Ok(""),
         )]);
 
@@ -534,8 +537,16 @@ mod tests {
         let expr = 1;
 
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
-        let new_key = format!("{}#{}", &test_id, &new);
-        let old_key = format!("{}#{}", &test_id, &old);
+        let new_key = ExpiryKey {
+            id: test_id.clone(),
+            state: new,
+        }
+        .to_string();
+        let old_key = ExpiryKey {
+            id: test_id.clone(),
+            state: old,
+        }
+        .to_string();
         let mut mock_pipe = redis::Pipeline::new();
         mock_pipe
             .cmd("MULTI")
@@ -617,7 +628,11 @@ mod tests {
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
 
         let response: redis::Value = redis::Value::Array(vec![redis::Value::SimpleString(
-            format!("{}#{}", test_id, new.clone()),
+            ExpiryKey {
+                id: test_id.clone(),
+                state: new.clone(),
+            }
+            .to_string(),
         )]);
 
         // Construct the Pipeline.
