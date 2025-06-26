@@ -646,7 +646,7 @@ mod tests {
             .ignore()
             .cmd("HINCRBY")
             .arg(COUNTS)
-            .arg(test_id.to_string())
+            .arg(new.to_string())
             .arg(-1)
             .ignore()
             .cmd("HINCRBY")
