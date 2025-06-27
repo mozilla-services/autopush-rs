@@ -81,6 +81,7 @@ uvicorn = { extras = ["standard"], version = "^0.29.0" }
 locust = "^2.32.1"
 numpy = "^1.26.4"
 pydantic = "^2.9.2"
+py-vapid = "^1.9"
 
 [tool.poetry.group.notification.dependencies]
 imgcompare = "^2.0.1"
