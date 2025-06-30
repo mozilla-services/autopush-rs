@@ -14,8 +14,8 @@ jobs:
     build:
         runs-on: ubuntu-latest
         env:
-            MDBOOK_ENV: 0.4.44
-            MERMAID_ENV: 0.14.1
+            MDBOOK_ENV: 0.4.51
+            MERMAID_ENV: 0.15.0
             DEST_DIR: /home/runner/.cargo/bin
         steps:
             - uses: actions/checkout@v4

@@ -5,7 +5,7 @@
 To build the documentation, install mdbook
 
 ```bash
-cargo install mdbook
+cargo install mdbook mdbook-mermaid
 ```
 
 then run
