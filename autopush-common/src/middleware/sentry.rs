@@ -145,7 +145,7 @@ where
         return;
     };
     debug!("Sending error to metrics: {:?}", err);
-    let label = format!("{}.{}", label_prefix, label);
+    let label = format!("{label_prefix}.{label}");
     let mut builder = metrics.incr_with_tags(&label);
     let tags = err.tags();
     for (key, val) in &tags {

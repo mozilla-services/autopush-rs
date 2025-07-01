@@ -257,7 +257,7 @@ mod tests {
             .unwrap();
         assert!(matches!(err.kind, SMErrorKind::InvalidMessage(_)));
         // Verify error message contains expected message type
-        assert!(format!("{}", err).contains(MessageType::Hello.as_ref()));
+        assert!(format!("{err}").contains(MessageType::Hello.as_ref()));
 
         // Test with Register message
         let client = uclient(Default::default());
@@ -271,7 +271,7 @@ mod tests {
             .unwrap();
         assert!(matches!(err.kind, SMErrorKind::InvalidMessage(_)));
         // Verify error message contains expected message type
-        assert!(format!("{}", err).contains(MessageType::Hello.as_ref()));
+        assert!(format!("{err}").contains(MessageType::Hello.as_ref()));
     }
 
     #[tokio::test]

@@ -139,13 +139,13 @@ impl PushReliability {
             config
                 .builder()
                 .map_err(|e| {
-                    ApcErrorKind::GeneralError(format!("Could not config reliability pool {:?}", e))
+                    ApcErrorKind::GeneralError(format!("Could not config reliability pool {e:?}"))
                 })?
                 .create_timeout(Some(CONNECTION_EXPIRATION.to_std().unwrap()))
                 .runtime(deadpool::Runtime::Tokio1)
                 .build()
                 .map_err(|e| {
-                    ApcErrorKind::GeneralError(format!("Could not build reliability pool {:?}", e))
+                    ApcErrorKind::GeneralError(format!("Could not build reliability pool {e:?}"))
                 })?,
         );
 
@@ -339,7 +339,7 @@ impl PushReliability {
         if let Some(pool) = &self.pool {
             if let Ok(mut conn) = pool.get().await {
                 return Ok(conn.hgetall(COUNTS).await.map_err(|e| {
-                    ApcErrorKind::GeneralError(format!("Could not read report {:?}", e))
+                    ApcErrorKind::GeneralError(format!("Could not read report {e:?}"))
                 })?);
             }
         }
@@ -350,13 +350,12 @@ impl PushReliability {
         if let Some(pool) = &self.pool {
             let mut conn = pool.get().await.map_err(|e| {
                 ApcErrorKind::GeneralError(format!(
-                    "Could not connect to reliability datastore: {:?}",
-                    e,
+                    "Could not connect to reliability datastore: {e:?}"
                 ))
             })?;
             // Add a type here, even though we're tossing the value, in order to prevent the `FromRedisValue` warning.
             conn.ping::<()>().await.map_err(|e| {
-                ApcErrorKind::GeneralError(format!("Could not ping reliability datastore: {:?}", e))
+                ApcErrorKind::GeneralError(format!("Could not ping reliability datastore: {e:?}"))
             })?;
             Ok("OK")
         } else {
@@ -418,7 +417,7 @@ pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
     // Return the formatted string that Prometheus will eventually read.
     let mut encoded = String::new();
     encode(&mut encoded, &registry).map_err(|e| {
-        ApcErrorKind::GeneralError(format!("Could not generate Reliability report {:?}", e))
+        ApcErrorKind::GeneralError(format!("Could not generate Reliability report {e:?}"))
     })?;
     Ok(encoded)
 }

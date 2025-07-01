@@ -65,24 +65,21 @@ impl BigTablePool {
         let bt_settings = BigTableDbSettings::try_from(settings.db_settings.as_str())?;
         debug!("🉑 DSN: {}", &endpoint);
         // Url::parsed() doesn't know how to handle `grpc:` schema, so it returns "null".
-        let parsed = url::Url::parse(endpoint).map_err(|e| {
-            DbError::ConnectionError(format!("Invalid DSN: {:?} : {:?}", endpoint, e))
-        })?;
+        let parsed = url::Url::parse(endpoint)
+            .map_err(|e| DbError::ConnectionError(format!("Invalid DSN: {endpoint:?} : {e:?}")))?;
         let connection = format!(
             "{}:{}",
             parsed
                 .host_str()
                 .ok_or_else(|| DbError::ConnectionError(format!(
-                    "Invalid DSN: Unparsable host {:?}",
-                    endpoint
+                    "Invalid DSN: Unparsable host {endpoint:?}"
                 )))?,
             parsed.port().unwrap_or(DEFAULT_GRPC_PORT)
         );
         // Make sure the path is empty.
         if !parsed.path().is_empty() {
             return Err(DbError::ConnectionError(format!(
-                "Invalid DSN: Table paths belong in AUTO*_DB_SETTINGS `tab: {:?}",
-                endpoint
+                "Invalid DSN: Table paths belong in AUTO*_DB_SETTINGS `tab: {endpoint:?}`"
             )));
         }
         debug!("🉑 connection string {}", &connection);
