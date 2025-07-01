@@ -32,13 +32,8 @@ jobs:
                 export PATH=$PATH:$DEST_DIR
                 curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v$MDBOOK_ENV/mdbook-v$MDBOOK_ENV-x86_64-unknown-linux-gnu.tar.gz" | tar -xz --directory $DEST_DIR
                 curl -sSL "https://github.com/badboy/mdBook-mermaid/releases/download/v$MERMAID_ENV/mdbook-mermaid-v$MERMAID_ENV-x86_64-unknown-linux-gnu.tar.gz" | tar -xz --directory $DEST_DIR
-            - name: Build the main book
-              run: cd docs && mdbook build
-            - name: Build API docs
-              run: cargo doc --all-features --workspace --no-deps
-            # bring just the built docs over into the artifact (there's a lot of build detrius)
-            - name: Copy cargo docs to API dir
-              run: mkdir -p docs/output/api && cp -r target/doc/* docs/output/api
+            - name: Build docs
+              run: cd docs && sh make_book.sh
             - name: Upload artifact
               uses: actions/upload-pages-artifact@v3
               with:
