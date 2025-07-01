@@ -101,7 +101,7 @@ impl Server {
                 settings.reliability_retry_count,
             )
             .map_err(|e| {
-                ApiErrorKind::General(format!("Could not initialize Reliability Report: {:?}", e))
+                ApiErrorKind::General(format!("Could not initialize Reliability Report: {e:?}"))
             })?,
         );
         let http = reqwest::ClientBuilder::new()

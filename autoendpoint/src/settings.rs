@@ -189,7 +189,7 @@ impl Settings {
         for v in Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS") {
             result.push(
                 util::b64_decode(v)
-                    .map_err(|e| ConfigError::Message(format!("Invalid tracking key: {:?}", e)))?,
+                    .map_err(|e| ConfigError::Message(format!("Invalid tracking key: {e:?}")))?,
             );
         }
         trace!("🔍 tracking_keys: {result:?}");

@@ -31,7 +31,7 @@ async fn json_msg(
 ) -> serde_json::Value {
     let item = framed.next().await.unwrap().unwrap();
     let ws::Frame::Text(bytes) = item else {
-        panic!("Expected Text not: {:#?}", item);
+        panic!("Expected Text not: {item:#?}");
     };
     serde_json::from_slice(&bytes).unwrap()
 }
@@ -87,7 +87,7 @@ pub async fn unsupported_websocket_message() {
 
     let item = framed.next().await.unwrap().unwrap();
     let ws::Frame::Close(Some(close_reason)) = item else {
-        panic!("Expected Close(Some(..)) not {:#?}", item);
+        panic!("Expected Close(Some(..)) not {item:#?}");
     };
     assert_eq!(close_reason.code, actix_http::ws::CloseCode::Unsupported);
     assert!(framed.next().await.is_none());
@@ -110,7 +110,7 @@ pub async fn invalid_webpush_message() {
 
     let item = framed.next().await.unwrap().unwrap();
     let ws::Frame::Close(Some(close_reason)) = item else {
-        panic!("Expected Close(Some(..)) not {:#?}", item);
+        panic!("Expected Close(Some(..)) not {item:#?}");
     };
     assert_eq!(close_reason.code, actix_http::ws::CloseCode::Error);
     assert!(framed.next().await.is_none());
@@ -133,7 +133,7 @@ pub async fn malformed_webpush_message() {
 
     let item = framed.next().await.unwrap().unwrap();
     let ws::Frame::Close(Some(close_reason)) = item else {
-        panic!("Expected Close(Some(..)) not {:#?}", item);
+        panic!("Expected Close(Some(..)) not {item:#?}");
     };
     assert_eq!(close_reason.code, actix_http::ws::CloseCode::Error);
     assert_eq!(close_reason.description.unwrap(), "Json");
@@ -212,7 +212,7 @@ pub async fn broadcast_after_ping() {
     tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
     let item = framed.next().await.unwrap().unwrap();
     let ws::Frame::Ping(payload) = item else {
-        panic!("Expected Ping not: {:#?}", item);
+        panic!("Expected Ping not: {item:#?}");
     };
 
     broadcaster

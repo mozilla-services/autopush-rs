@@ -308,7 +308,7 @@ pub fn retryable_grpcio_err(metrics: &Arc<StatsdClient>) -> impl Fn(&grpcio::Err
                     metric(
                         metrics,
                         "CallFailure",
-                        Some(&format!("{:?}", grpc_call_status)),
+                        Some(&format!("{grpc_call_status:?}")),
                     );
                 }
                 retry
@@ -773,10 +773,7 @@ impl BigTableClientImpl {
                         "reliable_state",
                     )?)
                     .map_err(|e| {
-                        DbError::DeserializeString(format!(
-                            "Could not parse reliable_state {:?}",
-                            e
-                        ))
+                        DbError::DeserializeString(format!("Could not parse reliable_state {e:?}"))
                     })?,
                 );
             }
