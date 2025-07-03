@@ -234,6 +234,10 @@ impl Notification {
                 &self.reliable_state,
                 Some(self.timestamp + self.headers.ttl as u64),
             )
-            .await;
+            .await
+            .inspect_err(|e| {
+                warn!("🔍⚠️ Unable to record reliability state log: {:?}", e);
+            })
+            .unwrap_or(Some(state))
     }
 }
