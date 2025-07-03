@@ -131,13 +131,13 @@ pub async fn handle_error(
             metrics,
             platform,
             app_id,
-            &format!("upstream_{}", status),
+            &format!("upstream_{status}"),
             error.status(),
             error.errno(),
         ),
 
         _ => {
-            warn!("Unknown error while sending bridge request: {}", error);
+            warn!("Unknown error while sending bridge request: {error}");
             incr_error_metric(
                 metrics,
                 platform,

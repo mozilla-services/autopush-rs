@@ -12,3 +12,9 @@ build-dir = "output"
 
 [output.html]
 additional-css = ["style.css"]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

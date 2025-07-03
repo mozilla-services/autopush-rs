@@ -349,7 +349,7 @@ fn validate_vapid_jwt(
                 return Err(VapidError::InvalidAudience.into());
             }
             jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(e) => {
-                return Err(VapidError::InvalidVapid(format!("Missing required {}", e)).into());
+                return Err(VapidError::InvalidVapid(format!("Missing required {e}")).into());
             }
             _ => {
                 // Attempt to match up the majority of ErrorKind variants.

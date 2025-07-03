@@ -34,13 +34,13 @@ pub fn make_endpoint(
         base.extend(key_digest.iter());
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
         let final_url = root.join(&format!("v2/{encrypted}")).map_err(|e| {
-            ApcErrorKind::GeneralError(format!("Encrypted endpoint data is not URL-safe {:?}", e))
+            ApcErrorKind::GeneralError(format!("Encrypted endpoint data is not URL-safe {e:?}"))
         })?;
         Ok(final_url.to_string())
     } else {
         let encrypted = fernet.encrypt(&base).trim_matches('=').to_string();
         let final_url = root.join(&format!("v1/{encrypted}")).map_err(|e| {
-            ApcErrorKind::GeneralError(format!("Encrypted endpoint data is not URL-safe {:?}", e))
+            ApcErrorKind::GeneralError(format!("Encrypted endpoint data is not URL-safe {e:?}"))
         })?;
         Ok(final_url.to_string())
     }
