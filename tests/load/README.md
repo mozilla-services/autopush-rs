@@ -47,6 +47,7 @@ Environment variables, listed bellow or specified by [Locust][12], can be set in
 | Environment Variable | Node(s)         | Description                          |
 |----------------------|-----------------|--------------------------------------|
 | AUTOPUSH_WAIT_TIME   | master & worker | The wait time between task execution |
+| AUTOPUSH_VAPID_KEY   | worker          | path to the VAPID private key        |
 
 #### 2. Host Locust via Docker
 
@@ -115,13 +116,13 @@ functionality as SSH is not supported in this environment.
 
 #### 3. Create the GCP Cluster
 
-* Execute the `setup_k8s.sh` file from the root directory and select the **create** 
-  option, in order to initiate the process of creating a cluster, setting up the env 
+* Execute the `setup_k8s.sh` file from the root directory and select the **create**
+  option, in order to initiate the process of creating a cluster, setting up the env
   variables and building the docker image
   ```shell
   ./tests/load/setup_k8s.sh create
   ```
-  **Note:** Locust requires CPU affinity to execute most efficiently and can only make 
+  **Note:** Locust requires CPU affinity to execute most efficiently and can only make
   use of a single core at a time. Warnings will be logged if CPU usage exceeds 90%.
 * The cluster creation process will take some time. It is considered complete, once
   an external IP is assigned to the `locust_master` node. Monitor the assignment via
@@ -174,7 +175,7 @@ the load test will stop automatically.
 
 * Exceptions indicate errors that occur during Locust's execution of the load tests and
   should be minimal.
-* The following exceptions are known to happen, but make sure their occurrence isn't 
+* The following exceptions are known to happen, but make sure their occurrence isn't
   trending positively:
     * ZeroStatusRequestError
 * Locust reports Exceptions via the "autopush_exceptions.csv" file and the UI
@@ -184,7 +185,7 @@ the load test will stop automatically.
 
 * Results should be recorded in the [Autopush Load Test Spreadsheet][3]
 * Optionally, the Locust reports can be saved and linked in the spreadsheet:
-    * Download the results via the Locust UI, under the 'Charts' and 'Download Data' 
+    * Download the results via the Locust UI, under the 'Charts' and 'Download Data'
       tabs or via command:
         ```bash
         kubectl cp <master-pod-name>:/home/locust/autopush_stats.csv autopush_stats.csv
@@ -193,7 +194,7 @@ the load test will stop automatically.
         kubectl cp <master-pod-name>:/home/locust/autopush.log autopush.log
         ```
       The `master-pod-name` can be found at the top of the pod list:
-        ```bash 
+        ```bash
         kubectl get pods -o wide
         ```
     * Upload the files to the [ConServ][4] drive and record the links in the
@@ -248,8 +249,8 @@ be cloned locally.
 #### 3. Create the GCP Cluster
 
 * In the `setup_k8s.sh` script, modify the `WORKER_COUNT` variable to equal `1`
-* Execute the `setup_k8s.sh` file from the root directory and select the **create** 
-  option, in order to initiate the process of creating a cluster, setting up the env 
+* Execute the `setup_k8s.sh` file from the root directory and select the **create**
+  option, in order to initiate the process of creating a cluster, setting up the env
   variables and building the docker image
   ```shell
   ./tests/load/setup_k8s.sh create
@@ -261,7 +262,7 @@ be cloned locally.
   kubectl get svc locust-master --watch
   ```
 
-### Calibrate 
+### Calibrate
 
 Repeat steps 1 to 3, using a process of elimination, such as the bisection method, to
 determine the maximum `USERS_PER_WORKER`. The load tests are considered optimized when
@@ -269,7 +270,7 @@ CPU and memory resources are maximally utilized. This step is meant to determine
 maximum user count that a node can accommodate by observing CPU and memory usage while
 steadily increasing or decreasing the user count. You can monitor the CPU percentage in
 the Locust UI but also in the Kubernetes engine Workloads tab where both memory and CPU
-are visualized on charts. 
+are visualized on charts.
 
 #### 1. Start Load Test
 
@@ -299,16 +300,16 @@ the load test will stop automatically.
 **CPU and Memory Resource Graphs**
 
 * CPU and Memory usage should be less than 90% of the available capacity
-    * CPU and Memory Resources can be observed in 
+    * CPU and Memory Resources can be observed in
       [Google Cloud > Kubernetes Engine > Workloads][18]
 
 **Log Errors or Warnings**
 
-* Locust will emit errors or warnings if high CPU or memory usage occurs during the 
-  execution of a load test. The presence of these logs is a strong indication that the 
+* Locust will emit errors or warnings if high CPU or memory usage occurs during the
+  execution of a load test. The presence of these logs is a strong indication that the
   `USERS_PER_WORKER` count is too high
-    * Errors and Warnings emitted while Locust is stopping can be ignored. This can be 
-      caused by disconnecting too many websockets at once, which doesn't happen in 
+    * Errors and Warnings emitted while Locust is stopping can be ignored. This can be
+      caused by disconnecting too many websockets at once, which doesn't happen in
       production because of the use of Shape classes
 
 #### 4. Report Results
@@ -318,7 +319,7 @@ the load test will stop automatically.
 #### 5. Update Shape and Script Values
 
 * `WORKER_COUNT = MAX_USERS/USERS_PER_WORKER`
-    * If `MAX_USERS` is unknown, calibrate to determine `WORKER_COUNT` 
+    * If `MAX_USERS` is unknown, calibrate to determine `WORKER_COUNT`
 * Update the `USERS_PER_WORKER` and `WORKER_COUNT` values in the following files:
     * `\tests\load\locustfiles\load.py`
     * \tests\load\setup_k8s.sh
@@ -385,7 +386,7 @@ are set in step 1, the load test will stop automatically.
 **CPU and Memory Resources**
 
 * CPU and Memory usage should be less than 90% of the available capacity in the cluster
-    * CPU and Memory Resources can be observed in 
+    * CPU and Memory Resources can be observed in
       [Google Cloud > Kubernetes Engine > Workloads][18]
 
 #### 5. Report Results
