@@ -685,7 +685,7 @@ mod tests {
         pr.internal_record(&mut conn, &old, new, Some(expr), &test_id)
             .await
             .inspect_err(|e| {
-                dbg!("🔍⚠️ Unable to record reliability state: {:?}", e);
+                warn!("🔍⚠️ Unable to record reliability state: {:?}", e);
             })?;
 
         db_box
