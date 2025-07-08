@@ -613,6 +613,11 @@ mod tests {
             .arg(EXPIRY)
             .arg(expr)
             .arg(&exp_key)
+            // Increment the count for the new state.
+            .cmd("HINCRBY")
+            .arg(COUNTS)
+            .arg(new.to_string())
+            .arg(1)
             // Create/update the state.holder value.
             .cmd("SET")
             .arg(format!("state.{test_id}"))
@@ -631,18 +636,8 @@ mod tests {
                     .arg(expr),
                 Ok(redis::Value::Okay),
             ),
-            // increment the received count.
             MockCmd::new(
-                redis::cmd("HINCRBY")
-                    .arg(COUNTS)
-                    .arg(new.to_string())
-                    .arg(1),
-                Ok(redis::Value::Okay),
-            ),
-            MockCmd::new(
-                redis::cmd("WATCH")
-                    .arg(format!("state.{test_id}"))
-                    .arg(EXPIRY),
+                redis::cmd("WATCH").arg(format!("state.{test_id}")),
                 Ok(redis::Value::Okay),
             ),
             MockCmd::new(
@@ -688,7 +683,10 @@ mod tests {
 
         // and mock the redis call.
         pr.internal_record(&mut conn, &old, new, Some(expr), &test_id)
-            .await?;
+            .await
+            .inspect_err(|e| {
+                dbg!("🔍⚠️ Unable to record reliability state: {:?}", e);
+            })?;
 
         db_box
             .log_report(&test_id, new)
