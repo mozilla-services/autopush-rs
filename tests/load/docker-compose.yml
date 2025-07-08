@@ -23,5 +23,6 @@ services:
     environment:
       LOCUST_MASTER_NODE_HOST: locust_master
       LOCUST_LOGLEVEL: "INFO"
+      AUTOPUSH_VAPID_TEST: ./tests/load/keys/private_key.pem
     command: >
       --worker

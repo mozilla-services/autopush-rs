@@ -49,6 +49,7 @@ logger: Logger = logging.getLogger("AutopushUser")
 
 @events.init_command_line_parser.add_listener
 def _(parser: Any):
+    logging.info(f"💙 os environ {os.environ.get('AUTOPUSH_VAPID_TEST', 'Unknown')}")
     parser.add_argument(
         "--wait_time",
         type=str,
@@ -69,10 +70,12 @@ def _(environment, **kwargs):
     environment.autopush_wait_time = parse_wait_time(environment.parsed_options.wait_time)
     environment.vapid = None
     if environment.parsed_options.vapid_key:
+        logging.info(f"💛 Checking VAPID key {environment.parsed_options.vapid_key=}")
         try:
             if os.path.isfile(environment.parsed_options.vapid_key):
-                logging.info(f"Vapid key requested. {environment.parsed_options.vapid_key=}")
+                logging.info(f"💛 Vapid key requested. {environment.parsed_options.vapid_key=}")
                 environment.vapid = Vapid02.from_file(environment.parsed_options.vapid_key)
+                logging.info(f"💛 Vapid key generated.")
             else:
                 logging.error(f"VAPID key file not found: {environment.parsed_options.vapid_key}")
         except ValueError as error:
@@ -101,10 +104,24 @@ class AutopushUser(FastHttpUser):
         self.uaid: str = ""
         self.ws: WebSocketApp | None = None
         self.ws_greenlet: Greenlet | None = None
+        vapid = None
         try:
-            vapid = environment.vapid
-        except AttributeError:
-            vapid = None
+            # While it may be possible to set the VAPID key from
+            # `events.init_command_line_parser.add_listener`, in reality, the value is often
+            # *NOT* set until after the start of the test. Check here to fetch the
+            # latest value.
+            logging.info(
+                f"💙 Checking vapid environ {os.environ.get('AUTOPUSH_VAPID_TEST', 'Unknown')}"
+            )
+            vapid_key = os.environ.get("AUTOPUSH_VAPID_TEST")
+            if vapid_key:
+                vapid = environment.vapid = Vapid02.from_file(vapid_key)
+                logging.info("💛 Found vapid key")
+        except ValueError as error:
+            raise LocustError(
+                f"Invalid VAPID key provided: {error}. "
+                "Please provide a valid VAPID private key path."
+            ) from error
         self.vapid: Vapid02 | None = vapid
 
     def wait_time(self):
@@ -259,9 +276,12 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
+        headers = self.REST_HEADERS.copy()
+        logging.info(
+            f"💛 Sending notification to {endpoint_url} {"with vapid" if self.vapid else ""}"
+        )
         if self.vapid:
-            headers = self.REST_HEADERS.copy()
-            logging.info("Using VAPID key for Autopush notification.")
+            logging.info("💛 Using VAPID key for Autopush notification.")
             parsed = urlparse(endpoint_url)
             host = f"{parsed.scheme}://{parsed.netloc}"
             # The key should already be created.
@@ -272,6 +292,7 @@ class AutopushUser(FastHttpUser):
                     "exp": int(time.time()) + 86400,
                 }
             )
+            logging.info(f"💛 VAPID header: {vapid}")
             headers.update(vapid)
         self.notification_records[sha1(data.encode()).digest()] = record  # nosec
 

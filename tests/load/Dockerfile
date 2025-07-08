@@ -22,8 +22,7 @@ RUN python -m pip install --upgrade pip
 # Setup poetry and install requirements
 # `AUTOPUSH_VAPID_TEST` should match what's specified in `setup_k8s.sh`
 ENV POETRY_VIRTUALENVS_CREATE=false \
-  POETRY_VERSION=1.7.0 \
-  AUTOPUSH_VAPID_TEST=./tests/load/keys/private_key.pem
+  POETRY_VERSION=1.7.0
 RUN python -m pip install --no-cache-dir --quiet poetry
 COPY ./tests/pyproject.toml ./tests/poetry.lock ./
 RUN poetry install --without dev,integration,notification --no-interaction --no-ansi

@@ -192,7 +192,7 @@ impl Settings {
                     .map_err(|e| ConfigError::Message(format!("Invalid tracking key: {e:?}")))?,
             );
         }
-        trace!("🔍 tracking_keys: {result:?}");
+        trace!("🔍 tracking_keys: {keys} :: {result:?}");
         Ok(result)
     }
 
@@ -225,16 +225,21 @@ impl VapidTracker {
                 return false;
             }
         };
-        let result = self.0.contains(&key);
 
-        debug!("🔍 Checking {:?} {}", &vapid.public_key, {
-            if result {
-                "Match!"
-            } else {
-                "no match"
+        /*
+        debug!(
+            "🔍 Checking vapid public key: {:?} {}",
+            &vapid.public_key,
+            {
+                if self.0.contains(&key) {
+                    "Match!"
+                } else {
+                    "no match"
+                }
             }
-        });
-        result
+        );
+        */
+        self.0.contains(&key)
     }
 
     /// Extract the message Id from the headers (if present), otherwise just make one up.

@@ -38,6 +38,7 @@ const CONNECTION_EXPIRATION: TimeDelta = TimeDelta::seconds(10);
     Clone,
     Copy,
     PartialEq,
+    PartialOrd,
     Eq,
     serde::Deserialize,
     serde::Serialize,
@@ -47,7 +48,7 @@ const CONNECTION_EXPIRATION: TimeDelta = TimeDelta::seconds(10);
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ReliabilityState {
-    Received,          // Message was received by the Push Server
+    Received = 0,      // Message was received by the Push Server
     Stored,            // Message was stored because it could not be delivered immediately
     Retrieved,         // Message was taken from storage for delivery
     IntTransmitted,    // Message was handed off between autoendpoint and autoconnect
@@ -171,7 +172,7 @@ impl PushReliability {
         };
         if let Some(pool) = &self.pool {
             debug!(
-                "🔍 {} from {} to {}",
+                "🔍 Changing state for {} from {} to {}",
                 id,
                 old.map(|v| v.to_string())
                     .unwrap_or_else(|| "None".to_owned()),
@@ -218,19 +219,10 @@ impl PushReliability {
         expr: Option<u64>,
         id: &str,
     ) -> Result<()> {
-        trace!(
-            "🔍 internal record: {} from {} to {}",
-            id,
-            old.map(|v| v.to_string())
-                .unwrap_or_else(|| "None".to_owned()),
-            new
-        );
-
         let state_key = format!("state.{id}");
-        trace!("🔍 state key: {}", &state_key);
+        /* trace!("🔍 state key: {}", &state_key); */
         // The first state is special, since we need to create the `state_key`.
         if new == ReliabilityState::Received {
-            trace!("🔍 Creating new record");
             // we can't perform this in a transaction because we can only increment if the set succeeds.
             // Create the new `state.{id}` key if it does not exist, and set the expiration.
             let options = redis::SetOptions::default()
@@ -242,23 +234,23 @@ impl PushReliability {
                     warn!("🔍⚠️ Could not create state key: {:?}", e);
                     ApcErrorKind::GeneralError("Could not create the state key".to_owned())
                 })?;
-            // We were able to create the key, so we can increment the count.
-            conn.hincr::<_, _, _, ()>(COUNTS, new.to_string(), 1)
-                .await
-                .map_err(|e| {
-                    warn!("🔍⚠️ Could not increment received count: {:?}", e);
-                    ApcErrorKind::GeneralError("Could not increment the received count".to_owned())
-                })?;
         } else {
-            trace!("🔍 Checking {:?}", &old);
             // safety check (yes, there's still a slight chance of a race, but it's small)
             if let Some(old) = old {
                 let check_state: String = conn.get(&state_key).await?;
-                trace!("🔍 Checking state for {}: {:?}", id, &check_state);
                 if check_state != old.to_string() {
                     trace!(
-                        "🔍 Attempting to update state for {} from {} to {}, but current state is different: {:?}",
+                        "🔍⚠️ Attempting to update state for {} from {} to {}, but current state is different: {:?}",
                         id, old, new, check_state
+                    );
+                }
+                // Sometimes Redis doesn't update the old record. If we have a newer state, presume things
+                // are good. Again, there's a case where we could legitimately regress, but hopefully, that
+                // is infrequent.
+                if old > &new {
+                    warn!(
+                        "🔍⚠️ State mismatch, ignoring move from: {:?} => {:?}",
+                        &old, &new
                     );
                     return Err(ApcErrorKind::GeneralError(
                         "State mismatch during reliability record update".to_owned(),
@@ -269,37 +261,36 @@ impl PushReliability {
         }
         crate::redis_util::transaction(
             conn,
-            &[&state_key, &EXPIRY.to_owned()],
+            &[&state_key], // Note: The EXPIRY table changes frequently, and will cause transactions to fail.
             self.retries,
             || ApcErrorKind::GeneralError("Exceeded reliability record retry attempts".to_owned()),
             async |conn, pipe: &mut Pipeline| {
-                // remove the old state from the expiry set, if it exists.
+                // Remove the old state from the expiry set, if it exists.
                 // There should only be one message at a given state in the `expiry` table.
                 // Since we only use that table to track messages that may expire. (We
                 // decrement "expired" messages in the `gc` function, so having messages
                 // in multiple states may decrement counts incorrectly.))
                 if let Some(old) = old {
+                    trace!("🔍 ➖: {:?}, {:?}", &old, &id);
                     pipe.hincr(COUNTS, old.to_string(), -1);
-                    let key = ExpiryKey {
+                    let old_exp = ExpiryKey {
                         id: id.to_string(),
                         state: old.to_owned(),
                     }
                     .to_string();
-                    pipe.zrem(EXPIRY, &key);
-                    trace!("🔍 internal remove old state: {:?}", key);
+                    pipe.zrem(EXPIRY, &old_exp);
                 }
                 if !new.is_terminal() {
                     // Write the expiration only if the state is non-terminal. Otherwise we run the risk of
                     // messages reporting a false "expired" state even if they were "successful".
-                    let key = ExpiryKey {
+                    let new_exp = ExpiryKey {
                         id: id.to_string(),
                         state: new.to_owned(),
                     }
                     .to_string();
-                    pipe.zadd(EXPIRY, &key, expr.unwrap_or_default());
-                    trace!("🔍 internal record result: {:?}", key);
+                    pipe.zadd(EXPIRY, &new_exp, expr.unwrap_or_default());
                 }
-                trace!("🔍 upping {:?}", &new);
+                trace!("🔍 ➕ {:?}, {:?}", &new, &id);
                 // Bump up the new state count, and set the state key's state if it still exists.
                 pipe.hincr(COUNTS, new.to_string(), 1);
                 let options = redis::SetOptions::default()
@@ -321,20 +312,40 @@ impl PushReliability {
                     .as_sequence()
                     .unwrap_or_default()
                     .last()
-                    .map(|v| {
-                        v.as_sequence()
-                            .unwrap_or_default()
-                            .last()
-                            .unwrap_or(&redis::Value::Nil)
+                    /*
+                    .inspect(|v| {
+                        let ss: String = redis::from_redis_value(v)
+                            .inspect_err(|e| {
+                                warn!(
+                                    "🔍⚠️Error occurred while decoding previous state_key: {:?}",
+                                    e
+                                );
+                            })
+                            .unwrap_or_default();
+                        trace!("🔍 state_key previous value: {}", ss);
                     })
+                    // */
                     .unwrap_or(&redis::Value::Nil);
-                trace!("🔍 state_key set returned: {:?}", &rcheck);
-                //*
+                trace!(
+                    "🔍 state_key set {} to {} returned: {:?}",
+                    &state_key,
+                    new.to_string(),
+                    &rcheck
+                );
+                if new != ReliabilityState::Received && rcheck == &redis::Value::Nil {
+                    // If the state_key was not set, then we have a problem.
+                    warn!(
+                        "🔍⚠️ non-initial set returned nil value: {:?} => {:?} [{:?}]",
+                        &old, &new, result
+                    );
+                }
+                /*
+                //
                 if new != ReliabilityState::Received {
                     if *rcheck != redis::Value::Nil {
                         Ok(Some(redis::Value::Okay))
                     } else {
-                        warn!("🔍⚠️ state_key set returned nil value, hope that was an error");
+                        warn!("🔍⚠️ non-initial state_key set returned nil value, retrying transaction")
                         // Something odd went on, retry.
                         Ok(None)
                     }
@@ -344,7 +355,7 @@ impl PushReliability {
                     Ok(Some(redis::Value::Okay))
                 }
                 // */
-                // Ok(Some(redis::Value::Okay))
+                Ok(Some(redis::Value::Okay))
             },
         )
         .await
@@ -602,11 +613,6 @@ mod tests {
             .arg(EXPIRY)
             .arg(expr)
             .arg(&exp_key)
-            // adjust the counts
-            .cmd("HINCRBY")
-            .arg(COUNTS)
-            .arg(new.to_string())
-            .arg(1)
             // Create/update the state.holder value.
             .cmd("SET")
             .arg(format!("state.{test_id}"))
@@ -625,6 +631,7 @@ mod tests {
                     .arg(expr),
                 Ok(redis::Value::Okay),
             ),
+            // increment the received count.
             MockCmd::new(
                 redis::cmd("HINCRBY")
                     .arg(COUNTS)
