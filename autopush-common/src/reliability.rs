@@ -723,23 +723,26 @@ mod tests {
         mock_pipe
             .cmd("MULTI")
             .ignore()
+            // Increment the new state
             .cmd("HINCRBY")
             .arg(COUNTS)
             .arg(new.to_string())
             .arg(1)
             .ignore()
+            // Decrement the old state
             .cmd("HINCRBY")
             .arg(COUNTS)
             .arg(old.to_string())
             .arg(-1)
             .ignore()
+            // Replace the combined old state key in the expiry set.
             .cmd("ZREM")
             .arg(EXPIRY)
             .arg(old_key)
             .ignore()
             .cmd("ZADD")
             .arg(EXPIRY)
-            .arg(1)
+            .arg(expr)
             .arg(new_key)
             .ignore()
             .cmd("EXEC")
@@ -835,25 +838,29 @@ mod tests {
         mock_pipe
             .cmd("MULTI")
             .ignore()
+            // Decrement the old state count
             .cmd("HINCRBY")
             .arg(COUNTS)
             .arg(stored.to_string())
             .arg(-1)
             .ignore()
+            // Replace the expiry key
             .cmd("ZREM")
             .arg(EXPIRY)
             .arg(stored_key.to_string())
             .ignore()
             .cmd("ZADD")
             .arg(EXPIRY)
-            .arg(1)
+            .arg(expr)
             .arg(new_key)
             .ignore()
+            // Increment the new state count
             .cmd("HINCRBY")
             .arg(COUNTS)
             .arg(new.to_string())
             .arg(1)
             .ignore()
+            // And create the new state transition key (since the message is "live" again.)
             .cmd("SET")
             .arg(&state_key)
             .arg(new.to_string())
@@ -953,6 +960,7 @@ mod tests {
         mock_pipe
             .cmd("MULTI")
             .ignore()
+            // Adjust the state counts.
             .cmd("HINCRBY")
             .arg(COUNTS)
             .arg(new.to_string())
@@ -962,6 +970,7 @@ mod tests {
             .arg(COUNTS)
             .arg(ReliabilityState::Expired.to_string())
             .arg(1)
+            // Replace the state key in the expiry set.
             .ignore()
             .cmd("ZREM")
             .arg(EXPIRY)
