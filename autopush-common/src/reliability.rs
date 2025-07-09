@@ -29,6 +29,7 @@ pub const COUNTS: &str = "state_counts";
 pub const EXPIRY: &str = "expiry";
 
 const CONNECTION_EXPIRATION: TimeDelta = TimeDelta::seconds(10);
+const NO_EXPIRATION: u64 = 0;
 
 /// The various states that a message may transit on the way from reception to delivery.
 // Note: "Message" in this context refers to the Subscription Update.
@@ -234,7 +235,7 @@ impl PushReliability {
             // we can't perform this in a transaction because we can only increment if the set succeeds.
             // Create the new `state.{id}` key if it does not exist, and set the expiration.
             let options = redis::SetOptions::default()
-                .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(0)))
+                .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(NO_EXPIRATION)))
                 .conditional_set(redis::ExistenceCheck::NX);
             conn.set_options::<_, _, ()>(&state_key, new.to_string(), options)
                 .await
@@ -314,6 +315,8 @@ impl PushReliability {
                 // The turbo-fish is a fallback for edition 2024
                 let result = pipe.query_async::<redis::Value>(conn).await?;
                 // The last element returned from the command is the result of the pipeline.
+                // If Redis encounters an error, it will return a `nil` as well. We handle both
+                // the same (retry), so we can normalize errors as `nil`.
                 // The last of which should be the result of the `SET` command, which has `GET`
                 // set. This should either return the prior value or `Ok` if things worked, else
                 // it should return `nil`.
@@ -329,13 +332,15 @@ impl PushReliability {
                     })
                     .unwrap_or(&redis::Value::Nil);
                 trace!("🔍 state_key set returned: {:?}", &rcheck);
-                //*
                 if new != ReliabilityState::Received {
                     if *rcheck != redis::Value::Nil {
                         Ok(Some(redis::Value::Okay))
                     } else {
                         warn!("🔍⚠️ state_key set returned nil value, hope that was an error");
                         // Something odd went on, retry.
+                        // `redis_util::transaction` will retry a function if it returns `None`. If you have
+                        // a query that actually returns no value, the default is to return
+                        // either `Some(RedisValue::Okay)` or an empty `Some(RedisValue::Array())`
                         Ok(None)
                     }
                 } else {
@@ -343,8 +348,6 @@ impl PushReliability {
                     // if this fails, it will also return nil, so presume all is well.
                     Ok(Some(redis::Value::Okay))
                 }
-                // */
-                // Ok(Some(redis::Value::Okay))
             },
         )
         .await
@@ -676,8 +679,11 @@ mod tests {
         // `.record()` uses a pool, so we can't pass the moc connection directly.
         // Instead, we're going to essentially recreate what `.record()` does calling
         // the `.internal_record()` function, followed by the database `.record()`.
-        //pr.record(&Some(test_id.clone()), new, &None, Some(expr))
+        // This emulates
+        // ```
+        // pr.record(&Some(test_id.clone()), new, &None, Some(expr))
         //    .await?;
+        // ```
 
         // and mock the redis call.
         pr.internal_record(&mut conn, &old, new, Some(expr), &test_id)
@@ -694,7 +700,6 @@ mod tests {
         Ok(())
     }
 
-    //*
     #[actix_rt::test]
     async fn test_push_reliability_record() -> Result<()> {
         let db = crate::db::mock::MockDbClient::new();
@@ -803,8 +808,7 @@ mod tests {
 
         Ok(())
     }
-    // */
-    //*
+
     #[actix_rt::test]
     async fn test_push_reliability_full() -> Result<()> {
         let db = crate::db::mock::MockDbClient::new();
@@ -922,7 +926,7 @@ mod tests {
 
         Ok(())
     }
-    // */
+
     #[actix_rt::test]
     async fn test_push_reliability_gc() -> Result<()> {
         let db = crate::db::mock::MockDbClient::new();
