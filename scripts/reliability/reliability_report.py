@@ -234,19 +234,31 @@ class Redis:
 
         # Fetch the candidates to purge.
         mutations = list()
+        # records that were not found and presumed to have been cleaned elsewhere.
+        skipped = 0
         # python redis escapes the `-1` value. Use a literal start value.
         purged = cast(
             list[bytes], await self.redis.zrange(expiry, 0, int(start), byscore=True)
         )
-        # Fix up the counts
-        async with self.redis.pipeline() as pipeline:
-            for key in purged:
+        # Note: if a key is not found, it can kill the entire pipeline. Don't bulk process for now.
+        for key in purged:
+            async with self.redis.pipeline() as pipeline:
                 # clean up the counts.
                 parts = key.split(b"#", 2)
                 state = parts[0]
+                # if we can't delete the key, don't decrement it.
+                pipeline.zrem(expiry, key)
                 self.log.debug(f"🪦 decr {state.decode()}")
                 pipeline.hincrby(counts, state.decode(), -1)
-                pipeline.zrem(expiry, key)
+                try:
+                    await pipeline.execute()
+                except google_exceptions.NotFound as e:
+                    self.log.warning(f"⚠ Bulk purge failed to delete: {e}")
+                    # The key is gone, something else may have deleted it, so
+                    # we'll presume that it also updated the expired record.
+                    purged.remove(key)
+                    skipped += 1
+                    continue
                 # and add the log info.
                 mutations.append(
                     RowMutationEntry(
@@ -263,24 +275,25 @@ class Redis:
                         ),
                     )
                 )
-            if len(purged) > 0:
-                # make the changes to redis,
-                await pipeline.execute()
-                # then add the bigtable logs
-                if self.bigtable:
-                    table = self.bigtable.get_table(
-                        self.settings.bigtable.get("instance"),
-                        self.settings.bigtable.get("table"),
-                    )
-                    await table.bulk_mutate_rows(mutations)
+        # Now that the redis side is cleaned up, let's update the Bigtable data.
+        if len(mutations) > 0:
+            # make the changes to redis,
+            # then add the bigtable logs
+            if self.bigtable:
+                table = self.bigtable.get_table(
+                    self.settings.bigtable.get("instance"),
+                    self.settings.bigtable.get("table"),
+                )
+                await table.bulk_mutate_rows(mutations)
 
         result = {
             "trimmed": len(purged),
+            "skipped": skipped,
             "time": int(start * 1000) - (time.time() * 1000),
         }
         if len(purged):
             self.log.info(
-                f"🪦 Trimmed {result.get('trimmed')} in {result.get('time')}ms"
+                f"🪦 Trimmed {result.get('trimmed')} (skipped: {skipped}) in {result.get('time')}ms"
             )
         return result
 
@@ -579,7 +592,10 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
     bigtable = BigtableScanner(log, settings)
     # do the Redis counter cleanup.
     counter = Redis(log, settings)
-    await counter.gc()
+    try:
+        await counter.gc()
+    except google_exceptions.NotFound as e:
+        log.warning(f"Garbage collection reported an error: {e}")
     if await counter.get_lock():
         await counter.terminal_snapshot()
         # if we have a bucket to write to, write the reports to the bucket.
