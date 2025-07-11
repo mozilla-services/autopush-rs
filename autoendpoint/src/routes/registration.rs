@@ -240,6 +240,38 @@ pub async fn unregister_channel_route(
     }
 }
 
+/// Report the status of a given UAID. This was requested by the UA so that
+/// it can check to see if a given UAID has been reset. This will mostly be
+/// used by desktop clients, since the mobile clients will do a daily check-in.
+pub async fn check_uaid(
+    path_args: RegistrationPathArgsWithUaid,
+    app_state: Data<AppState>,
+) -> ApiResult<HttpResponse> {
+    let uaid = path_args.user.uaid;
+    debug!("🌍 Checking UAID {uaid}");
+    let mut response = serde_json::json!({
+        "uaid": uaid,
+    });
+    match app_state.db.get_user(&uaid).await {
+        Ok(Some(_user)) => {
+            debug!("🌍 UAID {uaid} good");
+            response["status"] = "200".into();
+        }
+        Ok(None) => {
+            debug!("🌍 UAID {uaid} bad");
+            response["status"] = "404".into();
+        }
+        Err(e) => {
+            warn!("🌍⚠ UAID check db bad");
+            let err: ApiErrorKind = e.into();
+            response["status"] = err.status().as_u16().into();
+            response["message"] = err.to_string().into();
+            response["errno"] = err.errno().into();
+        }
+    }
+    return Ok(HttpResponse::Ok().json(response));
+}
+
 /// Increment a metric with data from the request
 fn incr_metric(metric: MetricName, metrics: &StatsdClient, request: &HttpRequest) {
     metrics

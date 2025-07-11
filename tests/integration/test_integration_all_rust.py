@@ -729,6 +729,25 @@ async def test_hello_echo(test_client: AsyncPushTestClient) -> None:
     assert result["use_webpush"] is True
 
 
+async def test_check_uaid(test_client: AsyncPushTestClient) -> None:
+    """Test if a UAID is registered or not"""
+    await test_client.connect()
+    result = await test_client.hello()
+    endpoint = test_client.get_host_client_endpoint()
+    """First try to see if a bogus, invalid UAID is registered"""
+    async with httpx.AsyncClient() as httpx_client:
+        bogus_uaid = uuid.uuid4().hex
+        response = await httpx_client.get(f"{endpoint}/v1/check/{bogus_uaid}")
+        jresp = json.loads(response.text)
+        assert jresp["status"] == "404"
+    """Now try to see if the UAID we just registered is registered"""
+    async with httpx.AsyncClient() as httpx_client:
+        bogus_uaid = uuid.uuid4().hex
+        response = await httpx_client.get(f"{endpoint}/v1/check/{result.get('uaid')}")
+        jresp = json.loads(response.text)
+        assert jresp["status"] == "200"
+
+
 async def test_hello_with_bad_prior_uaid(test_client: AsyncPushTestClient) -> None:
     """Test hello with bad prior uaid."""
     non_uaid: str = uuid.uuid4().hex
