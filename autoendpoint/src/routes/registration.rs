@@ -269,7 +269,7 @@ pub async fn check_uaid(
             response["errno"] = err.errno().into();
         }
     }
-    return Ok(HttpResponse::Ok().json(response));
+    Ok(HttpResponse::Ok().json(response))
 }
 
 /// Increment a metric with data from the request
