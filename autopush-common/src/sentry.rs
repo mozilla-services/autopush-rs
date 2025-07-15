@@ -80,7 +80,7 @@ fn exception_from_error<E>(err: &E) -> sentry::protocol::Exception
 where
     E: Error + ?Sized,
 {
-    let dbg = format!("{:?}", err);
+    let dbg = format!("{err:?}");
     sentry::protocol::Exception {
         ty: sentry::parse_type_from_debug(&dbg).to_owned(),
         value: Some(err.to_string()),
