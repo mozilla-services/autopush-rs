@@ -14,6 +14,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import statistics
 import time
 from typing import Any, cast, Dict, List
@@ -421,7 +422,7 @@ async def write_report(
 ):
     """Write the reports to the bucket"""
     for style in settings.output:
-        blob_name = f"{report_name}.{style}"
+        blob_name = f"{report_name.strip()}.{style.strip(", ")}"
         log.info(f"Creating {blob_name}")
         bucket.blob(blob_name).open("w").write(await bigtable.output(style))
 
@@ -574,7 +575,17 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
             setattr(
                 args,
                 "output",
-                list(filter(lambda x: x in report_formats, formats.split(" "))),
+                list(
+                    filter(
+                        lambda x: x in report_formats,
+                        # trim up the args and deal with any potential option weirdness
+                        list(
+                            filter(
+                                len, re.split(r"[ ,]+", re.sub(r"[\"']", "", formats))
+                            )
+                        ),
+                    )
+                ),
             )
     return args
 
