@@ -242,6 +242,7 @@ class Redis:
             list[bytes], await self.redis.zrange(expiry, 0, int(start), byscore=True)
         )
         # Note: if a key is not found, it can kill the entire pipeline. Don't bulk process for now.
+        resolved_keys = []
         for key in purged:
             async with self.redis.pipeline() as pipeline:
                 # clean up the counts.
@@ -257,9 +258,10 @@ class Redis:
                     self.log.warning(f"⚠ Bulk purge failed to delete: {e}")
                     # The key is gone, something else may have deleted it, so
                     # we'll presume that it also updated the expired record.
-                    purged.remove(key)
                     skipped += 1
                     continue
+                # add the key to the list of keys that we know we managed
+                resolved_keys.append(key)
                 # and add the log info.
                 mutations.append(
                     RowMutationEntry(
@@ -288,11 +290,11 @@ class Redis:
                 await table.bulk_mutate_rows(mutations)
 
         result = {
-            "trimmed": len(purged),
+            "trimmed": len(resolved_keys),
             "skipped": skipped,
-            "time": int(start * 1000) - (time.time() * 1000),
+            "time": int(time.time() * 1000) - (start * 1000),
         }
-        if len(purged):
+        if len(resolved_keys):
             self.log.info(
                 f"🪦 Trimmed {result.get('trimmed')} (skipped: {skipped}) in {result.get('time')}ms"
             )
