@@ -259,8 +259,8 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
+        headers = self.REST_HEADERS.copy()
         if self.vapid:
-            headers = self.REST_HEADERS.copy()
             logging.info("Using VAPID key for Autopush notification.")
             parsed = urlparse(endpoint_url)
             host = f"{parsed.scheme}://{parsed.netloc}"

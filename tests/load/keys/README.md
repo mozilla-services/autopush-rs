@@ -12,10 +12,10 @@ least one of the `AUTOEND_TRACKING_KEYS`. Note that
 vapid --gen
 ```
 
-To generate an x962 formatted version of the public key, use `$PROJECT_ROOT/scripts/convert_pem_to_x692.py`
+To generate an x962 formatted version of the public key, use `$PROJECT_ROOT/scripts/convert_pem_to_x962.py`
 
 ```bash
-scripts/convert_pem_to_x692.py tests/load/keys/public_key.pem > tests/load/keys/public_key.x692
+scripts/convert_pem_to_x692.py tests/load/keys/public_key.pem > tests/load/keys/public_key.x962
 ```
 
 ## Running
