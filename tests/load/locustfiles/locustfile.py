@@ -59,7 +59,7 @@ def _(parser: Any):
     parser.add_argument(
         "--vapid_key",
         type=str,
-        env_var="AUTOPUSH_VAPID_TEST",
+        env_var="AUTOPUSH_VAPID_KEY",
         help="Path to an optional VAPID private key.",
     )
 

@@ -1,8 +1,8 @@
 # VAPID key storage directory
 
 This directory should contain a `private_key.pem` file that matches at
-least one of the `AUTOEND_TRACKING_KEYS`. Note that
-`AUTOEND_TRACKING_KEYS` uses a x962 formatted public key string.
+least one of the `AUTOEND__TRACKING_KEYS`. Note that
+`AUTOEND__TRACKING_KEYS` uses a x962 formatted public key string.
 
 ## Generating test values
 

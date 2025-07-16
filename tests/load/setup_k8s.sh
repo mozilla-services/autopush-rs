@@ -35,7 +35,7 @@ ENVIRONMENT_VARIABLES=(
   'LOCUST_HOST,wss://autoconnect.stage.mozaws.net'
   'LOCUST_LOGLEVEL,INFO'
   'LOCUST_LOGFILE,autopush.log'
-  'AUTOPUSH_VAPID_TEST,./tests/load/keys/private_key.pem'  # note: see Dockerfile `ENV`
+  'AUTOPUSH_VAPID_KEY,./tests/load/keys/private_key.pem'  # note: see Dockerfile `ENV`
 )
 
 SetEnvironmentVariables()

@@ -30,7 +30,7 @@ spec:
               value:
             - name: LOCUST_LOGFILE
               value:
-            - name: AUTOPUSH_VAPID_TEST
+            - name: AUTOPUSH_VAPID_KEY
               value:
           resources:
             # Forcing requests and limits to match to ensured pods run in Guaranteed QoS class
