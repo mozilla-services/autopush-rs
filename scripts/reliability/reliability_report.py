@@ -220,7 +220,7 @@ class Redis:
         except Exception as e:
             log.error(e)
 
-    async def gc(self) -> Dict[str, int | float]:
+    async def gc(self) -> Dict[str, int]:
         """Perform quick garbage collection. This includes pruning expired elements,
         decrementing counters and potentially logging the result.
         This sort of garbage collection should happen quite frequently.
@@ -292,7 +292,7 @@ class Redis:
         result = {
             "trimmed": len(resolved_keys),
             "skipped": skipped,
-            "time": int(time.time() * 1000) - (start * 1000),
+            "time": int(time.time() - start) * 1000,
         }
         if len(resolved_keys):
             self.log.info(
@@ -443,6 +443,19 @@ async def clean_bucket(
         blob.delete()
 
 
+def clean_formats(formats: str, report_formats: List[str]) -> List[str]:
+    """One-off function to filter the requested formats against the list of
+    known formats and strip any unexpected separation characters.
+    """
+
+    return list(
+        filter(
+            lambda x: x in report_formats,
+            list(filter(len, re.split(r"[ ,]+", re.sub(r"[\"']", "", formats)))),
+        )
+    )
+
+
 def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     """Read the configuration from the args and environment."""
     report_formats = ["json", "md", "raw"]
@@ -574,21 +587,7 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     if args.report_bucket_name is not None:
         formats = os.environ.get("AUTOTRACK_OUTPUT", "md json")
         if formats:
-            setattr(
-                args,
-                "output",
-                list(
-                    filter(
-                        lambda x: x in report_formats,
-                        # trim up the args and deal with any potential option weirdness
-                        list(
-                            filter(
-                                len, re.split(r"[ ,]+", re.sub(r"[\"']", "", formats))
-                            )
-                        ),
-                    )
-                ),
-            )
+            setattr(args, "output", clean_formats(formats, report_formats))
     return args
 
 
