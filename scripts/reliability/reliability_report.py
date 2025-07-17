@@ -448,12 +448,11 @@ def clean_formats(formats: str, report_formats: List[str]) -> List[str]:
     known formats and strip any unexpected separation characters.
     """
 
-    return list(
-        filter(
-            lambda x: x in report_formats,
-            list(filter(len, re.split(r"[ ,]+", re.sub(r"[\"']", "", formats)))),
-        )
-    )
+    remove_quotes = re.sub(r"[\"']", "", formats)
+    split_parts = re.split(r"[ ,]+", remove_quotes)
+    non_empty_parts = filter(len, split_parts)
+    valid_parts = filter(lambda x: x in report_formats, non_empty_parts)
+    return list(valid_parts)
 
 
 def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
