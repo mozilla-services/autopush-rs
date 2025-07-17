@@ -259,7 +259,7 @@ class AutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
-        headers = self.REST_HEADERS.copy()
+        headers = self.REST_HEADERS
         if self.vapid:
             logging.info("Using VAPID key for Autopush notification.")
             parsed = urlparse(endpoint_url)
@@ -272,6 +272,7 @@ class AutopushUser(FastHttpUser):
                     "exp": int(time.time()) + 86400,
                 }
             )
+            headers = self.REST_HEADERS.copy()
             headers.update(vapid)
         self.notification_records[sha1(data.encode()).digest()] = record  # nosec
 
