@@ -1,4 +1,3 @@
-version: "3"
 services:
   locust_master:
     image: locust
