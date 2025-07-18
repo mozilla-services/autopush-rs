@@ -210,12 +210,8 @@ impl Server {
                     )
                     .route(web::delete().to(unregister_channel_route)),
                 )
-                // head check to see if a UAID exists.
-                .service(
-                    web::resource("/v1/check/{uaid}")
-                        .route(web::head().to(check_uaid))
-                        .route(web::get().to(check_uaid)),
-                )
+                // check to see if a UAID exists.
+                .service(web::resource("/v1/check/{uaid}").route(web::get().to(check_uaid)))
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))
                 .service(web::resource("/health").route(web::get().to(health_route)))

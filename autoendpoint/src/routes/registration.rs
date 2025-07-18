@@ -8,7 +8,7 @@ use crate::extractors::{
     authorization_check::AuthorizationCheck, new_channel_data::NewChannelData,
     registration_path_args::RegistrationPathArgs,
     registration_path_args_with_uaid::RegistrationPathArgsWithUaid,
-    router_data_input::RouterDataInput, routers::Routers,
+    router_data_input::RouterDataInput, routers::Routers, user::ReqUaid,
 };
 use crate::headers::util::get_header;
 use crate::server::AppState;
@@ -243,22 +243,18 @@ pub async fn unregister_channel_route(
 /// Report the status of a given UAID. This was requested by the UA so that
 /// it can check to see if a given UAID has been reset. This will mostly be
 /// used by desktop clients, since the mobile clients will do a daily check-in.
-pub async fn check_uaid(
-    path_args: RegistrationPathArgsWithUaid,
-    app_state: Data<AppState>,
-) -> ApiResult<HttpResponse> {
-    let uaid = path_args.user.uaid;
-    debug!("🌍 Checking UAID {uaid}");
+pub async fn check_uaid(req_uaid: ReqUaid, app_state: Data<AppState>) -> ApiResult<HttpResponse> {
+    debug!("🌍 Checking UAID {req_uaid}");
     let mut response = serde_json::json!({
-        "uaid": uaid,
+        "uaid": req_uaid.uaid,
     });
-    match app_state.db.get_user(&uaid).await {
+    match app_state.db.get_user(&req_uaid.uaid).await {
         Ok(Some(_user)) => {
-            debug!("🌍 UAID {uaid} good");
+            debug!("🌍 UAID {req_uaid} good");
             response["status"] = "200".into();
         }
         Ok(None) => {
-            debug!("🌍 UAID {uaid} bad");
+            debug!("🌍 UAID {req_uaid} bad");
             response["status"] = "404".into();
         }
         Err(e) => {
