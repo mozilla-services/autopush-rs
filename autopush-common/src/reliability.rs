@@ -268,6 +268,42 @@ impl PushReliability {
                 }
             };
         }
+
+        /*
+        ## Reliability lock and adjustment
+
+        This transaction creates a lock on the individual messages "state_key" (which contains the current messages state)
+        and the entire Expiration table. If either of those values are changed while the transaction is in progress, then
+        the transaction will fail, return a `Redis::Nil`, and the transaction will retry up to `self.retries` (Note:
+        none of the operations in the transaction will have taken place yet.)
+
+        We want to lock on the `state_key` because that shows the given state of the message.
+        We want to lock on the `expiry` table because the message may have expired, been handled by the `gc()` function and
+        may have already been adjusted. (Remember, the `expiry` table holds timestamp markers for when a message will be
+        expiring.)
+
+        The operations in the Pipeline are:
+
+        1. If there is an `old` state, decrement the old state count and remove the old marker from the `expiry` table.
+        2. If the `new` state is not a terminal state (e.g. it is not a final disposition for a message), then create a new
+           entry for `expiry`
+        3. Increment the `new` state count
+        4. Modify the `state.{ID}` value (if it exists) to indicate the newest known state for the message, returning the
+           prior value. Checking that this value is not Nil is an additional sanity check that the value was not removed
+           or altered by a different process. (We are already imposing a transaction lock which should prevent this, but
+           additional paranoia can sometimes be good.)
+
+        Upon execution of the Pipeline, we get back a list of results. This should look similar to a `Queued` entry for
+        every function that we've performed, followed by an inline list of the results of those functions. (e.g.
+        for a transition between `ReliabilityState::Stored` to `ReliabilityState::Retrieved`, which are neither terminal
+        states), we should see something like: `["Queued","Queued","Queued",["OK", "OK", "stored"]]`
+
+        If any of the locks failed, we should get back a `Nil`, in which case, we would want to try this operation again.
+        In addition, the sanity `Get` may also return a `Nil` which would also indicate that there was a problem. There's
+        some debate whether or not to retry the operation if that's the case (since it would imply that the lock failed
+        for some unexpected reason), however for now, we just report a soft `error!()`.
+
+         */
         crate::redis_util::transaction(
             conn,
             &[&state_key, &EXPIRY.to_owned()],
@@ -319,34 +355,33 @@ impl PushReliability {
                 // the same (retry), so we can normalize errors as `nil`.
                 // The last of which should be the result of the `SET` command, which has `GET`
                 // set. This should either return the prior value or `Ok` if things worked, else
-                // it should return `nil`.
-                let rcheck = result
-                    .as_sequence()
-                    .unwrap_or_default()
-                    .last()
-                    .map(|v| {
-                        v.as_sequence()
-                            .unwrap_or_default()
-                            .last()
-                            .unwrap_or(&redis::Value::Nil)
-                    })
-                    .unwrap_or(&redis::Value::Nil);
-                trace!("🔍 state_key set returned: {:?}", &rcheck);
-                if new != ReliabilityState::Received {
-                    if *rcheck != redis::Value::Nil {
-                        Ok(Some(redis::Value::Okay))
-                    } else {
-                        warn!("🔍⚠️ state_key set returned nil value, hope that was an error");
-                        // Something odd went on, retry.
-                        // `redis_util::transaction` will retry a function if it returns `None`. If you have
-                        // a query that actually returns no value, the default is to return
-                        // either `Some(RedisValue::Okay)` or an empty `Some(RedisValue::Array())`
-                        Ok(None)
+                // it should return `nil`, in which case we record a soft error.
+                // This could also be strung together as a cascade of functions, but it's broken
+                // out to discrete steps for readability.
+                if let Some(operations) = result.as_sequence() {
+                    // We have responses, the first items report the state of the commands,
+                    // the final line is a list of command results.
+                    if let Some(result_values) = operations.last() {
+                        if let Some(results) = result_values.as_sequence() {
+                            // The last command should contain the prior state. If it returned `Nil`
+                            // for some, unexpected reason, note the error.
+                            if new != ReliabilityState::Received
+                                && Some(&redis::Value::Nil) == results.last()
+                            {
+                                error!("🔍🚨 WARNING: Lock Issue for {id}")
+                                // There is some debate about whether or not to rerun
+                                // the transaction if this state is reached.
+                                // Rerunning would cause the counts to be impacted, but
+                                // might address any other issues that caused the
+                                // `Nil` to be returned.
+                                // For now, let's just log the error.
+                            }
+                        }
                     }
-                } else {
-                    // Received will never have a prior value, so will return nil. Sadly,
-                    // if this fails, it will also return nil, so presume all is well.
                     Ok(Some(redis::Value::Okay))
+                } else {
+                    // a Nil will rerun the transaction.
+                    Ok(None)
                 }
             },
         )
