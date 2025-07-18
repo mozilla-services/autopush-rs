@@ -732,7 +732,8 @@ async def test_hello_echo(test_client: AsyncPushTestClient) -> None:
 async def test_check_uaid(test_client: AsyncPushTestClient) -> None:
     """Test if a UAID is registered or not"""
     await test_client.connect()
-    result = await test_client.hello()
+    await test_client.hello()
+    await test_client.register()
     endpoint = test_client.get_host_client_endpoint()
     """First try to see if a bogus, invalid UAID is registered"""
     async with httpx.AsyncClient() as httpx_client:
@@ -743,7 +744,7 @@ async def test_check_uaid(test_client: AsyncPushTestClient) -> None:
     """Now try to see if the UAID we just registered is registered"""
     async with httpx.AsyncClient() as httpx_client:
         bogus_uaid = uuid.uuid4().hex
-        response = await httpx_client.get(f"{endpoint}/v1/check/{result.get('uaid')}")
+        response = await httpx_client.get(f"{endpoint}/v1/check/{test_client.uaid}")
         jresp = json.loads(response.text)
         assert jresp["status"] == "200"
 
