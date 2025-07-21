@@ -8,6 +8,8 @@ use actix_web::{
 use serde_json::json;
 
 use autoconnect_settings::AppState;
+use autopush_common::metric_name::MetricName;
+use autopush_common::metrics::StatsdClientExt;
 
 use crate::error::ApiError;
 
@@ -27,7 +29,9 @@ pub fn config(config: &mut web::ServiceConfig) {
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
-    let healthy = state
+    #[allow(unused_mut)]
+    let mut health = json!({
+        "status": if state
         .db
         .health_check()
         .await
@@ -35,11 +39,24 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
             error!("Autoconnect Health Error: {:?}", e);
             e
         })
-        .is_ok();
-    Json(json!({
-        "status": if healthy { "OK" } else { "ERROR" },
+        .is_ok() { "OK" } else {"ERROR"},
         "version": env!("CARGO_PKG_VERSION"),
-    }))
+    });
+
+    #[cfg(feature = "reliable_report")]
+    {
+        health["reliability"] = json!(state.reliability.health_check().await.unwrap_or_else(|e| {
+            state
+                .metrics
+                .incr_with_tags(MetricName::ErrorRedisUnavailable)
+                .with_tag("application", "autoconnect")
+                .send();
+            error!("🔍🟥 Reliability reporting down: {:?}", e);
+            "ERROR"
+        }));
+    }
+
+    Json(health)
 }
 
 /// Handle the `/status` route

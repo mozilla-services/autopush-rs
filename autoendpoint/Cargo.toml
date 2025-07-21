@@ -5,56 +5,40 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-actix-http.workspace = true
-actix-web.workspace = true
-actix-rt.workspace = true
+a2 =  "0.10"
 actix-cors.workspace = true
+actix-http.workspace = true
+actix-rt.workspace = true
+actix-web.workspace = true
+async-trait = "0.1"
 backtrace.workspace = true
 base64.workspace = true
 cadence.workspace = true
+chrono.workspace = true
 config.workspace = true
 docopt.workspace = true
 fernet.workspace = true
 futures.workspace = true
-futures-util.workspace = true
 hex.workspace = true
+jsonwebtoken = "9.3.0"
 lazy_static.workspace = true
-log.workspace = true
 openssl.workspace = true
-rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 sentry.workspace = true
-sentry-actix.workspace = true
-sentry-core.workspace = true
 serde.workspace = true
-serde_derive.workspace = true
 serde_json.workspace = true
-slog.workspace = true
-slog-async.workspace = true
-slog-mozlog-json.workspace = true
 slog-scope.workspace = true
-slog-stdlog.workspace = true
-slog-term.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 uuid.workspace = true
-
-a2 = { version = "0.10" }
-bytebuffer = "2.1"
-again = { version = "0.1.2", default-features = false, features = [
-    "log",
-    "rand",
-] }
-async-trait = "0.1"
-autopush_common = { path = "../autopush-common" }
-jsonwebtoken = "9.3.0"
-validator = "0.19"
-validator_derive = "0.19"
-
+validator = "0.20"
+validator_derive = "0.20"
 yup-oauth2 = "8.1"
-# Updating to 9+ requires configuring rust-tls (See https://github.com/dermesser/yup-oauth2/issues/235)
+
+autopush_common = { path = "../autopush-common" }
+# Updating to 9+ requires configuring rust-tls (See https://github.com/dermesser/yup-oauth2/issues/235) <- this ticket is resolved, update
 # yup-oauth2 = { version = "10.0.1", features = ["hyper-rustls"] }
 
 # For mockito test debugging
@@ -68,7 +52,7 @@ tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
-default = ["bigtable"]
+default = ["bigtable", "reliable_report"]
 # data store types
 bigtable = ["autopush_common/bigtable"]
 
@@ -84,3 +68,6 @@ stub = []
 log_vapid = []
 
 reliable_report = ["autopush_common/reliable_report"]
+
+[lints]
+workspace = true

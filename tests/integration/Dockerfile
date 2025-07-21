@@ -5,7 +5,8 @@
 # =============================================================================
 # Pull in the version of cargo-chef we plan to use, so that all the below steps
 # use a consistent set of versions.
-FROM lukemathwalker/cargo-chef:0.1.68-rust-slim-bookworm AS chef
+# RUST_VER
+FROM lukemathwalker/cargo-chef:0.1.71-rust-1.86-slim-bookworm AS chef
 WORKDIR /app
 
 # =============================================================================
@@ -27,6 +28,7 @@ RUN \
   apt-get -qq update && \
   apt-get -qq install --no-install-recommends -y \
   cmake \
+  clang \
   libssl-dev \
   ca-certificates \
   pkg-config \
@@ -43,6 +45,7 @@ RUN mkdir -m 755 bin
 RUN apt-get -qq update && \
   apt-get -qq upgrade && apt-get -qq install --no-install-recommends -y \
   cmake \
+  clang \
   libssl-dev \
   ca-certificates \
   libstdc++6 \
@@ -106,4 +109,4 @@ WORKDIR /code
 RUN chmod +x scripts/setup_bt.sh
 
 # Pytest markers are defined in the `pyproject.toml`:`[tool.pytest.ini_options]` file.
-CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration_test_results.xml -v"]
+CMD ["sh", "-c", "./scripts/setup_bt.sh && poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration__results.xml -v"]

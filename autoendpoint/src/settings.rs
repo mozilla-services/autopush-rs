@@ -6,6 +6,8 @@ use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
 use url::Url;
 
+use autopush_common::util;
+
 use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
@@ -16,7 +18,6 @@ pub const ENV_PREFIX: &str = "autoend";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct Settings {
     pub scheme: String,
     pub host: String,
@@ -62,6 +63,9 @@ pub struct Settings {
     /// storage system. See [Connection Parameters](https://docs.rs/redis/latest/redis/#connection-parameters)
     /// for details.
     pub reliability_dsn: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    /// Max number of retries for retries for Redis transactions
+    pub reliability_retry_count: usize,
 }
 
 impl Default for Settings {
@@ -95,6 +99,8 @@ impl Default for Settings {
             stub: StubSettings::default(),
             #[cfg(feature = "reliable_report")]
             reliability_dsn: None,
+            #[cfg(feature = "reliable_report")]
+            reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
         }
     }
 }
@@ -172,17 +178,22 @@ impl Settings {
             .collect()
     }
 
-    /// Get the list of tracking public keys
-    // TODO: this should return a Vec<[u8]> so that key formatting errors do not cause
-    // false rejections. This is not a problem now since we have access to the source
-    // public key, but that may not always be true.
-    pub fn tracking_keys(&self) -> Vec<String> {
+    /// Get the list of tracking public keys converted to raw, x962 format byte arrays.
+    /// (This avoids problems with formatting, padding, and other concerns. x962 precedes the
+    /// EC key pair with a `\04` byte. We'll keep that value in place for now, since the value we
+    /// are comparing against will also have the same prefix.)
+    pub fn tracking_keys(&self) -> Result<Vec<Vec<u8>>, ConfigError> {
         let keys = &self.tracking_keys.replace(['"', ' '], "");
-        let result = Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS")
-            .map(|v| v.to_owned().replace("=", ""))
-            .collect();
+        // I'm sure there's a more clever way to do this. I don't care. I want simple.
+        let mut result = Vec::new();
+        for v in Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS") {
+            result.push(
+                util::b64_decode(v)
+                    .map_err(|e| ConfigError::Message(format!("Invalid tracking key: {e:?}")))?,
+            );
+        }
         trace!("🔍 tracking_keys: {result:?}");
-        result
+        Ok(result)
     }
 
     /// Get the URL for this endpoint server
@@ -197,16 +208,26 @@ impl Settings {
 }
 
 #[derive(Clone, Debug)]
-pub struct VapidTracker(pub Vec<String>);
+pub struct VapidTracker(pub Vec<Vec<u8>>);
 impl VapidTracker {
     /// Very simple string check to see if the Public Key specified in the Vapid header
     /// matches the set of trackable keys.
     pub fn is_trackable(&self, vapid: &VapidHeaderWithKey) -> bool {
         // ideally, [Settings.with_env_and_config_file()] does the work of pre-populating
         // the Settings.tracking_vapid_pubs cache, but we can't rely on that.
-        let key = vapid.public_key.replace('=', "");
+
+        let key = match util::b64_decode(&vapid.public_key) {
+            Ok(v) => v,
+            Err(e) => {
+                // This error is not fatal, and should not happen often. During preliminary
+                // runs, however, we do want to try and spot them.
+                warn!("VAPID: tracker failure {e}");
+                return false;
+            }
+        };
         let result = self.0.contains(&key);
-        debug!("🔍 Checking {key} {}", {
+
+        debug!("🔍 Checking {:?} {}", &vapid.public_key, {
             if result {
                 "Match!"
             } else {
@@ -323,8 +344,9 @@ mod tests {
 
     #[test]
     fn test_tracking_keys() -> ApiResult<()> {
+        // Handle the case where the settings may use Standard encoding instead of Base64 encoding.
         let settings = Settings{
-            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7"]"#.to_owned(),
+            tracking_keys: r#"["BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon+H/boHTzMtMoNHsAGDlDB6X"]"#.to_owned(),
             ..Default::default()
         };
 
@@ -334,10 +356,36 @@ mod tests {
                 token: "".to_owned(),
                 version_data: crate::headers::vapid::VapidVersionData::Version1,
             },
-            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X7==".to_owned()
+            public_key: "BLMymkOqvT6OZ1o9etCqV4jGPkvOXNz5FdBjsAR9zR5oeCV1x5CBKuSLTlHon-H_boHTzMtMoNHsAGDlDB6X==".to_owned()
         };
 
-        let key_set = settings.tracking_keys();
+        let key_set = settings.tracking_keys().unwrap();
+        assert!(!key_set.is_empty());
+
+        let reliability = VapidTracker(key_set);
+        assert!(reliability.is_trackable(&test_header));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_multi_tracking_keys() -> ApiResult<()> {
+        // Handle the case where the settings may use Standard encoding instead of Base64 encoding.
+        let settings = Settings{
+            tracking_keys: r#"[BLbZTvXsQr0rdvLQr73ETRcseSpoof5xV83NiPK9U-Qi00DjNJct1N6EZtTBMD0uh-nNjtLAxik1XP9CZXrKtTg,BHDgfiL1hz4oIBFaxxS9jkzyAVing-W9jjt_7WUeFjWS5Invalid5EjC8TQKddJNP3iow7UW6u8JE3t7u_y3Plc]"#.to_owned(),
+            ..Default::default()
+        };
+
+        let test_header = VapidHeaderWithKey {
+            vapid: VapidHeader {
+                scheme: "".to_owned(),
+                token: "".to_owned(),
+                version_data: crate::headers::vapid::VapidVersionData::Version1,
+            },
+            public_key: "BLbZTvXsQr0rdvLQr73ETRcseSpoof5xV83NiPK9U-Qi00DjNJct1N6EZtTBMD0uh-nNjtLAxik1XP9CZXrKtTg".to_owned()
+        };
+
+        let key_set = settings.tracking_keys().unwrap();
         assert!(!key_set.is_empty());
 
         let reliability = VapidTracker(key_set);

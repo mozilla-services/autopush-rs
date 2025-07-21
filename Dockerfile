@@ -1,6 +1,6 @@
 # NOTE: Ensure builder's Rust version matches CI's in .circleci/config.yml
 # RUST_VER
-FROM rust:1.83-bookworm AS builder
+FROM rust:1.86-bookworm AS builder
 ARG CRATE
 
 ADD . /app
@@ -10,7 +10,7 @@ ENV PATH=$PATH:/root/.cargo/bin
 # cmake is required for grpcio & google-cloud-rust
 RUN \
     apt-get -qq update && \
-    apt-get -qq install --no-install-recommends -y cmake
+    apt-get -qq install --no-install-recommends -y cmake clang
 
 RUN \
     cargo --version && \

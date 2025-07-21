@@ -10,9 +10,43 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use serde_derive::{Deserialize, Serialize};
+use strum_macros::{AsRefStr, Display, EnumString};
 use uuid::Uuid;
 
 use autopush_common::notification::Notification;
+
+/// Message types for WebPush protocol messages.
+///
+/// This enum should be used instead of string literals when referring to message types.
+/// String serialization is handled automatically via the strum traits.
+///
+/// Example:
+/// ```
+///  use autoconnect_common::protocol::MessageType;
+///
+/// let message_type = MessageType::Hello;
+/// let message_str = message_type.as_ref();  // Returns "hello"
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, Display, EnumString)]
+#[strum(serialize_all = "snake_case")]
+pub enum MessageType {
+    Hello,
+    Register,
+    Unregister,
+    BroadcastSubscribe,
+    Ack,
+    Nack,
+    Ping,
+    Notification,
+    Broadcast,
+}
+
+impl MessageType {
+    /// Returns the expected message type string for error messages
+    pub fn expected_msg(&self) -> String {
+        format!(r#"Expected messageType="{}""#, self.as_ref())
+    }
+}
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -69,6 +103,21 @@ pub enum ClientMessage {
     Ping,
 }
 
+impl ClientMessage {
+    /// Get the message type of this message
+    pub fn message_type(&self) -> MessageType {
+        match self {
+            ClientMessage::Hello { .. } => MessageType::Hello,
+            ClientMessage::Register { .. } => MessageType::Register,
+            ClientMessage::Unregister { .. } => MessageType::Unregister,
+            ClientMessage::BroadcastSubscribe { .. } => MessageType::BroadcastSubscribe,
+            ClientMessage::Ack { .. } => MessageType::Ack,
+            ClientMessage::Nack { .. } => MessageType::Nack,
+            ClientMessage::Ping => MessageType::Ping,
+        }
+    }
+}
+
 impl FromStr for ClientMessage {
     type Err = serde_json::error::Error;
 
@@ -85,11 +134,25 @@ impl FromStr for ClientMessage {
 ///
 #[derive(Debug, Deserialize)]
 pub struct ClientAck {
-    // The channel_id which received messages
+    /// The channel_id which received messages
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
-    // The corresponding version number for the message.
+    /// The corresponding version number for the message.
     pub version: String,
+    /// An optional code categorizing the status of the ACK
+    pub code: Option<u16>,
+}
+
+impl ClientAck {
+    #[cfg(feature = "reliable_report")]
+    pub fn reliability_state(&self) -> autopush_common::reliability::ReliabilityState {
+        match self.code.unwrap_or(100) {
+            101 => autopush_common::reliability::ReliabilityState::DecryptionError,
+            102 => autopush_common::reliability::ReliabilityState::NotDelivered,
+            // 100 (ignore/treat anything else as 100)
+            _ => autopush_common::reliability::ReliabilityState::Delivered,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -127,11 +190,23 @@ pub enum ServerMessage {
 }
 
 impl ServerMessage {
+    /// Get the message type of this message
+    pub fn message_type(&self) -> MessageType {
+        match self {
+            ServerMessage::Hello { .. } => MessageType::Hello,
+            ServerMessage::Register { .. } => MessageType::Register,
+            ServerMessage::Unregister { .. } => MessageType::Unregister,
+            ServerMessage::Broadcast { .. } => MessageType::Broadcast,
+            ServerMessage::Notification(..) => MessageType::Notification,
+            ServerMessage::Ping => MessageType::Ping,
+        }
+    }
+
     pub fn to_json(&self) -> Result<String, serde_json::error::Error> {
         match self {
-            // clients recognize {"messageType": "ping"} but traditionally both
-            // client/server send the empty object version
-            ServerMessage::Ping => Ok("{}".to_owned()),
+            // Both client and server understand the verbose `{"messageType": "ping"}` and the abbreviated `{}`
+            // as valid ping messages. The server defaults to the shorter `{}` form.
+            ServerMessage::Ping => Ok("{}".to_string()),
             _ => serde_json::to_string(self),
         }
     }

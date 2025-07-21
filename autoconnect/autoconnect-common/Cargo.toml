@@ -8,6 +8,7 @@ version.workspace = true
 
 [dependencies]
 actix-web.workspace = true
+bytestring.workspace = true
 cadence.workspace = true
 futures.workspace = true
 futures-locks.workspace = true
@@ -18,12 +19,13 @@ sentry.workspace = true
 serde.workspace = true
 serde_derive.workspace = true
 serde_json.workspace = true
-slog.workspace = true
 slog-scope.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
 uuid.workspace = true
-
 
 autopush_common.workspace = true
 
 [features]
 test-support = []
+reliable_report = ["autopush_common/reliable_report"]

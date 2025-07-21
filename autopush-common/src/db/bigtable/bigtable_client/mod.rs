@@ -8,7 +8,8 @@ use std::time::{Duration, SystemTime};
 
 use again::RetryPolicy;
 use async_trait::async_trait;
-use cadence::{CountedExt, StatsdClient};
+use cadence::StatsdClient;
+use chrono::TimeDelta;
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
@@ -27,6 +28,8 @@ use crate::db::{
     error::{DbError, DbResult},
     DbSettings, Notification, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
 };
+use crate::metric_name::MetricName;
+use crate::metrics::StatsdClientExt;
 
 pub use self::metadata::MetadataBuilder;
 use self::row::{Row, RowCells};
@@ -55,7 +58,9 @@ const MESSAGE_TOPIC_FAMILY: &str = "message_topic";
 #[cfg(feature = "reliable_report")]
 const RELIABLE_LOG_FAMILY: &str = "reliability";
 #[cfg(feature = "reliable_report")]
-const RELIABLE_LOG_TTL: u64 = crate::db::MAX_NOTIFICATION_TTL * 2;
+/// The maximum TTL for reliability logging (60 days).
+/// /// In most use cases, converted to seconds through .num_seconds().
+pub const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
 pub(crate) const RETRY_COUNT: usize = 5;
 
@@ -270,7 +275,7 @@ fn retryable_internal_err(status: &RpcStatus) -> bool {
 
 pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
     let mut metric = metrics
-        .incr_with_tags("database.retry")
+        .incr_with_tags(MetricName::DatabaseRetry)
         .with_tag("error", err_type)
         .with_tag("type", "bigtable");
     if let Some(code) = code {
@@ -303,7 +308,7 @@ pub fn retryable_grpcio_err(metrics: &Arc<StatsdClient>) -> impl Fn(&grpcio::Err
                     metric(
                         metrics,
                         "CallFailure",
-                        Some(&format!("{:?}", grpc_call_status)),
+                        Some(&format!("{grpc_call_status:?}")),
                     );
                 }
                 retry
@@ -768,10 +773,7 @@ impl BigTableClientImpl {
                         "reliable_state",
                     )?)
                     .map_err(|e| {
-                        DbError::DeserializeString(format!(
-                            "Could not parse reliable_state {:?}",
-                            e
-                        ))
+                        DbError::DeserializeString(format!("Could not parse reliable_state {e:?}"))
                     })?,
                 );
             }
@@ -799,7 +801,8 @@ impl BigTableClientImpl {
     fn user_to_row(&self, user: &User, version: &Uuid) -> Row {
         let row_key = user.uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let expiry =
+            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
 
         let mut cells: Vec<cell::Cell> = vec![
             cell::Cell {
@@ -1005,7 +1008,7 @@ impl DbClient for BigTableClientImpl {
                 // https://github.com/mozilla-services/autopush-rs/pull/640
                 trace!("🉑 Dropping an incomplete user record for {}", row_key);
                 self.metrics
-                    .incr_with_tags("database.drop_user")
+                    .incr_with_tags(MetricName::DatabaseDropUser)
                     .with_tag("reason", "incomplete_record")
                     .send();
                 self.remove_user(uaid).await?;
@@ -1081,7 +1084,8 @@ impl DbClient for BigTableClientImpl {
         // easy/efficient
         let row_key = uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let expiry =
+            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
 
         // Note: updating the version column isn't necessary here because this
         // write only adds a new (or updates an existing) column with a 0 byte
@@ -1124,7 +1128,8 @@ impl DbClient for BigTableClientImpl {
 
         // and write a new version cell
         let mut row = Row::new(row_key);
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let expiry =
+            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
         row.cells
             .insert(ROUTER_FAMILY.to_owned(), vec![new_version_cell(expiry)]);
         mutations.extend(self.get_mutations(row.cells)?);
@@ -1256,7 +1261,7 @@ impl DbClient for BigTableClientImpl {
         self.write_row(row).await?;
 
         self.metrics
-            .incr_with_tags("notification.message.stored")
+            .incr_with_tags(MetricName::NotificationMessageStored)
             .with_tag("topic", &is_topic.to_string())
             .with_tag("database", &self.name())
             .send();
@@ -1295,7 +1300,8 @@ impl DbClient for BigTableClientImpl {
             &row_key,
             timestamp.to_be_bytes().to_vec()
         );
-        let expiry = std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL);
+        let expiry =
+            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
         let mut row = Row::new(row_key.clone());
 
         row.cells.insert(
@@ -1327,7 +1333,7 @@ impl DbClient for BigTableClientImpl {
         debug!("🉑🔥 Deleting message {}", &row_key);
         self.delete_row(&row_key).await?;
         self.metrics
-            .incr_with_tags("notification.message.deleted")
+            .incr_with_tags(MetricName::NotificationMessageDeleted)
             .with_tag("database", &self.name())
             .send();
         Ok(())
@@ -1478,7 +1484,7 @@ impl DbClient for BigTableClientImpl {
         let row_key = reliability_id.to_owned();
 
         let mut row = Row::new(row_key);
-        let expiry = SystemTime::now() + Duration::from_secs(RELIABLE_LOG_TTL);
+        let expiry = SystemTime::now() + Duration::from_secs(RELIABLE_LOG_TTL.num_seconds() as u64);
 
         // Log the latest transition time for this id.
         let cells: Vec<cell::Cell> = vec![cell::Cell {

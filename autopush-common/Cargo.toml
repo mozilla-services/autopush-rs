@@ -19,14 +19,10 @@ deadpool.workspace = true
 fernet.workspace = true
 futures.workspace = true
 futures-util.workspace = true
-hex.workspace = true
-httparse.workspace = true
 lazy_static.workspace = true
 mockall.workspace = true
 openssl.workspace = true
-rand.workspace = true
 regex.workspace = true
-reqwest.workspace = true
 sentry-backtrace.workspace = true
 sentry.workspace = true
 serde.workspace = true
@@ -39,6 +35,8 @@ slog-mozlog-json.workspace = true
 slog-scope.workspace = true
 slog-stdlog.workspace = true
 slog-term.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 url.workspace = true
@@ -46,7 +44,7 @@ url.workspace = true
 again = "0.1"
 async-trait = "0.1"
 derive_builder = "0.20"
-gethostname = "0.4"
+gethostname = "1.0"
 num_cpus = "1.16"
 woothee = "0.13"
 
@@ -57,16 +55,20 @@ google-cloud-rust-raw = { version = "0.16", default-features = false, features =
 ], optional = true }
 grpcio = { version = "=0.13.0", features = ["openssl"], optional = true }
 grpcio-sys = { version = "=0.13.0", optional = true }
+prometheus-client = { version = "0.23", optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 form_urlencoded = { version = "1.2", optional = true }
 
-redis = { version = "0.27", optional = true }
+deadpool-redis = { version = "0.21", optional = true }
+redis-module = { version = "2.0", optional = true }
+redis = { version = "0.31", optional = true }
 
 [dev-dependencies]
-mockito = "0.31"
+actix-rt = "2.8"
+mockito = "0.31"                                     # mockito > 0.31 will require significant reworking of the tests and is not critical yet.
+redis-test = { version = "0.11", features = ["aio"] }
 tempfile = "3.2.0"
 tokio = { workspace = true, features = ["macros"] }
-actix-rt = "2.8"
 
 [features]
 # NOTE: Do not set a `default` here, rather specify them in the calling library.
@@ -82,4 +84,9 @@ bigtable = [
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.
-reliable_report = ["dep:redis"]
+reliable_report = [
+    "dep:redis",
+    "dep:prometheus-client",
+    "dep:redis-module",
+    "dep:deadpool-redis",
+]

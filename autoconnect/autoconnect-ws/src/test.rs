@@ -5,7 +5,7 @@ use futures::pin_mut;
 
 use autoconnect_common::{
     protocol::ServerMessage,
-    test_support::{hello_db, HELLO, UA},
+    test_support::{hello_db, hello_json, UA},
 };
 use autoconnect_settings::{AppState, Settings};
 use autoconnect_ws_sm::UnidentifiedClient;
@@ -28,10 +28,9 @@ async fn handshake_timeout() {
         ..Settings::test_settings()
     };
     let client = uclient(AppState::from_settings(settings).unwrap());
-
     let s = stream! {
         tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
-        yield Ok(actix_ws::Message::Text(HELLO.into()));
+        yield Ok(actix_ws::Message::Text(hello_json()));
     };
     pin_mut!(s);
     let err = webpush_ws(client, &mut MockSession::new(), s)
@@ -55,7 +54,7 @@ async fn basic() {
     session.expect_ping().never();
 
     let s = futures::stream::iter(vec![
-        Ok(actix_ws::Message::Text(HELLO.into())),
+        Ok(actix_ws::Message::Text(hello_json())),
         Ok(actix_ws::Message::Nop),
     ]);
     webpush_ws(client, &mut session, s)
@@ -78,7 +77,7 @@ async fn websocket_ping() {
     session.expect_ping().times(1).return_once(|_| Ok(()));
 
     let s = stream! {
-        yield Ok(actix_ws::Message::Text(HELLO.into()));
+        yield Ok(actix_ws::Message::Text(hello_json()));
         tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
     };
     pin_mut!(s);
@@ -103,7 +102,7 @@ async fn auto_ping_timeout() {
     session.expect_ping().times(1).return_once(|_| Ok(()));
 
     let s = stream! {
-        yield Ok(actix_ws::Message::Text(HELLO.into()));
+        yield Ok(actix_ws::Message::Text(hello_json()));
         tokio::time::sleep(Duration::from_secs_f32(0.35)).await;
     };
     pin_mut!(s);
@@ -127,7 +126,7 @@ async fn auto_ping_timeout_after_pong() {
     session.expect_ping().times(2).returning(|_| Ok(()));
 
     let s = stream! {
-        yield Ok(actix_ws::Message::Text(HELLO.into()));
+        yield Ok(actix_ws::Message::Text(hello_json()));
         tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
         yield Ok(actix_ws::Message::Pong("".into()));
         tokio::time::sleep(Duration::from_secs_f32(0.35)).await;

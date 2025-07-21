@@ -883,7 +883,7 @@ async def test_basic_delivery_with_tracked_vapid(
         jresp = json.loads(resp.text)
         assert jresp["accepted"] == 1
         for other in ["accepted_webpush", "received", "transmitted_webpush", "transmitted"]:
-            assert jresp[other] == 0, f"reliablity state '{other}' was not 0"
+            assert jresp[other] == 0, f"reliability state '{other}' was not 0"
 
 
 async def test_basic_delivery_with_invalid_vapid(

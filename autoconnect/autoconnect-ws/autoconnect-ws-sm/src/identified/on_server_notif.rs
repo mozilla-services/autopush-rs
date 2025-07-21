@@ -1,8 +1,11 @@
-use cadence::{Counted, CountedExt};
+use std::mem;
+
+use cadence::Counted;
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autopush_common::{
-    db::CheckStorageResponse, notification::Notification, util::sec_since_epoch,
+    db::CheckStorageResponse, metric_name::MetricName, metrics::StatsdClientExt,
+    notification::Notification, util::sec_since_epoch,
 };
 
 use super::WebPushClient;
@@ -12,7 +15,7 @@ impl WebPushClient {
     /// Handle a `ServerNotification` for this user
     ///
     /// `ServerNotification::Disconnect` is emitted by the same autoconnect
-    /// node recieving it when a User has logged into that same node twice to
+    /// node receiving it when a User has logged into that same node twice to
     /// "Ghost" (disconnect) the first user's session for its second session.
     ///
     /// Other variants are emitted by autoendpoint
@@ -40,11 +43,16 @@ impl WebPushClient {
     /// Send a Direct Push Notification to this user
     fn notif(&mut self, notif: Notification) -> Result<ServerMessage, SMError> {
         trace!("WebPushClient::notif Sending a direct notif");
+        // The notification we return here is sent directly to the client.
+        // No reliability state is recorded.
+        let response = notif.clone();
         if notif.ttl != 0 {
-            self.ack_state.unacked_direct_notifs.push(notif.clone());
+            // Consume the original notification by adding it to the
+            // unacked stack. This will eventually record the state.
+            self.ack_state.unacked_direct_notifs.push(notif);
         }
-        self.emit_send_metrics(&notif, "Direct");
-        Ok(ServerMessage::Notification(notif))
+        self.emit_send_metrics(&response, "Direct");
+        Ok(ServerMessage::Notification(response))
     }
 
     /// Top level read of Push Notifications from storage
@@ -116,24 +124,33 @@ impl WebPushClient {
         // Filter out TTL expired messages
         let now_sec = sec_since_epoch();
         // Topic messages require immediate deletion from the db
-        let mut expired_topic_sort_keys = vec![];
+        let mut expired_messages = vec![];
+        // NOTE: Vec::extract_if (stabilizing soon) can negate the need for the
+        // inner msg.clone()
         messages.retain(|msg| {
             if !msg.expired(now_sec) {
                 return true;
             }
             if msg.sortkey_timestamp.is_none() {
-                expired_topic_sort_keys.push(msg.chidmessageid());
+                expired_messages.push(msg.clone());
             }
-            // XXX: record ReliabilityState::Expired?
             false
         });
         // TODO: A batch remove_messages would be nicer
-        for sort_key in expired_topic_sort_keys {
-            trace!("🉑 removing expired topic sort key: {sort_key}");
+        #[allow(unused_mut)]
+        for mut msg in expired_messages {
+            let chidmessageid = msg.chidmessageid();
+            trace!("🉑 removing expired topic chidmessageid: {chidmessageid}");
             self.app_state
                 .db
-                .remove_message(&self.uaid, &sort_key)
+                .remove_message(&self.uaid, &chidmessageid)
                 .await?;
+            #[cfg(feature = "reliable_report")]
+            msg.record_reliability(
+                &self.app_state.reliability,
+                autopush_common::reliability::ReliabilityState::Expired,
+            )
+            .await;
         }
 
         self.flags.increment_storage = !include_topic && timestamp.is_some();
@@ -311,6 +328,15 @@ impl WebPushClient {
             .db
             .increment_storage(&self.uaid, timestamp)
             .await?;
+        #[cfg(feature = "reliable_report")]
+        {
+            let mut notifs = mem::take(&mut self.ack_state.acked_stored_timestamp_notifs);
+            self.record_state(
+                &mut notifs,
+                autopush_common::reliability::ReliabilityState::Delivered,
+            )
+            .await;
+        }
         self.flags.increment_storage = false;
         Ok(())
     }
@@ -331,7 +357,7 @@ impl WebPushClient {
             // trigger a re-register
             self.app_state
                 .metrics
-                .incr_with_tags("ua.expiration")
+                .incr_with_tags(MetricName::UaExpiration)
                 .with_tag("reason", "too_many_messages")
                 .send();
             self.app_state.db.remove_user(&self.uaid).await?;
@@ -345,7 +371,7 @@ impl WebPushClient {
         let metrics = &self.app_state.metrics;
         let ua_info = &self.ua_info;
         metrics
-            .incr_with_tags("ua.notification.sent")
+            .incr_with_tags(MetricName::UaNotificationSent)
             .with_tag("source", source)
             .with_tag("topic", &notif.topic.is_some().to_string())
             .with_tag("os", &ua_info.metrics_os)

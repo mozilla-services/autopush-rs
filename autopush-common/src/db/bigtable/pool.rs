@@ -5,7 +5,6 @@ use std::{
 };
 
 use actix_web::rt;
-use async_trait::async_trait;
 use cadence::StatsdClient;
 use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, RecycleError, Timeouts};
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
@@ -66,24 +65,21 @@ impl BigTablePool {
         let bt_settings = BigTableDbSettings::try_from(settings.db_settings.as_str())?;
         debug!("🉑 DSN: {}", &endpoint);
         // Url::parsed() doesn't know how to handle `grpc:` schema, so it returns "null".
-        let parsed = url::Url::parse(endpoint).map_err(|e| {
-            DbError::ConnectionError(format!("Invalid DSN: {:?} : {:?}", endpoint, e))
-        })?;
+        let parsed = url::Url::parse(endpoint)
+            .map_err(|e| DbError::ConnectionError(format!("Invalid DSN: {endpoint:?} : {e:?}")))?;
         let connection = format!(
             "{}:{}",
             parsed
                 .host_str()
                 .ok_or_else(|| DbError::ConnectionError(format!(
-                    "Invalid DSN: Unparsable host {:?}",
-                    endpoint
+                    "Invalid DSN: Unparsable host {endpoint:?}"
                 )))?,
             parsed.port().unwrap_or(DEFAULT_GRPC_PORT)
         );
         // Make sure the path is empty.
         if !parsed.path().is_empty() {
             return Err(DbError::ConnectionError(format!(
-                "Invalid DSN: Table paths belong in AUTO*_DB_SETTINGS `tab: {:?}",
-                endpoint
+                "Invalid DSN: Table paths belong in AUTO*_DB_SETTINGS `tab: {endpoint:?}`"
             )));
         }
         debug!("🉑 connection string {}", &connection);
@@ -175,11 +171,9 @@ impl fmt::Debug for BigtableClientManager {
     }
 }
 
-#[async_trait]
 impl Manager for BigtableClientManager {
     type Error = BigTableError;
     type Type = BigtableDb;
-    // TODO: Deadpool 0.11+ introduces new lifetime constratints.
 
     /// Create a new Bigtable Client with it's own channel.
     /// `BigtableClient` is the most atomic we can go.
@@ -203,14 +197,14 @@ impl Manager for BigtableClientManager {
         if let Some(timeout) = self.settings.database_pool_connection_ttl {
             if Instant::now() - metrics.created > timeout {
                 debug!("🏊 Recycle requested (old).");
-                return Err(RecycleError::Message("Connection too old".to_owned()));
+                return Err(RecycleError::message("Connection too old"));
             }
         }
         if let Some(timeout) = self.settings.database_pool_max_idle {
             if let Some(recycled) = metrics.recycled {
                 if Instant::now() - recycled > timeout {
                     debug!("🏊 Recycle requested (idle).");
-                    return Err(RecycleError::Message("Connection too idle".to_owned()));
+                    return Err(RecycleError::message("Connection too idle"));
                 }
             }
         }
@@ -221,7 +215,7 @@ impl Manager for BigtableClientManager {
             .inspect_err(|e| debug!("🏊 Recycle requested (health). {:?}", e))?
         {
             debug!("🏊 Health check failed");
-            return Err(RecycleError::Message("Health check failed".to_owned()));
+            return Err(RecycleError::message("Health check failed"));
         }
 
         Ok(())

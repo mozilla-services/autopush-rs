@@ -43,9 +43,11 @@ pub async fn push_route(
             .await;
     }
     // Attempt to send the notification to the UA using WebSocket protocol, or store on failure.
+    // NOTE: Since this clones the notification, there is a potential to
+    // double count the reliability state.
     let result = app_state
         .clients
-        .notify(uaid.into_inner(), notif.clone())
+        .notify(uaid.into_inner(), notif.clone_without_reliability_state())
         .await;
     if result.is_ok() {
         #[cfg(feature = "reliable_report")]
@@ -57,6 +59,13 @@ pub async fn push_route(
             .await;
         HttpResponse::Ok().finish()
     } else {
+        #[cfg(feature = "reliable_report")]
+        notif
+            .record_reliability(
+                &app_state.reliability,
+                autopush_common::reliability::ReliabilityState::Errored,
+            )
+            .await;
         HttpResponse::NotFound().body("Client not available")
     }
 }
