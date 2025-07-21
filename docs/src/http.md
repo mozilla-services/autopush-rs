@@ -548,9 +548,11 @@ given UAID is active.
 
 **Call:**
 
-````http GET /v1/check/{UAID}
+```
+http GET /v1/check/{UAID}
+```
 
-***Parameters:***
+**_Parameters:_**
 
 None
 
@@ -558,7 +560,7 @@ None
 
 ```json
 {"status":{StatusCode},"uaid":{UAID}}
-````
+```
 
 Where `StatusCode` is an HTTP status code of
 

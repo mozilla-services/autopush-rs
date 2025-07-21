@@ -251,11 +251,11 @@ pub async fn check_uaid(req_uaid: ReqUaid, app_state: Data<AppState>) -> ApiResu
     match app_state.db.get_user(&req_uaid.uaid).await {
         Ok(Some(_user)) => {
             debug!("🌍 UAID {req_uaid} good");
-            response["status"] = "200".into();
+            response["status"] = actix_http::StatusCode::OK.as_u16().into();
         }
         Ok(None) => {
             debug!("🌍 UAID {req_uaid} bad");
-            response["status"] = "404".into();
+            response["status"] = actix_http::StatusCode::NOT_FOUND.as_u16().into();
         }
         Err(e) => {
             warn!("🌍⚠ UAID check db bad");

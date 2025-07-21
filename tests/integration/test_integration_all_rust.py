@@ -743,7 +743,6 @@ async def test_check_uaid(test_client: AsyncPushTestClient) -> None:
         assert jresp["status"] == "404"
     """Now try to see if the UAID we just registered is registered"""
     async with httpx.AsyncClient() as httpx_client:
-        bogus_uaid = uuid.uuid4().hex
         response = await httpx_client.get(f"{endpoint}/v1/check/{test_client.uaid}")
         jresp = json.loads(response.text)
         assert jresp["status"] == "200"
