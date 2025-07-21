@@ -30,6 +30,8 @@ spec:
               value:
             - name: LOCUST_LOGFILE
               value:
+            - name: AUTOPUSH_VAPID_KEY
+              value:
           resources:
             # Forcing requests and limits to match to ensured pods run in Guaranteed QoS class
             # Using 1 core per worker based on recommendations from https://docs.locust.io/en/stable/running-distributed.html

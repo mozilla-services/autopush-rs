@@ -95,7 +95,7 @@ your `GOOGLE_APPLICATION_CREDENTIALS`. See [How Application Default Credentials 
 To build the documentation, you will need additional packages installed:
 
 ``` bash
-cargo install mdbook
+cargo install mdbook mdbook-mermaid
 ```
 
 You can then build the documentation:

@@ -116,7 +116,7 @@ impl FcmClient {
         let response = self
             .http_client
             .post(self.endpoint.clone())
-            .header("Authorization", format!("Bearer {}", token))
+            .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
             .json(&message)
             .timeout(self.timeout)

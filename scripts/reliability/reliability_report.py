@@ -14,6 +14,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import statistics
 import time
 from typing import Any, cast, Dict, List
@@ -219,7 +220,7 @@ class Redis:
         except Exception as e:
             log.error(e)
 
-    async def gc(self) -> Dict[str, int | float]:
+    async def gc(self) -> Dict[str, int]:
         """Perform quick garbage collection. This includes pruning expired elements,
         decrementing counters and potentially logging the result.
         This sort of garbage collection should happen quite frequently.
@@ -234,19 +235,33 @@ class Redis:
 
         # Fetch the candidates to purge.
         mutations = list()
+        # records that were not found and presumed to have been cleaned elsewhere.
+        skipped = 0
         # python redis escapes the `-1` value. Use a literal start value.
         purged = cast(
             list[bytes], await self.redis.zrange(expiry, 0, int(start), byscore=True)
         )
-        # Fix up the counts
-        async with self.redis.pipeline() as pipeline:
-            for key in purged:
+        # Note: if a key is not found, it can kill the entire pipeline. Don't bulk process for now.
+        resolved_keys = []
+        for key in purged:
+            async with self.redis.pipeline() as pipeline:
                 # clean up the counts.
                 parts = key.split(b"#", 2)
                 state = parts[0]
+                # if we can't delete the key, don't decrement it.
+                pipeline.zrem(expiry, key)
                 self.log.debug(f"🪦 decr {state.decode()}")
                 pipeline.hincrby(counts, state.decode(), -1)
-                pipeline.zrem(expiry, key)
+                try:
+                    await pipeline.execute()
+                except google_exceptions.NotFound as e:
+                    self.log.warning(f"⚠ Bulk purge failed to delete: {e}")
+                    # The key is gone, something else may have deleted it, so
+                    # we'll presume that it also updated the expired record.
+                    skipped += 1
+                    continue
+                # add the key to the list of keys that we know we managed
+                resolved_keys.append(key)
                 # and add the log info.
                 mutations.append(
                     RowMutationEntry(
@@ -263,24 +278,25 @@ class Redis:
                         ),
                     )
                 )
-            if len(purged) > 0:
-                # make the changes to redis,
-                await pipeline.execute()
-                # then add the bigtable logs
-                if self.bigtable:
-                    table = self.bigtable.get_table(
-                        self.settings.bigtable.get("instance"),
-                        self.settings.bigtable.get("table"),
-                    )
-                    await table.bulk_mutate_rows(mutations)
+        # Now that the redis side is cleaned up, let's update the Bigtable data.
+        if len(mutations) > 0:
+            # make the changes to redis,
+            # then add the bigtable logs
+            if self.bigtable:
+                table = self.bigtable.get_table(
+                    self.settings.bigtable.get("instance"),
+                    self.settings.bigtable.get("table"),
+                )
+                await table.bulk_mutate_rows(mutations)
 
         result = {
-            "trimmed": len(purged),
-            "time": int(start * 1000) - (time.time() * 1000),
+            "trimmed": len(resolved_keys),
+            "skipped": skipped,
+            "time": int(time.time() - start) * 1000,
         }
-        if len(purged):
+        if len(resolved_keys):
             self.log.info(
-                f"🪦 Trimmed {result.get('trimmed')} in {result.get('time')}ms"
+                f"🪦 Trimmed {result.get('trimmed')} (skipped: {skipped}) in {result.get('time')}ms"
             )
         return result
 
@@ -408,7 +424,7 @@ async def write_report(
 ):
     """Write the reports to the bucket"""
     for style in settings.output:
-        blob_name = f"{report_name}.{style}"
+        blob_name = f"{report_name.strip()}.{style.strip(", ")}"
         log.info(f"Creating {blob_name}")
         bucket.blob(blob_name).open("w").write(await bigtable.output(style))
 
@@ -425,6 +441,18 @@ async def clean_bucket(
     for blob in blobs:
         log.info(f"🗑 Deleting {blob.name} -> {blob.id}")
         blob.delete()
+
+
+def clean_formats(formats: str, report_formats: List[str]) -> List[str]:
+    """One-off function to filter the requested formats against the list of
+    known formats and strip any unexpected separation characters.
+    """
+
+    remove_quotes = re.sub(r"[\"']", "", formats)
+    split_parts = re.split(r"[ ,]+", remove_quotes)
+    non_empty_parts = filter(len, split_parts)
+    valid_parts = filter(lambda x: x in report_formats, non_empty_parts)
+    return list(valid_parts)
 
 
 def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
@@ -558,11 +586,7 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     if args.report_bucket_name is not None:
         formats = os.environ.get("AUTOTRACK_OUTPUT", "md json")
         if formats:
-            setattr(
-                args,
-                "output",
-                list(filter(lambda x: x in report_formats, formats.split(" "))),
-            )
+            setattr(args, "output", clean_formats(formats, report_formats))
     return args
 
 
@@ -579,7 +603,10 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
     bigtable = BigtableScanner(log, settings)
     # do the Redis counter cleanup.
     counter = Redis(log, settings)
-    await counter.gc()
+    try:
+        await counter.gc()
+    except google_exceptions.NotFound as e:
+        log.warning(f"Garbage collection reported an error: {e}")
     if await counter.get_lock():
         await counter.terminal_snapshot()
         # if we have a bucket to write to, write the reports to the bucket.

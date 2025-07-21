@@ -5,6 +5,7 @@
 -->
 * [Introduction](index.md)
 * [General Architecture](architecture.md)
+  * [Push Reliability Tracking](reliability.md)
   * [Legacy table rotation](table_rotation.md)
 * [Install](install.md)
   * [Apple Push Notification (APNs) guide](apns.md)
