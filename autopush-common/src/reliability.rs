@@ -243,13 +243,6 @@ impl PushReliability {
                     warn!("🔍⚠️ Could not create state key: {:?}", e);
                     ApcErrorKind::GeneralError("Could not create the state key".to_owned())
                 })?;
-            // We were able to create the key, so we can increment the count.
-            conn.hincr::<_, _, _, ()>(COUNTS, new.to_string(), 1)
-                .await
-                .map_err(|e| {
-                    warn!("🔍⚠️ Could not increment received count: {:?}", e);
-                    ApcErrorKind::GeneralError("Could not increment the received count".to_owned())
-                })?;
         } else {
             trace!("🔍 Checking {:?}", &old);
             // safety check (yes, there's still a slight chance of a race, but it's small)
@@ -664,13 +657,6 @@ mod tests {
                 Ok(redis::Value::Okay),
             ),
             MockCmd::new(
-                redis::cmd("HINCRBY")
-                    .arg(COUNTS)
-                    .arg(new.to_string())
-                    .arg(1),
-                Ok(redis::Value::Okay),
-            ),
-            MockCmd::new(
                 redis::cmd("WATCH")
                     .arg(format!("state.{test_id}"))
                     .arg(EXPIRY),
@@ -757,12 +743,6 @@ mod tests {
         let mut mock_pipe = redis::Pipeline::new();
         mock_pipe
             .cmd("MULTI")
-            .ignore()
-            // Increment the new state
-            .cmd("HINCRBY")
-            .arg(COUNTS)
-            .arg(new.to_string())
-            .arg(1)
             .ignore()
             // Decrement the old state
             .cmd("HINCRBY")
