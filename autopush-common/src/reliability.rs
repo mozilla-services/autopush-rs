@@ -15,8 +15,8 @@ use deadpool_redis::Config;
 use prometheus_client::{
     encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
 };
-use redis::Pipeline;
 use redis::{aio::ConnectionLike, AsyncCommands};
+use redis::{Pipeline, Value};
 
 use crate::db::client::DbClient;
 use crate::errors::{ApcError, ApcErrorKind, Result};
@@ -240,12 +240,19 @@ impl PushReliability {
             let options = redis::SetOptions::default()
                 .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(NO_EXPIRATION)))
                 .conditional_set(redis::ExistenceCheck::NX);
-            conn.set_options::<_, _, ()>(&state_key, new.to_string(), options)
+            let result = conn
+                .set_options::<_, _, Value>(&state_key, new.to_string(), options)
                 .await
                 .map_err(|e| {
                     warn!("🔍⚠️ Could not create state key: {:?}", e);
                     ApcErrorKind::GeneralError("Could not create the state key".to_owned())
                 })?;
+            if result != redis::Value::Nil {
+                error!("🔍⚠️ Tried to recreate state_key {state_key}");
+                return Err(
+                    ApcErrorKind::GeneralError(format!("Tried to recreate state_key")).into(),
+                );
+            }
         } else {
             trace!("🔍 Checking {:?}", &old);
             // safety check (yes, there's still a slight chance of a race, but it's small)
