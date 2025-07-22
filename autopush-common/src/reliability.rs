@@ -232,7 +232,10 @@ impl PushReliability {
         // The first state is special, since we need to create the `state_key`.
         if new == ReliabilityState::Received {
             trace!("🔍 Creating new record");
-            // we can't perform this in a transaction because we can only increment if the set succeeds.
+            // we can't perform this in a transaction because we can only increment if the set succeeds,
+            // and values aren't returned when creating values in transactions. In order to do this
+            // from inside the transaction, you would need to create a function, and that feels a bit
+            // too heavy for this.
             // Create the new `state.{id}` key if it does not exist, and set the expiration.
             let options = redis::SetOptions::default()
                 .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(NO_EXPIRATION)))
