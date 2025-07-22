@@ -247,7 +247,7 @@ impl PushReliability {
                     warn!("🔍⚠️ Could not create state key: {:?}", e);
                     ApcErrorKind::GeneralError("Could not create the state key".to_owned())
                 })?;
-            if result != redis::Value::Nil {
+            if result == redis::Value::Nil {
                 error!("🔍⚠️ Tried to recreate state_key {state_key}");
                 return Err(
                     ApcErrorKind::GeneralError(format!("Tried to recreate state_key")).into(),
