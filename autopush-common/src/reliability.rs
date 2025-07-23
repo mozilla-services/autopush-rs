@@ -250,7 +250,7 @@ impl PushReliability {
             if result == redis::Value::Nil {
                 error!("🔍⚠️ Tried to recreate state_key {state_key}");
                 return Err(
-                    ApcErrorKind::GeneralError(format!("Tried to recreate state_key")).into(),
+                    ApcErrorKind::GeneralError("Tried to recreate state_key".to_string()).into(),
                 );
             }
         } else {
