@@ -229,49 +229,6 @@ impl PushReliability {
 
         let state_key = format!("state.{id}");
         trace!("🔍 state key: {}", &state_key);
-        // The first state is special, since we need to create the `state_key`.
-        if new == ReliabilityState::Received {
-            trace!("🔍 Creating new record");
-            // we can't perform this in a transaction because we can only increment if the set succeeds,
-            // and values aren't returned when creating values in transactions. In order to do this
-            // from inside the transaction, you would need to create a function, and that feels a bit
-            // too heavy for this.
-            // Create the new `state.{id}` key if it does not exist, and set the expiration.
-            let options = redis::SetOptions::default()
-                .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(NO_EXPIRATION)))
-                .conditional_set(redis::ExistenceCheck::NX);
-            let result = conn
-                .set_options::<_, _, Value>(&state_key, new.to_string(), options)
-                .await
-                .map_err(|e| {
-                    warn!("🔍⚠️ Could not create state key: {:?}", e);
-                    ApcErrorKind::GeneralError("Could not create the state key".to_owned())
-                })?;
-            if result == redis::Value::Nil {
-                error!("🔍⚠️ Tried to recreate state_key {state_key}");
-                return Err(
-                    ApcErrorKind::GeneralError("Tried to recreate state_key".to_string()).into(),
-                );
-            }
-        } else {
-            trace!("🔍 Checking {:?}", &old);
-            // safety check (yes, there's still a slight chance of a race, but it's small)
-            if let Some(old) = old {
-                let check_state: String = conn.get(&state_key).await?;
-                trace!("🔍 Checking state for {}: {:?}", id, &check_state);
-                if check_state != old.to_string() {
-                    trace!(
-                        "🔍 Attempting to update state for {} from {} to {}, but current state is different: {:?}",
-                        id, old, new, check_state
-                    );
-                    return Err(ApcErrorKind::GeneralError(
-                        "State mismatch during reliability record update".to_owned(),
-                    )
-                    .into());
-                }
-            };
-        }
-
         /*
         ## Reliability lock and adjustment
 
@@ -313,6 +270,50 @@ impl PushReliability {
             self.retries,
             || ApcErrorKind::GeneralError("Exceeded reliability record retry attempts".to_owned()),
             async |conn, pipe: &mut Pipeline| {
+
+                // The first state is special, since we need to create the `state_key`.
+                if new == ReliabilityState::Received {
+                    trace!("🔍 Creating new record");
+                    // we can't perform this in a transaction because we can only increment if the set succeeds,
+                    // and values aren't returned when creating values in transactions. In order to do this
+                    // from inside the transaction, you would need to create a function, and that feels a bit
+                    // too heavy for this.
+                    // Create the new `state.{id}` key if it does not exist, and set the expiration.
+                    let options = redis::SetOptions::default()
+                        .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(NO_EXPIRATION)))
+                        .conditional_set(redis::ExistenceCheck::NX);
+                    let result = conn
+                        .set_options::<_, _, Value>(&state_key, new.to_string(), options)
+                        .await
+                        .map_err(|e| {
+                            // dbg!(&e);
+                            warn!("🔍⚠️ Could not create state key: {:?}", e);
+                            ApcErrorKind::GeneralError("Could not create the state key".to_owned())
+                        })?;
+                    if result == redis::Value::Nil {
+                        error!("🔍⚠️ Tried to recreate state_key {state_key}");
+                        return Err(
+                            ApcErrorKind::GeneralError("Tried to recreate state_key".to_string()),
+                        );
+                    }
+                } else {
+                    trace!("🔍 Checking {:?}", &old);
+                    // safety check (yes, there's still a slight chance of a race, but it's small)
+                    if let Some(old) = old {
+                        let check_state: String = conn.get(&state_key).await?;
+                        trace!("🔍 Checking state for {}: {:?}", id, &check_state);
+                        if check_state != old.to_string() {
+                            trace!(
+                                "🔍 Attempting to update state for {} from {} to {}, but current state is different: {:?}",
+                                id, old, new, check_state
+                            );
+                            return Err(ApcErrorKind::GeneralError(
+                                "State mismatch during reliability record update".to_owned(),
+                            ));
+                        }
+                    };
+                }
+
                 // remove the old state from the expiry set, if it exists.
                 // There should only be one message at a given state in the `expiry` table.
                 // Since we only use that table to track messages that may expire. (We
@@ -343,6 +344,7 @@ impl PushReliability {
                 // Bump up the new state count, and set the state key's state if it still exists.
                 pipe.hincr(COUNTS, new.to_string(), 1);
                 let options = redis::SetOptions::default()
+                    .with_expiration(redis::SetExpiry::KEEPTTL)
                     .conditional_set(redis::ExistenceCheck::XX)
                     .get(true);
                 pipe.set_options(&state_key, new.to_string(), options);
@@ -389,9 +391,9 @@ impl PushReliability {
             },
         )
         .await
-        .map_err(|e| {
+        .inspect_err(|e| {
+            // dbg!(&e);
             warn!("🔍⚠️Error occurred during transaction: {:?}", e);
-            e
         })?;
         Ok(())
     }
@@ -633,6 +635,8 @@ mod tests {
         }
         .to_string();
 
+        let state_id = format!("state.{test_id}");
+
         let mut pipeline = redis::Pipeline::new();
         // We're adding an element so we have something to record.
         pipeline
@@ -650,26 +654,26 @@ mod tests {
             .arg(1)
             // Create/update the state.holder value.
             .cmd("SET")
-            .arg(format!("state.{test_id}"))
+            .arg(&state_id)
             .arg(new.to_string())
             .arg("XX")
             .arg("GET")
+            .arg("KEEPTTL")
             // Run the transaction
             .cmd("EXEC");
+
         let mut conn = MockRedisConnection::new(vec![
             MockCmd::new(
+                redis::cmd("WATCH").arg(&state_id).arg(EXPIRY),
+                Ok(redis::Value::Okay),
+            ),
+            MockCmd::new(
                 redis::cmd("SET")
-                    .arg(format!("state.{test_id}"))
+                    .arg(&state_id)
                     .arg(new.to_string())
                     .arg("NX")
                     .arg("EX")
                     .arg(expr),
-                Ok(redis::Value::Okay),
-            ),
-            MockCmd::new(
-                redis::cmd("WATCH")
-                    .arg(format!("state.{test_id}"))
-                    .arg(EXPIRY),
                 Ok(redis::Value::Okay),
             ),
             MockCmd::new(
@@ -750,6 +754,9 @@ mod tests {
             state: old,
         }
         .to_string();
+
+        let state_key = format!("state.{test_id}");
+
         let mut mock_pipe = redis::Pipeline::new();
         mock_pipe
             .cmd("MULTI")
@@ -770,31 +777,29 @@ mod tests {
             .arg(expr)
             .arg(new_key)
             .ignore()
+            .cmd("HINCRBY")
+            .arg(COUNTS)
+            .arg(new.to_string())
+            .arg(1)
+            .cmd("SET")
+            .arg(&state_key)
+            .arg(new.to_string())
+            .arg("XX")
+            .arg("GET")
+            .arg("KEEPTTL")
+            .ignore()
             .cmd("EXEC")
             .ignore();
 
         let mut conn = MockRedisConnection::new(vec![
             // Create the new state
             MockCmd::new(
-                redis::cmd("SET")
-                    .arg(format!("state.{test_id}"))
-                    .arg(new.to_string())
-                    .arg("NX")
-                    .arg("EX")
-                    .arg(expr),
-                Ok(redis::Value::Okay),
-            ),
-            // Increment the count for new
-            MockCmd::new(
-                redis::cmd("HINCRBY")
-                    .arg(COUNTS)
-                    .arg(new.to_string())
-                    .arg(1),
+                redis::cmd("WATCH").arg(&state_key).arg(EXPIRY),
                 Ok(redis::Value::Okay),
             ),
             MockCmd::new(
-                redis::cmd("WATCH").arg(COUNTS).arg(EXPIRY),
-                Ok(redis::Value::Okay),
+                redis::cmd("GET").arg(&state_key),
+                Ok(redis::Value::SimpleString(old.to_string())),
             ),
             // NOTE: Technically, since we `.ignore()` these, we could just have a
             // Vec containing just `Okay`. I'm being a bit pedantic here because I know
@@ -805,16 +810,20 @@ mod tests {
                 Ok(redis::Value::Array(vec![
                     redis::Value::Okay,
                     // Match the number of commands that are being held for processing
-                    redis::Value::SimpleString("QUEUED".to_owned()),
-                    redis::Value::SimpleString("QUEUED".to_owned()),
-                    redis::Value::SimpleString("QUEUED".to_owned()),
-                    redis::Value::SimpleString("QUEUED".to_owned()),
+                    redis::Value::SimpleString("QUEUED".to_owned()), // multi
+                    redis::Value::SimpleString("QUEUED".to_owned()), // hincrby
+                    redis::Value::SimpleString("QUEUED".to_owned()), // zrem
+                    redis::Value::SimpleString("QUEUED".to_owned()), // zadd
+                    redis::Value::SimpleString("QUEUED".to_owned()), // hincrby
+                    redis::Value::SimpleString("QUEUED".to_owned()), // set
                     // the exec has been called, return an array containing the results.
                     redis::Value::Array(vec![
-                        redis::Value::Okay,
-                        redis::Value::Okay,
-                        redis::Value::Okay,
-                        redis::Value::Okay,
+                        redis::Value::Okay, //Multi
+                        redis::Value::Okay, //hincrby
+                        redis::Value::Okay, //zrem
+                        redis::Value::Okay, //zadd
+                        redis::Value::Okay, //hincr
+                        redis::Value::SimpleString(old.to_string()),
                     ]),
                 ])),
             ),
