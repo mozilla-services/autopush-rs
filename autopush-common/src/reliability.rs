@@ -267,7 +267,6 @@ impl PushReliability {
         // Create the initial state key.
         // Do not place this inside of the transaction. We monitor the state key and the transaction will
         // fail because the value will change before the transaction completes. Yes, really.
-        // The alternative is that we do not monitor ``
         if new == ReliabilityState::Received {
             trace!(
                 "🔍 Creating new record {state_key} ex {:?}",
