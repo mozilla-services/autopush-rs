@@ -72,7 +72,7 @@ impl FromRequest for Subscription {
             let vapid: Option<VapidHeaderWithKey> = parse_vapid(&token_info, &app_state.metrics)?
                 .map(|vapid| extract_public_key(vapid, &token_info))
                 .transpose()?;
-            trace!("raw vapid: {:?}", &vapid);
+            trace!("🔍 raw vapid: {:?}", &vapid);
             // Validate the VAPID JWT token, fetch the claims, and record the version
             if let Some(with_key) = &vapid {
                 // Validate the VAPID JWT token and record the version
