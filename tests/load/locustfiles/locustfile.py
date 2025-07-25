@@ -71,13 +71,15 @@ def _(environment, **kwargs):
     if environment.parsed_options.vapid_key:
         try:
             if os.path.isfile(environment.parsed_options.vapid_key):
-                logging.info(f"Vapid key requested. {environment.parsed_options.vapid_key=}")
+                logging.info(f"🔍 Vapid key requested. {environment.parsed_options.vapid_key=}")
                 environment.vapid = Vapid02.from_file(environment.parsed_options.vapid_key)
             else:
-                logging.error(f"VAPID key file not found: {environment.parsed_options.vapid_key}")
+                logging.error(
+                    f"🔍 VAPID key file not found: {environment.parsed_options.vapid_key}"
+                )
         except ValueError as error:
             raise LocustError(
-                f"Invalid VAPID key provided: {error}. "
+                f"🔍 Invalid VAPID key provided: {error}. "
                 "Please provide a valid VAPID private key path."
             ) from error
 
@@ -261,7 +263,7 @@ class AutopushUser(FastHttpUser):
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
         headers = self.REST_HEADERS
         if self.vapid:
-            logging.info("Using VAPID key for Autopush notification.")
+            logging.info("🔍 Using VAPID key for Autopush notification.")
             parsed = urlparse(endpoint_url)
             host = f"{parsed.scheme}://{parsed.netloc}"
             # The key should already be created.

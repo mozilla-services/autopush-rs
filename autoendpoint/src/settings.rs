@@ -221,7 +221,7 @@ impl VapidTracker {
             Err(e) => {
                 // This error is not fatal, and should not happen often. During preliminary
                 // runs, however, we do want to try and spot them.
-                warn!("VAPID: tracker failure {e}");
+                warn!("🔍 VAPID: tracker failure {e}");
                 return false;
             }
         };
