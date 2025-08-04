@@ -377,9 +377,10 @@ impl PushReliability {
                 // The last element returned from the command is the result of the pipeline.
                 // If Redis encounters an error, it will return a `nil` as well. We handle both
                 // the same (retry), so we can normalize errors as `nil`.
-                // The last of which should be the result of the `SET` command, which has `GET`
-                // set. This should either return the prior value or `Ok` if things worked, else
-                // it should return `nil`, in which case we record a soft error.
+                // The last of which should be the result of the piped command set.
+                // This should return `nil` if there is any error, in which case we record
+                // a soft error. (On success, it will return the result of the last command
+                // in the pipe, which may vary due to the current state).
                 // This could also be strung together as a cascade of functions, but it's broken
                 // out to discrete steps for readability.
                 if result == redis::Value::Nil {
