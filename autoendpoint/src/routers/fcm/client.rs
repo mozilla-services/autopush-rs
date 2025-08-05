@@ -150,7 +150,7 @@ impl FcmClient {
             // we only ever send one.
             return Err(match (status, data.error) {
                 (StatusCode::UNAUTHORIZED, _) => RouterError::Authentication,
-                (StatusCode::NOT_FOUND, _) => RouterError::NotFound,
+                (StatusCode::NOT_FOUND, _) | (StatusCode::GONE, _) => RouterError::NotFound,
                 (_, Some(error)) => {
                     info!("🌉Bridge Error: {:?}, {:?}", error.message, &self.endpoint);
                     FcmError::Upstream {
