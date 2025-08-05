@@ -1,3 +1,17 @@
+<a name="1.77,.0"></a>
+## 1.77.0 (2025-08-05)
+
+
+#### Bug Fixes
+
+*   restore state_key generation outside of pipe (#1016) ([f6400748](https://github.com/mozilla-services/autopush-rs/commit/f64007488732651d5b2766aaff49ebe6d289ffda))
+
+#### Chore
+
+*   tag 1.76.0 (#1015) ([93ccd4d9](https://github.com/mozilla-services/autopush-rs/commit/93ccd4d985bebb858d385cb98b10656b4fb8a73d))
+
+
+
 <a name="1.76.0"></a>
 ## 1.76.0 (2025-07-24)
 
