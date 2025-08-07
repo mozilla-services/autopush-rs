@@ -1,3 +1,12 @@
+<a name="1.77.1"></a>
+## 1.77.1 (2025-08-07)
+
+#### Bug Fixes
+
+* Use new state if error in record_reliability (#1018) ([3157fdd4ace371139323efc40f906614c5ec8a8a](https://github.com/mozilla-services/autopush-rs/commit/3157fdd4ace371139323efc40f906614c5ec8a8a))
+
+
+
 <a name="1.76.0"></a>
 ## 1.76.0 (2025-07-24)
 
