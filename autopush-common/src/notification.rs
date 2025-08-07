@@ -94,7 +94,7 @@ impl Notification {
             .inspect_err(|e| {
                 warn!("🔍⚠️ Unable to record reliability state log: {:?}", e);
             })
-            .unwrap_or_default();
+            .unwrap_or(Some(state));
     }
 
     #[cfg(feature = "reliable_report")]

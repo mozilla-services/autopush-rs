@@ -16,7 +16,7 @@ pub trait StatsdClientExt {
     fn incr_raw(&self, metric: &str) -> MetricResult<Counter>;
 
     /// Start a counter with tags using a MetricName enum
-    fn incr_with_tags(&self, metric: MetricName) -> MetricBuilder<Counter>;
+    fn incr_with_tags(&self, metric: MetricName) -> MetricBuilder<'_, '_, Counter>;
 }
 
 impl StatsdClientExt for StatsdClient {
@@ -29,7 +29,7 @@ impl StatsdClientExt for StatsdClient {
         self.count(metric, 1)
     }
 
-    fn incr_with_tags(&self, metric: MetricName) -> MetricBuilder<Counter> {
+    fn incr_with_tags(&self, metric: MetricName) -> MetricBuilder<'_, '_, Counter> {
         let metric_tag: &'static str = metric.into();
         self.count_with_tags(metric_tag, 1)
     }
