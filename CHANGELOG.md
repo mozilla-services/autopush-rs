@@ -1,3 +1,17 @@
+<a name="1.76.1"></a>
+## 1.76.1 (2025-08-07)
+
+
+#### Chore
+
+*   tag 1.76.1 ([8dd0ccdf](https://github.com/mozilla-services/autopush-rs/commit/8dd0ccdfdd189b5f726e744eb0b0d1d3d7ff3f6c))
+
+#### Bug Fixes
+
+*   Use new state if error in record_reliability (#1018) ([3157fdd4](https://github.com/mozilla-services/autopush-rs/commit/3157fdd4ace371139323efc40f906614c5ec8a8a))
+
+
+
 <a name="1.76.0"></a>
 ## 1.76.0 (2025-07-24)
 
