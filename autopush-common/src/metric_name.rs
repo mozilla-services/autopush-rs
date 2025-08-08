@@ -11,14 +11,24 @@ use strum_macros::IntoStaticStr;
 #[strum(serialize_all = "snake_case")]
 pub enum MetricName {
     /// User agent command with dynamic command name
-    #[strum(serialize = "ua.command")]
-    UaCommand(String),
+    /// Due to some ownership issues, these will eventually be converted by
+    /// `strum` invoking a compile macro to convert these to a static string.
+    /// This means that any values passed are ignored. Sadly, this means that
+    /// while `UaCommand` is efficient and clever, it also doesn't do what we
+    /// need for tracking metrics.
+    // #[strum(serialize = "ua.command")]
+    // UaCommand(String),
+    //
     //
     // User agent metrics
     //
     /// User agent is already connected
     #[strum(serialize = "ua.already_connected")]
     UaAlreadyConnected,
+
+    /// User Agent Hello
+    #[strum(serialize = "ua.command.hello")]
+    UaCommandHello,
 
     /// User agent register command
     #[strum(serialize = "ua.command.register")]
@@ -39,6 +49,14 @@ pub enum MetricName {
     /// User agent notification sent
     #[strum(serialize = "ua.notification.sent")]
     UaNotificationSent,
+
+    /// User Agent acknowledges receipt (return codes indicate processing)
+    #[strum(serialize = "ua.command.ack")]
+    UaCommandAck,
+
+    /// User Agent requests retransmission.
+    #[strum(serialize = "ua.command.nak")]
+    UaCommandNak,
 
     /// User agent expiration
     #[strum(serialize = "ua.expiration")]
@@ -166,4 +184,19 @@ pub enum MetricName {
     // Reliability gc
     #[strum(serialize = "reliability.gc")]
     ReliabilityGc,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_name_serializer() {
+        assert_eq!(
+            // Remember, `strum` converts, then formats, so the arg needs to be
+            // converted to lower case.
+            MetricName::UaCommandAck.to_string().as_str(),
+            "ua.command.ack"
+        );
+    }
 }
