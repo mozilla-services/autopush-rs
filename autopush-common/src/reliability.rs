@@ -29,7 +29,10 @@ pub const COUNTS: &str = "state_counts";
 pub const EXPIRY: &str = "expiry";
 
 const CONNECTION_EXPIRATION: TimeDelta = TimeDelta::seconds(10);
-const NO_EXPIRATION: u64 = 0;
+// Minimum expiration period of 1 second.
+// This was set to `0`, but there was some confusion whether that would not set an
+// expiration time for a record or would set a record not to expire.
+const MIN_EXPIRATION: u64 = 1;
 
 /// The various states that a message may transit on the way from reception to delivery.
 // Note: "Message" in this context refers to the Subscription Update.
@@ -270,7 +273,7 @@ impl PushReliability {
         if new == ReliabilityState::Received {
             trace!(
                 "🔍 Creating new record {state_key} ex {:?}",
-                expr.unwrap_or(NO_EXPIRATION)
+                expr.unwrap_or(MIN_EXPIRATION)
             );
             // we can't perform this in a transaction because we can only increment if the set succeeds,
             // and values aren't returned when creating values in transactions. In order to do this
@@ -278,7 +281,7 @@ impl PushReliability {
             // too heavy for this.
             // Create the new `state.{id}` key if it does not exist, and set the expiration.
             let options = redis::SetOptions::default()
-                .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(NO_EXPIRATION)))
+                .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(MIN_EXPIRATION)))
                 .conditional_set(redis::ExistenceCheck::NX);
             trace!("🔍 ⭕ SET {state_key} NX EX {:?}", new);
             let result = conn

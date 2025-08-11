@@ -30,7 +30,6 @@ pub struct Notification {
     /// The current state the message was in (if tracked)
     pub reliable_state: Option<autopush_common::reliability::ReliabilityState>,
     #[cfg(feature = "reliable_report")]
-    #[cfg(feature = "reliable_report")]
     pub reliability_id: Option<String>,
 }
 
