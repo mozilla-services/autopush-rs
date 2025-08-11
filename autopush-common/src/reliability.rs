@@ -632,7 +632,6 @@ mod tests {
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{recv}\"}} 111")));
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{trns}\"}} 444")));
         assert!(!generated.contains(&format!("{METRIC_NAME}{{state=\"biginvalid\"}} -1")));
-        dbg!(generated);
     }
 
     #[test]
