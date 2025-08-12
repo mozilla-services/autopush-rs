@@ -1,3 +1,17 @@
+<a name="1.77.2"></a>
+## 1.77.2 (2025-08-12)
+
+
+#### Chore
+
+*   tag 1.77.1 (#1019) ([236244e9](https://github.com/mozilla-services/autopush-rs/commit/236244e9f018ff4ac589a2836fc7922bdf4ecc94))
+
+#### Bug Fixes
+
+*   filter non-state entries from report (#1022) ([3b014e43](https://github.com/mozilla-services/autopush-rs/commit/3b014e4329a7b9dbab0769013cf3ea231a0adedd))
+
+
+
 <a name="1.77.1"></a>
 ## 1.77.1 (2025-08-07)
 
