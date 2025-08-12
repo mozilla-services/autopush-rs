@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use autopush_common::db::Urgency;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::PushReliability;
-use cadence::{Counted, CountedExt, StatsdClient, Timed};
+use cadence::{Counted, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::{hash_map::RandomState, HashMap};
@@ -17,6 +17,8 @@ use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::{Router, RouterError, RouterResponse};
 
 use autopush_common::db::{client::DbClient, User};
+use autopush_common::metric_name::MetricName;
+use autopush_common::metrics::StatsdClientExt;
 
 /// The router for desktop user agents.
 ///
@@ -112,10 +114,10 @@ impl Router for WebPushRouter {
                     Err(error) => {
                         if let ApiErrorKind::ReqwestError(error) = &error.kind {
                             if error.is_timeout() {
-                                self.metrics.incr("error.node.timeout")?;
+                                self.metrics.incr(MetricName::ErrorNodeTimeout)?;
                             };
                             if error.is_connect() {
-                                self.metrics.incr("error.node.connect")?;
+                                self.metrics.incr(MetricName::ErrorNodeConnect)?;
                             };
                         };
                         debug!("✉ Error while sending webpush notification: {}", error);
@@ -146,7 +148,7 @@ impl Router for WebPushRouter {
                  delivered, dropping it"
             );
             self.metrics
-                .incr_with_tags("notification.message.expired")
+                .incr_with_tags(MetricName::NotificationMessageExpired)
                 // TODO: include `internal` if meta is set.
                 .with_tag("topic", &topic)
                 .send();
@@ -201,7 +203,7 @@ impl Router for WebPushRouter {
                     trace!("✉ Node has delivered the message");
                     self.metrics
                         .time_with_tags(
-                            "notification.total_request_time",
+                            MetricName::NotificationTotalRequestTime.as_ref(),
                             (notification.timestamp - autopush_common::util::sec_since_epoch())
                                 * 1000,
                         )
@@ -308,7 +310,7 @@ impl WebPushRouter {
     /// Remove the node ID from a user. This is done if the user is no longer
     /// connected to the node.
     async fn remove_node_id(&self, user: &User, node_id: &str) -> ApiResult<()> {
-        self.metrics.incr("updates.client.host_gone").ok();
+        self.metrics.incr(MetricName::UpdatesClientHostGone).ok();
         let removed = self
             .db
             .remove_node_id(&user.uaid, node_id, user.connected_at, &user.version)
@@ -340,7 +342,7 @@ impl WebPushRouter {
     ) -> RouterResponse {
         self.metrics
             .count_with_tags(
-                "notification.message_data",
+                MetricName::NotificationMessageData.as_ref(),
                 notification.data.as_ref().map(String::len).unwrap_or(0) as i64,
             )
             .with_tag("destination", destination_tag)
@@ -390,7 +392,8 @@ mod test {
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             #[cfg(feature = "reliable_report")]
             reliability: Arc::new(
-                PushReliability::new(&None, db, &metrics, MAX_TRANSACTION_LOOP).unwrap(),
+                PushReliability::new(&None, db, &metrics, MAX_TRANSACTION_LOOP, None, None)
+                    .unwrap(),
             ),
         }
     }

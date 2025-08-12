@@ -97,15 +97,17 @@ impl AppState {
                 db.clone(),
                 &metrics,
                 settings.reliability_retry_count,
+                settings.reliability_connection_timeout_seconds,
+                settings.reliability_response_timeout_seconds,
             )
             .map_err(|e| {
-                ConfigError::Message(format!("Could not start Reliability connection: {:?}", e))
+                ConfigError::Message(format!("Could not start Reliability connection: {e:?}"))
             })?,
         );
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()
-            .unwrap_or_else(|e| panic!("Error while building reqwest::Client: {}", e));
+            .unwrap_or_else(|e| panic!("Error while building reqwest::Client: {e}"));
         let broadcaster = Arc::new(RwLock::new(BroadcastChangeTracker::new(Vec::new())));
 
         let router_url = settings.router_url();

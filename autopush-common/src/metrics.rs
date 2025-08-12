@@ -1,10 +1,39 @@
-//! Metrics tie-ins
 use std::net::UdpSocket;
 
 use cadence::{
-    BufferedUdpMetricSink, MetricError, NopMetricSink, QueuingMetricSink, StatsdClient,
-    StatsdClientBuilder,
+    BufferedUdpMetricSink, Counted, Counter, MetricBuilder, MetricError, MetricResult,
+    NopMetricSink, QueuingMetricSink, StatsdClient, StatsdClientBuilder,
 };
+
+use crate::metric_name::MetricName;
+
+/// Extension trait for StatsdClient to provide enum-based metric methods
+pub trait StatsdClientExt {
+    /// Increment a counter using a MetricName enum
+    fn incr(&self, metric: MetricName) -> MetricResult<Counter>;
+
+    /// Increment a counter using a raw string metric name
+    fn incr_raw(&self, metric: &str) -> MetricResult<Counter>;
+
+    /// Start a counter with tags using a MetricName enum
+    fn incr_with_tags(&self, metric: MetricName) -> MetricBuilder<'_, '_, Counter>;
+}
+
+impl StatsdClientExt for StatsdClient {
+    fn incr(&self, metric: MetricName) -> MetricResult<Counter> {
+        let metric_tag: &'static str = metric.into();
+        self.count(metric_tag, 1)
+    }
+
+    fn incr_raw(&self, metric: &str) -> MetricResult<Counter> {
+        self.count(metric, 1)
+    }
+
+    fn incr_with_tags(&self, metric: MetricName) -> MetricBuilder<'_, '_, Counter> {
+        let metric_tag: &'static str = metric.into();
+        self.count_with_tags(metric_tag, 1)
+    }
+}
 
 /// Create a cadence StatsdClientBuilder from the given options
 pub fn builder(

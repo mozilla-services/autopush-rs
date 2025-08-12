@@ -11,8 +11,8 @@ pub fn init_logging(json: bool, name: &str, version: &str) -> Result<()> {
         let hostname = gethostname().to_string_lossy().to_string();
 
         let drain = MozLogJson::new(io::stdout())
-            .logger_name(format!("{}-{}", name, version))
-            .msg_type(format!("{}:log", name))
+            .logger_name(format!("{name}-{version}"))
+            .msg_type(format!("{name}:log"))
             .hostname(hostname)
             .build()
             .fuse();

@@ -501,7 +501,7 @@ impl Router for ApnsRouter {
             // mutable, but we are also essentially consuming the
             // notification nothing else should modify it.
             notification
-                .record_reliability(&self.reliability, ReliabilityState::Transmitted)
+                .record_reliability(&self.reliability, ReliabilityState::BridgeTransmitted)
                 .await;
         }
 
@@ -596,7 +596,15 @@ mod tests {
             db: db.clone(),
             #[cfg(feature = "reliable_report")]
             reliability: Arc::new(
-                PushReliability::new(&None, db.clone(), &metrics, MAX_TRANSACTION_LOOP).unwrap(),
+                PushReliability::new(
+                    &None,
+                    db.clone(),
+                    &metrics,
+                    MAX_TRANSACTION_LOOP,
+                    None,
+                    None,
+                )
+                .unwrap(),
             ),
         }
     }

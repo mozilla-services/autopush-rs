@@ -1,7 +1,9 @@
 use std::{collections::HashMap, error::Error, io, sync::Arc, time::Duration};
 
 use actix_web::rt;
-use cadence::{CountedExt, StatsdClient};
+use autopush_common::metric_name::MetricName;
+use autopush_common::metrics::StatsdClientExt;
+use cadence::StatsdClient;
 use serde_derive::Deserialize;
 use tokio::sync::RwLock;
 
@@ -39,7 +41,9 @@ pub async fn init_and_spawn_megaphone_updater(
             if let Err(e) = updater(&broadcaster, &http, &url, &token).await {
                 report_updater_error(&metrics, e);
             } else {
-                metrics.incr_with_tags("megaphone.updater.ok").send();
+                metrics
+                    .incr_with_tags(MetricName::MegaphoneUpdaterOk)
+                    .send();
             }
         }
     });
@@ -59,7 +63,7 @@ fn report_updater_error(metrics: &Arc<StatsdClient>, err: reqwest::Error) {
         "unknown"
     };
     metrics
-        .incr_with_tags("megaphone.updater.error")
+        .incr_with_tags(MetricName::MegaphoneUpdaterError)
         .with_tag("reason", reason)
         .send();
     if reason == "unknown" {

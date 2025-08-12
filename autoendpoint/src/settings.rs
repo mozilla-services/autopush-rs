@@ -66,6 +66,12 @@ pub struct Settings {
     #[cfg(feature = "reliable_report")]
     /// Max number of retries for retries for Redis transactions
     pub reliability_retry_count: usize,
+    #[cfg(feature = "reliable_report")]
+    /// Max seconds to wait for a Redis transactions
+    pub reliability_connection_timeout_seconds: Option<u64>,
+    #[cfg(feature = "reliable_report")]
+    /// Max seconds to wait for a Redis response
+    pub reliability_response_timeout_seconds: Option<u64>,
 }
 
 impl Default for Settings {
@@ -99,7 +105,10 @@ impl Default for Settings {
             stub: StubSettings::default(),
             #[cfg(feature = "reliable_report")]
             reliability_dsn: None,
+            #[cfg(feature = "reliable_report")]
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
+            reliability_connection_timeout_seconds: Some(10),
+            reliability_response_timeout_seconds: Some(10),
         }
     }
 }
@@ -188,7 +197,7 @@ impl Settings {
         for v in Self::read_list_from_str(keys, "Invalid AUTOEND_TRACKING_KEYS") {
             result.push(
                 util::b64_decode(v)
-                    .map_err(|e| ConfigError::Message(format!("Invalid tracking key: {:?}", e)))?,
+                    .map_err(|e| ConfigError::Message(format!("Invalid tracking key: {e:?}")))?,
             );
         }
         trace!("🔍 tracking_keys: {result:?}");
@@ -220,7 +229,7 @@ impl VapidTracker {
             Err(e) => {
                 // This error is not fatal, and should not happen often. During preliminary
                 // runs, however, we do want to try and spot them.
-                warn!("VAPID: tracker failure {e}");
+                warn!("🔍 VAPID: tracker failure {e}");
                 return false;
             }
         };

@@ -71,6 +71,12 @@ executors:
         auth:
           username: $DOCKER_USER
           password: $DOCKER_PASS
+  build-reliability-cron:
+    docker:
+      - image: docker:18.03.0-ce
+        auth:
+          username: $DOCKER_USER
+          password: $DOCKER_PASS
   build-test-container-executor:
     docker:
       - image: cimg/base:2025.02
@@ -363,6 +369,40 @@ jobs:
           paths:
             - <<parameters.image>>.tar
 
+  # Create the reliability cron docker image. This is a singleton that does some
+  # clean-up and reporting for the Push Reliability task.
+  build-reliability-cron:
+    executor: build-reliability-cron
+    resource_class: small
+    working_directory: /app
+    parameters:
+      image:
+        type: string
+      tag:
+        type: string
+    steps:
+      # Install these packages before checkout because git may not exist or work
+      - run:
+          name: Install Docker build dependencies
+          command: apk add --no-cache openssh-client git clang
+      - checkout
+      - setup_remote_docker
+      - docker_login
+      - run:
+          name: Build cron docker image
+          command: |
+            docker build --tag <<parameters.image>>:<<parameters.tag>> -f ./scripts/reliability/Dockerfile ./scripts/reliability
+      - run:
+          name: Save cron docker image
+          # note: deploy always expects the image to be saved in /tmp/cache
+          command: |
+            mkdir -p /tmp/cache
+            docker save -o /tmp/cache/<<parameters.image>>.tar "<<parameters.image>>"
+      - persist_to_workspace:
+          root: /tmp/cache
+          paths:
+            - <<parameters.image>>.tar
+
   build-test-container:
     executor: build-test-container-executor
     parameters:
@@ -515,6 +555,17 @@ workflows:
           filters:
             tags:
               only: /.*/
+
+      - build-reliability-cron:
+          name: build-reliability-cron
+          image: autopush-reliability-cron
+          tag: latest
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
       - build-test-container:
           name: Build Load Test Image
           image: autopush-load-tests
@@ -539,7 +590,7 @@ workflows:
             tags:
               only: /.*/
 
-      # Comment out the following two sections for local CircleCI testing.
+      # Comment out the following three sections for local CircleCI testing.
       - deploy:
           name: deploy-autoconnect
           image: autoconnect
@@ -567,6 +618,18 @@ workflows:
               only: /.*/
             branches:
               only: master
+
+      - deploy:
+          name: deploy-reliability-cron
+          image: autopush-reliability-cron
+          requires:
+            - build-reliability-cron
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only: master
+
       - deploy:
           name: Push Load Test Image
           image: autopush-load-tests

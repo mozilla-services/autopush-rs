@@ -1,10 +1,11 @@
 use std::mem;
 
-use cadence::{Counted, CountedExt};
+use cadence::Counted;
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autopush_common::{
-    db::CheckStorageResponse, notification::Notification, util::sec_since_epoch,
+    db::CheckStorageResponse, metric_name::MetricName, metrics::StatsdClientExt,
+    notification::Notification, util::sec_since_epoch,
 };
 
 use super::WebPushClient;
@@ -16,7 +17,7 @@ impl WebPushClient {
     /// Handle a `ServerNotification` for this user
     ///
     /// `ServerNotification::Disconnect` is emitted by the same autoconnect
-    /// node recieving it when a User has logged into that same node twice to
+    /// node receiving it when a User has logged into that same node twice to
     /// "Ghost" (disconnect) the first user's session for its second session.
     ///
     /// Other variants are emitted by autoendpoint
@@ -44,11 +45,16 @@ impl WebPushClient {
     /// Send a Direct Push Notification to this user
     fn notif(&mut self, notif: Notification) -> Result<ServerMessage, SMError> {
         trace!("WebPushClient::notif Sending a direct notif");
+        // The notification we return here is sent directly to the client.
+        // No reliability state is recorded.
+        let response = notif.clone();
         if notif.ttl != 0 {
-            self.ack_state.unacked_direct_notifs.push(notif.clone());
+            // Consume the original notification by adding it to the
+            // unacked stack. This will eventually record the state.
+            self.ack_state.unacked_direct_notifs.push(notif);
         }
-        self.emit_send_metrics(&notif, "Direct");
-        Ok(ServerMessage::Notification(notif))
+        self.emit_send_metrics(&response, "Direct");
+        Ok(ServerMessage::Notification(response))
     }
 
     /// Top level read of Push Notifications from storage
@@ -357,7 +363,7 @@ impl WebPushClient {
             // trigger a re-register
             self.app_state
                 .metrics
-                .incr_with_tags("ua.expiration")
+                .incr_with_tags(MetricName::UaExpiration)
                 .with_tag("reason", "too_many_messages")
                 .send();
             self.app_state.db.remove_user(&self.uaid).await?;
@@ -371,7 +377,7 @@ impl WebPushClient {
         let metrics = &self.app_state.metrics;
         let ua_info = &self.ua_info;
         metrics
-            .incr_with_tags("ua.notification.sent")
+            .incr_with_tags(MetricName::UaNotificationSent)
             .with_tag("source", source)
             .with_tag("topic", &notif.topic.is_some().to_string())
             .with_tag("os", &ua_info.metrics_os)

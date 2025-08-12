@@ -6,14 +6,15 @@ use actix_web::{
     web::{Data, Json},
     HttpResponse,
 };
-use cadence::CountedExt;
 use reqwest::StatusCode;
 use serde_json::json;
 
-use autopush_common::db::error::DbResult;
-
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::AppState;
+use autopush_common::metric_name::MetricName;
+use autopush_common::metrics::StatsdClientExt;
+use autopush_common::util::b64_encode_url;
+use autopush_common::{db::error::DbResult, errors::ApcError};
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
@@ -24,7 +25,19 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("fcm", state.fcm_router.active());
 
     let mut health = json!({
-        "status": "OK",
+        "status": if state
+            .db
+            .health_check()
+            .await
+            .map_err(|e| {
+                error!("Autoendpoint health error: {:?}", e);
+                e
+            })
+            .is_ok() {
+            "OK"
+        } else {
+            "ERROR"
+        },
         "version": env!("CARGO_PKG_VERSION"),
         "router_table": router_health,
         "message_table": message_health,
@@ -33,15 +46,37 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
 
     #[cfg(feature = "reliable_report")]
     {
-        health["reliability"] = json!(state.reliability.health_check().await.unwrap_or_else(|e| {
-            state
-                .metrics
-                .incr_with_tags("reliability.error.redis_unavailable")
-                .with_tag("application", "autoendpoint")
-                .send();
-            error!("🔍🟥 Reliability reporting down: {:?}", e);
-            "ERROR"
-        }));
+        let reliability_health: Result<String, ApcError> = state
+            .reliability
+            .health_check()
+            .await
+            .map(|_| {
+                let keys: Vec<String> = state
+                    .settings
+                    .tracking_keys()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|k|
+                        // Hint the key values
+                        b64_encode_url(k)[..8].to_string())
+                    .collect();
+                if keys.is_empty() {
+                    Ok("NO_TRACKING_KEYS".to_owned())
+                } else {
+                    Ok(format!("OK: {}", keys.join(",")))
+                }
+            })
+            .unwrap_or_else(|e| {
+                // Record that Redis is down.
+                state
+                    .metrics
+                    .incr_with_tags(MetricName::ReliabilityErrorRedisUnavailable)
+                    .with_tag("application", "autoendpoint")
+                    .send();
+                error!("🔍🟥 Reliability reporting down: {:?}", e);
+                Ok("STORE_ERROR".to_owned())
+            });
+        health["reliability"] = json!(reliability_health);
     }
     Json(health)
 }

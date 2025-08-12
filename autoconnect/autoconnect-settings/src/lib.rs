@@ -116,6 +116,12 @@ pub struct Settings {
     #[cfg(feature = "reliable_report")]
     /// Max number of retries for retries for Redis transactions
     pub reliability_retry_count: usize,
+    #[cfg(feature = "reliable_report")]
+    /// Max seconds to wait for a Redis transactions
+    pub reliability_connection_timeout_seconds: Option<u64>,
+    #[cfg(feature = "reliable_report")]
+    /// Max seconds to wait for a Redis response
+    pub reliability_response_timeout_seconds: Option<u64>,
 }
 
 impl Default for Settings {
@@ -151,6 +157,8 @@ impl Default for Settings {
             reliability_dsn: None,
             #[cfg(feature = "reliable_report")]
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
+            reliability_connection_timeout_seconds: Some(10),
+            reliability_response_timeout_seconds: Some(10),
         }
     }
 }
@@ -203,7 +211,7 @@ impl Settings {
         if let Some(ref hostname) = self.hostname {
             if self.resolve_hostname {
                 resolve_ip(hostname)
-                    .unwrap_or_else(|_| panic!("Failed to resolve provided hostname: {}", hostname))
+                    .unwrap_or_else(|_| panic!("Failed to resolve provided hostname: {hostname}"))
             } else {
                 hostname.clone()
             }
@@ -218,8 +226,7 @@ impl Settings {
         let non_zero = |val: Duration, name| {
             if val.is_zero() {
                 return Err(ConfigError::Message(format!(
-                    "Invalid {}_{}: cannot be 0",
-                    ENV_PREFIX, name
+                    "Invalid {ENV_PREFIX}_{name}: cannot be 0"
                 )));
             }
             Ok(())
@@ -308,9 +315,9 @@ mod tests {
     fn test_default_settings() {
         // Test that the Config works the way we expect it to.
         use std::env;
-        let port = format!("{}__PORT", ENV_PREFIX).to_uppercase();
-        let msg_limit = format!("{}__MSG_LIMIT", ENV_PREFIX).to_uppercase();
-        let fernet = format!("{}__CRYPTO_KEY", ENV_PREFIX).to_uppercase();
+        let port = format!("{ENV_PREFIX}__PORT").to_uppercase();
+        let msg_limit = format!("{ENV_PREFIX}__MSG_LIMIT").to_uppercase();
+        let fernet = format!("{ENV_PREFIX}__CRYPTO_KEY").to_uppercase();
 
         let v1 = env::var(&port);
         let v2 = env::var(&msg_limit);

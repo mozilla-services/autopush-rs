@@ -1,3 +1,5 @@
+// Rust 1.89.0 flags `StorageType` as unused even with `bigtable` set as a default feature.
+#[allow(dead_code)]
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) enum StorageType {
     BigTable,

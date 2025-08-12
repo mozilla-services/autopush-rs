@@ -30,7 +30,6 @@ pub struct Notification {
     /// The current state the message was in (if tracked)
     pub reliable_state: Option<autopush_common::reliability::ReliabilityState>,
     #[cfg(feature = "reliable_report")]
-    #[cfg(feature = "reliable_report")]
     pub reliability_id: Option<String>,
 }
 
@@ -234,6 +233,10 @@ impl Notification {
                 &self.reliable_state,
                 Some(self.timestamp + self.headers.ttl as u64),
             )
-            .await;
+            .await
+            .inspect_err(|e| {
+                warn!("🔍⚠️ Unable to record reliability state log: {:?}", e);
+            })
+            .unwrap_or(Some(state))
     }
 }

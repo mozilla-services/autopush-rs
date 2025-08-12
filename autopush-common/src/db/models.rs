@@ -71,8 +71,8 @@ impl RangeKey {
     pub(crate) fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
         lazy_static! {
             static ref RE: RegexSet = RegexSet::new([
-                format!("^{}:\\S+:\\S+$", TOPIC_NOTIFICATION_PREFIX).as_str(),
-                format!("^{}:\\d+:\\S+$", STANDARD_NOTIFICATION_PREFIX).as_str(),
+                format!("^{TOPIC_NOTIFICATION_PREFIX}:\\S+:\\S+$").as_str(),
+                format!("^{STANDARD_NOTIFICATION_PREFIX}:\\d+:\\S+$").as_str(),
                 "^\\S{3,}:\\S+$"
             ])
             .unwrap();
