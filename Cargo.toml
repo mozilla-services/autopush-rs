@@ -43,7 +43,7 @@ bytestring = "1.2"
 cadence = "1.2"
 chrono = "0.4"
 config = "0.15"
-ctor = "0.4"
+ctor = "0.5"
 docopt = "1.1"
 env_logger = "0.11"
 fernet = "0.2.0"
@@ -69,12 +69,10 @@ openssl = { version = "0.10" }
 rand = "0.9"
 regex = "1.4"
 reqwest = { version = "0.12", features = ["json", "blocking"] }
-sentry = { version = "0.38", features = [
-    "debug-logs",
-] } # Using debug-logs avoids https://github.com/getsentry/sentry-rust/issues/237
-sentry-core = { version = "0.38" }
-sentry-actix = "0.38"
-sentry-backtrace = "0.38"
+sentry = { version = "0.42", features = [] }
+sentry-core = { version = "0.42" }
+sentry-actix = "0.42"
+sentry-backtrace = "0.42"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"

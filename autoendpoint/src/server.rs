@@ -99,6 +99,8 @@ impl Server {
                 db.clone(),
                 &metrics,
                 settings.reliability_retry_count,
+                settings.reliability_connection_timeout_seconds,
+                settings.reliability_response_timeout_seconds,
             )
             .map_err(|e| {
                 ApiErrorKind::General(format!("Could not initialize Reliability Report: {e:?}"))

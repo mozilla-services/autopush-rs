@@ -116,6 +116,12 @@ pub struct Settings {
     #[cfg(feature = "reliable_report")]
     /// Max number of retries for retries for Redis transactions
     pub reliability_retry_count: usize,
+    #[cfg(feature = "reliable_report")]
+    /// Max seconds to wait for a Redis transactions
+    pub reliability_connection_timeout_seconds: Option<u64>,
+    #[cfg(feature = "reliable_report")]
+    /// Max seconds to wait for a Redis response
+    pub reliability_response_timeout_seconds: Option<u64>,
 }
 
 impl Default for Settings {
@@ -151,6 +157,8 @@ impl Default for Settings {
             reliability_dsn: None,
             #[cfg(feature = "reliable_report")]
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
+            reliability_connection_timeout_seconds: Some(10),
+            reliability_response_timeout_seconds: Some(10),
         }
     }
 }

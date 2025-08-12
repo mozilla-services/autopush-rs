@@ -23,6 +23,8 @@ pub(crate) struct NotificationHeaders {
     encryption_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     encoding: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    urgency: Option<String>,
 }
 
 #[allow(clippy::implicit_hasher)]
@@ -33,6 +35,7 @@ impl From<NotificationHeaders> for HashMap<String, String> {
         map.insert_opt("encryption", val.encryption);
         map.insert_opt("encryption_key", val.encryption_key);
         map.insert_opt("encoding", val.encoding);
+        map.insert_opt("urgency", val.urgency);
         map
     }
 }
@@ -44,6 +47,7 @@ impl From<HashMap<String, String>> for NotificationHeaders {
             encryption: val.get("encryption").map(|v| v.to_string()),
             encryption_key: val.get("encryption_key").map(|v| v.to_string()),
             encoding: val.get("encoding").map(|v| v.to_string()),
+            urgency: val.get("urgency").map(|v| v.to_string()),
         }
     }
 }
