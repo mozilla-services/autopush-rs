@@ -29,7 +29,10 @@ pub const COUNTS: &str = "state_counts";
 pub const EXPIRY: &str = "expiry";
 
 const CONNECTION_EXPIRATION: TimeDelta = TimeDelta::seconds(10);
-const NO_EXPIRATION: u64 = 0;
+// Minimum expiration period of 1 second.
+// This was set to `0`, but there was some confusion whether that would not set an
+// expiration time for a record or would set a record not to expire.
+const MIN_EXPIRATION: u64 = 1;
 
 /// The various states that a message may transit on the way from reception to delivery.
 // Note: "Message" in this context refers to the Subscription Update.
@@ -270,7 +273,7 @@ impl PushReliability {
         if new == ReliabilityState::Received {
             trace!(
                 "🔍 Creating new record {state_key} ex {:?}",
-                expr.unwrap_or(NO_EXPIRATION)
+                expr.unwrap_or(MIN_EXPIRATION)
             );
             // we can't perform this in a transaction because we can only increment if the set succeeds,
             // and values aren't returned when creating values in transactions. In order to do this
@@ -278,7 +281,7 @@ impl PushReliability {
             // too heavy for this.
             // Create the new `state.{id}` key if it does not exist, and set the expiration.
             let options = redis::SetOptions::default()
-                .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(NO_EXPIRATION)))
+                .with_expiration(redis::SetExpiry::EX(expr.unwrap_or(MIN_EXPIRATION)))
                 .conditional_set(redis::ExistenceCheck::NX);
             trace!("🔍 ⭕ SET {state_key} NX EX {:?}", new);
             let result = conn
@@ -290,10 +293,14 @@ impl PushReliability {
                     ApcErrorKind::GeneralError("Could not create the state key".to_owned())
                 })?;
             if result != redis::Value::Okay {
-                error!(
-                    "🔍⚠️ Tried to recreate state_key {state_key}: {:?}",
-                    &result
-                );
+                // Redis returned a `Nil`, indicating that there was some error. The only thing that should cause that
+                // would be if the `old` state was reset to `None` and we thought we needed to create a new state.
+                // Since the message carries it's prior state, it shouldn't be set to `None` unless there's something
+                // strange going on.
+                // TODO: It's worth noting that when restarting autoendpoint, we get a large number of these in the logs.
+                // Need to figure out the reason for that.
+                // The `result` is always `nil` so that's not helpful.
+                error!("🔍⚠️ Tried to recreate state_key {state_key}: {old:?} => {new:?}",);
                 return Err(
                     ApcErrorKind::GeneralError("Tried to recreate state_key".to_string()).into(),
                 );
@@ -383,9 +390,14 @@ impl PushReliability {
                 // in the pipe, which may vary due to the current state).
                 // This could also be strung together as a cascade of functions, but it's broken
                 // out to discrete steps for readability.
+                /* On prod, we get a large number of these errors, which I think might be clogging
+                  up the redis connections, causing servers to report as degraded.
+                */
                 if result == redis::Value::Nil {
-                    warn!("🔍⚠🪈 {id} - Pipe failed, retry.");
-                    return Ok(None);
+                    warn!("🔍⚠🪈 {id} - Pipe failed, skipping retry.");
+                    // temporarily just let things fail to handle autoendpoint degradation.
+                    // return Ok(None);
+                    return Ok(Some(redis::Value::Okay));
                 }
                 if let Some(operations) = result.as_sequence() {
                     // We have responses, the first items report the state of the commands,
@@ -566,6 +578,11 @@ pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
         family.clone(),
     );
     for (milestone, value) in values.into_iter() {
+        // prevent any stray leakage of invalid state data
+        if ReliabilityState::from_str(&milestone).is_err() {
+            trace!("🔍 skipping invalid state {milestone:?}");
+            continue;
+        }
         // Specify the static "state" label name with the given milestone, and add the
         // value as the gauge value.
         family
@@ -609,6 +626,7 @@ mod tests {
         report.insert(ReliabilityState::Stored.to_string(), 222);
         report.insert(ReliabilityState::Retrieved.to_string(), 333);
         report.insert(trns.clone(), 444);
+        report.insert("biginvalid".to_string(), -1);
 
         let generated = gen_report(report).unwrap();
         // We don't really care if the `Created` or `HELP` lines are included
@@ -616,6 +634,7 @@ mod tests {
         // sample the first and last values.
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{recv}\"}} 111")));
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{trns}\"}} 444")));
+        assert!(!generated.contains(&format!("{METRIC_NAME}{{state=\"biginvalid\"}} -1")));
     }
 
     #[test]
