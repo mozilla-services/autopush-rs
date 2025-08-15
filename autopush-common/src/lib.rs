@@ -29,27 +29,31 @@ use chrono::TimeDelta;
 
 // Define some global TTLs.
 //
-// [RFC8030 notes](https://datatracker.ietf.org/doc/html/rfc8030#section-5.2) that
-// technically these are u32 values, but we should be kind and use u64. The RFC also
-// does not define a maximum TTL duration. Traditionally, Autopush has capped this
-// to 60 days, partly because we used to require monthly message table rotation.
-// (The TTL was given an extra 30 days grace in order to handle dates near the
-// turn of the month, when we might need to look in two tables for the data.)
-// Since we now have automatically applied garbage collection, we are at a bit of
-// liberty about how long these should be.
-//
-// That gets back to the concept that Push messages are supposed to be "timely".
-// A user may not appreciate that they have an undelivered calendar reminder from
-// 58 days ago, nor should they be interested in a meeting alert that happened last
-// month. When a User Agent (UA) connects, it receives all pending messages. If
-// a user has not used the User Agent in more than
-// [60 days](https://searchfox.org/mozilla-central/search?q=OFFER_PROFILE_RESET_INTERVAL_MS),
-// the User Agent suggest "refreshing Firefox", which essentially throws away one's
-// current profile. This would include all subscriptions a user may have had.
-//
-// To that end, messages left unread for more than 30 days should be considered
-// "abandoned" and any router info assigned to a User Agent that has not contacted
-// Autopush in 60 days can be discarded.
+/// [RFC8030 notes](https://datatracker.ietf.org/doc/html/rfc8030#section-5.2) that
+/// technically these are u32 values, but we should be kind and use u64. The RFC also
+/// does not define a maximum TTL duration. Traditionally, Autopush has capped this
+/// to 60 days, partly because we used to require monthly message table rotation.
+/// (The TTL was given an extra 30 days grace in order to handle dates near the
+/// turn of the month, when we might need to look in two tables for the data.)
+/// Since we now have automatically applied garbage collection, we are at a bit of
+/// liberty about how long these should be.
+///
+/// That gets back to the concept that Push messages are supposed to be "timely".
+/// A user may not appreciate that they have an undelivered calendar reminder from
+/// 58 days ago, nor should they be interested in a meeting alert that happened last
+/// month. When a User Agent (UA) connects, it receives all pending messages. If
+/// a user has not used the User Agent in more than
+/// [60 days](https://searchfox.org/mozilla-central/search?q=OFFER_PROFILE_RESET_INTERVAL_MS),
+/// the User Agent suggest "refreshing Firefox", which essentially throws away one's
+/// current profile. This would include all subscriptions a user may have had.
+///
+/// To that end, messages left unread for more than 30 days should be considered
+/// "abandoned" and any router info assigned to a User Agent that has not contacted
+/// Autopush in 60 days can be discarded. This cleanup is done by the datastore system.
+/// This is also the reason that UAs and the Push server may fall out of sync about
+/// what channels are still valid. Mobile solves for this by doing a "daily check-in"
+/// by calling to `autoendpoint::routes::registration::get_channels_route` and resetting
+/// the UAID and requesting all endpoints to re-register if the values do not match.
 
 /// The maximum TTL for notifications (30 days).
 /// In most use cases, converted to seconds through .num_seconds().
