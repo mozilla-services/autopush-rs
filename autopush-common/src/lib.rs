@@ -54,7 +54,7 @@ use chrono::TimeDelta;
 /// what channels are still valid. Mobile solves for this by doing a "daily check-in"
 /// by calling to `autoendpoint::routes::registration::get_channels_route` and resetting
 /// the UAID and requesting all endpoints to re-register if the values do not match.
-
+///
 /// The maximum TTL for notifications (30 days).
 /// In most use cases, converted to seconds through .num_seconds().
 pub const MAX_NOTIFICATION_TTL: TimeDelta = TimeDelta::days(30);
