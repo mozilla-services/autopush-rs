@@ -15,6 +15,9 @@ use uuid::Uuid;
 
 use autopush_common::notification::Notification;
 
+#[cfg(feature = "urgency")]
+use autopush_common::db::Urgency;
+
 /// Message types for WebPush protocol messages.
 ///
 /// This enum should be used instead of string literals when referring to message types.
@@ -39,6 +42,8 @@ pub enum MessageType {
     Ping,
     Notification,
     Broadcast,
+    #[cfg(feature = "urgency")]
+    Urgency,
 }
 
 impl MessageType {
@@ -100,6 +105,11 @@ pub enum ClientMessage {
         version: String,
     },
 
+    #[cfg(feature = "urgency")]
+    Urgency {
+        min: Urgency,
+    },
+
     Ping,
 }
 
@@ -114,6 +124,8 @@ impl ClientMessage {
             ClientMessage::Ack { .. } => MessageType::Ack,
             ClientMessage::Nack { .. } => MessageType::Nack,
             ClientMessage::Ping => MessageType::Ping,
+            #[cfg(feature = "urgency")]
+            ClientMessage::Urgency { .. } => MessageType::Urgency,
         }
     }
 }
@@ -186,6 +198,11 @@ pub enum ServerMessage {
 
     Notification(Notification),
 
+    #[cfg(feature = "urgency")]
+    Urgency {
+        status: u32,
+    },
+
     Ping,
 }
 
@@ -199,6 +216,8 @@ impl ServerMessage {
             ServerMessage::Broadcast { .. } => MessageType::Broadcast,
             ServerMessage::Notification(..) => MessageType::Notification,
             ServerMessage::Ping => MessageType::Ping,
+            #[cfg(feature = "urgency")]
+            ServerMessage::Urgency { .. } => MessageType::Urgency,
         }
     }
 
