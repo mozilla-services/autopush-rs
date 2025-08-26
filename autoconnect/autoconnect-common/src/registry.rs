@@ -92,4 +92,8 @@ impl ClientRegistry {
         }
         Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
+
+    pub async fn count(&self) -> usize {
+        self.clients.read().await.len()
+    }
 }
