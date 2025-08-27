@@ -1,3 +1,52 @@
+<a name="1.77.2"></a>
+## 1.77.2 (2025-08-12)
+
+
+#### Chore
+
+*   tag 1.77.1 (#1019) ([236244e9](https://github.com/mozilla-services/autopush-rs/commit/236244e9f018ff4ac589a2836fc7922bdf4ecc94))
+
+#### Bug Fixes
+
+*   filter non-state entries from report (#1022) ([3b014e43](https://github.com/mozilla-services/autopush-rs/commit/3b014e4329a7b9dbab0769013cf3ea231a0adedd))
+
+
+
+<a name="1.77.1"></a>
+## 1.77.1 (2025-08-07)
+
+#### Bug Fixes
+
+* Use new state if error in record_reliability (#1018) ([3157fdd4ace371139323efc40f906614c5ec8a8a](https://github.com/mozilla-services/autopush-rs/commit/3157fdd4ace371139323efc40f906614c5ec8a8a))
+
+
+
+<a name="1.76.0"></a>
+## 1.76.0 (2025-07-24)
+
+
+#### Bug Fixes
+
+*   Store message state in Redis to solve for some reliability state management issues (#1005) ([204163f2](https://github.com/mozilla-services/autopush-rs/commit/204163f2b0d4ebe47ab4ae47ba3b42798220a647))
+*   Skip previously deleted records (#1012) ([43c3ad74](https://github.com/mozilla-services/autopush-rs/commit/43c3ad74293438f90884ada65bd063086a87f965))
+
+#### Features
+
+*   Add VAPID header to load testing (#992) ([31f21a9d](https://github.com/mozilla-services/autopush-rs/commit/31f21a9d9b93cbe5176c1442c8e5e2eb48c16746))
+
+#### Chore
+
+*   Clippy updates for 1.88.0 (#1004) ([05037ad0](https://github.com/mozilla-services/autopush-rs/commit/05037ad0f9d033b019e1c1927f5751125247c02b))
+*   tag 1.75.10 (#1000) ([fe12e719](https://github.com/mozilla-services/autopush-rs/commit/fe12e71990983ce89b9ed03375fb04492d3b8713))
+
+#### Doc
+
+*   install mdbook-mermaid js assets on build (#1003) ([ac76ab26](https://github.com/mozilla-services/autopush-rs/commit/ac76ab26aa3caf0ce2eb7e49d169046cdc5de792))
+*   mdbook-mermaid now needed (#1002) ([3a9c997c](https://github.com/mozilla-services/autopush-rs/commit/3a9c997c113e9f9db2cb88e88b86f62dde20e577))
+*   diagram the reliability state transitions (#1001) ([fac8cfa5](https://github.com/mozilla-services/autopush-rs/commit/fac8cfa5ec7e3b9c34162a3e7a616668cfd80fa2))
+
+
+
 <a name="1.75.10"></a>
 ## 1.75.10 (2025-06-26)
 

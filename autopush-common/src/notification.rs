@@ -90,7 +90,11 @@ impl Notification {
                 &self.reliable_state,
                 Some(self.expiry()),
             )
-            .await;
+            .await
+            .inspect_err(|e| {
+                warn!("🔍⚠️ Unable to record reliability state log: {:?}", e);
+            })
+            .unwrap_or(Some(state));
     }
 
     #[cfg(feature = "reliable_report")]
