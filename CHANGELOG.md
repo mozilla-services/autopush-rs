@@ -1,3 +1,17 @@
+<a name="1.77.3"></a>
+## 1.77.3 (2025-08-19)
+
+
+#### Bug Fixes
+
+*   Only attempt to create a new state if the old is not set (#1025) ([5f48b4f5](https://github.com/mozilla-services/autopush-rs/commit/5f48b4f5aa859c45fa3ae00c8db7c6d3bed8e77b))
+
+#### Chore
+
+*   tag 1.77.2 (#1023) ([796674db](https://github.com/mozilla-services/autopush-rs/commit/796674db6fabd11c5b6eae22b08cd204292e464f))
+
+
+
 <a name="1.77.2"></a>
 ## 1.77.2 (2025-08-12)
 

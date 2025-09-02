@@ -41,6 +41,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
         })
         .is_ok() { "OK" } else {"ERROR"},
         "version": env!("CARGO_PKG_VERSION"),
+        "connections": state.clients.count().await
     });
 
     #[cfg(feature = "reliable_report")]
