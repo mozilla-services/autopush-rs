@@ -274,7 +274,15 @@ mod tests {
             db.clone(),
             #[cfg(feature = "reliable_report")]
             Arc::new(
-                PushReliability::new(&None, db.clone(), &metrics, MAX_TRANSACTION_LOOP).unwrap(),
+                PushReliability::new(
+                    &None,
+                    db.clone(),
+                    &metrics,
+                    MAX_TRANSACTION_LOOP,
+                    None,
+                    None,
+                )
+                .unwrap(),
             ),
         )
         .await

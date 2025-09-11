@@ -24,9 +24,10 @@ autoconnect_web.workspace = true
 autopush_common.workspace = true
 
 [features]
-default = ["bigtable", "reliable_report"]
+default = ["bigtable", "reliable_report" ]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
+urgency = ["autoconnect_ws/urgency"]
 log_vapid = []
 reliable_report = [
     "autoconnect_common/reliable_report",

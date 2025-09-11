@@ -6,17 +6,20 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::HttpResponse;
 use cadence::StatsdClient;
-use chrono::TimeDelta;
-use deadpool_redis::Config;
 
+/// According to redis 0.31+, connection pooling is no longer needed for native Async operations
+/// > For async connections, connection pooling isn't necessary. The `MultiplexedConnection` is
+/// > cloneable and can be used safely from multiple threads, so a single connection can be easily
+/// > reused. For automatic reconnections consider using `ConnectionManager` with the `connection-manager` feature.
+/// > Async cluster connections also don't require pooling and are thread-safe and reusable.
 use prometheus_client::{
     encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
 };
-use redis::{aio::ConnectionLike, AsyncCommands};
-use redis::{Pipeline, Value};
+use redis::{aio::ConnectionLike, AsyncCommands, AsyncConnectionConfig, Client, Pipeline, Value};
 
 use crate::db::client::DbClient;
 use crate::errors::{ApcError, ApcErrorKind, Result};
@@ -28,7 +31,6 @@ use crate::util::timing::sec_since_epoch;
 pub const COUNTS: &str = "state_counts";
 pub const EXPIRY: &str = "expiry";
 
-const CONNECTION_EXPIRATION: TimeDelta = TimeDelta::seconds(10);
 // Minimum expiration period of 1 second.
 // This was set to `0`, but there was some confusion whether that would not set an
 // expiration time for a record or would set a record not to expire.
@@ -85,7 +87,8 @@ impl ReliabilityState {
 
 #[derive(Clone)]
 pub struct PushReliability {
-    pool: Option<deadpool_redis::Pool>,
+    client: Option<Client>,
+    config: AsyncConnectionConfig,
     db: Box<dyn DbClient>,
     metrics: Arc<StatsdClient>,
     retries: usize,
@@ -128,34 +131,32 @@ impl PushReliability {
         db: Box<dyn DbClient>,
         metrics: &Arc<StatsdClient>,
         retries: usize,
+        connect_timeout: Option<u64>,
+        response_timeout: Option<u64>,
     ) -> Result<Self> {
+        let config = AsyncConnectionConfig::new()
+            .set_connection_timeout(Duration::from_secs(connect_timeout.unwrap_or_default()))
+            .set_response_timeout(Duration::from_secs(response_timeout.unwrap_or_default()));
         let Some(reliability_dsn) = reliability_dsn else {
             debug!("🔍 No reliability DSN declared.");
             return Ok(Self {
-                pool: None,
+                client: None,
+                config,
                 db: db.clone(),
                 metrics: metrics.clone(),
                 retries,
             });
         };
-
-        let config: deadpool_redis::Config = Config::from_url(reliability_dsn);
-        let pool = Some(
-            config
-                .builder()
-                .map_err(|e| {
-                    ApcErrorKind::GeneralError(format!("Could not config reliability pool {e:?}"))
-                })?
-                .create_timeout(Some(CONNECTION_EXPIRATION.to_std().unwrap()))
-                .runtime(deadpool::Runtime::Tokio1)
-                .build()
-                .map_err(|e| {
-                    ApcErrorKind::GeneralError(format!("Could not build reliability pool {e:?}"))
-                })?,
-        );
+        let client = redis::Client::open(reliability_dsn.as_str())?;
+        /*
+        let mut con = client
+            .get_multiplexed_async_connection_with_config(&config)
+            .await?;
+        */
 
         Ok(Self {
-            pool,
+            client: Some(client),
+            config,
             db: db.clone(),
             metrics: metrics.clone(),
             retries,
@@ -173,7 +174,7 @@ impl PushReliability {
         let Some(id) = reliability_id else {
             return Ok(None);
         };
-        if let Some(pool) = &self.pool {
+        if let Some(client) = self.client.clone() {
             debug!(
                 "🔍 {} from {} to {}",
                 id,
@@ -181,7 +182,10 @@ impl PushReliability {
                     .unwrap_or_else(|| "None".to_owned()),
                 new
             );
-            match pool.get().await {
+            match client
+                .get_multiplexed_async_connection_with_config(&self.config)
+                .await
+            {
                 Ok(mut conn) => {
                     self.internal_record(&mut conn, old, new, expr, id)
                         .await
@@ -434,8 +438,11 @@ impl PushReliability {
 
     /// Perform a garbage collection cycle on a reliability object.
     pub async fn gc(&self) -> Result<()> {
-        if let Some(pool) = &self.pool {
-            if let Ok(mut conn) = pool.get().await {
+        if let Some(client) = &self.client.clone() {
+            if let Ok(mut conn) = client
+                .get_multiplexed_async_connection_with_config(&self.config)
+                .await
+            {
                 debug!("🔍 performing pre-report garbage collection");
                 return self.internal_gc(&mut conn, sec_since_epoch()).await;
             }
@@ -507,8 +514,11 @@ impl PushReliability {
     // Return a snapshot of milestone states
     // This will probably not be called directly, but useful for debugging.
     pub async fn report(&self) -> Result<HashMap<String, i32>> {
-        if let Some(pool) = &self.pool {
-            if let Ok(mut conn) = pool.get().await {
+        if let Some(client) = &self.client.clone() {
+            if let Ok(mut conn) = client
+                .get_multiplexed_async_connection_with_config(&self.config)
+                .await
+            {
                 return Ok(conn.hgetall(COUNTS).await.map_err(|e| {
                     ApcErrorKind::GeneralError(format!("Could not read report {e:?}"))
                 })?);
@@ -518,12 +528,15 @@ impl PushReliability {
     }
 
     pub async fn health_check<'a>(&self) -> Result<&'a str> {
-        if let Some(pool) = &self.pool {
-            let mut conn = pool.get().await.map_err(|e| {
-                ApcErrorKind::GeneralError(format!(
-                    "Could not connect to reliability datastore: {e:?}"
-                ))
-            })?;
+        if let Some(pool) = &self.client.clone() {
+            let mut conn = pool
+                .get_multiplexed_async_connection_with_config(&self.config)
+                .await
+                .map_err(|e| {
+                    ApcErrorKind::GeneralError(format!(
+                        "Could not connect to reliability datastore: {e:?}"
+                    ))
+                })?;
             // Add a type here, even though we're tossing the value, in order to prevent the `FromRedisValue` warning.
             conn.ping::<()>().await.map_err(|e| {
                 ApcErrorKind::GeneralError(format!("Could not ping reliability datastore: {e:?}"))
@@ -744,6 +757,8 @@ mod tests {
             db_box.clone(),
             &metrics,
             crate::redis_util::MAX_TRANSACTION_LOOP,
+            None,
+            None,
         )
         .unwrap();
         // `.record()` uses a pool, so we can't pass the moc connection directly.
@@ -872,6 +887,8 @@ mod tests {
             Box::new(Arc::new(db)),
             &metrics,
             crate::redis_util::MAX_TRANSACTION_LOOP,
+            None,
+            None,
         )
         .unwrap();
         let _ = pr
@@ -994,6 +1011,8 @@ mod tests {
             Box::new(Arc::new(db)),
             &metrics,
             crate::redis_util::MAX_TRANSACTION_LOOP,
+            None,
+            None,
         )
         .unwrap();
         let _ = pr
@@ -1091,6 +1110,8 @@ mod tests {
             Box::new(Arc::new(db)),
             &metrics,
             crate::redis_util::MAX_TRANSACTION_LOOP,
+            None,
+            None,
         )
         .unwrap();
         // functionally a no-op, but it does exercise lines.

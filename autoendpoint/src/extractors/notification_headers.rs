@@ -8,6 +8,8 @@ use regex::Regex;
 use std::cmp::min;
 use std::collections::HashMap;
 use validator::Validate;
+#[cfg(feature = "urgency")]
+use validator::ValidationError;
 use validator_derive::Validate;
 
 lazy_static! {
@@ -37,6 +39,10 @@ pub struct NotificationHeaders {
     )]
     pub topic: Option<String>,
 
+    #[cfg(feature = "urgency")]
+    #[validate(custom(function = "validate_urgency"))]
+    pub urgency: Option<String>,
+
     // These fields are validated separately, because the validation is complex
     // and based upon the content encoding
     pub encoding: Option<String>,
@@ -45,10 +51,23 @@ pub struct NotificationHeaders {
     pub crypto_key: Option<String>,
 }
 
+#[cfg(feature = "urgency")]
+fn validate_urgency(value: &str) -> Result<(), ValidationError> {
+    if ["very-low", "low", "normal", "high"].contains(&value) {
+        Ok(())
+    } else {
+        Err(ValidationError::new(
+            "Value not equal to \"very-low\", \"low\", \"normal\" or \"high\"",
+        ))
+    }
+}
+
 impl From<NotificationHeaders> for HashMap<String, String> {
     fn from(headers: NotificationHeaders) -> Self {
         let mut map = HashMap::new();
 
+        #[cfg(feature = "urgency")]
+        map.insert_opt("urgency", headers.urgency);
         map.insert_opt("encoding", headers.encoding);
         map.insert_opt("encryption", headers.encryption);
         map.insert_opt("encryption_key", headers.encryption_key);
@@ -73,11 +92,15 @@ impl NotificationHeaders {
             .map(|ttl| min(ttl, MAX_NOTIFICATION_TTL.num_seconds()))
             .ok_or(ApiErrorKind::NoTTL)?;
         let topic = get_owned_header(req, "topic");
+        #[cfg(feature = "urgency")]
+        let urgency = get_owned_header(req, "urgency");
 
         let headers = if has_data {
             NotificationHeaders {
                 ttl,
                 topic,
+                #[cfg(feature = "urgency")]
+                urgency,
                 encoding: get_owned_header(req, "content-encoding"),
                 encryption: get_owned_header(req, "encryption").map(Self::strip_header),
                 encryption_key: get_owned_header(req, "encryption-key"),
@@ -88,6 +111,8 @@ impl NotificationHeaders {
             NotificationHeaders {
                 ttl,
                 topic,
+                #[cfg(feature = "urgency")]
+                urgency,
                 encoding: None,
                 encryption: None,
                 encryption_key: None,
@@ -365,6 +390,8 @@ mod tests {
             NotificationHeaders {
                 ttl: 10,
                 topic: None,
+                #[cfg(feature = "urgency")]
+                urgency: None,
                 encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: None,
@@ -390,6 +417,8 @@ mod tests {
             NotificationHeaders {
                 ttl: 10,
                 topic: None,
+                #[cfg(feature = "urgency")]
+                urgency: None,
                 encoding: Some("aes128gcm".to_string()),
                 encryption: Some("notsalt=foo".to_string()),
                 encryption_key: None,
@@ -416,6 +445,8 @@ mod tests {
             NotificationHeaders {
                 ttl: 10,
                 topic: None,
+                #[cfg(feature = "urgency")]
+                urgency: None,
                 encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
                 encryption_key: None,

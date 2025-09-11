@@ -28,4 +28,5 @@ autopush_common.workspace = true
 
 [features]
 test-support = []
+urgency = []
 reliable_report = ["autopush_common/reliable_report"]

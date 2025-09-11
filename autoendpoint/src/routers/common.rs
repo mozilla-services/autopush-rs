@@ -251,6 +251,8 @@ pub mod tests {
             },
             headers: NotificationHeaders {
                 ttl: 0,
+                #[cfg(feature = "urgency")]
+                urgency: None,
                 topic: Some("test-topic".to_string()),
                 encoding: Some("test-encoding".to_string()),
                 encryption: Some("test-encryption".to_string()),
