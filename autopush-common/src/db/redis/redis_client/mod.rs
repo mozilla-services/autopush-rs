@@ -127,6 +127,11 @@ impl RedisClientImpl {
         format!("autopush/co/{}", uaid)
     }
 
+    /// This store the last timestamp incremented by the server once messages are ACK'ed
+    fn storage_timestamp_key(&self, uaid: &Uaid) -> String {
+        format!("autopush/timestamp/{}", uaid)
+    }
+
     fn channel_list_key(&self, uaid: &Uaid) -> String {
         format!("autopush/channels/{}", uaid)
     }
@@ -378,15 +383,20 @@ impl DbClient for RedisClientImpl {
         debug!("🐰🔥 Incrementing storage to {}", timestamp);
         let msg_list_key = self.message_list_key(&uaid);
         let exp_list_key = self.message_exp_list_key(&uaid);
+        let storage_timestamp_key = self.storage_timestamp_key(&uaid);
         let mut con = self.connection().await?;
         let exp_id_list: Vec<String> = con.zrangebyscore(&exp_list_key, 0, timestamp).await?;
         if exp_id_list.len() > 0 {
             trace!("🐰🔥 Deleting {} expired msgs", exp_id_list.len());
             redis::pipe()
+                .set_options(&storage_timestamp_key, timestamp, self.redis_opts)
                 .del(&exp_id_list)
                 .zrem(&msg_list_key, &exp_id_list)
                 .zrem(&exp_list_key, &exp_id_list)
                 .exec_async(&mut con)
+                .await?;
+        } else {
+            con.set_options(&storage_timestamp_key, timestamp, self.redis_opts)
                 .await?;
         }
         Ok(())
@@ -448,11 +458,17 @@ impl DbClient for RedisClientImpl {
         trace!("🐰 Fecthing {} messages since {:?}", limit, timestamp);
         let mut con = self.connection().await?;
         let msg_list_key = self.message_list_key(&uaid);
+        let timestamp = if let Some(timestamp) = timestamp {
+            timestamp
+        } else {
+            let storage_timestamp_key = self.storage_timestamp_key(&uaid);
+            con.get(&storage_timestamp_key).await.unwrap_or(0)
+        };
         // ZRANGE Key (x +inf LIMIT 0 limit
         let (messages_id, mut scores): (Vec<String>, Vec<u64>) = con
             .zrangebyscore_limit_withscores::<&str, &str, &str, Vec<(String, u64)>>(
                 &msg_list_key,
-                &format!("({}", timestamp.unwrap_or(0)),
+                &format!("({}", timestamp),
                 "+inf",
                 0,
                 limit as isize,

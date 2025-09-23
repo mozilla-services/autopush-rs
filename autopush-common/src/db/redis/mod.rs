@@ -4,6 +4,7 @@
 /// Keys for the data are
 /// `autopush/user/{uaid}` String to store the user data
 /// `autopush/co/{uaid}` u64 to store the last time the user has interacted with the server
+/// `autopush/timestamp/{uaid}` u64 to store the last storage timestamp incremented by the server, once messages are delivered
 /// `autopush/channels/{uaid}` List to store the list of the channels of the user
 /// `autopush/msgs/{uaid}` SortedSet to store the list of the pending message ids for the user
 /// `autopush/msgs_exp/{uaid}` SortedSet to store the list of the pending message ids, ordered by expiry date, this is because SortedSet elements can't have independant expiry date
