@@ -21,7 +21,7 @@ pub fn spawn_pool_periodic_reporter(
     });
 }
 
-fn pool_periodic_reporter(db: &dyn DbClient, metrics: &StatsdClient, hostname: &str) {
+fn pool_periodic_reporter(db: &dyn DbClient, metrics: &StatsdClient, _hostname: &str) {
     let Some(status) = db.pool_status() else {
         return;
     };
@@ -30,14 +30,12 @@ fn pool_periodic_reporter(db: &dyn DbClient, metrics: &StatsdClient, hostname: &
             "database.pool.active",
             (status.size - status.available) as u64,
         )
-        .with_tag("hostname", hostname)
+        //.with_tag("hostname", hostname)  // Do not include hostname due to cardinality
         .send();
     metrics
         .gauge_with_tags("database.pool.idle", status.available as u64)
-        .with_tag("hostname", hostname)
         .send();
     metrics
         .gauge_with_tags("database.pool.waiting", status.waiting as u64)
-        .with_tag("hostname", hostname)
         .send();
 }
