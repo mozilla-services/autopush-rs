@@ -565,13 +565,6 @@ pub mod tests {
 
     #[test]
     fn vapid_public_key_variants() {
-        #[derive(Debug, Deserialize, Serialize)]
-        struct StrExpVapidClaims {
-            exp: String,
-            aud: String,
-            sub: String,
-        }
-
         // pretty much matches the kind of key we get from some partners.
         let public_key_standard = "BM3bVjW/wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf+1odb8hds=".to_owned();
         let public_key_url_safe = "BM3bVjW_wuZC54alIbqjTbaBNtthriVtdZlchOyOSdbVYeYQu2i5inJdft7jUWIAy4O9xHBbY196Gf-1odb8hds=".to_owned();
