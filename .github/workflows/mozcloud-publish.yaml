@@ -18,7 +18,6 @@ jobs:
       contents: read
       packages: write
       id-token: write
-    environment: build
     secrets: inherit
     uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@78c0263d9e6c1d698fa7f4f5d76f5b1eb9dda69a # v4.5.0
     with:
