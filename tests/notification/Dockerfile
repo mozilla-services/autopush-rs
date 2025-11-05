@@ -36,7 +36,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatspi2.0-0 \
     libglib2.0-0 \
     libnss3 \
-    libgconf-2-4 \
     libfontconfig1 \
     libdbus-glib-1-2 \
     && apt-get clean -y
