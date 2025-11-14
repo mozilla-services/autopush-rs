@@ -21,7 +21,7 @@ authors = [
     "Mark Drobnak <mdrobnak@mozilla.com>",
 ]
 edition = "2021"
-rust-version = "1.86.0"
+rust-version = "1.90.0"
 
 [workspace.dependencies]
 # ideally, this would contain any crates that are shared between crates.

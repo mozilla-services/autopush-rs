@@ -1,0 +1,16 @@
+{
+  "name": "autopush rust dev",
+  "image": "mcr.microsoft.com/devcontainers/rust:bookworm",
+  "customizations": {
+    "vscode": {
+      "settings": {},
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "fill-labs.dependi",
+        "vadimcn.vscode-lldb",
+        "streetsidesoftware.code-spell-checker"
+      ]
+    }
+  },
+  "postCreateCommand": "cargo install --locked cargo-edit cargo-watch"
+}

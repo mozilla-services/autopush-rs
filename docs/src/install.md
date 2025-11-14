@@ -14,6 +14,12 @@ package.
     -   gcc
     -   make
 
+* supplemental packages:
+    - cmake
+    - glibc-2.39
+    - clang
+    - poetry
+
 * (for integration testing) python3 and the python3 development (header files)
 
 * libffi development
@@ -24,19 +30,10 @@ package.
 
 * git
 
-For instance, if installing on a Fedora or RHEL-like Linux (e.g. an
-Amazon EC2 instance):
+For instance, if installing on a Debian based system (like Ubuntu):
 
 ``` bash
-$ sudo yum install autoconf automake gcc make libffi-devel \
-openssl-devel pypy pypy-devel python3-virtualenv git -y
-```
-
-Or a Debian based system (like Ubuntu):
-
-``` bash
-$ sudo apt-get install build-essential libffi-dev \
-libssl-dev pypy-dev python3-virtualenv git --assume-yes
+$ sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv python3-poetry git glibc-source clang --assume-yes
 ```
 
 ## Check-out the Autopush Repository
