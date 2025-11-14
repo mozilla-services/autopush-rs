@@ -6,7 +6,7 @@
 # Pull in the version of cargo-chef we plan to use, so that all the below steps
 # use a consistent set of versions.
 # RUST_VER
-FROM lukemathwalker/cargo-chef:0.1.71-rust-1.91-slim-bookworm AS chef
+FROM lukemathwalker/cargo-chef:0.1.73-rust-1.91-slim-bookworm AS chef
 WORKDIR /app
 
 # =============================================================================
