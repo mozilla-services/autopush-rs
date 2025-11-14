@@ -70,10 +70,67 @@ $ docker run -t -i mozilla-services/autopush-rs autokey
 CRYPTO_KEY="hkclU1V37Dnp-0DMF9HLe_40Nnr8kDTYVbo2yxuylzk="
 ```
 
-Store the key for later use (including any trailing `=`).
+Store the key for later use (including any trailing `=`). By default autopush will look for this value as an environment variable, so you may want to use something like [direnv](https://direnv.net/) and add 
+
+```
+export CRYPTO_KEY="Your-Key-Here00000000000000000000000000000=="
+```
+
 
 ## Start Autopush
 
+While there is a `docker-compose-bt.yml` file provided, this file was originally created for testing. It will start up instances of AutoConnect and AutoEndpoint as well as a Bigtable emulator. This approach does, however, make it difficult to develop, debug, and diagnose potential issues. 
+
+The following instructions will allow you to run Autopush "locally" in a Ubuntu / Debian environment. If you prefer, the [development](development.md) document has more details.
+
+### Starting optional emulators
+
+If you are planning on doing local development work with Autopush, you may wish to run emulators for 
+[Bigtable](https://docs.cloud.google.com/bigtable/docs/emulator) and [Redis](https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/docker/). This document does not detail the steps required, because they may change. 
+
+Once you have the Bigtable emulator installed, you may with to use the following bash script to start it. (Note, this presumes that you are using the GCLI interface. Please edit as needed.)
+
+```bash
+#!/bin/bash
+# Set the file limit higher than the standard default
+ulimit -n 64000
+# If you're running a docker instance, you may want to use the following line
+#docker run -p 127.0.0.1:8086:8086 --rm -ti google/cloud-sdk gcloud beta emulators bigtable start --host-port=0.0.0.0:8086 &
+# Start the GCLI instance
+gcloud beta emulators bigtable start --host-port=localhost:8086 &
+# Wait for the emulator to start (YMMV)
+sleep 15
+# Export this so that the code knows where to look for the emulator
+export BIGTABLE_EMULATOR_HOST=localhost:8086
+# Finally, execute the following to create the tables and families that autopush will need.
+cbt -project test -instance test createtable autopush && \
+cbt -project test -instance test createfamily autopush message && \
+cbt -project test -instance test createfamily autopush message_topic && \
+cbt -project test -instance test createfamily autopush router && \
+cbt -project test -instance test createfamily autopush reliability && \
+cbt -project test -instance test setgcpolicy autopush message maxage=1s && \
+cbt -project test -instance test setgcpolicy autopush router maxversions=1 && \
+cbt -project test -instance test setgcpolicy autopush message_topic maxversions=1 and maxage=1s && \
+cbt -project test -instance test setgcpolicy autopush reliability maxversions=1 and maxage=6d
+```
+
+Redis is used by the Push Reliability functions. For Redis, I tend to use the following script:
+```bash
+#! /bin/bash
+# Save every 60 seconds / 1000 key changes.
+# retain timestamp (by default) for 1 hour
+# expose ports for redis (6379) and insight (8001) (if available)
+docker run \
+    --rm \
+    -e REDIS_ARGS="--save 60 1000" \
+    -e REDISTIMESERIES_ARGS="RETENTION_POLICY=3600000" \
+    --name redis-stack \
+    -p 6379:6379 \
+    -p 8001:8001 \
+    -v`pwd`/r_data:/data redis/redis-stack-server:latest
+```
+
+<!--
 Once you've completed the setup and have a crypto key, you can run a
 local Autopush with a single command:
 
@@ -97,6 +154,7 @@ config files as documented below.
 
 > _**Note**_: The load-tester can be run against it or you can run Firefox with the
 local Autopush per the `test-with-firefox` docs.
+-->
 
 ## Configuration
 
