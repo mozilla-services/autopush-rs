@@ -19,6 +19,7 @@ Before you do your first `cargo build` you will need to install some local depen
 ```bash
 sudo apt update;
 sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv git glibc-source clang --assume-yes
+cargo install cargo-audit
 ```
 
 > _*TODO*_: Need to figure out a way to include these into the docker image definition. added `make docker-init` for now.

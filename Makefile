@@ -35,8 +35,10 @@ INSTALL_STAMP := .install.stamp
 
 .PHONY: docker-init
 docker-init: 
-	sudo apt install 
-	sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv git glibc-source clang --assume-yes
+	sudo apt update
+	sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv git glibc-source cmake clang --assume-yes
+	cargo install cargo-audit
+	rustup update 1.91.0 	## RUST_VERcargo
 
 .PHONY: install
 install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
