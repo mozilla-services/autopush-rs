@@ -24,6 +24,7 @@ jobs:
       image_name: autoconnect
       gar_name: autopush-prod
       project_id: moz-fx-autopush-prod
+      postbuild_script: "./scripts/smoketests/autoconnect.sh autoconnect"
       docker_build_args: |
         CRATE=autoconnect
         BINARY=autoconnect
