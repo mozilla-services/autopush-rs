@@ -46,6 +46,7 @@ jobs:
       image_name: autoendpoint
       gar_name: autopush-prod
       project_id: moz-fx-autopush-prod
+      postbuild_script: "./scripts/smoketests/autoendpoint.sh autoendpoint"
       docker_build_args: |
         CRATE=autoendpoint
         BINARY=autoendpoint
