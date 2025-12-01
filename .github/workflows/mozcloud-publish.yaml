@@ -16,14 +16,13 @@ jobs:
       )
     permissions:
       contents: read
-      packages: write
       id-token: write
-    secrets: inherit
     uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@78c0263d9e6c1d698fa7f4f5d76f5b1eb9dda69a # v4.5.0
     with:
       image_name: autoconnect
       gar_name: autopush-prod
       project_id: moz-fx-autopush-prod
+      postbuild_script: "./scripts/smoketests/autoconnect.sh autoconnect"
       docker_build_args: |
         CRATE=autoconnect
         BINARY=autoconnect
@@ -37,14 +36,13 @@ jobs:
       )
     permissions:
       contents: read
-      packages: write
       id-token: write
-    secrets: inherit
     uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@78c0263d9e6c1d698fa7f4f5d76f5b1eb9dda69a # v4.5.0
     with:
       image_name: autoendpoint
       gar_name: autopush-prod
       project_id: moz-fx-autopush-prod
+      postbuild_script: "./scripts/smoketests/autoendpoint.sh autoendpoint"
       docker_build_args: |
         CRATE=autoendpoint
         BINARY=autoendpoint
