@@ -183,6 +183,7 @@ MEGAPHONE_CONFIG.update(
 For local test debugging, set `AUTOPUSH_EP_CONFIG=_url_` to override
 creation of the local server.
 """
+encoded = base64.urlsafe_b64encode(b"x04" + TRACKING_PUB_KEY.to_string()).decode()
 ENDPOINT_CONFIG = dict(
     scheme="http",
     host="127.0.0.1",
@@ -192,7 +193,7 @@ ENDPOINT_CONFIG = dict(
     human_logs="true",
     crypto_keys=f"[{CRYPTO_KEY}]",
     # convert to x692 format
-    tracking_keys=f"[{base64.urlsafe_b64encode((b"\4" + TRACKING_PUB_KEY.to_string())).decode()}]",
+    tracking_keys=f"""[{encoded}]""",
 )
 
 # Note: These are only used by the `reliable_report` feature, however, specifying them
@@ -217,9 +218,9 @@ def _get_vapid(
 
     if endpoint is None:
         endpoint = (
-            f"{CONNECTION_CONFIG.get("endpoint_scheme")}://"
-            f"{CONNECTION_CONFIG.get("endpoint_hostname")}:"
-            f"{CONNECTION_CONFIG.get("endpoint_port")}"
+            f"""{CONNECTION_CONFIG.get("endpoint_scheme")}://"""
+            f"""{CONNECTION_CONFIG.get("endpoint_hostname")}:"""
+            f"""{CONNECTION_CONFIG.get("endpoint_port")}"""
         )
     if not payload:
         payload = {

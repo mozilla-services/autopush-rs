@@ -1,6 +1,6 @@
 {
   "name": "autopush rust dev",
-  "image": "mcr.microsoft.com/devcontainers/rust:bookworm",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
   "customizations": {
     "vscode": {
       "settings": {},
@@ -12,5 +12,8 @@
       ]
     }
   },
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": "latest"
+  }
   "postCreateCommand": "cargo install --locked cargo-edit cargo-watch"
 }

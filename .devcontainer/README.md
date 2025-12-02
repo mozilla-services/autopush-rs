@@ -18,7 +18,7 @@ Before you do your first `cargo build` you will need to install some local depen
 
 ```bash
 sudo apt update;
-sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv git glibc-source clang --assume-yes
+sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv python3-poetry python-is-python3 python3-types-requests git glibc-source clang --assume-yes
 cargo install cargo-audit
 ```
 
