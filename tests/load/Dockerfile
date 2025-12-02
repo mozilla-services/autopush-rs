@@ -25,8 +25,8 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0 \
   AUTOPUSH_VAPID_KEY=./tests/load/keys/private_key.pem
 RUN python -m pip install --no-cache-dir --quiet poetry
-COPY ./tests/pyproject.toml ./tests/poetry.lock ./
-RUN poetry install --without dev,integration,notification --no-interaction --no-ansi
+# COPY ./tests/pyproject.toml ./tests/poetry.lock ./tests
+RUN poetry install --directory tests --without dev,integration,notification --no-interaction --no-ansi
 
 RUN useradd --create-home locust
 WORKDIR /home/locust
