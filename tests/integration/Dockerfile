@@ -92,7 +92,7 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0
 RUN python -m pip install --no-cache-dir --quiet poetry
 COPY ./tests/pyproject.toml ./tests/poetry.lock ./
-RUN poetry install --only=integration --no-interaction --no-ansi
+RUN poetry install --only=integration --no-root --no-interaction --no-ansi
 
 # Setup cloud big table
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
