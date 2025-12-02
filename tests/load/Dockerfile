@@ -8,7 +8,7 @@ LABEL org.opencontainers.image.authors="contextual-services-team@mozilla.com"
 # Add gcc since there are no wheels for some packages for arm64/aarch64
 # (g++/make for gevent on pypy)
 RUN apt-get update && apt-get install -y git && \
-  apt install -y --no-install-recommends build-essential python3-dev
+   apt install -y --no-install-recommends build-essential python3-dev
 
 ENV LANG=C.UTF-8
 ENV PYTHONUNBUFFERED=1
@@ -25,8 +25,9 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0 \
   AUTOPUSH_VAPID_KEY=./tests/load/keys/private_key.pem
 RUN python -m pip install --no-cache-dir --quiet poetry
-# COPY ./tests/pyproject.toml ./tests/poetry.lock ./tests
-RUN poetry install --directory tests --without dev,integration,notification --no-interaction --no-ansi
+COPY tests/pyproject.toml tests/poetry.lock /
+
+RUN poetry install --no-root --without dev,integration,notification --no-interaction --no-ansi
 
 RUN useradd --create-home locust
 WORKDIR /home/locust
