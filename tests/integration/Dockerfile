@@ -6,7 +6,7 @@
 # Pull in the version of cargo-chef we plan to use, so that all the below steps
 # use a consistent set of versions.
 # RUST_VER
-FROM lukemathwalker/cargo-chef:0.1.73-rust-1.90-slim-bookworm AS chef
+FROM lukemathwalker/cargo-chef:0.1.73-rust-1.91-slim-bookworm AS chef
 WORKDIR /app
 
 # =============================================================================
@@ -92,7 +92,7 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0
 RUN python -m pip install --no-cache-dir --quiet poetry
 COPY ./tests/pyproject.toml ./tests/poetry.lock ./
-RUN poetry install --only=integration --no-interaction --no-ansi
+RUN poetry install --only=integration --no-root --no-interaction --no-ansi
 
 # Setup cloud big table
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg

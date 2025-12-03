@@ -1,6 +1,6 @@
 # NOTE: Ensure builder's Rust version matches CI's in .circleci/config.yml
 # RUST_VER
-FROM rust:1.90-bookworm AS builder
+FROM rust:1.91-bookworm AS builder
 ARG CRATE
 
 ADD . /app

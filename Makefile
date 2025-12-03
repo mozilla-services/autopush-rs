@@ -3,7 +3,7 @@ CARGO = cargo
 # For unknown reasons, poetry on CI will sometimes "forget" what it's current path is, which
 # can confuse relative path lookups.
 # Let's be very explicit about it for now.
-TESTS_DIR := `pwd`/tests
+TESTS_DIR := $(shell pwd)/tests
 TEST_RESULTS_DIR ?= workspace/test-results
 
 # In order to be consumed by the ETE Test Metric Pipeline, files need to follow a strict naming convention:
@@ -25,7 +25,7 @@ INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
 INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
-POETRY := poetry --project $(TESTS_DIR)
+POETRY := poetry --directory $(TESTS_DIR)
 DOCKER_COMPOSE := docker compose
 PYPROJECT_TOML := $(TESTS_DIR)/pyproject.toml
 POETRY_LOCK := $(TESTS_DIR)/poetry.lock
@@ -33,6 +33,12 @@ FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
 INSTALL_STAMP := .install.stamp
 
+.PHONY: docker-init
+docker-init: 
+	sudo apt update
+	sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv python3-poetry python-is-python3 git glibc-source cmake clang --assume-yes
+	cargo install cargo-audit
+	rustup update 1.91.0 	## RUST_VER
 
 .PHONY: install
 install: $(INSTALL_STAMP)  ##  Install dependencies with poetry

@@ -33,9 +33,9 @@ from models import (
     RegisterRecord,
     UnregisterMessage,
 )
+from py_vapid import Vapid02
 from pydantic import ValidationError
 from websocket import WebSocket, WebSocketApp, WebSocketConnectionClosedException
-from py_vapid import Vapid02
 
 Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | UnregisterMessage
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
@@ -127,16 +127,17 @@ class AutopushUser(FastHttpUser):
         if self.ws_greenlet:
             gevent.kill(self.ws_greenlet)
 
-    def on_ws_open(self, ws: WebSocket) -> None:
+    def on_ws_open(self, ws: WebSocketApp) -> None:
         """Call when opening a WebSocket.
 
         Parameters
         ----------
         ws : WebSocket
         """
-        self.send_hello(ws)
+        if ws.sock:
+            self.send_hello(ws.sock)
 
-    def on_ws_message(self, ws: WebSocket, data: str) -> None:
+    def on_ws_message(self, ws: WebSocketApp, data: str) -> None:
         """Call when received data from a WebSocket.
 
         Parameters
@@ -148,14 +149,14 @@ class AutopushUser(FastHttpUser):
         message: Message | None = self.recv(data)
         if isinstance(message, HelloMessage):
             self.uaid = message.uaid
-        elif isinstance(message, NotificationMessage):
-            self.send_ack(ws, message.channelID, message.version)
+        elif isinstance(message, NotificationMessage) and ws.sock:
+            self.send_ack(ws.sock, message.channelID, message.version)
         elif isinstance(message, RegisterMessage):
             self.channels[message.channelID] = message.pushEndpoint
         elif isinstance(message, UnregisterMessage):
             del self.channels[message.channelID]
 
-    def on_ws_error(self, ws: WebSocket, error: Exception) -> None:
+    def on_ws_error(self, ws: WebSocketApp, error: Exception) -> None:
         """Call when there is a WebSocket error or if an exception is raised in a WebSocket
         callback function.
 
@@ -175,7 +176,7 @@ class AutopushUser(FastHttpUser):
         )
 
     def on_ws_close(
-        self, ws: WebSocket, close_status_code: int | None, close_msg: str | None
+        self, ws: WebSocketApp, close_status_code: int | None, close_msg: str | None
     ) -> None:
         """Call when closing a WebSocket.
 
