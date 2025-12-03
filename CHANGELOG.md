@@ -1,3 +1,18 @@
+<a name="1.77.4"></a>
+## 1.77.4 (2025-10-22)
+
+
+#### Bug Fixes
+
+*   Remove 'hostname' tag from periodic reporter (#1029) ([62413c9f](https://github.com/mozilla-services/autopush-rs/commit/62413c9f5c6c98f18ff28265c0320f4c74d80980))
+
+#### Features
+
+*   Added CI workflow to build and push autoconnect images when a pull request has a preview label (#1028) ([7b3f388b](https://github.com/mozilla-services/autopush-rs/commit/7b3f388bf77d2cffa4a9e72d88f1a7d6ba6d8ef1))
+*   Add per node connection count to health (#1027) ([180fa5f2](https://github.com/mozilla-services/autopush-rs/commit/180fa5f254e13e1013248ecaaadb6a8c3053b357))
+
+
+
 <a name="1.77.3"></a>
 ## 1.77.3 (2025-08-19)
 
