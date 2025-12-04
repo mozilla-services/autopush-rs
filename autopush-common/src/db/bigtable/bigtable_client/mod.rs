@@ -26,10 +26,11 @@ use crate::db::RangeKey;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
+    DbSettings, Notification, User, USER_RECORD_VERSION,
 };
 use crate::metric_name::MetricName;
 use crate::metrics::StatsdClientExt;
+use crate::MAX_ROUTER_TTL_SECS;
 
 pub use self::metadata::MetadataBuilder;
 use self::row::{Row, RowCells};
@@ -400,6 +401,12 @@ impl BigTableClientImpl {
         })
     }
 
+    fn router_ttl(&self) -> Duration {
+        self.settings
+            .max_router_ttl
+            .unwrap_or(Duration::from_secs(MAX_ROUTER_TTL_SECS as u64))
+    }
+
     /// Spawn a task to periodically evict idle connections
     pub fn spawn_sweeper(&self, interval: Duration) {
         self.pool.spawn_sweeper(interval);
@@ -481,7 +488,7 @@ impl BigTableClientImpl {
         let mut stream = Box::pin(resp);
         let mut cnt = 0;
         loop {
-            let (result, remainder) = stream.into_future().await;
+            let (result, remainder) = StreamExt::into_future(stream).await;
             if let Some(result) = result {
                 debug!("🎏 Result block: {}", cnt);
                 match result {
@@ -801,8 +808,7 @@ impl BigTableClientImpl {
     fn user_to_row(&self, user: &User, version: &Uuid) -> Row {
         let row_key = user.uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry =
-            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
+        let expiry = std::time::SystemTime::now() + self.router_ttl();
 
         let mut cells: Vec<cell::Cell> = vec![
             cell::Cell {
@@ -1084,8 +1090,7 @@ impl DbClient for BigTableClientImpl {
         // easy/efficient
         let row_key = uaid.simple().to_string();
         let mut row = Row::new(row_key);
-        let expiry =
-            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
+        let expiry = std::time::SystemTime::now() + self.router_ttl();
 
         // Note: updating the version column isn't necessary here because this
         // write only adds a new (or updates an existing) column with a 0 byte
@@ -1128,8 +1133,7 @@ impl DbClient for BigTableClientImpl {
 
         // and write a new version cell
         let mut row = Row::new(row_key);
-        let expiry =
-            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
+        let expiry = std::time::SystemTime::now() + self.router_ttl();
         row.cells
             .insert(ROUTER_FAMILY.to_owned(), vec![new_version_cell(expiry)]);
         mutations.extend(self.get_mutations(row.cells)?);
@@ -1153,7 +1157,7 @@ impl DbClient for BigTableClientImpl {
     ) -> DbResult<bool> {
         let row_key = uaid.simple().to_string();
         trace!("🉑 Removing node_id for: {row_key} (version: {version:?}) ",);
-        let Some(ref version) = version else {
+        let Some(version) = version else {
             return Err(DbError::General("Expected a user version field".to_owned()));
         };
 
@@ -1300,8 +1304,7 @@ impl DbClient for BigTableClientImpl {
             &row_key,
             timestamp.to_be_bytes().to_vec()
         );
-        let expiry =
-            std::time::SystemTime::now() + Duration::from_secs(MAX_ROUTER_TTL.num_seconds() as u64);
+        let expiry = std::time::SystemTime::now() + self.router_ttl();
         let mut row = Row::new(row_key.clone());
 
         row.cells.insert(

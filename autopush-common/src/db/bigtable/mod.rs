@@ -86,6 +86,10 @@ pub struct BigTableDbSettings {
     /// Number of times to retry a GRPC function
     #[serde(default = "retry_default")]
     pub retry_count: usize,
+    /// Max lifetime (in seconds) for a router entry
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    pub max_router_ttl: Option<Duration>,
 }
 
 // Used by test, but we don't want available for release.
@@ -93,6 +97,8 @@ pub struct BigTableDbSettings {
 #[cfg(test)]
 impl Default for BigTableDbSettings {
     fn default() -> Self {
+        use crate::{MAX_NOTIFICATION_TTL_SECS, MAX_ROUTER_TTL_SECS};
+
         Self {
             table_name: Default::default(),
             router_family: Default::default(),
@@ -107,6 +113,7 @@ impl Default for BigTableDbSettings {
             route_to_leader: Default::default(),
             retry_count: Default::default(),
             app_profile_id: Default::default(),
+            max_router_ttl: Some(Duration::from_secs(MAX_ROUTER_TTL_SECS as u64)),
         }
     }
 }

@@ -1,8 +1,9 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::util::{get_header, get_owned_header};
-use actix_web::HttpRequest;
-use autopush_common::{util::InsertOpt, MAX_NOTIFICATION_TTL};
+use crate::server::AppState;
+use actix_web::{web::Data, HttpRequest};
+use autopush_common::util::InsertOpt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::cmp::min;
@@ -65,13 +66,18 @@ impl NotificationHeaders {
     /// stream.
     pub fn from_request(req: &HttpRequest, has_data: bool) -> ApiResult<Self> {
         // Collect raw headers
-        let ttl = get_header(req, "ttl")
+        let settings = req
+            .app_data::<Data<AppState>>()
+            .expect("Could not get Application State");
+        let ttl: i64 = get_header(req, "ttl")
             .and_then(|ttl| ttl.parse().ok())
             // Enforce a maximum TTL, but don't error
             // NOTE: In order to trap for negative TTLs, this should be a
             // signed value, otherwise we will error out with NO_TTL.
-            .map(|ttl| min(ttl, MAX_NOTIFICATION_TTL.num_seconds()))
-            .ok_or(ApiErrorKind::NoTTL)?;
+            .map(|ttl| min(ttl, settings.settings.max_notification_ttl.as_secs()))
+            .ok_or(ApiErrorKind::NoTTL)?
+            .try_into()
+            .unwrap_or_default();
         let topic = get_owned_header(req, "topic");
 
         let headers = if has_data {
@@ -217,8 +223,7 @@ mod tests {
     use super::NotificationHeaders;
     use crate::error::{ApiErrorKind, ApiResult};
     use actix_web::test::TestRequest;
-    use autopush_common::MAX_NOTIFICATION_TTL;
-    use chrono::TimeDelta;
+    use autopush_common::MAX_NOTIFICATION_TTL_SECS;
 
     /// Assert that a result is a validation error and check its serialization
     /// against the JSON value.
@@ -284,17 +289,12 @@ mod tests {
     #[test]
     fn maximum_ttl() {
         let req = TestRequest::post()
-            .insert_header((
-                "TTL",
-                (MAX_NOTIFICATION_TTL + TimeDelta::seconds(1))
-                    .num_seconds()
-                    .to_string(),
-            ))
+            .insert_header(("TTL", (MAX_NOTIFICATION_TTL_SECS + 1).to_string()))
             .to_http_request();
         let result = NotificationHeaders::from_request(&req, false);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL.num_seconds());
+        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL_SECS as i64);
     }
 
     /// A valid topic results in no errors

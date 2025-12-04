@@ -386,7 +386,7 @@ impl RowMerger {
         // finished collection
         let mut rows = BTreeMap::<RowKey, Row>::new();
 
-        while let (Some(row_resp_res), s) = stream.into_future().await {
+        while let (Some(row_resp_res), s) = StreamExt::into_future(stream).await {
             stream = s;
 
             // Bigtable's responses are not reliable.
