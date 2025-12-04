@@ -76,9 +76,7 @@ impl NotificationHeaders {
             // NOTE: In order to trap for negative TTLs, this should be a
             // signed value, otherwise we will error out with NO_TTL.
             .map(|ttl: i64| min(ttl, max_notification_ttl.as_secs() as i64))
-            .ok_or(ApiErrorKind::NoTTL)?
-            .try_into()
-            .unwrap_or_default();
+            .ok_or(ApiErrorKind::NoTTL)?;
 
         let topic = get_owned_header(req, "topic");
 

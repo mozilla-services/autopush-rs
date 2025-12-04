@@ -113,7 +113,7 @@ impl Default for BigTableDbSettings {
             route_to_leader: Default::default(),
             retry_count: Default::default(),
             app_profile_id: Default::default(),
-            max_router_ttl: Some(Duration::from_secs(MAX_ROUTER_TTL_SECS as u64)),
+            max_router_ttl: Some(Duration::from_secs(MAX_ROUTER_TTL_SECS)),
         }
     }
 }

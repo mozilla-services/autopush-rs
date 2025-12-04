@@ -404,7 +404,7 @@ impl BigTableClientImpl {
     fn router_ttl(&self) -> Duration {
         self.settings
             .max_router_ttl
-            .unwrap_or(Duration::from_secs(MAX_ROUTER_TTL_SECS as u64))
+            .unwrap_or(Duration::from_secs(MAX_ROUTER_TTL_SECS))
     }
 
     /// Spawn a task to periodically evict idle connections

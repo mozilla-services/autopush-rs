@@ -107,7 +107,7 @@ impl Default for Settings {
             reliability_dsn: None,
             #[cfg(feature = "reliable_report")]
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
-            max_notification_ttl: Duration::from_secs(MAX_NOTIFICATION_TTL_SECS as u64),
+            max_notification_ttl: Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
         }
     }
 }
