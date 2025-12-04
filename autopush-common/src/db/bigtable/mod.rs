@@ -97,7 +97,7 @@ pub struct BigTableDbSettings {
 #[cfg(test)]
 impl Default for BigTableDbSettings {
     fn default() -> Self {
-        use crate::{MAX_NOTIFICATION_TTL_SECS, MAX_ROUTER_TTL_SECS};
+        use crate::MAX_ROUTER_TTL_SECS;
 
         Self {
             table_name: Default::default(),

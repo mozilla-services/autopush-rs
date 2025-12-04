@@ -261,7 +261,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slog_scope::trace;
 
     #[test]
     fn test_router_url() {

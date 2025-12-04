@@ -239,7 +239,7 @@ impl WebPushClient {
                 if is_topic {
                     let chid = &acked_notification.chidmessageid();
                     debug!("✅ WebPushClient:ack removing Stored, sort_key: {}", &chid);
-                    self.app_state.db.remove_message(&self.uaid, &chid).await?;
+                    self.app_state.db.remove_message(&self.uaid, chid).await?;
                     // NOTE: timestamp messages may still be in state of flux: they're not fully
                     // ack'd (removed/unable to be resurrected) until increment_storage is called,
                     // so their reliability is recorded there
