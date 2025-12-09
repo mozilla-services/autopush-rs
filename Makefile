@@ -40,6 +40,11 @@ docker-init:
 	cargo install cargo-audit
 	rustup update 1.91.0 	## RUST_VER
 
+.PHONY: docker-dev-build
+docker-dev-build: 
+	docker build -f Dockerfile-dev -t autopush-dev build .
+	docker run -it autopush-dev:latest
+
 .PHONY: install
 install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
 $(INSTALL_STAMP): $(PYPROJECT_TOML) $(POETRY_LOCK)

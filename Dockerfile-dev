@@ -1,0 +1,45 @@
+# This builds a docker image that can be used for local development.
+# 
+# To use this as your environment: 
+# ```
+# docker build -f Dockerfile-dev -t autopush-dev .
+# docker run -it autopush-dev:latest
+# ```
+# 
+# Note that grpcio 0.13.0+1.56.2-patched does not compile under kernel version 6.17+ (trixie)
+# Thus we are limited to running the prior 6.1 kernel (bookworm)
+# NOTE: Ensure builder's Rust version matches CI's in .circleci/config.yml
+# RUST_VER
+FROM rust:1.91-bookworm
+
+ADD . /app
+WORKDIR /app
+ENV PATH=$PATH:/root/.cargo/bin
+
+# cmake is required for grpcio & google-cloud-rust
+RUN \
+    apt-get -qq update && \
+    apt-get -qq install --no-install-recommends -y cmake clang
+
+# Ensure that the directory permissions are set correctly
+RUN \
+    groupadd --gid 10001 app && \
+    useradd --uid 10001 --gid 10001 --home /app --create-home app
+
+# Install the system requirements.
+RUN \
+    apt-get -qq update && \
+    apt-get -qq install -y libssl-dev ca-certificates build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv python3-poetry python-is-python3 git glibc-source cmake clang && \
+    rm -rf /var/lib/apt/lists
+
+# Build the apps.
+RUN \
+    which cargo && \
+    cargo --version && \
+    rustc --version && \
+    cargo install cargo-audit && \
+    cargo build 
+
+
+# Open to the shell.
+ENTRYPOINT ["/bin/bash"]
