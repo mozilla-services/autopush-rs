@@ -27,6 +27,7 @@ autopush_common.workspace = true
 default = ["bigtable", "reliable_report"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
+redis = ["autopush_common/redis", "autoconnect_settings/redis"]
 log_vapid = []
 reliable_report = [
     "autoconnect_common/reliable_report",

@@ -229,6 +229,7 @@ impl Settings {
         Ok(())
     }
 
+    #[cfg(feature = "bigtable")]
     pub fn test_settings() -> Self {
         let db_dsn = Some("grpc://localhost:8086".to_string());
         // BigTable DB_SETTINGS.
@@ -239,6 +240,17 @@ impl Settings {
             "message_topic_family":"message_topic",
         })
         .to_string();
+        Self {
+            db_dsn,
+            db_settings,
+            ..Default::default()
+        }
+    }
+
+    #[cfg(all(feature = "redis", not(feature = "bigtable")))]
+    pub fn test_settings() -> Self {
+        let db_dsn = Some("redis://localhost".to_string());
+        let db_settings = "".to_string();
         Self {
             db_dsn,
             db_settings,
@@ -261,6 +273,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "unsafe")]
     use slog_scope::trace;
 
     #[test]
@@ -303,7 +316,7 @@ mod tests {
         assert_eq!("https://testname:8080", url);
     }
 
-    #[test]
+    #[cfg(all(test, r#unsafe))]
     fn test_default_settings() {
         // Test that the Config works the way we expect it to.
         use std::env;
@@ -313,9 +326,11 @@ mod tests {
 
         let v1 = env::var(&port);
         let v2 = env::var(&msg_limit);
-        env::set_var(&port, "9123");
-        env::set_var(&msg_limit, "123");
-        env::set_var(&fernet, "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]");
+        unsafe {
+            env::set_var(&port, "9123");
+            env::set_var(&msg_limit, "123");
+            env::set_var(&fernet, "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]");
+        }
         let settings = Settings::with_env_and_config_files(&Vec::new()).unwrap();
         assert_eq!(settings.endpoint_hostname, "localhost".to_owned());
         assert_eq!(&settings.port, &9123);
@@ -329,16 +344,16 @@ mod tests {
         // reset (just in case)
         if let Ok(p) = v1 {
             trace!("Resetting {}", &port);
-            env::set_var(&port, p);
+            unsafe { env::set_var(&port, p) };
         } else {
             env::remove_var(&port);
         }
         if let Ok(p) = v2 {
             trace!("Resetting {}", msg_limit);
-            env::set_var(&msg_limit, p);
+            unsafe { env::set_var(&msg_limit, p) };
         } else {
-            env::remove_var(&msg_limit);
+            unsafe { env::remove_var(&msg_limit) };
         }
-        env::remove_var(&fernet);
+        unsafe { env::remove_var(&fernet) };
     }
 }
