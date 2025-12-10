@@ -605,7 +605,6 @@ mod tests {
         let client = new_client().unwrap();
 
         let result = client.health_check().await;
-        dbg!(&result);
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
