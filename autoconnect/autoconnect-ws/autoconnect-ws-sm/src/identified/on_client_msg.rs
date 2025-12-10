@@ -50,8 +50,9 @@ impl WebPushClient {
         channel_id_str: String,
         key: Option<String>,
     ) -> Result<ServerMessage, SMError> {
+        let uaid_str = self.uaid.to_string();
         trace!("WebPushClient:register";
-               "uaid" => &self.uaid.to_string(),
+               "uaid" => &uaid_str,
                "channel_id" => &channel_id_str,
                "key" => &key,
                "message_type" => MessageType::Register.as_ref(),
@@ -125,9 +126,11 @@ impl WebPushClient {
         channel_id: Uuid,
         code: Option<u32>,
     ) -> Result<ServerMessage, SMError> {
+        let uaid_str = self.uaid.to_string();
+        let chid_str = channel_id.to_string();
         trace!("WebPushClient:unregister";
-               "uaid" => &self.uaid.to_string(),
-               "channel_id" => &channel_id.to_string(),
+               "uaid" => &uaid_str,
+               "channel_id" => &chid_str,
                "code" => &code,
                "message_type" => MessageType::Unregister.as_ref(),
         );
@@ -234,14 +237,9 @@ impl WebPushClient {
                 // record. Use that field to set the baseline timestamp for when to pull messages
                 // in the future.
                 if is_topic {
-                    debug!(
-                        "✅ WebPushClient:ack removing Stored, sort_key: {}",
-                        &acked_notification.chidmessageid()
-                    );
-                    self.app_state
-                        .db
-                        .remove_message(&self.uaid, &acked_notification.chidmessageid())
-                        .await?;
+                    let chid = &acked_notification.chidmessageid();
+                    debug!("✅ WebPushClient:ack removing Stored, sort_key: {}", &chid);
+                    self.app_state.db.remove_message(&self.uaid, chid).await?;
                     // NOTE: timestamp messages may still be in state of flux: they're not fully
                     // ack'd (removed/unable to be resurrected) until increment_storage is called,
                     // so their reliability is recorded there

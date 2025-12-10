@@ -15,7 +15,7 @@ use actix_web::web;
 
 #[macro_export]
 macro_rules! build_app {
-    ($app_state: expr, $config: expr) => {
+    ($app_state: expr_2021, $config: expr_2021) => {
         actix_web::App::new()
             .app_data(actix_web::web::Data::new($app_state.clone()))
             .wrap(actix_web::middleware::ErrorHandlers::new().handler(

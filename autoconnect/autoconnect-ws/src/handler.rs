@@ -111,7 +111,8 @@ async fn unidentified_ws(
         }
     };
 
-    Ok(client.on_client_msg(client_msg).await?)
+    let result = client.on_client_msg(client_msg).await?;
+    Ok(result)
 }
 
 /// The identified `WebPushClient` handler

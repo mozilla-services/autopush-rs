@@ -47,6 +47,7 @@ impl FromRequest for Notification {
                 .await
                 .expect("No server state found");
 
+            let max_notification_ttl_secs = app_state.settings.max_notification_ttl;
             // Read data
             let data = web::Bytes::from_request(&req, &mut payload)
                 .await
@@ -62,7 +63,8 @@ impl FromRequest for Notification {
                 Some(b64_encode_url(&data.to_vec()))
             };
 
-            let headers = NotificationHeaders::from_request(&req, data.is_some())?;
+            let headers =
+                NotificationHeaders::from_request(&req, data.is_some(), max_notification_ttl_secs)?;
             let timestamp = sec_since_epoch();
             let sort_key_timestamp = ms_since_epoch();
             let message_id = Self::generate_message_id(
