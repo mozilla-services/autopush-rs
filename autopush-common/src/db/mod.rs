@@ -33,7 +33,6 @@ pub use reporter::spawn_pool_periodic_reporter;
 
 use crate::notification::Notification;
 use crate::util::timing::ms_since_epoch;
-// use models::RangeKey;
 
 pub const USER_RECORD_VERSION: u64 = 1;
 

@@ -1,3 +1,10 @@
+# Configuration options can either be specified here (and included via the `--config` option),
+# or as environment variables prefixed with `AUTOEND__`.
+# For example: `AUTOEND__PORT` specifies the Port to use.
+#
+# Note that we use a library that parses sub structures (like FCM) using double underscores.
+# For example `AUTOEND__FCM__MIN_TTL` sets the `fcm.min_ttl` argument.
+
 # The URI scheme to use when referencing this server
 #scheme = "http"
 
@@ -38,6 +45,16 @@
 # The label to use for metrics
 #statsd_label = "autoendpoint"
 
+# The Max Notification Time To Live (in seconds) (See autopush_common::lib for details)
+# max_notification_ttl = 2592000
+
+# The DSN to the database you wish to use.
+# db_dsn = "grpc://localhost:8086"
+
+# a JSON structure containing database specific settings.
+# We use this instead of a structure because different datastores can take different arguments.
+# db_settings = "{\"message_family\":\"message\",\"router_family\":\"router\", \"table_name\":\"projects/test/instances/test/tables/autopush\", \"max_router_ttl\":5184000}"
+
 # Settings for the Firebase Cloud Messaging router
 [fcm]
 # The minimum TTL to use. If a notification's TTL is shorter than this, it will
@@ -63,6 +80,10 @@
 #        "credential": "{\"type\":\"service_account\",...
 #    }
 #}"""
+
+# The Maximum Time To Live (in seconds) for FCM messages. (See autopush_common::lib for details)
+# Default is 28 days.
+#max_ttl = 2_419_200
 
 # Settings for the Apple Push Notification Service router
 [apns]

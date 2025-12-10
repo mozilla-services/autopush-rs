@@ -1,12 +1,14 @@
 //! Application settings
+use std::time::Duration;
 
 use actix_http::header::HeaderMap;
 use config::{Config, ConfigError, Environment, File};
 use fernet::{Fernet, MultiFernet};
 use serde::Deserialize;
+use serde_with::serde_as;
 use url::Url;
 
-use autopush_common::util;
+use autopush_common::{util, MAX_NOTIFICATION_TTL_SECS};
 
 use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
@@ -16,6 +18,7 @@ use crate::routers::stub::settings::StubSettings;
 
 pub const ENV_PREFIX: &str = "autoend";
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -66,6 +69,9 @@ pub struct Settings {
     #[cfg(feature = "reliable_report")]
     /// Max number of retries for retries for Redis transactions
     pub reliability_retry_count: usize,
+    /// Max Notification Lifespan
+    #[serde_as(as = "serde_with::DurationSeconds<u64>")]
+    pub max_notification_ttl: Duration,
 }
 
 impl Default for Settings {
@@ -101,6 +107,7 @@ impl Default for Settings {
             reliability_dsn: None,
             #[cfg(feature = "reliable_report")]
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
+            max_notification_ttl: Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
         }
     }
 }
@@ -311,7 +318,9 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(all(test, feature = "unsafe"))]
+    /*
+    // The following test is commented out due to the recent change in rust that makes `env::set_var` unsafe
+    #cfg[all(test, feature="unsafe")]
     #[test]
     fn test_default_settings() {
         // Test that the Config works the way we expect it to.
@@ -321,8 +330,10 @@ mod tests {
         use std::env;
         let v1 = env::var(&port);
         let v2 = env::var(&timeout);
-        env::set_var(&port, "9123");
-        env::set_var(&timeout, "123");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::set_var(&port, "9123") };
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::set_var(&timeout, "123") };
 
         let settings = Settings::with_env_and_config_file(&None).unwrap();
         assert_eq!(&settings.port, &9123);
@@ -331,17 +342,22 @@ mod tests {
         // reset (just in case)
         if let Ok(p) = v1 {
             trace!("Resetting {}", &port);
-            env::set_var(&port, p);
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { env::set_var(&port, p) };
         } else {
-            env::remove_var(&port);
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { env::remove_var(&port) };
         }
         if let Ok(p) = v2 {
             trace!("Resetting {}", &timeout);
-            env::set_var(&timeout, p);
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { env::set_var(&timeout, p) };
         } else {
-            env::remove_var(&timeout);
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { env::remove_var(&timeout) };
         }
     }
+    // */
 
     #[test]
     fn test_tracking_keys() -> ApiResult<()> {

@@ -1,6 +1,6 @@
+use autopush_common::db::client::DbClient;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::{PushReliability, ReliabilityState};
-use autopush_common::{db::client::DbClient, MAX_FCM_NOTIFICATION_TTL};
 
 use crate::error::ApiResult;
 use crate::extractors::notification::Notification;
@@ -28,6 +28,7 @@ pub struct FcmRouter {
     clients: HashMap<String, FcmClient>,
     #[cfg(feature = "reliable_report")]
     reliability: Arc<PushReliability>,
+    max_notification_ttl_secs: i64,
 }
 
 impl FcmRouter {
@@ -44,6 +45,7 @@ impl FcmRouter {
         let clients = Self::create_clients(&settings, server_credentials, http.clone())
             .await
             .map_err(FcmError::OAuthClientBuild)?;
+        let max_ttl = settings.max_ttl;
         Ok(Self {
             settings,
             endpoint_url,
@@ -52,6 +54,7 @@ impl FcmRouter {
             clients,
             #[cfg(feature = "reliable_report")]
             reliability,
+            max_notification_ttl_secs: max_ttl,
         })
     }
 
@@ -164,7 +167,7 @@ impl Router for FcmRouter {
 
         let (routing_token, app_id) =
             self.routing_info(router_data, &notification.subscription.user.uaid)?;
-        let ttl = (MAX_FCM_NOTIFICATION_TTL.num_seconds() as u64)
+        let ttl = (self.max_notification_ttl_secs as u64)
             .min(self.settings.min_ttl.max(notification.headers.ttl as u64));
 
         // Send the notification to FCM

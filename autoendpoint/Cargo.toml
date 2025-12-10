@@ -5,7 +5,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-a2 =  "0.10"
+a2 = "0.10"
 actix-cors.workspace = true
 actix-http.workspace = true
 actix-rt.workspace = true
@@ -28,6 +28,7 @@ reqwest.workspace = true
 sentry.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_with = "3.16"
 slog-scope.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

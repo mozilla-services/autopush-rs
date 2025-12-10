@@ -2,11 +2,12 @@ use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::headers::crypto_key::CryptoKeyHeader;
 use crate::headers::util::{get_header, get_owned_header};
 use actix_web::HttpRequest;
-use autopush_common::{util::InsertOpt, MAX_NOTIFICATION_TTL};
+use autopush_common::util::InsertOpt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::cmp::min;
 use std::collections::HashMap;
+use std::time::Duration;
 use validator::Validate;
 use validator_derive::Validate;
 
@@ -63,15 +64,20 @@ impl NotificationHeaders {
     /// This can not be implemented as a `FromRequest` impl because we need to
     /// know if the payload has data, without actually advancing the payload
     /// stream.
-    pub fn from_request(req: &HttpRequest, has_data: bool) -> ApiResult<Self> {
+    pub fn from_request(
+        req: &HttpRequest,
+        has_data: bool,
+        max_notification_ttl: Duration,
+    ) -> ApiResult<Self> {
         // Collect raw headers
-        let ttl = get_header(req, "ttl")
+        let ttl: i64 = get_header(req, "ttl")
             .and_then(|ttl| ttl.parse().ok())
             // Enforce a maximum TTL, but don't error
             // NOTE: In order to trap for negative TTLs, this should be a
             // signed value, otherwise we will error out with NO_TTL.
-            .map(|ttl| min(ttl, MAX_NOTIFICATION_TTL.num_seconds()))
+            .map(|ttl: i64| min(ttl, max_notification_ttl.as_secs() as i64))
             .ok_or(ApiErrorKind::NoTTL)?;
+
         let topic = get_owned_header(req, "topic");
 
         let headers = if has_data {
@@ -214,11 +220,12 @@ impl NotificationHeaders {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::NotificationHeaders;
     use crate::error::{ApiErrorKind, ApiResult};
     use actix_web::test::TestRequest;
-    use autopush_common::MAX_NOTIFICATION_TTL;
-    use chrono::TimeDelta;
+    use autopush_common::MAX_NOTIFICATION_TTL_SECS;
 
     /// Assert that a result is a validation error and check its serialization
     /// against the JSON value.
@@ -252,7 +259,11 @@ mod tests {
         let req = TestRequest::post()
             .insert_header(("TTL", "10"))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, false);
+        let result = NotificationHeaders::from_request(
+            &req,
+            false,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().ttl, 10);
@@ -264,7 +275,11 @@ mod tests {
         let req = TestRequest::post()
             .insert_header(("TTL", "-1"))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, false);
+        let result = NotificationHeaders::from_request(
+            &req,
+            false,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
         assert_validation_error(
             result,
             serde_json::json!({
@@ -284,17 +299,16 @@ mod tests {
     #[test]
     fn maximum_ttl() {
         let req = TestRequest::post()
-            .insert_header((
-                "TTL",
-                (MAX_NOTIFICATION_TTL + TimeDelta::seconds(1))
-                    .num_seconds()
-                    .to_string(),
-            ))
+            .insert_header(("TTL", (MAX_NOTIFICATION_TTL_SECS + 1).to_string()))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, false);
+        let result = NotificationHeaders::from_request(
+            &req,
+            false,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL.num_seconds());
+        assert_eq!(result.unwrap().ttl, MAX_NOTIFICATION_TTL_SECS as i64);
     }
 
     /// A valid topic results in no errors
@@ -304,7 +318,11 @@ mod tests {
             .insert_header(("TTL", "10"))
             .insert_header(("TOPIC", "a-test-topic-which-is-just-right"))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, false);
+        let result = NotificationHeaders::from_request(
+            &req,
+            false,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
 
         assert!(result.is_ok());
         assert_eq!(
@@ -320,7 +338,11 @@ mod tests {
             .insert_header(("TTL", "10"))
             .insert_header(("TOPIC", "test-topic-which-is-too-long-1234"))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, false);
+        let result = NotificationHeaders::from_request(
+            &req,
+            false,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
 
         assert_validation_error(
             result,
@@ -343,7 +365,11 @@ mod tests {
         let req = TestRequest::post()
             .insert_header(("TTL", "10"))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, true);
+        let result = NotificationHeaders::from_request(
+            &req,
+            true,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
 
         assert_encryption_error(result, "Missing Content-Encoding header");
     }
@@ -357,7 +383,11 @@ mod tests {
             .insert_header(("Encryption", "salt=foo"))
             .insert_header(("Crypto-Key", "dh=bar"))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, true);
+        let result = NotificationHeaders::from_request(
+            &req,
+            true,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
 
         assert!(result.is_ok());
         assert_eq!(
@@ -382,7 +412,11 @@ mod tests {
             .insert_header(("Encryption", "notsalt=foo"))
             .insert_header(("Crypto-Key", "notdh=bar"))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, true);
+        let result = NotificationHeaders::from_request(
+            &req,
+            true,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
 
         assert!(result.is_ok());
         assert_eq!(
@@ -408,7 +442,11 @@ mod tests {
             .insert_header(("Encryption", "salt=\"foo\""))
             .insert_header(("Crypto-Key", "keyid=\"p256dh\";dh=\"deadbeef==\""))
             .to_http_request();
-        let result = NotificationHeaders::from_request(&req, true);
+        let result = NotificationHeaders::from_request(
+            &req,
+            true,
+            Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+        );
 
         assert!(result.is_ok());
         assert_eq!(

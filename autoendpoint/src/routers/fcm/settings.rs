@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use autopush_common::MAX_FCM_NOTIFICATION_TTL_SECS;
 use url::Url;
 
 /// Settings for `FcmRouter`
@@ -42,6 +43,8 @@ pub struct FcmSettings {
     pub base_url: Url,
     /// The number of seconds to wait for FCM requests to complete
     pub timeout: usize,
+    /// The max TTL for a FCM notification.
+    pub max_ttl: i64,
 }
 
 /// Credential information for each application
@@ -61,6 +64,7 @@ impl Default for FcmSettings {
             max_data: 4096,
             base_url: Url::parse("https://fcm.googleapis.com").unwrap(),
             timeout: 3,
+            max_ttl: MAX_FCM_NOTIFICATION_TTL_SECS as i64,
         }
     }
 }
