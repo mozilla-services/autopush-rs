@@ -32,6 +32,9 @@ RUN \
     apt-get -qq install -y libssl-dev ca-certificates build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv python3-poetry python-is-python3 git glibc-source cmake clang && \
     rm -rf /var/lib/apt/lists
 
+# Indicate that we're inside of a docker instance
+ENV INDOCKER="1"
+
 # Build the apps.
 RUN \
     which cargo && \

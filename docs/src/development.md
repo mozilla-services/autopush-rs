@@ -112,8 +112,7 @@ credentials = ... # A JSON dictionary containing the Android mobile FCM credenti
 channels = ... # A JSON dictionary containing the iOS APNS mobile Credentials.
 ```
 
-> _*NOTE*_: If you are running a containerized development environment, you should change the `localhost` references to point to your host's internal network address. This is usually the `.1` address of whatever subnet Docker has selected for these instances. (e.g. if
-`ip -4 -br addr` shows that your `eth0` device is on `172.17.0.2`, more than likely, your host's IP is `172.17.0.1` See [the docker info](https://docs.docker.com/engine/network/tutorials/host/) for more details.)
+> _*NOTE*_: If you are running a containerized development environment, you should change the `localhost` references to point to your host's internal network address. This is usually the `.1` address of whatever subnet Docker has selected for these instances. (`ip route | grep "default" | cut -f3 -d' '` may work. You also may wish to use environment flags like `INDOCKER` to indicate to scripts or applications that they are running inside of a Docker instance and should look for the Host IP.)
 
 ## Starting the Autopush executables
 
@@ -167,3 +166,21 @@ run.bash autoendpoint
 ```
 
 will start a copy of the autoendpoint REST server using the configuration specified in `./configs/autoendpoint_bigtable.toml`
+
+## Container Restrictions and Limitations
+
+Your docker instance will probably _not_ have full access to git. Read operations will be possible, but write operations will probably fail due to missing credentials. If you wish, you can always add your credentials inside of the Docker image, or just call the git functions from the Host. 
+
+## Testing Inside of a Container
+
+### Unit Tests
+Since the container is a smaller, more restricted environment, it may be preferable to run Unit Tests outside of the container. `cargo` will "helpfully" compile the source for the current environment, which may be a problem in some situations. Fortunately, autopush uses `nextest` which can write and read from archives. 
+
+If you wish to use Host testing:
+
+1) inside the development container execute `cargo nextest archive --archive-file autopush.tar.zst` (The archive file name can be different.)
+2) Once the archive file has been created, from the source top directory on the Host system `cargo nextest run --archive-file autopush.tar.zst --workspace-remap .`
+
+### Integration Tests
+
+Because the integration tests use python, there is less likelihood of code recompilation. The Host system should be able to see the executables in the `./target/debug` directory, and those _should_ be able to run on the Host system.

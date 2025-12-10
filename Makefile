@@ -37,7 +37,7 @@ INSTALL_STAMP := .install.stamp
 docker-init: 
 	sudo apt update
 	sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv python3-poetry python-is-python3 git glibc-source cmake clang --assume-yes
-	cargo install cargo-audit
+	cargo install cargo-audit cargo-llvm-cov
 	rustup update 1.91.0 	## RUST_VER
 
 .PHONY: docker-dev-build
