@@ -22,14 +22,15 @@ use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
 
-use crate::db::RangeKey;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, User, MAX_ROUTER_TTL, USER_RECORD_VERSION,
+    models::RangeKey,
+    DbSettings, Notification, User, USER_RECORD_VERSION,
 };
 use crate::metric_name::MetricName;
 use crate::metrics::StatsdClientExt;
+use crate::MAX_ROUTER_TTL;
 
 pub use self::metadata::MetadataBuilder;
 use self::row::{Row, RowCells};

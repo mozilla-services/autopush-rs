@@ -311,6 +311,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(all(test, feature = "unsafe"))]
     #[test]
     fn test_default_settings() {
         // Test that the Config works the way we expect it to.

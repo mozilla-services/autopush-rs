@@ -13,6 +13,8 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
 
 use autopush_common::util::deserialize_u32_to_duration;
+#[cfg(feature = "bigtable")]
+use serde_json::json;
 
 pub use app_state::AppState;
 
@@ -315,7 +317,7 @@ mod tests {
         assert_eq!("https://testname:8080", url);
     }
 
-    #[cfg(all(test, r#unsafe))]
+    #[cfg(all(test, feature = "unsafe"))]
     fn test_default_settings() {
         // Test that the Config works the way we expect it to.
         use std::env;

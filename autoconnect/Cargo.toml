@@ -37,3 +37,4 @@ reliable_report = [
     "autoconnect_ws/reliable_report",
     "autopush_common/reliable_report",
 ]
+unsafe = ["autoconnect_settings/unsafe"]

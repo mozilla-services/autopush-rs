@@ -1,10 +1,15 @@
+#[cfg(any(test, feature = "bigtable"))]
 use lazy_static::lazy_static;
+#[cfg(any(test, feature = "bigtable"))]
 use regex::RegexSet;
 use std::collections::HashMap;
 
+#[cfg(any(test, feature = "bigtable"))]
 use crate::errors::{ApcErrorKind, Result};
+#[cfg(any(test, feature = "bigtable"))]
 use crate::notification::{STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use serde_derive::{Deserialize, Serialize};
+#[cfg(any(test, feature = "bigtable"))]
 use uuid::Uuid;
 
 use crate::util::InsertOpt;
@@ -49,6 +54,7 @@ impl From<HashMap<String, String>> for NotificationHeaders {
 }
 
 /// Contains some meta info regarding the message we're handling.
+#[cfg(any(test, feature = "bigtable"))]
 #[derive(Debug)]
 pub(crate) struct RangeKey {
     /// The channel_identifier
@@ -62,6 +68,7 @@ pub(crate) struct RangeKey {
     pub(crate) legacy_version: Option<String>,
 }
 
+#[cfg(any(test, feature = "bigtable"))]
 impl RangeKey {
     /// read the custom sort_key and convert it into something the database can use.
     pub(crate) fn parse_chidmessageid(key: &str) -> Result<RangeKey> {
@@ -129,7 +136,7 @@ impl RangeKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::db::RangeKey;
+    use super::RangeKey;
     use crate::util::us_since_epoch;
     use uuid::Uuid;
 
