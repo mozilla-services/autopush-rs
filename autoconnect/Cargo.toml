@@ -24,8 +24,7 @@ autoconnect_web.workspace = true
 autopush_common.workspace = true
 
 [features]
-# default = ["bigtable", "reliable_report"]
-default = ["redis", "reliable_report"]
+default = ["bigtable", "reliable_report"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
 redis = ["autopush_common/redis", "autoconnect_settings/redis"]
