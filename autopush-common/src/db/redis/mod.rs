@@ -7,7 +7,7 @@
 /// `autopush/timestamp/{uaid}` u64 to store the last storage timestamp incremented by the server, once messages are delivered
 /// `autopush/channels/{uaid}` List to store the list of the channels of the user
 /// `autopush/msgs/{uaid}` SortedSet to store the list of the pending message ids for the user
-/// `autopush/msgs_exp/{uaid}` SortedSet to store the list of the pending message ids, ordered by expiry date, this is because SortedSet elements can't have independant expiry date
+/// `autopush/msgs_exp/{uaid}` SortedSet to store the list of the pending message ids, ordered by expiry date, this is because SortedSet elements can't have independent expiry date
 /// `autopush/msg/{uaid}/{chidmessageid}`, with `{chidmessageid} == {chid}:{version}` String to store
 /// the content of the messages
 ///
@@ -54,7 +54,7 @@ impl TryFrom<&str> for RedisDbSettings {
             Ok(me) => me,
             Err(e) if e.is_eof() => Self::default(),
             Err(e) => Err(DbError::General(format!(
-                "Could not parse DdbSettings: {:?}",
+                "Could not parse RedisDbSettings: {:?}",
                 e
             )))?,
         };

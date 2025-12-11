@@ -17,6 +17,7 @@ pub struct Notification {
     pub ttl: u64,
     #[serde(skip_serializing)]
     pub topic: Option<String>,
+    #[serde(skip_serializing)]
     pub timestamp: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,

@@ -37,17 +37,17 @@ impl<'a> From<Uaid<'a>> for String {
     }
 }
 
-struct Chanid<'a>(&'a Uuid);
+struct ChannelId<'a>(&'a Uuid);
 
-impl<'a> Display for Chanid<'a> {
+impl<'a> Display for ChannelId<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0.as_hyphenated())
     }
 }
 
-impl<'a> From<Chanid<'a>> for String {
-    fn from(uaid: Chanid) -> String {
-        uaid.0.as_hyphenated().to_string()
+impl<'a> From<ChannelId<'a>> for String {
+    fn from(chid: ChannelId) -> String {
+        chid.0.as_hyphenated().to_string()
     }
 }
 
@@ -148,6 +148,7 @@ impl RedisClientImpl {
         format!("autopush/msg/{}/{}", uaid, chidmessageid)
     }
 
+    #[cfg(feature = "reliable_report")]
     fn reliability_key(
         &self,
         reliability_id: &str,
@@ -273,8 +274,16 @@ impl DbClient for RedisClientImpl {
 
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let uaid = Uaid(uaid);
-        let mut con = self.client.get_multiplexed_async_connection().await?;
-        //let mut con = self.connection().await?;
+        let config = if self.settings.timeout.is_some_and(|t| !t.is_zero()) {
+            redis::AsyncConnectionConfig::new()
+                .set_connection_timeout(self.settings.timeout.unwrap())
+        } else {
+            redis::AsyncConnectionConfig::new()
+        };
+        let mut con = self
+            .client
+            .get_multiplexed_async_connection_with_config(&config)
+            .await?;
         let chan_list_key = self.channel_list_key(&uaid);
         let channels: HashSet<Uuid> = con
             .lrange::<&str, HashSet<String>>(&chan_list_key, 0, -1)
@@ -289,7 +298,7 @@ impl DbClient for RedisClientImpl {
     /// Delete the channel. Does not delete its associated pending messages.
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let uaid = Uaid(uaid);
-        let channel_id = Chanid(channel_id);
+        let channel_id = ChannelId(channel_id);
         let mut con = self.connection().await?;
         let co_key = self.last_co_key(&uaid);
         let chan_list_key = self.channel_list_key(&uaid);
@@ -351,15 +360,14 @@ impl DbClient for RedisClientImpl {
 
         // If this is a topic message:
         // zadd(msg_list_key) and zadd(exp_list_key) will replace their old entry
-        // in the hashset if one already exists
+        // in the sorted set if one already exists
         // and set(msg_key, message) will override it too: nothing to do.
         let is_topic = message.topic.is_some();
 
-        // Store notification record in autopush/msg/{aud}/{chidmessageid}
-        // And store {chidmessageid} in autopush/msgs/{aud}
-        let msg_key = self.message_key(&uaid, msg_id);
+        // Store notification record in autopush/msg/{uaid}/{chidmessageid}
+        // And store {chidmessageid} in autopush/msgs/{uaid}
         pipe.set_options(msg_key, serde_json::to_string(&message)?, opts)
-            // The function [fecth_timestamp_messages] takes a timestamp in input,
+            // The function [fetch_timestamp_messages] takes a timestamp in input,
             // here we use the timestamp of the record (in ms)
             .zadd(&exp_list_key, msg_id, expiry)
             .zadd(&msg_list_key, msg_id, ms_since_epoch());
@@ -492,26 +500,23 @@ impl DbClient for RedisClientImpl {
                 timestamp: None,
             });
         }
-        let messages: Vec<Notification> = if messages_id.is_empty() {
-            vec![]
-        } else {
-            con.mget::<&Vec<String>, Vec<Option<String>>>(&messages_id)
-                .await?
-                .into_iter()
-                .filter_map(|opt: Option<String>| {
-                    if opt.is_none() {
-                        // We return dummy expired event if we can't fetch the said event,
-                        // it means the event has expired
-                        Some(Notification {
-                            timestamp: 1,
-                            ..Default::default()
-                        })
-                    } else {
-                        opt.and_then(|m| serde_json::from_str(&m).ok())
-                    }
-                })
-                .collect()
-        };
+        let messages: Vec<Notification> = con
+            .mget::<&Vec<String>, Vec<Option<String>>>(&messages_id)
+            .await?
+            .into_iter()
+            .filter_map(|opt: Option<String>| {
+                if opt.is_none() {
+                    // We return dummy expired event if we can't fetch the said event,
+                    // it means the event has expired
+                    Some(Notification {
+                        timestamp: 1,
+                        ..Default::default()
+                    })
+                } else {
+                    opt.and_then(|m| serde_json::from_str(&m).ok())
+                }
+            })
+            .collect();
         let timestamp = scores.pop();
         trace!("🐰 Found {} messages until {:?}", messages.len(), timestamp);
         Ok(FetchMessageResponse {
@@ -520,6 +525,7 @@ impl DbClient for RedisClientImpl {
         })
     }
 
+    #[cfg(feature = "reliable_report")]
     async fn log_report(
         &self,
         reliability_id: &str,
@@ -527,12 +533,12 @@ impl DbClient for RedisClientImpl {
     ) -> DbResult<()> {
         trace!("🐰 Logging reliability report");
         let mut con = self.connection().await?;
-        // TODO: Should this be a hash key per reliability_id
+        // TODO: Should this be a hash key per reliability_id?
         let reliability_key = self.reliability_key(reliability_id, &state);
         let expiry = (SystemTime::now() + Duration::from_secs(86400 * 30))
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis() as u64;
+            .as_secs();
         let opts = SetOptions::default().with_expiration(SetExpiry::EX(expiry));
         let mut pipe = redis::pipe();
         pipe.set_options(reliability_key, ms_since_epoch(), opts)
@@ -588,10 +594,9 @@ mod tests {
     }
 
     fn new_client() -> DbResult<RedisClientImpl> {
-        // Use an environment variable to potentially override the redis test host.
-        // This is
+        // Use an environment variable to potentially override the default redis test host.
         let host = env::var("REDIS_HOST").unwrap_or("localhost".into());
-        let env_dsn = format!("redis://{host}"); // We force localhost to force test environment
+        let env_dsn = format!("redis://{host}");
         let settings = DbSettings {
             dsn: Some(env_dsn),
             db_settings: "".into(),
@@ -789,7 +794,7 @@ mod tests {
         assert_eq!(fm.channel_id, test_notification.channel_id);
         assert_eq!(fm.data, Some(test_data));
 
-        // Grab all 1 of the messages that were submmited within the past 10 seconds.
+        // Grab all 1 of the messages that were submitted within the past 10 seconds.
         let fetched = client
             .fetch_timestamp_messages(&uaid, Some(fetch_timestamp - 10), 999)
             .await?;
