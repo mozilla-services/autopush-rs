@@ -254,7 +254,7 @@ impl DbClient for RedisClientImpl {
     /// Add channels in bulk (used mostly during migration)
     async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
         let uaid = Uaid(uaid);
-        // channel_ids are stored as a set within a single redis key
+        // channel_ids are stored a list within a single redis key
         let mut con = self.connection().await?;
         let co_key = self.last_co_key(&uaid);
         let chan_list_key = self.channel_list_key(&uaid);
@@ -386,7 +386,7 @@ impl DbClient for RedisClientImpl {
     /// Currently just iterating through the list and saving one at a time. There's a bulk way
     /// to save messages, but there are other considerations (e.g. mutation limits)
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
-        // plate simple way of solving this:
+        // A plate simple way of solving this:
         for message in messages {
             self.save_message(uaid, message).await?;
         }
@@ -862,7 +862,7 @@ mod tests {
         assert_eq!(fm.channel_id, test_notification.channel_id);
         assert_eq!(fm.data, Some(test_data));
 
-        // Grab the message that was submmited.
+        // Grab the message that was submitted.
         let fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_ne!(fetched.messages.len(), 0);
 
