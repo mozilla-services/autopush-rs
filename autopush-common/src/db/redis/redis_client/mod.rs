@@ -16,9 +16,7 @@ use crate::db::{
     error::{DbError, DbResult},
     DbSettings, Notification, User,
 };
-use crate::util::ms_since_epoch;
-
-mod error;
+use crate::util::{ms_since_epoch, sec_since_epoch};
 
 use super::RedisDbSettings;
 
@@ -353,7 +351,7 @@ impl DbClient for RedisClientImpl {
         let expiry = (SystemTime::now() + Duration::from_secs(message.ttl))
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis() as u64;
+            .as_secs();
         trace!("🐰 Message Expiry {}", expiry);
 
         let mut pipe = redis::pipe();
@@ -368,9 +366,9 @@ impl DbClient for RedisClientImpl {
         // And store {chidmessageid} in autopush/msgs/{uaid}
         pipe.set_options(msg_key, serde_json::to_string(&message)?, opts)
             // The function [fetch_timestamp_messages] takes a timestamp in input,
-            // here we use the timestamp of the record (in ms)
+            // here we use the timestamp of the record
             .zadd(&exp_list_key, msg_id, expiry)
-            .zadd(&msg_list_key, msg_id, ms_since_epoch());
+            .zadd(&msg_list_key, msg_id, sec_since_epoch());
 
         let _: () = pipe.exec_async(&mut con).await?;
         self.metrics
@@ -401,9 +399,11 @@ impl DbClient for RedisClientImpl {
         let exp_list_key = self.message_exp_list_key(&uaid);
         let storage_timestamp_key = self.storage_timestamp_key(&uaid);
         let mut con = self.connection().await?;
+        trace!("🐇 SEARCH: increment: {:?} - {}", &exp_list_key, timestamp);
         let exp_id_list: Vec<String> = con.zrangebyscore(&exp_list_key, 0, timestamp).await?;
         if !exp_id_list.is_empty() {
-            trace!("🐰🔥 Deleting {} expired msgs", exp_id_list.len());
+            trace!("🐰🔥:rem: Deleting {} : [{:?}]", msg_list_key, &exp_id_list);
+            trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
             redis::pipe()
                 .set_options::<_, _>(&storage_timestamp_key, timestamp, self.redis_opts)
                 .del(&exp_id_list)
@@ -433,6 +433,16 @@ impl DbClient for RedisClientImpl {
         let mut con = self.connection().await?;
         // We remove the id from the exp list at the end, to be sure
         // it can't be removed from the list before the message is removed
+        trace!(
+            "🐰🔥:remsg: Deleting {} : {:?}",
+            msg_list_key,
+            &chidmessageid
+        );
+        trace!(
+            "🐰🔥:remsg: Deleting {} : {:?}",
+            exp_list_key,
+            &chidmessageid
+        );
         redis::pipe()
             .del(&msg_key)
             .zrem(&msg_list_key, chidmessageid)
@@ -459,7 +469,7 @@ impl DbClient for RedisClientImpl {
     }
 
     /// Return [`limit`] messages pending for a [`uaid`] that have a record timestamp
-    /// after [`timestamp`] (millisecs).
+    /// after [`timestamp`] (secs).
     ///
     /// If [`limit`] = 0, we fetch all messages after [`timestamp`].
     ///
@@ -480,16 +490,23 @@ impl DbClient for RedisClientImpl {
             let storage_timestamp_key = self.storage_timestamp_key(&uaid);
             con.get(&storage_timestamp_key).await.unwrap_or(0)
         };
-        // ZRANGE Key (x +inf LIMIT 0 limit
-        let (messages_id, mut scores): (Vec<String>, Vec<u64>) = con
+        // ZRANGE Key (x) +inf LIMIT 0 limit
+        trace!(
+            "🐇 SEARCH: zrangebyscore {:?} {} +inf withscores limit 0 {:?}",
+            &msg_list_key,
+            timestamp,
+            limit,
+        );
+        let results = con
             .zrangebyscore_limit_withscores::<&str, &str, &str, Vec<(String, u64)>>(
                 &msg_list_key,
-                &format!("({}", timestamp),
+                &timestamp.to_string(),
                 "+inf",
                 0,
                 limit as isize,
             )
-            .await?
+            .await?;
+        let (messages_id, mut scores): (Vec<String>, Vec<u64>) = results
             .into_iter()
             .map(|(id, s): (String, u64)| (self.message_key(&uaid, &id), s))
             .unzip();
@@ -513,7 +530,18 @@ impl DbClient for RedisClientImpl {
                         ..Default::default()
                     })
                 } else {
-                    opt.and_then(|m| serde_json::from_str(&m).ok())
+                    opt.and_then(|m| {
+                        serde_json::from_str(&m)
+                            .inspect_err(|e| {
+                                // Since we can't raise the error here, at least record it
+                                // so that it's not lost.
+                                // Mind you, if there is an error here, it's probably due to
+                                // some developmental issue since the unit and integration tests
+                                // should fail.
+                                error!("🐰 ERROR parsing entry: {:?}", e);
+                            })
+                            .ok()
+                    })
                 }
             })
             .collect();
@@ -541,7 +569,7 @@ impl DbClient for RedisClientImpl {
             .as_secs();
         let opts = SetOptions::default().with_expiration(SetExpiry::EX(expiry));
         let mut pipe = redis::pipe();
-        pipe.set_options(reliability_key, ms_since_epoch(), opts)
+        pipe.set_options(reliability_key, sec_since_epoch(), opts)
             .exec_async(&mut con)
             .await?;
         Ok(())
@@ -586,7 +614,8 @@ mod tests {
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
     const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
 
-    fn now() -> u64 {
+    fn now_secs() -> u64 {
+        // Return the current time in seconds since EPOCH
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
@@ -597,6 +626,7 @@ mod tests {
         // Use an environment variable to potentially override the default redis test host.
         let host = env::var("REDIS_HOST").unwrap_or("localhost".into());
         let env_dsn = format!("redis://{host}");
+        debug!("🐰 Connecting to {env_dsn}");
         let settings = DbSettings {
             dsn: Some(env_dsn),
             db_settings: "".into(),
@@ -644,8 +674,7 @@ mod tests {
         let _ = client.remove_user(&uaid).await;
 
         // can we add the user?
-        let timestamp = now();
-        let fetch_timestamp = ms_since_epoch();
+        let timestamp = now_secs();
         client.add_user(&test_user).await?;
         let test_notification = crate::db::Notification {
             channel_id: chid,
@@ -657,9 +686,7 @@ mod tests {
             ..Default::default()
         };
         client.save_message(&uaid, test_notification).await?;
-        client
-            .increment_storage(&uaid, fetch_timestamp + 10000)
-            .await?;
+        client.increment_storage(&uaid, timestamp + 1).await?;
         let msgs = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_eq!(msgs.messages.len(), 0);
         Ok(())
@@ -770,11 +797,9 @@ mod tests {
             .await?;
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
-        let timestamp = now();
-        let sort_key = now();
-        // Unlike Bigtable, [fetch_timestamp_messages] uses and return a
-        // timestamp in milliseconds
-        let fetch_timestamp = ms_since_epoch();
+        let timestamp = now_secs();
+        let sort_key = now_secs();
+        let fetch_timestamp = timestamp;
         // Can we store a message?
         let test_notification = crate::db::Notification {
             channel_id: chid,
@@ -825,8 +850,8 @@ mod tests {
         // they are handled as usuals messages.
         client.add_channel(&uaid, &topic_chid).await?;
         let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
-        let timestamp = now();
-        let sort_key = now();
+        let timestamp = now_secs();
+        let sort_key = now_secs();
 
         // We store 2 messages, with a single topic
         let test_notification_0 = crate::db::Notification {
@@ -845,7 +870,7 @@ mod tests {
             .is_ok());
 
         let test_notification = crate::db::Notification {
-            timestamp: now(),
+            timestamp: now_secs(),
             version: "version1".to_owned(),
             sortkey_timestamp: Some(sort_key + 10),
             ..test_notification_0

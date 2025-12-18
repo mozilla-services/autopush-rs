@@ -1,4 +1,5 @@
 use actix_web::http::StatusCode;
+use serde_json::Error as Serde_Error;
 
 use thiserror::Error;
 
@@ -29,6 +30,9 @@ pub enum DbError {
     #[cfg(feature = "redis")]
     #[error("Redis error {0}")]
     RedisError(#[from] redis::RedisError),
+
+    #[error("Serde Json Parse Error {0}")]
+    SerdeError(#[from] Serde_Error),
 
     #[error("Connection failure: {0}")]
     ConnectionError(String),

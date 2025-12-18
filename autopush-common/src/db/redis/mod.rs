@@ -35,7 +35,6 @@ pub struct RedisDbSettings {
     pub notification_ttl: Option<Duration>,
 }
 
-// Used by test, but we don't want available for release.
 #[allow(clippy::derivable_impls)]
 impl Default for RedisDbSettings {
     fn default() -> Self {
