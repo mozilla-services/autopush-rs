@@ -21,6 +21,8 @@ pub mod bigtable;
 pub mod client;
 pub mod error;
 pub mod models;
+#[cfg(feature = "postgres")]
+pub mod postgres;
 pub mod reporter;
 pub mod routing;
 

@@ -4,6 +4,8 @@ use thiserror::Error;
 
 #[cfg(feature = "bigtable")]
 use crate::db::bigtable::BigTableError;
+#[cfg(feature="postgres")]
+use crate::db::postgres;
 use crate::errors::ReportableError;
 
 pub type DbResult<T> = Result<T, DbError>;
@@ -41,6 +43,10 @@ pub enum DbError {
     // Return a 503 error
     #[error("Process pending, please wait.")]
     Backoff(String),
+    
+    #[cfg(feature="postgres")]
+    #[error("Postgres Error: {0}")]
+    PgError(#[from] tokio_postgres::Error)
 }
 
 impl DbError {

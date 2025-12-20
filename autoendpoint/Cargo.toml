@@ -68,6 +68,7 @@ stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []
 
+postgres = ["autopush_common/postgres"]
 reliable_report = ["autopush_common/reliable_report"]
 
 [lints]
