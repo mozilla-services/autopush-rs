@@ -714,6 +714,7 @@ dependencies = [
  "mockito 0.31.1",
  "num_cpus",
  "openssl",
+ "postgres",
  "prometheus-client",
  "protobuf",
  "redis",
@@ -3360,6 +3361,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8a2f0d8d040d7848a709caf78912debcc3f33ee4b3cac47d73d1e1069e83507"
 dependencies = [
  "portable-atomic",
+]
+
+[[package]]
+name = "postgres"
+version = "0.19.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7c48ece1c6cda0db61b058c1721378da76855140e9214339fa1317decacb176"
+dependencies = [
+ "bytes",
+ "fallible-iterator",
+ "futures-util",
+ "log",
+ "tokio",
+ "tokio-postgres",
 ]
 
 [[package]]

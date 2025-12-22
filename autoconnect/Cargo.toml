@@ -28,7 +28,7 @@ default = ["bigtable", "reliable_report"]
 bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
 log_vapid = []
-postgres = ["autopush_common/postgres"]
+postgres = ["autopush_common/postgres", "autoconnect_settings/postgres"]
 reliable_report = [
     "autoconnect_common/reliable_report",
     "autoconnect_settings/reliable_report",

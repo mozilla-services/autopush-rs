@@ -42,6 +42,8 @@ pub enum StorageType {
     INVALID,
     #[cfg(feature = "bigtable")]
     BigTable,
+    #[cfg(feature = "postgres")]
+    Postgres,
 }
 
 impl From<&str> for StorageType {
@@ -49,6 +51,8 @@ impl From<&str> for StorageType {
         match name.to_lowercase().as_str() {
             #[cfg(feature = "bigtable")]
             "bigtable" => Self::BigTable,
+            #[cfg(feature = "postgres")]
+            "postgres" => Self::Postgres,
             _ => Self::INVALID,
         }
     }
@@ -62,6 +66,8 @@ impl StorageType {
         let mut result: Vec<&str> = Vec::new();
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
+        #[cfg(feature = "postgres")]
+        result.push("Postgres");
         result
     }
 
@@ -86,6 +92,11 @@ impl StorageType {
                 trace!("Env: {:?}", cred);
             }
             return Self::BigTable;
+        }
+        #[cfg(feature = "postgres")]
+        if dsn.starts_with("postgresql") {
+            trace!("Found postgres");
+            return Self::Postgres;
         }
         Self::INVALID
     }

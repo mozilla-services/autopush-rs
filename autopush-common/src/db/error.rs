@@ -4,8 +4,6 @@ use thiserror::Error;
 
 #[cfg(feature = "bigtable")]
 use crate::db::bigtable::BigTableError;
-#[cfg(feature="postgres")]
-use crate::db::postgres;
 use crate::errors::ReportableError;
 
 pub type DbResult<T> = Result<T, DbError>;
