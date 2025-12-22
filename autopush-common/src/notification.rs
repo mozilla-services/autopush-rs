@@ -125,7 +125,7 @@ impl From<&tokio_postgres::Row> for Notification {
             ttl: row.try_get::<&str, i64>("ttl").map(|v| v as u64).unwrap(),
             topic: row
                 .try_get::<&str, String>("topic")
-                .map(|v| Some(v))
+                .map(Some)
                 .unwrap_or_default(),
             timestamp: row
                 .try_get::<&str, i64>("timestamp")
@@ -133,7 +133,7 @@ impl From<&tokio_postgres::Row> for Notification {
                 .unwrap(),
             data: row
                 .try_get::<&str, String>("data")
-                .map(|v| Some(v))
+                .map(Some)
                 .unwrap(),
             sortkey_timestamp: row
                 .try_get::<&str, i64>("sortkey_timestamp")

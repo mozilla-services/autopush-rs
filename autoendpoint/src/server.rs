@@ -89,7 +89,7 @@ impl Server {
             #[cfg(feature="postgres")]
             StorageType::Postgres => {
                 debug!("Using Postgres");
-                let client =  PgClientImpl::new(metrics.clone(), &db_settings).await?;
+                let client =  PgClientImpl::new(metrics.clone(), &db_settings)?;
                 Box::new(client)
             }
             _ => {

@@ -6,19 +6,17 @@ use std::sync::Arc;
 
 use chrono::TimeDelta;
 use serde_json::json;
-use tokio_postgres::{types::ToSql, Client, NoTls}; // Client is sync.
+use tokio_postgres::{types::ToSql, Client}; // Client is sync.
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::MAX_ROUTER_TTL_SECS;
+use crate::{MAX_ROUTER_TTL_SECS, util};
 use crate::db::client::DbClient;
 use crate::db::error::{DbError, DbResult};
-use crate::db::{
-    CheckStorageResponse,DbSettings,USER_RECORD_VERSION, User
-};
+use crate::db::{DbSettings, User};
 use crate::notification::Notification;
 
 use super::client::FetchMessageResponse;
@@ -37,8 +35,6 @@ pub struct PostgresDbSettings {
     #[serde(default)]
     pub reliability_table: String,                // Channels and meta info
     #[serde(default)]
-    current_message_month: Option<String>, // For table rotation
-    #[serde(default)]
     max_router_ttl: u64,           // Max time for router records to live.
 }
 
@@ -49,7 +45,6 @@ impl Default for PostgresDbSettings {
             message_table: "message".to_owned(),
             meta_table: "meta".to_owned(),
             reliability_table: "reliability".to_owned(),
-            current_message_month: None,
             max_router_ttl: MAX_ROUTER_TTL_SECS,
         }
     }
@@ -68,7 +63,7 @@ impl TryFrom<&str> for PostgresDbSettings {
 #[allow(dead_code)] // TODO: Remove before flight
 #[derive(Clone)]
 pub struct PgClientImpl {
-    db_client: Arc<Client>,
+    pg_connect: String,
     _metrics: Arc<StatsdClient>,
     db_settings: PostgresDbSettings,
 }
@@ -81,31 +76,11 @@ impl PgClientImpl {
     /// for parameter details and requirements.
     /// Example DSN: postgresql://user:password@host/database?option=val
     /// e.g. (postgresql://scott:tiger@dbhost/autopush?connect_timeout=10&keepalives_idle=3600)
-    pub async fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
+    pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         if let Some(dsn) = settings.dsn.clone() {
             trace!("📬 Postgres Connect {}", &dsn);
-            let (client, connection) = tokio_postgres::connect(&dsn, NoTls).await.map_err(|e| {
-                DbError::ConnectionError(format!("Could not connect to postgres {:?}", e))
-            })?;
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    panic_any(format!("PG Connection error {:?}", e));
-                }
-            });
-            let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref())?;
-            return Ok(Self {
-                db_client: Arc::new(client),
-                _metrics: metrics,
-                db_settings,
-            });
-        };
-        Err(DbError::ConnectionError("No DSN specified".to_owned()))
-    }
-
-    /// Connect to the database.
-    async fn connect(dsn: &str) -> DbResult<Client> {
-        let parsed = url::Url::parse(dsn).unwrap(); // TODO: FIX ERRORS!!
-        let pg_connect = format!(
+            let parsed = url::Url::parse(&dsn).unwrap(); // TODO: FIX ERRORS!!
+            let pg_connect = format!(
             "user={:?} password={:?} host={:?} port={:?} dbname={:?}",
             parsed.username(),
             parsed.password().unwrap_or_default(),
@@ -117,7 +92,20 @@ impl PgClientImpl {
                 .unwrap_or_default()[0]
         );
 
-        let (client, connection) = tokio_postgres::connect(&pg_connect, tokio_postgres::NoTls)
+            let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref())?;
+            return Ok(Self {
+                pg_connect,
+                _metrics: metrics,
+                db_settings,
+            });
+        };
+        Err(DbError::ConnectionError("No DSN specified".to_owned()))
+    }
+
+    /// Connect to the database.
+    async fn connect(&self) -> DbResult<Client> {
+
+        let (client, connection) = tokio_postgres::connect(&self.pg_connect, tokio_postgres::NoTls)
             .await
             .unwrap();
 
@@ -127,13 +115,13 @@ impl PgClientImpl {
             }
         });
 
-        return Ok(client);
+        Ok(client)
     }
 
     /// Does the given table exist
     async fn table_exists(&self, table_name: String) -> DbResult<bool> {
         let rows = self
-            .db_client
+            .connect().await?
             .query(
                 &format!("SELECT EXISTS (SELECT FROM pg_tables where schemaname='public' AND tablename={tablename});", tablename=table_name),
                 &[],
@@ -143,6 +131,11 @@ impl PgClientImpl {
         Ok(val.to_lowercase().starts_with('t'))
     }
 
+    /// Return the router's expiration timestamp
+    fn router_expiry(&self) -> u64 {
+        util::sec_since_epoch() + self.db_settings.max_router_ttl
+    }
+
 
 }
 
@@ -150,10 +143,10 @@ impl PgClientImpl {
 impl DbClient for PgClientImpl {
     /// add user to router_table if not exists uaid
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        self.db_client.execute(
+        self.connect().await?.execute(
             &format!("
-            INSERT INTO {tablename} (uaid, connected_at, router_type, router_data, node_id, record_version, timestamp, priv_channels)
-            VALUES($1, $2::INTEGER, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO {tablename} (uaid, connected_at, router_type, router_data, node_id, record_version, timestamp, priv_channels, expiry)
+            VALUES($1, $2::INTEGER, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (uaid) DO
                 UPDATE SET connected_at=EXCLUDED.connected_at,
                     router_type=EXCLUDED.router_type,
@@ -162,6 +155,7 @@ impl DbClient for PgClientImpl {
                     record_version=EXCLUDED.record_version,
                     timestamp=EXCLUDED.timestamp,
                     priv_channels=EXCLUDED.priv_channels,
+                    expiry=EXCLUDED.expiry
                     ;
             ", tablename=self.db_settings.router_table),
             &[&user.uaid.simple().to_string(),   // TODO: Investigate serialization?
@@ -172,6 +166,7 @@ impl DbClient for PgClientImpl {
             &(user.record_version.map(|i| i as i8)),
             &user.current_timestamp.map(|i| i as i64),
             &user.priv_channels.iter().map(|v| v.to_string()).collect::<Vec<String>>(),
+            &(self.router_expiry() as i64),
             ]
         ).await.map_err( DbError::PgError)?;
         Ok(())
@@ -179,7 +174,7 @@ impl DbClient for PgClientImpl {
 
     /// update user record in router_table at user.uaid
     async fn update_user(&self, user: &mut User) -> DbResult<bool> {
-        self.db_client
+        self.connect().await?
             .execute(
                 &format!(
                     "
@@ -190,6 +185,7 @@ impl DbClient for PgClientImpl {
                 record_version=$6,
                 timestamp=$7,
                 priv_channels=$8
+                expiry=$9
             WHERE
                 uaid = $1;
             ",
@@ -204,6 +200,7 @@ impl DbClient for PgClientImpl {
                     &(user.record_version.map(|i| i as i8)),
                     &user.current_timestamp.map(|i| i as i64),
                     &user.priv_channels.iter().map(|v| v.to_string()).collect::<Vec<String>>(),
+                    &(self.router_expiry() as i64),
                 ],
             )
             .await
@@ -213,7 +210,7 @@ impl DbClient for PgClientImpl {
 
     /// fetch user information from router_table for uaid.
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
-        let row = self.db_client
+        let row = self.connect().await?
         .query_one(
             &format!(
                 "select connected_at, router_type, router_data, node_id, record_version, current_timestamp, version, priv_channels from {tablename} where uaid = ?",
@@ -239,7 +236,7 @@ impl DbClient for PgClientImpl {
             HashSet::new()
         };
         let resp = User {
-            uaid: uaid.clone(),
+            uaid: *uaid,
             connected_at: row
                 .try_get::<&str, i64>("connected_at")
                 .map_err(DbError::PgError)? as u64,
@@ -266,7 +263,7 @@ impl DbClient for PgClientImpl {
                 .try_get::<&str, Option<String>>("version")
                 .map_err(DbError::PgError)?
                 .map(|v| Uuid::from_str(&v).unwrap()),
-            priv_channels: priv_channels,
+            priv_channels,
 
         };
         Ok(Some(resp))
@@ -274,7 +271,7 @@ impl DbClient for PgClientImpl {
 
     /// delete a user at uaid from router_table
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        self.db_client
+        self.connect().await?
             .execute(
                 &format!(
                     "DELETE FROM {tablename}
@@ -292,10 +289,10 @@ impl DbClient for PgClientImpl {
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
         let key = format!(
             "{}:{}",
-            uaid.simple().to_string(),
-            channel_id.simple().to_string()
+            uaid.simple(),
+            channel_id.simple()
         );
-        self.db_client
+        self.connect().await?
             .execute(
                 &format!(
                     "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES (?, ?);",
@@ -335,6 +332,11 @@ impl DbClient for PgClientImpl {
             let channel_id = format!("{}:{}", &uaid_str, channel);
             new_channels.push(channel_id);
         }
+
+        // This is a bit cheesy, but we want capture the reference, not the value since
+        // it will not live long enough. Clippy will complain that this is a needless
+        // iterator, but it's not, really.
+        #[allow(clippy::needless_range_loop)]
         for i in 0..new_channels.len() {
             params.push(&uaid_str);
             params.push(&new_channels[i]);
@@ -353,7 +355,7 @@ impl DbClient for PgClientImpl {
             .join(",")
         );
         // finally, do the insert.
-        self.db_client.execute(&statement, &params).await?;
+        self.connect().await?.execute(&statement, &params).await?;
         Ok(())
     }
 
@@ -361,7 +363,7 @@ impl DbClient for PgClientImpl {
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let mut result = HashSet::new();
         let rows = self
-            .db_client
+            .connect().await?
             .query(
                 &format!(
                     "SELECT uaid_channel_id FROM {tablename} WHERE uaid = ?;",
@@ -375,7 +377,7 @@ impl DbClient for PgClientImpl {
             // we only want the channelid, so strip the uaid element.
             let s = row
                 .try_get::<&str, &str>("uaid_channel_id")
-                .map(|v| v.split(':').last().unwrap_or(v))
+                .map(|v| v.split(':').next_back().unwrap_or(v))
                 .map_err(DbError::PgError)?;
             result.insert(Uuid::from_str(s).map_err(|e| DbError::General(e.to_string()))?);
         }
@@ -385,7 +387,7 @@ impl DbClient for PgClientImpl {
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         Ok(self
-            .db_client
+            .connect().await?
             .execute(
                 &format!(
                     "DELETE FROM {tablename} WHERE uaid_channel_id = ?;",
@@ -406,7 +408,7 @@ impl DbClient for PgClientImpl {
         let Some(version) = version else {
             return Err(DbError::General("Expected a user version field".to_owned()));
         };
-        self.db_client
+        self.connect().await?
         .execute(
             &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ? and version= ?;", tablename=self.db_settings.router_table),
             &[&uaid.simple().to_string(), &node_id, &(connected_at as i64), &version.to_string()]
@@ -427,7 +429,7 @@ impl DbClient for PgClientImpl {
             inputs.append(&mut ["?"].to_vec());
         }
 
-        self.db_client
+        self.connect().await?
             .execute(
                 &format!(
                     "INSERT INTO {tablename}
@@ -458,7 +460,7 @@ impl DbClient for PgClientImpl {
 
     /// remove a given message from the message table
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        self.db_client
+        self.connect().await?
             .execute(
                 &format!(
                     "DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;",
@@ -482,7 +484,7 @@ impl DbClient for PgClientImpl {
     /// Topic messages are auto-replacing singleton messages for a given user.
     async fn fetch_topic_messages(&self, uaid: &Uuid, limit: usize) -> DbResult<FetchMessageResponse> {
         let messages: Vec<Notification> = self
-            .db_client
+            .connect().await?
             .query(
                 &format!(
                 "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers FROM {tablename} WHERE uaid=? LIMIT ? ORDER BY timestamp DESC", // TODO: Check the timestamp DESC here!
@@ -515,7 +517,7 @@ impl DbClient for PgClientImpl {
     ) -> DbResult<FetchMessageResponse> {
         let uaid = uaid.simple().to_string();
         let response = if let Some(ts) = timestamp {
-            self.db_client
+            self.connect().await?
                 .query(
                     &format!(
                         "SELECT * FROM {} WHERE uaid = ? and timestamp > ? limit ?",
@@ -525,7 +527,7 @@ impl DbClient for PgClientImpl {
                 )
                 .await
         } else {
-            self.db_client
+            self.connect().await?
                 .query(
                     &format!(
                         "SELECT * FROM {} WHERE uaid = ? limit ?",
@@ -577,7 +579,7 @@ impl DbClient for PgClientImpl {
 
         let tablename = &self.db_settings.reliability_table;
         let state = new_state.to_string();
-        self.db_client.execute(&format!("INSERT INTO {tablename} (id, states) VALUES ($1, json_build_object($2, $3) )
+        self.connect().await?.execute(&format!("INSERT INTO {tablename} (id, states) VALUES ($1, json_build_object($2, $3) )
             ON CONFLICT(id)
             UPDATE {tablename} SET states = jsonb_set(states, array[$2], to_jsonb($3))"),
             &[
@@ -592,7 +594,7 @@ impl DbClient for PgClientImpl {
         debug!("📬 Updating {uaid} current_timestamp:{timestamp}");
         let tablename = &self.db_settings.router_table;
 
-        self.db_client.execute(&format!("UPDATE {tablename} SET current_timestamp = $2 where uaid = $1"), &[&uaid.to_string(), &(timestamp as i64)]).await?;
+        self.connect().await?.execute(&format!("UPDATE {tablename} SET current_timestamp = $2, expiry= $3 where uaid = $1"), &[&uaid.to_string(), &(timestamp as i64), &(self.router_expiry() as i64)]).await?;
 
         Ok(())
     }
@@ -603,7 +605,7 @@ impl DbClient for PgClientImpl {
 
     async fn health_check(&self) -> DbResult<bool> {
         // Replace this with a proper health check.
-        let row =self.db_client.query_one("select true", &[]).await?;
+        let row =self.connect().await?.query_one("select true", &[]).await?;
         Ok(!row.is_empty())
     }
 

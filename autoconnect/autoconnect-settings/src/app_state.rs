@@ -88,7 +88,7 @@ impl AppState {
             #[cfg(feature = "postgres")]
             StorageType::Postgres => {
                 // TODO: Throw this behind the same pool mechanism as BigTable.
-                let client = PgClientImpl::new(metrics.clone(), &db_settings).await.map_err(|e| ConfigError::Message(e.to_string()))?;
+                let client = PgClientImpl::new(metrics.clone(), &db_settings).map_err(|e| ConfigError::Message(e.to_string()))?;
                 Box::new(client)
             }
             _ => panic!(
