@@ -8,7 +8,9 @@ use actix_web::{
 use serde_json::json;
 
 use autoconnect_settings::AppState;
+#[cfg(feature = "reliable_report")]
 use autopush_common::metric_name::MetricName;
+#[cfg(feature = "reliable_report")]
 use autopush_common::metrics::StatsdClientExt;
 
 use crate::error::ApiError;

@@ -12,11 +12,11 @@ pub(crate) enum StorageType {
 impl Default for StorageType {
     fn default() -> StorageType {
         if cfg!(feature = "bigtable") {
-            return StorageType::BigTable
+            return StorageType::BigTable;
         }
         #[cfg(feature = "postgres")]
         if cfg!(feature = "postgres") {
-            return StorageType::Postgres
+            return StorageType::Postgres;
         }
         StorageType::None
     }

@@ -41,10 +41,10 @@ pub enum DbError {
     // Return a 503 error
     #[error("Process pending, please wait.")]
     Backoff(String),
-    
-    #[cfg(feature="postgres")]
+
+    #[cfg(feature = "postgres")]
     #[error("Postgres Error: {0}")]
-    PgError(#[from] tokio_postgres::Error)
+    PgError(#[from] tokio_postgres::Error),
 }
 
 impl DbError {

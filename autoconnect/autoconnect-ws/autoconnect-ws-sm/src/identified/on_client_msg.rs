@@ -249,7 +249,6 @@ impl WebPushClient {
                         .await;
                 }
                 let n = self.ack_state.unacked_stored_notifs.remove(pos);
-                #[cfg(feature = "reliable_report")]
                 if !is_topic {
                     self.ack_state.acked_stored_timestamp_notifs.push(n);
                 }

@@ -129,6 +129,7 @@ impl From<Notification> for autopush_common::notification::Notification {
             timestamp: notification.timestamp,
             data: notification.data,
             sortkey_timestamp,
+            #[cfg(feature = "reliable_report")]
             reliability_id: notification.subscription.reliability_id,
             headers: {
                 let headers: HashMap<String, String> = notification.headers.into();

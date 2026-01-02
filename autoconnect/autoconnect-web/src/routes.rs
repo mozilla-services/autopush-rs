@@ -45,9 +45,13 @@ pub async fn push_route(
     // Attempt to send the notification to the UA using WebSocket protocol, or store on failure.
     // NOTE: Since this clones the notification, there is a potential to
     // double count the reliability state.
+    #[cfg(feature = "reliable_report")]
+    let notif_clone  = notif.clone_without_reliability_state();
+    #[cfg(not(feature = "reliable_report"))]
+    let notif_clone = notif.clone();
     let result = app_state
         .clients
-        .notify(uaid.into_inner(), notif.clone_without_reliability_state())
+        .notify(uaid.into_inner(), notif_clone)
         .await;
     if result.is_ok() {
         #[cfg(feature = "reliable_report")]
