@@ -46,7 +46,7 @@ pub async fn push_route(
     // NOTE: Since this clones the notification, there is a potential to
     // double count the reliability state.
     #[cfg(feature = "reliable_report")]
-    let notif_clone  = notif.clone_without_reliability_state();
+    let notif_clone = notif.clone_without_reliability_state();
     #[cfg(not(feature = "reliable_report"))]
     let notif_clone = notif.clone();
     let result = app_state
