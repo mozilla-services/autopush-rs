@@ -60,6 +60,7 @@ pub struct RedisClientImpl {
     /// Metrics client
     metrics: Arc<StatsdClient>,
     router_opts: SetOptions,
+    // Default notification options (mostly TTL)
     notification_opts: SetOptions,
 }
 
@@ -73,8 +74,6 @@ impl RedisClientImpl {
         let db_settings = RedisDbSettings::try_from(settings.db_settings.as_ref())?;
         info!("🐰 {:#?}", db_settings);
         let router_ttl_secs = db_settings.router_ttl.unwrap_or_default().as_secs();
-        // notification_ttl is already min(headers.ttl, MAX_NOTIFICATION_TTL)
-        // see autoendpoint/src/extractors/notification_headers.rs
         let notification_ttl_secs = db_settings.notification_ttl.unwrap_or_default().as_secs();
         // We specify different TTLs for router vs message.
         Ok(Self {
@@ -344,17 +343,19 @@ impl DbClient for RedisClientImpl {
         // and set(msg_key, message) will override it too: nothing to do.
         let is_topic = message.topic.is_some();
 
+        // notification_ttl is already min(headers.ttl, MAX_NOTIFICATION_TTL)
+        // see autoendpoint/src/extractors/notification_headers.rs
+        let notif_opts = self
+            .notification_opts
+            .with_expiration(SetExpiry::EX(expiry));
+
         // Store notification record in autopush/msg/{uaid}/{chidmessageid}
         // And store {chidmessageid} in autopush/msgs/{uaid}
-        pipe.set_options(
-            msg_key,
-            serde_json::to_string(&message)?,
-            self.notification_opts,
-        )
-        // The function [fetch_timestamp_messages] takes a timestamp in input,
-        // here we use the timestamp of the record
-        .zadd(&exp_list_key, msg_id, expiry)
-        .zadd(&msg_list_key, msg_id, sec_since_epoch());
+        pipe.set_options(msg_key, serde_json::to_string(&message)?, notif_opts)
+            // The function [fetch_timestamp_messages] takes a timestamp in input,
+            // here we use the timestamp of the record
+            .zadd(&exp_list_key, msg_id, expiry)
+            .zadd(&msg_list_key, msg_id, sec_since_epoch());
 
         let _: () = pipe.exec_async(&mut con).await?;
         self.metrics
