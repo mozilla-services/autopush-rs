@@ -5,6 +5,7 @@ extern crate slog;
 extern crate slog_scope;
 extern crate serde_derive;
 
+use std::env;
 use std::{io, net::ToSocketAddrs, time::Duration};
 
 use config::{Config, ConfigError, Environment, File};
@@ -232,7 +233,8 @@ impl Settings {
 
     #[cfg(feature = "bigtable")]
     pub fn test_settings() -> Self {
-        let db_dsn = Some("grpc://localhost:8086".to_string());
+        let host = env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8086".to_owned());
+        let db_dsn = Some(format!("grpc://{}", host));
         // BigTable DB_SETTINGS.
         let db_settings = json!({
             "table_name":"projects/test/instances/test/tables/autopush",
@@ -250,7 +252,8 @@ impl Settings {
 
     #[cfg(all(feature = "redis", not(feature = "bigtable")))]
     pub fn test_settings() -> Self {
-        let db_dsn = Some("redis://localhost".to_string());
+        let host = env::var("REDIS_HOST").unwrap_or("localhost:6379".to_owned());
+        let db_dsn = Some(format!("redis://{}", host));
         let db_settings = "".to_string();
         Self {
             db_dsn,

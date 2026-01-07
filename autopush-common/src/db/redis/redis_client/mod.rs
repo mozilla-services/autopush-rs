@@ -2,13 +2,14 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
 use redis::aio::MultiplexedConnection;
 use redis::{AsyncCommands, SetExpiry, SetOptions};
+use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::db::{
@@ -54,30 +55,36 @@ impl<'a> From<ChannelId<'a>> for String {
 pub struct RedisClientImpl {
     /// Database connector string
     pub client: redis::Client,
-    pub conn: Arc<Mutex<Option<MultiplexedConnection>>>,
-    pub(crate) settings: RedisDbSettings,
+    pub conn: OnceCell<MultiplexedConnection>,
+    pub(crate) timeout: Option<Duration>,
     /// Metrics client
     metrics: Arc<StatsdClient>,
-    redis_opts: SetOptions,
+    router_opts: SetOptions,
+    notification_opts: SetOptions,
 }
 
 impl RedisClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         debug!("🐰 New redis client");
-        let dsn = settings
-            .dsn
-            .clone()
-            .ok_or(DbError::General("Could not find DSN".to_owned()))?;
+        let dsn = settings.dsn.clone().ok_or(DbError::General(
+            "Redis DSN not configured. Set `db_dsn` to `redis://HOST:PORT` in settings.".to_owned(),
+        ))?;
         let client = redis::Client::open(dsn)?;
         let db_settings = RedisDbSettings::try_from(settings.db_settings.as_ref())?;
         info!("🐰 {:#?}", db_settings);
         let router_ttl_secs = db_settings.router_ttl.unwrap_or_default().as_secs();
+        // notification_ttl is already min(headers.ttl, MAX_NOTIFICATION_TTL)
+        // see autoendpoint/src/extractors/notification_headers.rs
+        let notification_ttl_secs = db_settings.notification_ttl.unwrap_or_default().as_secs();
+        // We specify different TTLs for router vs message.
         Ok(Self {
             client,
-            conn: Arc::new(Mutex::new(None)),
-            settings: db_settings,
+            conn: OnceCell::new(),
+            timeout: db_settings.timeout,
             metrics,
-            redis_opts: SetOptions::default().with_expiration(SetExpiry::EX(router_ttl_secs)),
+            router_opts: SetOptions::default().with_expiration(SetExpiry::EX(router_ttl_secs)),
+            notification_opts: SetOptions::default()
+                .with_expiration(SetExpiry::EX(notification_ttl_secs)),
         })
     }
 
@@ -86,34 +93,21 @@ impl RedisClientImpl {
     ///
     /// Pools also return a ConnectionLike, so we can add support for pools later.
     async fn connection(&self) -> DbResult<redis::aio::MultiplexedConnection> {
-        {
-            let conn = self
-                .conn
-                .lock()
-                .map_err(|e| DbError::General(e.to_string()))?
-                .clone();
-
-            if let Some(co) = conn {
-                return Ok(co);
-            }
-        }
-        let config = if self.settings.timeout.is_some_and(|t| !t.is_zero()) {
-            redis::AsyncConnectionConfig::new()
-                .set_connection_timeout(self.settings.timeout.unwrap())
+        let config = if self.timeout.is_some_and(|t| !t.is_zero()) {
+            redis::AsyncConnectionConfig::new().set_connection_timeout(self.timeout.unwrap())
         } else {
             redis::AsyncConnectionConfig::new()
         };
-        let co = self
-            .client
-            .get_multiplexed_async_connection_with_config(&config)
-            .await
-            .map_err(|e| DbError::ConnectionError(format!("Cannot connect to redis: {}", e)))?;
-        let mut conn = self
+        Ok(self
             .conn
-            .lock()
-            .map_err(|e| DbError::General(e.to_string()))?;
-        *conn = Some(co.clone());
-        Ok(co)
+            .get_or_try_init(|| async {
+                self.client
+                    .get_multiplexed_async_connection_with_config(&config.clone())
+                    .await
+            })
+            .await
+            .inspect_err(|e| error!("No Redis Connection available: {}", e.to_string()))?
+            .clone())
     }
 
     fn user_key(&self, uaid: &Uaid) -> String {
@@ -167,8 +161,8 @@ impl DbClient for RedisClientImpl {
         let user_key = self.user_key(&uaid);
         let co_key = self.last_co_key(&uaid);
         let _: () = redis::pipe()
-            .set_options(co_key, ms_since_epoch(), self.redis_opts)
-            .set_options(user_key, serde_json::to_string(user)?, self.redis_opts)
+            .set_options(co_key, ms_since_epoch(), self.router_opts)
+            .set_options(user_key, serde_json::to_string(user)?, self.router_opts)
             .exec_async(&mut con)
             .await?;
         Ok(())
@@ -243,7 +237,7 @@ impl DbClient for RedisClientImpl {
 
         let _: () = redis::pipe()
             .rpush(chan_list_key, channel_id.as_hyphenated().to_string())
-            .set_options(co_key, ms_since_epoch(), self.redis_opts)
+            .set_options(co_key, ms_since_epoch(), self.router_opts)
             .exec_async(&mut con)
             .await?;
         Ok(())
@@ -257,7 +251,7 @@ impl DbClient for RedisClientImpl {
         let co_key = self.last_co_key(&uaid);
         let chan_list_key = self.channel_list_key(&uaid);
         redis::pipe()
-            .set_options(co_key, ms_since_epoch(), self.redis_opts)
+            .set_options(co_key, ms_since_epoch(), self.router_opts)
             .rpush(
                 chan_list_key,
                 channels
@@ -272,16 +266,7 @@ impl DbClient for RedisClientImpl {
 
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let uaid = Uaid(uaid);
-        let config = if self.settings.timeout.is_some_and(|t| !t.is_zero()) {
-            redis::AsyncConnectionConfig::new()
-                .set_connection_timeout(self.settings.timeout.unwrap())
-        } else {
-            redis::AsyncConnectionConfig::new()
-        };
-        let mut con = self
-            .client
-            .get_multiplexed_async_connection_with_config(&config)
-            .await?;
+        let mut con = self.connection().await?;
         let chan_list_key = self.channel_list_key(&uaid);
         let channels: HashSet<Uuid> = con
             .lrange::<&str, HashSet<String>>(&chan_list_key, 0, -1)
@@ -303,7 +288,7 @@ impl DbClient for RedisClientImpl {
         // Remove {channel_id} from autopush/channel/{auid}
         trace!("🐰 Removing channel {}", channel_id);
         let (status,): (bool,) = redis::pipe()
-            .set_options(co_key, ms_since_epoch(), self.redis_opts)
+            .set_options(co_key, ms_since_epoch(), self.router_opts)
             .ignore()
             .lrem(&chan_list_key, 1, channel_id.to_string())
             .query_async(&mut con)
@@ -336,9 +321,6 @@ impl DbClient for RedisClientImpl {
         let exp_list_key = self.message_exp_list_key(&uaid);
         let msg_id = &message.chidmessageid();
         let msg_key = self.message_key(&uaid, msg_id);
-        // message.ttl is already min(headers.ttl, MAX_NOTIFICATION_TTL)
-        // see autoendpoint/src/extractors/notification_headers.rs
-        let opts = SetOptions::default().with_expiration(SetExpiry::EX(message.ttl));
 
         debug!("🐰 Saving message {} :: {:?}", &msg_key, &message);
         trace!(
@@ -364,11 +346,15 @@ impl DbClient for RedisClientImpl {
 
         // Store notification record in autopush/msg/{uaid}/{chidmessageid}
         // And store {chidmessageid} in autopush/msgs/{uaid}
-        pipe.set_options(msg_key, serde_json::to_string(&message)?, opts)
-            // The function [fetch_timestamp_messages] takes a timestamp in input,
-            // here we use the timestamp of the record
-            .zadd(&exp_list_key, msg_id, expiry)
-            .zadd(&msg_list_key, msg_id, sec_since_epoch());
+        pipe.set_options(
+            msg_key,
+            serde_json::to_string(&message)?,
+            self.notification_opts,
+        )
+        // The function [fetch_timestamp_messages] takes a timestamp in input,
+        // here we use the timestamp of the record
+        .zadd(&exp_list_key, msg_id, expiry)
+        .zadd(&msg_list_key, msg_id, sec_since_epoch());
 
         let _: () = pipe.exec_async(&mut con).await?;
         self.metrics
@@ -405,14 +391,14 @@ impl DbClient for RedisClientImpl {
             trace!("🐰🔥:rem: Deleting {} : [{:?}]", msg_list_key, &exp_id_list);
             trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
             redis::pipe()
-                .set_options::<_, _>(&storage_timestamp_key, timestamp, self.redis_opts)
+                .set_options::<_, _>(&storage_timestamp_key, timestamp, self.router_opts)
                 .del(&exp_id_list)
                 .zrem(&msg_list_key, &exp_id_list)
                 .zrem(&exp_list_key, &exp_id_list)
                 .exec_async(&mut con)
                 .await?;
         } else {
-            con.set_options::<_, _, ()>(&storage_timestamp_key, timestamp, self.redis_opts)
+            con.set_options::<_, _, ()>(&storage_timestamp_key, timestamp, self.router_opts)
                 .await?;
         }
         Ok(())
@@ -522,29 +508,29 @@ impl DbClient for RedisClientImpl {
             .await?
             .into_iter()
             .filter_map(|opt: Option<String>| {
-                if opt.is_none() {
-                    // We return dummy expired event if we can't fetch the said event,
-                    // it means the event has expired
-                    Some(Notification {
-                        timestamp: 1,
-                        ..Default::default()
-                    })
+                if let Some(m) = opt {
+                    serde_json::from_str(&m)
+                        .inspect_err(|e| {
+                            // Since we can't raise the error here, at least record it
+                            // so that it's not lost.
+                            // Mind you, if there is an error here, it's probably due to
+                            // some developmental issue since the unit and integration tests
+                            // should fail.
+                            error!("🐰 ERROR parsing entry: {:?}", e);
+                        })
+                        .ok()
                 } else {
-                    opt.and_then(|m| {
-                        serde_json::from_str(&m)
-                            .inspect_err(|e| {
-                                // Since we can't raise the error here, at least record it
-                                // so that it's not lost.
-                                // Mind you, if there is an error here, it's probably due to
-                                // some developmental issue since the unit and integration tests
-                                // should fail.
-                                error!("🐰 ERROR parsing entry: {:?}", e);
-                            })
-                            .ok()
-                    })
+                    None
                 }
             })
             .collect();
+        if messages.is_empty() {
+            trace!("🐰 No Valid messages found");
+            return Ok(FetchMessageResponse {
+                timestamp: None,
+                messages: vec![],
+            });
+        }
         let timestamp = scores.pop();
         trace!("🐰 Found {} messages until {:?}", messages.len(), timestamp);
         Ok(FetchMessageResponse {

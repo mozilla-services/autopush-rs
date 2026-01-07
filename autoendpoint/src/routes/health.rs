@@ -11,10 +11,15 @@ use serde_json::json;
 
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::AppState;
+use autopush_common::db::error::DbResult;
+#[cfg(feature = "reliable_report")]
+use autopush_common::errors::ApcError;
+#[cfg(feature = "reliable_report")]
 use autopush_common::metric_name::MetricName;
+#[cfg(feature = "reliable_report")]
 use autopush_common::metrics::StatsdClientExt;
+#[cfg(feature = "reliable_report")]
 use autopush_common::util::b64_encode_url;
-use autopush_common::{db::error::DbResult, errors::ApcError};
 
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
@@ -24,6 +29,8 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
+    // Used by `reliable_report`
+    #[allow(unused_mut)]
     let mut health = json!({
         "status": if state
             .db

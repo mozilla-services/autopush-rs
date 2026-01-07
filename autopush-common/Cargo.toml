@@ -47,6 +47,7 @@ derive_builder = "0.20"
 gethostname = "1.0"
 num_cpus = "1.16"
 woothee = "0.13"
+tokio = { workspace = true, features = ["macros", "sync" ] }
 
 # #[cfg(bigtable)] for this section.
 # the following three crates must match what is specifed in google-cloud-rust-raw's dependencies
@@ -68,7 +69,6 @@ actix-rt = "2.8"
 mockito = "0.31"                                     # mockito > 0.31 will require significant reworking of the tests and is not critical yet.
 redis-test = { version = "0.11", features = ["aio"] }
 tempfile = "3.2.0"
-tokio = { workspace = true, features = ["macros"] }
 
 [features]
 # NOTE: Do not set a `default` here, rather specify them in the calling library.

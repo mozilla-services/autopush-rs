@@ -273,7 +273,7 @@ mod tests {
             },
             Url::parse("http://localhost:8080/").unwrap(),
             reqwest::Client::new(),
-            Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
+            metrics.clone(),
             db.clone(),
             #[cfg(feature = "reliable_report")]
             Arc::new(

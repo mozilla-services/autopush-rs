@@ -1,3 +1,4 @@
+#[cfg(feature = "reliable_report")]
 use std::mem;
 
 use cadence::Counted;
