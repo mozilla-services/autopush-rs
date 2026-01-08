@@ -39,6 +39,7 @@ Message: TypeAlias = HelloMessage | NotificationMessage | RegisterMessage | Unre
 Record: TypeAlias = HelloRecord | NotificationRecord | RegisterRecord
 
 
+logging.basicConfig(level=logging.DEBUG)
 logger: Logger = logging.getLogger("StoredNotifAutopushUser")
 
 
@@ -160,6 +161,7 @@ class StoredNotifAutopushUser(FastHttpUser):
             return
 
         endpoint_url: str = random.choice(list(self.channels.values()))
+        logger.info(f"🟩 Sending to {endpoint_url}")
         self.post_notification(endpoint_url)
 
     @task(weight=5)
@@ -266,6 +268,8 @@ class StoredNotifAutopushUser(FastHttpUser):
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
         self.notification_records[sha1(data.encode(), usedforsecurity=False).digest()] = record
 
+        logger.info(f"🟩 Sending to {endpoint_url}")
+
         with self.client.post(
             url=endpoint_url,
             name=message_type,
@@ -274,7 +278,8 @@ class StoredNotifAutopushUser(FastHttpUser):
             catch_response=True,
         ) as response:
             if response.status_code == 0:
-                raise ZeroStatusRequestError()
+                response.failure(f"Received status code 0 from {endpoint_url}")
+                #raise ZeroStatusRequestError()
             if response.status_code != 201:
                 response.failure(f"{response.status_code=}, expected 201, {response.text=}")
 

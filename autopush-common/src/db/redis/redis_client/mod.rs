@@ -21,6 +21,15 @@ use crate::util::{ms_since_epoch, sec_since_epoch};
 
 use super::RedisDbSettings;
 
+fn now_secs() -> u64 {
+    // Return the current time in seconds since EPOCH
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+
 /// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
 struct Uaid<'a>(&'a Uuid);
 
@@ -147,19 +156,30 @@ impl RedisClientImpl {
     ) -> String {
         format!("autopush/reliability/{}/{}", reliability_id, state)
     }
+
+    #[cfg(test)]
+    /// Return a single "raw" message (used by testing and validation)
+    async fn fetch_message(&self, uaid: &Uuid, chidmessageid: &str) -> DbResult<Option<String>> {
+        let message_key = self.message_key(&Uaid(uaid), chidmessageid);
+        let mut con = self.connection().await?;
+        debug!("🐰 Fetching message from {}", &message_key);
+        let message = con.get::<String, Option<String>>(message_key).await?;
+        Ok(message)
+
+    }
 }
 
 #[async_trait]
 impl DbClient for RedisClientImpl {
     /// add user to the database
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        trace!("🐰 Adding user");
-        trace!("🐰 Logged at {}", &user.connected_at);
-        let mut con = self.connection().await?;
         let uaid = Uaid(&user.uaid);
         let user_key = self.user_key(&uaid);
+        let mut con = self.connection().await?;
         let co_key = self.last_co_key(&uaid);
-        let _: () = redis::pipe()
+        trace!("🐰 Adding user {} at {}:{}", &user.uaid, &user_key, &co_key);
+        trace!("🐰 Logged at {}", &user.connected_at);
+        redis::pipe()
             .set_options(co_key, ms_since_epoch(), self.router_opts)
             .set_options(user_key, serde_json::to_string(user)?, self.router_opts)
             .exec_async(&mut con)
@@ -217,12 +237,14 @@ impl DbClient for RedisClientImpl {
         let chan_list_key = self.channel_list_key(&uaid);
         let msg_list_key = self.message_list_key(&uaid);
         let exp_list_key = self.message_exp_list_key(&uaid);
+        let timestamp_key = self.storage_timestamp_key(&uaid);
         redis::pipe()
             .del(&user_key)
             .del(&co_key)
             .del(&chan_list_key)
             .del(&msg_list_key)
             .del(&exp_list_key)
+            .del(&timestamp_key)
             .exec_async(&mut con)
             .await?;
         Ok(())
@@ -329,11 +351,8 @@ impl DbClient for RedisClientImpl {
 
         // Remember, `timestamp` is effectively the time to kill the message, not the
         // current time.
-        let expiry = (SystemTime::now() + Duration::from_secs(message.ttl))
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        trace!("🐰 Message Expiry {}", expiry);
+        let expiry = now_secs() + message.ttl;
+        trace!("🐰 Message Expiry {}, currently:{} ", expiry, now_secs());
 
         let mut pipe = redis::pipe();
 
@@ -347,10 +366,11 @@ impl DbClient for RedisClientImpl {
         // see autoendpoint/src/extractors/notification_headers.rs
         let notif_opts = self
             .notification_opts
-            .with_expiration(SetExpiry::EX(expiry));
+            .with_expiration(SetExpiry::EXAT(expiry));
 
         // Store notification record in autopush/msg/{uaid}/{chidmessageid}
         // And store {chidmessageid} in autopush/msgs/{uaid}
+        debug!("🐰 Saving to {}", &msg_key);
         pipe.set_options(msg_key, serde_json::to_string(&message)?, notif_opts)
             // The function [fetch_timestamp_messages] takes a timestamp in input,
             // here we use the timestamp of the record
@@ -389,11 +409,15 @@ impl DbClient for RedisClientImpl {
         trace!("🐇 SEARCH: increment: {:?} - {}", &exp_list_key, timestamp);
         let exp_id_list: Vec<String> = con.zrangebyscore(&exp_list_key, 0, timestamp).await?;
         if !exp_id_list.is_empty() {
-            trace!("🐰🔥:rem: Deleting {} : [{:?}]", msg_list_key, &exp_id_list);
+            // Remember, we store just the message_ids in the exp and msg lists, but need to convert back to 
+            // the full message keys for deletion.
+            let delete_msg_keys:Vec<String> = exp_id_list.clone().into_iter().map(|msg_id| self.message_key(&uaid, &msg_id)).collect();
+
+            trace!("🐰🔥:rem: Deleting {} : [{:?}]", msg_list_key, &delete_msg_keys);
             trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
             redis::pipe()
                 .set_options::<_, _>(&storage_timestamp_key, timestamp, self.router_opts)
-                .del(&exp_id_list)
+                .del(&delete_msg_keys)
                 .zrem(&msg_list_key, &exp_id_list)
                 .zrem(&exp_list_key, &exp_id_list)
                 .exec_async(&mut con)
@@ -546,14 +570,14 @@ impl DbClient for RedisClientImpl {
         reliability_id: &str,
         state: crate::reliability::ReliabilityState,
     ) -> DbResult<()> {
+        use crate::MAX_NOTIFICATION_TTL_SECS;
+
         trace!("🐰 Logging reliability report");
         let mut con = self.connection().await?;
         // TODO: Should this be a hash key per reliability_id?
         let reliability_key = self.reliability_key(reliability_id, &state);
-        let expiry = (SystemTime::now() + Duration::from_secs(86400 * 30))
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        // Reports should last about as long as the notifications they're tied to. 
+        let expiry = MAX_NOTIFICATION_TTL_SECS;
         let opts = SetOptions::default().with_expiration(SetExpiry::EX(expiry));
         let mut pipe = redis::pipe();
         pipe.set_options(reliability_key, sec_since_epoch(), opts)
@@ -595,19 +619,11 @@ impl DbClient for RedisClientImpl {
 mod tests {
     use crate::{logging::init_test_logging, util::ms_since_epoch};
     use std::env;
+    use rand::prelude::*;
 
     use super::*;
-    const TEST_USER: &str = "DEADBEEF-0000-0000-0000-0123456789AB";
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
     const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
-
-    fn now_secs() -> u64 {
-        // Return the current time in seconds since EPOCH
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    }
 
     fn new_client() -> DbResult<RedisClientImpl> {
         // Use an environment variable to potentially override the default redis test host.
@@ -620,6 +636,13 @@ mod tests {
         };
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
         RedisClientImpl::new(metrics, &settings)
+    }
+
+    fn gen_test_user() -> String {
+        // Create a semi-unique test user to avoid conflicting test values.
+        let mut rng = rand::rng();
+        let test_num = rng.random::<u8>();
+        format!("DEADBEEF-0000-0000-{:04}-{:012}",test_num, now_secs())
     }
 
     #[actix_rt::test]
@@ -639,7 +662,7 @@ mod tests {
 
         let connected_at = ms_since_epoch();
 
-        let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
 
         let node_id = "test_node".to_owned();
@@ -676,6 +699,7 @@ mod tests {
         client.increment_storage(&uaid, timestamp + 1).await?;
         let msgs = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_eq!(msgs.messages.len(), 0);
+        assert!(client.remove_user(&uaid).await.is_ok());
         Ok(())
     }
 
@@ -688,7 +712,8 @@ mod tests {
 
         let connected_at = ms_since_epoch();
 
-        let uaid = Uuid::parse_str(TEST_USER).unwrap();
+        let user_id = &gen_test_user();
+        let uaid = Uuid::parse_str(&user_id).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
         let topic_chid = Uuid::parse_str(TOPIC_CHID).unwrap();
 
@@ -904,7 +929,43 @@ mod tests {
         assert!(client.remove_user(&uaid).await.is_ok());
 
         assert!(client.get_user(&uaid).await?.is_none());
-
         Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn test_expiry() -> DbResult<()> {
+        // Make sure that we really are purging messages correctly
+        init_test_logging();
+        let client = new_client()?;
+
+        let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let now = now_secs();
+        
+        let test_notification =  crate::db::Notification {
+            channel_id: chid,
+            version: "test".to_owned(),
+            ttl: 2,
+            timestamp:now,
+            data: Some("SomeData".into()),
+            sortkey_timestamp: Some(now),
+            ..Default::default()
+        };
+        debug!("Writing test notif");
+        let res = client.save_message(&uaid, test_notification.clone()).await;
+        assert!(res.is_ok());
+        let key = client.message_key(&Uaid(&uaid), &test_notification.chidmessageid());
+        debug!("Checking {}...", &key);
+        let msg  = client.fetch_message(&uaid, &test_notification.chidmessageid()).await?;
+        assert!(!msg.unwrap().is_empty());
+        debug!("Purging...");
+        client.increment_storage(&uaid, now+2).await?;
+        debug!("Checking {}...", &key);
+        let cc = client.fetch_message(&uaid, &test_notification.chidmessageid()).await;
+        assert_eq!(cc.unwrap(), None);
+        // clean up after the test.
+        assert!(client.remove_user(&uaid).await.is_ok());
+        Ok(())
+
     }
 }

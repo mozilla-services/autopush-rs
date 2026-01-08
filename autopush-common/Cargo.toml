@@ -22,6 +22,7 @@ futures-util.workspace = true
 lazy_static.workspace = true
 mockall.workspace = true
 openssl.workspace = true
+rand.workspace = true
 regex.workspace = true
 sentry-backtrace.workspace = true
 sentry.workspace = true

@@ -716,6 +716,7 @@ dependencies = [
  "openssl",
  "prometheus-client",
  "protobuf",
+ "rand 0.9.2",
  "redis",
  "redis-module",
  "redis-test",
