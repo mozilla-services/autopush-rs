@@ -542,7 +542,6 @@ impl DbClient for RedisClientImpl {
             .into_iter()
             .filter_map(|opt: Option<String>| {
                 if let Some(m) = opt {
-                    dbg!(&m);
                     serde_json::from_str(&m)
                         .inspect_err(|e| {
                             // Since we can't raise the error here, at least record it
