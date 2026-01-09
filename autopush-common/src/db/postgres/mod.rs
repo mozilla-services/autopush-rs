@@ -22,6 +22,9 @@ use crate::notification::Notification;
 use crate::{util, MAX_ROUTER_TTL_SECS};
 
 use super::client::FetchMessageResponse;
+
+pub mod pool;
+pub mod error;
 // use autopush_common::util::sec_since_epoch;
 
 #[cfg(feature = "reliable_report")]
@@ -81,7 +84,7 @@ impl PgClientImpl {
     /// e.g. (postgresql://scott:tiger@dbhost/autopush?connect_timeout=10&keepalives_idle=3600)
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         if let Some(dsn) = settings.dsn.clone() {
-            trace!("📬 Postgres Connect {}", &dsn);
+            trace!("📮 Postgres Connect {}", &dsn);
             let parsed = url::Url::parse(&dsn).unwrap(); // TODO: FIX ERRORS!!
             let pg_connect = format!(
                 "user={:?} password={:?} host={:?} port={:?} dbname={:?}",
@@ -311,7 +314,7 @@ impl DbClient for PgClientImpl {
     /// Save all channels in a list
     async fn add_channels(&self, uaid: &Uuid, channels: HashSet<Uuid>) -> DbResult<()> {
         if channels.is_empty() {
-            trace!("No channels to save.");
+            trace!("📮 No channels to save.");
             return Ok(());
         };
         let uaid_str = uaid.simple().to_string();
