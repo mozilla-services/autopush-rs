@@ -361,7 +361,7 @@ mod test {
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
         WebPushRouter {
             db: db.clone(),
-            metrics: Arc::new(StatsdClient::from_sink("autopush", cadence::NopMetricSink)),
+            metrics: metrics.clone(),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
             #[cfg(feature = "reliable_report")]

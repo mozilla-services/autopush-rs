@@ -22,10 +22,10 @@ use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
 
-use crate::db::RangeKey;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
+    models::RangeKey,
     DbSettings, Notification, User, USER_RECORD_VERSION,
 };
 use crate::metric_name::MetricName;
@@ -1892,7 +1892,7 @@ mod tests {
         client.remove_user(&uaid).await.unwrap();
 
         client
-            .increment_storage(&uaid, ms_since_epoch())
+            .increment_storage(&uaid, crate::util::sec_since_epoch())
             .await
             .unwrap();
         assert!(client.get_user(&uaid).await.unwrap().is_none());

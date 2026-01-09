@@ -33,6 +33,10 @@ FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
 INSTALL_STAMP := .install.stamp
 
+.PHONY: docker-dev-build
+docker-dev-build:
+	docker build -f Dockerfile-dev -t autopush-dev .
+	
 .PHONY: docker-init
 docker-init: 
 	sudo apt update

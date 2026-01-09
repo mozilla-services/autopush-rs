@@ -21,6 +21,8 @@ pub mod bigtable;
 pub mod client;
 pub mod error;
 pub mod models;
+#[cfg(feature = "redis")]
+pub mod redis;
 pub mod reporter;
 pub mod routing;
 
@@ -31,7 +33,6 @@ pub use reporter::spawn_pool_periodic_reporter;
 
 use crate::notification::Notification;
 use crate::util::timing::ms_since_epoch;
-use models::RangeKey;
 
 pub const USER_RECORD_VERSION: u64 = 1;
 
@@ -40,6 +41,8 @@ pub enum StorageType {
     INVALID,
     #[cfg(feature = "bigtable")]
     BigTable,
+    #[cfg(feature = "redis")]
+    Redis,
 }
 
 impl From<&str> for StorageType {
@@ -47,6 +50,8 @@ impl From<&str> for StorageType {
         match name.to_lowercase().as_str() {
             #[cfg(feature = "bigtable")]
             "bigtable" => Self::BigTable,
+            #[cfg(feature = "redis")]
+            "redis" => Self::Redis,
             _ => Self::INVALID,
         }
     }
@@ -60,6 +65,8 @@ impl StorageType {
         let mut result: Vec<&str> = Vec::new();
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
+        #[cfg(feature = "redis")]
+        result.push("Redis");
         result
     }
 
@@ -84,6 +91,11 @@ impl StorageType {
                 trace!("Env: {:?}", cred);
             }
             return Self::BigTable;
+        }
+        #[cfg(feature = "redis")]
+        if dsn.starts_with("redis") {
+            trace!("Found redis");
+            return Self::Redis;
         }
         Self::INVALID
     }
