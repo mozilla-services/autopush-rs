@@ -15,6 +15,7 @@ pub struct Notification {
     #[serde(rename = "channelID")]
     pub channel_id: Uuid,
     pub version: String,
+    #[serde(skip_serializing)]
     pub timestamp: u64,
     // Possibly stored values, provided with a default.
     #[serde(default = "default_ttl", skip_serializing)]
@@ -109,6 +110,6 @@ impl Notification {
     }
 }
 
-fn default_ttl() -> u64 {
+pub(crate) fn default_ttl() -> u64 {
     0
 }

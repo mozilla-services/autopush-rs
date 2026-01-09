@@ -15,11 +15,15 @@ mod redis_client;
 
 pub use redis_client::RedisClientImpl;
 
-use serde::Deserialize;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::db::error::DbError;
+use crate::notification::{default_ttl, Notification};
 use crate::util::deserialize_opt_u32_to_duration;
+
+use serde_derive::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// The settings for accessing the redis contents.
 #[derive(Clone, Debug, Deserialize)]
@@ -61,6 +65,72 @@ impl TryFrom<&str> for RedisDbSettings {
     }
 }
 
+#[derive(Serialize, Default, Deserialize, Clone, Debug)]
+/// A Publishable Notification record. This is a notification that is either
+/// received from a third party or is outbound to a UserAgent.
+///
+pub struct StorableNotification {
+    // Required values
+    #[serde(rename = "channelID")]
+    pub channel_id: Uuid,
+    pub version: String,
+    pub timestamp: u64,
+    // Possibly stored values, provided with a default.
+    #[serde(default = "default_ttl", skip_serializing)]
+    pub ttl: u64,
+    // Optional values, which imply a "None" default.
+    #[serde(skip_serializing)]
+    pub topic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    #[serde(skip_serializing)]
+    pub sortkey_timestamp: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reliability_id: Option<String>,
+    #[cfg(feature = "reliable_report")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reliable_state: Option<crate::reliability::ReliabilityState>,
+}
+
+impl From<Notification> for StorableNotification {
+    fn from(notification: Notification) -> Self {
+        Self {
+            channel_id: notification.channel_id,
+            version: notification.version,
+            timestamp: notification.timestamp,
+            ttl: notification.ttl,
+            topic: notification.topic,
+            data: notification.data,
+            sortkey_timestamp: notification.sortkey_timestamp,
+            headers: notification.headers,
+            reliability_id: notification.reliability_id,
+            #[cfg(feature = "reliable_report")]
+            reliable_state: notification.reliable_state,
+        }
+    }
+}
+
+impl From<StorableNotification> for Notification {
+    fn from(storable: StorableNotification) -> Self {
+        Self {
+            channel_id: storable.channel_id,
+            version: storable.version,
+            timestamp: storable.timestamp,
+            ttl: storable.ttl,
+            topic: storable.topic,
+            data: storable.data,
+            sortkey_timestamp: storable.sortkey_timestamp,
+            headers: storable.headers,
+            reliability_id: storable.reliability_id,
+            #[cfg(feature = "reliable_report")]
+            reliable_state: storable.reliable_state,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
 
     #[test]

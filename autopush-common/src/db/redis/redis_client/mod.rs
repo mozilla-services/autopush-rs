@@ -12,6 +12,7 @@ use redis::{AsyncCommands, SetExpiry, SetOptions};
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
+use crate::db::redis::StorableNotification;
 use crate::db::{
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
@@ -28,7 +29,6 @@ fn now_secs() -> u64 {
         .unwrap()
         .as_secs()
 }
-
 
 /// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
 struct Uaid<'a>(&'a Uuid);
@@ -165,7 +165,6 @@ impl RedisClientImpl {
         debug!("🐰 Fetching message from {}", &message_key);
         let message = con.get::<String, Option<String>>(message_key).await?;
         Ok(message)
-
     }
 }
 
@@ -342,16 +341,17 @@ impl DbClient for RedisClientImpl {
         let exp_list_key = self.message_exp_list_key(&uaid);
         let msg_id = &message.chidmessageid();
         let msg_key = self.message_key(&uaid, msg_id);
+        let storable: StorableNotification = message.into();
 
-        debug!("🐰 Saving message {} :: {:?}", &msg_key, &message);
+        debug!("🐰 Saving message {} :: {:?}", &msg_key, &storable);
         trace!(
             "🐰 timestamp: {:?}",
-            &message.timestamp.to_be_bytes().to_vec()
+            &storable.timestamp.to_be_bytes().to_vec()
         );
 
         // Remember, `timestamp` is effectively the time to kill the message, not the
         // current time.
-        let expiry = now_secs() + message.ttl;
+        let expiry = now_secs() + storable.ttl;
         trace!("🐰 Message Expiry {}, currently:{} ", expiry, now_secs());
 
         let mut pipe = redis::pipe();
@@ -360,7 +360,7 @@ impl DbClient for RedisClientImpl {
         // zadd(msg_list_key) and zadd(exp_list_key) will replace their old entry
         // in the sorted set if one already exists
         // and set(msg_key, message) will override it too: nothing to do.
-        let is_topic = message.topic.is_some();
+        let is_topic = storable.topic.is_some();
 
         // notification_ttl is already min(headers.ttl, MAX_NOTIFICATION_TTL)
         // see autoendpoint/src/extractors/notification_headers.rs
@@ -371,7 +371,7 @@ impl DbClient for RedisClientImpl {
         // Store notification record in autopush/msg/{uaid}/{chidmessageid}
         // And store {chidmessageid} in autopush/msgs/{uaid}
         debug!("🐰 Saving to {}", &msg_key);
-        pipe.set_options(msg_key, serde_json::to_string(&message)?, notif_opts)
+        pipe.set_options(msg_key, serde_json::to_string(&storable)?, notif_opts)
             // The function [fetch_timestamp_messages] takes a timestamp in input,
             // here we use the timestamp of the record
             .zadd(&exp_list_key, msg_id, expiry)
@@ -409,11 +409,19 @@ impl DbClient for RedisClientImpl {
         trace!("🐇 SEARCH: increment: {:?} - {}", &exp_list_key, timestamp);
         let exp_id_list: Vec<String> = con.zrangebyscore(&exp_list_key, 0, timestamp).await?;
         if !exp_id_list.is_empty() {
-            // Remember, we store just the message_ids in the exp and msg lists, but need to convert back to 
+            // Remember, we store just the message_ids in the exp and msg lists, but need to convert back to
             // the full message keys for deletion.
-            let delete_msg_keys:Vec<String> = exp_id_list.clone().into_iter().map(|msg_id| self.message_key(&uaid, &msg_id)).collect();
+            let delete_msg_keys: Vec<String> = exp_id_list
+                .clone()
+                .into_iter()
+                .map(|msg_id| self.message_key(&uaid, &msg_id))
+                .collect();
 
-            trace!("🐰🔥:rem: Deleting {} : [{:?}]", msg_list_key, &delete_msg_keys);
+            trace!(
+                "🐰🔥:rem: Deleting {} : [{:?}]",
+                msg_list_key,
+                &delete_msg_keys
+            );
             trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
             redis::pipe()
                 .set_options::<_, _>(&storage_timestamp_key, timestamp, self.router_opts)
@@ -534,6 +542,7 @@ impl DbClient for RedisClientImpl {
             .into_iter()
             .filter_map(|opt: Option<String>| {
                 if let Some(m) = opt {
+                    dbg!(&m);
                     serde_json::from_str(&m)
                         .inspect_err(|e| {
                             // Since we can't raise the error here, at least record it
@@ -576,7 +585,7 @@ impl DbClient for RedisClientImpl {
         let mut con = self.connection().await?;
         // TODO: Should this be a hash key per reliability_id?
         let reliability_key = self.reliability_key(reliability_id, &state);
-        // Reports should last about as long as the notifications they're tied to. 
+        // Reports should last about as long as the notifications they're tied to.
         let expiry = MAX_NOTIFICATION_TTL_SECS;
         let opts = SetOptions::default().with_expiration(SetExpiry::EX(expiry));
         let mut pipe = redis::pipe();
@@ -618,8 +627,8 @@ impl DbClient for RedisClientImpl {
 #[cfg(test)]
 mod tests {
     use crate::{logging::init_test_logging, util::ms_since_epoch};
-    use std::env;
     use rand::prelude::*;
+    use std::env;
 
     use super::*;
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
@@ -642,7 +651,7 @@ mod tests {
         // Create a semi-unique test user to avoid conflicting test values.
         let mut rng = rand::rng();
         let test_num = rng.random::<u8>();
-        format!("DEADBEEF-0000-0000-{:04}-{:012}",test_num, now_secs())
+        format!("DEADBEEF-0000-0000-{:04}-{:012}", test_num, now_secs())
     }
 
     #[actix_rt::test]
@@ -713,7 +722,7 @@ mod tests {
         let connected_at = ms_since_epoch();
 
         let user_id = &gen_test_user();
-        let uaid = Uuid::parse_str(&user_id).unwrap();
+        let uaid = Uuid::parse_str(user_id).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
         let topic_chid = Uuid::parse_str(TOPIC_CHID).unwrap();
 
@@ -941,12 +950,12 @@ mod tests {
         let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
         let now = now_secs();
-        
-        let test_notification =  crate::db::Notification {
+
+        let test_notification = crate::db::Notification {
             channel_id: chid,
             version: "test".to_owned(),
             ttl: 2,
-            timestamp:now,
+            timestamp: now,
             data: Some("SomeData".into()),
             sortkey_timestamp: Some(now),
             ..Default::default()
@@ -956,16 +965,19 @@ mod tests {
         assert!(res.is_ok());
         let key = client.message_key(&Uaid(&uaid), &test_notification.chidmessageid());
         debug!("Checking {}...", &key);
-        let msg  = client.fetch_message(&uaid, &test_notification.chidmessageid()).await?;
+        let msg = client
+            .fetch_message(&uaid, &test_notification.chidmessageid())
+            .await?;
         assert!(!msg.unwrap().is_empty());
         debug!("Purging...");
-        client.increment_storage(&uaid, now+2).await?;
+        client.increment_storage(&uaid, now + 2).await?;
         debug!("Checking {}...", &key);
-        let cc = client.fetch_message(&uaid, &test_notification.chidmessageid()).await;
+        let cc = client
+            .fetch_message(&uaid, &test_notification.chidmessageid())
+            .await;
         assert_eq!(cc.unwrap(), None);
         // clean up after the test.
         assert!(client.remove_user(&uaid).await.is_ok());
         Ok(())
-
     }
 }
