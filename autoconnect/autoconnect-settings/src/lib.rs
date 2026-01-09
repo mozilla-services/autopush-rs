@@ -5,6 +5,7 @@ extern crate slog;
 extern crate slog_scope;
 extern crate serde_derive;
 
+#[cfg(any(feature = "bigtable", feature = "redis"))]
 use std::env;
 use std::{io, net::ToSocketAddrs, time::Duration};
 

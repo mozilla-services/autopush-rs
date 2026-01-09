@@ -397,6 +397,10 @@ are set in step 1, the load test will stop automatically.
 
 * See [Distributed GCP Execution - Clean-up Environment](#clean-up-environment)
 
+### Troubleshooting
+
+For some load tests, you may need to increase the number of file handles available. 
+
 
 [1]: https://locust.io/
 [2]: https://miro.com/app/board/uXjVMx-kx9Q=/

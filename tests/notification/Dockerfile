@@ -57,6 +57,6 @@ ADD ./tests/notification/ /code
 ADD ./tests/poetry.lock /code
 ADD ./tests/pyproject.toml /code
 
-RUN poetry install --only=notification
+RUN poetry install --no-root --only=notification
 
 CMD xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" poetry run pytest --driver Firefox --env ${NOTIFICATION_TEST_ENV}

@@ -61,6 +61,9 @@ prometheus-client = { version = "0.24", optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 form_urlencoded = { version = "1.2", optional = true }
 
+tokio-postgres = { version="0.7", optional = true }
+postgres = {version="0.19", optional=true}
+
 deadpool-redis = { version = "0.21", optional = true }
 redis-module = { version = "2.0", optional = true }
 redis = { version = "0.31", features=["aio", "tokio-comp"], optional = true }
@@ -85,6 +88,7 @@ bigtable = [
 emulator = [
     "bigtable",
 ] # used for testing big table, requires an external bigtable emulator running.
+postgres = ["dep:tokio-postgres", "dep:postgres"]
 reliable_report = [
     "dep:redis",
     "dep:prometheus-client",

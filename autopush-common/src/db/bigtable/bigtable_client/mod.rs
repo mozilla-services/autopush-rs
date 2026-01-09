@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime};
 use again::RetryPolicy;
 use async_trait::async_trait;
 use cadence::StatsdClient;
+#[cfg(feature = "reliable_report")]
 use chrono::TimeDelta;
 use futures_util::StreamExt;
 use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
@@ -791,6 +792,7 @@ impl BigTableClientImpl {
                     .map_err(|e| DbError::Serialization(e.to_string()))?,
             );
         }
+        #[cfg(feature = "reliable_report")]
         if let Some(cell) = row.take_cell("reliability_id") {
             trace!("🚣  Is reliable");
             notif.reliability_id = Some(to_string(cell.value, "reliability_id")?);
