@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 #[cfg(feature = "reliable_report")]
 use chrono::TimeDelta;
 use serde_json::json;
-use tokio_postgres::{types::ToSql, Client}; // Client is sync.
+use tokio_postgres::{types::ToSql, Client, Row}; // Client is sync.
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
@@ -23,8 +23,7 @@ use crate::{util, MAX_ROUTER_TTL_SECS};
 
 use super::client::FetchMessageResponse;
 
-pub mod pool;
-pub mod error;
+// pub mod pool;
 // use autopush_common::util::sec_since_epoch;
 
 #[cfg(feature = "reliable_report")]
@@ -525,12 +524,12 @@ impl DbClient for PgClientImpl {
                 "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers FROM {tablename} WHERE uaid=? LIMIT ? ORDER BY timestamp DESC", // TODO: Check the timestamp DESC here!
                 tablename=&self.db_settings.message_table,
             ),
-                &[&uaid.simple().to_string(), &(limit as i64)],
+                &[&uaid.simple().to_string(), &(limit.to_string())],
             )
             .await?
             .iter()
             // TODO: add converters from tokio_postgres::Row to Notification (see prior code?)
-            .map(|row| row.into())
+            .map(|row: &Row| row.into())
             .collect();
 
         if messages.is_empty() {
@@ -559,7 +558,7 @@ impl DbClient for PgClientImpl {
                         "SELECT * FROM {} WHERE uaid = ? and timestamp > ? limit ?",
                         self.db_settings.message_table
                     ),
-                    &[&uaid, &(ts as i64), &(limit as i64)],
+                    &[&uaid, &(ts.to_string()), &(limit.to_string())],
                 )
                 .await
         } else {
@@ -570,12 +569,12 @@ impl DbClient for PgClientImpl {
                         "SELECT * FROM {} WHERE uaid = ? limit ?",
                         self.db_settings.message_table
                     ),
-                    &[&uaid, &(limit as i64)],
+                    &[&uaid, &(limit.to_string())],
                 )
                 .await
         }?;
 
-        let messages: Vec<Notification> = response.iter().map(|row| row.into()).collect();
+        let messages: Vec<Notification> = response.iter().map(|row: &Row| row.into()).collect();
         let timestamp = if !messages.is_empty() {
             Some(messages[0].timestamp)
         } else {
@@ -608,7 +607,7 @@ impl DbClient for PgClientImpl {
     ) -> DbResult<()> {
         let timestamp =
             SystemTime::now() + Duration::from_secs(RELIABLE_LOG_TTL.num_seconds() as u64);
-        debug!("📬 Logging report for {reliability_id} as {new_state}");
+        debug!("📮 Logging report for {reliability_id} as {new_state}");
         /*
             INSERT INTO {tablename} (id, states) VALUES ({reliability_id}, json_build_object({state}, {timestamp}) )
             ON CONFLICT(id)
@@ -632,7 +631,7 @@ impl DbClient for PgClientImpl {
     }
 
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
-        debug!("📬 Updating {uaid} current_timestamp:{timestamp}");
+        debug!("📮 Updating {uaid} current_timestamp:{timestamp}");
         let tablename = &self.db_settings.router_table;
 
         self.connect()

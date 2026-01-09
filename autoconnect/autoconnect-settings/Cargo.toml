@@ -27,6 +27,8 @@ bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
 postgres = ["autopush_common/postgres"]
 reliable_report = ["autopush_common/reliable_report"]
+redis = ["autopush_common/redis"]
+unsafe = []
 
 [lints]
 workspace = true

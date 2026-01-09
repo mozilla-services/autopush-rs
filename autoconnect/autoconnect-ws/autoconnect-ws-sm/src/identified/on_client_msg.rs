@@ -248,9 +248,10 @@ impl WebPushClient {
                         .record_reliability(&self.app_state.reliability, notif.reliability_state())
                         .await;
                 }
-                let n = self.ack_state.unacked_stored_notifs.remove(pos);
+                let _n = self.ack_state.unacked_stored_notifs.remove(pos);
+                #[cfg(feature = "reliable_report")]
                 if !is_topic {
-                    self.ack_state.acked_stored_timestamp_notifs.push(n);
+                    self.ack_state.acked_stored_timestamp_notifs.push(_n);
                 }
                 self.stats.stored_acked += 1;
                 continue;

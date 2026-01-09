@@ -5,15 +5,18 @@ extern crate slog;
 extern crate slog_scope;
 extern crate serde_derive;
 
+#[cfg(any(feature = "bigtable", feature = "redis"))]
+use std::env;
 use std::{io, net::ToSocketAddrs, time::Duration};
 
 use config::{Config, ConfigError, Environment, File};
 use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
-use serde_json::json;
 
 use autopush_common::util::deserialize_u32_to_duration;
+#[cfg(feature = "bigtable")]
+use serde_json::json;
 
 pub use app_state::AppState;
 
@@ -229,8 +232,10 @@ impl Settings {
         Ok(())
     }
 
+    #[cfg(feature = "bigtable")]
     pub fn test_settings() -> Self {
-        let db_dsn = Some("grpc://localhost:8086".to_string());
+        let host = env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8086".to_owned());
+        let db_dsn = Some(format!("grpc://{}", host));
         // BigTable DB_SETTINGS.
         let db_settings = json!({
             "table_name":"projects/test/instances/test/tables/autopush",
@@ -239,6 +244,18 @@ impl Settings {
             "message_topic_family":"message_topic",
         })
         .to_string();
+        Self {
+            db_dsn,
+            db_settings,
+            ..Default::default()
+        }
+    }
+
+    #[cfg(all(feature = "redis", not(feature = "bigtable")))]
+    pub fn test_settings() -> Self {
+        let host = env::var("REDIS_HOST").unwrap_or("localhost:6379".to_owned());
+        let db_dsn = Some(format!("redis://{}", host));
+        let db_settings = "".to_string();
         Self {
             db_dsn,
             db_settings,
@@ -261,6 +278,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "unsafe")]
+    use slog_scope::trace;
 
     #[test]
     fn test_router_url() {
@@ -302,9 +321,8 @@ mod tests {
         assert_eq!("https://testname:8080", url);
     }
 
-    /*
     // The following test is commented out due to the recent change in rust that makes `env::set_var` unsafe
-    #cfg[all(test, feature="unsafe")]
+    #[cfg(all(test, feature = "unsafe"))]
     #[test]
     fn test_default_settings() {
         // Test that the Config works the way we expect it to.
@@ -315,12 +333,11 @@ mod tests {
 
         let v1 = env::var(&port);
         let v2 = env::var(&msg_limit);
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { env::set_var(&port, "9123") };
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { env::set_var(&msg_limit, "123") };
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { env::set_var(&fernet, "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]") };
+        unsafe {
+            env::set_var(&port, "9123");
+            env::set_var(&msg_limit, "123");
+            env::set_var(&fernet, "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]");
+        }
         let settings = Settings::with_env_and_config_files(&Vec::new()).unwrap();
         assert_eq!(settings.endpoint_hostname, "localhost".to_owned());
         assert_eq!(&settings.port, &9123);
@@ -351,5 +368,4 @@ mod tests {
         // TODO: Audit that the environment access only happens in single-threaded code.
         unsafe { env::remove_var(&fernet) };
     }
-    // */
 }

@@ -23,6 +23,8 @@ pub mod error;
 pub mod models;
 #[cfg(feature = "postgres")]
 pub mod postgres;
+#[cfg(feature = "redis")]
+pub mod redis;
 pub mod reporter;
 pub mod routing;
 
@@ -33,7 +35,6 @@ pub use reporter::spawn_pool_periodic_reporter;
 
 use crate::notification::Notification;
 use crate::util::timing::ms_since_epoch;
-use models::RangeKey;
 
 pub const USER_RECORD_VERSION: u64 = 1;
 
@@ -44,6 +45,8 @@ pub enum StorageType {
     BigTable,
     #[cfg(feature = "postgres")]
     Postgres,
+    #[cfg(feature = "redis")]
+    Redis,
 }
 
 impl From<&str> for StorageType {
@@ -53,6 +56,8 @@ impl From<&str> for StorageType {
             "bigtable" => Self::BigTable,
             #[cfg(feature = "postgres")]
             "postgres" => Self::Postgres,
+            #[cfg(feature = "redis")]
+            "redis" => Self::Redis,
             _ => Self::INVALID,
         }
     }
@@ -68,6 +73,8 @@ impl StorageType {
         result.push("Bigtable");
         #[cfg(feature = "postgres")]
         result.push("Postgres");
+        #[cfg(feature = "redis")]
+        result.push("Redis");
         result
     }
 
@@ -94,9 +101,14 @@ impl StorageType {
             return Self::BigTable;
         }
         #[cfg(feature = "postgres")]
-        if dsn.starts_with("postgresql") {
+        if dsn.starts_with("postgres") {
             trace!("Found postgres");
             return Self::Postgres;
+        }
+        #[cfg(feature = "redis")]
+        if dsn.starts_with("redis") {
+            trace!("Found redis");
+            return Self::Redis;
         }
         Self::INVALID
     }

@@ -8,6 +8,8 @@ use actix_web::{
 use serde_json::json;
 
 use autoconnect_settings::AppState;
+// The following two items are used by "reliable_report"
+// Feature flagging them causes a cascade of other unused imports for some configurations.
 #[cfg(feature = "reliable_report")]
 use autopush_common::metric_name::MetricName;
 #[cfg(feature = "reliable_report")]

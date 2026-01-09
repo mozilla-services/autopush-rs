@@ -11,7 +11,6 @@ use serde_json::json;
 
 use crate::error::{ApiErrorKind, ApiResult};
 use crate::server::AppState;
-
 use autopush_common::db::error::DbResult;
 #[cfg(feature = "reliable_report")]
 use autopush_common::errors::ApcError;

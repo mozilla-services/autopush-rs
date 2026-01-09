@@ -56,7 +56,7 @@ tokio = { workspace = true, features = ["fs", "macros"] }
 default = ["bigtable", "reliable_report"]
 # data store types
 bigtable = ["autopush_common/bigtable"]
-
+redis = ["autopush_common/redis"]
 # enable emulator to call locally run data store.
 emulator = ["bigtable"]
 

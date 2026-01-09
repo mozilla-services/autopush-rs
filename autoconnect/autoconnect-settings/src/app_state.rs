@@ -4,6 +4,8 @@ use std::{sync::Arc, time::Duration};
 use autopush_common::db::bigtable::BigTableClientImpl;
 #[cfg(feature = "postgres")]
 use autopush_common::db::postgres::PgClientImpl;
+#[cfg(feature = "redis")]
+use autopush_common::db::redis::RedisClientImpl;
 use cadence::StatsdClient;
 use config::ConfigError;
 use fernet::{Fernet, MultiFernet};
@@ -92,6 +94,11 @@ impl AppState {
                     .map_err(|e| ConfigError::Message(e.to_string()))?;
                 Box::new(client)
             }
+            #[cfg(feature = "redis")]
+            StorageType::Redis => Box::new(
+                RedisClientImpl::new(metrics.clone(), &db_settings)
+                    .map_err(|e| ConfigError::Message(e.to_string()))?,
+            ),
             _ => panic!(
                 "Invalid Storage type {:?}. Check {}__DB_DSN.",
                 storage_type,
