@@ -1047,13 +1047,16 @@ async def test_topic_expired(registered_test_client: AsyncPushTestClient) -> Non
 
 
 @pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
-async def test_multiple_delivery_with_single_ack(
+async def test_no_multiple_delivery_with_single_ack(
     registered_test_client: AsyncPushTestClient,
 ) -> None:
     """Test that the server provides the right unacknowledged messages
     if the client only acknowledges one of the received messages.
     Note: the `data` fields are constructed so that they return
     `FirstMessage` and `OtherMessage`, which may be useful for debugging.
+
+    *Note*: Prior versions would return previously ACK'd messages along with
+    messages. This behavior has changed.
     """
     uuid_data_1: bytes = (
         b"\x16*\xec\xb4\xc7\xac\xb1\xa8\x1e" + str(uuid.uuid4()).encode()
@@ -1073,6 +1076,7 @@ async def test_multiple_delivery_with_single_ack(
     result2 = await registered_test_client.get_notification(timeout=0.5)
     assert result2 != {}
     assert result2["data"] == base64url_encode(uuid_data_2)
+    # ACK the first message, this now should remove it from the list of pending messages.
     await registered_test_client.ack(result["channelID"], result["version"])
 
     await registered_test_client.disconnect()
@@ -1080,13 +1084,12 @@ async def test_multiple_delivery_with_single_ack(
     await registered_test_client.hello()
     result = await registered_test_client.get_notification(timeout=0.5)
     assert result != {}
-    assert result["data"] == base64url_encode(uuid_data_1)
+    # ensure that the message doesn't match the previously ACK'd message.
+    assert result["data"] != base64url_encode(uuid_data_1)
+    assert result["data"] == base64url_encode(uuid_data_2)
     assert result["messageType"] == ClientMessageType.NOTIFICATION.value
-    result2 = await registered_test_client.get_notification()
-    assert result2 != {}
-    assert result2["data"] == base64url_encode(uuid_data_2)
+    assert await registered_test_client.get_notification() is None
     await registered_test_client.ack(result["channelID"], result["version"])
-    await registered_test_client.ack(result2["channelID"], result2["version"])
 
     # Verify no messages are delivered
     await registered_test_client.disconnect()
