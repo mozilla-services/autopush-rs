@@ -31,7 +31,7 @@ pub enum DbError {
     #[error("Redis error {0}")]
     RedisError(#[from] redis::RedisError),
 
-    #[error("Serde Json Parse Error {0}")]
+    #[error("Serde Parse Error {0}")]
     SerdeError(#[from] Serde_Error),
 
     #[error("Connection failure: {0}")]
@@ -52,7 +52,12 @@ pub enum DbError {
 
     #[cfg(feature = "postgres")]
     #[error("Postgres Error: {0}")]
-    PgError(#[from] tokio_postgres::Error),
+    PgGeneralError(String),
+
+    #[cfg(feature = "postgres")]
+    #[error("Postgres Error: {0}")]
+    PgError(#[from] tokio_postgres::Error)
+
 }
 
 impl DbError {

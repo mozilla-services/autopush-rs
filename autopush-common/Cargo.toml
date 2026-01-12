@@ -64,7 +64,8 @@ form_urlencoded = { version = "1.2", optional = true }
 tokio-postgres = { version="0.7", optional = true }
 postgres = {version="0.19", optional=true}
 
-deadpool-redis = { version = "0.21", optional = true }
+deadpool-redis = { version = "0.22", optional = true }
+deadpool-postgres = {version = "0.14", optional = true}
 redis-module = { version = "2.0", optional = true }
 redis = { version = "0.31", features=["aio", "tokio-comp"], optional = true }
 
@@ -77,7 +78,6 @@ tempfile = "3.2.0"
 [features]
 # NOTE: Do not set a `default` here, rather specify them in the calling library.
 # This is to reduce complexity around feature specification.
-
 bigtable = [
     "dep:google-cloud-rust-raw",
     "dep:grpcio",
@@ -85,15 +85,16 @@ bigtable = [
     "dep:protobuf",
     "dep:form_urlencoded",
 ]
+# used for testing big table, requires an external bigtable emulator running.
 emulator = [
     "bigtable",
-] # used for testing big table, requires an external bigtable emulator running.
-postgres = ["dep:tokio-postgres", "dep:postgres"]
+] 
+postgres = ["dep:tokio-postgres", "dep:postgres", "dep:deadpool-postgres"]
 reliable_report = [
     "dep:redis",
     "dep:prometheus-client",
     "dep:redis-module",
     "dep:deadpool-redis",
 ]
-redis = ["dep:redis"]
+redis = ["dep:redis", "dep:deadpool-redis"]
 unsafe = []
