@@ -3,12 +3,13 @@ use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
+use deadpool_redis::redis::{AsyncCommands, SetExpiry, SetOptions};
+use deadpool_redis::Config;
 use redis::aio::MultiplexedConnection;
-use redis::{AsyncCommands, SetExpiry, SetOptions};
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
@@ -63,9 +64,8 @@ impl<'a> From<ChannelId<'a>> for String {
 /// Wrapper for the Redis connection
 pub struct RedisClientImpl {
     /// Database connector string
-    pub client: redis::Client,
+    pub pool: deadpool_redis::Pool,
     pub conn: OnceCell<MultiplexedConnection>,
-    pub(crate) timeout: Option<Duration>,
     /// Metrics client
     metrics: Arc<StatsdClient>,
     router_opts: SetOptions,
@@ -79,16 +79,27 @@ impl RedisClientImpl {
         let dsn = settings.dsn.clone().ok_or(DbError::General(
             "Redis DSN not configured. Set `db_dsn` to `redis://HOST:PORT` in settings.".to_owned(),
         ))?;
-        let client = redis::Client::open(dsn)?;
         let db_settings = RedisDbSettings::try_from(settings.db_settings.as_ref())?;
         info!("🐰 {:#?}", db_settings);
         let router_ttl_secs = db_settings.router_ttl.unwrap_or_default().as_secs();
         let notification_ttl_secs = db_settings.notification_ttl.unwrap_or_default().as_secs();
+
+        let config = Config::from_url(dsn);
+        let pool = config
+            .builder()
+            .map_err(|e| DbError::General(format!("Could not create Redis pool: {:?}", e)))?
+            .create_timeout(db_settings.timeout)
+            .runtime(deadpool_redis::Runtime::Tokio1)
+            .build()
+            .map_err(|e| DbError::General(format!("Could not create Redis pool: {:?}", e)))?;
+        /* We have the option of using either a OneCell wrapped get_multiplexed_async_connection or
+         * a pool. Reliability already uses a pool, so for consistency we use a pool here as well.
+         */
+
         // We specify different TTLs for router vs message.
         Ok(Self {
-            client,
+            pool,
             conn: OnceCell::new(),
-            timeout: db_settings.timeout,
             metrics,
             router_opts: SetOptions::default().with_expiration(SetExpiry::EX(router_ttl_secs)),
             notification_opts: SetOptions::default()
@@ -100,22 +111,14 @@ impl RedisClientImpl {
     /// used in pipes.
     ///
     /// Pools also return a ConnectionLike, so we can add support for pools later.
-    async fn connection(&self) -> DbResult<redis::aio::MultiplexedConnection> {
-        let config = if self.timeout.is_some_and(|t| !t.is_zero()) {
-            redis::AsyncConnectionConfig::new().set_connection_timeout(self.timeout.unwrap())
-        } else {
-            redis::AsyncConnectionConfig::new()
-        };
-        Ok(self
-            .conn
-            .get_or_try_init(|| async {
-                self.client
-                    .get_multiplexed_async_connection_with_config(&config.clone())
-                    .await
-            })
-            .await
-            .inspect_err(|e| error!("No Redis Connection available: {}", e.to_string()))?
-            .clone())
+    async fn connection(&self) -> DbResult<deadpool_redis::Connection> {
+        self.pool.get().await.map_err(|e| {
+            DbError::RedisError(redis::RedisError::from((
+                redis::ErrorKind::IoError,
+                "Could not get Redis connection from pool",
+                format!("{:?}", e),
+            )))
+        })
     }
 
     fn user_key(&self, uaid: &Uaid) -> String {
@@ -178,7 +181,7 @@ impl DbClient for RedisClientImpl {
         let co_key = self.last_co_key(&uaid);
         trace!("🐰 Adding user {} at {}:{}", &user.uaid, &user_key, &co_key);
         trace!("🐰 Logged at {}", &user.connected_at);
-        redis::pipe()
+        deadpool_redis::redis::pipe()
             .set_options(co_key, ms_since_epoch(), self.router_opts)
             .set_options(user_key, serde_json::to_string(user)?, self.router_opts)
             .exec_async(&mut con)
@@ -595,7 +598,7 @@ impl DbClient for RedisClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        let mut con = self.connection().await?;
+        let mut con = self.connection().await.inspect_err(|e| {dbg!(e);})?;
         let _: () = con.ping().await?;
         Ok(true)
     }
