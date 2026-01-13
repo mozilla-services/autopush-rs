@@ -7,10 +7,8 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
-use deadpool_redis::redis::{AsyncCommands, SetExpiry, SetOptions};
+use deadpool_redis::redis::{AsyncCommands, SetExpiry, SetOptions, pipe};
 use deadpool_redis::Config;
-use redis::aio::MultiplexedConnection;
-use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::db::redis::StorableNotification;
@@ -65,7 +63,6 @@ impl<'a> From<ChannelId<'a>> for String {
 pub struct RedisClientImpl {
     /// Database connector string
     pub pool: deadpool_redis::Pool,
-    pub conn: OnceCell<MultiplexedConnection>,
     /// Metrics client
     metrics: Arc<StatsdClient>,
     router_opts: SetOptions,
@@ -99,7 +96,6 @@ impl RedisClientImpl {
         // We specify different TTLs for router vs message.
         Ok(Self {
             pool,
-            conn: OnceCell::new(),
             metrics,
             router_opts: SetOptions::default().with_expiration(SetExpiry::EX(router_ttl_secs)),
             notification_opts: SetOptions::default()
@@ -181,7 +177,7 @@ impl DbClient for RedisClientImpl {
         let co_key = self.last_co_key(&uaid);
         trace!("🐰 Adding user {} at {}:{}", &user.uaid, &user_key, &co_key);
         trace!("🐰 Logged at {}", &user.connected_at);
-        deadpool_redis::redis::pipe()
+        pipe()
             .set_options(co_key, ms_since_epoch(), self.router_opts)
             .set_options(user_key, serde_json::to_string(user)?, self.router_opts)
             .exec_async(&mut con)
@@ -240,7 +236,7 @@ impl DbClient for RedisClientImpl {
         let msg_list_key = self.message_list_key(&uaid);
         let exp_list_key = self.message_exp_list_key(&uaid);
         let timestamp_key = self.storage_timestamp_key(&uaid);
-        redis::pipe()
+        pipe()
             .del(&user_key)
             .del(&co_key)
             .del(&chan_list_key)
@@ -258,7 +254,7 @@ impl DbClient for RedisClientImpl {
         let co_key = self.last_co_key(&uaid);
         let chan_list_key = self.channel_list_key(&uaid);
 
-        let _: () = redis::pipe()
+        let _: () = pipe()
             .rpush(chan_list_key, channel_id.as_hyphenated().to_string())
             .set_options(co_key, ms_since_epoch(), self.router_opts)
             .exec_async(&mut con)
@@ -273,7 +269,7 @@ impl DbClient for RedisClientImpl {
         let mut con = self.connection().await?;
         let co_key = self.last_co_key(&uaid);
         let chan_list_key = self.channel_list_key(&uaid);
-        redis::pipe()
+        pipe()
             .set_options(co_key, ms_since_epoch(), self.router_opts)
             .rpush(
                 chan_list_key,
@@ -310,7 +306,7 @@ impl DbClient for RedisClientImpl {
         let chan_list_key = self.channel_list_key(&uaid);
         // Remove {channel_id} from autopush/channel/{auid}
         trace!("🐰 Removing channel {}", channel_id);
-        let (status,): (bool,) = redis::pipe()
+        let (status,): (bool,) = pipe()
             .set_options(co_key, ms_since_epoch(), self.router_opts)
             .ignore()
             .lrem(&chan_list_key, 1, channel_id.to_string())
@@ -357,7 +353,7 @@ impl DbClient for RedisClientImpl {
         let expiry = now_secs() + storable.ttl;
         trace!("🐰 Message Expiry {}, currently:{} ", expiry, now_secs());
 
-        let mut pipe = redis::pipe();
+        let mut pipe = pipe();
 
         // If this is a topic message:
         // zadd(msg_list_key) and zadd(exp_list_key) will replace their old entry
@@ -426,7 +422,7 @@ impl DbClient for RedisClientImpl {
                 &delete_msg_keys
             );
             trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
-            redis::pipe()
+            pipe()
                 .set_options::<_, _>(&storage_timestamp_key, timestamp, self.router_opts)
                 .del(&delete_msg_keys)
                 .zrem(&msg_list_key, &exp_id_list)
@@ -465,7 +461,7 @@ impl DbClient for RedisClientImpl {
             exp_list_key,
             &chidmessageid
         );
-        redis::pipe()
+        pipe()
             .del(&msg_key)
             .zrem(&msg_list_key, chidmessageid)
             .zrem(&exp_list_key, chidmessageid)
@@ -590,7 +586,7 @@ impl DbClient for RedisClientImpl {
         // Reports should last about as long as the notifications they're tied to.
         let expiry = MAX_NOTIFICATION_TTL_SECS;
         let opts = SetOptions::default().with_expiration(SetExpiry::EX(expiry));
-        let mut pipe = redis::pipe();
+        let mut pipe = pipe();
         pipe.set_options(reliability_key, sec_since_epoch(), opts)
             .exec_async(&mut con)
             .await?;
@@ -598,8 +594,7 @@ impl DbClient for RedisClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        let mut con = self.connection().await.inspect_err(|e| {dbg!(e);})?;
-        let _: () = con.ping().await?;
+        let _: () = self.connection().await?.ping().await?;
         Ok(true)
     }
 
