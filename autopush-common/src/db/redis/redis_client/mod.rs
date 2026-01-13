@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
-use deadpool_redis::redis::{AsyncCommands, SetExpiry, SetOptions, pipe};
+use deadpool_redis::redis::{pipe, AsyncCommands, SetExpiry, SetOptions};
 use deadpool_redis::Config;
 use uuid::Uuid;
 
