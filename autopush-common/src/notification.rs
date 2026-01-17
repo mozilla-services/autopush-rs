@@ -118,12 +118,11 @@ pub(crate) fn default_ttl() -> u64 {
 }
 
 #[cfg(feature = "postgres")]
-/// Semi-generic Message Row to Notification.
+/// Postgres Message Row to Notification (may be used as a model for other DBs later)
 impl From<&tokio_postgres::Row> for Notification {
     fn from(row: &tokio_postgres::Row) -> Self {
         #[cfg(feature = "reliable_report")]
         use crate::reliability::ReliabilityState;
-        dbg!(&row);
         Self {
             channel_id: row
                 .try_get::<&str, &str>("channel_id")
