@@ -56,8 +56,11 @@ pub enum DbError {
 
     #[cfg(feature = "postgres")]
     #[error("Postgres Error: {0}")]
-    PgError(#[from] tokio_postgres::Error)
+    PgPoolError(#[from] deadpool::managed::PoolError<tokio_postgres::Error>),
 
+    #[cfg(feature = "postgres")]
+    #[error("Postgres Error: {0}")]
+    PgError(#[from] tokio_postgres::Error),
 }
 
 impl DbError {

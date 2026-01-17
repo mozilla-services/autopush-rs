@@ -3,6 +3,7 @@ name = "autoconnect_settings"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+resolver = "2"
 
 [dependencies]
 cadence.workspace = true

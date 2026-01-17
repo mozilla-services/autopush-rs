@@ -3,6 +3,7 @@ name = "autoendpoint"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+resolver = "2"
 
 [dependencies]
 a2 = "0.10"

@@ -3,6 +3,7 @@ name = "autoconnect_ws"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

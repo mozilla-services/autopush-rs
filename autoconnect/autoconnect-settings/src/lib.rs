@@ -5,7 +5,8 @@ extern crate slog;
 extern crate slog_scope;
 extern crate serde_derive;
 
-#[cfg(any(feature = "bigtable", feature = "redis"))]
+// Specify "unused_imports" to satisfy clippy.
+#[allow(unused_imports)]
 use std::env;
 use std::{io, net::ToSocketAddrs, time::Duration};
 
@@ -15,7 +16,8 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
 
 use autopush_common::util::deserialize_u32_to_duration;
-#[cfg(feature = "bigtable")]
+// Specify "unused_imports" to satisfy clippy.
+#[allow(unused_imports)]
 use serde_json::json;
 
 pub use app_state::AppState;
@@ -232,34 +234,61 @@ impl Settings {
         Ok(())
     }
 
-    #[cfg(feature = "bigtable")]
     pub fn test_settings() -> Self {
-        let host = env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8086".to_owned());
-        let db_dsn = Some(format!("grpc://{}", host));
-        // BigTable DB_SETTINGS.
-        let db_settings = json!({
-            "table_name":"projects/test/instances/test/tables/autopush",
-            "message_family":"message",
-            "router_family":"router",
-            "message_topic_family":"message_topic",
-        })
-        .to_string();
-        Self {
-            db_dsn,
-            db_settings,
-            ..Default::default()
+        // Provide test settings based on enabled features.
+        // semi-hack to satisfy clippy --all --all-features
+        #[cfg(all(feature = "bigtable", feature = "redis", feature = "postgres"))]
+        {
+            Self::default()
         }
-    }
-
-    #[cfg(all(feature = "redis", not(feature = "bigtable")))]
-    pub fn test_settings() -> Self {
-        let host = env::var("REDIS_HOST").unwrap_or("localhost:6379".to_owned());
-        let db_dsn = Some(format!("redis://{}", host));
-        let db_settings = "".to_string();
-        Self {
-            db_dsn,
-            db_settings,
-            ..Default::default()
+        #[cfg(all(
+            feature = "bigtable",
+            not(any(feature = "redis", feature = "postgres"))
+        ))]
+        {
+            let host = env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8086".to_owned());
+            let db_dsn = Some(format!("grpc://{}", host));
+            // BigTable DB_SETTINGS.
+            let db_settings = json!({
+                "table_name":"projects/test/instances/test/tables/autopush",
+                "message_family":"message",
+                "router_family":"router",
+                "message_topic_family":"message_topic",
+            })
+            .to_string();
+            Self {
+                db_dsn,
+                db_settings,
+                ..Default::default()
+            }
+        }
+        #[cfg(all(
+            feature = "redis",
+            not(any(feature = "bigtable", feature = "postgres"))
+        ))]
+        {
+            let host = env::var("REDIS_HOST").unwrap_or("localhost:6379".to_owned());
+            let db_dsn = Some(format!("redis://{}", host));
+            let db_settings = "".to_string();
+            Self {
+                db_dsn,
+                db_settings,
+                ..Default::default()
+            }
+        }
+        #[cfg(all(
+            feature = "postgres",
+            not(any(feature = "bigtable", feature = "redis"))
+        ))]
+        {
+            let host = env::var("POSTGRES_HOST").unwrap_or("localhost:5432".to_owned());
+            let db_dsn = Some(format!("postgres://{}", host));
+            let db_settings = "".to_string();
+            Self {
+                db_dsn,
+                db_settings,
+                ..Default::default()
+            }
         }
     }
 }

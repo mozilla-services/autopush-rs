@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::panic::panic_any;
 use std::str::FromStr;
 use std::sync::Arc;
 #[cfg(feature = "reliable_report")]
@@ -7,30 +6,30 @@ use std::time::{Duration, SystemTime};
 
 #[cfg(feature = "reliable_report")]
 use chrono::TimeDelta;
-use deadpool_postgres::{Client, Pool, PoolError, Runtime};
+use deadpool_postgres::{Pool, Runtime};
 use serde_json::json;
-use tokio_postgres::{types::ToSql, Row }; // Client is sync.
+use tokio_postgres::{types::ToSql, Row}; // Client is sync.
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::db::client::DbClient;
-use crate::db::error::{DbError, DbResult, PgGeneralError};
+use crate::db::error::{DbError, DbResult};
 use crate::db::{DbSettings, User};
 use crate::notification::Notification;
 use crate::{util, MAX_ROUTER_TTL_SECS};
 
 use super::client::FetchMessageResponse;
 
-// use autopush_common::util::sec_since_epoch;
-
 #[cfg(feature = "reliable_report")]
 const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PostgresDbSettings {
+    #[serde(default)]
+    pub schema: Option<String>, // Optional DB Schema
     #[serde(default)]
     pub router_table: String, // Routing info
     #[serde(default)]
@@ -41,13 +40,14 @@ pub struct PostgresDbSettings {
     pub reliability_table: String, // Channels and meta info
     #[serde(default)]
     max_router_ttl: u64, // Max time for router records to live.
-    // #[serde(default)]
-    // pub use_tls: bool // Should you use a TLS connection to the db.
+                         // #[serde(default)]
+                         // pub use_tls: bool // Should you use a TLS connection to the db.
 }
 
 impl Default for PostgresDbSettings {
     fn default() -> Self {
         Self {
+            schema: None,
             router_table: "router".to_owned(),
             message_table: "message".to_owned(),
             meta_table: "meta".to_owned(),
@@ -61,6 +61,9 @@ impl Default for PostgresDbSettings {
 impl TryFrom<&str> for PostgresDbSettings {
     type Error = DbError;
     fn try_from(setting_string: &str) -> Result<Self, Self::Error> {
+        if setting_string.trim().is_empty() {
+            return Ok(PostgresDbSettings::default());
+        }
         serde_json::from_str(setting_string)
             .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))
     }
@@ -71,7 +74,7 @@ impl TryFrom<&str> for PostgresDbSettings {
 #[allow(dead_code)] // TODO: Remove before flight
 #[derive(Clone)]
 pub struct PgClientImpl {
-    pg_connect: Option<String>,
+    pg_connect: String,
     _metrics: Arc<StatsdClient>,
     db_settings: PostgresDbSettings,
     pool: Pool,
@@ -92,44 +95,31 @@ impl PgClientImpl {
         if let Some(dsn) = settings.dsn.clone() {
             trace!("📮 Postgres Connect {}", &dsn);
 
-            let pool = deadpool_postgres::Config{
-                url: settings.dsn,
+            let pool = deadpool_postgres::Config {
+                url: Some(dsn.clone()),
                 ..Default::default()
-            }.create_pool(Some(Runtime::Tokio1), tls_flag)?;
+            }
+            .create_pool(Some(Runtime::Tokio1), tls_flag)
+            .map_err(|e| DbError::General(e.to_string()))?;
             return Ok(Self {
-                pg_connect: settings.dsn,
+                pg_connect: dsn,
                 _metrics: metrics,
                 db_settings,
-                pool
+                pool,
             });
         };
         Err(DbError::ConnectionError("No DSN specified".to_owned()))
     }
 
-    /// Connect to the database.
-    async fn connect(&self) -> DbResult<Client> {
-        let (client, connection) = tokio_postgres::connect(&self.pg_connect, tokio_postgres::NoTls)
-            .await
-            .unwrap();
-
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                panic_any(format!("PG Connection error {:?}", e));
-            }
-        });
-
-        Ok(client)
-    }
-
     /// Does the given table exist
     async fn table_exists(&self, table_name: String) -> DbResult<bool> {
         let rows = self
-            .pool.get().await.map_err(DbError::PgError)?
+            .pool.get().await.map_err(DbError::PgPoolError)?
             .query(
                 &format!("SELECT EXISTS (SELECT FROM pg_tables where schemaname='public' AND tablename={tablename});", tablename=table_name),
                 &[],
             )
-            .await.map_err(DbError::PgGeneralError)?;
+            .await.map_err(DbError::PgError)?;
         let val: &str = rows[0].get(0);
         Ok(val.to_lowercase().starts_with('t'))
     }
@@ -138,36 +128,71 @@ impl PgClientImpl {
     fn router_expiry(&self) -> u64 {
         util::sec_since_epoch() + self.db_settings.max_router_ttl
     }
+
+    pub(crate) fn router_table(&self) -> String {
+        if let Some(schema) = &self.db_settings.schema {
+            format!("{}.{}", schema, self.db_settings.router_table)
+        } else {
+            self.db_settings.router_table.clone()
+        }
+    }
+
+    pub(crate) fn message_table(&self) -> String {
+        if let Some(schema) = &self.db_settings.schema {
+            format!("{}.{}", schema, self.db_settings.message_table)
+        } else {
+            self.db_settings.message_table.clone()
+        }
+    }
+
+    pub(crate) fn meta_table(&self) -> String {
+        if let Some(schema) = &self.db_settings.schema {
+            format!("{}.{}", schema, self.db_settings.meta_table)
+        } else {
+            self.db_settings.meta_table.clone()
+        }
+    }
+
+    #[cfg(feature = "reliable_report")]
+    pub(crate) fn reliability_table(&self) -> String {
+        if let Some(schema) = &self.db_settings.schema {
+            format!("{}.{}", schema, self.db_settings.reliability_table)
+        } else {
+            self.db_settings.reliability_table.clone()
+        }
+    }
 }
 
 #[async_trait]
 impl DbClient for PgClientImpl {
     /// add user to router_table if not exists uaid
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        self.pool.get().await.map_err(DbError::PgError)?.execute(
+        self.pool.get().await.map_err(DbError::PgPoolError)?.execute(
             &format!("
-            INSERT INTO {tablename} (uaid, connected_at, router_type, router_data, node_id, record_version, timestamp, priv_channels, expiry)
-            VALUES($1, $2::INTEGER, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO {tablename} (uaid, connected_at, router_type, router_data, node_id, record_version, version, last_update, priv_channels, expiry)
+            VALUES($1, $2::BIGINT, $3, $4, $5, $6::BIGINT, $7, $8::BIGINT, $9, $10::BIGINT)
             ON CONFLICT (uaid) DO
                 UPDATE SET connected_at=EXCLUDED.connected_at,
                     router_type=EXCLUDED.router_type,
                     router_data=EXCLUDED.router_data,
                     node_id=EXCLUDED.node_id,
                     record_version=EXCLUDED.record_version,
-                    timestamp=EXCLUDED.timestamp,
+                    version=EXCLUDED.version,
+                    last_update=EXCLUDED.last_update,
                     priv_channels=EXCLUDED.priv_channels,
                     expiry=EXCLUDED.expiry
                     ;
-            ", tablename=self.db_settings.router_table),
-            &[&user.uaid.simple().to_string(),   // TODO: Investigate serialization?
-            &(user.connected_at as i64),
-            &user.router_type,
-            &json!(user.router_data).to_string(),
-            &user.node_id,
-            &(user.record_version.map(|i| i as i8)),
-            &user.current_timestamp.map(|i| i as i64),
+            ", tablename=self.router_table()),
+            &[&user.uaid.simple().to_string(),              // 1 TODO: Investigate serialization?
+            &(user.connected_at as i64),                    // 2
+            &user.router_type,                              // 3    
+            &json!(user.router_data).to_string(),           // 4
+            &user.node_id,                                  // 5
+            &user.record_version.map(|i| i as i64),    // 6
+            &(user.version.map(|v| v.simple().to_string())),   // 7
+            &user.current_timestamp.map(|i| i as i64), // 8
             &user.priv_channels.iter().map(|v| v.to_string()).collect::<Vec<String>>(),
-            &(self.router_expiry() as i64),
+            &(self.router_expiry() as i64),                 // 10    
             ]
         ).await.map_err( DbError::PgError)?;
         Ok(())
@@ -175,59 +200,71 @@ impl DbClient for PgClientImpl {
 
     /// update user record in router_table at user.uaid
     async fn update_user(&self, user: &mut User) -> DbResult<bool> {
-        self.pool.get()
-            .await.map_err(DbError::PgError)?
-            .execute(
-                &format!(
-                    "
-            UPDATE {tablename} SET connected_at=$2,
+        let cmd = format!(
+            "UPDATE {tablename} SET connected_at=$2::BIGINT,
                 router_type=$3,
                 router_data=$4,
                 node_id=$5,
-                record_version=$6,
-                timestamp=$7,
-                priv_channels=$8
-                expiry=$9
+                record_version=$6::BIGINT,
+                version=$7,
+                last_update=$8::BIGINT,
+                priv_channels=$9,
+                expiry=$10::BIGINT
             WHERE
-                uaid = $1;
+                uaid = $1 AND connected_at < $2::BIGINT;
             ",
-                    tablename = self.db_settings.router_table
-                ),
+            tablename = self.router_table()
+        );
+        let result = self
+            .pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
+            .execute(
+                &cmd,
                 &[
-                    &user.uaid.simple().to_string(),
-                    &(user.connected_at as i64),
-                    &user.router_type,
-                    &json!(user.router_data).to_string(),
-                    &user.node_id,
-                    &(user.record_version.map(|i| i as i8)),
-                    &user.current_timestamp.map(|i| i as i64),
+                    &user.uaid.simple().to_string(),                 // 1
+                    &(user.connected_at as i64),                     // 2
+                    &user.router_type,                               // 3
+                    &json!(user.router_data).to_string(),            //4
+                    &user.node_id,                                   // 5
+                    &(user.record_version.map(|i| i as i64)),        // 6
+                    &(user.version.map(|v| v.simple().to_string())), // 7
+                    &user.current_timestamp.map(|i| i as i64),       //8
                     &user
                         .priv_channels
                         .iter()
                         .map(|v| v.to_string())
                         .collect::<Vec<String>>(),
-                    &(self.router_expiry() as i64),
+                    &(self.router_expiry() as i64), // 10
                 ],
             )
             .await
             .map_err(DbError::PgError)?;
-        Ok(true)
+        Ok(result > 0)
     }
 
     /// fetch user information from router_table for uaid.
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
-        let row = self.pool.get().await.map_err(|e| PgGeneralError(e.to_string()))?
+        let rr = self.pool.get().await.map_err(DbError::PgPoolError)?
         .query_one(
             &format!(
-                "select connected_at, router_type, router_data, node_id, record_version, current_timestamp, version, priv_channels from {tablename} where uaid = ?",
-                tablename=self.db_settings.router_table
+                "select connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels from {tablename} where uaid = $1",
+                tablename=self.router_table()
             ),
             &[&uaid.simple().to_string()]
         )
-        .await.map_err(|e| PgGeneralError(e.to_string()))?;
-        if row.is_empty() {
-            return Ok(None);
+        .await;
+        if let Err(e) = &rr {
+            // tokio-postgres can return an tokio-posgres::error::Error(Box(ErrorInner(kind: RowCount ...)))
+            // if the query returns no rows,
+            // however most of that is private. We have to match against the string representation here.
+            // see https://github.com/rust-postgres/rust-postgres/issues/1224
+            if e.to_string() == "query returned an unexpected number of rows" {
+                return Ok(None);
+            }
         };
+        let row = rr.map_err(DbError::PgError)?;
 
         // I was tempted to make this a From impl, but realized that it would mean making autopush-common require a dependency.
         // Maybe make this a deserialize?
@@ -235,8 +272,8 @@ impl DbClient for PgClientImpl {
             row.try_get::<&str, Option<Vec<String>>>("priv_channels")
         {
             let mut priv_channels = HashSet::new();
-            for channel in channels {
-                let uuid = Uuid::from_str(&channel).map_err(|e| DbError::General(e.to_string()))?;
+            for channel in channels.iter() {
+                let uuid = Uuid::from_str(channel).map_err(|e| DbError::General(e.to_string()))?;
                 priv_channels.insert(uuid);
             }
             priv_channels
@@ -264,7 +301,7 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgError)?
                 .map(|v| v as u64),
             current_timestamp: row
-                .try_get::<&str, Option<i64>>("timestamp")
+                .try_get::<&str, Option<i64>>("last_update")
                 .map_err(DbError::PgError)?
                 .map(|v| v as u64),
             version: row
@@ -278,34 +315,35 @@ impl DbClient for PgClientImpl {
 
     /// delete a user at uaid from router_table
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        self.pool.get()
+        self.pool
+            .get()
             .await?
             .execute(
                 &format!(
                     "DELETE FROM {tablename}
                 WHERE uaid = $1",
-                    tablename = self.db_settings.router_table
+                    tablename = self.router_table()
                 ),
                 &[&uaid.simple().to_string()],
             )
             .await
-            .map_err(|e| DbError::PgGeneralError(e.to_string()))?;
+            .map_err(DbError::PgError)?;
         Ok(())
     }
 
     /// update list of channel_ids for uaid in meta table
+    /// Note: a conflicting channel_id is ignored, since it's already registered.
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        let key = format!("{}:{}", uaid.simple(), channel_id.simple());
         self.pool.get()
-            .await.map_err(|e| PgGeneralError(e.to_string()))?
+            .await.map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES (?, ?);",
-                    tablename = self.db_settings.meta_table
+                    "INSERT INTO {tablename} (uaid, channel_id) VALUES ($1, $2) on conflict do nothing",
+                    tablename = self.meta_table()
                 ),
-                &[&uaid.simple().to_string(), &key],
+                &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
             )
-            .await.map_err(|e| PgGeneralError(e.to_string()))?;
+            .await.map_err(DbError::PgError)?;
         Ok(())
     }
 
@@ -330,8 +368,7 @@ impl DbClient for PgClientImpl {
         let mut params = Vec::<&(dyn ToSql + Sync)>::new();
         let mut new_channels = Vec::<String>::new();
         for channel in channels {
-            let channel_id = format!("{}:{}", &uaid_str, channel);
-            new_channels.push(channel_id);
+            new_channels.push(channel.simple().to_string());
         }
 
         // This is a bit cheesy, but we want capture the reference, not the value since
@@ -345,10 +382,12 @@ impl DbClient for PgClientImpl {
 
         // Now construct the statement, iterate over the parameters we've got
         // and redistribute them into tuples.
+        // (Remember, an existing channel_id is ignored during this insert since it's already registered)
         let statement = format!(
-            "INSERT INTO {tablename} (uaid, uaid_channel_id) VALUES {vars}",
-            tablename = self.db_settings.meta_table,
-            vars = Vec::from_iter((0..params.len()).step_by(2).map(|v| format!(
+            "INSERT INTO {tablename} (uaid, channel_id) VALUES {vars} on conflict do nothing",
+            tablename = self.meta_table(),
+            // Postgres variables are 1-indexed.
+            vars = Vec::from_iter((1..params.len() + 1).step_by(2).map(|v| format!(
                 "(${}, ${})",
                 v,
                 v + 1
@@ -364,22 +403,22 @@ impl DbClient for PgClientImpl {
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let mut result = HashSet::new();
         let rows = self
-            .pool.get()
-            .await.map_err(|e| PgGeneralError(e.to_string()))?
+            .pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
             .query(
                 &format!(
-                    "SELECT uaid_channel_id FROM {tablename} WHERE uaid = ?;",
-                    tablename = self.db_settings.meta_table
+                    "SELECT distinct channel_id FROM {tablename} WHERE uaid = $1;",
+                    tablename = self.meta_table()
                 ),
                 &[&uaid.simple().to_string()],
             )
-            .await.map_err(|e| PgGeneralError(e.to_string()))?;
+            .await
+            .map_err(DbError::PgError)?;
         for row in rows.iter() {
-            // the primary key combination of uaid_channel_id is separated by a ':'
-            // we only want the channelid, so strip the uaid element.
             let s = row
-                .try_get::<&str, &str>("uaid_channel_id")
-                .map(|v| v.split(':').next_back().unwrap_or(v))
+                .try_get::<&str, &str>("channel_id")
                 .map_err(DbError::PgError)?;
             result.insert(Uuid::from_str(s).map_err(|e| DbError::General(e.to_string()))?);
         }
@@ -388,22 +427,22 @@ impl DbClient for PgClientImpl {
 
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
-        Ok(self
-            .pool.get()
-            .await.map_err(|e| PgGeneralError(e.to_string()))?
-            .execute(
-                &format!(
-                    "DELETE FROM {tablename} WHERE uaid_channel_id = ?;",
-                    tablename = self.db_settings.meta_table
-                ),
-                &[&format!(
-                    "{}:{}",
-                    &uaid.simple().to_string(),
-                    &channel_id.simple().to_string(),
-                )],
-            )
+        let cmd = format!(
+            "DELETE FROM {tablename} WHERE uaid = $1 AND channel_id = $2;",
+            tablename = self.meta_table()
+        );
+        let result = self
+            .pool
+            .get()
             .await
-            .is_ok())
+            .map_err(DbError::PgPoolError)?
+            .execute(
+                &cmd,
+                &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
+            )
+            .await?;
+        // We sometimes want to know if the channel existed previously.
+        Ok(result > 0)
     }
 
     /// remove node info for a uaid from router table
@@ -417,11 +456,11 @@ impl DbClient for PgClientImpl {
         let Some(version) = version else {
             return Err(DbError::General("Expected a user version field".to_owned()));
         };
-        self.pool.get().await.map_err(|e| PgGeneralError(e.to_string()))?
+        self.pool.get().await.map_err(DbError::PgPoolError)?
         .execute(
-            &format!("UPDATE {tablename} SET node_id = null WHERE uaid=? AND node_id = ? and connected_at = ? and version= ?;", tablename=self.db_settings.router_table),
-            &[&uaid.simple().to_string(), &node_id, &(connected_at as i64), &version.to_string()]
-        ).await.map_err(|e| PgGeneralError(e.to_string()))?;
+            &format!("UPDATE {tablename} SET node_id = null WHERE uaid=$1 AND node_id = $2 and connected_at = $3 and version= $4;", tablename=self.router_table()),
+            &[&uaid.simple().to_string(), &node_id, &(connected_at as i64), &version.simple().to_string()]
+        ).await.map_err(DbError::PgError)?;
         Ok(true)
     }
 
@@ -434,6 +473,7 @@ impl DbClient for PgClientImpl {
         let mut fields = vec![
             "uaid",
             "channel_id",
+            "chid_message_id",
             "version",
             "ttl",
             "topic",
@@ -444,59 +484,71 @@ impl DbClient for PgClientImpl {
         ];
         // (This is mutable if `reliable_report` enabled)
         #[allow(unused_mut)]
-        let mut inputs = vec!["?", "?", "?", "?", "?", "?", "?", "?", "?"];
+        let mut inputs = vec!["$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10"];
         #[cfg(feature = "reliable_report")]
         {
             fields.append(&mut ["reliability_id"].to_vec());
-            inputs.append(&mut ["?"].to_vec());
+            inputs.append(&mut ["$11"].to_vec());
         }
-
-        self.pool.get()
-            .await.map_err(|e| PgGeneralError(e.to_string()))?
-            .execute(
-                &format!(
-                    "INSERT INTO {tablename}
+        let cmd = format!(
+            "INSERT INTO {tablename}
                 ({fields})
                 VALUES
-                ({inputs});
-            ",
-                    tablename = &self.db_settings.message_table,
-                    fields = fields.join(","),
-                    inputs = inputs.join(",")
-                ),
+                ({inputs}) ON CONFLICT (chid_message_id) DO UPDATE SET
+                    uaid=EXCLUDED.uaid,
+                    channel_id=EXCLUDED.channel_id,
+                    version=EXCLUDED.version,
+                    ttl=EXCLUDED.ttl,
+                    topic=EXCLUDED.topic,
+                    timestamp=EXCLUDED.timestamp,
+                    data=EXCLUDED.data,
+                    sortkey_timestamp=EXCLUDED.sortkey_timestamp,
+                    headers=EXCLUDED.headers",
+            tablename = &self.message_table(),
+            fields = fields.join(","),
+            inputs = inputs.join(",")
+        );
+        self.pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
+            .execute(
+                &cmd,
                 &[
                     &uaid.simple().to_string(),
                     &message.channel_id.simple().to_string(),
+                    &message.chidmessageid(),
                     &message.version,
-                    &message.ttl.to_string(), // Postgres has no auto TTL.
-                    &message.topic.unwrap_or("".to_owned()),
-                    &message.timestamp.to_string(),
-                    &message.data.unwrap_or("".to_owned()),
-                    &message
-                        .sortkey_timestamp
-                        .map(|v| v.to_string())
-                        .unwrap_or("".to_owned()),
+                    &(message.ttl as i64), // Postgres has no auto TTL.
+                    &message.topic,
+                    &(message.timestamp as i64),
+                    &message.data,
+                    &message.sortkey_timestamp.map(|v| v as i64),
                     &json!(message.headers).to_string(),
                     #[cfg(feature = "reliable_report")]
-                    &message.reliability_id.unwrap_or("".to_owned()),
+                    &message.reliability_id,
                 ],
             )
-            .await.map_err(|e| PgGeneralError(e.to_string()))?;
+            .await
+            .map_err(DbError::PgError)?;
         Ok(())
     }
 
     /// remove a given message from the message table
     async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        self.pool.get()
-            .await.map_err(|e| PgGeneralError(e.to_string()))?
+        self.pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "DELETE FROM {tablename} WHERE uaid=? AND chid_message_id = ?;",
-                    tablename = self.db_settings.message_table
+                    "DELETE FROM {tablename} WHERE uaid=$1 AND chid_message_id = $2;",
+                    tablename = self.message_table()
                 ),
                 &[&uaid.simple().to_string(), &(sort_key.to_owned())],
             )
-            .await.map_err(|e| PgGeneralError(e.to_string()))?;
+            .await
+            .map_err(DbError::PgError)?;
 
         Ok(())
     }
@@ -516,16 +568,19 @@ impl DbClient for PgClientImpl {
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
         let messages: Vec<Notification> = self
-            .pool.get()
-            .await.map_err(|e| PgGeneralError(e.to_string()))?
+            .pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
             .query(
                 &format!(
-                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers FROM {tablename} WHERE uaid=? LIMIT ? ORDER BY timestamp DESC", // TODO: Check the timestamp DESC here!
-                tablename=&self.db_settings.message_table,
+                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers FROM {tablename} WHERE uaid=$1 LIMIT $2 ORDER BY timestamp DESC", // TODO: Check the timestamp DESC here!
+                tablename=&self.message_table(),
             ),
-                &[&uaid.simple().to_string(), &(limit.to_string())],
+                &[&uaid.simple().to_string(), &(limit as i64)],
             )
-            .await.map_err(|e| PgGeneralError(e.to_string()))?
+            .await
+            .map_err(DbError::PgError)?
             .iter()
             // TODO: add converters from tokio_postgres::Row to Notification (see prior code?)
             .map(|row: &Row| row.into())
@@ -549,26 +604,32 @@ impl DbClient for PgClientImpl {
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
         let uaid = uaid.simple().to_string();
-        let response = if let Some(ts) = timestamp {
-            self.pool.get()
-                .await.map_err(|e| PgGeneralError(e.to_string()))?
+        let response: Vec<Row> = if let Some(ts) = timestamp {
+            trace!("📮 Fetching messages for user {} since {}", &uaid, ts);
+            self.pool
+                .get()
+                .await
+                .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * FROM {} WHERE uaid = ? and timestamp > ? limit ?",
-                        self.db_settings.message_table
+                        "SELECT * FROM {} WHERE uaid = $1 and timestamp > $2 limit $3",
+                        self.message_table()
                     ),
-                    &[&uaid, &(ts.to_string()), &(limit.to_string())],
+                    &[&uaid, &(ts as i64), &(limit as i64)],
                 )
                 .await
         } else {
-            self.pool.get()
-                .await.map_err(|e| PgGeneralError(e.to_string()))?
+            trace!("📮 Fetching messages for user {}", &uaid);
+            self.pool
+                .get()
+                .await
+                .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * FROM {} WHERE uaid = ? limit ?",
-                        self.db_settings.message_table
+                        "SELECT * FROM {} WHERE uaid = $1 limit $2",
+                        self.message_table()
                     ),
-                    &[&uaid, &(limit.to_string())],
+                    &[&uaid, &(limit as i64)],
                 )
                 .await
         }?;
@@ -588,14 +649,12 @@ impl DbClient for PgClientImpl {
 
     /// Convenience function to check if the router table exists
     async fn router_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.db_settings.router_table.clone())
-            .await
+        self.table_exists(self.router_table()).await
     }
 
     /// Convenience function to check if the message table exists
     async fn message_table_exists(&self) -> DbResult<bool> {
-        self.table_exists(self.db_settings.message_table.clone())
-            .await
+        self.table_exists(self.message_table()).await
     }
 
     #[cfg(feature = "reliable_report")]
@@ -613,9 +672,10 @@ impl DbClient for PgClientImpl {
             UPDATE {tablename} SET states = jsonb_set(states, array[{state}], to_jsonb({timestamp}));
         */
 
-        let tablename = &self.db_settings.reliability_table;
+        let tablename = &self.reliability_table();
         let state = new_state.to_string();
-        self.pool.get()
+        self.pool
+            .get()
             .await?
             .execute(
                 &format!(
@@ -631,22 +691,32 @@ impl DbClient for PgClientImpl {
 
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
         debug!("📮 Updating {uaid} current_timestamp:{timestamp}");
-        let tablename = &self.db_settings.router_table;
+        let tablename = &self.router_table();
 
-        self.pool.get()
-            .await.map_err(|e| PgGeneralError(e.to_string()))?
+        trace!("📮 Purging {uaid} for < {timestamp}");
+        let mut pool = self.pool.get().await.map_err(DbError::PgPoolError)?;
+        let transaction = pool.transaction().await?;
+        transaction
             .execute(
                 &format!(
-                    "UPDATE {tablename} SET current_timestamp = $2, expiry= $3 where uaid = $1"
+                    "DELETE FROM {} WHERE uaid = $1 AND timestamp IS NOT NULL AND timestamp < $2",
+                    &self.message_table()
+                ),
+                &[&uaid.simple().to_string(), &(timestamp as i64)],
+            )
+            .await?;
+        transaction.execute(
+                &format!(
+                    "UPDATE {tablename} SET last_update = $2::BIGINT, expiry= $3::BIGINT where uaid = $1"
                 ),
                 &[
-                    &uaid.to_string(),
-                    &timestamp.to_string(),
-                    &self.router_expiry().to_string(),
+                    &uaid.simple().to_string(),
+                    &(timestamp as i64),
+                    &(self.router_expiry() as i64),
                 ],
             )
             .await?;
-
+        transaction.commit().await?;
         Ok(())
     }
 
@@ -656,12 +726,442 @@ impl DbClient for PgClientImpl {
 
     async fn health_check(&self) -> DbResult<bool> {
         // Replace this with a proper health check.
-        let row = self.pool.get().await.map_err(PgGeneralError)?.query_one("select true", &[]).await?;
-        Ok(!row.is_empty())
+        let client = self.pool.get().await.map_err(DbError::PgPoolError);
+        let row = client?.query_one("select true", &[]).await;
+        Ok(!row?.is_empty())
     }
 
     /// Convenience function to return self as a Boxed DbClient
     fn box_clone(&self) -> Box<dyn DbClient> {
         Box::new(self.clone())
+    }
+}
+
+/* Note:
+ * For preliminary testing, you will need to start a local postgres instance (see
+ * https://www.docker.com/blog/how-to-use-the-postgres-docker-official-image/) and initialize the
+ * database with `schema.psql`.
+ * Once you have, you can define the environment variable `POSTGRES_HOST` to point to the
+ * appropriate host (e.g. `postgres:post_pass@localhost:/autopush`). `new_client` will add the
+ * `postgres://` prefix automatically.
+ *
+ * TODO: Really should move the bulk of the tests to a higher level and add backend specific
+ * versions of `new_client`.
+ *
+ */
+#[cfg(test)]
+mod tests {
+    use crate::util::sec_since_epoch;
+    use crate::{logging::init_test_logging, util::ms_since_epoch};
+    use rand::prelude::*;
+    use serde_json::json;
+    use std::env;
+
+    use super::*;
+    const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
+    const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
+
+    fn new_client() -> DbResult<PgClientImpl> {
+        // Use an environment variable to potentially override the default storage test host.
+        let host = env::var("POSTGRES_HOST").unwrap_or("localhost".into());
+        let env_dsn = format!("postgres://{host}");
+        debug!("📮 Connecting to {env_dsn}");
+        let settings = DbSettings {
+            dsn: Some(env_dsn),
+            db_settings: json!(PostgresDbSettings {
+                schema: Some("autopush".to_owned()),
+                ..Default::default()
+            })
+            .to_string(),
+        };
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+        PgClientImpl::new(metrics, &settings)
+    }
+
+    fn gen_test_user() -> String {
+        // Create a semi-unique test user to avoid conflicting test values.
+        let mut rng = rand::rng();
+        let test_num = rng.random::<u8>();
+        format!(
+            "DEADBEEF-0000-0000-{:04}-{:012}",
+            test_num,
+            sec_since_epoch()
+        )
+    }
+
+    #[actix_rt::test]
+    async fn health_check() {
+        let client = new_client().unwrap();
+
+        let result = client.health_check().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    /// Test if [increment_storage] correctly wipe expired messages
+    #[actix_rt::test]
+    async fn wipe_expired() -> DbResult<()> {
+        init_test_logging();
+        let client = new_client()?;
+
+        let connected_at = ms_since_epoch();
+
+        let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+
+        let node_id = "test_node".to_owned();
+
+        // purge the user record if it exists.
+        let _ = client.remove_user(&uaid).await;
+
+        let test_user = User {
+            uaid,
+            router_type: "webpush".to_owned(),
+            connected_at,
+            router_data: None,
+            node_id: Some(node_id.clone()),
+            ..Default::default()
+        };
+
+        // purge the old user (if present)
+        // in case a prior test failed for whatever reason.
+        let _ = client.remove_user(&uaid).await;
+
+        // can we add the user?
+        let timestamp = sec_since_epoch();
+        client.add_user(&test_user).await?;
+        let test_notification = crate::db::Notification {
+            channel_id: chid,
+            version: "test".to_owned(),
+            ttl: 1,
+            timestamp,
+            data: Some("Encrypted".into()),
+            sortkey_timestamp: Some(timestamp),
+            ..Default::default()
+        };
+        client.save_message(&uaid, test_notification).await?;
+        client.increment_storage(&uaid, timestamp + 1).await?;
+        let msgs = client.fetch_timestamp_messages(&uaid, None, 999).await?;
+        assert_eq!(msgs.messages.len(), 0);
+        assert!(client.remove_user(&uaid).await.is_ok());
+        Ok(())
+    }
+
+    /// run a gauntlet of testing. These are a bit linear because they need
+    /// to run in sequence.
+    #[actix_rt::test]
+    async fn run_gauntlet() -> DbResult<()> {
+        init_test_logging();
+        let client = new_client()?;
+
+        let connected_at = ms_since_epoch();
+
+        let user_id = &gen_test_user();
+        let uaid = Uuid::parse_str(user_id).unwrap();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let topic_chid = Uuid::parse_str(TOPIC_CHID).unwrap();
+
+        let node_id = "test_node".to_owned();
+
+        // purge the user record if it exists.
+        let _ = client.remove_user(&uaid).await;
+
+        let test_user = User {
+            uaid,
+            router_type: "webpush".to_owned(),
+            connected_at,
+            router_data: None,
+            node_id: Some(node_id.clone()),
+            ..Default::default()
+        };
+
+        // purge the old user (if present)
+        // in case a prior test failed for whatever reason.
+        let _ = client.remove_user(&uaid).await;
+
+        // can we add the user?
+        trace!("📮 Adding user {}", &user_id);
+        client.add_user(&test_user).await?;
+        let fetched = client.get_user(&uaid).await?;
+        assert!(fetched.is_some());
+        let fetched = fetched.unwrap();
+        assert_eq!(fetched.router_type, "webpush".to_owned());
+
+        // can we add channels?
+        trace!("📮 Adding channel {} to user {}", &chid, &user_id);
+        client.add_channel(&uaid, &chid).await?;
+        let channels = client.get_channels(&uaid).await?;
+        assert!(channels.contains(&chid));
+
+        // can we add lots of channels?
+        let mut new_channels: HashSet<Uuid> = HashSet::new();
+        trace!("📮 Adding multiple channels to user {}", &user_id);
+        new_channels.insert(chid);
+        for _ in 1..10 {
+            new_channels.insert(uuid::Uuid::new_v4());
+        }
+        let chid_to_remove = uuid::Uuid::new_v4();
+        trace!(
+            "📮 Adding removable channel {} to user {}",
+            &chid_to_remove,
+            &user_id
+        );
+        new_channels.insert(chid_to_remove);
+        client.add_channels(&uaid, new_channels.clone()).await?;
+        let channels = client.get_channels(&uaid).await?;
+        assert_eq!(channels, new_channels);
+
+        // can we remove a channel?
+        trace!(
+            "📮 Removing channel {} from user {}",
+            &chid_to_remove,
+            &user_id
+        );
+        assert!(client.remove_channel(&uaid, &chid_to_remove).await?);
+        trace!(
+            "📮 retrying Removing channel {} from user {}",
+            &chid_to_remove,
+            &user_id
+        );
+        assert!(!client.remove_channel(&uaid, &chid_to_remove).await?);
+        new_channels.remove(&chid_to_remove);
+        let channels = client.get_channels(&uaid).await?;
+        assert_eq!(channels, new_channels);
+
+        // now ensure that we can update a user that's after the time we set
+        // prior. first ensure that we can't update a user that's before the
+        // time we set prior to the last write
+        let mut updated = User {
+            connected_at,
+            ..test_user.clone()
+        };
+        trace!(
+            "📮 Attempting to update user {} with old connected_at: {}",
+            &user_id,
+            &updated.connected_at
+        );
+        let result = client.update_user(&mut updated).await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+
+        // Make sure that the `connected_at` wasn't modified
+        let fetched2 = client.get_user(&fetched.uaid).await?.unwrap();
+        assert_eq!(fetched.connected_at, fetched2.connected_at);
+
+        // and make sure we can update a record with a later connected_at time.
+        let mut updated = User {
+            connected_at: fetched.connected_at + 300,
+            ..fetched2
+        };
+        trace!(
+            "📮 Attempting to update user {} with new connected_at",
+            &user_id
+        );
+        let result = client.update_user(&mut updated).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+        assert_ne!(
+            fetched2.connected_at,
+            client.get_user(&uaid).await?.unwrap().connected_at
+        );
+        // can we increment the storage for the user?
+        trace!("📮 Incrementing storage timestamp for user {}", &user_id);
+        client
+            .increment_storage(&fetched.uaid, sec_since_epoch())
+            .await?;
+
+        let test_data = "An_encrypted_pile_of_crap".to_owned();
+        let timestamp = sec_since_epoch();
+        let sort_key = sec_since_epoch();
+        let fetch_timestamp = timestamp;
+        // Can we store a message?
+        let test_notification = crate::db::Notification {
+            channel_id: chid,
+            version: "test".to_owned(),
+            ttl: 300,
+            timestamp,
+            data: Some(test_data.clone()),
+            sortkey_timestamp: Some(sort_key),
+            ..Default::default()
+        };
+        trace!("📮 Saving message for user {}", &user_id);
+        let res = client.save_message(&uaid, test_notification.clone()).await;
+        assert!(res.is_ok());
+
+        trace!("📮 Fetching all messages for user {}", &user_id);
+        let mut fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
+        assert_ne!(fetched.messages.len(), 0);
+        let fm = fetched.messages.pop().unwrap();
+        assert_eq!(fm.channel_id, test_notification.channel_id);
+        assert_eq!(fm.data, Some(test_data));
+
+        // Grab all 1 of the messages that were submitted within the past 10 seconds.
+        trace!(
+            "📮 Fetching messages for user {} within the past 10 seconds",
+            &user_id
+        );
+        let fetched = client
+            .fetch_timestamp_messages(&uaid, Some(fetch_timestamp - 10), 999)
+            .await?;
+        assert_ne!(fetched.messages.len(), 0);
+
+        // Try grabbing a message for 10 seconds from now.
+        trace!(
+            "📮 Fetching messages for user {} 10 seconds in the future",
+            &user_id
+        );
+        let fetched = client
+            .fetch_timestamp_messages(&uaid, Some(fetch_timestamp + 10), 999)
+            .await?;
+        assert_eq!(fetched.messages.len(), 0);
+
+        // can we clean up our toys?
+        trace!(
+            "📮 Removing message for user {} :: {}",
+            &user_id,
+            &test_notification.chidmessageid()
+        );
+        assert!(client
+            .remove_message(&uaid, &test_notification.chidmessageid())
+            .await
+            .is_ok());
+
+        trace!("📮 Removing channel for user {}", &user_id);
+        assert!(client.remove_channel(&uaid, &chid).await.is_ok());
+
+        trace!("📮 Making sure no messages remain for user {}", &user_id);
+        let msgs = client
+            .fetch_timestamp_messages(&uaid, None, 999)
+            .await?
+            .messages;
+        assert!(msgs.is_empty());
+
+        // Now, can we do all that with topic messages
+        // Unlike bigtable, we don't use [fetch_topic_messages]: it always return None:
+        // they are handled as usuals messages.
+        client.add_channel(&uaid, &topic_chid).await?;
+        let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
+        let timestamp = sec_since_epoch();
+        let sort_key = sec_since_epoch();
+
+        // We store 2 messages, with a single topic
+        let test_notification_0 = crate::db::Notification {
+            channel_id: topic_chid,
+            version: "version0".to_owned(),
+            ttl: 300,
+            topic: Some("topic".to_owned()),
+            timestamp,
+            data: Some(test_data.clone()),
+            sortkey_timestamp: Some(sort_key),
+            ..Default::default()
+        };
+        assert!(client
+            .save_message(&uaid, test_notification_0.clone())
+            .await
+            .is_ok());
+
+        let test_notification = crate::db::Notification {
+            timestamp: sec_since_epoch(),
+            version: "version1".to_owned(),
+            sortkey_timestamp: Some(sort_key + 10),
+            ..test_notification_0
+        };
+
+        assert!(client
+            .save_message(&uaid, test_notification.clone())
+            .await
+            .is_ok());
+
+        let mut fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
+        assert_eq!(fetched.messages.len(), 1);
+        let fm = fetched.messages.pop().unwrap();
+        assert_eq!(fm.channel_id, test_notification.channel_id);
+        assert_eq!(fm.data, Some(test_data));
+
+        // Grab the message that was submitted.
+        let fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
+        assert_ne!(fetched.messages.len(), 0);
+
+        // can we clean up our toys?
+        assert!(client
+            .remove_message(&uaid, &test_notification.chidmessageid())
+            .await
+            .is_ok());
+
+        assert!(client.remove_channel(&uaid, &topic_chid).await.is_ok());
+
+        let msgs = client
+            .fetch_timestamp_messages(&uaid, None, 999)
+            .await?
+            .messages;
+        assert!(msgs.is_empty());
+
+        let fetched = client.get_user(&uaid).await?.unwrap();
+        assert!(client
+            .remove_node_id(&uaid, &node_id, fetched.connected_at, &fetched.version)
+            .await
+            .is_ok());
+        // did we remove it?
+        let fetched = client.get_user(&uaid).await?.unwrap();
+        assert_eq!(fetched.node_id, None);
+
+        assert!(client.remove_user(&uaid).await.is_ok());
+
+        assert!(client.get_user(&uaid).await?.is_none());
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn test_expiry() -> DbResult<()> {
+        // Make sure that we really are purging messages correctly
+        init_test_logging();
+        let client = new_client()?;
+
+        let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let now = sec_since_epoch();
+
+        let test_notification = crate::db::Notification {
+            channel_id: chid,
+            version: "test".to_owned(),
+            ttl: 2,
+            timestamp: now,
+            data: Some("SomeData".into()),
+            sortkey_timestamp: Some(now),
+            ..Default::default()
+        };
+        client
+            .add_user(&User {
+                uaid,
+                router_type: "test".to_owned(),
+                connected_at: ms_since_epoch(),
+                ..Default::default()
+            })
+            .await?;
+        client.add_channel(&uaid, &chid).await?;
+        debug!("🧪Writing test notif");
+        client
+            .save_message(&uaid, test_notification.clone())
+            .await?;
+        let key = uaid.simple().to_string();
+        debug!("🧪Checking {}...", &key);
+        let msg = client
+            .fetch_timestamp_messages(&uaid, None, 1)
+            .await?
+            .messages
+            .pop();
+        assert!(msg.is_some());
+        debug!("🧪Purging...");
+        client.increment_storage(&uaid, now + 2).await?;
+        debug!("🧪Checking for empty {}...", &key);
+        let cc = client
+            .fetch_timestamp_messages(&uaid, None, 1)
+            .await?
+            .messages
+            .pop();
+        assert!(cc.is_none());
+        // clean up after the test.
+        assert!(client.remove_user(&uaid).await.is_ok());
+        Ok(())
     }
 }
