@@ -85,7 +85,7 @@ impl RedisClientImpl {
         let pool = config
             .builder()
             .map_err(|e| DbError::General(format!("Could not create Redis pool: {:?}", e)))?
-            .create_timeout(db_settings.timeout)
+            .create_timeout(db_settings.create_timeout)
             .runtime(deadpool_redis::Runtime::Tokio1)
             .build()
             .map_err(|e| DbError::General(format!("Could not create Redis pool: {:?}", e)))?;
