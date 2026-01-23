@@ -1043,7 +1043,6 @@ mod tests {
         };
         trace!("📮 Saving message for user {}", &user_id);
         let res = client.save_message(&uaid, test_notification.clone()).await;
-        dbg!(&res);
         assert!(res.is_ok());
 
         trace!("📮 Fetching all messages for user {}", &user_id);
