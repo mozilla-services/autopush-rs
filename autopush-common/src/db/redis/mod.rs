@@ -30,7 +30,7 @@ use uuid::Uuid;
 pub struct RedisDbSettings {
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
-    pub create_timeout: Option<Duration>, 
+    pub create_timeout: Option<Duration>,
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub router_ttl: Option<Duration>,
@@ -136,7 +136,10 @@ mod tests {
     #[test]
     fn test_settings_parse() -> Result<(), crate::db::error::DbError> {
         let settings = super::RedisDbSettings::try_from("{\"timeout\": 123}")?;
-        assert_eq!(settings.create_timeout, Some(std::time::Duration::from_secs(123)));
+        assert_eq!(
+            settings.create_timeout,
+            Some(std::time::Duration::from_secs(123))
+        );
         Ok(())
     }
 }
