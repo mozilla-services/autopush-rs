@@ -121,6 +121,8 @@ impl PgClientImpl {
             let mut parts = table_name.splitn(2, '.');
             (
                 parts.next().unwrap_or("public").to_owned(),
+                // If we are in a situation where someone specified a table name as
+                // `whatever.`, then we should absolutely panic here.
                 parts.next().unwrap().to_owned(),
             )
         } else {
@@ -263,8 +265,8 @@ impl DbClient for PgClientImpl {
 
     /// fetch user information from router_table for uaid.
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
-        let rr = self.pool.get().await.map_err(DbError::PgPoolError)?
-        .query_one(
+        let row = self.pool.get().await.map_err(DbError::PgPoolError)?
+        .query_opt(
             &format!(
                 "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels 
                  FROM {tablename} 
@@ -273,17 +275,12 @@ impl DbClient for PgClientImpl {
             ),
             &[&uaid.simple().to_string()]
         )
-        .await;
-        if let Err(e) = &rr {
-            // tokio-postgres can return an tokio-posgres::error::Error(Box(ErrorInner(kind: RowCount ...)))
-            // if the query returns no rows,
-            // however most of that is private. We have to match against the string representation here.
-            // see https://github.com/rust-postgres/rust-postgres/issues/1224
-            if e.to_string() == "query returned an unexpected number of rows" {
-                return Ok(None);
-            }
+        .await
+        .map_err(DbError::PgError)?;
+
+        let Some(row) = row else {
+            return Ok(None);
         };
-        let row = rr.map_err(DbError::PgError)?;
 
         // I was tempted to make this a From impl, but realized that it would mean making autopush-common require a dependency.
         // Maybe make this a deserialize?
@@ -326,6 +323,7 @@ impl DbClient for PgClientImpl {
             version: row
                 .try_get::<&str, Option<String>>("version")
                 .map_err(DbError::PgError)?
+                // An invalid UUID here is a data integrity error.
                 .map(|v| Uuid::from_str(&v).unwrap()),
             priv_channels,
         };
@@ -631,8 +629,8 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgError)?
             .iter()
             // TODO: add converters from tokio_postgres::Row to Notification (see prior code?)
-            .map(|row: &Row| row.into())
-            .collect();
+            .map(|row: &Row| row.try_into())
+            .collect::<Result<Vec<Notification>, DbError>>()?;
 
         if messages.is_empty() {
             Ok(Default::default())
@@ -688,7 +686,10 @@ impl DbClient for PgClientImpl {
                 .await
         }?;
 
-        let messages: Vec<Notification> = response.iter().map(|row: &Row| row.into()).collect();
+        let messages: Vec<Notification> = response
+            .iter()
+            .map(|row: &Row| row.try_into())
+            .collect::<Result<Vec<Notification>, DbError>>()?;
         let timestamp = if !messages.is_empty() {
             Some(messages[0].timestamp)
         } else {

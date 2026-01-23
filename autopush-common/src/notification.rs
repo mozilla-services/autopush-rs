@@ -6,6 +6,7 @@ use std::str::FromStr;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::db::error::DbError;
 use crate::util::ms_since_epoch;
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
@@ -119,11 +120,13 @@ pub(crate) fn default_ttl() -> u64 {
 
 #[cfg(feature = "postgres")]
 /// Postgres Message Row to Notification (may be used as a model for other DBs later)
-impl From<&tokio_postgres::Row> for Notification {
-    fn from(row: &tokio_postgres::Row) -> Self {
+impl TryFrom<&tokio_postgres::Row> for Notification {
+    type Error = DbError;
+
+    fn try_from(row: &tokio_postgres::Row) -> Result<Self, Self::Error> {
         #[cfg(feature = "reliable_report")]
         use crate::reliability::ReliabilityState;
-        Self {
+        Ok(Self {
             channel_id: row
                 .try_get::<&str, &str>("channel_id")
                 .map(|v| Uuid::from_str(v).unwrap())
@@ -160,6 +163,6 @@ impl From<&tokio_postgres::Row> for Notification {
                 .try_get::<&str, &str>("reliable_state")
                 .map(|v| ReliabilityState::from_str(v).unwrap())
                 .ok(),
-        }
+        })
     }
 }
