@@ -324,7 +324,12 @@ impl DbClient for PgClientImpl {
                 .try_get::<&str, Option<String>>("version")
                 .map_err(DbError::PgError)?
                 // An invalid UUID here is a data integrity error.
-                .map(|v| Uuid::from_str(&v).unwrap()),
+                .map(|v| {
+                    Uuid::from_str(&v).map_err(|e| {
+                        DbError::Integrity("Invalid UUID found".to_owned(), Some(e.to_string()))
+                    })
+                })
+                .transpose()?,
             priv_channels,
         };
         Ok(Some(resp))
