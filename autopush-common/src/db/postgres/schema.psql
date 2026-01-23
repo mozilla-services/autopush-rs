@@ -11,6 +11,8 @@
 
 DROP TABLE message;
 DROP INDEX chidmessageidx;
+DROP INDEX message_reliability_id_idx;
+DROP INDEX update_idx;
 DROP TABLE meta;
 DROP TABLE router;
 DROP TABLE reliability;
@@ -40,6 +42,14 @@ CREATE TABLE IF NOT EXISTS meta (
 
 );
 
+-- (Optional table containing state information for "trackable" messages.)
+CREATE TABLE IF NOT EXISTS reliability (
+    id varchar(40) NOT NULL PRIMARY KEY,
+    states jsonb,
+    last_update_timestamp bigint
+);
+
+
 -- Contains the encrypted messages pending delivery to the User Agents.
 CREATE TABLE IF NOT EXISTS message (
     uaid varchar(40) NOT NULL PRIMARY KEY REFERENCES router ON DELETE cascade,
@@ -52,13 +62,10 @@ CREATE TABLE IF NOT EXISTS message (
     data text,
     sortkey_timestamp bigint,
     headers text,
+    reliability_id varchar(40) REFERENCES reliability(id),
     FOREIGN KEY(uaid) REFERENCES router(uaid)
 );
 
 CREATE UNIQUE INDEX chidmessageidx ON message (chid_message_id);
-
--- (Optional table containing state information for "trackable" messages.)
-CREATE TABLE IF NOT EXISTS reliability (
-    id varchar(40) NOT NULL PRIMARY KEY,
-    states jsonb
-)
+CREATE INDEX message_reliability_id_idx on message (reliability_id);
+CREATE INDEX update_idx ON reliability(last_update_timestamp);

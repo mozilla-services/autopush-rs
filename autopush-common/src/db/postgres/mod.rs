@@ -64,8 +64,12 @@ impl TryFrom<&str> for PostgresDbSettings {
         if setting_string.trim().is_empty() {
             return Ok(PostgresDbSettings::default());
         }
-        serde_json::from_str(setting_string)
-            .map_err(|e| DbError::General(format!("Could not parse DdbSettings: {:?}", e)))
+        serde_json::from_str(setting_string).map_err(|e| {
+            DbError::General(format!(
+                "Could not parse configuration db_settings: {:?}",
+                e
+            ))
+        })
     }
 }
 
@@ -113,13 +117,26 @@ impl PgClientImpl {
 
     /// Does the given table exist
     async fn table_exists(&self, table_name: String) -> DbResult<bool> {
-        let rows = self
-            .pool.get().await.map_err(DbError::PgPoolError)?
-            .query(
-                &format!("SELECT EXISTS (SELECT FROM pg_tables where schemaname='public' AND tablename={tablename});", tablename=table_name),
-                &[],
+        let (schema, table_name) = if table_name.contains('.') {
+            let mut parts = table_name.splitn(2, '.');
+            (
+                parts.next().unwrap_or("public").to_owned(),
+                parts.next().unwrap().to_owned(),
             )
-            .await.map_err(DbError::PgError)?;
+        } else {
+            ("public".to_owned(), table_name)
+        };
+        let rows = self
+            .pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
+            .query(
+                "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname=$1 AND tablename=$2);",
+                &[&schema, &table_name],
+            )
+            .await
+            .map_err(DbError::PgError)?;
         let val: &str = rows[0].get(0);
         Ok(val.to_lowercase().starts_with('t'))
     }
@@ -170,8 +187,8 @@ impl DbClient for PgClientImpl {
         self.pool.get().await.map_err(DbError::PgPoolError)?.execute(
             &format!("
             INSERT INTO {tablename} (uaid, connected_at, router_type, router_data, node_id, record_version, version, last_update, priv_channels, expiry)
-            VALUES($1, $2::BIGINT, $3, $4, $5, $6::BIGINT, $7, $8::BIGINT, $9, $10::BIGINT)
-            ON CONFLICT (uaid) DO
+             VALUES($1, $2::BIGINT, $3, $4, $5, $6::BIGINT, $7, $8::BIGINT, $9, $10::BIGINT)
+             ON CONFLICT (uaid) DO
                 UPDATE SET connected_at=EXCLUDED.connected_at,
                     router_type=EXCLUDED.router_type,
                     router_data=EXCLUDED.router_data,
@@ -249,7 +266,9 @@ impl DbClient for PgClientImpl {
         let rr = self.pool.get().await.map_err(DbError::PgPoolError)?
         .query_one(
             &format!(
-                "select connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels from {tablename} where uaid = $1",
+                "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels 
+                 FROM {tablename} 
+                 WHERE uaid = $1",
                 tablename=self.router_table()
             ),
             &[&uaid.simple().to_string()]
@@ -321,7 +340,7 @@ impl DbClient for PgClientImpl {
             .execute(
                 &format!(
                     "DELETE FROM {tablename}
-                WHERE uaid = $1",
+                     WHERE uaid = $1",
                     tablename = self.router_table()
                 ),
                 &[&uaid.simple().to_string()],
@@ -334,16 +353,21 @@ impl DbClient for PgClientImpl {
     /// update list of channel_ids for uaid in meta table
     /// Note: a conflicting channel_id is ignored, since it's already registered.
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        self.pool.get()
-            .await.map_err(DbError::PgPoolError)?
+        self.pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "INSERT INTO {tablename} (uaid, channel_id) VALUES ($1, $2) on conflict do nothing",
+                    "INSERT 
+                     INTO {tablename} (uaid, channel_id) VALUES ($1, $2) 
+                     ON CONFLICT DO NOTHING",
                     tablename = self.meta_table()
                 ),
                 &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
             )
-            .await.map_err(DbError::PgError)?;
+            .await
+            .map_err(DbError::PgError)?;
         Ok(())
     }
 
@@ -384,7 +408,10 @@ impl DbClient for PgClientImpl {
         // and redistribute them into tuples.
         // (Remember, an existing channel_id is ignored during this insert since it's already registered)
         let statement = format!(
-            "INSERT INTO {tablename} (uaid, channel_id) VALUES {vars} on conflict do nothing",
+            "INSERT 
+                INTO {tablename} (uaid, channel_id) 
+                VALUES {vars} 
+                ON CONFLICT DO NOTHING",
             tablename = self.meta_table(),
             // Postgres variables are 1-indexed.
             vars = Vec::from_iter((1..params.len() + 1).step_by(2).map(|v| format!(
@@ -428,7 +455,8 @@ impl DbClient for PgClientImpl {
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let cmd = format!(
-            "DELETE FROM {tablename} WHERE uaid = $1 AND channel_id = $2;",
+            "DELETE FROM {tablename} 
+             WHERE uaid = $1 AND channel_id = $2;",
             tablename = self.meta_table()
         );
         let result = self
@@ -456,11 +484,26 @@ impl DbClient for PgClientImpl {
         let Some(version) = version else {
             return Err(DbError::General("Expected a user version field".to_owned()));
         };
-        self.pool.get().await.map_err(DbError::PgPoolError)?
-        .execute(
-            &format!("UPDATE {tablename} SET node_id = null WHERE uaid=$1 AND node_id = $2 and connected_at = $3 and version= $4;", tablename=self.router_table()),
-            &[&uaid.simple().to_string(), &node_id, &(connected_at as i64), &version.simple().to_string()]
-        ).await.map_err(DbError::PgError)?;
+        self.pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
+            .execute(
+                &format!(
+                    "UPDATE {tablename} 
+                        SET node_id = null 
+                        WHERE uaid=$1 AND node_id = $2 AND connected_at = $3 AND version= $4;",
+                    tablename = self.router_table()
+                ),
+                &[
+                    &uaid.simple().to_string(),
+                    &node_id,
+                    &(connected_at as i64),
+                    &version.simple().to_string(),
+                ],
+            )
+            .await
+            .map_err(DbError::PgError)?;
         Ok(true)
     }
 
@@ -522,7 +565,7 @@ impl DbClient for PgClientImpl {
                     &(message.ttl as i64), // Postgres has no auto TTL.
                     &message.topic,
                     &(message.timestamp as i64),
-                    &message.data,
+                    &message.data.unwrap_or_default(),
                     &message.sortkey_timestamp.map(|v| v as i64),
                     &json!(message.headers).to_string(),
                     #[cfg(feature = "reliable_report")]
@@ -542,7 +585,8 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "DELETE FROM {tablename} WHERE uaid=$1 AND chid_message_id = $2;",
+                    "DELETE FROM {tablename} 
+                     WHERE uaid=$1 AND chid_message_id = $2;",
                     tablename = self.message_table()
                 ),
                 &[&uaid.simple().to_string(), &(sort_key.to_owned())],
@@ -574,7 +618,11 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .query(
                 &format!(
-                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers FROM {tablename} WHERE uaid=$1 LIMIT $2 ORDER BY timestamp DESC", // TODO: Check the timestamp DESC here!
+                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers 
+                 FROM {tablename} 
+                 WHERE uaid=$1 
+                 ORDER BY timestamp DESC 
+                 LIMIT $2",
                 tablename=&self.message_table(),
             ),
                 &[&uaid.simple().to_string(), &(limit as i64)],
@@ -612,7 +660,10 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * FROM {} WHERE uaid = $1 and timestamp > $2 limit $3",
+                        "SELECT * FROM {} 
+                         WHERE uaid = $1 AND timestamp > $2 
+                         ORDER BY timestamp 
+                         LIMIT $3",
                         self.message_table()
                     ),
                     &[&uaid, &(ts as i64), &(limit as i64)],
@@ -626,7 +677,10 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * FROM {} WHERE uaid = $1 limit $2",
+                        "SELECT * 
+                         FROM {} 
+                         WHERE uaid = $1 
+                         LIMIT $2",
                         self.message_table()
                     ),
                     &[&uaid, &(limit as i64)],
@@ -679,11 +733,13 @@ impl DbClient for PgClientImpl {
             .await?
             .execute(
                 &format!(
-                    "INSERT INTO {tablename} (id, states) VALUES ($1, json_build_object($2, $3) )
-            ON CONFLICT(id)
-            UPDATE {tablename} SET states = jsonb_set(states, array[$2], to_jsonb($3))"
+                "INSERT INTO {tablename} (id, states, last_update_timestamp) VALUES ($1, json_build_object($2, $3), $3)
+                 ON CONFLICT (id) DO
+                 UPDATE SET states = EXCLUDED.states, 
+                 last_update_timestamp = EXCLUDED.last_update_timestamp;",
+                    tablename = tablename
                 ),
-                &[&state, &timestamp],
+                &[&reliability_id, &state, &timestamp],
             )
             .await?;
         Ok(())
@@ -707,7 +763,7 @@ impl DbClient for PgClientImpl {
             .await?;
         transaction.execute(
                 &format!(
-                    "UPDATE {tablename} SET last_update = $2::BIGINT, expiry= $3::BIGINT where uaid = $1"
+                    "UPDATE {tablename} SET last_update = $2::BIGINT, expiry= $3::BIGINT WHERE uaid = $1"
                 ),
                 &[
                     &uaid.simple().to_string(),
@@ -986,6 +1042,7 @@ mod tests {
         };
         trace!("📮 Saving message for user {}", &user_id);
         let res = client.save_message(&uaid, test_notification.clone()).await;
+        dbg!(&res);
         assert!(res.is_ok());
 
         trace!("📮 Fetching all messages for user {}", &user_id);
