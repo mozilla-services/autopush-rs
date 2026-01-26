@@ -73,12 +73,8 @@ impl TryFrom<&str> for PostgresDbSettings {
     }
 }
 
-// TODO: Add a Pool manager?
-
-#[allow(dead_code)] // TODO: Remove before flight
 #[derive(Clone)]
 pub struct PgClientImpl {
-    pg_connect: String,
     _metrics: Arc<StatsdClient>,
     db_settings: PostgresDbSettings,
     pool: Pool,
@@ -106,7 +102,6 @@ impl PgClientImpl {
             .create_pool(Some(Runtime::Tokio1), tls_flag)
             .map_err(|e| DbError::General(e.to_string()))?;
             return Ok(Self {
-                pg_connect: dsn,
                 _metrics: metrics,
                 db_settings,
                 pool,
@@ -202,7 +197,7 @@ impl DbClient for PgClientImpl {
                     expiry=EXCLUDED.expiry
                     ;
             ", tablename=self.router_table()),
-            &[&user.uaid.simple().to_string(),              // 1 TODO: Investigate serialization?
+            &[&user.uaid.simple().to_string(),              // 1 
             &(user.connected_at as i64),                    // 2
             &user.router_type,                              // 3    
             &json!(user.router_data).to_string(),           // 4
@@ -384,7 +379,7 @@ impl DbClient for PgClientImpl {
         // TODO: REVISIT THIS!!! May be possible without the gross hack.
         // tokio-postgres doesn't store tuples as values, so you can't just construct
         // the query as `INSERT into ... (a, b) VALUES (?,?), (?,?)`
-        // It does accept them as numericly specified values.
+        // It does accept them as numerically specified values.
         // The following is a gross hack that does basically that.
         // The other option would be to just repeatedly call `self.add_channel()`
         // but that seems far worse.
@@ -512,7 +507,6 @@ impl DbClient for PgClientImpl {
 
     /// write a message to message table
     async fn save_message(&self, uaid: &Uuid, message: Notification) -> DbResult<()> {
-        // TODO: write serializer
         // fun fact: serde_postgres exists, but only deserializes (as of 0.2)
         // (This is mutable if `reliable_report` enabled)
         #[allow(unused_mut)]
@@ -633,7 +627,6 @@ impl DbClient for PgClientImpl {
             .await
             .map_err(DbError::PgError)?
             .iter()
-            // TODO: add converters from tokio_postgres::Row to Notification (see prior code?)
             .map(|row: &Row| row.try_into())
             .collect::<Result<Vec<Notification>, DbError>>()?;
 
