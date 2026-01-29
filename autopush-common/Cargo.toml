@@ -61,14 +61,14 @@ prometheus-client = { version = "0.24", optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 form_urlencoded = { version = "1.2", optional = true }
 
-deadpool-redis = { version = "0.21", optional = true }
+deadpool-redis = { version = "0.22", features=["rt_tokio_1", "serde"], optional = true }
 redis-module = { version = "2.0", optional = true }
-redis = { version = "0.31", features=["aio", "tokio-comp"], optional = true }
+redis = { version = "0.32", features=["aio", "tokio-comp"], optional = true } # blocked by deadpool-redis
 
 [dev-dependencies]
 actix-rt = "2.8"
 mockito = "0.31"                                     # mockito > 0.31 will require significant reworking of the tests and is not critical yet.
-redis-test = { version = "0.11", features = ["aio"] }
+redis-test = { version = "0.12", features = ["aio"] } # blocked by deadpool-redis
 tempfile = "3.2.0"
 
 [features]
@@ -91,5 +91,5 @@ reliable_report = [
     "dep:redis-module",
     "dep:deadpool-redis",
 ]
-redis = ["dep:redis"]
+redis = ["dep:redis", "dep:deadpool-redis"]
 unsafe = []
