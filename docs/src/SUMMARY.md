@@ -13,7 +13,8 @@
 * [Running](running.md)
 
 ## Developing
-
+* [Configuring a Stand Alone Development Environment](development.md)
+*    [Data Storage Systems](datastore.md)
 * [Style](style.md)
 * [Testing](testing.md)
 * [Release Process](releasing.md)
