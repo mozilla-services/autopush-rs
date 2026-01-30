@@ -9,6 +9,8 @@
 --      SET search_path TO autopush, public;
 -- );
 
+SET search_path TO autopush, public;
+
 DROP TABLE message;
 DROP INDEX chidmessageidx;
 DROP INDEX message_reliability_id_idx;
@@ -34,6 +36,7 @@ CREATE TABLE IF NOT EXISTS router (
 
 -- This contains "meta" or general information for the routing table.
 -- It may also contain general setup and configuration data for autopush.
+-- Right now, it contains the channel_ids associated with the UAID.
 CREATE TABLE IF NOT EXISTS meta (
     channel_id varchar(81) NOT NULL,
     uaid varchar(40) NOT NULL REFERENCES router ON DELETE cascade,
@@ -57,6 +60,7 @@ CREATE TABLE IF NOT EXISTS message (
     chid_message_id varchar(100),
     version varchar(40),
     ttl bigint,
+    expiry bigint,
     topic varchar,
     timestamp bigint,
     data text,

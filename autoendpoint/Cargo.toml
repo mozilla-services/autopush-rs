@@ -21,7 +21,7 @@ docopt.workspace = true
 fernet.workspace = true
 futures.workspace = true
 hex.workspace = true
-jsonwebtoken = "10.3.0"
+jsonwebtoken = {version="10.3.0", features=["rust_crypto"]}
 lazy_static.workspace = true
 openssl.workspace = true
 regex.workspace = true

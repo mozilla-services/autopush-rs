@@ -1,3 +1,12 @@
+/* Postgres DbClient implementation.
+ * As noted elsewhere, autopush was originally designed to work with NoSql type databases.
+ * This implementation was done partially as an experiment. Postgres allows for limited
+ * NoSql-like functionality. The author, however, has VERY limited knowledge of postgres,
+ * and there are likely many inefficiencies in this implementation.
+ * 
+ * PRs are always welcome.
+ */
+
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -143,6 +152,7 @@ impl PgClientImpl {
         util::sec_since_epoch() + self.db_settings.max_router_ttl
     }
 
+    /// The router table contains how to route messages to the recipient UAID.
     pub(crate) fn router_table(&self) -> String {
         if let Some(schema) = &self.db_settings.schema {
             format!("{}.{}", schema, self.db_settings.router_table)
@@ -151,6 +161,7 @@ impl PgClientImpl {
         }
     }
 
+    /// The message table contains stored messages for UAIDs.
     pub(crate) fn message_table(&self) -> String {
         if let Some(schema) = &self.db_settings.schema {
             format!("{}.{}", schema, self.db_settings.message_table)
@@ -159,6 +170,9 @@ impl PgClientImpl {
         }
     }
 
+    /// The meta table contains channel and other metadata for UAIDs.
+    /// With traditional "No-Sql" databases, this would be rolled into the
+    /// router table.
     pub(crate) fn meta_table(&self) -> String {
         if let Some(schema) = &self.db_settings.schema {
             format!("{}.{}", schema, self.db_settings.meta_table)
@@ -167,6 +181,9 @@ impl PgClientImpl {
         }
     }
 
+    /// The reliability table contains message delivery reliability states.
+    /// This is optional and should only be used to track internally generated
+    /// and consumed messages based on the VAPID public key signature. 
     #[cfg(feature = "reliable_report")]
     pub(crate) fn reliability_table(&self) -> String {
         if let Some(schema) = &self.db_settings.schema {
@@ -350,6 +367,12 @@ impl DbClient for PgClientImpl {
 
     /// update list of channel_ids for uaid in meta table
     /// Note: a conflicting channel_id is ignored, since it's already registered.
+    /// This should probably be optimized into the router table as a set value, 
+    /// however I'm not familiar enough with Postgres to do so at this time.
+    /// Channels can be somewhat ephemeral, and we also want to limit the potential of
+    /// race conditions when adding or removing channels, particularly for mobile devices.
+    /// For some efficiency (mostly around the mobile "daily refresh" call), I've broken
+    /// the channels out by UAID into this table. 
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
         self.pool
             .get()
@@ -516,6 +539,7 @@ impl DbClient for PgClientImpl {
             "chid_message_id",
             "version",
             "ttl",
+            "expiry",
             "topic",
             "timestamp",
             "data",
@@ -524,11 +548,11 @@ impl DbClient for PgClientImpl {
         ];
         // (This is mutable if `reliable_report` enabled)
         #[allow(unused_mut)]
-        let mut inputs = vec!["$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10"];
+        let mut inputs = vec!["$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10", "$11"];
         #[cfg(feature = "reliable_report")]
         {
             fields.append(&mut ["reliability_id"].to_vec());
-            inputs.append(&mut ["$11"].to_vec());
+            inputs.append(&mut ["$12"].to_vec());
         }
         let cmd = format!(
             "INSERT INTO {tablename}
@@ -539,6 +563,7 @@ impl DbClient for PgClientImpl {
                     channel_id=EXCLUDED.channel_id,
                     version=EXCLUDED.version,
                     ttl=EXCLUDED.ttl,
+                    expiry=EXCLUDED.expiry,
                     topic=EXCLUDED.topic,
                     timestamp=EXCLUDED.timestamp,
                     data=EXCLUDED.data,
@@ -560,6 +585,7 @@ impl DbClient for PgClientImpl {
                     &message.chidmessageid(),
                     &message.version,
                     &(message.ttl as i64), // Postgres has no auto TTL.
+                    &(util::sec_since_epoch() as i64 + message.ttl as i64),
                     &message.topic,
                     &(message.timestamp as i64),
                     &message.data.unwrap_or_default(),
@@ -751,6 +777,9 @@ impl DbClient for PgClientImpl {
         trace!("📮 Purging {uaid} for < {timestamp}");
         let mut pool = self.pool.get().await.map_err(DbError::PgPoolError)?;
         let transaction = pool.transaction().await?;
+        // Try to garbage collect old messages first.
+        transaction.execute(&format!("DELETE FROM {} WHERE uaid = $1 and expiry < $2", &self.message_table()), &[&uaid.simple().to_string(), &(util::sec_since_epoch() as i64)]).await?;
+        // Now, delete messages that we've already delivered.
         transaction
             .execute(
                 &format!(
