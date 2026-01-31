@@ -3,7 +3,7 @@
  * This implementation was done partially as an experiment. Postgres allows for limited
  * NoSql-like functionality. The author, however, has VERY limited knowledge of postgres,
  * and there are likely many inefficiencies in this implementation.
- * 
+ *
  * PRs are always welcome.
  */
 
@@ -183,7 +183,7 @@ impl PgClientImpl {
 
     /// The reliability table contains message delivery reliability states.
     /// This is optional and should only be used to track internally generated
-    /// and consumed messages based on the VAPID public key signature. 
+    /// and consumed messages based on the VAPID public key signature.
     #[cfg(feature = "reliable_report")]
     pub(crate) fn reliability_table(&self) -> String {
         if let Some(schema) = &self.db_settings.schema {
@@ -367,12 +367,12 @@ impl DbClient for PgClientImpl {
 
     /// update list of channel_ids for uaid in meta table
     /// Note: a conflicting channel_id is ignored, since it's already registered.
-    /// This should probably be optimized into the router table as a set value, 
+    /// This should probably be optimized into the router table as a set value,
     /// however I'm not familiar enough with Postgres to do so at this time.
     /// Channels can be somewhat ephemeral, and we also want to limit the potential of
     /// race conditions when adding or removing channels, particularly for mobile devices.
     /// For some efficiency (mostly around the mobile "daily refresh" call), I've broken
-    /// the channels out by UAID into this table. 
+    /// the channels out by UAID into this table.
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
         self.pool
             .get()
@@ -548,7 +548,9 @@ impl DbClient for PgClientImpl {
         ];
         // (This is mutable if `reliable_report` enabled)
         #[allow(unused_mut)]
-        let mut inputs = vec!["$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10", "$11"];
+        let mut inputs = vec![
+            "$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10", "$11",
+        ];
         #[cfg(feature = "reliable_report")]
         {
             fields.append(&mut ["reliability_id"].to_vec());
@@ -683,12 +685,17 @@ impl DbClient for PgClientImpl {
                 .query(
                     &format!(
                         "SELECT * FROM {} 
-                         WHERE uaid = $1 AND timestamp > $2 
+                         WHERE uaid = $1 AND timestamp > $2 AND expiry >= $3
                          ORDER BY timestamp 
                          LIMIT $3",
                         self.message_table()
                     ),
-                    &[&uaid, &(ts as i64), &(limit as i64)],
+                    &[
+                        &uaid,
+                        &(ts as i64),
+                        &(limit as i64),
+                        &(util::sec_since_epoch() as i64),
+                    ],
                 )
                 .await
         } else {
@@ -778,7 +785,18 @@ impl DbClient for PgClientImpl {
         let mut pool = self.pool.get().await.map_err(DbError::PgPoolError)?;
         let transaction = pool.transaction().await?;
         // Try to garbage collect old messages first.
-        transaction.execute(&format!("DELETE FROM {} WHERE uaid = $1 and expiry < $2", &self.message_table()), &[&uaid.simple().to_string(), &(util::sec_since_epoch() as i64)]).await?;
+        transaction
+            .execute(
+                &format!(
+                    "DELETE FROM {} WHERE uaid = $1 and expiry < $2",
+                    &self.message_table()
+                ),
+                &[
+                    &uaid.simple().to_string(),
+                    &(util::sec_since_epoch() as i64),
+                ],
+            )
+            .await?;
         // Now, delete messages that we've already delivered.
         transaction
             .execute(

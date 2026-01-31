@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS reliability (
 -- Contains the encrypted messages pending delivery to the User Agents.
 CREATE TABLE IF NOT EXISTS message (
     uaid varchar(40) NOT NULL PRIMARY KEY REFERENCES router ON DELETE cascade,
-    channel_id varchar(81),
+    channel_id varchar(40),
     chid_message_id varchar(100),
     version varchar(40),
     ttl bigint,
