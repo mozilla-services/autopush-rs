@@ -37,7 +37,7 @@ The `scripts/setup_bt.sh` file contains a collection of commands that can be use
 
 Redis is a memory based key/value storage system. Valkey is an Open Source, API equivalent, "drop-in" replacement for Redis. For simplicity, I will refer to both systems as "Redis". To use it, compile the autopush code with `--features=redis`.
 
-Redis is very responsive, but also quite memory intensive. While initial load tests have shown surprising results, it should be noted that there is a drastic difference between the load test environment and reality. (It can be prohibitively expensive to replicate our traffic in a test environment, so our testing system focuses on a more aggressive use model at the expense of productions "long storage" stress.)
+Redis is very responsive, but also quite memory intensive. While initial load tests have shown surprising results, it should be noted that there is a drastic difference between the load test environment and reality. It can be prohibitively expensive to replicate our traffic in a test environment, so our testing system focuses on a more aggressive use model (tests use a high rate of short term message delivery and retrieval) at the expense of productions "long storage" stress (where messages may sit in storage for weeks, or are potentially abandoned by no longer active User Agents).
 
 That said, for orgs of around 1,000 users, or for personal use, this is a fine option that requires very little setup or maintenance.
 
@@ -50,27 +50,27 @@ The settings include:
 * `create_timeout`: number of seconds to wait to create a new connection to Redis
 * `router_ttl`: the number of seconds for a router record to live. The default is `MAX_ROUTER_TTL`, or `60 * 86,400` (60 days). Whenever the UAID connects, this TTL is reset. Only records for UAIDs that have not connected in 60 days are dropped.
 * `notification_ttl`: the maximum number of seconds for a message to live. Messages live by their
-provided `TTL` header. Messages that specify a `TTL` greater than this number will be set to this limit. By default, the `MAX_NOTIFICATION_TTL_SECS` value of `30 * 86,400` (30 days).
+provided `TTL` header. Messages that specify a `TTL` greater than this number will be set to this limit. By default, the `MAX_NOTIFICATION_TTL_SECS` value of `30 * 86,400` (30 days). This feature is offered here because of the in-memory nature of Redis, and concern that having too many records may impact Redis' overall ability to function on smaller systems. Your experiences and observations will help others learn how to best optimize this value or determine if it's required for other data storage systems.
 
 Redis does not require any prep work before using.
 
-### Postgres
+### PostgreSQL
 
-Postgres is a SQL storage engine which has several features that allow it to perform similar to a Schemaless engine. While it is not as performant as some schemaless systems, it is also a fairly common data storage system which may be more familiar to some. To use it, compile the autopush code with `--features=postgres`.
+PostgreSQL is a SQL storage engine which has several features that allow it to perform similar to a schemaless engine. While it is not as performant as some schemaless systems, it is also a fairly common data storage system which may be more familiar to some. To use it, compile the autopush code with `--features=postgres`.
 
 
 #### Configuration
 
-The postgres DSN begins with the prefix `postgres` and can contain the login information and schema (e.g. `postgres://dbuser:hunter2@localhost:5432/autopush`)
+The PostgreSQL DSN begins with the prefix `postgres` and can contain the login information and schema (e.g. `postgres://dbuser:hunter2@localhost:5432/autopush`)
 
-Postgres' database configuration options are stored in `db_settings` as a serialized JSON strong.
+PostgreSQL's database configuration options are stored in `db_settings` as a serialized JSON strong.
 These are optional and default values will be used.
 The settings include:
-* `schema`: The name of the postgres schema to use (default `public`)
-* `router_table`: the name of the router table (default `router`)
-* `message_table`: the name of the message table (default `message`)
+* `schema`: The name of the PostgreSQL schema to use (default `public`)
+* `router_table`: the name of the **router** table (default `router`)
+* `message_table`: the name of the **message** table (default `message`)
 * `meta_table`: the name of the table to store additional routing information for the user (default `meta`)
-* `reliability_table`: the name of the table to store reliability tracking information (default `reliability`)
+* `reliability_table`: the name of the table to store reliability tracking information (default `reliability`) (Note, the `reliable_report` feature, which uses this table, **REQUIRES** Redis/Valkey to be enabled.)
 * `max_router_ttl`: the number of seconds for a router record to live. The default is `MAX_ROUTER_TTL`, or `60 * 86,400` (60 days). Whenever the UAID connects, this TTL is reset. Only records for UAIDs that have not connected in 60 days are dropped.
 
-There is a schema declaration file located in `autopush-common/src/db/postgres/schema.psql` which sets up an initial schema for Postgres. Note that this file may change in the future and that migration files may be published separately. Please note any changes appearing in the `CHANGELOG.md` file when updating.
+There is a schema declaration file located in `autopush-common/src/db/postgres/schema.psql` which sets up an initial schema for PostgreSQL. Note that this file may change in the future and that migration files may be published separately. Please note any changes appearing in the `CHANGELOG.md` file when updating.
