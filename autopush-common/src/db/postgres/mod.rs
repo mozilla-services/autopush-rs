@@ -645,12 +645,12 @@ impl DbClient for PgClientImpl {
                 &format!(
                 "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers 
                  FROM {tablename} 
-                 WHERE uaid=$1 
+                 WHERE uaid=$1 AND expiry >= $2
                  ORDER BY timestamp DESC 
-                 LIMIT $2",
+                 LIMIT $3",
                 tablename=&self.message_table(),
             ),
-                &[&uaid.simple().to_string(), &(limit as i64)],
+                &[&uaid.simple().to_string(),&(util::sec_since_epoch() as i64), &(limit as i64)],
             )
             .await
             .map_err(DbError::PgError)?
@@ -709,10 +709,11 @@ impl DbClient for PgClientImpl {
                         "SELECT * 
                          FROM {} 
                          WHERE uaid = $1 
+                         AND expiry >= $2
                          LIMIT $2",
                         self.message_table()
                     ),
-                    &[&uaid, &(limit as i64)],
+                    &[&uaid, &(limit as i64), &(util::sec_since_epoch() as i64)],
                 )
                 .await
         }?;
@@ -781,7 +782,7 @@ impl DbClient for PgClientImpl {
         debug!("📮 Updating {uaid} current_timestamp:{timestamp}");
         let tablename = &self.router_table();
 
-        trace!("📮 Purging {uaid} for < {timestamp}");
+        trace!("📮 Purging git{uaid} for < {timestamp}");
         let mut pool = self.pool.get().await.map_err(DbError::PgPoolError)?;
         let transaction = pool.transaction().await?;
         // Try to garbage collect old messages first.
