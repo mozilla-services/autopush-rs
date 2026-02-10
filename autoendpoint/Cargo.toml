@@ -20,7 +20,7 @@ docopt.workspace = true
 fernet.workspace = true
 futures.workspace = true
 hex.workspace = true
-jsonwebtoken = "9.3.0"
+jsonwebtoken = {version="10.3.0", features=["rust_crypto"]}
 lazy_static.workspace = true
 openssl.workspace = true
 regex.workspace = true
@@ -36,7 +36,7 @@ url.workspace = true
 uuid.workspace = true
 validator = "0.20"
 validator_derive = "0.20"
-yup-oauth2 = "8.1"
+yup-oauth2 = "12.1"
 
 autopush_common = { path = "../autopush-common" }
 # Updating to 9+ requires configuring rust-tls (See https://github.com/dermesser/yup-oauth2/issues/235) <- this ticket is resolved, update

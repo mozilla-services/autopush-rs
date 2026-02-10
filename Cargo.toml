@@ -12,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.77.4"
+version = "1.78.0"
 authors = [
     "Ben Bangert <ben@groovie.org>",
     "JR Conlin <jrconlin@mozilla.com>",
@@ -68,7 +68,7 @@ mozsvc-common = "0.2"
 openssl = { version = "0.10" }
 rand = "0.9"
 regex = "1.4"
-reqwest = { version = "0.12", features = ["json", "blocking"] }
+reqwest = { version = "0.13", features = ["json", "blocking"] }
 sentry = { version = "0.46" }
 sentry-core = { version = "0.46" }
 sentry-actix = "0.46"
@@ -76,6 +76,7 @@ sentry-backtrace = "0.46"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
+# Pin slog to 2.7 pending slog-scope update. 
 slog = { version = "=2.7", features = [
     "dynamic-keys",
     "max_level_trace",
@@ -90,12 +91,12 @@ slog-term = "=2.6"
 strum = { version = "0.27", features = ["derive"] }
 strum_macros = "0.27"
 thiserror = "2.0"
-tokio = "1.45"
+tokio = "1.49"
 tokio-compat-02 = "0.2"
 tokio-core = "0.1"
 tokio-io = "0.1"
 tokio-openssl = "0.6"
-uuid = { version = "1.19", features = ["serde", "v4"] }
+uuid = { version = "1.20", features = ["serde", "v4"] }
 url = "2.5"
 
 autoconnect = { path = "./autoconnect" }
@@ -107,7 +108,7 @@ autoconnect_ws_clientsm = { path = "./autoconnect/autoconnect-ws/autoconnect-ws-
 autopush_common = { path = "./autopush-common", default-features = true }
 
 [workspace.lints.clippy]
-result_large_err = "allow" # 1.87.0 will flag ApiError as too large.
+result_large_err = "allow" # rust 1.87.0+ will flag ApiError as too large.
 
 [profile.release]
 debug = 1
