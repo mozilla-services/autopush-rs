@@ -2,6 +2,14 @@
 
 The following is a brief overview of the steps required to create a "stand alone" environment.
 
+## Gentle Advice
+
+Autopush should be built in a real Linux environment. It runs on a Debian based OS in production, and, to be honest, is very complicated. It has a lot of dependencies for things like SSL and kernel headers that can be weirdly specific. While it might be possible to build Autopush on a non-linux system (like Mac or Windows WSL), each alternate system brings it's own special "flavor" that tend to bring angry dragons to the party.
+
+If you want to fight those dragons, I salute you. I, however, gave up and decided to make relative peace with the beasts and have a dedicated Debian flavored Linux box that I build and test on. I recommend you do the same. Due to a current restriction, you should select "Bookworm" as the latest version as "Trixie" has a kernel header issue that causes a build failure. It can be built inside a Virtual Machine, or just a semi-persistent docker image (See the README in `.devcontainer/` for details). Often, you can configure those VMs and Docker instances to mount drives meaning that you can use your favorite editor on your favorite system and just do the actual `cargo build` bits inside the sandbox system. For super, fun bonus points, you might even be able to use `cargo build --target ___` to build to [a different platform](https://rust-lang.github.io/rustup/cross-compilation.html). But, again... potentially angry dragons.
+
+Needless to say, if you _do_ manage to find a way to build Autopush in an environment like MacOS or WSL, I will be very interested in hearing what grimoire you used. 
+
 ## Pre-requirements
 
 This tutorial presumes the following items are installed on your system.
