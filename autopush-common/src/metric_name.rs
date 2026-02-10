@@ -10,15 +10,16 @@ use strum_macros::IntoStaticStr;
 #[derive(Debug, Clone, IntoStaticStr, AsRefStr, Display, EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub enum MetricName {
-    /// User agent command with dynamic command name
-    #[strum(serialize = "ua.command")]
-    UaCommand(String),
     //
     // User agent metrics
     //
     /// User agent is already connected
     #[strum(serialize = "ua.already_connected")]
     UaAlreadyConnected,
+
+    /// User agent hello command
+    #[strum(serialize = "ua.command.hello")]
+    UaCommandHello,
 
     /// User agent register command
     #[strum(serialize = "ua.command.register")]
@@ -27,6 +28,14 @@ pub enum MetricName {
     /// User agent unregister command
     #[strum(serialize = "ua.command.unregister")]
     UaCommandUnregister,
+
+    /// User agent ack command
+    #[strum(serialize = "ua.command.ack")]
+    UaCommandAck,
+
+    /// User agent nack command
+    #[strum(serialize = "ua.command.nack")]
+    UaCommandNack,
 
     /// User agent connection check
     #[strum(serialize = "ua.connection.check")]
