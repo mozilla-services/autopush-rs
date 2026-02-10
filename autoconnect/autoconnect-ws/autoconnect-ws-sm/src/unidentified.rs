@@ -91,7 +91,7 @@ impl UnidentifiedClient {
         );
         self.app_state
             .metrics
-            .incr_with_tags(MetricName::UaCommand(MessageType::Hello.to_string()))
+            .incr_with_tags(MetricName::UaCommandHello)
             .with_tag("uaid", {
                 if existing_user {
                     "existing"
