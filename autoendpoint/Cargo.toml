@@ -37,7 +37,7 @@ url.workspace = true
 uuid.workspace = true
 validator = "0.20"
 validator_derive = "0.20"
-yup-oauth2 = "8.1"
+yup-oauth2 = "12.1"
 
 autopush_common = { path = "../autopush-common" }
 # Updating to 9+ requires configuring rust-tls (See https://github.com/dermesser/yup-oauth2/issues/235) <- this ticket is resolved, update

@@ -68,10 +68,7 @@ impl WebPushClient {
 
         let (status, push_endpoint) = match self.do_register(&channel_id, key).await {
             Ok(endpoint) => {
-                let _ = self
-                    .app_state
-                    .metrics
-                    .incr(MetricName::UaCommand(MessageType::Register.to_string()));
+                let _ = self.app_state.metrics.incr(MetricName::UaCommandRegister);
                 self.stats.registers += 1;
                 (200, endpoint)
             }
@@ -146,7 +143,7 @@ impl WebPushClient {
             Ok(_) => {
                 self.app_state
                     .metrics
-                    .incr_with_tags(MetricName::UaCommand(MessageType::Unregister.to_string()))
+                    .incr_with_tags(MetricName::UaCommandUnregister)
                     .with_tag("code", &code.unwrap_or(200).to_string())
                     .send();
                 self.stats.unregisters += 1;
@@ -189,10 +186,7 @@ impl WebPushClient {
     /// Acknowledge receipt of one or more Push Notifications
     async fn ack(&mut self, updates: &[ClientAck]) -> Result<Vec<ServerMessage>, SMError> {
         trace!("✅ WebPushClient:ack"; "message_type" => MessageType::Ack.as_ref());
-        let _ = self
-            .app_state
-            .metrics
-            .incr(MetricName::UaCommand(MessageType::Ack.to_string()));
+        let _ = self.app_state.metrics.incr(MetricName::UaCommandAck);
 
         for notif in updates {
             // Check the list of unacked "direct" (unstored) notifications. We only want to
@@ -277,7 +271,7 @@ impl WebPushClient {
             .unwrap_or(0);
         self.app_state
             .metrics
-            .incr_with_tags(MetricName::UaCommand(MessageType::Nack.to_string()))
+            .incr_with_tags(MetricName::UaCommandNack)
             .with_tag("code", &code.to_string())
             .send();
         self.stats.nacks += 1;

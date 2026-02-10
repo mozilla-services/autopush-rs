@@ -6,6 +6,7 @@ use std::str::FromStr;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[cfg(feature = "postgres")]
 use crate::db::error::DbError;
 use crate::util::ms_since_epoch;
 
