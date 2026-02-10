@@ -1,3 +1,25 @@
+<a name="1.78.0"></a>
+## 1.78.0 (2026-01-29)
+
+
+#### Bug Fixes
+
+*   updated mozcloud-publish workflow to new version that does not require artifact write permissions (#1038) ([fe5cfbe5](https://github.com/mozilla-services/autopush-rs/commit/fe5cfbe520b3e46b4d860731da8fde98d727f9cf))
+
+#### Chore
+
+*   tag 1.77.4 (#1032) ([efc0ea55](https://github.com/mozilla-services/autopush-rs/commit/efc0ea55cf23f8fa97a38fd0a01c79a1d6c8bc48))
+
+#### Features
+
+*   PUSH-600 Redis connection pooling (#1041) ([20d3b47a](https://github.com/mozilla-services/autopush-rs/commit/20d3b47acc2c9fff89466413c500211f9874dc5f))
+*   Add redis backend for Autopush (#1039) ([33398b4b](https://github.com/mozilla-services/autopush-rs/commit/33398b4b0cf2ca234acb4a152c8b8186769afd29))
+*   Convert Hardcoded TTLs to configs (#1037) ([a3d7b257](https://github.com/mozilla-services/autopush-rs/commit/a3d7b257d0574fd9d40198bb03d498989db5158b))
+*   Document local development and debug for autopush (#1034) ([68670665](https://github.com/mozilla-services/autopush-rs/commit/686706654aca30cb7e60168a9d3edf2c1ad35c67))
+*   Add smoke tests to verify autoendpoint and autoconnect images b… (#1036) ([ab4c7f87](https://github.com/mozilla-services/autopush-rs/commit/ab4c7f877bf5e8fd01776dbd792dfc8cb149abf9))
+
+
+
 <a name="1.77.4"></a>
 ## 1.77.4 (2025-10-22)
 
