@@ -7,8 +7,8 @@ use autoconnect_common::{
     protocol::{BroadcastValue, ClientAck, ClientMessage, MessageType, ServerMessage},
 };
 use autopush_common::{
-    endpoint::make_endpoint, metric_name::MetricName, metrics::StatsdClientExt,
-    util::sec_since_epoch,
+    endpoint::make_endpoint, message_id::MessageId, metric_name::MetricName,
+    metrics::StatsdClientExt, util::sec_since_epoch,
 };
 
 use super::WebPushClient;
@@ -36,8 +36,8 @@ impl WebPushClient {
                 .await?
                 .map_or_else(Vec::new, |smsg| vec![smsg])),
             ClientMessage::Ack { updates } => self.ack(&updates).await,
-            ClientMessage::Nack { code, .. } => {
-                self.nack(code);
+            ClientMessage::Nack { code, version } => {
+                self.nack(code, &version).await?;
                 Ok(vec![])
             }
             ClientMessage::Ping => Ok(vec![self.ping()?]),
@@ -192,6 +192,14 @@ impl WebPushClient {
             // Check the list of unacked "direct" (unstored) notifications. We only want to
             // ack messages we've not yet seen and we have the right version, otherwise we could
             // have gotten an older, inaccurate ACK.
+            // Force remove all valid ACK messages. There were reports that some users received multiple
+            // instance of a previously "ACK"d message. This may happen if we send a batch of messages to
+            // the client, and there's one message that cannot be ACK'd for some reason. This would result
+            // in the `process_post_acks` function to not get called, so no `increment_storage` would
+            // happen. This meant that the next time the client reconnected, or a message event occurred
+            // the database may re-fetch data and resend it to the client, including previously ack'd
+            // messages. Deleting the message from the data store should prevent that.
+
             let pos = self
                 .ack_state
                 .unacked_direct_notifs
@@ -205,6 +213,12 @@ impl WebPushClient {
                 );
                 self.ack_state.unacked_direct_notifs.remove(pos);
                 self.stats.direct_acked += 1;
+                let message_id = MessageId::decrypt(&self.app_state.fernet, &notif.version)
+                    .map_err(|_e| SMErrorKind::InvalidMessage("Invalid MessageID".to_owned()))?;
+                self.app_state
+                    .db
+                    .remove_message(&self.uaid, &message_id.sort_key())
+                    .await?;
                 continue;
             };
 
@@ -263,18 +277,30 @@ impl WebPushClient {
 
     /// Negative Acknowledgement (a Client error occurred) of one or more Push
     /// Notifications
-    fn nack(&mut self, code: Option<i32>) {
-        trace!("WebPushClient:nack"; "message_type" => MessageType::Nack.as_ref());
+    async fn nack(&mut self, code: Option<i32>, _message_id: &str) -> Result<(), SMError> {
+        trace!("WebPushClient:nack");
         // only metric codes expected from the client (or 0)
         let code = code
             .and_then(|code| (301..=303).contains(&code).then_some(code))
             .unwrap_or(0);
+        // TODO: There may be certain NAK codes indicating a message absolutley is rejected and
+        // should not be retried. In that case, drop the message. Waiting for Client to confirm
+        // the codes to absolutely reject.
+        /*
+        if code == 302 {
+            self.app_state
+                .db
+                .remove_message(&self.uaid, _message_id)
+                .await?
+        }
+        */
         self.app_state
             .metrics
             .incr_with_tags(MetricName::UaCommandNack)
             .with_tag("code", &code.to_string())
             .send();
         self.stats.nacks += 1;
+        Ok(())
     }
 
     /// Handle a WebPush Ping

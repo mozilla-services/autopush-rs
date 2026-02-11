@@ -10,6 +10,7 @@ pub mod db;
 pub mod endpoint;
 pub mod errors;
 pub mod logging;
+pub mod message_id;
 pub mod metric_name;
 pub mod metrics;
 pub mod middleware;
