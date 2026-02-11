@@ -1,9 +1,13 @@
 //! Notification protocol
 use std::collections::HashMap;
+#[cfg(feature = "postgres")]
+use std::str::FromStr;
 
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[cfg(feature = "postgres")]
+use crate::db::error::DbError;
 use crate::util::ms_since_epoch;
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug)]
@@ -30,6 +34,7 @@ pub struct Notification {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "reliable_report")]
     pub reliability_id: Option<String>,
     #[cfg(feature = "reliable_report")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -112,4 +117,53 @@ impl Notification {
 
 pub(crate) fn default_ttl() -> u64 {
     0
+}
+
+#[cfg(feature = "postgres")]
+/// Postgres Message Row to Notification (may be used as a model for other DBs later)
+impl TryFrom<&tokio_postgres::Row> for Notification {
+    type Error = DbError;
+
+    fn try_from(row: &tokio_postgres::Row) -> Result<Self, Self::Error> {
+        #[cfg(feature = "reliable_report")]
+        use crate::reliability::ReliabilityState;
+        Ok(Self {
+            channel_id: row
+                .try_get::<&str, &str>("channel_id")
+                .map(|v| Uuid::from_str(v).unwrap())
+                .unwrap(),
+            version: row.try_get::<&str, String>("version").unwrap(),
+            ttl: row.try_get::<&str, i64>("ttl").map(|v| v as u64).unwrap(),
+            topic: row
+                .try_get::<&str, String>("topic")
+                .map(Some)
+                .unwrap_or_default(),
+            timestamp: row
+                .try_get::<&str, i64>("timestamp")
+                .map(|v| v as u64)
+                .unwrap(),
+            data: row.try_get::<&str, String>("data").map(Some).unwrap(),
+            sortkey_timestamp: row
+                .try_get::<&str, i64>("sortkey_timestamp")
+                .map(|v| Some(v as u64))
+                .unwrap_or_default(),
+            headers: row
+                .try_get::<&str, &str>("headers")
+                .map(|v| {
+                    if v.is_empty() || v == "null" || v == "{}" {
+                        return None;
+                    }
+                    let hdrs: HashMap<String, String> = serde_json::from_str(v).unwrap();
+                    Some(hdrs)
+                })
+                .unwrap_or_default(),
+            #[cfg(feature = "reliable_report")]
+            reliability_id: row.try_get::<&str, String>("reliability_id").ok(),
+            #[cfg(feature = "reliable_report")]
+            reliable_state: row
+                .try_get::<&str, &str>("reliable_state")
+                .map(|v| ReliabilityState::from_str(v).unwrap())
+                .ok(),
+        })
+    }
 }

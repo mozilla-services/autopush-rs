@@ -3,6 +3,7 @@ name = "autoconnect_settings"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+resolver = "2"
 
 [dependencies]
 cadence.workspace = true
@@ -25,6 +26,7 @@ autopush_common.workspace = true
 # specify the default via the calling crate, in order to simplify default chains.
 bigtable = ["autopush_common/bigtable"]
 emulator = ["bigtable"]
+postgres = ["autopush_common/postgres"]
 reliable_report = ["autopush_common/reliable_report"]
 redis = ["autopush_common/redis"]
 unsafe = []

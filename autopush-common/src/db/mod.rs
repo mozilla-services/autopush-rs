@@ -21,6 +21,8 @@ pub mod bigtable;
 pub mod client;
 pub mod error;
 pub mod models;
+#[cfg(feature = "postgres")]
+pub mod postgres;
 #[cfg(feature = "redis")]
 pub mod redis;
 pub mod reporter;
@@ -41,6 +43,8 @@ pub enum StorageType {
     INVALID,
     #[cfg(feature = "bigtable")]
     BigTable,
+    #[cfg(feature = "postgres")]
+    Postgres,
     #[cfg(feature = "redis")]
     Redis,
 }
@@ -50,6 +54,8 @@ impl From<&str> for StorageType {
         match name.to_lowercase().as_str() {
             #[cfg(feature = "bigtable")]
             "bigtable" => Self::BigTable,
+            #[cfg(feature = "postgres")]
+            "postgres" => Self::Postgres,
             #[cfg(feature = "redis")]
             "redis" => Self::Redis,
             _ => Self::INVALID,
@@ -65,6 +71,8 @@ impl StorageType {
         let mut result: Vec<&str> = Vec::new();
         #[cfg(feature = "bigtable")]
         result.push("Bigtable");
+        #[cfg(feature = "postgres")]
+        result.push("Postgres");
         #[cfg(feature = "redis")]
         result.push("Redis");
         result
@@ -91,6 +99,11 @@ impl StorageType {
                 trace!("Env: {:?}", cred);
             }
             return Self::BigTable;
+        }
+        #[cfg(feature = "postgres")]
+        if dsn.starts_with("postgres") {
+            trace!("Found postgres");
+            return Self::Postgres;
         }
         #[cfg(feature = "redis")]
         if dsn.starts_with("redis") {

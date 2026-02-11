@@ -177,7 +177,6 @@ impl RowMerger {
             // return Err(BigTableError::InvalidChunk("Cell missing qualifier for new cell".to_owned()))
         }
         let qualifier = chunk.take_qualifier().get_value().to_vec();
-        // dbg!(chunk.has_qualifier(), String::from_utf8(qualifier.clone()));
         let row = &mut self.row_in_progress;
 
         if !row.cells.is_empty()

@@ -3,6 +3,7 @@ name = "autoconnect"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -29,6 +30,7 @@ bigtable = ["autopush_common/bigtable", "autoconnect_settings/bigtable"]
 emulator = ["bigtable"]
 redis = ["autopush_common/redis", "autoconnect_settings/redis"]
 log_vapid = []
+postgres = ["autopush_common/postgres", "autoconnect_settings/postgres"]
 reliable_report = [
     "autoconnect_common/reliable_report",
     "autoconnect_settings/reliable_report",

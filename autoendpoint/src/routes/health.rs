@@ -29,7 +29,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
-    // Used by `reliable_report`
+    // This is only mutable if `reliable_report` is enabled
     #[allow(unused_mut)]
     let mut health = json!({
         "status": if state

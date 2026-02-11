@@ -13,6 +13,8 @@ use serde_json::json;
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(feature = "postgres")]
+use autopush_common::db::postgres::PgClientImpl;
 #[cfg(feature = "redis")]
 use autopush_common::db::redis::RedisClientImpl;
 #[cfg(feature = "reliable_report")]
@@ -84,6 +86,13 @@ impl Server {
                 debug!("Using BigTable");
                 let client = BigTableClientImpl::new(metrics.clone(), &db_settings)?;
                 client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
+            }
+            #[cfg(feature = "postgres")]
+            StorageType::Postgres => {
+                debug!("Using Postgres");
+                let client = PgClientImpl::new(metrics.clone(), &db_settings)?;
+                // client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
             #[cfg(feature = "redis")]

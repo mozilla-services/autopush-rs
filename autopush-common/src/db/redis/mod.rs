@@ -87,6 +87,7 @@ pub struct StorableNotification {
     pub sortkey_timestamp: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
+    #[cfg(feature = "reliable_report")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reliability_id: Option<String>,
     #[cfg(feature = "reliable_report")]
@@ -105,6 +106,7 @@ impl From<Notification> for StorableNotification {
             data: notification.data,
             sortkey_timestamp: notification.sortkey_timestamp,
             headers: notification.headers,
+            #[cfg(feature = "reliable_report")]
             reliability_id: notification.reliability_id,
             #[cfg(feature = "reliable_report")]
             reliable_state: notification.reliable_state,
@@ -123,6 +125,7 @@ impl From<StorableNotification> for Notification {
             data: storable.data,
             sortkey_timestamp: storable.sortkey_timestamp,
             headers: storable.headers,
+            #[cfg(feature = "reliable_report")]
             reliability_id: storable.reliability_id,
             #[cfg(feature = "reliable_report")]
             reliable_state: storable.reliable_state,

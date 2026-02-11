@@ -21,7 +21,6 @@ include/*
 lib_pypy/*
 *.swp
 pypy/
-./src/
 .tox/
 .eggs/
 autopush_rs/target

@@ -3,6 +3,7 @@ name = "autoconnect_web"
 authors.workspace = true
 edition.workspace = true
 version.workspace = true
+resolver = "2"
 
 [dependencies]
 actix-http.workspace = true

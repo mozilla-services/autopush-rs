@@ -2,27 +2,38 @@
 #[allow(dead_code)]
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) enum StorageType {
+    #[cfg(feature = "bigtable")]
     BigTable,
+    #[cfg(feature = "postgres")]
+    Postgres,
+    #[cfg(feature = "redis")]
     Redis,
     None,
 }
 
 impl Default for StorageType {
+    // It's OK clippy, we're setting a default.
+    #[allow(unreachable_code)]
     fn default() -> StorageType {
-        if cfg!(feature = "bigtable") {
-            StorageType::BigTable
-        } else if cfg!(feature = "redis") {
-            StorageType::Redis
-        } else {
-            StorageType::None
-        }
+        #[cfg(feature = "bigtable")]
+        return StorageType::BigTable;
+        #[cfg(feature = "redis")]
+        return StorageType::Redis;
+        #[cfg(feature = "postgres")]
+        return StorageType::Postgres;
+        #[cfg(not(any(feature = "bigtable", feature = "redis", feature = "postgres")))]
+        return StorageType::None;
     }
 }
 
 impl From<&str> for StorageType {
     fn from(str: &str) -> StorageType {
         match str.to_lowercase().as_str() {
+            #[cfg(feature = "bigtable")]
             "bigtable" => StorageType::BigTable,
+            #[cfg(feature = "postgres")]
+            "postgres" => StorageType::Postgres,
+            #[cfg(feature = "redis")]
             "redis" => StorageType::Redis,
             _ => {
                 warn!("Using default StorageType for {str}");

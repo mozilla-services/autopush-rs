@@ -3,6 +3,7 @@ name = "autoendpoint"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+resolver = "2"
 
 [dependencies]
 a2 = "0.10"
@@ -68,6 +69,7 @@ stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []
 
+postgres = ["autopush_common/postgres"]
 reliable_report = ["autopush_common/reliable_report"]
 
 [lints]

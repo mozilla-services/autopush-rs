@@ -2,6 +2,8 @@ use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "bigtable")]
 use autopush_common::db::bigtable::BigTableClientImpl;
+#[cfg(feature = "postgres")]
+use autopush_common::db::postgres::PgClientImpl;
 #[cfg(feature = "redis")]
 use autopush_common::db::redis::RedisClientImpl;
 use cadence::StatsdClient;
@@ -83,6 +85,12 @@ impl AppState {
                 let client = BigTableClientImpl::new(metrics.clone(), &db_settings)
                     .map_err(|e| ConfigError::Message(e.to_string()))?;
                 client.spawn_sweeper(Duration::from_secs(30));
+                Box::new(client)
+            }
+            #[cfg(feature = "postgres")]
+            StorageType::Postgres => {
+                let client = PgClientImpl::new(metrics.clone(), &db_settings)
+                    .map_err(|e| ConfigError::Message(e.to_string()))?;
                 Box::new(client)
             }
             #[cfg(feature = "redis")]
