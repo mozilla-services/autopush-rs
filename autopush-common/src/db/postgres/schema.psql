@@ -12,12 +12,13 @@
 SET search_path TO autopush, public;
 
 DROP TABLE message;
-DROP INDEX chidmessageidx;
-DROP INDEX message_reliability_id_idx;
-DROP INDEX update_idx;
 DROP TABLE meta;
 DROP TABLE router;
 DROP TABLE reliability;
+-- These should be automatically dropped.
+DROP INDEX message_reliability_id_idx;
+DROP INDEX update_idx;
+DROP INDEX meta_uaid_idx;
 
 -- This table contains the routing information for push message recipients.
 CREATE TABLE IF NOT EXISTS router (
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS router (
 -- It may also contain general setup and configuration data for autopush.
 -- Right now, it contains the channel_ids associated with the UAID.
 CREATE TABLE IF NOT EXISTS meta (
-    channel_id varchar(81) NOT NULL,
+    channel_id varchar(40) NOT NULL,
     uaid varchar(40) NOT NULL REFERENCES router ON DELETE cascade,
     FOREIGN KEY(uaid) REFERENCES router (uaid),
     PRIMARY KEY (uaid, channel_id)
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS reliability (
 
 -- Contains the encrypted messages pending delivery to the User Agents.
 CREATE TABLE IF NOT EXISTS message (
-    uaid varchar(40) NOT NULL PRIMARY KEY REFERENCES router ON DELETE cascade,
+    uaid varchar(40) NOT NULL REFERENCES router ON DELETE cascade,
     channel_id varchar(40),
     chid_message_id varchar(100),
     version varchar(40),
@@ -67,9 +68,11 @@ CREATE TABLE IF NOT EXISTS message (
     sortkey_timestamp bigint,
     headers text,
     reliability_id varchar(40) REFERENCES reliability(id),
-    FOREIGN KEY(uaid) REFERENCES router(uaid)
+    FOREIGN KEY(uaid) REFERENCES router(uaid),
+    PRIMARY KEY(uaid, chid_message_id)
 );
 
-CREATE UNIQUE INDEX chidmessageidx ON message (chid_message_id);
+CREATE UNIQUE INDEX chid_message_idx ON message (chid_message_id);
 CREATE INDEX message_reliability_id_idx on message (reliability_id);
+CREATE INDEX meta_uaid_idx on meta (uaid);
 CREATE INDEX update_idx ON reliability(last_update_timestamp);
