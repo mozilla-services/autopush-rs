@@ -20,7 +20,7 @@ allows a message that has not yet been delivered to be deleted. See
 This is tied to the `reg_calls` Handlers. This endpoint is used by
 devices that wish to use `bridging` protocols to register new channels.
 
-*NOTE*: This is not intended to be used by app developers. Please see
+_NOTE_: This is not intended to be used by app developers. Please see
 the [Web Push API on
 MDN](https://developer.mozilla.org/en-US/docs/Web/API/Push_API) for how
 to use WebPush. See `bridge_api`.
@@ -36,7 +36,7 @@ Notifications to apps running on remote User Agents.
 
 ## Lexicon
 
- **{UAID}**
+**{UAID}**
 _The Push User Agent Registration ID_
 
 Push assigns each remote recipient a unique identifier. {UAID}s are
@@ -69,12 +69,12 @@ descriptions of specific errors).
 For non-success responses, an extended error code object will be
 returned with the following format:
 
-``` json
+```json
 {
-    "code": 404,  // matches the HTTP status code
-    "errno": 103, // stable application-level error number
-    "error": "Not Found", // string representation of the status
-    "message": "No message found" // optional additional error information
+  "code": 404, // matches the HTTP status code
+  "errno": 103, // stable application-level error number
+  "error": "Not Found", // string representation of the status
+  "message": "No message found" // optional additional error information
 }
 ```
 
@@ -99,8 +99,6 @@ to replace previously sent, unreceived subscription updates. See
 https://updates.push.services.mozilla.com/wpush/v1/...
 ```
 
-
-
 If the client is using webpush style data delivery, then the body in
 its entirety will be regarded as the data payload for the message per
 [the WebPush
@@ -115,11 +113,10 @@ spec](https://tools.ietf.org/html/draft-thomson-webpush-http2-02#section-5).
 > will require that the data be converted to base64. This means that
 > data may be limited to only 2744 bytes instead of the normal 4096
 > bytes.
->
 
 **Reply:**
 
-``` json
+```json
 {"message-id": {message-id}}
 ```
 
@@ -140,7 +137,7 @@ the type of UserAgent to the Subscription provider.
   Push subscription is no longer available.
 
 - statuscode 201  
- Message delivered to node or bridge the client is connected to.
+  Message delivered to node or bridge the client is connected to.
 
 ### Message Topics
 
@@ -160,7 +157,7 @@ Example topics might be `MailMessages`,
 
 For example:
 
-``` bash
+```bash
 curl -X POST \
     https://push.services.mozilla.com/wpush/abc123... \
     -H "TTL: 86400" \
@@ -189,15 +186,13 @@ Delete the message given the `message_id`.
 https://updates.push.services.mozilla.com/wpush/v1/...
 ```
 
-
-
 **Parameters:**
 
 > None
 
 **Reply:**
 
-``` json
+```json
 {}
 ```
 
@@ -206,6 +201,7 @@ https://updates.push.services.mozilla.com/wpush/v1/...
 See [errors](#error-codes).
 
 ---
+
 <a id="bridge-http"> </a>
 
 # Push Service Bridge HTTP Interface
@@ -229,10 +225,10 @@ For the following call definitions:
 **{type}**  
 _The bridge type._
 
-  Allowed bridges are `gcm` (Google Cloud
-  Messaging), `fcm` (Firebase Cloud
-  Messaging), and `apns` (Apple Push
-  Notification system)
+Allowed bridges are `gcm` (Google Cloud
+Messaging), `fcm` (Firebase Cloud
+Messaging), and `apns` (Apple Push
+Notification system)
 
 **{app_id}**  
 _The bridge specific application identifier_
@@ -270,7 +266,7 @@ by the **Registration** call and is preceded by the scheme name
 An example of the Authorization header would be:
 
 ```html
-    Authorization: Bearer 00secret00
+Authorization: Bearer 00secret00
 ```
 
 **{vapidKey}**  
@@ -281,7 +277,11 @@ The VAPID key is optional and provides a way for an application server to volunt
 _*Please Note*_: While the VAPID key is optional, if it is included, the VAPID asserion block _must_ contain a `sub` field containing the publishing contact information as a vaild URI designator. (e.g. `mailto:admin+webpush@example.org` or `https://example.org/contact`). As an example, a minimal VAPID assertion block would contain:
 
 ```json
-{"aud": "https://updates.push.services.mozilla.com", "exp": 1725468595, "sub": "mailto:admin+webpush@example.com"}
+{
+  "aud": "https://updates.push.services.mozilla.com",
+  "exp": 1725468595,
+  "sub": "mailto:admin+webpush@example.com"
+}
 ```
 
 Where `exp` and `sub` reflect the expiration time and publishing contact information. The contact information is used in case of an issue with use of the Push service and is never used for marketing purposes.
@@ -298,7 +298,7 @@ Request a new UAID registration, Channel ID, and set a bridge type and
 3rd party bridge instance ID token for this connection. (See
 `~autopush.web.registration.NewRegistrationHandler`)
 
-*NOTE*: This call is designed for devices to register endpoints to be
+_NOTE_: This call is designed for devices to register endpoints to be
 used by bridge protocols. Please see [Web Push
 API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API) for how
 to use Web Push in your application.
@@ -317,32 +317,34 @@ This call requires no Authorization header.
   "key": {vapidkey}}`
 
 > _**Note**_
-> * The VAPID key is optional
-> * If additional information is required for the bridge, it may be
-> included in the parameters as JSON elements. Currently, no additional
-> information is required.
 >
+> - The VAPID key is optional
+> - If additional information is required for the bridge, it may be
+>   included in the parameters as JSON elements. Currently, no additional
+>   information is required.
 
 **Reply:**
 
-``` json
+```json
 `{"uaid": {UAID}, "secret": {secret},
 "endpoint": "https://updates-push...", "channelID": {CHID}}`
 ```
 
 example:
 
-``` http
+```http
  POST /v1/fcm/33clienttoken33/registration
 
  {"token": "11-instance-id-11", "key": "AbC12ef0"}
 ```
 
-``` json
- {"uaid": "01234567-0000-1111-2222-0123456789ab",
- "secret": "00secret00",
- "endpoint": "https://updates-push.services.mozaws.net/push/...",
- "channelID": "00000000-0000-1111-2222-0123456789ab"}
+```json
+{
+  "uaid": "01234567-0000-1111-2222-0123456789ab",
+  "secret": "00secret00",
+  "endpoint": "https://updates-push.services.mozaws.net/push/...",
+  "channelID": "00000000-0000-1111-2222-0123456789ab"
+}
 ```
 
 **Return Codes:**
@@ -364,32 +366,30 @@ since we are updating existing information. (See
 
 **Parameters:**
 
-```{"token": {instance_id}}```
+`{"token": {instance_id}}`
 
 > _**Note**_
->
 >
 > If additional information is required for the bridge, it may be
 > included in the parameters as JSON elements. Currently, no additional
 > information is required.
->
 
 **Reply:**
 
-``` json
+```json
 {}
 ```
 
 example:
 
-``` http
+```http
  PUT /v1/fcm/33clienttoken33/registration/abcdef012345
  Authorization: Bearer 00secret00
 
  {"token": "22-instance-id-22"}
 ```
 
-``` json
+```json
 {}
 ```
 
@@ -418,22 +418,24 @@ Acquire a new ChannelID for a given UAID. (See
 
 **Reply:**
 
-``` json
+```json
 {"channelID": {CHID}, "endpoint": "https://updates-push..."}
 ```
 
 example:
 
-``` http
+```http
  POST /v1/fcm/33clienttoken33/registration/abcdef012345/subscription
  Authorization: Bearer 00secret00
 
  {"key": "AbCd01hk"}
 ```
 
-``` json
- {"channelID": "01234567-0000-1111-2222-0123456789ab",
-  "endpoint": "https://updates-push.services.mozaws.net/push/..."}
+```json
+{
+  "channelID": "01234567-0000-1111-2222-0123456789ab",
+  "endpoint": "https://updates-push.services.mozaws.net/push/..."
+}
 ```
 
 **Return Codes:**
@@ -459,7 +461,7 @@ is no longer valid. (See
 
 **Reply:**
 
-``` json
+```json
 {}
 ```
 
@@ -475,8 +477,8 @@ Remove a given ChannelID subscription from a UAID. (See:
 **Call:**
 
 ```html
-  DELETE /v1/{type}/{app_id}/registration/{uaid}/subscription/{CHID}
-  Authorization: Bearer {secret}
+DELETE /v1/{type}/{app_id}/registration/{uaid}/subscription/{CHID}
+Authorization: Bearer {secret}
 ```
 
 **Parameters:**
@@ -485,7 +487,7 @@ Remove a given ChannelID subscription from a UAID. (See:
 
 **Reply:**
 
-``` json
+```json
 {}
 ```
 
@@ -513,23 +515,67 @@ empty set of channelIDs will be returned. (See:
 
 **Reply:**
 
-``` json
+```json
 {"uaid": {UAID}, "channelIDs": [{ChannelID}, ...]}
 ```
 
 example:
 
-``` http
+```http
 GET /v1/gcm/33clienttoken33/registration/abcdef012345/
 Authorization: Bearer 00secret00
 {}
 ```
 
-``` json
- {"uaid": "abcdef012345",
- "channelIDS": ["01234567-0000-1111-2222-0123456789ab", "76543210-0000-1111-2222-0123456789ab"]}
+```json
+{
+  "uaid": "abcdef012345",
+  "channelIDS": [
+    "01234567-0000-1111-2222-0123456789ab",
+    "76543210-0000-1111-2222-0123456789ab"
+  ]
+}
 ```
 
 **Return Codes:**
 
 See `errors`.
+
+### Check the Viability of a UAID
+
+Per request from the User Agent, Autopush has added a call to validate that a
+given UAID is active.
+
+**Call:**
+
+```
+http GET /v1/check/{UAID}
+```
+
+**_Parameters:_**
+
+None
+
+**Reply:**
+
+```json
+{"status":{StatusCode},"uaid":{UAID}}
+```
+
+Where `StatusCode` is an HTTP status code of
+
+- `200` UAID is valid and registered
+- `404` UAID is not valid or registered
+- `500` An internal error has occurred. A `message` field may contain more info.
+
+example:
+
+```http
+GET /v1/check/DEADBEEF-0000-1111-2222-0123456789ab
+```
+
+```json
+{ "status": 404, "uaid": "DEADBEEF-0000-1111-2222-0123456789ab" }
+```
+
+**Return Codes:**

@@ -32,8 +32,8 @@ use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
     registration::{
-        get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
-        unregister_user_route, update_token_route,
+        check_uaid, get_channels_route, new_channel_route, register_uaid_route,
+        unregister_channel_route, unregister_user_route, update_token_route,
     },
     webpush::{delete_notification_route, webpush_route},
 };
@@ -223,6 +223,8 @@ impl Server {
                     )
                     .route(web::delete().to(unregister_channel_route)),
                 )
+                // check to see if a UAID exists.
+                .service(web::resource("/v1/check/{uaid}").route(web::get().to(check_uaid)))
                 // Health checks
                 .service(web::resource("/status").route(web::get().to(status_route)))
                 .service(web::resource("/health").route(web::get().to(health_route)))

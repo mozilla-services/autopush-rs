@@ -1,13 +1,17 @@
 //! User validations
+use std::fmt;
 
-use crate::error::{ApiErrorKind, ApiResult};
+use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::AppState;
 use actix_http::StatusCode;
+use actix_web::{dev::Payload, FromRequest, HttpRequest};
 use autopush_common::db::{client::DbClient, User};
 use autopush_common::metric_name::MetricName;
 use autopush_common::metrics::StatsdClientExt;
 use cadence::StatsdClient;
+use futures::future::LocalBoxFuture;
+use futures::FutureExt;
 use uuid::Uuid;
 
 /// Perform some validations on the user, including:
@@ -77,4 +81,37 @@ pub async fn drop_user(uaid: Uuid, db: &dyn DbClient, metrics: &StatsdClient) ->
     db.remove_user(&uaid).await?;
 
     Ok(())
+}
+
+/// Get just the UserAgentId (if it exists) from the Request
+/// This is only used by the UAID validation check.
+#[derive(Debug)]
+pub struct ReqUaid {
+    pub uaid: Uuid,
+}
+
+impl FromRequest for ReqUaid {
+    type Error = ApiError;
+    type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
+        let req = req.clone();
+
+        async move {
+            let uaid = req
+                .match_info()
+                .get("uaid")
+                .expect("{uaid} must be part of path")
+                .parse::<Uuid>()
+                .map_err(|_| ApiErrorKind::NoUser)?;
+            Ok(Self { uaid })
+        }
+        .boxed_local()
+    }
+}
+
+impl fmt::Display for ReqUaid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.uaid.as_simple())
+    }
 }
