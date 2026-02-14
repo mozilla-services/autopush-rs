@@ -71,9 +71,6 @@ pub struct Settings {
     /// How long to wait for the initial connection handshake.
     #[serde(deserialize_with = "deserialize_u32_to_duration")]
     pub open_handshake_timeout: Duration,
-    /// How long to wait while closing a connection for the response handshake.
-    #[serde(deserialize_with = "deserialize_u32_to_duration")]
-    pub close_handshake_timeout: Duration,
     /// The URL scheme (http/https) for the endpoint URL
     pub endpoint_scheme: String,
     /// The host url for the endpoint URL (differs from `hostname` and `resolve_hostname`)
@@ -122,6 +119,7 @@ pub struct Settings {
     /// Max number of retries for retries for Redis transactions
     pub reliability_retry_count: usize,
 }
+// Did you update the documentation in `docs/src/config_options.md`?
 
 impl Default for Settings {
     fn default() -> Self {
@@ -134,7 +132,6 @@ impl Default for Settings {
             auto_ping_interval: Duration::from_secs(300),
             auto_ping_timeout: Duration::from_secs(4),
             open_handshake_timeout: Duration::from_secs(5),
-            close_handshake_timeout: Duration::from_secs(0),
             endpoint_scheme: "http".to_owned(),
             endpoint_hostname: "localhost".to_owned(),
             endpoint_port: 8082,

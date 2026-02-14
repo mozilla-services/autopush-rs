@@ -24,8 +24,8 @@ const USAGE: &str = "
 Usage: autoendpoint [options]
 
 Options:
-    -h, --help              Show this message
-    --config=CONFIGFILE     AutoEndpoint configuration file path.
+    -h, --help                  Show this message
+    -c, --config=CONFIGFILE     AutoEndpoint configuration file path.
 ";
 
 #[derive(Debug, Deserialize)]

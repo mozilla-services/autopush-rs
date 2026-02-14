@@ -22,9 +22,13 @@ pub const ENV_PREFIX: &str = "autoend";
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    /// Endpoint URL scheme
     pub scheme: String,
+    /// Endpoint URL host
     pub host: String,
+    /// Endpoint URL port
     pub port: u16,
+    /// Endpoint URL. If this is set, it will override the `scheme`, `host`, and `port` settings.
     pub endpoint_url: String,
 
     /// The DSN to connect to the storage engine (Used to select between storage systems)
@@ -32,7 +36,9 @@ pub struct Settings {
     /// JSON set of specific database settings (See data storage engines)
     pub db_settings: String,
 
+    /// The router table name to use in the database (legacy, will be removed in the future)
     pub router_table_name: String,
+    /// The message table name to use in the database (legacy, will be removed in the future)
     pub message_table_name: String,
 
     /// A stringified JSON list of VAPID public keys which should be tracked internally.
@@ -43,19 +49,31 @@ pub struct Settings {
     /// PEM format into appropriate x962 format.
     pub tracking_keys: String,
 
+    /// The max size of notification data in bytes.
     pub max_data_bytes: usize,
+    /// The cryptographic keys to use to encode the endpoint URL. NOTE: this _must_ match the keys
+    /// specified for autoconnect.
     pub crypto_keys: String,
+    /// The key to use to generate the client Auth token for channel management endpoints.
     pub auth_keys: String,
+    /// Whether to include human readable logs in the output.
     pub human_logs: bool,
 
+    /// Bridge connection timeout in milliseconds.
     pub connection_timeout_millis: u64,
+    /// Bridge request timeout in milliseconds.
     pub request_timeout_millis: u64,
 
+    /// The host for the statsd server to send metrics to. If None, metrics will not be sent.
     pub statsd_host: Option<String>,
+    /// The port for the statsd server to send metrics to.
     pub statsd_port: u16,
+    /// The label to use for statsd metrics.
     pub statsd_label: String,
 
+    /// FCM bridge settings
     pub fcm: FcmSettings,
+    /// APNS bridge settings
     pub apns: ApnsSettings,
     #[cfg(feature = "stub")]
     /// "Stub" is a predictable Mock bridge that allows us to "send" data and return an expected
@@ -67,12 +85,13 @@ pub struct Settings {
     /// for details.
     pub reliability_dsn: Option<String>,
     #[cfg(feature = "reliable_report")]
-    /// Max number of retries for retries for Redis transactions
+    /// Max number of retries reliability transactions into Redis
     pub reliability_retry_count: usize,
     /// Max Notification Lifespan
     #[serde_as(as = "serde_with::DurationSeconds<u64>")]
     pub max_notification_ttl: Duration,
 }
+// Did you update the documentation in `docs/src/config_options.md`?
 
 impl Default for Settings {
     fn default() -> Settings {
