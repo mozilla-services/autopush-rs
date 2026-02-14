@@ -25,7 +25,7 @@ Usage: autoendpoint [options]
 
 Options:
     -h, --help              Show this message
-    --config=CONFIGFILE     AutoEndpoint configuration file path.
+    -c, --config=CONFIGFILE AutoEndpoint configuration file path.
 ";
 
 #[derive(Debug, Deserialize)]

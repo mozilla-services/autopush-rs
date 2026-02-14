@@ -50,6 +50,7 @@ or to deploy autopush to a production environment for Firefox.
 * [Running Autopush](running.md)
   * [Overview](running.md#overview)
   * [Setup](running.md#setup)
+  * [Configuration options](config_options.md)
   * [Start Autopush](running.md#start-autopush)
   * [Configuration](running.md#configuration)
 

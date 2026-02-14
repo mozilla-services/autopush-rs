@@ -14,7 +14,7 @@ It's important to note that the data stored in these "tables" needs to be regula
 
 Please note: configuration options will presume that you are using configuration files. Remember, all configuration options can be specified using environment variables. See the sample configuration options for details.
 
-From what we've observed, the general usage pattern for our system tends to be that a large number of users create a subscription, then those subscriptions go "idle". The bulk of our messages go into storage and are never retrieved. Internally, we consider this the "long storage" problem.
+From what we've observed, the general usage pattern for our system tends to be that a large number of users create a subscription, then those subscriptions go "idle". The bulk of our messages go into storage and are never retrieved. Internally, we consider this the "long storagegit la" problem.
 
 As an additional "bonus", Publishers frequently ignore our 404/410 responses and continue to publish to subscription URLs that are no longer valid. These invalid subscriptions still require a DB lookup, so you may wish to also add rules to temporarily block IPs that have too many 404/410 responses.
 

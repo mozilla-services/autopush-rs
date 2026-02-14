@@ -4,6 +4,7 @@
 #
 # Note that we use a library that parses sub structures (like FCM) using double underscores.
 # For example `AUTOEND__FCM__MIN_TTL` sets the `fcm.min_ttl` argument.
+# See [Configuration Options](docs/src/config_options.md) for details.
 
 # The URI scheme to use when referencing this server
 #scheme = "http"

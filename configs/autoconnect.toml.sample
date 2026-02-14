@@ -1,6 +1,7 @@
 # Configuration options can either be specified here (and included via the `--config` option),
 # or as environment variables prefixed with `AUTOCONNECT__`.
 # For example: `AUTOCONNECT__PORT` specifies the WebSocket port to use.
+# See [Configuration Options](docs/src/config_options.md) for details.
 #
 
 # The host to use for HTTP connections. Defaults to the machine's hostname.
@@ -73,9 +74,6 @@
 # How long to wait for the WebSocket ping to come back before we time out. 0
 # indicates no limit.
 #auto_ping_timeout = 4
-
-# How long to wait for a closing handshake. 0 indicates no limit.
-#close_handshake_timeout = 0
 
 # Maximum number of WebSocket clients. 0 indicates no limit.
 #max_connections = 0

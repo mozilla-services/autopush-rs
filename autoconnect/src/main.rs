@@ -26,7 +26,7 @@ Usage: autoconnect [options]
 
 Options:
     -h, --help                          Show this message.
-    --config=CONFIGFILE                 Connection configuration file path.
+    -c, --config=CONFIGFILE             Connection configuration file path.
 ";
 
 #[derive(Debug, Deserialize)]
