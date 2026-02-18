@@ -49,12 +49,12 @@ derive_builder = "0.20"
 gethostname = "1.0"
 num_cpus = "1.16"
 woothee = "0.13"
-tokio = { workspace = true, features = ["macros", "sync" ] }
+tokio = { workspace = true, features = ["macros", "sync"] }
 
 # #[cfg(bigtable)] for this section.
 # the following three crates must match what is specifed in google-cloud-rust-raw's dependencies
 google-cloud-rust-raw = { version = "0.16", default-features = false, features = [
-    "bigtable",
+  "bigtable",
 ], optional = true }
 grpcio = { version = "=0.13.0", features = ["openssl"], optional = true }
 grpcio-sys = { version = "=0.13.0", optional = true }
@@ -62,40 +62,46 @@ prometheus-client = { version = "0.24", optional = true }
 protobuf = { version = "=2.28.0", optional = true } # grpcio does not support protobuf 3+
 form_urlencoded = { version = "1.2", optional = true }
 
-tokio-postgres = { version="0.7", optional = true }
-postgres = {version="0.19", optional=true}
+tokio-postgres = { version = "0.7", optional = true }
+postgres = { version = "0.19", optional = true }
 
-deadpool-postgres = {version = "0.14", optional = true}
-deadpool-redis = { version = "0.22", features=["rt_tokio_1", "serde"], optional = true }
+deadpool-postgres = { version = "0.14", optional = true }
+deadpool-redis = { version = "0.22", features = [
+  "rt_tokio_1",
+  "serde",
+], optional = true }
 redis-module = { version = "2.0", optional = true }
-redis = { version = "0.32", features=["aio", "tokio-comp"], optional = true } # blocked by deadpool-redis
+redis = { version = "0.32", features = [
+  "aio",
+  "tokio-comp",
+], optional = true } # blocked by deadpool-redis
 
 [dev-dependencies]
 actix-rt = "2.8"
-mockito = "0.31"                                     # mockito > 0.31 will require significant reworking of the tests and is not critical yet.
-redis-test = { version = "0.12", features = ["aio"] } # blocked by deadpool-redis
+mockito = "0.31" # mockito > 0.31 will require significant reworking of the tests and is not critical yet.
+redis-test = { version = "0.12", features = [
+  "aio",
+] } # blocked by deadpool-redis
 tempfile = "3.2.0"
 
 [features]
 # NOTE: Do not set a `default` here, rather specify them in the calling library.
 # This is to reduce complexity around feature specification.
 bigtable = [
-    "dep:google-cloud-rust-raw",
-    "dep:grpcio",
-    "dep:grpcio-sys",
-    "dep:protobuf",
-    "dep:form_urlencoded",
+  "dep:google-cloud-rust-raw",
+  "dep:grpcio",
+  "dep:grpcio-sys",
+  "dep:protobuf",
+  "dep:form_urlencoded",
 ]
 # used for testing big table, requires an external bigtable emulator running.
-emulator = [
-    "bigtable",
-] 
+emulator = ["bigtable"]
 postgres = ["dep:tokio-postgres", "dep:postgres", "dep:deadpool-postgres"]
 reliable_report = [
-    "dep:redis",
-    "dep:prometheus-client",
-    "dep:redis-module",
-    "dep:deadpool-redis",
+  "dep:redis",
+  "dep:prometheus-client",
+  "dep:redis-module",
+  "dep:deadpool-redis",
 ]
 redis = ["dep:redis", "dep:deadpool-redis"]
 unsafe = []

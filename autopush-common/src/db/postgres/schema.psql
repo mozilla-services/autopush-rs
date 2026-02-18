@@ -22,25 +22,25 @@ DROP INDEX meta_uaid_idx;
 
 -- This table contains the routing information for push message recipients.
 CREATE TABLE IF NOT EXISTS router (
-    uaid varchar(40) NOT NULL PRIMARY KEY UNIQUE,
+    uaid TEXT NOT NULL PRIMARY KEY UNIQUE,
     connected_at bigint,
-    router_type varchar(100),
+    router_type TEXT,
     router_data text,
     last_connect bigint,
-    node_id varchar(100),
+    node_id TEXT,
     record_version bigint,
-    version varchar(40),    -- Optional and probably not needed
+    version TEXT,    -- Optional and probably not needed
     last_update bigint,     -- Note "current_timestamp" seems to be reserved.
     expiry bigint,
-    priv_channels varchar(40)[]
+    priv_channels TEXT[]
 );
 
 -- This contains "meta" or general information for the routing table.
 -- It may also contain general setup and configuration data for autopush.
 -- Right now, it contains the channel_ids associated with the UAID.
 CREATE TABLE IF NOT EXISTS meta (
-    channel_id varchar(40) NOT NULL,
-    uaid varchar(40) NOT NULL REFERENCES router ON DELETE cascade,
+    channel_id TEXT NOT NULL,
+    uaid TEXT NOT NULL REFERENCES router ON DELETE cascade,
     FOREIGN KEY(uaid) REFERENCES router (uaid),
     PRIMARY KEY (uaid, channel_id)
 
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS meta (
 
 -- (Optional table containing state information for "trackable" messages.)
 CREATE TABLE IF NOT EXISTS reliability (
-    id varchar(40) NOT NULL PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY,
     states jsonb,
     last_update_timestamp bigint
 );
@@ -56,10 +56,10 @@ CREATE TABLE IF NOT EXISTS reliability (
 
 -- Contains the encrypted messages pending delivery to the User Agents.
 CREATE TABLE IF NOT EXISTS message (
-    uaid varchar(40) NOT NULL REFERENCES router ON DELETE cascade,
-    channel_id varchar(40),
-    chid_message_id varchar(100),
-    version varchar(40),
+    uaid TEXT NOT NULL REFERENCES router ON DELETE cascade,
+    channel_id TEXT,
+    chid_message_id TEXT,
+    version TEXT,
     ttl bigint,
     expiry bigint,
     topic varchar,
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS message (
     data text,
     sortkey_timestamp bigint,
     headers text,
-    reliability_id varchar(40) REFERENCES reliability(id),
+    reliability_id TEXT REFERENCES reliability(id),
     FOREIGN KEY(uaid) REFERENCES router(uaid),
     PRIMARY KEY(uaid, chid_message_id)
 );

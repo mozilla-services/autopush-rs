@@ -14,6 +14,9 @@
 # The port to use
 #port = 8000
 
+# Full endpoint URL (used as audience), keep in sync with autoconnect
+# endpoint_url = ""
+
 # The router table name
 #router_table_name = "router"
 
@@ -54,6 +57,9 @@
 # a JSON structure containing database specific settings.
 # We use this instead of a structure because different datastores can take different arguments.
 # db_settings = "{\"message_family\":\"message\",\"router_family\":\"router\", \"table_name\":\"projects/test/instances/test/tables/autopush\", \"max_router_ttl\":5184000}"
+#
+# Settings for postgres
+# db_settings = "{\"router_table\":\"router\",\"message_table\":\"message\",\"meta_table\":\"meta\",\"reliability_table\":\"reliability\",\"max_router_ttl\":5184000}"
 
 # Settings for the Firebase Cloud Messaging router
 [fcm]

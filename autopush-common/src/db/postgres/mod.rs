@@ -214,16 +214,16 @@ impl DbClient for PgClientImpl {
                     expiry=EXCLUDED.expiry
                     ;
             ", tablename=self.router_table()),
-            &[&user.uaid.simple().to_string(),              // 1 
+            &[&user.uaid.simple().to_string(),              // 1
             &(user.connected_at as i64),                    // 2
-            &user.router_type,                              // 3    
+            &user.router_type,                              // 3
             &json!(user.router_data).to_string(),           // 4
             &user.node_id,                                  // 5
             &user.record_version.map(|i| i as i64),    // 6
             &(user.version.map(|v| v.simple().to_string())),   // 7
             &user.current_timestamp.map(|i| i as i64), // 8
             &user.priv_channels.iter().map(|v| v.to_string()).collect::<Vec<String>>(),
-            &(self.router_expiry() as i64),                 // 10    
+            &(self.router_expiry() as i64),                 // 10
             ]
         ).await.map_err( DbError::PgError)?;
         Ok(())
@@ -280,8 +280,8 @@ impl DbClient for PgClientImpl {
         let row = self.pool.get().await.map_err(DbError::PgPoolError)?
         .query_opt(
             &format!(
-                "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels 
-                 FROM {tablename} 
+                "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels
+                 FROM {tablename}
                  WHERE uaid = $1",
                 tablename=self.router_table()
             ),
@@ -380,8 +380,8 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "INSERT 
-                     INTO {tablename} (uaid, channel_id) VALUES ($1, $2) 
+                    "INSERT
+                     INTO {tablename} (uaid, channel_id) VALUES ($1, $2)
                      ON CONFLICT DO NOTHING",
                     tablename = self.meta_table()
                 ),
@@ -429,9 +429,9 @@ impl DbClient for PgClientImpl {
         // and redistribute them into tuples.
         // (Remember, an existing channel_id is ignored during this insert since it's already registered)
         let statement = format!(
-            "INSERT 
-                INTO {tablename} (uaid, channel_id) 
-                VALUES {vars} 
+            "INSERT
+                INTO {tablename} (uaid, channel_id)
+                VALUES {vars}
                 ON CONFLICT DO NOTHING",
             tablename = self.meta_table(),
             // Postgres variables are 1-indexed.
@@ -476,7 +476,7 @@ impl DbClient for PgClientImpl {
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let cmd = format!(
-            "DELETE FROM {tablename} 
+            "DELETE FROM {tablename}
              WHERE uaid = $1 AND channel_id = $2;",
             tablename = self.meta_table()
         );
@@ -511,8 +511,8 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "UPDATE {tablename} 
-                        SET node_id = null 
+                    "UPDATE {tablename}
+                        SET node_id = null
                         WHERE uaid=$1 AND node_id = $2 AND connected_at = $3 AND version= $4;",
                     tablename = self.router_table()
                 ),
@@ -610,7 +610,7 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "DELETE FROM {tablename} 
+                    "DELETE FROM {tablename}
                      WHERE uaid=$1 AND chid_message_id = $2;",
                     tablename = self.message_table()
                 ),
@@ -643,14 +643,18 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .query(
                 &format!(
-                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers 
-                 FROM {tablename} 
+                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers
+                 FROM {tablename}
                  WHERE uaid=$1 AND expiry >= $2
-                 ORDER BY timestamp DESC 
+                 ORDER BY timestamp DESC
                  LIMIT $3",
                 tablename=&self.message_table(),
             ),
-                &[&uaid.simple().to_string(),&(util::sec_since_epoch() as i64), &(limit as i64)],
+                &[
+                    &uaid.simple().to_string(),
+                    &(util::sec_since_epoch() as i64),
+                    &(limit as i64),
+                ],
             )
             .await
             .map_err(DbError::PgError)?
@@ -684,17 +688,17 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * FROM {} 
+                        "SELECT * FROM {}
                          WHERE uaid = $1 AND timestamp > $2 AND expiry >= $3
-                         ORDER BY timestamp 
-                         LIMIT $3",
+                         ORDER BY timestamp
+                         LIMIT $4",
                         self.message_table()
                     ),
                     &[
                         &uaid,
                         &(ts as i64),
-                        &(limit as i64),
                         &(util::sec_since_epoch() as i64),
+                        &(limit as i64),
                     ],
                 )
                 .await
@@ -706,14 +710,14 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * 
-                         FROM {} 
-                         WHERE uaid = $1 
+                        "SELECT *
+                         FROM {}
+                         WHERE uaid = $1
                          AND expiry >= $2
-                         LIMIT $2",
+                         LIMIT $3",
                         self.message_table()
                     ),
-                    &[&uaid, &(limit as i64), &(util::sec_since_epoch() as i64)],
+                    &[&uaid, &(util::sec_since_epoch() as i64), &(limit as i64)],
                 )
                 .await
         }?;
@@ -768,7 +772,7 @@ impl DbClient for PgClientImpl {
                 &format!(
                 "INSERT INTO {tablename} (id, states, last_update_timestamp) VALUES ($1, json_build_object($2, $3), $3)
                  ON CONFLICT (id) DO
-                 UPDATE SET states = EXCLUDED.states, 
+                 UPDATE SET states = EXCLUDED.states,
                  last_update_timestamp = EXCLUDED.last_update_timestamp;",
                     tablename = tablename
                 ),
