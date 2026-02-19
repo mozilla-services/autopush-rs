@@ -602,11 +602,10 @@ impl DbClient for PgClientImpl {
                     &(util::sec_since_epoch() as i64 + message.ttl as i64),
                     &message
                         .topic
-                        .clone()
-                        .map(|t| if t.is_empty() { None } else { Some(t) })
-                        .unwrap_or(None),
+                        .as_ref()
+                        .filter(|v| !v.is_empty()),
                     &(message.timestamp as i64),
-                    &message.data.clone().unwrap_or_default(),
+                    &message.data.as_deref().unwrap_or_default(),
                     &message.sortkey_timestamp.map(|v| v as i64),
                     &json!(message.headers).to_string(),
                     #[cfg(feature = "reliable_report")]
