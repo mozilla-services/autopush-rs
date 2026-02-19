@@ -14,12 +14,11 @@ import uuid
 from hashlib import sha256
 from json import JSONDecodeError
 from logging import Logger
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 
 import gevent
 import websocket
 from args import parse_wait_time
-from exceptions import ZeroStatusRequestError
 from gevent import Greenlet
 from locust import FastHttpUser, events, task
 from locust.exception import LocustError
@@ -361,8 +360,10 @@ class StoredNotifAutopushUser(FastHttpUser):
             if record:
                 response_time = (recv_time - record.send_time) * 1000
             else:
-                if key and key in self.purged_records:
-                    logger.error(f"⭕Duplicate record {key} :: {message.version}?")
+                if key and key in self.purged_records and message:
+                    logger.error(
+                        f"⭕Duplicate record {key} :: {cast(NotificationMessage, message).version}?"
+                    )
                 else:
                     exception = f"There is no record of the '{message_type}' message"
                     logger.error(f"{exception}. Contents: {message}")

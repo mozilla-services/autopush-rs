@@ -15,7 +15,7 @@ import uuid
 from hashlib import sha256
 from json import JSONDecodeError
 from logging import Logger
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 from urllib.parse import urlparse
 
 import gevent
@@ -346,7 +346,9 @@ class AutopushUser(FastHttpUser):
                     logging.info(f"looking for: {key}")
                     record = self.notification_records.get(key, None)  # nosec
                     if not record:
-                        logger.error(f"No record found for {key}. Contents: {decoded[:100]}...")
+                        logger.error(
+                            f"No record found for {key}. Contents: {decoded[:100].decode()}..."
+                        )
                     else:
                         self.purged_records.add(key)
                         logger.info(f"removing {key}")
@@ -365,8 +367,10 @@ class AutopushUser(FastHttpUser):
             if record:
                 response_time = (recv_time - record.send_time) * 1000
             else:
-                if key and key in self.purged_records:
-                    logger.error(f"🔴Duplicate record {key} :: {message.version}?")
+                if key and key in self.purged_records and message:
+                    logger.error(
+                        f"🔴Duplicate record {key} :: {cast(NotificationMessage, message).version}?"
+                    )
                 else:
                     exception = f"There is no record of the '{message_type}' message"
                     logger.error(f"{exception}. Contents: {message}")
