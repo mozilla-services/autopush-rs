@@ -600,10 +600,7 @@ impl DbClient for PgClientImpl {
                     &message.version,
                     &(message.ttl as i64), // Postgres has no auto TTL.
                     &(util::sec_since_epoch() as i64 + message.ttl as i64),
-                    &message
-                        .topic
-                        .as_ref()
-                        .filter(|v| !v.is_empty()),
+                    &message.topic.as_ref().filter(|v| !v.is_empty()),
                     &(message.timestamp as i64),
                     &message.data.as_deref().unwrap_or_default(),
                     &message.sortkey_timestamp.map(|v| v as i64),
