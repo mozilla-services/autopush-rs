@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import base64
 import json
 import logging
 import os
@@ -11,7 +12,6 @@ import random
 import string
 import time
 import uuid
-import base64
 from hashlib import sha256
 from json import JSONDecodeError
 from logging import Logger
@@ -157,7 +157,7 @@ class AutopushUser(FastHttpUser):
         if isinstance(message, HelloMessage):
             self.uaid = message.uaid
         elif isinstance(message, NotificationMessage) and ws.sock:
-            key = self.gen_message_key(message.data)
+            key = self.gen_message_key(base64.urlsafe_b64decode(message.data + "====").decode())
             logger.info(f"Acking message {key} :: {message.version}")
             self.send_ack(ws.sock, message.channelID, message.version)
         elif isinstance(message, RegisterMessage):
@@ -330,7 +330,7 @@ class AutopushUser(FastHttpUser):
         try:
             message_dict: dict[str, Any] = json.loads(data)
             message_type = message_dict.get("messageType", "unknown")
-            key = None,
+            key = None
             match message_type:
                 case "hello":
                     message = HelloMessage(**message_dict)
@@ -341,12 +341,10 @@ class AutopushUser(FastHttpUser):
                     # scan through the notification records to see
                     # if this matches a record we sent.
                     # (Remember, we get back a stripped, base64 encoded version of the data)
-                    decoded = base64.urlsafe_b64decode(message_data.encode()+b"====")
+                    decoded = base64.urlsafe_b64decode(message_data.encode() + b"====")
                     key = self.gen_message_key(decoded.decode())
                     logging.info(f"looking for: {key}")
-                    record = self.notification_records.get(
-                        key, None  # nosec
-                    )
+                    record = self.notification_records.get(key, None)  # nosec
                     if not record:
                         logger.error(f"No record found for {key}. Contents: {decoded[:100]}...")
                     else:

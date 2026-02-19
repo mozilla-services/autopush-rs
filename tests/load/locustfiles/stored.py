@@ -69,7 +69,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         self.ws: WebSocket | None = websocket.WebSocket()
         self.ws_greenlet: Greenlet | None = None
         self.initialized: bool = False
-    
+
     def gen_message_key(self, data: str) -> str:
         """Generate a unique key for a message based on its data."""
         digest = sha256(data.encode(), usedforsecurity=False).digest()  # nosec
@@ -289,7 +289,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         ) as response:
             if response.status_code == 0:
                 response.failure(f"Received status code 0 from {endpoint_url}")
-                #raise ZeroStatusRequestError()
+                # raise ZeroStatusRequestError()
             if response.status_code != 201:
                 response.failure(f"{response.status_code=}, expected 201, {response.text=}")
 
@@ -329,13 +329,15 @@ class StoredNotifAutopushUser(FastHttpUser):
                 case "notification":
                     message = NotificationMessage(**message_dict)
                     message_data: str = message.data
-                    key = self.gen_message_key(base64.urlsafe_b64decode(message_data + "===").decode())
-                    logging.info(f"looking for: {key}")
-                    record = self.notification_records.pop(
-                        key, None
+                    key = self.gen_message_key(
+                        base64.urlsafe_b64decode(message_data + "===").decode()
                     )
+                    logging.info(f"looking for: {key}")
+                    record = self.notification_records.pop(key, None)
                     if not record:
-                        logger.error(f"No record found for {key}. Contents: {message_data[:100]}...")
+                        logger.error(
+                            f"No record found for {key}. Contents: {message_data[:100]}..."
+                        )
                     else:
                         logger.info(f"removing {key}")
                         self.purged_records.add(key)
