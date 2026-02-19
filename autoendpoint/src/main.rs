@@ -57,6 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Run server...
     let server = server::Server::with_settings(settings)
         .await
+        .inspect_err(|e| error!("Server Start Error: {:?}", e))
         .expect("Could not start server");
     info!(
         "Starting autoendpoint on port: {} ({})",

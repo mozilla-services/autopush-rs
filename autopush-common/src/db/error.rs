@@ -51,16 +51,20 @@ pub enum DbError {
     Backoff(String),
 
     #[cfg(feature = "postgres")]
-    #[error("Postgres Error: {0}")]
+    #[error("Postgres General Error: {0}")]
     PgGeneralError(String),
 
     #[cfg(feature = "postgres")]
-    #[error("Postgres Error: {0}")]
+    #[error("Postgres Pool Error: {0}")]
     PgPoolError(#[from] deadpool::managed::PoolError<tokio_postgres::Error>),
 
     #[cfg(feature = "postgres")]
     #[error("Postgres Error: {0}")]
     PgError(#[from] tokio_postgres::Error),
+
+    #[cfg(feature = "postgres")]
+    #[error("Postgres DB Error: {0}")]
+    PgDbError(String),
 }
 
 impl DbError {
@@ -87,6 +91,12 @@ impl ReportableError for DbError {
         match &self {
             #[cfg(feature = "bigtable")]
             DbError::BTError(e) => e.is_sentry_event(),
+            #[cfg(feature = "postgres")]
+            DbError::PgError(_) => true,
+            #[cfg(feature = "postgres")]
+            DbError::PgPoolError(_) => true,
+            #[cfg(feature = "postgres")]
+            DbError::PgDbError(_) => true,
             _ => false,
         }
     }
@@ -108,6 +118,15 @@ impl ReportableError for DbError {
                 vec![("raw", e.to_string())]
             }
             DbError::Integrity(_, Some(row)) => vec![("row", row.clone())],
+            #[cfg(feature = "postgres")]
+            DbError::PgError(e) => vec![(
+                "error",
+                e.as_db_error()
+                    .map(|e| e.message().to_owned())
+                    .unwrap_or("No error message".to_owned()),
+            )],
+            #[cfg(feature = "postgres")]
+            DbError::PgDbError(v) => vec![("error", v.to_owned())],
             _ => vec![],
         }
     }
