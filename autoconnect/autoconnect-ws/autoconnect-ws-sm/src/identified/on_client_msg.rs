@@ -226,7 +226,7 @@ impl WebPushClient {
                 // Some storage engines may set this to "".
                 let is_topic = acked_notification
                     .topic
-                    .clone()
+                    .as_ref()
                     .map(|t| !t.is_empty())
                     .unwrap_or(false);
                 debug!("✅ Ack notif: {:?}", &acked_notification);
