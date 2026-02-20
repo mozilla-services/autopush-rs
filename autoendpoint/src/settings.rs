@@ -74,7 +74,6 @@ pub struct Settings {
     /// Max Notification Lifespan
     #[serde_as(as = "serde_with::DurationSeconds<u64>")]
     pub max_notification_ttl: Duration,
-
 }
 
 impl Default for Settings {

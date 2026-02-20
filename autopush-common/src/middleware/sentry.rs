@@ -25,7 +25,7 @@ impl<E> SentryWrapper<E> {
             metrics,
             metric_label,
             phantom: PhantomData,
-            sentry_enabled
+            sentry_enabled,
         }
     }
 }
