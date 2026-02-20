@@ -25,7 +25,7 @@ macro_rules! build_app {
             .wrap(autopush_common::middleware::sentry::SentryWrapper::<
                 $crate::error::ApiError,
             >::new(
-                $app_state.metrics.clone(), "error".to_owned()
+                $app_state.metrics.clone(), "error".to_owned(), $app_state.settings.disable_sentry.unwrap_or(false),
             ))
             .configure($config)
     };
