@@ -55,6 +55,8 @@ pub struct Settings {
     pub statsd_port: u16,
     pub statsd_label: String,
 
+    pub disable_sentry: Option<bool>,
+
     pub fcm: FcmSettings,
     pub apns: ApnsSettings,
     #[cfg(feature = "stub")]
@@ -72,6 +74,7 @@ pub struct Settings {
     /// Max Notification Lifespan
     #[serde_as(as = "serde_with::DurationSeconds<u64>")]
     pub max_notification_ttl: Duration,
+
 }
 
 impl Default for Settings {
@@ -108,6 +111,7 @@ impl Default for Settings {
             #[cfg(feature = "reliable_report")]
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
             max_notification_ttl: Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
+            disable_sentry: None,
         }
     }
 }

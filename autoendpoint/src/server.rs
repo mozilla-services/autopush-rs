@@ -192,6 +192,7 @@ impl Server {
                 .wrap(SentryWrapper::<ApiError>::new(
                     metrics.clone(),
                     "api_error".to_owned(),
+                    app_state.settings.disable_sentry.unwrap_or(false),
                 ))
                 .wrap(cors)
                 // Endpoints
