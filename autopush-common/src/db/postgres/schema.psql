@@ -9,8 +9,6 @@
 --      SET search_path TO autopush, public;
 -- );
 
-SET search_path TO autopush, public;
-
 DROP TABLE message;
 DROP TABLE meta;
 DROP TABLE router;
@@ -29,7 +27,7 @@ CREATE TABLE IF NOT EXISTS router (
     last_connect bigint,
     node_id varchar(100),
     record_version bigint,
-    version varchar(40),    -- Optional and probably not needed
+    version text,    -- Optional and probably not needed
     last_update bigint,     -- Note "current_timestamp" seems to be reserved.
     expiry bigint,
     priv_channels varchar(40)[]
@@ -59,7 +57,7 @@ CREATE TABLE IF NOT EXISTS message (
     uaid varchar(40) NOT NULL REFERENCES router ON DELETE cascade,
     channel_id varchar(40),
     chid_message_id varchar(100),
-    version varchar(40),
+    version text,
     ttl bigint,
     expiry bigint,
     topic varchar,

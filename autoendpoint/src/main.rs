@@ -24,8 +24,8 @@ const USAGE: &str = "
 Usage: autoendpoint [options]
 
 Options:
-    -h, --help              Show this message
-    --config=CONFIGFILE     AutoEndpoint configuration file path.
+    -h, --help                  Show this message
+    -c, --config=CONFIGFILE     AutoEndpoint configuration file path.
 ";
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Run server...
     let server = server::Server::with_settings(settings)
         .await
+        .inspect_err(|e| error!("Server Start Error: {:?}", e))
         .expect("Could not start server");
     info!(
         "Starting autoendpoint on port: {} ({})",

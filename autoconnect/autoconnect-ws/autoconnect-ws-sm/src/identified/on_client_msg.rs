@@ -223,7 +223,12 @@ impl WebPushClient {
                 );
                 // Get the stored notification record.
                 let acked_notification = &mut self.ack_state.unacked_stored_notifs[pos];
-                let is_topic = acked_notification.topic.is_some();
+                // Some storage engines may set this to "".
+                let is_topic = acked_notification
+                    .topic
+                    .as_ref()
+                    .map(|t| !t.is_empty())
+                    .unwrap_or(false);
                 debug!("✅ Ack notif: {:?}", &acked_notification);
                 // Only force delete Topic messages, since they don't have a timestamp.
                 // Other messages persist in the database, to be, eventually, cleaned up by their
@@ -231,9 +236,15 @@ impl WebPushClient {
                 // record. Use that field to set the baseline timestamp for when to pull messages
                 // in the future.
                 if is_topic {
-                    let chid = &acked_notification.chidmessageid();
-                    debug!("✅ WebPushClient:ack removing Stored, sort_key: {}", &chid);
-                    self.app_state.db.remove_message(&self.uaid, chid).await?;
+                    let chid_message_id = &acked_notification.chidmessageid();
+                    debug!(
+                        "✅🗑 WebPushClient:ack removing Stored, sort_key: {}, version: {}",
+                        &chid_message_id, &acked_notification.version
+                    );
+                    self.app_state
+                        .db
+                        .remove_message(&self.uaid, chid_message_id)
+                        .await?;
                     // NOTE: timestamp messages may still be in state of flux: they're not fully
                     // ack'd (removed/unable to be resurrected) until increment_storage is called,
                     // so their reliability is recorded there

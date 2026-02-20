@@ -136,7 +136,7 @@ impl TryFrom<&tokio_postgres::Row> for Notification {
             ttl: row.try_get::<&str, i64>("ttl").map(|v| v as u64).unwrap(),
             topic: row
                 .try_get::<&str, String>("topic")
-                .map(Some)
+                .map(|v| if v.is_empty() { None } else { Some(v) })
                 .unwrap_or_default(),
             timestamp: row
                 .try_get::<&str, i64>("timestamp")

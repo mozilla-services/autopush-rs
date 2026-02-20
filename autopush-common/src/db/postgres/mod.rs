@@ -36,21 +36,16 @@ use super::client::FetchMessageResponse;
 const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct PostgresDbSettings {
-    #[serde(default)]
-    pub schema: Option<String>, // Optional DB Schema
-    #[serde(default)]
-    pub router_table: String, // Routing info
-    #[serde(default)]
-    pub message_table: String, // Message storage info
-    #[serde(default)]
-    pub meta_table: String, // Channels and meta info
-    #[serde(default)]
+    pub schema: Option<String>,    // Optional DB Schema
+    pub router_table: String,      // Routing info
+    pub message_table: String,     // Message storage info
+    pub meta_table: String,        // Channels and meta info
     pub reliability_table: String, // Channels and meta info
-    #[serde(default)]
-    max_router_ttl: u64, // Max time for router records to live.
-                         // #[serde(default)]
-                         // pub use_tls: bool // Should you use a TLS connection to the db.
+    max_router_ttl: u64,           // Max time for router records to live.
+                                   // #[serde(default)]
+                                   // pub use_tls: bool // Should you use a TLS connection to the db.
 }
 
 impl Default for PostgresDbSettings {
@@ -99,6 +94,10 @@ impl PgClientImpl {
     /// e.g. (postgresql://scott:tiger@dbhost/autopush?connect_timeout=10&keepalives_idle=3600)
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref())?;
+        info!(
+            "📮 Initializing Postgres DB Client with settings: {:?} from {:?}",
+            db_settings, &settings.db_settings
+        );
         // TODO: If required, add the TlsConnect<Stream> wrapper here.
         let tls_flag = tokio_postgres::NoTls;
         if let Some(dsn) = settings.dsn.clone() {
@@ -143,8 +142,8 @@ impl PgClientImpl {
             )
             .await
             .map_err(DbError::PgError)?;
-        let val: &str = rows[0].get(0);
-        Ok(val.to_lowercase().starts_with('t'))
+        let val: bool = rows[0].try_get(0)?;
+        Ok(val)
     }
 
     /// Return the router's expiration timestamp
@@ -192,6 +191,15 @@ impl PgClientImpl {
             self.db_settings.reliability_table.clone()
         }
     }
+
+    pub(crate) fn error_to_string(e: &tokio_postgres::Error) -> String {
+        e.as_db_error()
+            .map(|e| e.message().to_owned()) // Some errors have a useful message.
+            .unwrap_or_else(|| {
+                // Others are best to just convert to a string.
+                e.to_string()
+            })
+    }
 }
 
 #[async_trait]
@@ -214,18 +222,20 @@ impl DbClient for PgClientImpl {
                     expiry=EXCLUDED.expiry
                     ;
             ", tablename=self.router_table()),
-            &[&user.uaid.simple().to_string(),              // 1 
+            &[&user.uaid.simple().to_string(),              // 1
             &(user.connected_at as i64),                    // 2
-            &user.router_type,                              // 3    
+            &user.router_type,                              // 3
             &json!(user.router_data).to_string(),           // 4
             &user.node_id,                                  // 5
             &user.record_version.map(|i| i as i64),    // 6
             &(user.version.map(|v| v.simple().to_string())),   // 7
             &user.current_timestamp.map(|i| i as i64), // 8
             &user.priv_channels.iter().map(|v| v.to_string()).collect::<Vec<String>>(),
-            &(self.router_expiry() as i64),                 // 10    
+            &(self.router_expiry() as i64),                 // 10
             ]
-        ).await.map_err( DbError::PgError)?;
+        ).await.map_err(|e| {
+            DbError::PgDbError(Self::error_to_string(&e))
+        })?;
         Ok(())
     }
 
@@ -271,7 +281,7 @@ impl DbClient for PgClientImpl {
                 ],
             )
             .await
-            .map_err(DbError::PgError)?;
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         Ok(result > 0)
     }
 
@@ -280,15 +290,17 @@ impl DbClient for PgClientImpl {
         let row = self.pool.get().await.map_err(DbError::PgPoolError)?
         .query_opt(
             &format!(
-                "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels 
-                 FROM {tablename} 
+                "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels
+                 FROM {tablename}
                  WHERE uaid = $1",
                 tablename=self.router_table()
             ),
             &[&uaid.simple().to_string()]
         )
         .await
-        .map_err(DbError::PgError)?;
+        .map_err(|e| {
+            DbError::PgDbError(Self::error_to_string(&e))
+        })?;
 
         let Some(row) = row else {
             return Ok(None);
@@ -380,8 +392,8 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "INSERT 
-                     INTO {tablename} (uaid, channel_id) VALUES ($1, $2) 
+                    "INSERT
+                     INTO {tablename} (uaid, channel_id) VALUES ($1, $2)
                      ON CONFLICT DO NOTHING",
                     tablename = self.meta_table()
                 ),
@@ -429,9 +441,9 @@ impl DbClient for PgClientImpl {
         // and redistribute them into tuples.
         // (Remember, an existing channel_id is ignored during this insert since it's already registered)
         let statement = format!(
-            "INSERT 
-                INTO {tablename} (uaid, channel_id) 
-                VALUES {vars} 
+            "INSERT
+                INTO {tablename} (uaid, channel_id)
+                VALUES {vars}
                 ON CONFLICT DO NOTHING",
             tablename = self.meta_table(),
             // Postgres variables are 1-indexed.
@@ -476,7 +488,7 @@ impl DbClient for PgClientImpl {
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let cmd = format!(
-            "DELETE FROM {tablename} 
+            "DELETE FROM {tablename}
              WHERE uaid = $1 AND channel_id = $2;",
             tablename = self.meta_table()
         );
@@ -511,8 +523,8 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "UPDATE {tablename} 
-                        SET node_id = null 
+                    "UPDATE {tablename}
+                        SET node_id = null
                         WHERE uaid=$1 AND node_id = $2 AND connected_at = $3 AND version= $4;",
                     tablename = self.router_table()
                 ),
@@ -588,9 +600,9 @@ impl DbClient for PgClientImpl {
                     &message.version,
                     &(message.ttl as i64), // Postgres has no auto TTL.
                     &(util::sec_since_epoch() as i64 + message.ttl as i64),
-                    &message.topic,
+                    &message.topic.as_ref().filter(|v| !v.is_empty()),
                     &(message.timestamp as i64),
-                    &message.data.unwrap_or_default(),
+                    &message.data.as_deref().unwrap_or_default(),
                     &message.sortkey_timestamp.map(|v| v as i64),
                     &json!(message.headers).to_string(),
                     #[cfg(feature = "reliable_report")]
@@ -598,27 +610,38 @@ impl DbClient for PgClientImpl {
                 ],
             )
             .await
-            .map_err(DbError::PgError)?;
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         Ok(())
     }
 
     /// remove a given message from the message table
-    async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        self.pool
+    async fn remove_message(&self, uaid: &Uuid, chidmessageid: &str) -> DbResult<()> {
+        debug!(
+            "📮 Removing message for user {} with chid_message_id {}",
+            uaid.simple(),
+            chidmessageid
+        );
+        let result = self
+            .pool
             .get()
             .await
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "DELETE FROM {tablename} 
+                    "DELETE FROM {tablename}
                      WHERE uaid=$1 AND chid_message_id = $2;",
                     tablename = self.message_table()
                 ),
-                &[&uaid.simple().to_string(), &(sort_key.to_owned())],
+                &[&uaid.simple().to_string(), &chidmessageid],
             )
             .await
-            .map_err(DbError::PgError)?;
-
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
+        debug!(
+            "📮 Deleted {} rows for user {} with chid_message_id {}",
+            result,
+            uaid.simple(),
+            chidmessageid
+        );
         Ok(())
     }
 
@@ -643,17 +666,21 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .query(
                 &format!(
-                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers 
-                 FROM {tablename} 
-                 WHERE uaid=$1 AND expiry >= $2
-                 ORDER BY timestamp DESC 
+                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers
+                 FROM {tablename}
+                 WHERE uaid=$1 AND expiry >= $2 AND (topic IS NOT NULL AND topic != '')
+                 ORDER BY timestamp DESC
                  LIMIT $3",
                 tablename=&self.message_table(),
             ),
-                &[&uaid.simple().to_string(),&(util::sec_since_epoch() as i64), &(limit as i64)],
+                &[
+                    &uaid.simple().to_string(),
+                    &(util::sec_since_epoch() as i64),
+                    &(limit as i64),
+                ],
             )
             .await
-            .map_err(DbError::PgError)?
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?
             .iter()
             .map(|row: &Row| row.try_into())
             .collect::<Result<Vec<Notification>, DbError>>()?;
@@ -684,17 +711,17 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * FROM {} 
+                        "SELECT * FROM {}
                          WHERE uaid = $1 AND timestamp > $2 AND expiry >= $3
-                         ORDER BY timestamp 
-                         LIMIT $3",
+                         ORDER BY timestamp
+                         LIMIT $4",
                         self.message_table()
                     ),
                     &[
                         &uaid,
                         &(ts as i64),
-                        &(limit as i64),
                         &(util::sec_since_epoch() as i64),
+                        &(limit as i64),
                     ],
                 )
                 .await
@@ -706,18 +733,18 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * 
-                         FROM {} 
-                         WHERE uaid = $1 
+                        "SELECT *
+                         FROM {}
+                         WHERE uaid = $1
                          AND expiry >= $2
-                         LIMIT $2",
+                         LIMIT $3",
                         self.message_table()
                     ),
-                    &[&uaid, &(limit as i64), &(util::sec_since_epoch() as i64)],
+                    &[&uaid, &(util::sec_since_epoch() as i64), &(limit as i64)],
                 )
                 .await
-        }?;
-
+        }
+        .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         let messages: Vec<Notification> = response
             .iter()
             .map(|row: &Row| row.try_into())
@@ -768,13 +795,14 @@ impl DbClient for PgClientImpl {
                 &format!(
                 "INSERT INTO {tablename} (id, states, last_update_timestamp) VALUES ($1, json_build_object($2, $3), $3)
                  ON CONFLICT (id) DO
-                 UPDATE SET states = EXCLUDED.states, 
+                 UPDATE SET states = EXCLUDED.states,
                  last_update_timestamp = EXCLUDED.last_update_timestamp;",
                     tablename = tablename
                 ),
                 &[&reliability_id, &state, &timestamp],
             )
-            .await?;
+            .await
+            .map_err(|e|{DbError::PgDbError(Self::error_to_string(&e))})?;
         Ok(())
     }
 
@@ -797,7 +825,8 @@ impl DbClient for PgClientImpl {
                     &(util::sec_since_epoch() as i64),
                 ],
             )
-            .await?;
+            .await
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         // Now, delete messages that we've already delivered.
         transaction
             .execute(
@@ -807,7 +836,8 @@ impl DbClient for PgClientImpl {
                 ),
                 &[&uaid.simple().to_string(), &(timestamp as i64)],
             )
-            .await?;
+            .await
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         transaction.execute(
                 &format!(
                     "UPDATE {tablename} SET last_update = $2::BIGINT, expiry= $3::BIGINT WHERE uaid = $1"
@@ -818,7 +848,7 @@ impl DbClient for PgClientImpl {
                     &(self.router_expiry() as i64),
                 ],
             )
-            .await?;
+            .await.map_err(|e|{DbError::PgDbError(Self::error_to_string(&e))})?;
         transaction.commit().await?;
         Ok(())
     }
@@ -831,7 +861,19 @@ impl DbClient for PgClientImpl {
         // Replace this with a proper health check.
         let client = self.pool.get().await.map_err(DbError::PgPoolError);
         let row = client?.query_one("select true", &[]).await;
-        Ok(!row?.is_empty())
+        if !row?.try_get::<_, bool>(0)? {
+            error!("📮 Failed to fetch from database");
+            return Ok(false);
+        }
+        if !self.router_table_exists().await? {
+            error!("📮 Router table does not exist");
+            return Ok(false);
+        }
+        if !self.message_table_exists().await? {
+            error!("📮 Message table does not exist");
+            return Ok(false);
+        }
+        Ok(true)
     }
 
     /// Convenience function to return self as a Boxed DbClient
