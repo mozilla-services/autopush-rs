@@ -1,3 +1,22 @@
+<a name="1.78.1"></a>
+## 1.78.1 (2026-02-20)
+
+
+#### Features
+
+*   Post #1040 cleanup (#1067) ([3a37a568](https://github.com/mozilla-services/autopush-rs/commit/3a37a568de119ca6530d0dba149f6d56faf5ac4a))
+*   Add postgres backend storage (#1040) ([53376b65](https://github.com/mozilla-services/autopush-rs/commit/53376b651e4595e7f80577cb94aa3b5f8aec894a))
+
+#### Doc
+
+*   add documentation for new data stores (#1060) ([afdd609a](https://github.com/mozilla-services/autopush-rs/commit/afdd609acb0e621149ab7976c8becd9ea606dace))
+
+#### Chore
+
+*   tag 1.78.0 (#1061) ([094ed279](https://github.com/mozilla-services/autopush-rs/commit/094ed279d9c8d0f5cfc0c1536403d13e803aff63))
+
+
+
 <a name="1.78.0"></a>
 ## 1.78.0 (2026-01-29)
 
