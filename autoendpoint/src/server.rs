@@ -91,7 +91,7 @@ impl Server {
             #[cfg(feature = "postgres")]
             StorageType::Postgres => {
                 debug!("Using Postgres");
-                let client = PgClientImpl::new(metrics.clone(), &db_settings)?;
+                let client = PgClientImpl::new(metrics.clone(), &db_settings).await?;
                 // client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }

@@ -55,12 +55,8 @@ pub enum DbError {
     PgGeneralError(String),
 
     #[cfg(feature = "postgres")]
-    #[error("Postgres Pool Error: {0}")]
-    PgPoolError(#[from] deadpool::managed::PoolError<tokio_postgres::Error>),
-
-    #[cfg(feature = "postgres")]
     #[error("Postgres Error: {0}")]
-    PgError(#[from] tokio_postgres::Error),
+    PgError(#[from] sqlx::Postgres::Error),
 
     #[cfg(feature = "postgres")]
     #[error("Postgres DB Error: {0}")]

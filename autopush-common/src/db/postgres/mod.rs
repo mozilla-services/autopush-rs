@@ -15,9 +15,12 @@ use std::time::{Duration, SystemTime};
 
 #[cfg(feature = "reliable_report")]
 use chrono::TimeDelta;
-use deadpool_postgres::{Pool, Runtime};
+use rand::rand_core::le;
 use serde_json::json;
+
 use tokio_postgres::{types::ToSql, Row}; // Client is sync.
+
+use sqlx::postgres::{PgPoolOptions, PgRow};
 
 use async_trait::async_trait;
 use cadence::StatsdClient;
@@ -43,9 +46,9 @@ pub struct PostgresDbSettings {
     pub message_table: String,     // Message storage info
     pub meta_table: String,        // Channels and meta info
     pub reliability_table: String, // Channels and meta info
-    max_router_ttl: u64,           // Max time for router records to live.
-                                   // #[serde(default)]
-                                   // pub use_tls: bool // Should you use a TLS connection to the db.
+    pub max_router_ttl: u64,       // Max time in seconds for router records to live.
+    pub connection_ttl: u64,       // Max time in secondsto wait for a connection to the database before giving up.
+    // pub use_tls: bool           // Should you use a TLS connection to the db.
 }
 
 impl Default for PostgresDbSettings {
@@ -57,6 +60,7 @@ impl Default for PostgresDbSettings {
             meta_table: "meta".to_owned(),
             reliability_table: "reliability".to_owned(),
             max_router_ttl: MAX_ROUTER_TTL_SECS,
+            connection_ttl: 5
             // use_tls: false,
         }
     }
@@ -81,7 +85,7 @@ impl TryFrom<&str> for PostgresDbSettings {
 pub struct PgClientImpl {
     _metrics: Arc<StatsdClient>,
     db_settings: PostgresDbSettings,
-    pool: Pool,
+    pool: sqlx::Pool<sqlx::Postgres>,
 }
 
 impl PgClientImpl {
@@ -92,23 +96,26 @@ impl PgClientImpl {
     /// for parameter details and requirements.
     /// Example DSN: postgresql://user:password@host/database?option=val
     /// e.g. (postgresql://scott:tiger@dbhost/autopush?connect_timeout=10&keepalives_idle=3600)
-    pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
+    pub async fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref())?;
         info!(
             "📮 Initializing Postgres DB Client with settings: {:?} from {:?}",
             db_settings, &settings.db_settings
         );
-        // TODO: If required, add the TlsConnect<Stream> wrapper here.
-        let tls_flag = tokio_postgres::NoTls;
         if let Some(dsn) = settings.dsn.clone() {
             trace!("📮 Postgres Connect {}", &dsn);
 
-            let pool = deadpool_postgres::Config {
+            let pool = PgPoolOptions::new()
+                .acquire_timeout(std::time::Duration::from_secs(db_settings.connection_ttl))
+                .connect(&dsn).await?;
+            /*
+                let pool = deadpool_postgres::Config {
                 url: Some(dsn.clone()),
                 ..Default::default()
             }
             .create_pool(Some(Runtime::Tokio1), tls_flag)
             .map_err(|e| DbError::General(e.to_string()))?;
+            */
             return Ok(Self {
                 _metrics: metrics,
                 db_settings,
@@ -131,19 +138,14 @@ impl PgClientImpl {
         } else {
             ("public".to_owned(), table_name)
         };
-        let rows = self
-            .pool
-            .get()
-            .await
-            .map_err(DbError::PgPoolError)?
-            .query(
-                "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname=$1 AND tablename=$2);",
-                &[&schema, &table_name],
-            )
-            .await
-            .map_err(DbError::PgError)?;
-        let val: bool = rows[0].try_get(0)?;
-        Ok(val)
+        let rows:Option<(bool)> = sqlx::query_as(
+                "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname=? AND tablename=?);")
+                .bind(&schema)
+                .bind(&table_name)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(DbError::PgError)?;
+            Ok(rows.unwrap_or(false).0)
     }
 
     /// Return the router's expiration timestamp
@@ -192,7 +194,7 @@ impl PgClientImpl {
         }
     }
 
-    pub(crate) fn error_to_string(e: &tokio_postgres::Error) -> String {
+    pub(crate) fn error_to_string(e: &sqlx::Error) -> String {
         e.as_db_error()
             .map(|e| e.message().to_owned()) // Some errors have a useful message.
             .unwrap_or_else(|| {
@@ -206,8 +208,7 @@ impl PgClientImpl {
 impl DbClient for PgClientImpl {
     /// add user to router_table if not exists uaid
     async fn add_user(&self, user: &User) -> DbResult<()> {
-        self.pool.get().await.map_err(DbError::PgPoolError)?.execute(
-            &format!("
+        let statement = format!("
             INSERT INTO {tablename} (uaid, connected_at, router_type, router_data, node_id, record_version, version, last_update, priv_channels, expiry)
              VALUES($1, $2::BIGINT, $3, $4, $5, $6::BIGINT, $7, $8::BIGINT, $9, $10::BIGINT)
              ON CONFLICT (uaid) DO
@@ -221,27 +222,28 @@ impl DbClient for PgClientImpl {
                     priv_channels=EXCLUDED.priv_channels,
                     expiry=EXCLUDED.expiry
                     ;
-            ", tablename=self.router_table()),
-            &[&user.uaid.simple().to_string(),              // 1
-            &(user.connected_at as i64),                    // 2
-            &user.router_type,                              // 3
-            &json!(user.router_data).to_string(),           // 4
-            &user.node_id,                                  // 5
-            &user.record_version.map(|i| i as i64),    // 6
-            &(user.version.map(|v| v.simple().to_string())),   // 7
-            &user.current_timestamp.map(|i| i as i64), // 8
-            &user.priv_channels.iter().map(|v| v.to_string()).collect::<Vec<String>>(),
-            &(self.router_expiry() as i64),                 // 10
-            ]
-        ).await.map_err(|e| {
+            ", tablename=self.router_table());
+        let query = sqlx::query_as(&statement)
+            .bind(&user.uaid.simple().to_string())              // 1
+            .bind(&(user.connected_at as i64))                    // 2
+            .bind(&user.router_type)                              // 3
+            .bind(&json!(user.router_data).to_string())           // 4
+            .bind(&user.node_id)                                  // 5
+            .bind(&user.record_version.map(|i| i as i64))    // 6
+            .bind(&(user.version.map(|v| v.simple().to_string())))   // 7
+            .bind(&user.current_timestamp.map(|i| i as i64)) // 8
+            .bind(&user.priv_channels.iter().map(|v| v.to_string()).collect::<Vec<String>>())
+            .bind(&(self.router_expiry() as i64))                 // 10
+            .execute(&self.pool)
+            .await.map_err(|e| {
             DbError::PgDbError(Self::error_to_string(&e))
-        })?;
+            })?;
         Ok(())
     }
 
     /// update user record in router_table at user.uaid
     async fn update_user(&self, user: &mut User) -> DbResult<bool> {
-        let cmd = format!(
+        let statement = format!(
             "UPDATE {tablename} SET connected_at=$2::BIGINT,
                 router_type=$3,
                 router_data=$4,
@@ -256,47 +258,49 @@ impl DbClient for PgClientImpl {
             ",
             tablename = self.router_table()
         );
-        let result = self
-            .pool
-            .get()
-            .await
-            .map_err(DbError::PgPoolError)?
-            .execute(
-                &cmd,
-                &[
-                    &user.uaid.simple().to_string(),                 // 1
-                    &(user.connected_at as i64),                     // 2
-                    &user.router_type,                               // 3
-                    &json!(user.router_data).to_string(),            //4
-                    &user.node_id,                                   // 5
-                    &(user.record_version.map(|i| i as i64)),        // 6
-                    &(user.version.map(|v| v.simple().to_string())), // 7
-                    &user.current_timestamp.map(|i| i as i64),       //8
-                    &user
+        let result:Option<u64> = sqlx::query_as(&statement)
+                .bind(&user.uaid.simple().to_string())                 // 1
+                .bind(&(user.connected_at as i64))                     // 2
+                .bind(&user.router_type)                               // 3
+                .bind(&json!(user.router_data).to_string())            //4
+                .bind(&user.node_id)                                   // 5
+                .bind(&(user.record_version.map(|i| i as i64)))        // 6
+                .bind(&(user.version.map(|v| v.simple().to_string()))) // 7
+                .bind(&user.current_timestamp.map(|i| i as i64))       //8
+                .bind(&user
                         .priv_channels
                         .iter()
                         .map(|v| v.to_string())
-                        .collect::<Vec<String>>(),
-                    &(self.router_expiry() as i64), // 10
-                ],
-            )
+                        .collect::<Vec<String>>())
+                .bind(&(self.router_expiry() as i64)) // 10
+                .execute(&self.pool)
             .await
             .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
-        Ok(result > 0)
+        Ok(result.unwrap_or_default() > 0)
     }
 
     /// fetch user information from router_table for uaid.
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
-        let row = self.pool.get().await.map_err(DbError::PgPoolError)?
-        .query_opt(
-            &format!(
-                "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels
-                 FROM {tablename}
-                 WHERE uaid = $1",
-                tablename=self.router_table()
-            ),
-            &[&uaid.simple().to_string()]
-        )
+        struct Row {
+            connected_at: i64,
+            router_type: String,
+            router_data: String,
+            node_id: Option<String>,
+            record_version: Option<i64>,
+            last_update: Option<i64>,
+            version: Option<String>,
+            priv_channels: Option<Vec<String>>,
+        }
+
+        let statement = format!(
+            "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels
+             FROM {tablename}
+             WHERE uaid = $1;",
+            tablename = self.router_table()
+        );
+
+        let row:Option<Row> = sqlx::query_as(&statement).bind(&uaid.simple().to_string())
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
             DbError::PgDbError(Self::error_to_string(&e))
@@ -322,56 +326,36 @@ impl DbClient for PgClientImpl {
         };
         let resp = User {
             uaid: *uaid,
-            connected_at: row
-                .try_get::<&str, i64>("connected_at")
-                .map_err(DbError::PgError)? as u64,
-            router_type: row
-                .try_get::<&str, String>("router_type")
-                .map_err(DbError::PgError)?,
-            router_data: serde_json::from_str(
-                row.try_get::<&str, &str>("router_data")
+            connected_at: row.connected_at as u64,
+            router_type: row.router_type,
+            router_data: serde_json::from_str(&row.router_data)
                     .map_err(DbError::PgError)?,
-            )
-            .map_err(|e| DbError::General(e.to_string()))?,
-            node_id: row
-                .try_get::<&str, Option<String>>("node_id")
-                .map_err(DbError::PgError)?,
-            record_version: row
-                .try_get::<&str, Option<i64>>("record_version")
-                .map_err(DbError::PgError)?
-                .map(|v| v as u64),
-            current_timestamp: row
-                .try_get::<&str, Option<i64>>("last_update")
-                .map_err(DbError::PgError)?
-                .map(|v| v as u64),
-            version: row
-                .try_get::<&str, Option<String>>("version")
-                .map_err(DbError::PgError)?
-                // An invalid UUID here is a data integrity error.
-                .map(|v| {
-                    Uuid::from_str(&v).map_err(|e| {
-                        DbError::Integrity("Invalid UUID found".to_owned(), Some(e.to_string()))
-                    })
-                })
-                .transpose()?,
-            priv_channels,
+            node_id: row.node_id,
+            record_version: row.record_version.map(|v| v as u64),
+            current_timestamp: row.current_timestamp.map(|v| v as u64),
+            version: row.version.map(|v| Uuid::from_str(&v).map_err(|e| {
+                DbError::General(e.to_string())
+            })).transpose()?,
+            priv_channels: row.priv_channels.map(|channels| {
+                channels
+                    .iter()
+                    .filter_map(|channel| Uuid::from_str(channel).ok())
+                    .collect()
+            }).unwrap_or_default(),
         };
         Ok(Some(resp))
     }
 
     /// delete a user at uaid from router_table
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        self.pool
-            .get()
-            .await?
-            .execute(
-                &format!(
-                    "DELETE FROM {tablename}
-                     WHERE uaid = $1",
-                    tablename = self.router_table()
-                ),
-                &[&uaid.simple().to_string()],
-            )
+        let statement: String = format!(
+            "DELETE FROM {tablename}
+             WHERE uaid = $1;",
+            tablename = self.router_table()
+        );
+        sqlx::query_as(&statement)
+            .bind(&uaid.simple().to_string())
+            .execute(&self.pool)
             .await
             .map_err(DbError::PgError)?;
         Ok(())
@@ -386,19 +370,14 @@ impl DbClient for PgClientImpl {
     /// For some efficiency (mostly around the mobile "daily refresh" call), I've broken
     /// the channels out by UAID into this table.
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        self.pool
-            .get()
-            .await
-            .map_err(DbError::PgPoolError)?
-            .execute(
-                &format!(
-                    "INSERT
-                     INTO {tablename} (uaid, channel_id) VALUES ($1, $2)
-                     ON CONFLICT DO NOTHING",
-                    tablename = self.meta_table()
-                ),
-                &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
-            )
+        let statement: String = format!(
+            "INSERT INTO {tablename} (uaid, channel_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;",
+            tablename = self.meta_table()
+        );
+        sqlx::query_as(&statement)
+            .bind(&uaid.simple().to_string())
+            .bind(&channel_id.simple().to_string())
+            .execute(&self.pool)
             .await
             .map_err(DbError::PgError)?;
         Ok(())
@@ -462,20 +441,19 @@ impl DbClient for PgClientImpl {
     /// get all channels for uaid from meta table
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let mut result = HashSet::new();
-        let rows = self
-            .pool
-            .get()
-            .await
-            .map_err(DbError::PgPoolError)?
-            .query(
-                &format!(
-                    "SELECT distinct channel_id FROM {tablename} WHERE uaid = $1;",
-                    tablename = self.meta_table()
-                ),
-                &[&uaid.simple().to_string()],
-            )
-            .await
-            .map_err(DbError::PgError)?;
+        let statement = format!(
+            "SELECT distinct channel_id FROM {tablename} WHERE uaid = $1;",
+            tablename = self.meta_table()
+        );
+        let rows:Option<Vec<&str>> = sqlx::query_as(
+                &statement)
+                .bind(&uaid.simple().to_string())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(DbError::PgError)?;
+        let Some(rows) = rows else {
+            return Ok(result);
+        };
         for row in rows.iter() {
             let s = row
                 .try_get::<&str, &str>("channel_id")
@@ -487,20 +465,15 @@ impl DbClient for PgClientImpl {
 
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
-        let cmd = format!(
+        let statement = format!(
             "DELETE FROM {tablename}
              WHERE uaid = $1 AND channel_id = $2;",
             tablename = self.meta_table()
         );
-        let result = self
-            .pool
-            .get()
-            .await
-            .map_err(DbError::PgPoolError)?
-            .execute(
-                &cmd,
-                &[&uaid.simple().to_string(), &channel_id.simple().to_string()],
-            )
+        let result:u64 = sqlx::query_as(&statement)
+            .bind(&uaid.simple().to_string())
+            .bind(&channel_id.simple().to_string())
+            .execute(&self.pool)
             .await?;
         // We sometimes want to know if the channel existed previously.
         Ok(result > 0)
@@ -517,24 +490,18 @@ impl DbClient for PgClientImpl {
         let Some(version) = version else {
             return Err(DbError::General("Expected a user version field".to_owned()));
         };
-        self.pool
-            .get()
-            .await
-            .map_err(DbError::PgPoolError)?
-            .execute(
-                &format!(
-                    "UPDATE {tablename}
-                        SET node_id = null
-                        WHERE uaid=$1 AND node_id = $2 AND connected_at = $3 AND version= $4;",
-                    tablename = self.router_table()
-                ),
-                &[
-                    &uaid.simple().to_string(),
-                    &node_id,
-                    &(connected_at as i64),
-                    &version.simple().to_string(),
-                ],
-            )
+        let statement  = format!(
+            "UPDATE {tablename}
+                SET node_id = null
+                WHERE uaid=$1 AND node_id = $2 AND connected_at = $3 AND version= $4;",
+            tablename = self.router_table()
+        );
+        sqlx::query_as(&statement)
+            .bind(&uaid.simple().to_string())
+            .bind(&node_id)
+            .bind(&(connected_at as i64))
+            .bind(&version.simple().to_string())
+            .execute(&self.pool)
             .await
             .map_err(DbError::PgError)?;
         Ok(true)
@@ -568,7 +535,7 @@ impl DbClient for PgClientImpl {
             fields.append(&mut ["reliability_id"].to_vec());
             inputs.append(&mut ["$12"].to_vec());
         }
-        let cmd = format!(
+        let statement = format!(
             "INSERT INTO {tablename}
                 ({fields})
                 VALUES
@@ -587,28 +554,23 @@ impl DbClient for PgClientImpl {
             fields = fields.join(","),
             inputs = inputs.join(",")
         );
-        self.pool
-            .get()
-            .await
-            .map_err(DbError::PgPoolError)?
-            .execute(
-                &cmd,
-                &[
-                    &uaid.simple().to_string(),
-                    &message.channel_id.simple().to_string(),
-                    &message.chidmessageid(),
-                    &message.version,
-                    &(message.ttl as i64), // Postgres has no auto TTL.
-                    &(util::sec_since_epoch() as i64 + message.ttl as i64),
-                    &message.topic.as_ref().filter(|v| !v.is_empty()),
-                    &(message.timestamp as i64),
-                    &message.data.as_deref().unwrap_or_default(),
-                    &message.sortkey_timestamp.map(|v| v as i64),
-                    &json!(message.headers).to_string(),
-                    #[cfg(feature = "reliable_report")]
-                    &message.reliability_id,
-                ],
-            )
+        let query =sqlx::query_as(&statement)
+            .bind(&uaid.simple().to_string())
+            .bind(&message.channel_id.simple().to_string())
+            .bind(&message.chidmessageid())
+            .bind(&message.version)
+            .bind(&(message.ttl as i64)) // Postgres has no auto TTL.
+            .bind(&(util::sec_since_epoch() as i64 + message.ttl as i64))
+            .bind(&message.topic.as_ref().filter(|v| !v.is_empty()))
+            .bind(&(message.timestamp as i64))
+            .bind(&message.data.as_deref().unwrap_or_default())
+            .bind(&message.sortkey_timestamp.map(|v| v as i64))
+            .bind(&json!(message.headers).to_string());
+        #[cfg(feature = "reliable_report")]
+        query.bind(&message.reliability_id);
+
+        query
+            .execute(&self.pool)
             .await
             .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         Ok(())
@@ -621,19 +583,15 @@ impl DbClient for PgClientImpl {
             uaid.simple(),
             chidmessageid
         );
-        let result = self
-            .pool
-            .get()
-            .await
-            .map_err(DbError::PgPoolError)?
-            .execute(
-                &format!(
-                    "DELETE FROM {tablename}
-                     WHERE uaid=$1 AND chid_message_id = $2;",
-                    tablename = self.message_table()
-                ),
-                &[&uaid.simple().to_string(), &chidmessageid],
-            )
+        let statement = format!(
+            "DELETE FROM {tablename}
+             WHERE uaid=$1 AND chid_message_id = $2;",
+            tablename = self.message_table()
+        );
+        let result:u64 = sqlx::query_as(&statement)
+            .bind(&uaid.simple().to_string())
+            .bind(&chidmessageid)
+            .fetch(&self.pool)
             .await
             .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         debug!(
@@ -659,31 +617,21 @@ impl DbClient for PgClientImpl {
         uaid: &Uuid,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        let messages: Vec<Notification> = self
-            .pool
-            .get()
+        let statement = format!(
+            "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers
+             FROM {tablename}
+             WHERE uaid=$1 AND expiry >= $2 AND (topic IS NOT NULL AND topic != '')
+             ORDER BY timestamp DESC
+             LIMIT $3;",
+            tablename = self.message_table()
+        );
+        let messages: Vec<Notification> = sqlx::query_as(&statement)
+            .bind(&uaid.simple().to_string())
+            .bind(&(util::sec_since_epoch() as i64))
+            .bind(&(limit as i64))
+            .fetch_all(&self.pool)
             .await
-            .map_err(DbError::PgPoolError)?
-            .query(
-                &format!(
-                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers
-                 FROM {tablename}
-                 WHERE uaid=$1 AND expiry >= $2 AND (topic IS NOT NULL AND topic != '')
-                 ORDER BY timestamp DESC
-                 LIMIT $3",
-                tablename=&self.message_table(),
-            ),
-                &[
-                    &uaid.simple().to_string(),
-                    &(util::sec_since_epoch() as i64),
-                    &(limit as i64),
-                ],
-            )
-            .await
-            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?
-            .iter()
-            .map(|row: &Row| row.try_into())
-            .collect::<Result<Vec<Notification>, DbError>>()?;
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
 
         if messages.is_empty() {
             Ok(Default::default())
@@ -705,43 +653,37 @@ impl DbClient for PgClientImpl {
         let uaid = uaid.simple().to_string();
         let response: Vec<Row> = if let Some(ts) = timestamp {
             trace!("📮 Fetching messages for user {} since {}", &uaid, ts);
-            self.pool
-                .get()
-                .await
-                .map_err(DbError::PgPoolError)?
-                .query(
-                    &format!(
-                        "SELECT * FROM {}
-                         WHERE uaid = $1 AND timestamp > $2 AND expiry >= $3
-                         ORDER BY timestamp
-                         LIMIT $4",
-                        self.message_table()
-                    ),
-                    &[
-                        &uaid,
-                        &(ts as i64),
-                        &(util::sec_since_epoch() as i64),
-                        &(limit as i64),
-                    ],
-                )
+            let statement = format!(
+                "SELECT *
+                 FROM {}
+                 WHERE uaid = $1 AND timestamp > $2 AND expiry >= $3
+                 ORDER BY timestamp
+                 LIMIT $4;",
+                self.message_table()
+            );
+            sqlx::query_as(&statement)
+                .bind(&uaid)
+                .bind(&(ts as i64))
+                .bind(&(util::sec_since_epoch() as i64))
+                .bind(&(limit as i64))
+                .fetch_all(&self.pool)
                 .await
         } else {
             trace!("📮 Fetching messages for user {}", &uaid);
-            self.pool
-                .get()
-                .await
-                .map_err(DbError::PgPoolError)?
-                .query(
-                    &format!(
-                        "SELECT *
-                         FROM {}
-                         WHERE uaid = $1
-                         AND expiry >= $2
-                         LIMIT $3",
-                        self.message_table()
-                    ),
-                    &[&uaid, &(util::sec_since_epoch() as i64), &(limit as i64)],
-                )
+            let statement = format!(
+                "SELECT *
+                 FROM {}
+                 WHERE uaid = $1
+                 AND expiry >= $2
+                 ORDER BY timestamp
+                 LIMIT $3;",
+                self.message_table()
+            );
+            sqlx::query_as(&statement)
+                .bind(&uaid)
+                .bind(&(util::sec_since_epoch() as i64))
+                .bind(&(limit as i64))
+                .fetch_all(&self.pool)
                 .await
         }
         .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
@@ -788,21 +730,20 @@ impl DbClient for PgClientImpl {
 
         let tablename = &self.reliability_table();
         let state = new_state.to_string();
-        self.pool
-            .get()
-            .await?
-            .execute(
-                &format!(
-                "INSERT INTO {tablename} (id, states, last_update_timestamp) VALUES ($1, json_build_object($2, $3), $3)
-                 ON CONFLICT (id) DO
-                 UPDATE SET states = EXCLUDED.states,
-                 last_update_timestamp = EXCLUDED.last_update_timestamp;",
-                    tablename = tablename
-                ),
-                &[&reliability_id, &state, &timestamp],
-            )
+        let statement = format!(
+            "INSERT INTO {tablename} (id, states, last_update_timestamp) VALUES ($1, json_build_object($2, $3), $3)
+             ON CONFLICT (id) DO
+             UPDATE SET states = jsonb_set(states, array[$2], to_jsonb($3)),
+             last_update_timestamp = EXCLUDED.last_update_timestamp;",
+            tablename = tablename
+        );
+        sqlx::query_as(&statement)
+            .bind(&reliability_id)
+            .bind(&state)
+            .bind(&(timestamp.duration_since(SystemTime::UNIX_EPOCH)?.as_secs() as i64))
+            .execute(&self.pool)
             .await
-            .map_err(|e|{DbError::PgDbError(Self::error_to_string(&e))})?;
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         Ok(())
     }
 
@@ -811,45 +752,44 @@ impl DbClient for PgClientImpl {
         let tablename = &self.router_table();
 
         trace!("📮 Purging git{uaid} for < {timestamp}");
-        let mut pool = self.pool.get().await.map_err(DbError::PgPoolError)?;
-        let transaction = pool.transaction().await?;
-        // Try to garbage collect old messages first.
-        transaction
-            .execute(
-                &format!(
-                    "DELETE FROM {} WHERE uaid = $1 and expiry < $2",
-                    &self.message_table()
-                ),
-                &[
-                    &uaid.simple().to_string(),
-                    &(util::sec_since_epoch() as i64),
-                ],
-            )
-            .await
-            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
-        // Now, delete messages that we've already delivered.
-        transaction
-            .execute(
-                &format!(
-                    "DELETE FROM {} WHERE uaid = $1 AND timestamp IS NOT NULL AND timestamp < $2",
-                    &self.message_table()
-                ),
-                &[&uaid.simple().to_string(), &(timestamp as i64)],
-            )
-            .await
-            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
-        transaction.execute(
-                &format!(
-                    "UPDATE {tablename} SET last_update = $2::BIGINT, expiry= $3::BIGINT WHERE uaid = $1"
-                ),
-                &[
-                    &uaid.simple().to_string(),
-                    &(timestamp as i64),
-                    &(self.router_expiry() as i64),
-                ],
-            )
-            .await.map_err(|e|{DbError::PgDbError(Self::error_to_string(&e))})?;
-        transaction.commit().await?;
+        let mut connection = self.pool.acquire().await?;
+
+        connection.transaction(|tx| Box::pin(async move {
+            // Try to garbage collect old messages first.
+            sqlx::query_as(&format!(
+                        "DELETE FROM {} WHERE uaid = $1 and expiry < $2",
+                        &self.message_table()
+                    ))
+                    .bind(&uaid.simple().to_string())
+                    .bind(&(util::sec_since_epoch() as i64))
+                    .execute(&mut **tx)
+                    .await
+                    .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
+
+            // Now, delete messages that we've already delivered.
+            sqlx::query_as(
+                    &format!(
+                        "DELETE FROM {} WHERE uaid = $1 AND timestamp IS NOT NULL AND timestamp < $2",
+                        &self.message_table()
+                    ))
+                    .bind(&uaid.simple().to_string())
+                    .bind(&(timestamp as i64))
+                    .execute(&mut **tx)
+                    .await
+                    .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
+
+            sqlx::query_as(
+                    &format!(
+                        "UPDATE {tablename} SET last_update = $2::BIGINT, expiry= $3::BIGINT WHERE uaid = $1"
+                    ))
+                    .bind(&uaid.simple().to_string())
+                    .bind(&(timestamp as i64))
+                    .bind(&(self.router_expiry() as i64))
+                    .execute(&mut **tx)
+                    .await
+                    .map_err(|e|{DbError::PgDbError(Self::error_to_string(&e))})
+                })
+            ).await?;
         Ok(())
     }
 
@@ -859,9 +799,8 @@ impl DbClient for PgClientImpl {
 
     async fn health_check(&self) -> DbResult<bool> {
         // Replace this with a proper health check.
-        let client = self.pool.get().await.map_err(DbError::PgPoolError);
-        let row = client?.query_one("select true", &[]).await;
-        if !row?.try_get::<_, bool>(0)? {
+        let test:Option<(bool,)> = sqlx::query_as("select true").fetch_one(&self.pool).await?;
+        if !test {
             error!("📮 Failed to fetch from database");
             return Ok(false);
         }
@@ -906,7 +845,7 @@ mod tests {
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
     const TOPIC_CHID: &str = "DECAFBAD-1111-0000-0000-0123456789AB";
 
-    fn new_client() -> DbResult<PgClientImpl> {
+    async fn new_client() -> DbResult<PgClientImpl> {
         // Use an environment variable to potentially override the default storage test host.
         let host = env::var("POSTGRES_HOST").unwrap_or("localhost".into());
         let env_dsn = format!("postgres://{host}");
@@ -920,7 +859,7 @@ mod tests {
             .to_string(),
         };
         let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
-        PgClientImpl::new(metrics, &settings)
+        PgClientImpl::new(metrics, &settings).await
     }
 
     fn gen_test_user() -> String {
@@ -936,7 +875,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn health_check() {
-        let client = new_client().unwrap();
+        let client = new_client().await.unwrap();
 
         let result = client.health_check().await;
         assert!(result.is_ok());
@@ -947,7 +886,7 @@ mod tests {
     #[actix_rt::test]
     async fn wipe_expired() -> DbResult<()> {
         init_test_logging();
-        let client = new_client()?;
+        let client = new_client().await?;
 
         let connected_at = ms_since_epoch();
 
@@ -997,7 +936,7 @@ mod tests {
     #[actix_rt::test]
     async fn run_gauntlet() -> DbResult<()> {
         init_test_logging();
-        let client = new_client()?;
+        let client = new_client().await?;
 
         let connected_at = ms_since_epoch();
 
@@ -1260,7 +1199,7 @@ mod tests {
     async fn test_expiry() -> DbResult<()> {
         // Make sure that we really are purging messages correctly
         init_test_logging();
-        let client = new_client()?;
+        let client = new_client().await?;
 
         let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
