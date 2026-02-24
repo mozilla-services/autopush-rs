@@ -56,6 +56,9 @@ pub enum MetricName {
     //
     // Notification metrics
     //
+    #[strum(serialize = "notification.received")]
+    NotificationReceived,
+
     /// Notification authentication
     #[strum(serialize = "notification.auth")]
     NotificationAuth,
