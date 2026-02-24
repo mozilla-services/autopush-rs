@@ -5,7 +5,6 @@ syntax:glob
 *.pyc
 *.egg-info
 *.egg
-*~
 build
 dist
 docs/_build

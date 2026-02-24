@@ -56,7 +56,7 @@ pub enum DbError {
 
     #[cfg(feature = "postgres")]
     #[error("Postgres Error: {0}")]
-    PgError(#[from] sqlx::Postgres::Error),
+    PgError(#[from] sqlx::Error),
 
     #[cfg(feature = "postgres")]
     #[error("Postgres DB Error: {0}")]
@@ -90,8 +90,6 @@ impl ReportableError for DbError {
             #[cfg(feature = "postgres")]
             DbError::PgError(_) => true,
             #[cfg(feature = "postgres")]
-            DbError::PgPoolError(_) => true,
-            #[cfg(feature = "postgres")]
             DbError::PgDbError(_) => true,
             _ => false,
         }
@@ -117,8 +115,8 @@ impl ReportableError for DbError {
             #[cfg(feature = "postgres")]
             DbError::PgError(e) => vec![(
                 "error",
-                e.as_db_error()
-                    .map(|e| e.message().to_owned())
+                e.as_database_error()
+                    .map(|e| e.to_string())
                     .unwrap_or("No error message".to_owned()),
             )],
             #[cfg(feature = "postgres")]
