@@ -1,5 +1,7 @@
 #![warn(rust_2018_idioms)]
-#![forbid(unsafe_code)]
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[macro_use]
 extern crate slog_scope;

@@ -5,7 +5,9 @@ use cadence::{Counted, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::{hash_map::RandomState, HashMap};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 use url::Url;
 use uuid::Uuid;
 
@@ -28,6 +30,7 @@ pub struct WebPushRouter {
     pub metrics: Arc<StatsdClient>,
     pub http: reqwest::Client,
     pub endpoint_url: Url,
+    pub in_flight_requests: Arc<AtomicUsize>,
     #[cfg(feature = "reliable_report")]
     pub reliability: Arc<PushReliability>,
 }
@@ -44,6 +47,24 @@ impl Router for WebPushRouter {
     }
 
     async fn route_notification(
+        &self,
+        notification: Notification,
+    ) -> ApiResult<RouterResponse> {
+        let route_start = Instant::now();
+        let result = self.route_notification_inner(notification).await;
+        self.metrics
+            .time_with_tags(
+                MetricName::NotificationRouteTime.as_ref(),
+                route_start.elapsed().as_millis() as u64,
+            )
+            .with_tag("outcome", if result.is_ok() { "ok" } else { "error" })
+            .send();
+        result
+    }
+}
+
+impl WebPushRouter {
+    async fn route_notification_inner(
         &self,
         mut notification: Notification,
     ) -> ApiResult<RouterResponse> {
@@ -73,10 +94,21 @@ impl Router for WebPushRouter {
                     autopush_common::reliability::ReliabilityState::IntTransmitted,
                 )
                 .await;
+            let send_start = Instant::now();
             match self.send_notification(&notification, node_id).await {
                 Ok(response) => {
+                    let elapsed = send_start.elapsed().as_millis() as u64;
+                    let status = response.status().as_u16();
+                    self.metrics
+                        .time_with_tags(MetricName::DirectDeliveryTime.as_ref(), elapsed)
+                        .with_tag("status", &status.to_string())
+                        .send();
+                    self.metrics
+                        .incr_with_tags(MetricName::DirectDeliveryStatus)
+                        .with_tag("status", &status.to_string())
+                        .send();
                     // The node might be busy, make sure it accepted the notification
-                    if response.status() == 200 {
+                    if status == 200 {
                         // The node has received the notification
                         trace!("✉ Node received notification");
                         return Ok(self.make_delivered_response(&notification));
@@ -87,14 +119,28 @@ impl Router for WebPushRouter {
                     );
                 }
                 Err(error) => {
-                    if let ApiErrorKind::ReqwestError(error) = &error.kind {
+                    let elapsed = send_start.elapsed().as_millis() as u64;
+                    let status_tag = if let ApiErrorKind::ReqwestError(error) = &error.kind {
                         if error.is_timeout() {
                             self.metrics.incr(MetricName::ErrorNodeTimeout)?;
-                        };
-                        if error.is_connect() {
+                            "timeout"
+                        } else if error.is_connect() {
                             self.metrics.incr(MetricName::ErrorNodeConnect)?;
-                        };
+                            "connect_error"
+                        } else {
+                            "error"
+                        }
+                    } else {
+                        "error"
                     };
+                    self.metrics
+                        .time_with_tags(MetricName::DirectDeliveryTime.as_ref(), elapsed)
+                        .with_tag("status", status_tag)
+                        .send();
+                    self.metrics
+                        .incr_with_tags(MetricName::DirectDeliveryStatus)
+                        .with_tag("status", status_tag)
+                        .send();
                     debug!("✉ Error while sending webpush notification: {}", error);
                     self.remove_node_id(user, node_id).await?
                 }
@@ -138,7 +184,14 @@ impl Router for WebPushRouter {
 
         // Save notification, node is not present or busy
         trace!("✉ Node is not present or busy, storing notification");
+        let store_start = Instant::now();
         self.store_notification(&mut notification).await?;
+        self.metrics
+            .time_with_tags(
+                MetricName::StorageSaveTime.as_ref(),
+                store_start.elapsed().as_millis() as u64,
+            )
+            .send();
 
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
@@ -199,9 +252,7 @@ impl Router for WebPushRouter {
             }
         }
     }
-}
 
-impl WebPushRouter {
     /// Use the same sort of error chokepoint that all the mobile clients use.
     fn handle_error(&self, error: ApiErrorKind, vapid: Option<VapidHeaderWithKey>) -> ApiError {
         let mut err = ApiError::from(error);
@@ -231,7 +282,10 @@ impl WebPushRouter {
             &notification.subscription.channel_id,
             &notification_out,
         );
-        Ok(self.http.put(&url).json(&notification_out).send().await?)
+        self.in_flight_requests.fetch_add(1, Ordering::Relaxed);
+        let result = self.http.put(&url).json(&notification_out).send().await;
+        self.in_flight_requests.fetch_sub(1, Ordering::Relaxed);
+        Ok(result?)
     }
 
     /// Notify the node to check for notifications for the user
@@ -242,7 +296,10 @@ impl WebPushRouter {
     ) -> Result<Response, reqwest::Error> {
         let url = format!("{node_id}/notif/{uaid}");
 
-        self.http.put(&url).send().await
+        self.in_flight_requests.fetch_add(1, Ordering::Relaxed);
+        let result = self.http.put(&url).send().await;
+        self.in_flight_requests.fetch_sub(1, Ordering::Relaxed);
+        result
     }
 
     /// Store a notification in the database
@@ -364,6 +421,7 @@ mod test {
             metrics: metrics.clone(),
             http: reqwest::Client::new(),
             endpoint_url: Url::parse("http://localhost:8080/").unwrap(),
+            in_flight_requests: Arc::new(AtomicUsize::new(0)),
             #[cfg(feature = "reliable_report")]
             reliability: Arc::new(
                 PushReliability::new(&None, db, &metrics, MAX_TRANSACTION_LOOP).unwrap(),

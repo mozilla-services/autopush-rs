@@ -79,6 +79,7 @@ impl FromRequest for Routers {
                 metrics: app_state.metrics.clone(),
                 http: app_state.http.clone(),
                 endpoint_url: app_state.settings.endpoint_url(),
+                in_flight_requests: app_state.in_flight_requests.clone(),
                 #[cfg(feature = "reliable_report")]
                 reliability: app_state.reliability.clone(),
             },

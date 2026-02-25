@@ -63,6 +63,10 @@ pub struct Settings {
     pub connection_timeout_millis: u64,
     /// Bridge request timeout in milliseconds.
     pub request_timeout_millis: u64,
+    /// Maximum idle connections per host in the HTTP connection pool.
+    pub pool_max_idle_per_host: usize,
+    /// Idle connection timeout in seconds.
+    pub pool_idle_timeout_secs: u64,
 
     /// The host for the statsd server to send metrics to. If None, metrics will not be sent.
     pub statsd_host: Option<String>,
@@ -115,6 +119,8 @@ impl Default for Settings {
             human_logs: false,
             connection_timeout_millis: 1000,
             request_timeout_millis: 3000,
+            pool_max_idle_per_host: 10,
+            pool_idle_timeout_secs: 30,
             statsd_host: None,
             statsd_port: 8125,
             statsd_label: "autoendpoint".to_string(),
