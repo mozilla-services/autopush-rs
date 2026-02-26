@@ -98,6 +98,7 @@ tokio-core = "0.1"
 tokio-io = "0.1"
 tokio-openssl = "0.6"
 uuid = { version = "1.20", features = ["serde", "v4"] }
+mimalloc = "0.1"
 url = "2.5"
 
 autoconnect = { path = "./autoconnect" }

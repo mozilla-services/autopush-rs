@@ -113,6 +113,10 @@ pub struct Settings {
     ///
     /// By default, the number of available physical CPUs is used as the worker count.
     pub actix_workers: Option<usize>,
+    /// Maximum idle connections per host in the HTTP connection pool.
+    pub pool_max_idle_per_host: usize,
+    /// Idle connection timeout in seconds.
+    pub pool_idle_timeout_secs: u64,
     #[cfg(feature = "reliable_report")]
     /// The DNS for the reliability data store. This is normally a Redis compatible
     /// storage system. See [Connection Parameters](https://docs.rs/redis/latest/redis/#connection-parameters)
@@ -153,6 +157,8 @@ impl Default for Settings {
             client_channel_capacity: 128,
             actix_max_connections: None,
             actix_workers: None,
+            pool_max_idle_per_host: 10,
+            pool_idle_timeout_secs: 30,
             #[cfg(feature = "reliable_report")]
             reliability_dsn: None,
             #[cfg(feature = "reliable_report")]
