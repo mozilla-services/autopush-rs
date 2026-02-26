@@ -12,9 +12,11 @@ actix-ws.workspace = true
 backtrace.workspace = true
 cadence.workspace = true
 futures.workspace = true
+once_cell = "1"
 reqwest.workspace = true
 sentry.workspace = true
 slog-scope.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 uuid.workspace = true
 thiserror.workspace = true
 

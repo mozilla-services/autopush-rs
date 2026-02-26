@@ -118,6 +118,10 @@ pub enum MetricName {
     #[strum(serialize = "error.node.connect")]
     ErrorNodeConnect,
 
+    /// Disconnect semaphore full, unacked direct notifications dropped
+    #[strum(serialize = "error.disconnect.semaphore_full")]
+    ErrorDisconnectSemaphoreFull,
+
     //
     // Update metrics
     //

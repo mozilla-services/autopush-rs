@@ -189,40 +189,27 @@ impl WebPushClient {
         let _ = self.app_state.metrics.incr(MetricName::UaCommandAck);
 
         for notif in updates {
-            // Check the list of unacked "direct" (unstored) notifications. We only want to
-            // ack messages we've not yet seen and we have the right version, otherwise we could
-            // have gotten an older, inaccurate ACK.
-            let pos = self
-                .ack_state
-                .unacked_direct_notifs
-                .iter()
-                .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
-            // We found one, so delete it from our list of unacked messages
-            if let Some(pos) = pos {
+            let key = notif.version.clone();
+            // Check the map of unacked "direct" (unstored) notifications.
+            if self.ack_state.unacked_direct_notifs.remove(&key).is_some() {
                 debug!("✅ Ack (Direct)";
                        "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                        "version" => &notif.version
                 );
-                self.ack_state.unacked_direct_notifs.remove(pos);
                 self.stats.direct_acked += 1;
                 continue;
             };
 
-            // Now, check the list of stored notifications
-            let pos = self
-                .ack_state
-                .unacked_stored_notifs
-                .iter()
-                .position(|n| n.channel_id == notif.channel_id && n.version == notif.version);
-            if let Some(pos) = pos {
+            // Now, check the map of stored notifications
+            #[allow(unused_mut)]
+            if let Some(mut acked_notification) = self.ack_state.unacked_stored_notifs.remove(&key)
+            {
                 debug!(
                     "✅ Ack (Stored)";
                        "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                        "version" => &notif.version,
                        "message_type" => MessageType::Ack.as_ref()
                 );
-                // Get the stored notification record.
-                let acked_notification = &mut self.ack_state.unacked_stored_notifs[pos];
                 // Some storage engines may set this to "".
                 let is_topic = acked_notification
                     .topic
@@ -253,10 +240,11 @@ impl WebPushClient {
                         .record_reliability(&self.app_state.reliability, notif.reliability_state())
                         .await;
                 }
-                let _n = self.ack_state.unacked_stored_notifs.remove(pos);
                 #[cfg(feature = "reliable_report")]
                 if !is_topic {
-                    self.ack_state.acked_stored_timestamp_notifs.push(_n);
+                    self.ack_state
+                        .acked_stored_timestamp_notifs
+                        .push(acked_notification);
                 }
                 self.stats.stored_acked += 1;
                 continue;
