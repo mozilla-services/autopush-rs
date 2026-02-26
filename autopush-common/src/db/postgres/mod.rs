@@ -767,7 +767,8 @@ impl DbClient for PgClientImpl {
             })
             .collect();
 
-        let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(msg_params.len() * fields_per_row);
+        let mut params: Vec<&(dyn ToSql + Sync)> =
+            Vec::with_capacity(msg_params.len() * fields_per_row);
         for mp in &msg_params {
             params.push(&uaid_str);
             params.push(&mp.channel_id);

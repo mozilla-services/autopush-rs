@@ -56,7 +56,9 @@ impl Router for WebPushRouter {
         trace!("✉ Notification = {:?}", notification);
 
         // Check if there is a node connected to the client
-        if let Some(node_id) = &notification.subscription.user.node_id {
+        // Clone node_id to avoid holding an immutable borrow on notification
+        // while record_reliability needs a mutable borrow.
+        if let Some(node_id) = notification.subscription.user.node_id.clone() {
             trace!(
                 "✉ User has a node ID, sending notification to node: {}",
                 &node_id
@@ -71,7 +73,7 @@ impl Router for WebPushRouter {
                     autopush_common::reliability::ReliabilityState::IntTransmitted,
                 )
                 .await;
-            match self.send_notification(&notification, node_id).await {
+            match self.send_notification(&notification, &node_id).await {
                 Ok(response) => {
                     // The node might be busy, make sure it accepted the notification
                     if response.status() == 200 {
@@ -94,7 +96,8 @@ impl Router for WebPushRouter {
                         };
                     };
                     debug!("✉ Error while sending webpush notification: {}", error);
-                    self.remove_node_id(&notification.subscription.user, node_id).await?
+                    self.remove_node_id(&notification.subscription.user, &node_id)
+                        .await?
                 }
             }
 

@@ -14,6 +14,7 @@ const NOTIFICATION_CHANNEL_CAPACITY: usize = 128;
 #[derive(Debug)]
 struct RegisteredClient {
     /// The user agent's unique ID.
+    #[allow(dead_code)]
     pub uaid: Uuid,
     /// The local ID, used to potentially distinquish multiple UAID connections.
     pub uid: Uuid,
@@ -32,17 +33,16 @@ impl ClientRegistry {
     ///
     /// For now just registers internal state by keeping track of the `client`,
     /// namely its channel to send notifications back.
-    pub fn connect(
-        &self,
-        uaid: Uuid,
-        uid: Uuid,
-    ) -> mpsc::Receiver<ServerNotification> {
+    pub fn connect(&self, uaid: Uuid, uid: Uuid) -> mpsc::Receiver<ServerNotification> {
         trace!("ClientRegistry::connect");
         let (tx, snotif_stream) = mpsc::channel(NOTIFICATION_CHANNEL_CAPACITY);
         let client = RegisteredClient { uaid, uid, tx };
         if let Some(old_client) = self.clients.insert(uaid, client) {
             // Drop existing connection
-            let result = old_client.tx.clone().try_send(ServerNotification::Disconnect);
+            let result = old_client
+                .tx
+                .clone()
+                .try_send(ServerNotification::Disconnect);
             if result.is_ok() {
                 debug!("ClientRegistry::connect Ghosting client, new one wants to connect");
             }
@@ -83,7 +83,10 @@ impl ClientRegistry {
     /// The client specified by `uaid` has disconnected.
     pub fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> Result<()> {
         trace!("ClientRegistry::disconnect");
-        let client_exists = self.clients.get(uaid).is_some_and(|client| client.uid == *uid);
+        let client_exists = self
+            .clients
+            .get(uaid)
+            .is_some_and(|client| client.uid == *uid);
         if client_exists {
             self.clients.remove(uaid).expect("Couldn't remove client?");
             return Ok(());

@@ -159,10 +159,7 @@ impl WebPushClient {
     /// Disconnect this `WebPushClient` from the `ClientRegistry`
     pub fn registry_disconnect(&self) {
         // Ignore disconnect (Client wasn't connected) Errors
-        let _ = self
-            .app_state
-            .clients
-            .disconnect(&self.uaid, &self.uid);
+        let _ = self.app_state.clients.disconnect(&self.uaid, &self.uid);
     }
 
     /// Return the difference between the Client's Broadcast Subscriptions and
