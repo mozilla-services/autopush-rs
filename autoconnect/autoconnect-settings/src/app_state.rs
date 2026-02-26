@@ -131,7 +131,9 @@ impl AppState {
             metrics,
             http,
             fernet,
-            clients: Arc::new(ClientRegistry::default()),
+            clients: Arc::new(ClientRegistry::with_channel_capacity(
+                settings.client_channel_capacity,
+            )),
             broadcaster,
             settings,
             router_url,

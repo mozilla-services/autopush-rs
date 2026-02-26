@@ -101,6 +101,9 @@ pub struct Settings {
     /// Maximum allowed number of backlogged messages. Exceeding this number will
     /// trigger a user reset because the user may have been offline way too long.
     pub msg_limit: u32,
+    /// Maximum number of buffered notifications per client before backpressure
+    /// is applied on the notification channel.
+    pub client_channel_capacity: usize,
     /// Sets the maximum number of concurrent connections per actix-web worker.
     ///
     /// All socket listeners will stop accepting connections when this limit is
@@ -147,6 +150,7 @@ impl Default for Settings {
             megaphone_poll_interval: Duration::from_secs(30),
             human_logs: false,
             msg_limit: 150,
+            client_channel_capacity: 128,
             actix_max_connections: None,
             actix_workers: None,
             #[cfg(feature = "reliable_report")]

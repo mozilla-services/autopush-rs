@@ -146,18 +146,14 @@ impl WebPushClient {
     /// Connect this `WebPushClient` to the `ClientRegistry`
     ///
     /// Returning a `Stream` of `ServerNotification`s from the `ClientRegistry`
-    pub async fn registry_connect(&self) -> mpsc::UnboundedReceiver<ServerNotification> {
-        self.app_state.clients.connect(self.uaid, self.uid).await
+    pub fn registry_connect(&self) -> mpsc::Receiver<ServerNotification> {
+        self.app_state.clients.connect(self.uaid, self.uid)
     }
 
     /// Disconnect this `WebPushClient` from the `ClientRegistry`
-    pub async fn registry_disconnect(&self) {
+    pub fn registry_disconnect(&self) {
         // Ignore disconnect (Client wasn't connected) Errors
-        let _ = self
-            .app_state
-            .clients
-            .disconnect(&self.uaid, &self.uid)
-            .await;
+        let _ = self.app_state.clients.disconnect(&self.uaid, &self.uid);
     }
 
     /// Return the difference between the Client's Broadcast Subscriptions and
