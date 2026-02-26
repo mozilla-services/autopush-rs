@@ -46,10 +46,7 @@ impl Router for WebPushRouter {
         Ok(HashMap::new())
     }
 
-    async fn route_notification(
-        &self,
-        notification: Notification,
-    ) -> ApiResult<RouterResponse> {
+    async fn route_notification(&self, notification: Notification) -> ApiResult<RouterResponse> {
         let route_start = Instant::now();
         let result = self.route_notification_inner(notification).await;
         self.metrics
