@@ -148,15 +148,6 @@ impl FromRequest for Subscription {
             trace!("user: {:?}", &user);
             validate_user(&user, &channel_id, &app_state).await?;
 
-            // Validate the VAPID JWT token and record the version
-            if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid, &app_state.settings, &app_state.metrics)?;
-
-                app_state
-                    .metrics
-                    .incr_raw(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
-            }
-
             Ok(Subscription {
                 user,
                 channel_id,
