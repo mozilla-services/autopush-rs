@@ -518,13 +518,7 @@ impl BigTableClientImpl {
         req: bigtable::MutateRowRequest,
     ) -> Result<(), error::BigTableError> {
         if !self.circuit_breaker.allow_request() {
-            self.metrics
-                .incr(MetricName::ErrorBigtableCircuitBreaker)
-                .ok();
-            return Err(error::BigTableError::Status(
-                error::MutateRowStatus::Unavailable,
-                "Circuit breaker open: BigTable temporarily unavailable".to_owned(),
-            ));
+            return Err(error::BigTableError::CircuitBreakerOpen);
         }
         let bigtable = self.pool.get().await?;
         let result = retry_policy(self.settings.retry_count)
@@ -624,13 +618,7 @@ impl BigTableClientImpl {
         req: ReadRowsRequest,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         if !self.circuit_breaker.allow_request() {
-            self.metrics
-                .incr(MetricName::ErrorBigtableCircuitBreaker)
-                .ok();
-            return Err(error::BigTableError::Status(
-                error::MutateRowStatus::Unavailable,
-                "Circuit breaker open: BigTable temporarily unavailable".to_owned(),
-            ));
+            return Err(error::BigTableError::CircuitBreakerOpen);
         }
         let bigtable = self.pool.get().await?;
         let result = retry_policy(self.settings.retry_count)

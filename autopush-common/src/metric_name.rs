@@ -118,10 +118,6 @@ pub enum MetricName {
     #[strum(serialize = "error.node.connect")]
     ErrorNodeConnect,
 
-    /// BigTable circuit breaker tripped (fail-fast)
-    #[strum(serialize = "error.bigtable.circuit_breaker")]
-    ErrorBigtableCircuitBreaker,
-
     //
     // Update metrics
     //

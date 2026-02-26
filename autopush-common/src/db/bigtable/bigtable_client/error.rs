@@ -135,12 +135,17 @@ pub enum BigTableError {
 
     #[error("BigTable config error: {0}")]
     Config(String),
+
+    #[error("Circuit breaker open: BigTable temporarily unavailable")]
+    CircuitBreakerOpen,
 }
 
 impl BigTableError {
     pub fn status(&self) -> StatusCode {
         match self {
-            BigTableError::PoolTimeout(_) => StatusCode::SERVICE_UNAVAILABLE,
+            BigTableError::PoolTimeout(_) | BigTableError::CircuitBreakerOpen => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             BigTableError::Status(e, _) => e.status(),
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -151,7 +156,7 @@ impl ReportableError for BigTableError {
     fn is_sentry_event(&self) -> bool {
         #[allow(clippy::match_like_matches_macro)]
         match self {
-            BigTableError::PoolTimeout(_) => false,
+            BigTableError::PoolTimeout(_) | BigTableError::CircuitBreakerOpen => false,
             _ => true,
         }
     }
@@ -169,6 +174,7 @@ impl ReportableError for BigTableError {
             BigTableError::PoolTimeout(_) => "storage.bigtable.error.pool_timeout",
             BigTableError::GRPC(_) => "storage.bigtable.error.grpc",
             BigTableError::Config(_) => "storage.bigtable.error.config",
+            BigTableError::CircuitBreakerOpen => "storage.bigtable.error.circuit_breaker",
         };
         Some(err)
     }
