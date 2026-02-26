@@ -82,6 +82,12 @@ pub struct PgClientImpl {
     _metrics: Arc<StatsdClient>,
     db_settings: PostgresDbSettings,
     pool: Pool,
+    /// Cached fully-qualified table names to avoid repeated format!/clone per query
+    cached_router_table: String,
+    cached_message_table: String,
+    cached_meta_table: String,
+    #[cfg(feature = "reliable_report")]
+    cached_reliability_table: String,
 }
 
 impl PgClientImpl {
@@ -109,17 +115,43 @@ impl PgClientImpl {
             }
             .create_pool(Some(Runtime::Tokio1), tls_flag)
             .map_err(|e| DbError::General(e.to_string()))?;
+            let cached_router_table = if let Some(schema) = &db_settings.schema {
+                format!("{}.{}", schema, db_settings.router_table)
+            } else {
+                db_settings.router_table.clone()
+            };
+            let cached_message_table = if let Some(schema) = &db_settings.schema {
+                format!("{}.{}", schema, db_settings.message_table)
+            } else {
+                db_settings.message_table.clone()
+            };
+            let cached_meta_table = if let Some(schema) = &db_settings.schema {
+                format!("{}.{}", schema, db_settings.meta_table)
+            } else {
+                db_settings.meta_table.clone()
+            };
+            #[cfg(feature = "reliable_report")]
+            let cached_reliability_table = if let Some(schema) = &db_settings.schema {
+                format!("{}.{}", schema, db_settings.reliability_table)
+            } else {
+                db_settings.reliability_table.clone()
+            };
             return Ok(Self {
                 _metrics: metrics,
                 db_settings,
                 pool,
+                cached_router_table,
+                cached_message_table,
+                cached_meta_table,
+                #[cfg(feature = "reliable_report")]
+                cached_reliability_table,
             });
         };
         Err(DbError::ConnectionError("No DSN specified".to_owned()))
     }
 
     /// Does the given table exist
-    async fn table_exists(&self, table_name: String) -> DbResult<bool> {
+    async fn table_exists(&self, table_name: &str) -> DbResult<bool> {
         let (schema, table_name) = if table_name.contains('.') {
             let mut parts = table_name.splitn(2, '.');
             (
@@ -129,7 +161,7 @@ impl PgClientImpl {
                 parts.next().unwrap().to_owned(),
             )
         } else {
-            ("public".to_owned(), table_name)
+            ("public".to_owned(), table_name.to_owned())
         };
         let rows = self
             .pool
@@ -152,44 +184,28 @@ impl PgClientImpl {
     }
 
     /// The router table contains how to route messages to the recipient UAID.
-    pub(crate) fn router_table(&self) -> String {
-        if let Some(schema) = &self.db_settings.schema {
-            format!("{}.{}", schema, self.db_settings.router_table)
-        } else {
-            self.db_settings.router_table.clone()
-        }
+    pub(crate) fn router_table(&self) -> &str {
+        &self.cached_router_table
     }
 
     /// The message table contains stored messages for UAIDs.
-    pub(crate) fn message_table(&self) -> String {
-        if let Some(schema) = &self.db_settings.schema {
-            format!("{}.{}", schema, self.db_settings.message_table)
-        } else {
-            self.db_settings.message_table.clone()
-        }
+    pub(crate) fn message_table(&self) -> &str {
+        &self.cached_message_table
     }
 
     /// The meta table contains channel and other metadata for UAIDs.
     /// With traditional "No-Sql" databases, this would be rolled into the
     /// router table.
-    pub(crate) fn meta_table(&self) -> String {
-        if let Some(schema) = &self.db_settings.schema {
-            format!("{}.{}", schema, self.db_settings.meta_table)
-        } else {
-            self.db_settings.meta_table.clone()
-        }
+    pub(crate) fn meta_table(&self) -> &str {
+        &self.cached_meta_table
     }
 
     /// The reliability table contains message delivery reliability states.
     /// This is optional and should only be used to track internally generated
     /// and consumed messages based on the VAPID public key signature.
     #[cfg(feature = "reliable_report")]
-    pub(crate) fn reliability_table(&self) -> String {
-        if let Some(schema) = &self.db_settings.schema {
-            format!("{}.{}", schema, self.db_settings.reliability_table)
-        } else {
-            self.db_settings.reliability_table.clone()
-        }
+    pub(crate) fn reliability_table(&self) -> &str {
+        &self.cached_reliability_table
     }
 
     pub(crate) fn error_to_string(e: &tokio_postgres::Error) -> String {
@@ -646,9 +662,136 @@ impl DbClient for PgClientImpl {
     }
 
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
-        for message in messages {
-            self.save_message(uaid, message).await?;
+        if messages.is_empty() {
+            return Ok(());
         }
+        if messages.len() == 1 {
+            // Fast path: single message doesn't need batch construction
+            return self
+                .save_message(uaid, messages.into_iter().next().unwrap())
+                .await;
+        }
+
+        #[cfg(not(feature = "reliable_report"))]
+        let fields_per_row: usize = 11;
+        #[cfg(feature = "reliable_report")]
+        let fields_per_row: usize = 12;
+
+        let field_names = {
+            #[allow(unused_mut)]
+            let mut fields = vec![
+                "uaid",
+                "channel_id",
+                "chid_message_id",
+                "version",
+                "ttl",
+                "expiry",
+                "topic",
+                "timestamp",
+                "data",
+                "sortkey_timestamp",
+                "headers",
+            ];
+            #[cfg(feature = "reliable_report")]
+            fields.push("reliability_id");
+            fields.join(",")
+        };
+
+        // Build parameterized value rows: ($1,$2,...,$11), ($12,$13,...,$22), ...
+        let mut value_rows = Vec::with_capacity(messages.len());
+        for i in 0..messages.len() {
+            let base = i * fields_per_row;
+            let params: Vec<String> = (1..=fields_per_row)
+                .map(|j| format!("${}", base + j))
+                .collect();
+            value_rows.push(format!("({})", params.join(",")));
+        }
+
+        let cmd = format!(
+            "INSERT INTO {tablename}
+                ({field_names})
+                VALUES
+                {values} ON CONFLICT (chid_message_id) DO UPDATE SET
+                    uaid=EXCLUDED.uaid,
+                    channel_id=EXCLUDED.channel_id,
+                    version=EXCLUDED.version,
+                    ttl=EXCLUDED.ttl,
+                    expiry=EXCLUDED.expiry,
+                    topic=EXCLUDED.topic,
+                    timestamp=EXCLUDED.timestamp,
+                    data=EXCLUDED.data,
+                    sortkey_timestamp=EXCLUDED.sortkey_timestamp,
+                    headers=EXCLUDED.headers",
+            tablename = &self.message_table(),
+            values = value_rows.join(",")
+        );
+
+        // Build parameter list: we need owned values for strings
+        let uaid_str = uaid.simple().to_string();
+        let now = util::sec_since_epoch() as i64;
+
+        // Pre-compute owned values for each message
+        struct MessageParams {
+            channel_id: String,
+            chidmessageid: String,
+            version: String,
+            ttl: i64,
+            expiry: i64,
+            topic: Option<String>,
+            timestamp: i64,
+            data: String,
+            sortkey_timestamp: Option<i64>,
+            headers: String,
+            #[cfg(feature = "reliable_report")]
+            reliability_id: Option<String>,
+        }
+
+        let msg_params: Vec<MessageParams> = messages
+            .into_iter()
+            .map(|m| {
+                let topic = m.topic.as_ref().filter(|v| !v.is_empty()).cloned();
+                MessageParams {
+                    channel_id: m.channel_id.simple().to_string(),
+                    chidmessageid: m.chidmessageid(),
+                    version: m.version,
+                    ttl: m.ttl as i64,
+                    expiry: now + m.ttl as i64,
+                    topic,
+                    timestamp: m.timestamp as i64,
+                    data: m.data.as_deref().unwrap_or_default().to_owned(),
+                    sortkey_timestamp: m.sortkey_timestamp.map(|v| v as i64),
+                    headers: json!(m.headers).to_string(),
+                    #[cfg(feature = "reliable_report")]
+                    reliability_id: m.reliability_id,
+                }
+            })
+            .collect();
+
+        let mut params: Vec<&(dyn ToSql + Sync)> =
+            Vec::with_capacity(msg_params.len() * fields_per_row);
+        for mp in &msg_params {
+            params.push(&uaid_str);
+            params.push(&mp.channel_id);
+            params.push(&mp.chidmessageid);
+            params.push(&mp.version);
+            params.push(&mp.ttl);
+            params.push(&mp.expiry);
+            params.push(&mp.topic);
+            params.push(&mp.timestamp);
+            params.push(&mp.data);
+            params.push(&mp.sortkey_timestamp);
+            params.push(&mp.headers);
+            #[cfg(feature = "reliable_report")]
+            params.push(&mp.reliability_id);
+        }
+
+        self.pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
+            .execute(cmd.as_str(), &params)
+            .await
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         Ok(())
     }
 

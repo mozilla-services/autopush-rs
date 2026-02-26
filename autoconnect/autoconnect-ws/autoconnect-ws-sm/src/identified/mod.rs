@@ -1,9 +1,15 @@
-use std::{fmt, mem, sync::Arc};
+use std::{collections::HashMap, fmt, mem, sync::Arc};
 
 use actix_web::rt;
 use cadence::Timed;
 use futures::channel::mpsc;
+use once_cell::sync::Lazy;
+use tokio::sync::Semaphore;
 use uuid::Uuid;
+
+/// Limit concurrent disconnect-cleanup tasks to prevent resource exhaustion
+/// during disconnect storms (e.g., pod scaling events).
+static DISCONNECT_SEMAPHORE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(64));
 
 use autoconnect_common::{
     broadcast::{Broadcast, BroadcastSubs},
@@ -13,6 +19,8 @@ use autoconnect_common::{
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
     db::User,
+    metric_name::MetricName,
+    metrics::StatsdClientExt,
     notification::Notification,
     util::{ms_since_epoch, user_agent::UserAgentInfo},
 };
@@ -214,21 +222,22 @@ impl WebPushClient {
     /// Direct messages are solely stored in memory until Ack'd by the Client,
     /// so on shutdown, any not Ack'd are stored in the db to not be lost
     fn save_and_notify_unacked_direct_notifs(&mut self) {
-        let mut notifs = mem::take(&mut self.ack_state.unacked_direct_notifs);
+        let notif_map = mem::take(&mut self.ack_state.unacked_direct_notifs);
         trace!(
             "👁‍🗨WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
-            notifs.len()
+            notif_map.len()
         );
-        if notifs.is_empty() {
+        if notif_map.is_empty() {
             return;
         }
 
-        self.stats.direct_storage += notifs.len() as i32;
+        self.stats.direct_storage += notif_map.len() as i32;
         // TODO: clarify this comment re the Python version
         // Ensure we don't store these as legacy by setting a 0 as the
         // sortkey_timestamp. This ensures the Python side doesn't mark it as
         // legacy during conversion and still get the correct default us_time
         // when saving
+        let mut notifs: Vec<Notification> = notif_map.into_values().collect();
         for notif in &mut notifs {
             notif.sortkey_timestamp = Some(0);
         }
@@ -237,6 +246,17 @@ impl WebPushClient {
         let uaid = self.uaid;
         let connected_at = self.connected_at;
         rt::spawn(async move {
+            let _permit = match DISCONNECT_SEMAPHORE.acquire().await {
+                Ok(permit) => permit,
+                Err(_) => {
+                    app_state
+                        .metrics
+                        .incr(MetricName::ErrorDisconnectSemaphoreFull)
+                        .ok();
+                    warn!("Disconnect semaphore full, skipping save of unacked direct notifs");
+                    return Ok(());
+                }
+            };
             #[cfg(not(feature = "reliable_report"))]
             app_state.db.save_messages(&uaid, notifs).await?;
             #[cfg(feature = "reliable_report")]
@@ -347,13 +367,19 @@ pub struct SessionStatistics {
     existing_uaid: bool,
 }
 
+/// Key for looking up notifications in the ACK tracking maps.
+/// The `version` field is the `Notification.message_id`, a fernet-encrypted
+/// composite of uaid, channel_id, and topic|timestamp. It is globally unique
+/// (fernet adds random padding), so `version` alone suffices as the key.
+type AckKey = String;
+
 /// Record of Notifications sent to the Client.
 #[derive(Debug, Default)]
 struct AckState {
-    /// List of unAck'd directly sent (never stored) notifications
-    unacked_direct_notifs: Vec<Notification>,
-    /// List of unAck'd sent notifications from storage
-    unacked_stored_notifs: Vec<Notification>,
+    /// Map of unAck'd directly sent (never stored) notifications
+    unacked_direct_notifs: HashMap<AckKey, Notification>,
+    /// Map of unAck'd sent notifications from storage
+    unacked_stored_notifs: HashMap<AckKey, Notification>,
     /// List of Ack'd timestamp notifications from storage, cleared
     /// via `increment_storage`
     #[cfg(feature = "reliable_report")]
