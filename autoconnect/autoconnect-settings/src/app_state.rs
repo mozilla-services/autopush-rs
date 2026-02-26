@@ -119,6 +119,8 @@ impl AppState {
         );
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
+            .pool_max_idle_per_host(settings.pool_max_idle_per_host)
+            .pool_idle_timeout(Duration::from_secs(settings.pool_idle_timeout_secs))
             .build()
             .unwrap_or_else(|e| panic!("Error while building reqwest::Client: {e}"));
         let broadcaster = Arc::new(RwLock::new(BroadcastChangeTracker::new(Vec::new())));
