@@ -48,17 +48,15 @@ impl Router for WebPushRouter {
         mut notification: Notification,
     ) -> ApiResult<RouterResponse> {
         // The notification contains the original subscription information
-        let user = &notification.subscription.user.clone();
-        // A clone of the notification used only for the responses
-        // The canonical Notification is consumed by the various functions.
+        let uaid = notification.subscription.user.uaid;
         debug!(
             "✉ Routing WebPush notification to UAID {} :: {:?}",
-            notification.subscription.user.uaid, notification.subscription.reliability_id,
+            uaid, notification.subscription.reliability_id,
         );
         trace!("✉ Notification = {:?}", notification);
 
         // Check if there is a node connected to the client
-        if let Some(node_id) = &user.node_id {
+        if let Some(node_id) = &notification.subscription.user.node_id {
             trace!(
                 "✉ User has a node ID, sending notification to node: {}",
                 &node_id
@@ -96,7 +94,7 @@ impl Router for WebPushRouter {
                         };
                     };
                     debug!("✉ Error while sending webpush notification: {}", error);
-                    self.remove_node_id(user, node_id).await?
+                    self.remove_node_id(&notification.subscription.user, node_id).await?
                 }
             }
 
@@ -142,7 +140,7 @@ impl Router for WebPushRouter {
 
         // Retrieve the user data again, they may have reconnected or the node
         // is no longer busy.
-        let user = match self.db.get_user(&user.uaid).await {
+        let user = match self.db.get_user(&uaid).await {
             Ok(Some(user)) => user,
             Ok(None) => {
                 trace!("✉ No user found, must have been deleted");
@@ -251,7 +249,7 @@ impl WebPushRouter {
             .db
             .save_message(
                 &notification.subscription.user.uaid,
-                notification.clone().into(),
+                notification.to_common_notification(),
             )
             .await
             .map_err(|e| {

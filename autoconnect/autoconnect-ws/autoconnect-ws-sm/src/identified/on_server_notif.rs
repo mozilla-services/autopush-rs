@@ -37,7 +37,8 @@ impl WebPushClient {
     pub fn on_server_notif_shutdown(&mut self, snotif: ServerNotification) {
         trace!("WebPushClient::on_server_notif_shutdown");
         if let ServerNotification::Notification(notif) = snotif {
-            self.ack_state.unacked_direct_notifs.push(notif);
+            let key = (notif.channel_id, notif.version.clone());
+            self.ack_state.unacked_direct_notifs.insert(key, notif);
         }
     }
 
@@ -49,8 +50,9 @@ impl WebPushClient {
         let response = notif.clone();
         if notif.ttl != 0 {
             // Consume the original notification by adding it to the
-            // unacked stack. This will eventually record the state.
-            self.ack_state.unacked_direct_notifs.push(notif);
+            // unacked map. This will eventually record the state.
+            let key = (notif.channel_id, notif.version.clone());
+            self.ack_state.unacked_direct_notifs.insert(key, notif);
         }
         self.emit_send_metrics(&response, "Direct");
         Ok(ServerMessage::Notification(response))
@@ -161,9 +163,12 @@ impl WebPushClient {
             return Ok(vec![]);
         }
 
-        self.ack_state
-            .unacked_stored_notifs
-            .extend(messages.iter().cloned());
+        for msg in messages.iter() {
+            let key = (msg.channel_id, msg.version.clone());
+            self.ack_state
+                .unacked_stored_notifs
+                .insert(key, msg.clone());
+        }
         let smsgs: Vec<_> = messages
             .into_iter()
             .inspect(|msg| {

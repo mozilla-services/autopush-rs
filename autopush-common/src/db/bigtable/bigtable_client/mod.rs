@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -66,6 +67,74 @@ pub const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
 pub(crate) const RETRY_COUNT: usize = 5;
 
+/// Simple circuit breaker to prevent retry storms during BigTable outages.
+///
+/// After `failure_threshold` consecutive failures, the circuit opens and
+/// requests fail fast for `cooldown_secs` seconds before allowing a retry.
+#[derive(Debug)]
+pub struct CircuitBreaker {
+    consecutive_failures: AtomicU32,
+    opened_at_epoch_secs: AtomicU64,
+    failure_threshold: u32,
+    cooldown_secs: u64,
+}
+
+impl CircuitBreaker {
+    pub fn new(failure_threshold: u32, cooldown_secs: u64) -> Self {
+        Self {
+            consecutive_failures: AtomicU32::new(0),
+            opened_at_epoch_secs: AtomicU64::new(0),
+            failure_threshold,
+            cooldown_secs,
+        }
+    }
+
+    /// Check if the circuit is allowing requests through.
+    /// Returns true if the request should proceed, false if it should fail fast.
+    pub fn allow_request(&self) -> bool {
+        let failures = self.consecutive_failures.load(Ordering::Relaxed);
+        if failures < self.failure_threshold {
+            return true;
+        }
+        // Circuit is open — check if cooldown has elapsed
+        let opened_at = self.opened_at_epoch_secs.load(Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        if now.saturating_sub(opened_at) >= self.cooldown_secs {
+            // Allow a single probe request (half-open state)
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Record a successful operation, resetting the circuit breaker.
+    pub fn record_success(&self) {
+        self.consecutive_failures.store(0, Ordering::Relaxed);
+    }
+
+    /// Record a failed operation.
+    pub fn record_failure(&self) {
+        let prev = self.consecutive_failures.fetch_add(1, Ordering::Relaxed);
+        if prev + 1 >= self.failure_threshold {
+            let now = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            self.opened_at_epoch_secs.store(now, Ordering::Relaxed);
+        }
+    }
+}
+
+impl Default for CircuitBreaker {
+    fn default() -> Self {
+        // Open after 5 consecutive failures, cooldown for 30 seconds
+        Self::new(5, 30)
+    }
+}
+
 /// Semi convenience wrapper to ensure that the UAID is formatted and displayed consistently.
 // TODO:Should we create something similar for ChannelID?
 struct Uaid(Uuid);
@@ -92,6 +161,8 @@ pub struct BigTableClientImpl {
     pool: BigTablePool,
     metadata: Metadata,
     admin_metadata: Metadata,
+    /// Circuit breaker to prevent retry storms during BigTable outages
+    circuit_breaker: Arc<CircuitBreaker>,
 }
 
 /// Return a a RowFilter matching the GC policy of the router Column Family
@@ -399,6 +470,7 @@ impl BigTableClientImpl {
             metadata,
             admin_metadata,
             pool,
+            circuit_breaker: Arc::new(CircuitBreaker::default()),
         })
     }
 
@@ -445,8 +517,14 @@ impl BigTableClientImpl {
         &self,
         req: bigtable::MutateRowRequest,
     ) -> Result<(), error::BigTableError> {
+        if !self.circuit_breaker.allow_request() {
+            return Err(error::BigTableError::Status(
+                error::MutateRowStatus::Unavailable,
+                "Circuit breaker open: BigTable temporarily unavailable".to_owned(),
+            ));
+        }
         let bigtable = self.pool.get().await?;
-        retry_policy(self.settings.retry_count)
+        let result = retry_policy(self.settings.retry_count)
             .retry_if(
                 || async {
                     bigtable
@@ -455,8 +533,12 @@ impl BigTableClientImpl {
                 },
                 retryable_grpcio_err(&self.metrics),
             )
-            .await
-            .map_err(error::BigTableError::Write)?;
+            .await;
+        match &result {
+            Ok(_) => self.circuit_breaker.record_success(),
+            Err(_) => self.circuit_breaker.record_failure(),
+        }
+        result.map_err(error::BigTableError::Write)?;
         Ok(())
     }
 
@@ -538,8 +620,14 @@ impl BigTableClientImpl {
         &self,
         req: ReadRowsRequest,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
+        if !self.circuit_breaker.allow_request() {
+            return Err(error::BigTableError::Status(
+                error::MutateRowStatus::Unavailable,
+                "Circuit breaker open: BigTable temporarily unavailable".to_owned(),
+            ));
+        }
         let bigtable = self.pool.get().await?;
-        let resp = retry_policy(self.settings.retry_count)
+        let result = retry_policy(self.settings.retry_count)
             .retry_if(
                 || async {
                     let resp: grpcio::ClientSStreamReceiver<bigtable::ReadRowsResponse> = bigtable
@@ -550,8 +638,12 @@ impl BigTableClientImpl {
                 },
                 retryable_bt_err(&self.metrics),
             )
-            .await?;
-        Ok(resp)
+            .await;
+        match &result {
+            Ok(_) => self.circuit_breaker.record_success(),
+            Err(_) => self.circuit_breaker.record_failure(),
+        }
+        Ok(result?)
     }
 
     /// write a given row.
