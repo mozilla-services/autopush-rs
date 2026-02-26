@@ -308,7 +308,7 @@ impl WebPushRouter {
             .db
             .save_message(
                 &notification.subscription.user.uaid,
-                notification.to_common_notification(),
+                autopush_common::notification::Notification::from(&*notification),
             )
             .await
             .map_err(|e| {

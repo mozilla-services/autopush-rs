@@ -15,7 +15,7 @@ use uuid::Uuid;
 /// Wire format for delivering notifications to connection servers.
 /// Uses a single serialization pass instead of building a HashMap of serde_json::Values.
 #[derive(Debug, Serialize)]
-pub struct NotificationForDelivery<'a> {
+pub struct TransportNotification<'a> {
     #[serde(rename = "channelID")]
     pub channel_id: uuid::Uuid,
     pub version: &'a str,
@@ -140,22 +140,22 @@ impl FromRequest for Notification {
     }
 }
 
-impl From<Notification> for autopush_common::notification::Notification {
-    fn from(notification: Notification) -> Self {
+impl From<&Notification> for autopush_common::notification::Notification {
+    fn from(notification: &Notification) -> Self {
         let topic = notification.headers.topic.clone();
         let sortkey_timestamp = topic.is_none().then_some(notification.sort_key_timestamp);
         autopush_common::notification::Notification {
             channel_id: notification.subscription.channel_id,
-            version: notification.message_id,
+            version: notification.message_id.clone(),
             ttl: notification.headers.ttl as u64,
             topic,
             timestamp: notification.timestamp,
-            data: notification.data,
+            data: notification.data.clone(),
             sortkey_timestamp,
             #[cfg(feature = "reliable_report")]
-            reliability_id: notification.subscription.reliability_id,
+            reliability_id: notification.subscription.reliability_id.clone(),
             headers: {
-                let headers: HashMap<String, String> = notification.headers.into();
+                let headers: HashMap<String, String> = notification.headers.clone().into();
                 if headers.is_empty() {
                     None
                 } else {
@@ -165,6 +165,13 @@ impl From<Notification> for autopush_common::notification::Notification {
             #[cfg(feature = "reliable_report")]
             reliable_state: notification.reliable_state,
         }
+    }
+}
+
+impl From<Notification> for autopush_common::notification::Notification {
+    fn from(notification: Notification) -> Self {
+        // Delegate to the borrowing impl to avoid duplication
+        autopush_common::notification::Notification::from(&notification)
     }
 }
 
@@ -207,46 +214,18 @@ impl Notification {
         self.headers.topic.is_some()
     }
 
-    /// Convert to a common Notification by borrowing, avoiding a full clone
-    /// of the Subscription (which contains User with router_data HashMap).
-    pub fn to_common_notification(&self) -> autopush_common::notification::Notification {
-        let topic = self.headers.topic.clone();
-        let sortkey_timestamp = topic.is_none().then_some(self.sort_key_timestamp);
-        autopush_common::notification::Notification {
-            channel_id: self.subscription.channel_id,
-            version: self.message_id.clone(),
-            ttl: self.headers.ttl as u64,
-            topic,
-            timestamp: self.timestamp,
-            data: self.data.clone(),
-            sortkey_timestamp,
-            #[cfg(feature = "reliable_report")]
-            reliability_id: self.subscription.reliability_id.clone(),
-            headers: {
-                let headers: HashMap<String, String> = self.headers.clone().into();
-                if headers.is_empty() {
-                    None
-                } else {
-                    Some(headers)
-                }
-            },
-            #[cfg(feature = "reliable_report")]
-            reliable_state: self.reliable_state,
-        }
-    }
-
     /// Serialize the notification for delivery to the connection server. Some
     /// fields in `autopush_common`'s `Notification` are marked with
     /// `#[serde(skip_serializing)]` so they are not shown to the UA. These
     /// fields are still required when delivering to the connection server, so
     /// we can't simply convert this notification type to that one and serialize
     /// via serde.
-    pub fn serialize_for_delivery(&self) -> ApiResult<NotificationForDelivery<'_>> {
+    pub fn serialize_for_delivery(&self) -> ApiResult<TransportNotification<'_>> {
         let headers = self.data.as_ref().map(|_| {
             let h: HashMap<String, String> = self.headers.clone().into();
             h
         });
-        Ok(NotificationForDelivery {
+        Ok(TransportNotification {
             channel_id: self.subscription.channel_id,
             version: &self.message_id,
             ttl: self.headers.ttl,
