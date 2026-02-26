@@ -71,31 +71,38 @@ impl ClientRegistry {
     /// A notification has come for the uaid
     pub fn notify(&self, uaid: Uuid, notif: Notification) -> Result<()> {
         trace!("ClientRegistry::notify");
-        if let Some(client) = self.clients.get(&uaid) {
-            debug!("ClientRegistry::notify Found a client to deliver a notification to");
-            let result = client
-                .tx
-                .clone()
-                .try_send(ServerNotification::Notification(notif));
-            if result.is_ok() {
+        let Some(client) = self.clients.get(&uaid) else {
+            return Err(ApcErrorKind::ClientNotConnected.into());
+        };
+        debug!("ClientRegistry::notify Found a client to deliver a notification to");
+        match client
+            .tx
+            .clone()
+            .try_send(ServerNotification::Notification(notif))
+        {
+            Ok(()) => {
                 debug!("ClientRegistry::notify Dropped notification in queue");
-                return Ok(());
+                Ok(())
             }
+            Err(e) if e.is_full() => Err(ApcErrorKind::ChannelFull.into()),
+            Err(_) => Err(ApcErrorKind::ClientNotConnected.into()),
         }
-        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
 
     /// A check for notification command has come for the uaid
     pub fn check_storage(&self, uaid: Uuid) -> Result<()> {
         trace!("ClientRegistry::check_storage");
-        if let Some(client) = self.clients.get(&uaid) {
-            let result = client.tx.clone().try_send(ServerNotification::CheckStorage);
-            if result.is_ok() {
+        let Some(client) = self.clients.get(&uaid) else {
+            return Err(ApcErrorKind::ClientNotConnected.into());
+        };
+        match client.tx.clone().try_send(ServerNotification::CheckStorage) {
+            Ok(()) => {
                 debug!("ClientRegistry::check_storage Told client to check storage");
-                return Ok(());
+                Ok(())
             }
+            Err(e) if e.is_full() => Err(ApcErrorKind::ChannelFull.into()),
+            Err(_) => Err(ApcErrorKind::ClientNotConnected.into()),
         }
-        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
 
     /// The client specified by `uaid` has disconnected.
@@ -106,10 +113,12 @@ impl ClientRegistry {
             .get(uaid)
             .is_some_and(|client| client.uid == *uid);
         if client_exists {
-            self.clients.remove(uaid).expect("Couldn't remove client?");
+            self.clients
+                .remove(uaid)
+                .ok_or_else(|| ApcErrorKind::GeneralError("Couldn't remove client".into()))?;
             return Ok(());
         }
-        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
+        Err(ApcErrorKind::ClientNotConnected.into())
     }
 
     pub fn count(&self) -> usize {
