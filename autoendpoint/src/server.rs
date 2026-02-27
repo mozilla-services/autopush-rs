@@ -1,5 +1,6 @@
 //! Main application server
 #![forbid(unsafe_code)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,6 +22,7 @@ use autopush_common::db::redis::RedisClientImpl;
 use autopush_common::reliability::PushReliability;
 use autopush_common::{
     db::{client::DbClient, spawn_pool_periodic_reporter, DbSettings, StorageType},
+    metric_name::MetricName,
     middleware::sentry::SentryWrapper,
 };
 
@@ -48,6 +50,7 @@ pub struct AppState {
     pub fernet: MultiFernet,
     pub db: Box<dyn DbClient>,
     pub http: reqwest::Client,
+    pub in_flight_requests: Arc<AtomicUsize>,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
     #[cfg(feature = "stub")]
@@ -120,6 +123,8 @@ impl Server {
         let http = reqwest::ClientBuilder::new()
             .connect_timeout(Duration::from_millis(settings.connection_timeout_millis))
             .timeout(Duration::from_millis(settings.request_timeout_millis))
+            .pool_max_idle_per_host(settings.pool_max_idle_per_host)
+            .pool_idle_timeout(Duration::from_secs(settings.pool_idle_timeout_secs))
             .build()
             .expect("Could not generate request client");
         let fcm_router = Arc::new(
@@ -147,12 +152,14 @@ impl Server {
         );
         #[cfg(feature = "stub")]
         let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
+        let in_flight_requests = Arc::new(AtomicUsize::new(0));
         let app_state = AppState {
             metrics: metrics.clone(),
             settings,
             fernet,
             db,
             http,
+            in_flight_requests: in_flight_requests.clone(),
             fcm_router,
             apns_router,
             #[cfg(feature = "stub")]
@@ -167,6 +174,26 @@ impl Server {
             app_state.db.clone(),
             app_state.metrics.clone(),
         );
+
+        // Periodically report in-flight request gauge
+        {
+            let metrics = app_state.metrics.clone();
+            let in_flight = in_flight_requests;
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(10));
+                loop {
+                    interval.tick().await;
+                    let count = in_flight.load(Ordering::Relaxed);
+                    if let Err(e) = cadence::Gauged::gauge(
+                        metrics.as_ref(),
+                        MetricName::InFlightNodeRequests.as_ref(),
+                        count as u64,
+                    ) {
+                        debug!("Failed to report in-flight metric: {}", e);
+                    }
+                }
+            });
+        }
 
         let server = HttpServer::new(move || {
             // These have a bad habit of being reset. Specify them explicitly.

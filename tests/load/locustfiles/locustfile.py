@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import base64
 import json
 import logging
 import os
@@ -11,10 +12,10 @@ import random
 import string
 import time
 import uuid
-from hashlib import sha1
+from hashlib import sha256
 from json import JSONDecodeError
 from logging import Logger
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 from urllib.parse import urlparse
 
 import gevent
@@ -97,7 +98,8 @@ class AutopushUser(FastHttpUser):
         super().__init__(environment)
         self.channels: dict[str, str] = {}
         self.hello_record: HelloRecord | None = None
-        self.notification_records: dict[bytes, NotificationRecord] = {}
+        self.notification_records: dict[str, NotificationRecord] = {}
+        self.purged_records: set[str] = set()
         self.register_records: dict[str, RegisterRecord] = {}
         self.unregister_records: dict[str, RegisterRecord] = {}
         self.uaid: str = ""
@@ -108,6 +110,11 @@ class AutopushUser(FastHttpUser):
         except AttributeError:
             vapid = None
         self.vapid: Vapid02 | None = vapid
+
+    def gen_message_key(self, data: str) -> str:
+        """Generate a unique key for a message based on its data."""
+        digest = sha256(data.encode(), usedforsecurity=False).digest()  # nosec
+        return hex(int.from_bytes(digest, "big"))
 
     def wait_time(self):
         """Return the autopush wait time."""
@@ -150,6 +157,8 @@ class AutopushUser(FastHttpUser):
         if isinstance(message, HelloMessage):
             self.uaid = message.uaid
         elif isinstance(message, NotificationMessage) and ws.sock:
+            key = self.gen_message_key(base64.urlsafe_b64decode(message.data + "====").decode())
+            logger.info(f"Acking message {key} :: {message.version}")
             self.send_ack(ws.sock, message.channelID, message.version)
         elif isinstance(message, RegisterMessage):
             self.channels[message.channelID] = message.pushEndpoint
@@ -277,7 +286,9 @@ class AutopushUser(FastHttpUser):
             )
             headers = self.REST_HEADERS.copy()
             headers.update(vapid)
-        self.notification_records[sha1(data.encode()).digest()] = record  # nosec
+        key = self.gen_message_key(data)
+        logging.info(f"storing: {key}")
+        self.notification_records[key] = record  # nosec
 
         with self.client.post(
             url=endpoint_url,
@@ -319,6 +330,7 @@ class AutopushUser(FastHttpUser):
         try:
             message_dict: dict[str, Any] = json.loads(data)
             message_type = message_dict.get("messageType", "unknown")
+            key = None
             match message_type:
                 case "hello":
                     message = HelloMessage(**message_dict)
@@ -328,9 +340,19 @@ class AutopushUser(FastHttpUser):
                     message_data: str = message.data
                     # scan through the notification records to see
                     # if this matches a record we sent.
-                    record = self.notification_records.get(
-                        sha1(message_data.encode()).digest(), None  # nosec
-                    )
+                    # (Remember, we get back a stripped, base64 encoded version of the data)
+                    decoded = base64.urlsafe_b64decode(message_data.encode() + b"====")
+                    key = self.gen_message_key(decoded.decode())
+                    logging.info(f"looking for: {key}")
+                    record = self.notification_records.get(key, None)  # nosec
+                    if not record:
+                        logger.error(
+                            f"No record found for {key}. Contents: {decoded[:100].decode()}..."
+                        )
+                    else:
+                        self.purged_records.add(key)
+                        logger.info(f"removing {key}")
+                    # TODO: We should ACK these messages otherwise we will see them again.
                 case "register":
                     message = RegisterMessage(**message_dict)
                     register_chid: str = message.channelID
@@ -345,8 +367,13 @@ class AutopushUser(FastHttpUser):
             if record:
                 response_time = (recv_time - record.send_time) * 1000
             else:
-                exception = f"There is no record of the '{message_type}' message"
-                logger.error(f"{exception}. Contents: {message}")
+                if key and key in self.purged_records and message:
+                    logger.error(
+                        f"🔴Duplicate record {key} :: {cast(NotificationMessage, message).version}?"
+                    )
+                else:
+                    exception = f"There is no record of the '{message_type}' message"
+                    logger.error(f"{exception}. Contents: {message}")
         except (ValidationError, JSONDecodeError) as error:
             exception = str(error)
 

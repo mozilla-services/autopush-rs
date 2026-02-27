@@ -1,6 +1,7 @@
 # Configuration options can either be specified here (and included via the `--config` option),
 # or as environment variables prefixed with `AUTOCONNECT__`.
 # For example: `AUTOCONNECT__PORT` specifies the WebSocket port to use.
+# See [Configuration Options](docs/src/config_options.md) for details.
 #
 
 # The host to use for HTTP connections. Defaults to the machine's hostname.
@@ -74,15 +75,21 @@
 # indicates no limit.
 #auto_ping_timeout = 4
 
-# How long to wait for a closing handshake. 0 indicates no limit.
-#close_handshake_timeout = 0
-
 # Maximum number of WebSocket clients. 0 indicates no limit.
 #max_connections = 0
 
 # The max number of stored messages to return to a connecting client. If this
 # limit is reached, the client is dropped and must re-register.
 #msg_limit = 150
+
+# Maximum idle connections per host in the HTTP connection pool.
+# Under load spikes, unbounded pools can accumulate idle connections and
+# cause memory growth. Default: 10
+#pool_max_idle_per_host = 10
+
+# Idle connection timeout in seconds. Connections idle longer than this
+# are closed to return memory. Default: 30
+#pool_idle_timeout_secs = 30
 
 # The DSN to the database you wish to use.
 # db_dsn = "grpc://localhost:8086"

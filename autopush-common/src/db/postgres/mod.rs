@@ -36,21 +36,16 @@ use super::client::FetchMessageResponse;
 const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct PostgresDbSettings {
-    #[serde(default)]
-    pub schema: Option<String>, // Optional DB Schema
-    #[serde(default)]
-    pub router_table: String, // Routing info
-    #[serde(default)]
-    pub message_table: String, // Message storage info
-    #[serde(default)]
-    pub meta_table: String, // Channels and meta info
-    #[serde(default)]
+    pub schema: Option<String>,    // Optional DB Schema
+    pub router_table: String,      // Routing info
+    pub message_table: String,     // Message storage info
+    pub meta_table: String,        // Channels and meta info
     pub reliability_table: String, // Channels and meta info
-    #[serde(default)]
-    max_router_ttl: u64, // Max time for router records to live.
-                         // #[serde(default)]
-                         // pub use_tls: bool // Should you use a TLS connection to the db.
+    max_router_ttl: u64,           // Max time for router records to live.
+                                   // #[serde(default)]
+                                   // pub use_tls: bool // Should you use a TLS connection to the db.
 }
 
 impl Default for PostgresDbSettings {
@@ -87,6 +82,12 @@ pub struct PgClientImpl {
     _metrics: Arc<StatsdClient>,
     db_settings: PostgresDbSettings,
     pool: Pool,
+    /// Cached fully-qualified table names to avoid repeated format!/clone per query
+    cached_router_table: String,
+    cached_message_table: String,
+    cached_meta_table: String,
+    #[cfg(feature = "reliable_report")]
+    cached_reliability_table: String,
 }
 
 impl PgClientImpl {
@@ -99,6 +100,10 @@ impl PgClientImpl {
     /// e.g. (postgresql://scott:tiger@dbhost/autopush?connect_timeout=10&keepalives_idle=3600)
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
         let db_settings = PostgresDbSettings::try_from(settings.db_settings.as_ref())?;
+        info!(
+            "📮 Initializing Postgres DB Client with settings: {:?} from {:?}",
+            db_settings, &settings.db_settings
+        );
         // TODO: If required, add the TlsConnect<Stream> wrapper here.
         let tls_flag = tokio_postgres::NoTls;
         if let Some(dsn) = settings.dsn.clone() {
@@ -110,17 +115,43 @@ impl PgClientImpl {
             }
             .create_pool(Some(Runtime::Tokio1), tls_flag)
             .map_err(|e| DbError::General(e.to_string()))?;
+            let cached_router_table = if let Some(schema) = &db_settings.schema {
+                format!("{}.{}", schema, db_settings.router_table)
+            } else {
+                db_settings.router_table.clone()
+            };
+            let cached_message_table = if let Some(schema) = &db_settings.schema {
+                format!("{}.{}", schema, db_settings.message_table)
+            } else {
+                db_settings.message_table.clone()
+            };
+            let cached_meta_table = if let Some(schema) = &db_settings.schema {
+                format!("{}.{}", schema, db_settings.meta_table)
+            } else {
+                db_settings.meta_table.clone()
+            };
+            #[cfg(feature = "reliable_report")]
+            let cached_reliability_table = if let Some(schema) = &db_settings.schema {
+                format!("{}.{}", schema, db_settings.reliability_table)
+            } else {
+                db_settings.reliability_table.clone()
+            };
             return Ok(Self {
                 _metrics: metrics,
                 db_settings,
                 pool,
+                cached_router_table,
+                cached_message_table,
+                cached_meta_table,
+                #[cfg(feature = "reliable_report")]
+                cached_reliability_table,
             });
         };
         Err(DbError::ConnectionError("No DSN specified".to_owned()))
     }
 
     /// Does the given table exist
-    async fn table_exists(&self, table_name: String) -> DbResult<bool> {
+    async fn table_exists(&self, table_name: &str) -> DbResult<bool> {
         let (schema, table_name) = if table_name.contains('.') {
             let mut parts = table_name.splitn(2, '.');
             (
@@ -130,7 +161,7 @@ impl PgClientImpl {
                 parts.next().unwrap().to_owned(),
             )
         } else {
-            ("public".to_owned(), table_name)
+            ("public".to_owned(), table_name.to_owned())
         };
         let rows = self
             .pool
@@ -143,8 +174,8 @@ impl PgClientImpl {
             )
             .await
             .map_err(DbError::PgError)?;
-        let val: &str = rows[0].get(0);
-        Ok(val.to_lowercase().starts_with('t'))
+        let val: bool = rows[0].try_get(0)?;
+        Ok(val)
     }
 
     /// Return the router's expiration timestamp
@@ -153,44 +184,37 @@ impl PgClientImpl {
     }
 
     /// The router table contains how to route messages to the recipient UAID.
-    pub(crate) fn router_table(&self) -> String {
-        if let Some(schema) = &self.db_settings.schema {
-            format!("{}.{}", schema, self.db_settings.router_table)
-        } else {
-            self.db_settings.router_table.clone()
-        }
+    pub(crate) fn router_table(&self) -> &str {
+        &self.cached_router_table
     }
 
     /// The message table contains stored messages for UAIDs.
-    pub(crate) fn message_table(&self) -> String {
-        if let Some(schema) = &self.db_settings.schema {
-            format!("{}.{}", schema, self.db_settings.message_table)
-        } else {
-            self.db_settings.message_table.clone()
-        }
+    pub(crate) fn message_table(&self) -> &str {
+        &self.cached_message_table
     }
 
     /// The meta table contains channel and other metadata for UAIDs.
     /// With traditional "No-Sql" databases, this would be rolled into the
     /// router table.
-    pub(crate) fn meta_table(&self) -> String {
-        if let Some(schema) = &self.db_settings.schema {
-            format!("{}.{}", schema, self.db_settings.meta_table)
-        } else {
-            self.db_settings.meta_table.clone()
-        }
+    pub(crate) fn meta_table(&self) -> &str {
+        &self.cached_meta_table
     }
 
     /// The reliability table contains message delivery reliability states.
     /// This is optional and should only be used to track internally generated
     /// and consumed messages based on the VAPID public key signature.
     #[cfg(feature = "reliable_report")]
-    pub(crate) fn reliability_table(&self) -> String {
-        if let Some(schema) = &self.db_settings.schema {
-            format!("{}.{}", schema, self.db_settings.reliability_table)
-        } else {
-            self.db_settings.reliability_table.clone()
-        }
+    pub(crate) fn reliability_table(&self) -> &str {
+        &self.cached_reliability_table
+    }
+
+    pub(crate) fn error_to_string(e: &tokio_postgres::Error) -> String {
+        e.as_db_error()
+            .map(|e| e.message().to_owned()) // Some errors have a useful message.
+            .unwrap_or_else(|| {
+                // Others are best to just convert to a string.
+                e.to_string()
+            })
     }
 }
 
@@ -214,18 +238,20 @@ impl DbClient for PgClientImpl {
                     expiry=EXCLUDED.expiry
                     ;
             ", tablename=self.router_table()),
-            &[&user.uaid.simple().to_string(),              // 1 
+            &[&user.uaid.simple().to_string(),              // 1
             &(user.connected_at as i64),                    // 2
-            &user.router_type,                              // 3    
+            &user.router_type,                              // 3
             &json!(user.router_data).to_string(),           // 4
             &user.node_id,                                  // 5
             &user.record_version.map(|i| i as i64),    // 6
             &(user.version.map(|v| v.simple().to_string())),   // 7
             &user.current_timestamp.map(|i| i as i64), // 8
             &user.priv_channels.iter().map(|v| v.to_string()).collect::<Vec<String>>(),
-            &(self.router_expiry() as i64),                 // 10    
+            &(self.router_expiry() as i64),                 // 10
             ]
-        ).await.map_err( DbError::PgError)?;
+        ).await.map_err(|e| {
+            DbError::PgDbError(Self::error_to_string(&e))
+        })?;
         Ok(())
     }
 
@@ -271,7 +297,7 @@ impl DbClient for PgClientImpl {
                 ],
             )
             .await
-            .map_err(DbError::PgError)?;
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         Ok(result > 0)
     }
 
@@ -280,15 +306,17 @@ impl DbClient for PgClientImpl {
         let row = self.pool.get().await.map_err(DbError::PgPoolError)?
         .query_opt(
             &format!(
-                "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels 
-                 FROM {tablename} 
+                "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels
+                 FROM {tablename}
                  WHERE uaid = $1",
                 tablename=self.router_table()
             ),
             &[&uaid.simple().to_string()]
         )
         .await
-        .map_err(DbError::PgError)?;
+        .map_err(|e| {
+            DbError::PgDbError(Self::error_to_string(&e))
+        })?;
 
         let Some(row) = row else {
             return Ok(None);
@@ -380,8 +408,8 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "INSERT 
-                     INTO {tablename} (uaid, channel_id) VALUES ($1, $2) 
+                    "INSERT
+                     INTO {tablename} (uaid, channel_id) VALUES ($1, $2)
                      ON CONFLICT DO NOTHING",
                     tablename = self.meta_table()
                 ),
@@ -429,9 +457,9 @@ impl DbClient for PgClientImpl {
         // and redistribute them into tuples.
         // (Remember, an existing channel_id is ignored during this insert since it's already registered)
         let statement = format!(
-            "INSERT 
-                INTO {tablename} (uaid, channel_id) 
-                VALUES {vars} 
+            "INSERT
+                INTO {tablename} (uaid, channel_id)
+                VALUES {vars}
                 ON CONFLICT DO NOTHING",
             tablename = self.meta_table(),
             // Postgres variables are 1-indexed.
@@ -476,7 +504,7 @@ impl DbClient for PgClientImpl {
     /// remove an individual channel for a given uaid from meta table
     async fn remove_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<bool> {
         let cmd = format!(
-            "DELETE FROM {tablename} 
+            "DELETE FROM {tablename}
              WHERE uaid = $1 AND channel_id = $2;",
             tablename = self.meta_table()
         );
@@ -511,8 +539,8 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "UPDATE {tablename} 
-                        SET node_id = null 
+                    "UPDATE {tablename}
+                        SET node_id = null
                         WHERE uaid=$1 AND node_id = $2 AND connected_at = $3 AND version= $4;",
                     tablename = self.router_table()
                 ),
@@ -588,9 +616,9 @@ impl DbClient for PgClientImpl {
                     &message.version,
                     &(message.ttl as i64), // Postgres has no auto TTL.
                     &(util::sec_since_epoch() as i64 + message.ttl as i64),
-                    &message.topic,
+                    &message.topic.as_ref().filter(|v| !v.is_empty()),
                     &(message.timestamp as i64),
-                    &message.data.unwrap_or_default(),
+                    &message.data.as_deref().unwrap_or_default(),
                     &message.sortkey_timestamp.map(|v| v as i64),
                     &json!(message.headers).to_string(),
                     #[cfg(feature = "reliable_report")]
@@ -598,34 +626,172 @@ impl DbClient for PgClientImpl {
                 ],
             )
             .await
-            .map_err(DbError::PgError)?;
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         Ok(())
     }
 
     /// remove a given message from the message table
-    async fn remove_message(&self, uaid: &Uuid, sort_key: &str) -> DbResult<()> {
-        self.pool
+    async fn remove_message(&self, uaid: &Uuid, chidmessageid: &str) -> DbResult<()> {
+        debug!(
+            "📮 Removing message for user {} with chid_message_id {}",
+            uaid.simple(),
+            chidmessageid
+        );
+        let result = self
+            .pool
             .get()
             .await
             .map_err(DbError::PgPoolError)?
             .execute(
                 &format!(
-                    "DELETE FROM {tablename} 
+                    "DELETE FROM {tablename}
                      WHERE uaid=$1 AND chid_message_id = $2;",
                     tablename = self.message_table()
                 ),
-                &[&uaid.simple().to_string(), &(sort_key.to_owned())],
+                &[&uaid.simple().to_string(), &chidmessageid],
             )
             .await
-            .map_err(DbError::PgError)?;
-
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
+        debug!(
+            "📮 Deleted {} rows for user {} with chid_message_id {}",
+            result,
+            uaid.simple(),
+            chidmessageid
+        );
         Ok(())
     }
 
     async fn save_messages(&self, uaid: &Uuid, messages: Vec<Notification>) -> DbResult<()> {
-        for message in messages {
-            self.save_message(uaid, message).await?;
+        if messages.is_empty() {
+            return Ok(());
         }
+        if messages.len() == 1 {
+            // Fast path: single message doesn't need batch construction
+            return self
+                .save_message(uaid, messages.into_iter().next().unwrap())
+                .await;
+        }
+
+        #[cfg(not(feature = "reliable_report"))]
+        let fields_per_row: usize = 11;
+        #[cfg(feature = "reliable_report")]
+        let fields_per_row: usize = 12;
+
+        let field_names = {
+            #[allow(unused_mut)]
+            let mut fields = vec![
+                "uaid",
+                "channel_id",
+                "chid_message_id",
+                "version",
+                "ttl",
+                "expiry",
+                "topic",
+                "timestamp",
+                "data",
+                "sortkey_timestamp",
+                "headers",
+            ];
+            #[cfg(feature = "reliable_report")]
+            fields.push("reliability_id");
+            fields.join(",")
+        };
+
+        // Build parameterized value rows: ($1,$2,...,$11), ($12,$13,...,$22), ...
+        let mut value_rows = Vec::with_capacity(messages.len());
+        for i in 0..messages.len() {
+            let base = i * fields_per_row;
+            let params: Vec<String> = (1..=fields_per_row)
+                .map(|j| format!("${}", base + j))
+                .collect();
+            value_rows.push(format!("({})", params.join(",")));
+        }
+
+        let cmd = format!(
+            "INSERT INTO {tablename}
+                ({field_names})
+                VALUES
+                {values} ON CONFLICT (chid_message_id) DO UPDATE SET
+                    uaid=EXCLUDED.uaid,
+                    channel_id=EXCLUDED.channel_id,
+                    version=EXCLUDED.version,
+                    ttl=EXCLUDED.ttl,
+                    expiry=EXCLUDED.expiry,
+                    topic=EXCLUDED.topic,
+                    timestamp=EXCLUDED.timestamp,
+                    data=EXCLUDED.data,
+                    sortkey_timestamp=EXCLUDED.sortkey_timestamp,
+                    headers=EXCLUDED.headers",
+            tablename = &self.message_table(),
+            values = value_rows.join(",")
+        );
+
+        // Build parameter list: we need owned values for strings
+        let uaid_str = uaid.simple().to_string();
+        let now = util::sec_since_epoch() as i64;
+
+        // Pre-compute owned values for each message
+        struct MessageParams {
+            channel_id: String,
+            chidmessageid: String,
+            version: String,
+            ttl: i64,
+            expiry: i64,
+            topic: Option<String>,
+            timestamp: i64,
+            data: String,
+            sortkey_timestamp: Option<i64>,
+            headers: String,
+            #[cfg(feature = "reliable_report")]
+            reliability_id: Option<String>,
+        }
+
+        let msg_params: Vec<MessageParams> = messages
+            .into_iter()
+            .map(|m| {
+                let topic = m.topic.as_ref().filter(|v| !v.is_empty()).cloned();
+                MessageParams {
+                    channel_id: m.channel_id.simple().to_string(),
+                    chidmessageid: m.chidmessageid(),
+                    version: m.version,
+                    ttl: m.ttl as i64,
+                    expiry: now + m.ttl as i64,
+                    topic,
+                    timestamp: m.timestamp as i64,
+                    data: m.data.as_deref().unwrap_or_default().to_owned(),
+                    sortkey_timestamp: m.sortkey_timestamp.map(|v| v as i64),
+                    headers: json!(m.headers).to_string(),
+                    #[cfg(feature = "reliable_report")]
+                    reliability_id: m.reliability_id,
+                }
+            })
+            .collect();
+
+        let mut params: Vec<&(dyn ToSql + Sync)> =
+            Vec::with_capacity(msg_params.len() * fields_per_row);
+        for mp in &msg_params {
+            params.push(&uaid_str);
+            params.push(&mp.channel_id);
+            params.push(&mp.chidmessageid);
+            params.push(&mp.version);
+            params.push(&mp.ttl);
+            params.push(&mp.expiry);
+            params.push(&mp.topic);
+            params.push(&mp.timestamp);
+            params.push(&mp.data);
+            params.push(&mp.sortkey_timestamp);
+            params.push(&mp.headers);
+            #[cfg(feature = "reliable_report")]
+            params.push(&mp.reliability_id);
+        }
+
+        self.pool
+            .get()
+            .await
+            .map_err(DbError::PgPoolError)?
+            .execute(cmd.as_str(), &params)
+            .await
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         Ok(())
     }
 
@@ -643,17 +809,21 @@ impl DbClient for PgClientImpl {
             .map_err(DbError::PgPoolError)?
             .query(
                 &format!(
-                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers 
-                 FROM {tablename} 
-                 WHERE uaid=$1 AND expiry >= $2
-                 ORDER BY timestamp DESC 
+                "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers
+                 FROM {tablename}
+                 WHERE uaid=$1 AND expiry >= $2 AND (topic IS NOT NULL AND topic != '')
+                 ORDER BY timestamp DESC
                  LIMIT $3",
                 tablename=&self.message_table(),
             ),
-                &[&uaid.simple().to_string(),&(util::sec_since_epoch() as i64), &(limit as i64)],
+                &[
+                    &uaid.simple().to_string(),
+                    &(util::sec_since_epoch() as i64),
+                    &(limit as i64),
+                ],
             )
             .await
-            .map_err(DbError::PgError)?
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?
             .iter()
             .map(|row: &Row| row.try_into())
             .collect::<Result<Vec<Notification>, DbError>>()?;
@@ -684,17 +854,17 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * FROM {} 
+                        "SELECT * FROM {}
                          WHERE uaid = $1 AND timestamp > $2 AND expiry >= $3
-                         ORDER BY timestamp 
-                         LIMIT $3",
+                         ORDER BY timestamp
+                         LIMIT $4",
                         self.message_table()
                     ),
                     &[
                         &uaid,
                         &(ts as i64),
-                        &(limit as i64),
                         &(util::sec_since_epoch() as i64),
+                        &(limit as i64),
                     ],
                 )
                 .await
@@ -706,18 +876,18 @@ impl DbClient for PgClientImpl {
                 .map_err(DbError::PgPoolError)?
                 .query(
                     &format!(
-                        "SELECT * 
-                         FROM {} 
-                         WHERE uaid = $1 
+                        "SELECT *
+                         FROM {}
+                         WHERE uaid = $1
                          AND expiry >= $2
-                         LIMIT $2",
+                         LIMIT $3",
                         self.message_table()
                     ),
-                    &[&uaid, &(limit as i64), &(util::sec_since_epoch() as i64)],
+                    &[&uaid, &(util::sec_since_epoch() as i64), &(limit as i64)],
                 )
                 .await
-        }?;
-
+        }
+        .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         let messages: Vec<Notification> = response
             .iter()
             .map(|row: &Row| row.try_into())
@@ -768,13 +938,14 @@ impl DbClient for PgClientImpl {
                 &format!(
                 "INSERT INTO {tablename} (id, states, last_update_timestamp) VALUES ($1, json_build_object($2, $3), $3)
                  ON CONFLICT (id) DO
-                 UPDATE SET states = EXCLUDED.states, 
+                 UPDATE SET states = EXCLUDED.states,
                  last_update_timestamp = EXCLUDED.last_update_timestamp;",
                     tablename = tablename
                 ),
                 &[&reliability_id, &state, &timestamp],
             )
-            .await?;
+            .await
+            .map_err(|e|{DbError::PgDbError(Self::error_to_string(&e))})?;
         Ok(())
     }
 
@@ -797,7 +968,8 @@ impl DbClient for PgClientImpl {
                     &(util::sec_since_epoch() as i64),
                 ],
             )
-            .await?;
+            .await
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         // Now, delete messages that we've already delivered.
         transaction
             .execute(
@@ -807,7 +979,8 @@ impl DbClient for PgClientImpl {
                 ),
                 &[&uaid.simple().to_string(), &(timestamp as i64)],
             )
-            .await?;
+            .await
+            .map_err(|e| DbError::PgDbError(Self::error_to_string(&e)))?;
         transaction.execute(
                 &format!(
                     "UPDATE {tablename} SET last_update = $2::BIGINT, expiry= $3::BIGINT WHERE uaid = $1"
@@ -818,7 +991,7 @@ impl DbClient for PgClientImpl {
                     &(self.router_expiry() as i64),
                 ],
             )
-            .await?;
+            .await.map_err(|e|{DbError::PgDbError(Self::error_to_string(&e))})?;
         transaction.commit().await?;
         Ok(())
     }
@@ -831,7 +1004,19 @@ impl DbClient for PgClientImpl {
         // Replace this with a proper health check.
         let client = self.pool.get().await.map_err(DbError::PgPoolError);
         let row = client?.query_one("select true", &[]).await;
-        Ok(!row?.is_empty())
+        if !row?.try_get::<_, bool>(0)? {
+            error!("📮 Failed to fetch from database");
+            return Ok(false);
+        }
+        if !self.router_table_exists().await? {
+            error!("📮 Router table does not exist");
+            return Ok(false);
+        }
+        if !self.message_table_exists().await? {
+            error!("📮 Message table does not exist");
+            return Ok(false);
+        }
+        Ok(true)
     }
 
     /// Convenience function to return self as a Boxed DbClient

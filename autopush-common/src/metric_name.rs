@@ -56,6 +56,9 @@ pub enum MetricName {
     //
     // Notification metrics
     //
+    #[strum(serialize = "notification.received")]
+    NotificationReceived,
+
     /// Notification authentication
     #[strum(serialize = "notification.auth")]
     NotificationAuth,
@@ -114,6 +117,10 @@ pub enum MetricName {
     /// Node connection error
     #[strum(serialize = "error.node.connect")]
     ErrorNodeConnect,
+
+    /// Disconnect semaphore full, unacked direct notifications dropped
+    #[strum(serialize = "error.disconnect.semaphore_full")]
+    ErrorDisconnectSemaphoreFull,
 
     //
     // Update metrics
@@ -175,4 +182,27 @@ pub enum MetricName {
     // Reliability gc
     #[strum(serialize = "reliability.gc")]
     ReliabilityGc,
+
+    //
+    // Performance / pool metrics
+    //
+    /// Gauge of in-flight HTTP requests to autoconnect nodes
+    #[strum(serialize = "request.in_flight")]
+    InFlightNodeRequests,
+
+    /// Timer for the full notification routing path
+    #[strum(serialize = "notification.route_time")]
+    NotificationRouteTime,
+
+    /// Timer for db.save_message calls
+    #[strum(serialize = "notification.storage.save_time")]
+    StorageSaveTime,
+
+    /// Timer for the send_notification HTTP call to a node
+    #[strum(serialize = "notification.direct.delivery_time")]
+    DirectDeliveryTime,
+
+    /// Counter tagged with response status for direct delivery
+    #[strum(serialize = "notification.direct.delivery_status")]
+    DirectDeliveryStatus,
 }

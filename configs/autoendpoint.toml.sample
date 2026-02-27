@@ -4,6 +4,7 @@
 #
 # Note that we use a library that parses sub structures (like FCM) using double underscores.
 # For example `AUTOEND__FCM__MIN_TTL` sets the `fcm.min_ttl` argument.
+# See [Configuration Options](docs/src/config_options.md) for details.
 
 # The URI scheme to use when referencing this server
 #scheme = "http"
@@ -44,6 +45,15 @@
 
 # The label to use for metrics
 #statsd_label = "autoendpoint"
+
+# Maximum idle connections per host in the HTTP connection pool.
+# Under load spikes, unbounded pools can accumulate idle connections and
+# cause memory growth. Default: 10
+#pool_max_idle_per_host = 10
+
+# Idle connection timeout in seconds. Connections idle longer than this
+# are closed to return memory. Default: 30
+#pool_idle_timeout_secs = 30
 
 # The Max Notification Time To Live (in seconds) (See autopush_common::lib for details)
 # max_notification_ttl = 2592000

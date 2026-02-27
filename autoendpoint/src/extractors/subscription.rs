@@ -95,6 +95,11 @@ impl FromRequest for Subscription {
                     .then(|| app_state.reliability_filter.get_id(req.headers()))
             });
             trace!("🔍 track_id: {:?}", reliability_id);
+            app_state
+                .metrics
+                .incr_with_tags(MetricName::NotificationReceived)
+                .with_tag("trackable", &reliability_id.is_some().to_string())
+                .send();
             // Capturing the vapid sub right now will cause too much cardinality. Instead,
             // let's just capture if we have a valid VAPID, as well as what sort of bad sub
             // values we get.
@@ -142,15 +147,6 @@ impl FromRequest for Subscription {
 
             trace!("user: {:?}", &user);
             validate_user(&user, &channel_id, &app_state).await?;
-
-            // Validate the VAPID JWT token and record the version
-            if let Some(vapid) = &vapid {
-                validate_vapid_jwt(vapid, &app_state.settings, &app_state.metrics)?;
-
-                app_state
-                    .metrics
-                    .incr_raw(&format!("updates.vapid.draft{:02}", vapid.vapid.version()))?;
-            }
 
             Ok(Subscription {
                 user,

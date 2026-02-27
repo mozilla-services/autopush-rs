@@ -1,5 +1,7 @@
 #![warn(rust_2018_idioms)]
-#![forbid(unsafe_code)]
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[macro_use]
 extern crate slog_scope;
@@ -26,7 +28,7 @@ Usage: autoconnect [options]
 
 Options:
     -h, --help                          Show this message.
-    --config=CONFIGFILE                 Connection configuration file path.
+    -c, --config=CONFIGFILE             Connection configuration file path.
 ";
 
 #[derive(Debug, Deserialize)]

@@ -11,15 +11,14 @@ import random
 import string
 import time
 import uuid
-from hashlib import sha1
+from hashlib import sha256
 from json import JSONDecodeError
 from logging import Logger
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 
 import gevent
 import websocket
 from args import parse_wait_time
-from exceptions import ZeroStatusRequestError
 from gevent import Greenlet
 from locust import FastHttpUser, events, task
 from locust.exception import LocustError
@@ -61,13 +60,19 @@ class StoredNotifAutopushUser(FastHttpUser):
         super().__init__(environment)
         self.channels: dict[str, str] = {}
         self.hello_record: HelloRecord | None = None
-        self.notification_records: dict[bytes, NotificationRecord] = {}
+        self.notification_records: dict[str, NotificationRecord] = {}
         self.register_records: list[RegisterRecord] = []
+        self.purged_records: set[str] = set()
         self.unregister_records: list[RegisterRecord] = []
         self.uaid: str = ""
         self.ws: WebSocket | None = websocket.WebSocket()
         self.ws_greenlet: Greenlet | None = None
         self.initialized: bool = False
+
+    def gen_message_key(self, data: str) -> str:
+        """Generate a unique key for a message based on its data."""
+        digest = sha256(data.encode(), usedforsecurity=False).digest()  # nosec
+        return hex(int.from_bytes(digest, "big"))
 
     def wait_time(self):
         """Return the autopush wait time."""
@@ -112,6 +117,8 @@ class StoredNotifAutopushUser(FastHttpUser):
         if isinstance(message, HelloMessage):
             self.uaid = message.uaid
         elif isinstance(message, NotificationMessage):
+            key = self.gen_message_key(base64.urlsafe_b64decode(message.data + "===").decode())
+            logger.info(f"Acking message {key} :: {message.version}")
             self.send_ack(ws, message.channelID, message.version)
         elif isinstance(message, RegisterMessage):
             self.channels[message.channelID] = message.pushEndpoint
@@ -266,7 +273,9 @@ class StoredNotifAutopushUser(FastHttpUser):
         )
 
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
-        self.notification_records[sha1(data.encode(), usedforsecurity=False).digest()] = record
+        key = self.gen_message_key(data)
+        logging.info(f"Storing: {key}")
+        self.notification_records[key] = record
 
         logger.info(f"🟩 Sending to {endpoint_url}")
 
@@ -279,7 +288,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         ) as response:
             if response.status_code == 0:
                 response.failure(f"Received status code 0 from {endpoint_url}")
-                #raise ZeroStatusRequestError()
+                # raise ZeroStatusRequestError()
             if response.status_code != 201:
                 response.failure(f"{response.status_code=}, expected 201, {response.text=}")
 
@@ -311,6 +320,7 @@ class StoredNotifAutopushUser(FastHttpUser):
         try:
             message_dict: dict[str, Any] = json.loads(data)
             message_type = message_dict.get("messageType", "unknown")
+            key = None
             match message_type:
                 case "hello":
                     message = HelloMessage(**message_dict)
@@ -318,12 +328,18 @@ class StoredNotifAutopushUser(FastHttpUser):
                 case "notification":
                     message = NotificationMessage(**message_dict)
                     message_data: str = message.data
-                    decode_data: str = base64.urlsafe_b64decode(message_data + "===").decode(
-                        "utf8"
+                    key = self.gen_message_key(
+                        base64.urlsafe_b64decode(message_data + "===").decode()
                     )
-                    record = self.notification_records.pop(
-                        sha1(decode_data.encode(), usedforsecurity=False).digest(), None
-                    )
+                    logging.info(f"looking for: {key}")
+                    record = self.notification_records.pop(key, None)
+                    if not record:
+                        logger.error(
+                            f"No record found for {key}. Contents: {message_data[:100]}..."
+                        )
+                    else:
+                        logger.info(f"removing {key}")
+                        self.purged_records.add(key)
                 case "register":
                     message = RegisterMessage(**message_dict)
                     register_chid: str = message.channelID
@@ -344,8 +360,13 @@ class StoredNotifAutopushUser(FastHttpUser):
             if record:
                 response_time = (recv_time - record.send_time) * 1000
             else:
-                exception = f"There is no record of the '{message_type}' message"
-                logger.error(f"{exception}. Contents: {message}")
+                if key and key in self.purged_records and message:
+                    logger.error(
+                        f"⭕Duplicate record {key} :: {cast(NotificationMessage, message).version}?"
+                    )
+                else:
+                    exception = f"There is no record of the '{message_type}' message"
+                    logger.error(f"{exception}. Contents: {message}")
         except (ValidationError, JSONDecodeError) as error:
             exception = str(error)
 
@@ -383,6 +404,7 @@ class StoredNotifAutopushUser(FastHttpUser):
             messageType=message_type,
             updates=[dict(channelID=channel_id, version=version)],
         )
+        logger.info(f"Sending ack for key {channel_id} version {version}")
         self.send(ws, message_type, data)
 
     def send_hello(self, ws: WebSocket) -> None:
