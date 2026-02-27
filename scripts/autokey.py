@@ -5,8 +5,8 @@ from cryptography.fernet import Fernet
 def main():
     key = Fernet.generate_key().decode("utf-8")
     print("\n# Crypto Keys:")
-    print(f"AUTOCONNECT__CRYPTO_KEY=\"{key}\"")
-    print(f"AUTOEND__CRYPTO_KEY=\"{key}\"")
+    print(f"AUTOCONNECT__CRYPTO_KEY=[\"{key}\"]")
+    print(f"AUTOEND__CRYPTO_KEYS=[\"{key}\"]")
     print("\n\n# Auth Key:")
     key = Fernet.generate_key().decode("utf-8")
     print(f"AUTOEND__AUTH_KEYS=[\"{key}\"]")

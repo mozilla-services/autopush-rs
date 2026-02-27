@@ -69,12 +69,12 @@ both of the Autopush daemons. To generate one with the docker image:
 $ make gen-key
 [...]
 # Crypto Keys:
-AUTOCONNECT__CRYPTO_KEY="_4HCS2U5t1tkYIm6FNytOegpGe7PWuJhqC5Xax-RGyQ="
-AUTOEND__CRYPTO_KEY="_4HCS2U5t1tkYIm6FNytOegpGe7PWuJhqC5Xax-RGyQ="
+AUTOCONNECT__CRYPTO_KEY="_4H...yQ="
+AUTOEND__CRYPTO_KEY="_4H...yQ="
 
 
 # Auth Key:
-AUTOEND__AUTH_KEYS=["63-V4eCe_LbqIZgKZIEVvJw7lu5JNShqVz8OHm5IV8A="]
+AUTOEND__AUTH_KEYS=["63-...8A="]
 
 ```
 
