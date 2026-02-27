@@ -8,8 +8,31 @@ use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
 use cadence::CountedExt;
 use fernet::MultiFernet;
 use futures::{future, FutureExt};
+use serde::Serialize;
 use std::collections::HashMap;
 use uuid::Uuid;
+
+/// Wire format for delivering notifications to connection servers.
+/// Uses a single serialization pass instead of building a HashMap of serde_json::Values.
+#[derive(Debug, Serialize)]
+pub struct TransportNotification<'a> {
+    #[serde(rename = "channelID")]
+    pub channel_id: uuid::Uuid,
+    pub version: &'a str,
+    pub ttl: i64,
+    pub topic: Option<&'a str>,
+    pub timestamp: u64,
+    #[cfg(feature = "reliable_report")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reliability_id: Option<&'a str>,
+    #[cfg(feature = "reliable_report")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reliable_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<HashMap<String, String>>,
+}
 
 /// Extracts notification data from `Subscription` and request data
 #[derive(Clone, Debug)]
@@ -117,22 +140,22 @@ impl FromRequest for Notification {
     }
 }
 
-impl From<Notification> for autopush_common::notification::Notification {
-    fn from(notification: Notification) -> Self {
+impl From<&Notification> for autopush_common::notification::Notification {
+    fn from(notification: &Notification) -> Self {
         let topic = notification.headers.topic.clone();
         let sortkey_timestamp = topic.is_none().then_some(notification.sort_key_timestamp);
         autopush_common::notification::Notification {
             channel_id: notification.subscription.channel_id,
-            version: notification.message_id,
+            version: notification.message_id.clone(),
             ttl: notification.headers.ttl as u64,
             topic,
             timestamp: notification.timestamp,
-            data: notification.data,
+            data: notification.data.clone(),
             sortkey_timestamp,
             #[cfg(feature = "reliable_report")]
-            reliability_id: notification.subscription.reliability_id,
+            reliability_id: notification.subscription.reliability_id.clone(),
             headers: {
-                let headers: HashMap<String, String> = notification.headers.into();
+                let headers: HashMap<String, String> = notification.headers.clone().into();
                 if headers.is_empty() {
                     None
                 } else {
@@ -142,6 +165,13 @@ impl From<Notification> for autopush_common::notification::Notification {
             #[cfg(feature = "reliable_report")]
             reliable_state: notification.reliable_state,
         }
+    }
+}
+
+impl From<Notification> for autopush_common::notification::Notification {
+    fn from(notification: Notification) -> Self {
+        // Delegate to the borrowing impl to avoid duplication
+        autopush_common::notification::Notification::from(&notification)
     }
 }
 
@@ -190,37 +220,24 @@ impl Notification {
     /// fields are still required when delivering to the connection server, so
     /// we can't simply convert this notification type to that one and serialize
     /// via serde.
-    pub fn serialize_for_delivery(&self) -> ApiResult<HashMap<&'static str, serde_json::Value>> {
-        let mut map = HashMap::new();
-
-        map.insert(
-            "channelID",
-            serde_json::to_value(self.subscription.channel_id)?,
-        );
-        map.insert("version", serde_json::to_value(&self.message_id)?);
-        map.insert("ttl", serde_json::to_value(self.headers.ttl)?);
-        map.insert("topic", serde_json::to_value(&self.headers.topic)?);
-        map.insert("timestamp", serde_json::to_value(self.timestamp)?);
-        #[cfg(feature = "reliable_report")]
-        {
-            if let Some(reliability_id) = &self.subscription.reliability_id {
-                map.insert("reliability_id", serde_json::to_value(reliability_id)?);
-            }
-            if let Some(reliable_state) = self.reliable_state {
-                map.insert(
-                    "reliable_state",
-                    serde_json::to_value(reliable_state.to_string())?,
-                );
-            }
-        }
-        if let Some(data) = &self.data {
-            map.insert("data", serde_json::to_value(data)?);
-
-            let headers: HashMap<_, _> = self.headers.clone().into();
-            map.insert("headers", serde_json::to_value(headers)?);
-        }
-
-        Ok(map)
+    pub fn serialize_for_delivery(&self) -> ApiResult<TransportNotification<'_>> {
+        let headers = self.data.as_ref().map(|_| {
+            let h: HashMap<String, String> = self.headers.clone().into();
+            h
+        });
+        Ok(TransportNotification {
+            channel_id: self.subscription.channel_id,
+            version: &self.message_id,
+            ttl: self.headers.ttl,
+            topic: self.headers.topic.as_deref(),
+            timestamp: self.timestamp,
+            #[cfg(feature = "reliable_report")]
+            reliability_id: self.subscription.reliability_id.as_deref(),
+            #[cfg(feature = "reliable_report")]
+            reliable_state: self.reliable_state.map(|s| s.to_string()),
+            data: self.data.as_deref(),
+            headers,
+        })
     }
 
     #[cfg(feature = "reliable_report")]
