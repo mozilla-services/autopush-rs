@@ -10,7 +10,7 @@
 ///
 /// see api discussion: https://docs.google.com/document/d/1Wxqf1a4HDkKgHDIswPmhmdvk8KPoMEh2q6SPhaz4LNE/edit#
 ///
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_derive::{Deserialize, Serialize};
 use strum_macros::{AsRefStr, Display};
@@ -26,8 +26,8 @@ type BroadcastKey = u32;
 /// Broadcast Subscriptions a client is subscribed to and the last change seen
 #[derive(Debug, Default)]
 pub struct BroadcastSubs {
-    broadcast_list: Vec<BroadcastKey>, // subscribed broadcast ids
-    change_count: u32,                 // the last known change
+    broadcast_list: HashSet<BroadcastKey>, // subscribed broadcast ids
+    change_count: u32,                     // the last known change
 }
 
 /// The server maintained list of Broadcasts
@@ -270,7 +270,7 @@ impl BroadcastChangeTracker {
     /// Returns a delta for `broadcasts` that are out of date with the latest version and a
     /// the collection of broadcast subscriptions.
     pub fn broadcast_delta(&self, broadcasts: &[Broadcast]) -> BroadcastSubsInit {
-        let mut bcast_list = Vec::new();
+        let mut bcast_list = HashSet::new();
         let mut bcast_delta = Vec::new();
         for bcast in broadcasts.iter() {
             if let Some(bcast_key) = self.broadcast_registry.lookup_key(&bcast.broadcast_id) {
@@ -282,7 +282,7 @@ impl BroadcastChangeTracker {
                         });
                     }
                 }
-                bcast_list.push(bcast_key);
+                bcast_list.insert(bcast_key);
             }
         }
         BroadcastSubsInit(
@@ -313,7 +313,7 @@ impl BroadcastChangeTracker {
                         });
                     }
                 }
-                broadcast_subs.broadcast_list.push(bcast_key)
+                broadcast_subs.broadcast_list.insert(bcast_key);
             }
         }
         (!bcast_delta.is_empty()).then_some(bcast_delta)

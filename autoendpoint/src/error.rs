@@ -307,7 +307,7 @@ where
     fn from(item: T) -> Self {
         ApiError {
             kind: ApiErrorKind::from(item),
-            backtrace: Backtrace::new(),
+            backtrace: Backtrace::new_unresolved(),
             extras: None,
         }
     }
