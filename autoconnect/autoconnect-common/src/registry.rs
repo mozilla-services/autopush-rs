@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
+use dashmap::DashMap;
 use futures::channel::mpsc;
-use futures_locks::RwLock;
 use uuid::Uuid;
 
 use autopush_common::errors::{ApcErrorKind, Result};
@@ -9,40 +7,60 @@ use autopush_common::notification::Notification;
 
 use crate::protocol::ServerNotification;
 
+/// Default capacity for bounded notification channels per client.
+const DEFAULT_CHANNEL_CAPACITY: usize = 128;
+
 /// A connected Websocket client.
 #[derive(Debug)]
 struct RegisteredClient {
     /// The user agent's unique ID.
+    #[allow(dead_code)]
     pub uaid: Uuid,
     /// The local ID, used to potentially distinquish multiple UAID connections.
     pub uid: Uuid,
     /// The inbound channel for delivery of locally routed Push Notifications
-    pub tx: mpsc::UnboundedSender<ServerNotification>,
+    pub tx: mpsc::Sender<ServerNotification>,
 }
 
 /// Contains a mapping of UAID to the associated RegisteredClient.
-#[derive(Default)]
 pub struct ClientRegistry {
-    clients: RwLock<HashMap<Uuid, RegisteredClient>>,
+    clients: DashMap<Uuid, RegisteredClient>,
+    /// Maximum number of buffered notifications per client before backpressure.
+    channel_capacity: usize,
+}
+
+impl Default for ClientRegistry {
+    fn default() -> Self {
+        Self {
+            clients: DashMap::new(),
+            channel_capacity: DEFAULT_CHANNEL_CAPACITY,
+        }
+    }
 }
 
 impl ClientRegistry {
+    /// Create a new ClientRegistry with a configurable channel capacity.
+    pub fn with_channel_capacity(channel_capacity: usize) -> Self {
+        Self {
+            clients: DashMap::new(),
+            channel_capacity,
+        }
+    }
+
     /// Informs this server that a new `client` has connected
     ///
     /// For now just registers internal state by keeping track of the `client`,
     /// namely its channel to send notifications back.
-    pub async fn connect(
-        &self,
-        uaid: Uuid,
-        uid: Uuid,
-    ) -> mpsc::UnboundedReceiver<ServerNotification> {
+    pub fn connect(&self, uaid: Uuid, uid: Uuid) -> mpsc::Receiver<ServerNotification> {
         trace!("ClientRegistry::connect");
-        let (tx, snotif_stream) = mpsc::unbounded();
+        let (tx, snotif_stream) = mpsc::channel(self.channel_capacity);
         let client = RegisteredClient { uaid, uid, tx };
-        let mut clients = self.clients.write().await;
-        if let Some(client) = clients.insert(client.uaid, client) {
+        if let Some(old_client) = self.clients.insert(uaid, client) {
             // Drop existing connection
-            let result = client.tx.unbounded_send(ServerNotification::Disconnect);
+            let result = old_client
+                .tx
+                .clone()
+                .try_send(ServerNotification::Disconnect);
             if result.is_ok() {
                 debug!("ClientRegistry::connect Ghosting client, new one wants to connect");
             }
@@ -51,49 +69,59 @@ impl ClientRegistry {
     }
 
     /// A notification has come for the uaid
-    pub async fn notify(&self, uaid: Uuid, notif: Notification) -> Result<()> {
+    pub fn notify(&self, uaid: Uuid, notif: Notification) -> Result<()> {
         trace!("ClientRegistry::notify");
-        let clients = self.clients.read().await;
-        if let Some(client) = clients.get(&uaid) {
-            debug!("ClientRegistry::notify Found a client to deliver a notification to");
-            let result = client
-                .tx
-                .unbounded_send(ServerNotification::Notification(notif));
-            if result.is_ok() {
+        let Some(client) = self.clients.get(&uaid) else {
+            return Err(ApcErrorKind::ClientNotConnected.into());
+        };
+        debug!("ClientRegistry::notify Found a client to deliver a notification to");
+        match client
+            .tx
+            .clone()
+            .try_send(ServerNotification::Notification(notif))
+        {
+            Ok(()) => {
                 debug!("ClientRegistry::notify Dropped notification in queue");
-                return Ok(());
+                Ok(())
             }
+            Err(e) if e.is_full() => Err(ApcErrorKind::ChannelFull.into()),
+            Err(_) => Err(ApcErrorKind::ClientNotConnected.into()),
         }
-        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
 
     /// A check for notification command has come for the uaid
-    pub async fn check_storage(&self, uaid: Uuid) -> Result<()> {
+    pub fn check_storage(&self, uaid: Uuid) -> Result<()> {
         trace!("ClientRegistry::check_storage");
-        let clients = self.clients.read().await;
-        if let Some(client) = clients.get(&uaid) {
-            let result = client.tx.unbounded_send(ServerNotification::CheckStorage);
-            if result.is_ok() {
+        let Some(client) = self.clients.get(&uaid) else {
+            return Err(ApcErrorKind::ClientNotConnected.into());
+        };
+        match client.tx.clone().try_send(ServerNotification::CheckStorage) {
+            Ok(()) => {
                 debug!("ClientRegistry::check_storage Told client to check storage");
-                return Ok(());
+                Ok(())
             }
+            Err(e) if e.is_full() => Err(ApcErrorKind::ChannelFull.into()),
+            Err(_) => Err(ApcErrorKind::ClientNotConnected.into()),
         }
-        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
     }
 
     /// The client specified by `uaid` has disconnected.
-    pub async fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> Result<()> {
+    pub fn disconnect(&self, uaid: &Uuid, uid: &Uuid) -> Result<()> {
         trace!("ClientRegistry::disconnect");
-        let mut clients = self.clients.write().await;
-        let client_exists = clients.get(uaid).is_some_and(|client| client.uid == *uid);
+        let client_exists = self
+            .clients
+            .get(uaid)
+            .is_some_and(|client| client.uid == *uid);
         if client_exists {
-            clients.remove(uaid).expect("Couldn't remove client?");
+            self.clients
+                .remove(uaid)
+                .ok_or_else(|| ApcErrorKind::GeneralError("Couldn't remove client".into()))?;
             return Ok(());
         }
-        Err(ApcErrorKind::GeneralError("User not connected".into()).into())
+        Err(ApcErrorKind::ClientNotConnected.into())
     }
 
-    pub async fn count(&self) -> usize {
-        self.clients.read().await.len()
+    pub fn count(&self) -> usize {
+        self.clients.len()
     }
 }

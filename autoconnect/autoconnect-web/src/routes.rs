@@ -49,7 +49,7 @@ pub async fn push_route(
     let lnotif = notif.clone_without_reliability_state();
     #[cfg(not(feature = "reliable_report"))]
     let lnotif = notif.clone();
-    let result = app_state.clients.notify(uaid.into_inner(), lnotif).await;
+    let result = app_state.clients.notify(uaid.into_inner(), lnotif);
     if result.is_ok() {
         #[cfg(feature = "reliable_report")]
         notif
@@ -77,7 +77,7 @@ pub async fn check_storage_route(
     app_state: web::Data<AppState>,
 ) -> HttpResponse {
     trace!("⏩ check_storage_route, uaid: {}", uaid);
-    let result = app_state.clients.check_storage(uaid.into_inner()).await;
+    let result = app_state.clients.check_storage(uaid.into_inner());
     if result.is_ok() {
         HttpResponse::Ok().finish()
     } else {

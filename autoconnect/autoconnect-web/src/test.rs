@@ -166,7 +166,6 @@ pub async fn direct_notif() {
                 ..Notification::default()
             },
         )
-        .await
         .unwrap();
 
     // Is a small sleep/tick needed here?
