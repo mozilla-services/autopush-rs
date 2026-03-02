@@ -624,6 +624,8 @@ workflows:
       - deploy:
           name: deploy-autoconnect
           image: autoconnect
+          project_id: ${GCP_GAR_PROJECT_ID}
+          repo: ${GCP_GAR_REPO}
           requires:
             - build-autoconnect
             - Unit Tests
@@ -663,6 +665,8 @@ workflows:
       - deploy:
           name: deploy-autoconnect-enterprise
           image: autoconnect-enterprise
+          project_id: ${GCP_GAR_ENTERPRISE_PROJECT_ID}
+          repo: ${GCP_GAR_ENTERPRISE_REPO}
           requires:
             - build-autoconnect-enterprise
             - Unit Tests
@@ -672,11 +676,15 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - enterprise
 
       - deploy:
           name: deploy-autoendpoint-enterprise
           image: autoendpoint-enterprise
+          project_id: ${GCP_GAR_ENTERPRISE_PROJECT_ID}
+          repo: ${GCP_GAR_ENTERPRISE_REPO}
           requires:
             - build-autoendpoint-enterprise
             - Unit Tests
@@ -686,7 +694,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                -master
+                - enterprise
 
       # ^^^^
       # End comment for local CircleCI testing.
