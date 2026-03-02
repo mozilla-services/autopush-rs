@@ -631,6 +631,7 @@ dependencies = [
  "ctor",
  "futures 0.3.31",
  "mockall",
+ "once_cell",
  "reqwest 0.13.2",
  "sentry",
  "serde_json",
