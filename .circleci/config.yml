@@ -337,6 +337,8 @@ jobs:
         type: string
       binary:
         type: string
+      build_args:
+        type: string
     steps:
       # Install these packages before checkout because git may not exist or work
       - run:
@@ -413,6 +415,8 @@ jobs:
         type: string
       path:
         type: string
+      build_args:
+        type: string
     steps:
       - checkout
       - setup_remote_docker:
@@ -437,6 +441,8 @@ jobs:
       image:
         type: string
       path:
+        type: string
+      build_args:
         type: string
     steps:
       - checkout
@@ -553,7 +559,6 @@ workflows:
           image: autoconnect
           crate: autoconnect
           binary: autoconnect
-          features: ""
           filters:
             tags:
               only: /.*/
@@ -562,7 +567,6 @@ workflows:
           image: autoendpoint
           crate: autoendpoint
           binary: autoendpoint
-          features: ""
           filters:
             tags:
               only: /.*/
@@ -571,7 +575,7 @@ workflows:
           image: autoconnect-enterprise
           crate: autoconnect
           binary: autoconnect
-          build_args: "--features=no-default-features --features=redis"
+          build_args: "--no-default-features --features=redis"
           filters:
             tags:
               only: /.*/
@@ -580,7 +584,7 @@ workflows:
           image: autoendpoint-enterprise
           crate: autoendpoint
           binary: autoendpoint
-          build_args: "--features=no-default-features --features=redis"
+          build_args: "--no-default-features --features=redis"
           filters:
             tags:
               only: /.*/
@@ -695,7 +699,7 @@ workflows:
               only: /.*/
             branches:
               only:
-                -master
+                - master
                 - enterprise
 
       # ^^^^
