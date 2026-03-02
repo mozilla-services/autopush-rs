@@ -69,9 +69,9 @@ pub(crate) async fn webpush_ws(
     };
 
     // Client now identified: add them to the registry to recieve ServerNotifications
-    let mut snotif_stream = client.registry_connect().await;
+    let mut snotif_stream = client.registry_connect();
     let result = identified_ws(&mut client, smsgs, session, msg_stream, &mut snotif_stream).await;
-    client.registry_disconnect().await;
+    client.registry_disconnect();
 
     snotif_stream.close();
     while let Some(snotif) = snotif_stream.next().await {
@@ -139,7 +139,7 @@ async fn identified_ws(
     smsgs: impl IntoIterator<Item = ServerMessage>,
     session: &mut impl Session,
     mut msg_stream: impl Stream<Item = MessageStreamResult> + Unpin,
-    snotif_stream: &mut mpsc::UnboundedReceiver<ServerNotification>,
+    snotif_stream: &mut mpsc::Receiver<ServerNotification>,
 ) -> Result<Option<CloseReason>, WSError> {
     // Send the Hello response and any initial notifications from storage
     for smsg in smsgs {

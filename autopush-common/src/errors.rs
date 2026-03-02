@@ -111,6 +111,10 @@ pub enum ApcErrorKind {
     PayloadError(String),
     #[error("General Error: {0}")]
     GeneralError(String),
+    #[error("Client not connected")]
+    ClientNotConnected,
+    #[error("Client notification channel full")]
+    ChannelFull,
 }
 
 impl ApcErrorKind {
@@ -127,6 +131,8 @@ impl ApcErrorKind {
             // TODO: Add additional messages to ignore here.
             // Non-actionable Endpoint errors
             Self::PayloadError(_) => false,
+            // Backpressure on bounded channels — expected under load, track via metric
+            Self::ChannelFull => false,
             _ => true,
         }
     }
@@ -135,6 +141,7 @@ impl ApcErrorKind {
         // TODO: add labels for skipped stuff
         match self {
             Self::PayloadError(_) => Some("payload"),
+            Self::ChannelFull => Some("client.channel.full"),
             _ => None,
         }
     }
