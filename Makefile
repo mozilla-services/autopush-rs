@@ -161,3 +161,8 @@ doc-prev:  ##  Generate live preview of autopush docs via browser
 	mdbook clean docs/
 	mdbook build docs/
 	mdbook serve docs/ --open
+
+.PHONY: gen-key
+gen-key:   ##  Generate the CryptoKey values
+	$(POETRY) install --no-root
+	$(POETRY) run python3 $(CURDIR)/scripts/autokey.py

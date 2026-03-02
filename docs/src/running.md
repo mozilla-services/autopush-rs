@@ -23,7 +23,7 @@ can be run on separate hosts as well.
 
 *#TODO* rebuild the docker-compose.yaml files based off of syncstorage ones.
 
-- [ ] rebuild docker-componse.yaml
+- [ ] rebuild docker-compose.yaml
   - [ ] initialize tables
 - [] define steps here
 
@@ -66,11 +66,19 @@ As the `cryptography` section notes, you will need a `CRYPTO_KEY` to run
 both of the Autopush daemons. To generate one with the docker image:
 
 ``` bash
-$ docker run -t -i mozilla-services/autopush-rs autokey
-CRYPTO_KEY="hkclU1V37Dnp-0DMF9HLe_40Nnr8kDTYVbo2yxuylzk="
+$ make gen-key
+[...]
+# Crypto Keys:
+AUTOCONNECT__CRYPTO_KEY="_4H...yQ="
+AUTOEND__CRYPTO_KEY="_4H...yQ="
+
+
+# Auth Key:
+AUTOEND__AUTH_KEYS=["63-...8A="]
+
 ```
 
-Store the key for later use (including any trailing `=`). By default autopush will look for this value as an environment variable, so you may want to use something like [direnv](https://direnv.net/) and add 
+Store the key for later use (including any trailing `=`). By default autopush will look for this value as an environment variable, so you may want to use something like [direnv](https://direnv.net/) and add
 
 ```
 export CRYPTO_KEY="Your-Key-Here00000000000000000000000000000=="
@@ -79,14 +87,14 @@ export CRYPTO_KEY="Your-Key-Here00000000000000000000000000000=="
 
 ## Start Autopush
 
-While there is a `docker-compose-bt.yml` file provided, this file was originally created for testing. It will start up instances of AutoConnect and AutoEndpoint as well as a Bigtable emulator. This approach does, however, make it difficult to develop, debug, and diagnose potential issues. 
+While there is a `docker-compose-bt.yml` file provided, this file was originally created for testing. It will start up instances of AutoConnect and AutoEndpoint as well as a Bigtable emulator. This approach does, however, make it difficult to develop, debug, and diagnose potential issues.
 
 The following instructions will allow you to run Autopush "locally" in a Ubuntu / Debian environment. If you prefer, the [development](development.md) document has more details.
 
 ### Starting optional emulators
 
-If you are planning on doing local development work with Autopush, you may wish to run emulators for 
-[Bigtable](https://docs.cloud.google.com/bigtable/docs/emulator) and [Redis](https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/docker/). This document does not detail the steps required, because they may change. 
+If you are planning on doing local development work with Autopush, you may wish to run emulators for
+[Bigtable](https://docs.cloud.google.com/bigtable/docs/emulator) and [Redis](https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/docker/). This document does not detail the steps required, because they may change.
 
 Once you have the Bigtable emulator installed, you may with to use the following bash script to start it. (Note, this presumes that you are using the GCLI interface. Please edit as needed.)
 
@@ -168,6 +176,8 @@ configuration files. These files use standard `ini` formatting similar to the fo
 ;another_disabled_option=default_value
 option=value
 ```
+
+See [the config documentation](config.md) for more details on the available options.
 
 Options can either have values or act as boolean flags. If the option is
 a flag it is either True if enabled, or False if disabled. The
