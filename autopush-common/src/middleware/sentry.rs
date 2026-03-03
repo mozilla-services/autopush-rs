@@ -16,14 +16,16 @@ pub struct SentryWrapper<E> {
     metrics: Arc<StatsdClient>,
     metric_label: String,
     phantom: PhantomData<E>,
+    sentry_disabled: bool,
 }
 
 impl<E> SentryWrapper<E> {
-    pub fn new(metrics: Arc<StatsdClient>, metric_label: String) -> Self {
+    pub fn new(metrics: Arc<StatsdClient>, metric_label: String, sentry_disabled: bool) -> Self {
         Self {
             metrics,
             metric_label,
             phantom: PhantomData,
+            sentry_disabled,
         }
     }
 }
@@ -46,6 +48,7 @@ where
             metrics: self.metrics.clone(),
             metric_label: self.metric_label.clone(),
             phantom: PhantomData,
+            sentry_disabled: self.sentry_disabled,
         })
     }
 }
@@ -56,6 +59,7 @@ pub struct SentryWrapperMiddleware<S, E> {
     metrics: Arc<StatsdClient>,
     metric_label: String,
     phantom: PhantomData<E>,
+    sentry_disabled: bool,
 }
 
 impl<S, B, E> Service<ServiceRequest> for SentryWrapperMiddleware<S, E>
@@ -70,8 +74,8 @@ where
 
     actix_web::dev::forward_ready!(service);
 
+    /// Set up the hub to add request data to events
     fn call(&self, sreq: ServiceRequest) -> Self::Future {
-        // Set up the hub to add request data to events
         let hub = Hub::new_from_top(Hub::main());
         let _ = hub.push_scope();
         let sentry_request = sentry_request_from_http(&sreq);
@@ -83,6 +87,7 @@ where
         let mut tags = Tags::from_request_head(sreq.head());
         let metrics = self.metrics.clone();
         let metric_label = self.metric_label.clone();
+        let sentry_disabled = self.sentry_disabled;
         if let Some(rtags) = sreq.request().extensions().get::<Tags>() {
             trace!("Sentry: found tags in request: {:?}", &rtags.tags);
             for (k, v) in rtags.tags.clone() {
@@ -111,8 +116,12 @@ where
                     };
                     debug!("Reporting error to Sentry (service error): {}", error);
                     let event = event_from_actix_error::<E>(&error);
-                    let event_id = hub.capture_event(event);
-                    trace!("event_id = {}", event_id);
+                    if sentry_disabled {
+                        log_event(&event);
+                    } else {
+                        let event_id = hub.capture_event(event);
+                        trace!("event_id = {}", event_id);
+                    }
                     return Err(error);
                 }
             };
@@ -134,6 +143,23 @@ where
         }
         .boxed_local()
     }
+}
+
+/// Log the Sentry event to STDERR. (This is copied from syncstorage-rs)
+fn log_event(event: &Event) {
+    let exception = event.exception.last();
+    let error_type = exception.map_or("UnknownError", |e| e.ty.as_str());
+    let error_value = exception
+        .and_then(|e| e.value.as_deref())
+        .unwrap_or("No error message");
+    error!("{}", error_value;
+        "error_type" => error_type,
+        "tags" => ?event.tags,
+        "extra" => ?event.extra,
+        "url" => event.request.as_ref().and_then(|r| r.url.as_ref()).map(|u| u.to_string()).unwrap_or_default(),
+        "method" => event.request.as_ref().and_then(|r| r.method.as_deref()).unwrap_or_default(),
+        "stacktrace" => exception.and_then(|e| e.stacktrace.as_ref()).map(|s| format!("{:?}", s.frames)).unwrap_or_default(),
+    );
 }
 
 /// Emit metrics when a [ReportableError::metric_label] is returned
