@@ -16,16 +16,16 @@ pub struct SentryWrapper<E> {
     metrics: Arc<StatsdClient>,
     metric_label: String,
     phantom: PhantomData<E>,
-    sentry_enabled: bool,
+    sentry_disabled: bool,
 }
 
 impl<E> SentryWrapper<E> {
-    pub fn new(metrics: Arc<StatsdClient>, metric_label: String, sentry_enabled: bool) -> Self {
+    pub fn new(metrics: Arc<StatsdClient>, metric_label: String, sentry_disabled: bool) -> Self {
         Self {
             metrics,
             metric_label,
             phantom: PhantomData,
-            sentry_enabled,
+            sentry_disabled,
         }
     }
 }
@@ -48,7 +48,7 @@ where
             metrics: self.metrics.clone(),
             metric_label: self.metric_label.clone(),
             phantom: PhantomData,
-            sentry_enabled: self.sentry_enabled,
+            sentry_disabled: self.sentry_disabled,
         })
     }
 }
@@ -59,7 +59,7 @@ pub struct SentryWrapperMiddleware<S, E> {
     metrics: Arc<StatsdClient>,
     metric_label: String,
     phantom: PhantomData<E>,
-    sentry_enabled: bool,
+    sentry_disabled: bool,
 }
 
 impl<S, B, E> Service<ServiceRequest> for SentryWrapperMiddleware<S, E>
@@ -87,7 +87,7 @@ where
         let mut tags = Tags::from_request_head(sreq.head());
         let metrics = self.metrics.clone();
         let metric_label = self.metric_label.clone();
-        let sentry_enabled = self.sentry_enabled;
+        let sentry_disabled = self.sentry_disabled;
         if let Some(rtags) = sreq.request().extensions().get::<Tags>() {
             trace!("Sentry: found tags in request: {:?}", &rtags.tags);
             for (k, v) in rtags.tags.clone() {
@@ -116,11 +116,11 @@ where
                     };
                     debug!("Reporting error to Sentry (service error): {}", error);
                     let event = event_from_actix_error::<E>(&error);
-                    if sentry_enabled {
+                    if sentry_disabled {
+                        log_event(&event);
+                    } else {
                         let event_id = hub.capture_event(event);
                         trace!("event_id = {}", event_id);
-                    } else {
-                        log_event(&event);
                     }
                     return Err(error);
                 }

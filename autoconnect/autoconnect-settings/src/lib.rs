@@ -86,7 +86,7 @@ pub struct Settings {
     /// The root label to apply to metrics.
     pub statsd_label: String,
     /// Whether to disable Sentry error reporting
-    pub disable_sentry: Option<bool>,
+    pub disable_sentry: bool,
     /// The DSN to connect to the storage engine (Used to select between storage systems)
     pub db_dsn: Option<String>,
     /// JSON set of specific database settings (See data storage engines)
@@ -146,7 +146,7 @@ impl Default for Settings {
             // Matches the legacy value
             statsd_label: "autoconnect".to_owned(),
             statsd_port: 8125,
-            disable_sentry: None,
+            disable_sentry: false,
             db_dsn: None,
             db_settings: "".to_owned(),
             megaphone_api_url: None,

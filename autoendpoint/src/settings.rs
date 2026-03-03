@@ -76,7 +76,7 @@ pub struct Settings {
     pub statsd_label: String,
 
     /// Do not report errors to sentry, instead log them to STDERR.
-    pub disable_sentry: Option<bool>,
+    pub disable_sentry: bool,
 
     /// FCM bridge settings
     pub fcm: FcmSettings,
@@ -136,7 +136,7 @@ impl Default for Settings {
             #[cfg(feature = "reliable_report")]
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
             max_notification_ttl: Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
-            disable_sentry: None,
+            disable_sentry: false,
         }
     }
 }
