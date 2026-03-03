@@ -582,7 +582,7 @@ workflows:
           image: autoconnect-enterprise
           crate: autoconnect
           binary: autoconnect
-          build_args: "--no-default-features --features=redis"
+          build_args: \"--no-default-features --features=redis\"
           filters:
             tags:
               only: /.*/
@@ -591,7 +591,7 @@ workflows:
           image: autoendpoint-enterprise
           crate: autoendpoint
           binary: autoendpoint
-          build_args: "--no-default-features --features=redis"
+          build_args: \"--no-default-features --features=redis\"
           filters:
             tags:
               only: /.*/
