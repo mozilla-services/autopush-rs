@@ -16,6 +16,12 @@
 # GCP_OIDC_SERVICE_ACCOUNT_EMAIL - GCP service account email
 # GCP_OIDC_WIP_ID - GCP Workload Identity Pool ID
 # GCP_OIDC_WIP_PROVIDER_ID - GCP Workload Identity Pool Provider ID
+# GCP_GAR_ENTERPRISE_PROJECT_ID - GCP project ID for enterprise GAR repo (if different from GCP_GAR_PROJECT_ID)
+# GCP_GAR_ENTERPRISE_REPO - Name of enterprise GAR repo (if different from GCP_GAR_REPO)
+#
+# Note: You can locally debug/validate the generated yaml file using the CircleCI CLI tool.
+# use the command: `circleci config process .circleci/config.yml > out.yml`. This will generate
+# the final yaml file that CircleCI uses after processing all orbs, parameters, and commands.
 
 version: 2.1
 
@@ -335,6 +341,9 @@ jobs:
         type: string
       binary:
         type: string
+      build_args:
+        type: string
+        default: ""
     steps:
       # Install these packages before checkout because git may not exist or work
       - run:
@@ -357,6 +366,7 @@ jobs:
           name: Build Docker image
           command: |
             docker build -t <<parameters.image>> \
+              --build-arg BUILD_ARGS=<<parameters.build_args>> \
               --build-arg CRATE=<<parameters.crate>> \
               --build-arg BINARY=<<parameters.binary>> .
       # save the built docker container into CircleCI's workspace cache. This is
@@ -410,6 +420,9 @@ jobs:
         type: string
       path:
         type: string
+      build_args:
+        type: string
+        default: ""
     steps:
       - checkout
       - setup_remote_docker:
@@ -435,6 +448,9 @@ jobs:
         type: string
       path:
         type: string
+      build_args:
+        type: string
+        default: ""
     steps:
       - checkout
       - setup_remote_docker:
@@ -467,12 +483,18 @@ jobs:
       registry-url:
         type: string
         default: us-docker.pkg.dev
+      project_id:
+        type: string
+        default: GCP_GAR_PROJECT_ID
+      repo:
+        type: string
+        default: GCP_GAR_REPO
     steps:
       # gcr-auth parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-gcr-auth
       - gcp-gcr/gcr-auth:
           gcp_cred_config_file_path: ~/gcp_cred_config.json
-          google-project-id: GCP_GAR_PROJECT_ID
+          google-project-id: <<parameters.project_id>>
           google_project_number: GCP_OIDC_PROJECT_NUMBER
           registry-url: <<parameters.registry-url>>
           service_account_email: GCP_OIDC_SERVICE_ACCOUNT_EMAIL
@@ -498,15 +520,15 @@ jobs:
             else
               echo "export GAR_TAG=${CIRCLE_BRANCH}" >> $BASH_ENV
             fi
-              echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${GCP_GAR_PROJECT_ID}/${GCP_GAR_REPO}/<<parameters.image>>\"" >> $BASH_ENV
+              echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${<<parameters.project_id>>}/${<<parameters.repo>>}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
               docker tag <<parameters.image>> $GAR_IMAGE:$GAR_TAG
               docker tag <<parameters.image>> $GAR_IMAGE:latest
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
-          image: "${GCP_GAR_REPO}/<<parameters.image>>"
-          google-project-id: GCP_GAR_PROJECT_ID
+          image: "<<parameters.repo>>/<<parameters.image>>"
+          google-project-id: <<parameters.project_id>>
           registry-url: <<parameters.registry-url>>
           tag: $GAR_TAG,latest
 
@@ -555,6 +577,24 @@ workflows:
           filters:
             tags:
               only: /.*/
+      - build:
+          name: build-autoconnect-enterprise
+          image: autoconnect-enterprise
+          crate: autoconnect
+          binary: autoconnect
+          build_args: "\"--no-default-features --features=redis\""
+          filters:
+            tags:
+              only: /.*/
+      - build:
+          name: build-autoendpoint-enterprise
+          image: autoendpoint-enterprise
+          crate: autoendpoint
+          binary: autoendpoint
+          build_args: "\"--no-default-features --features=redis\""
+          filters:
+            tags:
+              only: /.*/
 
       - build-reliability-cron:
           name: build-reliability-cron
@@ -590,10 +630,13 @@ workflows:
             tags:
               only: /.*/
 
-      # Comment out the following three sections for local CircleCI testing.
+      # Comment out the following five sections for local CircleCI testing.
+      # vvvv
       - deploy:
           name: deploy-autoconnect
           image: autoconnect
+          project_id: GCP_GAR_PROJECT_ID
+          repo: GCP_GAR_REPO
           requires:
             - build-autoconnect
             - Unit Tests
@@ -608,6 +651,8 @@ workflows:
       - deploy:
           name: deploy-autoendpoint
           image: autoendpoint
+          project_id: GCP_GAR_PROJECT_ID
+          repo: GCP_GAR_REPO
           requires:
             - build-autoendpoint
             - Unit Tests
@@ -629,6 +674,45 @@ workflows:
               only: /.*/
             branches:
               only: master
+
+      - deploy:
+          name: deploy-autoconnect-enterprise
+          image: autoconnect-enterprise
+          project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
+          repo: GCP_GAR_ENTERPRISE_REPO
+          requires:
+            - build-autoconnect-enterprise
+            - Unit Tests
+            - Integration Tests
+            - Rust Formatting Check
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only:
+                - master
+                - enterprise
+
+      - deploy:
+          name: deploy-autoendpoint-enterprise
+          image: autoendpoint-enterprise
+          project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
+          repo: GCP_GAR_ENTERPRISE_REPO
+          requires:
+            - build-autoendpoint-enterprise
+            - Unit Tests
+            - Integration Tests
+            - Rust Formatting Check
+          filters:
+            tags:
+              only: /.*/
+            branches:
+              only:
+                - master
+                - enterprise
+
+      # ^^^^
+      # End comment for local CircleCI testing.
 
       - deploy:
           name: Push Load Test Image
