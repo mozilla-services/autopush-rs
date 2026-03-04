@@ -10,6 +10,7 @@
 # DOCKER_LOAD_TEST_USER - Docker Hub load test repo user
 #
 # These environment variables are necessary to authenticate with GCP and upload images to GAR
+# These are set in CirlceCI project settings::Environment Variables.
 # GCP_GAR_PROJECT_ID - GCP project ID for GAR repo
 # GCP_GAR_REPO - Name of GAR repo
 # GCP_OIDC_PROJECT_NUMBER - GCP project number for Workload Identity Pool/Provider
@@ -527,7 +528,7 @@ jobs:
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
-          image: "<<parameters.repo>>/<<parameters.image>>"
+          image: "<<parameters.image>>"
           google-project-id: <<parameters.project_id>>
           registry-url: <<parameters.registry-url>>
           tag: $GAR_TAG,latest
