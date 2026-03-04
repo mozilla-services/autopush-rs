@@ -345,6 +345,9 @@ jobs:
       build_args:
         type: string
         default: ""
+      suffix:
+        type: string
+        default: ""
     steps:
       # Install these packages before checkout because git may not exist or work
       - run:
@@ -366,19 +369,19 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            docker build -t <<parameters.image>> \
+            docker build -t <<parameters.image>><<parameters.suffix>> \
               --build-arg BUILD_ARGS=<<parameters.build_args>> \
               --build-arg CRATE=<<parameters.crate>> \
               --build-arg BINARY=<<parameters.binary>> .
       # save the built docker container into CircleCI's workspace cache. This is
       # required since Workflows do not have the same remote docker instance.
       - run:
-          name: docker save <<parameters.image>>
-          command: mkdir -p /tmp/cache; docker save -o /tmp/cache/<<parameters.image>>.tar "<<parameters.image>>"
+          name: docker save <<parameters.image>><<parameters.suffix>>
+          command: mkdir -p /tmp/cache; docker save -o /tmp/cache/<<parameters.image>><<parameters.suffix>>.tar "<<parameters.image>><<parameters.suffix>>"
       - persist_to_workspace:
           root: /tmp/cache
           paths:
-            - <<parameters.image>>.tar
+            - <<parameters.image>><<parameters.suffix>>.tar
 
   # Create the reliability cron docker image. This is a singleton that does some
   # clean-up and reporting for the Push Reliability task.
@@ -490,6 +493,9 @@ jobs:
       repo:
         type: string
         default: GCP_GAR_REPO
+      suffix:
+        type: string
+        default: ""
     steps:
       # gcr-auth parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-gcr-auth
@@ -523,15 +529,15 @@ jobs:
             fi
               echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${<<parameters.project_id>>}/${<<parameters.repo>>}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
-              docker tag <<parameters.image>> $GAR_IMAGE:$GAR_TAG
-              docker tag <<parameters.image>> $GAR_IMAGE:latest
+              docker tag <<parameters.image>> $GAR_IMAGE:${GAR_TAG}<<parameters.suffix>>
+              docker tag <<parameters.image>> $GAR_IMAGE:latest<<parameters.suffix>>
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
           image: "<<parameters.image>>"
           google-project-id: <<parameters.project_id>>
           registry-url: <<parameters.registry-url>>
-          tag: $GAR_TAG,latest
+          tag: ${GAR_TAG}<<parameters.suffix>>,latest<<parameters.suffix>>
 
 workflows:
   build-test-deploy:
@@ -578,20 +584,22 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - build:
+      - build: # Enterprise
           name: build-autoconnect-enterprise
-          image: autoconnect-enterprise
+          image: autoconnect
           crate: autoconnect
           binary: autoconnect
+          suffix: "_enterprise"
           build_args: "\"--no-default-features --features=redis\""
           filters:
             tags:
               only: /.*/
-      - build:
+      - build: # Enterprise
           name: build-autoendpoint-enterprise
-          image: autoendpoint-enterprise
+          image: autoendpoint
           crate: autoendpoint
           binary: autoendpoint
+          suffix: "_enterprise"
           build_args: "\"--no-default-features --features=redis\""
           filters:
             tags:
@@ -678,9 +686,10 @@ workflows:
 
       - deploy:
           name: deploy-autoconnect-enterprise
-          image: autoconnect-enterprise
+          image: autoconnect
           project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
           repo: GCP_GAR_ENTERPRISE_REPO
+          suffix: "_enterprise"
           requires:
             - build-autoconnect-enterprise
             - Unit Tests
@@ -696,9 +705,10 @@ workflows:
 
       - deploy:
           name: deploy-autoendpoint-enterprise
-          image: autoendpoint-enterprise
+          image: autoendpoint
           project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
           repo: GCP_GAR_ENTERPRISE_REPO
+          suffix: "_enterprise"
           requires:
             - build-autoendpoint-enterprise
             - Unit Tests
