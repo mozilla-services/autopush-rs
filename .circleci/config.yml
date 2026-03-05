@@ -412,6 +412,11 @@ jobs:
           command: |
             mkdir -p /tmp/cache
             docker save -o /tmp/cache/<<parameters.image>>.tar "<<parameters.image>>"
+      - run:
+          name: List Docker images
+          command: |
+            docker image ls -a
+            ls -l /tmp/cache
       - persist_to_workspace:
           root: /tmp/cache
           paths:
@@ -512,7 +517,7 @@ jobs:
           at: /tmp/cache
       - run:
           name: Restore Docker image cache
-          command: docker load -i /tmp/cache/<<parameters.image>>.tar
+          command: ls -l /tmp/cache && docker load -i /tmp/cache/<<parameters.image>><<parameters.suffix>>.tar
       # This is the easiest way to tag multiple images using different
       # conditions for the GAR_TAG variable in the smallest amount of code.
       #
@@ -531,6 +536,7 @@ jobs:
               source $BASH_ENV
               docker tag <<parameters.image>> $GAR_IMAGE:${GAR_TAG}<<parameters.suffix>>
               docker tag <<parameters.image>> $GAR_IMAGE:latest<<parameters.suffix>>
+              docker image ls -a
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
