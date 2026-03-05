@@ -534,9 +534,10 @@ jobs:
             fi
               echo "export GAR_IMAGE=\"<<parameters.registry-url>>/${<<parameters.project_id>>}/${<<parameters.repo>>}/<<parameters.image>>\"" >> $BASH_ENV
               source $BASH_ENV
-              docker tag <<parameters.image>> $GAR_IMAGE:${GAR_TAG}<<parameters.suffix>>
-              docker tag <<parameters.image>> $GAR_IMAGE:latest<<parameters.suffix>>
+              docker tag <<parameters.image>><<parameters.suffix>> $GAR_IMAGE:${GAR_TAG}<<parameters.suffix>>
+              docker tag <<parameters.image>><<parameters.suffix>> $GAR_IMAGE:latest<<parameters.suffix>>
       - run:
+          # Note, because CircleCI is kind of weird with
           name: List Docker images
           command: |
               echo "repo: ${<<parameters.repo>>}"
