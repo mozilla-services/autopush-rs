@@ -532,7 +532,10 @@ jobs:
               source $BASH_ENV
               docker tag <<parameters.image>> $GAR_IMAGE:${GAR_TAG}<<parameters.suffix>>
               docker tag <<parameters.image>> $GAR_IMAGE:latest<<parameters.suffix>>
+<<<<<<< HEAD
               docker image ls -a
+=======
+>>>>>>> 6dae0392e68e9c0ed5841c312efa35b780494c04
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
