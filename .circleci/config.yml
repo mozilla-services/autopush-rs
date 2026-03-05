@@ -539,17 +539,17 @@ jobs:
       - run:
           name: List Docker images
           command: |
-              echo "repo: <<parameters.repo>>"
+              echo "repo: ${<<parameters.repo>>}"
               echo "img:  <<parameters.image>>"
-              echo "p_id: <<parameters.project_id>>"
-              echo "reg:  <<parameters.registry-url>>"
+              echo "p_id: ${<<parameters.project_id>>}"
+              echo "host: <<parameters.registry-url>>"
               echo "tag:  ${GAR_TAG}<<parameters.suffix>>"
               docker image ls -a
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
-          # Not sure why, but we have to respecify the repo here, since `parameters.image` does not contain it.
-          image: "<<parameters.repo>>/<<parameters.image>>"
+          # Not sure why, but we have to re-specify the repo here, since `parameters.image` does not contain it.
+          image: "${<<parameters.repo>>}/<<parameters.image>>"
           google-project-id: <<parameters.project_id>>
           registry-url: <<parameters.registry-url>>
           tag: ${GAR_TAG}<<parameters.suffix>>,latest<<parameters.suffix>>
