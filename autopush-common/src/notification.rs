@@ -121,34 +121,35 @@ pub(crate) fn default_ttl() -> u64 {
 
 #[cfg(feature = "postgres")]
 /// Postgres Message Row to Notification (may be used as a model for other DBs later)
-impl TryFrom<&tokio_postgres::Row> for Notification {
+impl TryFrom<&sqlx::postgres::PgRow> for Notification {
     type Error = DbError;
 
-    fn try_from(row: &tokio_postgres::Row) -> Result<Self, Self::Error> {
+    fn try_from(row: &sqlx::postgres::PgRow) -> Result<Self, Self::Error> {
         #[cfg(feature = "reliable_report")]
         use crate::reliability::ReliabilityState;
+        use sqlx::Row;
         Ok(Self {
             channel_id: row
-                .try_get::<&str, &str>("channel_id")
+                .try_get::<&str, _>("channel_id")
                 .map(|v| Uuid::from_str(v).unwrap())
                 .unwrap(),
-            version: row.try_get::<&str, String>("version").unwrap(),
-            ttl: row.try_get::<&str, i64>("ttl").map(|v| v as u64).unwrap(),
+            version: row.try_get::<String, _>("version").unwrap(),
+            ttl: row.try_get::<i64, _>("ttl").map(|v| v as u64).unwrap(),
             topic: row
-                .try_get::<&str, String>("topic")
+                .try_get::<String, _>("topic")
                 .map(|v| if v.is_empty() { None } else { Some(v) })
                 .unwrap_or_default(),
             timestamp: row
-                .try_get::<&str, i64>("timestamp")
+                .try_get::<i64, _>("timestamp")
                 .map(|v| v as u64)
                 .unwrap(),
-            data: row.try_get::<&str, String>("data").map(Some).unwrap(),
+            data: row.try_get::<String, _>("data").map(Some).unwrap(),
             sortkey_timestamp: row
-                .try_get::<&str, i64>("sortkey_timestamp")
+                .try_get::<i64, _>("sortkey_timestamp")
                 .map(|v| Some(v as u64))
                 .unwrap_or_default(),
             headers: row
-                .try_get::<&str, &str>("headers")
+                .try_get::<&str, _>("headers")
                 .map(|v| {
                     if v.is_empty() || v == "null" || v == "{}" {
                         return None;
@@ -158,10 +159,10 @@ impl TryFrom<&tokio_postgres::Row> for Notification {
                 })
                 .unwrap_or_default(),
             #[cfg(feature = "reliable_report")]
-            reliability_id: row.try_get::<&str, String>("reliability_id").ok(),
+            reliability_id: row.try_get::<String, _>("reliability_id").ok(),
             #[cfg(feature = "reliable_report")]
             reliable_state: row
-                .try_get::<&str, &str>("reliable_state")
+                .try_get::<&str, _>("reliable_state")
                 .map(|v| ReliabilityState::from_str(v).unwrap())
                 .ok(),
         })

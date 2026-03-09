@@ -1,0 +1,64 @@
+-- Create the initial schema for the Autopush database.
+--
+-- This presumes that you've already created the account user (other than `postgres`)
+-- and have created a database for push to use (e.g.
+--      CREATE DATABASE autopush WITH OWNER = $OWNER;
+--      CREATE SCHEMA autopush;
+--      GRANT ALL ON SCHEMA autopush TO $OWNER;
+--      GRANT ALL ON TABLES IN SCHEMA autopush TO $OWNER;
+--      SET search_path TO autopush, public;
+-- );
+
+-- This table contains the routing information for push message recipients.
+CREATE TABLE IF NOT EXISTS router (
+    uaid varchar(40) NOT NULL PRIMARY KEY UNIQUE,
+    connected_at bigint,
+    router_type varchar(100),
+    router_data text,
+    last_connect bigint,
+    node_id varchar(100),
+    record_version bigint,
+    version text,    -- Optional and probably not needed
+    last_update bigint,     -- Note "current_timestamp" seems to be reserved.
+    expiry bigint,
+    priv_channels varchar(40)[]
+);
+
+-- This contains "meta" or general information for the routing table.
+-- It may also contain general setup and configuration data for autopush.
+-- Right now, it contains the channel_ids associated with the UAID.
+CREATE TABLE IF NOT EXISTS meta (
+    channel_id varchar(40) NOT NULL,
+    uaid varchar(40) NOT NULL REFERENCES router(uaid) ON DELETE CASCADE,
+    PRIMARY KEY (uaid, channel_id)
+);
+
+-- (Optional table containing state information for "trackable" messages.)
+CREATE TABLE IF NOT EXISTS reliability (
+    id varchar(40) NOT NULL PRIMARY KEY,
+    states jsonb,
+    last_update_timestamp bigint
+);
+
+
+-- Contains the encrypted messages pending delivery to the User Agents.
+CREATE TABLE IF NOT EXISTS message (
+    uaid varchar(40) NOT NULL REFERENCES router(uaid) ON DELETE CASCADE,
+    channel_id varchar(40),
+    chid_message_id varchar(100),
+    version text,
+    ttl bigint,
+    expiry bigint,
+    topic varchar,
+    timestamp bigint,
+    data text,
+    sortkey_timestamp bigint,
+    headers text,
+    reliability_id varchar(40) REFERENCES reliability(id),
+    PRIMARY KEY(uaid, chid_message_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS chid_message_idx ON message (chid_message_id);
+CREATE INDEX IF NOT EXISTS message_reliability_id_idx on message (reliability_id);
+CREATE INDEX IF NOT EXISTS meta_uaid_idx on meta (uaid);
+CREATE INDEX IF NOT EXISTS update_idx ON reliability(last_update_timestamp);
