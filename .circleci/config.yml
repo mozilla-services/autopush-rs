@@ -129,7 +129,7 @@ commands:
     steps:
       - run:
           name: Build Applications
-          command: cargo build --features=emulator
+          command: cargo build --features=production
   setup_bigtable:
     steps:
       - run:
@@ -606,7 +606,7 @@ workflows:
           crate: autoconnect
           binary: autoconnect
           suffix: "_enterprise"
-          build_args: "\"--no-default-features --features=redis\""
+          build_args: "\"--no-default-features --features=enterprise\""
           filters:
             tags:
               only: /.*/
@@ -616,7 +616,7 @@ workflows:
           crate: autoendpoint
           binary: autoendpoint
           suffix: "_enterprise"
-          build_args: "\"--no-default-features --features=redis\""
+          build_args: "\"--no-default-features --features=enterprise\""
           filters:
             tags:
               only: /.*/
