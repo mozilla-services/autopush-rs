@@ -8,6 +8,7 @@
 *   Make sentry reporting optional (#1072) ([a374a043](https://github.com/mozilla-services/autopush-rs/commit/a374a04383998908bf899efd0773a875784e10dc))
 *   Restore `autokey` key generation script (#1085) ([101c7fbb](https://github.com/mozilla-services/autopush-rs/commit/101c7fbb1b55c0d815ac51377dde45d879862b78))
 *   Add metric for tracked vs untracked messages (#1076) ([5127c676](https://github.com/mozilla-services/autopush-rs/commit/5127c676f3132ade37d039c5729b328a195cb890))
+*   Replace postgres library with sqlx (#1110) ([f19f996e](https://github.com/mozilla-services/autopush-rs/commit/f19f996e39977c8ad6cb3e90774724141ecbfd97))
 
 #### Bug Fixes
 
