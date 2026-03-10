@@ -55,12 +55,8 @@ pub enum DbError {
     PgGeneralError(String),
 
     #[cfg(feature = "postgres")]
-    #[error("Postgres Pool Error: {0}")]
-    PgPoolError(#[from] deadpool::managed::PoolError<tokio_postgres::Error>),
-
-    #[cfg(feature = "postgres")]
     #[error("Postgres Error: {0}")]
-    PgError(#[from] tokio_postgres::Error),
+    PgError(#[from] sqlx::Error),
 
     #[cfg(feature = "postgres")]
     #[error("Postgres DB Error: {0}")]
@@ -94,8 +90,6 @@ impl ReportableError for DbError {
             #[cfg(feature = "postgres")]
             DbError::PgError(_) => true,
             #[cfg(feature = "postgres")]
-            DbError::PgPoolError(_) => true,
-            #[cfg(feature = "postgres")]
             DbError::PgDbError(_) => true,
             _ => false,
         }
@@ -121,9 +115,10 @@ impl ReportableError for DbError {
             #[cfg(feature = "postgres")]
             DbError::PgError(e) => vec![(
                 "error",
-                e.as_db_error()
-                    .map(|e| e.message().to_owned())
-                    .unwrap_or("No error message".to_owned()),
+                match e {
+                    sqlx::Error::Database(ref db_err) => db_err.message().to_owned(),
+                    _ => "No error message".to_owned(),
+                },
             )],
             #[cfg(feature = "postgres")]
             DbError::PgDbError(v) => vec![("error", v.to_owned())],
