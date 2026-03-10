@@ -661,20 +661,21 @@ impl DbClient for PgClientImpl {
                 "INSERT INTO {tablename} ({field_names}) ",
                 tablename = &self.message_table(),
             ));
-        query_builder.push_values(msg_params.iter(), |mut b, mp| {
-            b.push_bind(uaid_str.clone());
-            b.push_bind(mp.channel_id.clone());
-            b.push_bind(mp.chidmessageid.clone());
-            b.push_bind(mp.version.clone());
-            b.push_bind(mp.ttl);
-            b.push_bind(mp.expiry);
-            b.push_bind(mp.topic.clone());
-            b.push_bind(mp.timestamp);
-            b.push_bind(mp.data.clone());
-            b.push_bind(mp.sortkey_timestamp);
-            b.push_bind(mp.headers.clone());
+        // `query` is provided by `push_values` to bind parameters for each row
+        query_builder.push_values(msg_params.iter(), |mut query, mp| {
+            query.push_bind(uaid_str.clone());
+            query.push_bind(mp.channel_id.clone());
+            query.push_bind(mp.chidmessageid.clone());
+            query.push_bind(mp.version.clone());
+            query.push_bind(mp.ttl);
+            query.push_bind(mp.expiry);
+            query.push_bind(mp.topic.clone());
+            query.push_bind(mp.timestamp);
+            query.push_bind(mp.data.clone());
+            query.push_bind(mp.sortkey_timestamp);
+            query.push_bind(mp.headers.clone());
             #[cfg(feature = "reliable_report")]
-            b.push_bind(mp.reliability_id.clone());
+            query.push_bind(mp.reliability_id.clone());
         });
         query_builder.push(
             " ON CONFLICT (chid_message_id) DO UPDATE SET
@@ -808,7 +809,7 @@ impl DbClient for PgClientImpl {
         let timestamp_epoch = (std::time::SystemTime::now()
             + Duration::from_secs(RELIABLE_LOG_TTL.num_seconds() as u64))
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .map_err(|e| DbError::General(format!("System time before UNIX epoch: {e}")))?
         .as_secs() as i64;
         debug!("📮 Logging report for {reliability_id} as {new_state}");
 
