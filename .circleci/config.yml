@@ -125,6 +125,15 @@ commands:
             export PATH=$PATH:$HOME/.cargo/bin
             echo 'export PATH=$PATH:$HOME/.cargo/bin' >> $BASH_ENV
             rustc --version
+  # The following is required by a version update to gcp-cli, which wants sudo, even though the
+  # script is already running as root. (See bump from 559 to 560)
+  setup_sudo:
+    steps:
+      - run:
+          name: Set up sudo
+          command: |
+            apt update
+            apt install sudo -y
   build_applications:
     steps:
       - run:
@@ -240,6 +249,7 @@ jobs:
     resource_class: large
     steps:
       - checkout
+      - setup_sudo
       - gcp-cli/setup
       - setup_remote_docker:
           docker_layer_caching: true
@@ -276,6 +286,7 @@ jobs:
       - setup_rust
       - setup_cbt
       - setup_bigtable
+      - setup_sudo
       - gcp-cli/setup
       - run:
           name: Install cargo-nextest
