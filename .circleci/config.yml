@@ -132,6 +132,11 @@ commands:
       - run:
           name: Build Applications
           command: cargo build --features=emulator
+  setup_sudo:
+    steps:
+      - run:
+          name: Install sudo
+          command: apt update && apt install sudo -y
   setup_bigtable:
     steps:
       - run:
@@ -275,6 +280,7 @@ jobs:
       - restore_test_cache:
           cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
+      - setup_sudo  # required by gcp-cli, even though the script is already running as root. (See bump from 559 to 560)
       - setup_rust
       - setup_cbt
       - setup_bigtable
