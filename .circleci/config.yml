@@ -27,8 +27,10 @@
 version: 2.1
 
 orbs:
-  gcp-cli: circleci/gcp-cli@3.3.0
-  gcp-gcr: circleci/gcp-gcr@0.16.3
+  # See https://circleci.com/developer/orbs/orb/circleci/gcp-cli
+  gcp-cli: circleci/gcp-cli@3.3.2
+  # See https://circleci.com/developer/orbs/orb/circleci/gcp-gcr
+  gcp-gcr: circleci/gcp-gcr@0.16.11
 
 executors:
   audit-executor:
@@ -130,6 +132,11 @@ commands:
       - run:
           name: Build Applications
           command: cargo build --features=production
+  setup_sudo:
+    steps:
+      - run:
+          name: Install sudo
+          command: apt update && apt install sudo -y
   setup_bigtable:
     steps:
       - run:
@@ -273,6 +280,7 @@ jobs:
       - restore_test_cache:
           cache_key: rust-v2-cache-{{ checksum "Cargo.lock" }}
       - create_test_result_workspace
+      - setup_sudo  # required by gcp-cli, even though the script is already running as root. (See bump from 559 to 560)
       - setup_rust
       - setup_cbt
       - setup_bigtable
@@ -412,11 +420,11 @@ jobs:
           command: |
             mkdir -p /tmp/cache
             docker save -o /tmp/cache/<<parameters.image>>.tar "<<parameters.image>>"
-      - run:
-          name: List Docker images
-          command: |
-            docker image ls -a
-            ls -l /tmp/cache
+      # - run:
+      #     name: List Docker images
+      #     command: |
+      #       docker image ls -a
+      #       ls -l /tmp/cache
       - persist_to_workspace:
           root: /tmp/cache
           paths:
@@ -536,16 +544,17 @@ jobs:
               source $BASH_ENV
               docker tag <<parameters.image>><<parameters.suffix>> $GAR_IMAGE:${GAR_TAG}<<parameters.suffix>>
               docker tag <<parameters.image>><<parameters.suffix>> $GAR_IMAGE:latest<<parameters.suffix>>
-      - run:
-          # Note, because CircleCI is kind of weird with
-          name: List Docker images
-          command: |
-              echo "repo: ${<<parameters.repo>>}"
-              echo "img:  <<parameters.image>>"
-              echo "p_id: ${<<parameters.project_id>>}"
-              echo "host: <<parameters.registry-url>>"
-              echo "tag:  ${GAR_TAG}<<parameters.suffix>>"
-              docker image ls -a
+      # For Debugging. Note: CircleCI "helpfully" masks these values so you may need to count stars.
+      # - run:
+      #     # Note, because CircleCI is kind of weird with
+      #     name: List Docker images
+      #     command: |
+      #         echo "repo: ${<<parameters.repo>>}"
+      #         echo "img:  <<parameters.image>>"
+      #         echo "p_id: ${<<parameters.project_id>>}"
+      #         echo "host: <<parameters.registry-url>>"
+      #         echo "tag:  ${GAR_TAG}<<parameters.suffix>>"
+      #         docker image ls -a
       # push-image parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-push-image
       - gcp-gcr/push-image:
