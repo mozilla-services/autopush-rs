@@ -1,3 +1,55 @@
+<a name="1.80.0"></a>
+## 1.80.0 (2026-03-10)
+
+
+#### Features
+
+*   include discrete build for enterprise (#1101) ([80e223a8](https://github.com/mozilla-services/autopush-rs/commit/80e223a864cdcd94f9368dee711edc62a123467c))
+*   Make sentry reporting optional (#1072) ([a374a043](https://github.com/mozilla-services/autopush-rs/commit/a374a04383998908bf899efd0773a875784e10dc))
+*   Restore `autokey` key generation script (#1085) ([101c7fbb](https://github.com/mozilla-services/autopush-rs/commit/101c7fbb1b55c0d815ac51377dde45d879862b78))
+*   Add metric for tracked vs untracked messages (#1076) ([5127c676](https://github.com/mozilla-services/autopush-rs/commit/5127c676f3132ade37d039c5729b328a195cb890))
+*   Replace postgres library with sqlx (#1110) ([f19f996e](https://github.com/mozilla-services/autopush-rs/commit/f19f996e39977c8ad6cb3e90774724141ecbfd97))
+
+#### Bug Fixes
+
+*   update quinn-proto to 0.11.14 (RUSTSEC-2026-0037) (#1111) ([09e5e70a](https://github.com/mozilla-services/autopush-rs/commit/09e5e70a85454135558f119398a7f194e22ff23b))
+*   append suffix to deploy image tag. (#1108) ([39eb23fc](https://github.com/mozilla-services/autopush-rs/commit/39eb23fc2314b9b05016c0334825dc55c64a87e3))
+*   express repo as an environment var (#1107) ([fda1c828](https://github.com/mozilla-services/autopush-rs/commit/fda1c8287a94c958944bad94f8f826d3ef90e044))
+*   Re-add repo to docker push path ([eaaf20c2](https://github.com/mozilla-services/autopush-rs/commit/eaaf20c263cdc9a91e2b581c2c54b7f7afb4e6e3))
+*   fix restore missing suffix (#1105) ([c8750cad](https://github.com/mozilla-services/autopush-rs/commit/c8750cad419184036a684a435e1aa8c2e36bc115))
+*   add suffix to alter tag, not directory path (#1104) ([6dae0392](https://github.com/mozilla-services/autopush-rs/commit/6dae0392e68e9c0ed5841c312efa35b780494c04))
+*   Remove extra REPO arg from path (#1103) ([73dc90b7](https://github.com/mozilla-services/autopush-rs/commit/73dc90b7c834a9c551c956f9054d92bac00ced47))
+
+#### Performance
+
+*   Replace futures-locks with DashMap registry and bounded channels (#1080) ([bcdc6fcb](https://github.com/mozilla-services/autopush-rs/commit/bcdc6fcba45185d72e1b012035f89f6f79e942f2))
+*   Add circuit breaker for BigTable gRPC calls (#1079) ([1a3646d9](https://github.com/mozilla-services/autopush-rs/commit/1a3646d9793ec464d3a91f0cb28059b971bf6000))
+*   Remove duplicate VAPID validation, unnecessary clones in autoendpoint (#1082) ([d6d64166](https://github.com/mozilla-services/autopush-rs/commit/d6d64166c35baaaf86825ccd560cbc852155e531))
+*   HashMap ACK tracking, batch inserts, HashSet broadcasts (#1081) ([2794917c](https://github.com/mozilla-services/autopush-rs/commit/2794917cff64b9f2f484c11d2f91bf4b6b7ab549))
+
+#### Chore
+
+*   tag 1.79.0 (#1073) ([90600174](https://github.com/mozilla-services/autopush-rs/commit/90600174f6e6645922f2055a8c21bf39aad54ed0))
+
+
+<a name="1.79.0"></a>
+## 1.79.0 (2026-02-23)
+
+
+#### Features
+
+* Post #1040 cleanup (#1067) ([3a37a56](3a37a56))
+* **Add postgres backend storage** (#1040) ([53376b6](53376b6))
+
+#### Doc
+
+* add documentation for new data stores (#1060) ([afdd609](afdd609))
+
+#### Chore
+
+* tag 1.78.0 (#1061) ([094ed27](094ed27))
+
+
 <a name="1.78.1"></a>
 ## 1.78.1 (2026-02-20)
 
