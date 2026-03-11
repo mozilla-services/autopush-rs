@@ -56,9 +56,10 @@ tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
 default = ["production"]
-production = ["bigtable", "emulator","reliable_report"]
+production = ["bigtable", "emulator", "reliable_report"]
 enterprise = ["redis"]
 enterprise-beta = ["postgres"]
+
 # data store types
 bigtable = ["autopush_common/bigtable"]
 redis = ["autopush_common/redis"]
