@@ -160,7 +160,7 @@ mod tests {
         let settings = super::RedisDbSettings::try_from("{}")?;
         assert_ne!(settings.router_ttl, Some(Duration::from_secs(0)));
         assert_ne!(settings.notification_ttl, Some(Duration::from_secs(0)));
-        let settings= super::RedisDbSettings::try_from("{\"router_ttl\":0}");
+        let settings = super::RedisDbSettings::try_from("{\"router_ttl\":0}");
         assert!(settings.is_err());
         Ok(())
     }
