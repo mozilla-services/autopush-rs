@@ -131,7 +131,7 @@ commands:
     steps:
       - run:
           name: Build Applications
-          command: cargo build --features=production
+          command: cargo build --features=production --features=emulator
   setup_sudo:
     steps:
       - run:
@@ -598,6 +598,7 @@ workflows:
           image: autoconnect
           crate: autoconnect
           binary: autoconnect
+          build-args: "\"--features=production --features=emulator\""
           filters:
             tags:
               only: /.*/
@@ -606,6 +607,7 @@ workflows:
           image: autoendpoint
           crate: autoendpoint
           binary: autoendpoint
+          build-args: "\"--features=production --features=emulator\""
           filters:
             tags:
               only: /.*/
