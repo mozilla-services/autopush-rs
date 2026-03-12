@@ -27,14 +27,12 @@ use uuid::Uuid;
 
 /// The settings for accessing the redis contents.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
 pub struct RedisDbSettings {
-    #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub create_timeout: Option<Duration>,
-    #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub router_ttl: Option<Duration>,
-    #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub notification_ttl: Option<Duration>,
 }
@@ -61,6 +59,20 @@ impl TryFrom<&str> for RedisDbSettings {
                 e
             )))?,
         };
+        if let Some(router_ttl) = me.router_ttl {
+            if router_ttl.as_secs() == 0 {
+                return Err(DbError::General(
+                    "router_ttl must be greater than 0".to_string(),
+                ));
+            }
+        }
+        if let Some(notification_ttl) = me.notification_ttl {
+            if notification_ttl.as_secs() == 0 {
+                return Err(DbError::General(
+                    "notification_ttl must be greater than 0".to_string(),
+                ));
+            }
+        }
         Ok(me)
     }
 }
@@ -136,13 +148,20 @@ impl From<StorableNotification> for Notification {
 #[cfg(test)]
 mod tests {
 
+    use std::time::Duration;
+
     #[test]
     fn test_settings_parse() -> Result<(), crate::db::error::DbError> {
-        let settings = super::RedisDbSettings::try_from("{\"timeout\": 123}")?;
+        let settings = super::RedisDbSettings::try_from("{\"create_timeout\": 123}")?;
         assert_eq!(
             settings.create_timeout,
             Some(std::time::Duration::from_secs(123))
         );
+        let settings = super::RedisDbSettings::try_from("{}")?;
+        assert_ne!(settings.router_ttl, Some(Duration::from_secs(0)));
+        assert_ne!(settings.notification_ttl, Some(Duration::from_secs(0)));
+        let settings = super::RedisDbSettings::try_from("{\"router_ttl\":0}");
+        assert!(settings.is_err());
         Ok(())
     }
 }
