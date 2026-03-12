@@ -598,7 +598,7 @@ workflows:
           image: autoconnect
           crate: autoconnect
           binary: autoconnect
-          build-args: "\"--features=production --features=emulator\""
+          build_args: "\"--features=production --features=emulator\""
           filters:
             tags:
               only: /.*/
@@ -607,7 +607,7 @@ workflows:
           image: autoendpoint
           crate: autoendpoint
           binary: autoendpoint
-          build-args: "\"--features=production --features=emulator\""
+          build_args: "\"--features=production --features=emulator\""
           filters:
             tags:
               only: /.*/
