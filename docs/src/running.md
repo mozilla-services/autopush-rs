@@ -91,6 +91,17 @@ While there is a `docker-compose-bt.yml` file provided, this file was originally
 
 The following instructions will allow you to run Autopush "locally" in a Ubuntu / Debian environment. If you prefer, the [development](development.md) document has more details.
 
+_*NOTE*_: Please note that the default configuration for autopush is to run with `production` features. This will presume that
+only `Bigtable` storage is available. If you wish to run with `enterprise` features, you will need to specify the appropriate features when running the binaries. (e.g. `cargo run --features=redis --no-default-features`) The `enterprise` feature flag
+enables support for Redis and Postgres storage. Turning off default features prevents Bigtable support, which can significantly
+increase build times and image sizes.
+
+See the [Datastore documentation](datastore.md) for more details on the available storage options and their features.
+
+See the [configuration documentation](config_options.md) for more details on how to set up your configuration files and specify the appropriate features.
+
+_*NOTE*_: Autopush uses inter-node routing for messages. You should make sure that whatever port you've designated for `router_port` is accessible to all machines in the cluster.
+
 ### Starting optional emulators
 
 If you are planning on doing local development work with Autopush, you may wish to run emulators for

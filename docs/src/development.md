@@ -163,7 +163,9 @@ run.bash autoconnect
 will start a copy of the autoconnect websocket server using the configuration specified in `./configs/autoconnect_bigtable.toml`
 
 ```bash
-run.bash autoendpoint
+run.bash autoendpoint redis
 ```
 
-will start a copy of the autoendpoint REST server using the configuration specified in `./configs/autoendpoint_bigtable.toml`
+will start a copy of the autoendpoint REST server using the configuration specified in `./configs/autoendpoint_redis.toml` (You should only run `autoconnect` and `autoendpoint` when they both point to the same data store. The above samples are for illustrative purposes.)
+
+_*NOTE*_: The above script does not use the convenience feature flags `production` or `enterprise`, because it is presumed that as you are developing, you want explicit control over the features that you are using. The above script should be amended as new features are added or removed.
