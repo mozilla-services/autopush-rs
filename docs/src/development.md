@@ -167,3 +167,7 @@ run.bash autoendpoint
 ```
 
 will start a copy of the autoendpoint REST server using the configuration specified in `./configs/autoendpoint_bigtable.toml`
+
+_*Note*_: The script above does not use the convenience variables `production` and `enterprise`. Instead it explicitly
+expects you to specify the flags that are preferred. You may wish to modify this script as more features are added or
+removed.
