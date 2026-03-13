@@ -166,14 +166,8 @@ will start a copy of the autoconnect websocket server using the configuration sp
 run.bash autoendpoint redis
 ```
 
-<<<<<<< HEAD
-will start a copy of the autoendpoint REST server using the configuration specified in `./configs/autoendpoint_redis.toml` (You should only run `autoconnect` and `autoendpoint` when they both point to the same data store. The above samples are for illustrative purposes.)
-
-_*NOTE*_: The above script does not use the convenience feature flags `production` or `enterprise`, because it is presumed that as you are developing, you want explicit control over the features that you are using. The above script should be amended as new features are added or removed.
-=======
 will start a copy of the autoendpoint REST server using the configuration specified in `./configs/autoendpoint_bigtable.toml`
 
 _*Note*_: The script above does not use the convenience variables `production` and `enterprise`. Instead it explicitly
 expects you to specify the flags that are preferred. You may wish to modify this script as more features are added or
 removed.
->>>>>>> a83626b771e78b3d8ee3c5554469b4321abbb879
