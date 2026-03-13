@@ -163,7 +163,7 @@ run.bash autoconnect
 will start a copy of the autoconnect websocket server using the configuration specified in `./configs/autoconnect_bigtable.toml`
 
 ```bash
-run.bash autoendpoint
+run.bash autoendpoint redis
 ```
 
 will start a copy of the autoendpoint REST server using the configuration specified in `./configs/autoendpoint_bigtable.toml`

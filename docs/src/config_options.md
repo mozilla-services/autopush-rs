@@ -38,8 +38,9 @@ using their environment variable form.
 | <span id="AUTOCONNECT__RELIABILITY_DSN" />reliability_dsn | AUTOCONNECT__RELIABILITY_DSN | string | _None_ | Data Source Name for the reliability data store, if `--features=reliable_report` enabled |
 | <span id="AUTOCONNECT__RELIABILITY_RETRY_COUNT" />reliability_retry_count | AUTOCONNECT__RELIABILITY_RETRY_COUNT | num | 3 | Number of times to retry a Redis transaction write for reliability, if `--features=reliable_report` enabled |
 | <span id="AUTOCONNECT__RESOLVE_HOSTNAME" />resolve_hostname | AUTOCONNECT__RESOLVE_HOSTNAME | bool | false | Use the internal IP address of the given hostname |
-| <span id="AUTOCONNECT__ROUTER_HOSTNAME" />router_hostname | AUTOCONNECT__ROUTER_HOSTNAME | string | _None_ | Hostname to use for internode communication |
-| <span id="AUTOCONNECT__ROUTER_PORT" />router_port | AUTOCONNECT__ROUTER_PORT | num | 8081 | Router port for autoconnect internode communication |
+| <span id="AUTOCONNECT__ROUTER_HOSTNAME" />router_hostname | AUTOCONNECT__ROUTER_HOSTNAME | string | _None_ | Hostname to use for internode communication. _*NOTE*_: This is name or address of the local machine and will be provided internally to other autopush nodes. This will default to the `hostname` value. You only need to set this if the host name to use for internode communication is different. (e.g. you may wish to use the node IP address instead of the hostname if you do not have a DNS
+entry for the hostname) |
+| <span id="AUTOCONNECT__ROUTER_PORT" />router_port | AUTOCONNECT__ROUTER_PORT | num | 8081 | Router port for autoconnect internode communication. _*NOTE*_: Be sure that this port is accessible to all machines in the Autopush cluster (both autoendpoint and autoconnect). This port does NOT need to be publicly accessible. |
 | <span id="AUTOCONNECT__STATSD_HOST" />statsd_host | AUTOCONNECT__STATSD_HOST | string | "localhost" | Name of the statsd collector host |
 | <span id="AUTOCONNECT__STATSD_PORT" />statsd_port | AUTOCONNECT__STATSD_PORT | port | 8125 | Port for the statsd collector host |
 | <span id="AUTOCONNECT__STATSD_LABEL" />statsd_label | AUTOCONNECT__STATSD_LABEL | string | "autoconnect" | Label to use for statsd metrics |
