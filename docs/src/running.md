@@ -96,11 +96,15 @@ only `Bigtable` storage is available. If you wish to run with `enterprise` featu
 enables support for Redis and Postgres storage. Turning off default features prevents Bigtable support, which can significantly
 increase build times and image sizes.
 
+<<<<<<< HEAD
 See the [Datastore documentation](datastore.md) for more details on the available storage options and their features.
 
 See the [configuration documentation](config_options.md) for more details on how to set up your configuration files and specify the appropriate features.
 
 _*NOTE*_: Autopush uses inter-node routing for messages. You should make sure that whatever port you've designated for `router_port` is accessible to all machines in the cluster.
+=======
+See the [configuration documentation](config.md) for more details on how to set up your configuration files and specify the appropriate features.
+>>>>>>> a83626b771e78b3d8ee3c5554469b4321abbb879
 
 ### Starting optional emulators
 

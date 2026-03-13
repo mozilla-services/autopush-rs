@@ -55,10 +55,16 @@ tempfile = "3.2.0"
 tokio = { workspace = true, features = ["fs", "macros"] }
 
 [features]
-default = ["bigtable", "reliable_report"]
+default = ["production"]
+production = ["bigtable", "emulator", "reliable_report"]
+enterprise = ["redis"]
+enterprise-beta = ["postgres"]
+
 # data store types
 bigtable = ["autopush_common/bigtable"]
 redis = ["autopush_common/redis"]
+postgres = ["autopush_common/postgres"]
+
 # enable emulator to call locally run data store.
 emulator = ["bigtable"]
 
@@ -70,7 +76,6 @@ stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []
 
-postgres = ["autopush_common/postgres"]
 reliable_report = ["autopush_common/reliable_report"]
 
 [lints]
