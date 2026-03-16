@@ -8,7 +8,7 @@ use crate::extractors::{
     authorization_check::AuthorizationCheck, new_channel_data::NewChannelData,
     registration_path_args::RegistrationPathArgs,
     registration_path_args_with_uaid::RegistrationPathArgsWithUaid,
-    router_data_input::RouterDataInput, routers::Routers,
+    router_data_input::RouterDataInput, routers::Routers, user::ReqUaid,
 };
 use crate::headers::util::get_header;
 use crate::server::AppState;
@@ -238,6 +238,34 @@ pub async fn unregister_channel_route(
         debug!("Channel did not exist");
         Err(ApiErrorKind::NoSubscription.into())
     }
+}
+
+/// Report the status of a given UAID. This was requested by the UA so that
+/// it can check to see if a given UAID has been reset. This will mostly be
+/// used by desktop clients, since the mobile clients will do a daily check-in.
+pub async fn check_uaid(req_uaid: ReqUaid, app_state: Data<AppState>) -> ApiResult<HttpResponse> {
+    debug!("🌍 Checking UAID {req_uaid}");
+    let mut response = serde_json::json!({
+        "uaid": req_uaid.uaid,
+    });
+    match app_state.db.get_user(&req_uaid.uaid).await {
+        Ok(Some(_user)) => {
+            debug!("🌍 UAID {req_uaid} good");
+            response["status"] = actix_http::StatusCode::OK.as_u16().into();
+        }
+        Ok(None) => {
+            debug!("🌍 UAID {req_uaid} bad");
+            response["status"] = actix_http::StatusCode::NOT_FOUND.as_u16().into();
+        }
+        Err(e) => {
+            warn!("🌍⚠ UAID check db bad");
+            let err: ApiErrorKind = e.into();
+            response["status"] = err.status().as_u16().into();
+            response["message"] = err.to_string().into();
+            response["errno"] = err.errno().into();
+        }
+    }
+    Ok(HttpResponse::Ok().json(response))
 }
 
 /// Increment a metric with data from the request
