@@ -247,8 +247,7 @@ impl Settings {
     pub fn test_settings() -> Self {
         // Provide test settings based on enabled features.
         // semi-hack to satisfy clippy --all --all-features
-        if cfg!(feature="bigtable")
-        {
+        if cfg!(feature = "bigtable") {
             let host = env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8086".to_owned());
             let db_dsn = Some(format!("grpc://{}", host));
             // BigTable DB_SETTINGS.
@@ -263,10 +262,9 @@ impl Settings {
                 db_dsn,
                 db_settings,
                 ..Default::default()
-            }
+            };
         }
-        if cfg!(feature="redis")
-        {
+        if cfg!(feature = "redis") {
             let host = env::var("REDIS_HOST").unwrap_or("localhost:6379".to_owned());
             let db_dsn = Some(format!("redis://{}", host));
             let db_settings = "".to_string();
@@ -274,10 +272,9 @@ impl Settings {
                 db_dsn,
                 db_settings,
                 ..Default::default()
-            }
+            };
         }
-        if cfg!(feature="postgres")
-        {
+        if cfg!(feature = "postgres") {
             let host = env::var("POSTGRES_HOST").unwrap_or("localhost:5432".to_owned());
             let db_dsn = Some(format!("postgres://{}", host));
             let db_settings = "".to_string();
@@ -285,7 +282,7 @@ impl Settings {
                 db_dsn,
                 db_settings,
                 ..Default::default()
-            }
+            };
         }
         Self::default()
     }
