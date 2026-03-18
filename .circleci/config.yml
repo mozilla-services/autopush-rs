@@ -742,7 +742,7 @@ workflows:
           project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
           repo: GCP_GAR_ENTERPRISE_REPO
           suffix: "_enterprise"
-          service_account_email: artifact-writer@{GCP_GAR_ENTERPRISE_PROJECT_ID}.iam.gserviceaccount.com
+          service_account_email: artifact-writer@moz-fx-fx-enterprise-prod.iam.gserviceaccount.com
           requires:
             - build-autoendpoint-enterprise
             - Unit Tests
