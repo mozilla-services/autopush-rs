@@ -509,6 +509,11 @@ jobs:
       suffix:
         type: string
         default: ""
+      service_account_email:
+        type: string
+        default: GCP_OIDC_SERVICE_ACCOUNT_EMAIL
+    environment:
+      SERVICE_ACCOUNT_EMAIL: <<parameters.service_account_email>>
     steps:
       # gcr-auth parameters:
       # https://circleci.com/developer/orbs/orb/circleci/gcp-gcr#commands-gcr-auth
@@ -517,7 +522,7 @@ jobs:
           google-project-id: <<parameters.project_id>>
           google_project_number: GCP_OIDC_PROJECT_NUMBER
           registry-url: <<parameters.registry-url>>
-          service_account_email: GCP_OIDC_SERVICE_ACCOUNT_EMAIL
+          service_account_email: SERVICE_ACCOUNT_EMAIL
           use_oidc: true
           workload_identity_pool_id: GCP_OIDC_WIP_ID
           workload_identity_pool_provider_id: GCP_OIDC_WIP_PROVIDER_ID
@@ -717,6 +722,7 @@ workflows:
           project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
           repo: GCP_GAR_ENTERPRISE_REPO
           suffix: "_enterprise"
+          service_account_email: artifact-writer@{GCP_GAR_ENTERPRISE_PROJECT_ID}.iam.gserviceaccount.com
           requires:
             - build-autoconnect-enterprise
             - Unit Tests
@@ -736,6 +742,7 @@ workflows:
           project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
           repo: GCP_GAR_ENTERPRISE_REPO
           suffix: "_enterprise"
+          service_account_email: artifact-writer@{GCP_GAR_ENTERPRISE_PROJECT_ID}.iam.gserviceaccount.com
           requires:
             - build-autoendpoint-enterprise
             - Unit Tests
@@ -748,6 +755,7 @@ workflows:
               only:
                 - master
                 - enterprise
+                - chore/test-saccount
 
       # ^^^^
       # End comment for local CircleCI testing.
