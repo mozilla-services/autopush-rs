@@ -611,26 +611,27 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - build: # Enterprise
-          name: build-autoconnect-enterprise
-          image: autoconnect
-          crate: autoconnect
-          binary: autoconnect
-          suffix: "_enterprise"
-          build_args: "\"--no-default-features --features=enterprise\""
-          filters:
-            tags:
-              only: /.*/
-      - build: # Enterprise
-          name: build-autoendpoint-enterprise
-          image: autoendpoint
-          crate: autoendpoint
-          binary: autoendpoint
-          suffix: "_enterprise"
-          build_args: "\"--no-default-features --features=enterprise\""
-          filters:
-            tags:
-              only: /.*/
+# Moved to GHA
+#      - build: # Enterprise
+#          name: build-autoconnect-enterprise
+#          image: autoconnect
+#          crate: autoconnect
+#          binary: autoconnect
+#          suffix: "_enterprise"
+#          build_args: "\"--no-default-features --features=enterprise\""
+#          filters:
+#            tags:
+#              only: /.*/
+#      - build: # Enterprise
+#          name: build-autoendpoint-enterprise
+#          image: autoendpoint
+#          crate: autoendpoint
+#          binary: autoendpoint
+#          suffix: "_enterprise"
+#          build_args: "\"--no-default-features --features=enterprise\""
+#          filters:
+#            tags:
+#              only: /.*/
 
       - build-reliability-cron:
           name: build-reliability-cron
@@ -711,43 +712,43 @@ workflows:
             branches:
               only: master
 
-      - deploy:
-          name: deploy-autoconnect-enterprise
-          image: autoconnect
-          project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
-          repo: GCP_GAR_ENTERPRISE_REPO
-          suffix: "_enterprise"
-          requires:
-            - build-autoconnect-enterprise
-            - Unit Tests
-            - Integration Tests
-            - Rust Formatting Check
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only:
-                - master
-                - enterprise
+#      - deploy:
+#          name: deploy-autoconnect-enterprise
+#          image: autoconnect
+#          project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
+#          repo: GCP_GAR_ENTERPRISE_REPO
+#          suffix: "_enterprise"
+#          requires:
+#            - build-autoconnect-enterprise
+#            - Unit Tests
+#            - Integration Tests
+#            - Rust Formatting Check
+#          filters:
+#            tags:
+#              only: /.*/
+#            branches:
+#              only:
+#                - master
+#                - enterprise
 
-      - deploy:
-          name: deploy-autoendpoint-enterprise
-          image: autoendpoint
-          project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
-          repo: GCP_GAR_ENTERPRISE_REPO
-          suffix: "_enterprise"
-          requires:
-            - build-autoendpoint-enterprise
-            - Unit Tests
-            - Integration Tests
-            - Rust Formatting Check
-          filters:
-            tags:
-              only: /.*/
-            branches:
-              only:
-                - master
-                - enterprise
+#      - deploy:
+#          name: deploy-autoendpoint-enterprise
+#          image: autoendpoint
+#          project_id: GCP_GAR_ENTERPRISE_PROJECT_ID
+#          repo: GCP_GAR_ENTERPRISE_REPO
+#          suffix: "_enterprise"
+#          requires:
+#            - build-autoendpoint-enterprise
+#            - Unit Tests
+#            - Integration Tests
+#            - Rust Formatting Check
+#          filters:
+#            tags:
+#              only: /.*/
+#            branches:
+#              only:
+#                - master
+#                - enterprise
 
       # ^^^^
       # End comment for local CircleCI testing.
