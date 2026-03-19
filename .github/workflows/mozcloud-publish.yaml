@@ -3,6 +3,12 @@ name: Build, Tag and Push Container Images to GAR Repository
 on:
   pull_request:
     types: [opened, labeled, unlabeled, synchronize]
+  push:
+    branches:
+      - master
+      - chore/test-saccount
+    tags:
+      - '**'
   workflow_dispatch: {}
 
 jobs:
@@ -17,7 +23,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@1b87069d293273436a84dff04954a8950d3ff9ca # v6.1.0
+    uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
     with:
       image_name: autoconnect
       gar_name: autopush-prod
@@ -26,6 +32,32 @@ jobs:
       docker_build_args: |
         CRATE=autoconnect
         BINARY=autoconnect
+
+  build-and-push-autoconnect-enterprise:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'push' &&
+        (github.ref_name == 'master' || github.ref_name == 'chore/test-saccount' || startsWith(github.ref, 'refs/tags/'))
+      ) ||
+      (
+        github.event_name == 'pull_request' &&
+        contains(github.event.pull_request.labels.*.name, 'preview') &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    permissions:
+      contents: read
+      id-token: write
+    uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
+    with:
+      image_name: autoconnect
+      gar_name: fx-enterprise-private
+      project_id: moz-fx-fx-enterprise-prod
+      docker_build_args: |
+        CRATE=autoconnect
+        BINARY=autoconnect
+        BUILD_ARGS=--features=production --features=emulator
+
   build-and-push-autoendpoint:
     if: >
       github.event_name == 'workflow_dispatch' ||
@@ -37,7 +69,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@1b87069d293273436a84dff04954a8950d3ff9ca # v6.1.0
+    uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
     with:
       image_name: autoendpoint
       gar_name: autopush-prod
@@ -46,3 +78,28 @@ jobs:
       docker_build_args: |
         CRATE=autoendpoint
         BINARY=autoendpoint
+
+  build-and-push-autoendpoint-enterprise:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'push' &&
+        (github.ref_name == 'master' || startsWith(github.ref, 'refs/tags/'))
+      ) ||
+      (
+        github.event_name == 'pull_request' &&
+        contains(github.event.pull_request.labels.*.name, 'preview') &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    permissions:
+      contents: read
+      id-token: write
+    uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
+    with:
+      image_name: autoendpoint
+      gar_name: fx-enterprise-private
+      project_id: moz-fx-fx-enterprise-prod
+      docker_build_args: |
+        CRATE=autoendpoint
+        BINARY=autoendpoint
+        BUILD_ARGS=--features=production --features=emulator
