@@ -247,15 +247,7 @@ impl Settings {
     pub fn test_settings() -> Self {
         // Provide test settings based on enabled features.
         // semi-hack to satisfy clippy --all --all-features
-        #[cfg(all(feature = "bigtable", feature = "redis", feature = "postgres"))]
-        {
-            Self::default()
-        }
-        #[cfg(all(
-            feature = "bigtable",
-            not(any(feature = "redis", feature = "postgres"))
-        ))]
-        {
+        if cfg!(feature = "bigtable") {
             let host = env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8086".to_owned());
             let db_dsn = Some(format!("grpc://{}", host));
             // BigTable DB_SETTINGS.
@@ -266,40 +258,33 @@ impl Settings {
                 "message_topic_family":"message_topic",
             })
             .to_string();
-            Self {
+            return Self {
                 db_dsn,
                 db_settings,
                 ..Default::default()
-            }
+            };
         }
-        #[cfg(all(
-            feature = "redis",
-            not(any(feature = "bigtable", feature = "postgres"))
-        ))]
-        {
+        if cfg!(feature = "redis") {
             let host = env::var("REDIS_HOST").unwrap_or("localhost:6379".to_owned());
             let db_dsn = Some(format!("redis://{}", host));
             let db_settings = "".to_string();
-            Self {
+            return Self {
                 db_dsn,
                 db_settings,
                 ..Default::default()
-            }
+            };
         }
-        #[cfg(all(
-            feature = "postgres",
-            not(any(feature = "bigtable", feature = "redis"))
-        ))]
-        {
+        if cfg!(feature = "postgres") {
             let host = env::var("POSTGRES_HOST").unwrap_or("localhost:5432".to_owned());
             let db_dsn = Some(format!("postgres://{}", host));
             let db_settings = "".to_string();
-            Self {
+            return Self {
                 db_dsn,
                 db_settings,
                 ..Default::default()
-            }
+            };
         }
+        Self::default()
     }
 }
 
