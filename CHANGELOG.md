@@ -1,3 +1,25 @@
+<a name="1.80.1"></a>
+## 1.80.1 (2026-03-20)
+
+
+#### Chore
+
+*   tag 1.80.1 ([db8140f5](https://github.com/mozilla-services/autopush-rs/commit/db8140f5e7f8419a56393f7bf09d89a73de9ccfc))
+*   tag 1.80.0 (#1112) ([dfeed4a2](https://github.com/mozilla-services/autopush-rs/commit/dfeed4a2f9bb9107c917eb5a6f4783ee7e844893))
+
+#### Bug Fixes
+
+*   Fix tests and build.rs to allow multi-database configs (#1119) ([712f1a12](https://github.com/mozilla-services/autopush-rs/commit/712f1a12d8796b2a586030190bab67f85deeb1c3))
+*   push enterprise gars via the GHA workflow (#1125) ([4064a226](https://github.com/mozilla-services/autopush-rs/commit/4064a2268212e4a7a7027924df3b54c4fd472a4b))
+*   Ensure redis config ttls are not 0 (#1115) ([f7e58768](https://github.com/mozilla-services/autopush-rs/commit/f7e58768fd385b5e2c2556c529edf4f81ca535be))
+
+#### Doc
+
+*   re-init docker compose setup documentation with Redis (#1109) ([5fd7ef68](https://github.com/mozilla-services/autopush-rs/commit/5fd7ef68f8f29e82ee86c4b498129b7d1e7c7888))
+*   Add some clarity to options and requirements (#1117) ([8e5d850d](https://github.com/mozilla-services/autopush-rs/commit/8e5d850d5a99bf44c407174d2c95c3a5deea1c14))
+
+
+
 <a name="1.80.0"></a>
 ## 1.80.0 (2026-03-10)
 
