@@ -221,6 +221,7 @@ pub mod tests {
     use crate::extractors::subscription::Subscription;
     use autopush_common::db::User;
     use std::collections::HashMap;
+    use std::sync::{atomic::AtomicUsize, Arc};
     use uuid::Uuid;
 
     pub const CHANNEL_ID: &str = "deadbeef-13f9-4639-87f9-2ff731824f34";
@@ -264,6 +265,7 @@ pub mod tests {
             reliable_state: None,
             #[cfg(feature = "reliable_report")]
             reliability_id: None,
+            in_process_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
