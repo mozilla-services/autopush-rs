@@ -50,7 +50,10 @@ pub struct AppState {
     pub fernet: MultiFernet,
     pub db: Box<dyn DbClient>,
     pub http: reqwest::Client,
+    // requests that are currently being exchanged between nodes.
     pub in_flight_requests: Arc<AtomicUsize>,
+    // subscription updates that are currenty being processed.
+    pub in_process_subscription_updates: Arc<AtomicUsize>,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
     #[cfg(feature = "stub")]
@@ -58,6 +61,63 @@ pub struct AppState {
     #[cfg(feature = "reliable_report")]
     pub reliability: Arc<PushReliability>,
     pub reliability_filter: VapidTracker,
+}
+
+#[cfg(test)]
+impl AppState {
+    /// build a fake AppState with a MockDbClient and default settings, for use in tests.
+    pub(crate) async fn test_default(mock_db: autopush_common::db::mock::MockDbClient) -> Self {
+        let settings = Settings {
+            auth_keys: "HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned(),
+            ..Default::default()
+        };
+        let metrics = Arc::new(crate::metrics::Metrics::sink());
+        let db = mock_db.into_boxed_arc();
+        let reliability =
+            Arc::new(PushReliability::new(&None, db.box_clone(), &metrics.clone(), 0).unwrap());
+        let fernet = settings.make_fernet();
+        Self {
+            metrics: metrics.clone(),
+            settings,
+            fernet,
+            db: db.clone(),
+            http: reqwest::Client::new(),
+            in_flight_requests: Arc::new(AtomicUsize::new(0)),
+            in_process_subscription_updates: Arc::new(AtomicUsize::new(0)),
+            fcm_router: Arc::new(
+                FcmRouter::new(
+                    crate::routers::fcm::settings::FcmSettings::default(),
+                    url::Url::parse("https://example.com").unwrap(),
+                    reqwest::Client::new(),
+                    metrics.clone(),
+                    db.clone(),
+                    #[cfg(feature = "reliable_report")]
+                    reliability.clone(),
+                )
+                .await
+                .unwrap(),
+            ),
+            apns_router: Arc::new(
+                ApnsRouter::new(
+                    crate::routers::apns::settings::ApnsSettings::default(),
+                    url::Url::parse("https://example.com").unwrap(),
+                    metrics.clone(),
+                    db.clone(),
+                    #[cfg(feature = "reliable_report")]
+                    reliability.clone(),
+                )
+                .await
+                .unwrap(),
+            ),
+            #[cfg(feature = "stub")]
+            stub_router: Arc::new(
+                StubRouter::new(crate::routers::stub::settings::StubSettings::default()).unwrap(),
+            ),
+            #[cfg(feature = "reliable_report")]
+            reliability,
+            reliability_filter: VapidTracker(Vec::new()),
+        }
+    }
 }
 
 pub struct Server;
@@ -153,6 +213,7 @@ impl Server {
         #[cfg(feature = "stub")]
         let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
         let in_flight_requests = Arc::new(AtomicUsize::new(0));
+        let in_process_subscription_updates = Arc::new(AtomicUsize::new(0));
         let app_state = AppState {
             metrics: metrics.clone(),
             settings,
@@ -160,6 +221,7 @@ impl Server {
             db,
             http,
             in_flight_requests: in_flight_requests.clone(),
+            in_process_subscription_updates: in_process_subscription_updates.clone(),
             fcm_router,
             apns_router,
             #[cfg(feature = "stub")]
