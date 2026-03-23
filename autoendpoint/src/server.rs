@@ -52,7 +52,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     // requests that are currently being exchanged between nodes.
     pub in_flight_requests: Arc<AtomicUsize>,
-    // subscription updates that are currenty being processed.
+    // subscription updates that are currently being processed.
     pub in_process_subscription_updates: Arc<AtomicUsize>,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
@@ -73,6 +73,7 @@ impl AppState {
         };
         let metrics = Arc::new(crate::metrics::Metrics::sink());
         let db = mock_db.into_boxed_arc();
+        #[cfg(feature = "reliable_report")]
         let reliability =
             Arc::new(PushReliability::new(&None, db.box_clone(), &metrics.clone(), 0).unwrap());
         let fernet = settings.make_fernet();

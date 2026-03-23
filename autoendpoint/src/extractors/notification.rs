@@ -39,7 +39,9 @@ pub struct TransportNotification<'a> {
 }
 
 /// Extracts notification data from `Subscription` and request data
-#[derive(Clone, Debug)]
+// Note: Because we introduced the `in_process_counter` field and added the `Drop`
+// implementation, be very careful if adding `Clone` or `Copy` traits.
+#[derive(Debug)]
 pub struct Notification {
     /// Unique message_id for this notification
     pub message_id: String,
@@ -72,8 +74,20 @@ pub struct Notification {
 
 impl Drop for Notification {
     fn drop(&mut self) {
-        self.in_process_counter.fetch_sub(1, Ordering::Relaxed);
-        trace!("Dropping notification with message_id: {}", self.message_id);
+        // `Clone` or `Copy` can cause the counter to decrement too many times.
+        // We'll set a floor for now.
+        let _ =
+            self.in_process_counter
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                    if current > 0 {
+                        Some(current - 1)
+                    } else {
+                        // Should we add a metric here to track if we hit the floor?
+                        debug!("⚠️🧹 in_process_counter underflow.");
+                        None
+                    }
+                });
+        trace!("🧹 Dropping notification with message_id: {}", self.message_id);
     }
 }
 
