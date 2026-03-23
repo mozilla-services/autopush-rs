@@ -87,7 +87,10 @@ impl Drop for Notification {
                         None
                     }
                 });
-        trace!("🧹 Dropping notification with message_id: {}", self.message_id);
+        trace!(
+            "🧹 Dropping notification with message_id: {}",
+            self.message_id
+        );
     }
 }
 
