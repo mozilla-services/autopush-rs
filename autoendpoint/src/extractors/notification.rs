@@ -61,7 +61,7 @@ pub struct Notification {
     #[cfg(feature = "reliable_report")]
     pub reliability_id: Option<String>,
     /// Internal reference to the appstate count of in process notifications.
-    /// _Note:_ This is only tracks notifications that have been delivered
+    /// _Note:_ This only tracks notifications that have been delivered
     /// from a subscription provider. This does not track notifications that may
     /// have been retrieved from storage.
     /// This counter is in response to an incident where a large number of
