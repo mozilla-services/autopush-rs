@@ -49,6 +49,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
         "router_table": router_health,
         "message_table": message_health,
         "routers": routers,
+        "request_count":state.in_process_subscription_updates.load(std::sync::atomic::Ordering::Relaxed),
     });
 
     #[cfg(feature = "reliable_report")]
