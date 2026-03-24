@@ -79,13 +79,7 @@ impl Drop for Notification {
         let _ =
             self.in_process_counter
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                    if current > 0 {
-                        Some(current - 1)
-                    } else {
-                        // Should we add a metric here to track if we hit the floor?
-                        debug!("⚠️🧹 in_process_counter underflow.");
-                        None
-                    }
+                    current.checked_sub(1)
                 });
         trace!(
             "🧹 Dropping notification with message_id: {}",
