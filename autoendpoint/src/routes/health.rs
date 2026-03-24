@@ -22,7 +22,7 @@ use autopush_common::metrics::StatsdClientExt;
 #[cfg(feature = "reliable_report")]
 use autopush_common::util::b64_encode_url;
 
-/// get the local memory usage in bytes (presumes running under kubernetes)
+/// get the local memory usage in percentage of limit (presumes running under kubernetes)
 pub async fn memory_usage_percentage(memory_path: &str) -> Option<f64> {
     // If we can read (and there is a limit)
     if let Ok(mem_limit_str) = read_to_string(format!("{}/{}", memory_path, "memory.max")) {
