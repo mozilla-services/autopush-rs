@@ -60,7 +60,7 @@ pub(crate) async fn webpush_ws(
     // NOTE: UnidentifiedClient doesn't require shutdown/cleanup, so its
     // Error's propagated. We don't propagate Errors afterwards to handle
     // shutdown/cleanup of WebPushClient
-    let (mut client, smsgs) = match unidentified_ws(client, &mut msg_stream).await {
+    let ((mut client, smsgs), msg_stream) = match unidentified_ws(client, &mut msg_stream).await {
         Ok(t) => t,
         Err(e) => {
             e.capture_sentry_event(None);
@@ -68,7 +68,7 @@ pub(crate) async fn webpush_ws(
         }
     };
 
-    // Client now identified: add them to the registry to recieve ServerNotifications
+    // Client now identified: add them to the registry to receive ServerNotifications
     let mut snotif_stream = client.registry_connect();
     let result = identified_ws(&mut client, smsgs, session, msg_stream, &mut snotif_stream).await;
     client.registry_disconnect();
@@ -92,7 +92,13 @@ pub(crate) async fn webpush_ws(
 async fn unidentified_ws(
     client: UnidentifiedClient,
     msg_stream: &mut (impl Stream<Item = MessageStreamResult> + Unpin),
-) -> Result<(WebPushClient, impl IntoIterator<Item = ServerMessage>), WSError> {
+) -> Result<
+    (
+        (WebPushClient, impl IntoIterator<Item = ServerMessage>),
+        &mut (impl Stream<Item = MessageStreamResult> + Unpin),
+    ),
+    WSError,
+> {
     let stream_with_timeout = timeout(
         client.app_settings().open_handshake_timeout,
         msg_stream.next(),
@@ -112,7 +118,7 @@ async fn unidentified_ws(
     };
 
     let result = client.on_client_msg(client_msg).await?;
-    Ok(result)
+    Ok((result, msg_stream))
 }
 
 /// The identified `WebPushClient` handler
