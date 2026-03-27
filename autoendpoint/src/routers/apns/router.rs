@@ -465,16 +465,17 @@ impl Router for ApnsRouter {
                 ..Default::default()
             },
         );
+        let message_length = message_data.get("body").map(|s| s.len()).unwrap_or(0);
         payload.data = message_data
             .into_iter()
             .map(|(k, v)| (k, Value::String(v)))
             .collect();
 
         // Check size limit
-        let payload_json = payload
-            .clone()
+        let payload_json = payload.clone()
             .to_json_string()
-            .map_err(|_| RouterError::TooMuchData(payload.data.len()))?;
+            .map_err(|_| {
+                RouterError::TooMuchData(message_length)})?;
         message_size_check(payload_json.as_bytes(), self.settings.max_data)?;
 
         // Send to APNS
