@@ -1,5 +1,6 @@
 //! Health and Dockerflow routes
 use std::collections::HashMap;
+use std::fs::read_to_string;
 use std::thread;
 
 use actix_web::{
@@ -21,6 +22,28 @@ use autopush_common::metrics::StatsdClientExt;
 #[cfg(feature = "reliable_report")]
 use autopush_common::util::b64_encode_url;
 
+/// get the local memory usage in percentage of limit (presumes running under kubernetes)
+pub async fn memory_usage_percentage(memory_path: &str) -> Option<f64> {
+    // If we can read (and there is a limit)
+    if let Ok(mem_limit_str) = read_to_string(format!("{}/{}", memory_path, "memory.max")) {
+        if mem_limit_str.trim() != "max" {
+            if let Ok(mem_limit) = mem_limit_str.trim().parse::<u64>() {
+                // get the current memory usage snapshot
+                if let Ok(mem_current_str) =
+                    read_to_string(format!("{}/{}", memory_path, "memory.current"))
+                {
+                    if let Ok(mem_current) = mem_current_str.trim().parse::<u64>() {
+                        // Stars have aligned, and we can return a value.
+                        return Some((mem_current as f64 / mem_limit as f64) * 100.0);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     let router_health = interpret_table_health(state.db.router_table_exists().await);
@@ -29,8 +52,6 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
-    // This is only mutable if `reliable_report` is enabled
-    #[allow(unused_mut)]
     let mut health = json!({
         "status": if state
             .db
@@ -51,6 +72,11 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
         "routers": routers,
         "request_count":state.in_process_subscription_updates.load(std::sync::atomic::Ordering::Relaxed),
     });
+
+    // if we can display memory usage, do so.
+    if let Some(mem_usage) = memory_usage_percentage(&state.settings.kubernetes_memory_path).await {
+        health["memory_usage_percentage"] = json!(mem_usage);
+    }
 
     #[cfg(feature = "reliable_report")]
     {

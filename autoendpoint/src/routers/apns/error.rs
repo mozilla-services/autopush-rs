@@ -16,9 +16,6 @@ pub enum ApnsError {
     #[error("Error while setting up APNS clients: {0}")]
     ApnsClient(#[source] a2::Error),
 
-    #[error("Error while checking the message size limit: {0}")]
-    SizeLimit(#[source] a2::Error),
-
     #[error("APNS error, {0}")]
     ApnsUpstream(#[source] a2::Error),
 
@@ -46,9 +43,7 @@ impl ApnsError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            ApnsError::InvalidReleaseChannel
-            | ApnsError::InvalidApsData
-            | ApnsError::SizeLimit(_) => StatusCode::BAD_REQUEST,
+            ApnsError::InvalidReleaseChannel | ApnsError::InvalidApsData => StatusCode::BAD_REQUEST,
 
             ApnsError::NoDeviceToken | ApnsError::NoReleaseChannel | ApnsError::Unregistered => {
                 StatusCode::GONE
@@ -76,8 +71,7 @@ impl ApnsError {
             | ApnsError::ApnsUpstream(_)
             | ApnsError::InvalidReleaseChannel
             | ApnsError::InvalidApsData
-            | ApnsError::Config(..)
-            | ApnsError::SizeLimit(_) => None,
+            | ApnsError::Config(..) => None,
         }
     }
 }
@@ -90,12 +84,11 @@ impl From<ApnsError> for ApiErrorKind {
 
 impl ReportableError for ApnsError {
     fn is_sentry_event(&self) -> bool {
-        !matches!(self, ApnsError::SizeLimit(_) | ApnsError::Unregistered)
+        !matches!(self, ApnsError::Unregistered)
     }
 
     fn metric_label(&self) -> Option<&'static str> {
         match &self {
-            ApnsError::SizeLimit(_) => Some("notification.bridge.error.apns.oversized"),
             ApnsError::ApnsUpstream(_) => Some("notification.bridge.error.apns.upstream"),
             _ => None,
         }

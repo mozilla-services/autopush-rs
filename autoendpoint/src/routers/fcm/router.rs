@@ -237,6 +237,7 @@ mod tests {
     use autopush_common::{redis_util::MAX_TRANSACTION_LOOP, reliability::PushReliability};
     use std::sync::Arc;
 
+    use actix_web::http::StatusCode;
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
@@ -402,13 +403,15 @@ mod tests {
 
         let result = router.route_notification(notification).await;
         assert!(result.is_err());
+        let result_kind = &result.as_ref().err().unwrap().kind;
         assert!(
             matches!(
-                &result.as_ref().unwrap_err().kind,
+                &result_kind,
                 ApiErrorKind::Router(RouterError::Fcm(FcmError::InvalidAppId(_app_id)))
             ),
             "result = {result:?}"
         );
+        assert_eq!(result_kind.status(), StatusCode::BAD_REQUEST);
         fcm_mock.assert();
     }
 
