@@ -23,23 +23,17 @@ use autopush_common::metrics::StatsdClientExt;
 use autopush_common::util::b64_encode_url;
 
 /// get the local memory usage in percentage of limit (presumes running under kubernetes)
-pub async fn memory_usage_percentage(memory_path: &str) -> Option<f64> {
+pub fn memory_usage_percentage(memory_path: &str) -> Option<f64> {
     // If we can read (and there is a limit)
-    if let Ok(mem_limit_str) = read_to_string(format!("{}/{}", memory_path, "memory.max")) {
-        if mem_limit_str.trim() != "max" {
-            if let Ok(mem_limit) = mem_limit_str.trim().parse::<u64>() {
-                // get the current memory usage snapshot
-                if let Ok(mem_current_str) =
-                    read_to_string(format!("{}/{}", memory_path, "memory.current"))
-                {
-                    if let Ok(mem_current) = mem_current_str.trim().parse::<u64>() {
+    if let Ok(mem_limit_str) = read_to_string(format!("{}/{}", memory_path, "memory.max"))
+        && mem_limit_str.trim() != "max"
+        && let Ok(mem_limit) = mem_limit_str.trim().parse::<u64>()
+        // get the current memory usage snapshot
+        && let Ok(mem_current_str) = read_to_string(format!("{}/{}", memory_path, "memory.current"))
+        && let Ok(mem_current) = mem_current_str.trim().parse::<u64>() {
                         // Stars have aligned, and we can return a value.
                         return Some((mem_current as f64 / mem_limit as f64) * 100.0);
                     }
-                }
-            }
-        }
-    }
 
     None
 }
@@ -74,7 +68,7 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     });
 
     // if we can display memory usage, do so.
-    if let Some(mem_usage) = memory_usage_percentage(&state.settings.kubernetes_memory_path).await {
+    if let Some(mem_usage) = memory_usage_percentage(&state.settings.kubernetes_memory_path) {
         health["memory_usage_percentage"] = json!(mem_usage);
     }
 

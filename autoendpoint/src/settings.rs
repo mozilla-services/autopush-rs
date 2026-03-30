@@ -139,7 +139,7 @@ impl Default for Settings {
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
             max_notification_ttl: Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
             disable_sentry: false,
-            // From imperical observation, kubernetes stores this in the main
+            // From empirical observation, kubernetes stores this in the main
             // cgroup. Other docs say that this should be in the "memory" subdir.
             // Going with what I can see for now.
             kubernetes_memory_path: "/sys/fs/cgroup".to_string(),
