@@ -2,8 +2,8 @@
 use std::thread;
 
 use actix_web::{
-    web::{self, Data, Json},
     HttpResponse, ResponseError,
+    web::{self, Data, Json},
 };
 use serde_json::json;
 

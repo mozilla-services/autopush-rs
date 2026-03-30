@@ -1,7 +1,7 @@
 use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::server::AppState;
 use actix_web::dev::Payload;
-use actix_web::{web::Data, FromRequest, HttpRequest};
+use actix_web::{FromRequest, HttpRequest, web::Data};
 use autopush_common::notification::{STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
 use fernet::MultiFernet;
 use futures::future;

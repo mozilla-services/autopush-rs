@@ -4,7 +4,7 @@ use crate::error::{ApiErrorKind, ApiResult};
 use crate::extractors::routers::RouterType;
 use crate::server::AppState;
 use actix_http::StatusCode;
-use autopush_common::db::{client::DbClient, User};
+use autopush_common::db::{User, client::DbClient};
 use autopush_common::metric_name::MetricName;
 use autopush_common::metrics::StatsdClientExt;
 use cadence::StatsdClient;

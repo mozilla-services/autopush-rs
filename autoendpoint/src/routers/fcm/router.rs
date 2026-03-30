@@ -221,15 +221,15 @@ impl Router for FcmRouter {
 mod tests {
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
-    use crate::routers::common::tests::{make_notification, CHANNEL_ID};
+    use crate::routers::RouterError;
+    use crate::routers::common::tests::{CHANNEL_ID, make_notification};
     use crate::routers::fcm::client::tests::{
-        make_service_key, mock_fcm_endpoint_builder, mock_token_endpoint, GCM_PROJECT_ID,
-        PROJECT_ID,
+        GCM_PROJECT_ID, PROJECT_ID, make_service_key, mock_fcm_endpoint_builder,
+        mock_token_endpoint,
     };
     use crate::routers::fcm::error::FcmError;
     use crate::routers::fcm::router::FcmRouter;
     use crate::routers::fcm::settings::FcmSettings;
-    use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
     use autopush_common::db::client::DbClient;
     use autopush_common::db::mock::MockDbClient;

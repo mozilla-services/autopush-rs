@@ -1,12 +1,12 @@
 //! Main application server
 #![forbid(unsafe_code)]
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use actix_cors::Cors;
 use actix_web::{
-    dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data, App, HttpServer,
+    App, HttpServer, dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data,
 };
 use cadence::StatsdClient;
 use fernet::MultiFernet;
@@ -21,7 +21,7 @@ use autopush_common::db::redis::RedisClientImpl;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::PushReliability;
 use autopush_common::{
-    db::{client::DbClient, spawn_pool_periodic_reporter, DbSettings, StorageType},
+    db::{DbSettings, StorageType, client::DbClient, spawn_pool_periodic_reporter},
     metric_name::MetricName,
     middleware::sentry::SentryWrapper,
 };

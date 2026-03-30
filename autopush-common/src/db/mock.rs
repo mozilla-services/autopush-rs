@@ -2,10 +2,10 @@
 #![allow(clippy::unused_unit)]
 #![allow(clippy::ptr_arg)]
 
+use crate::db::User;
 use crate::db::client::DbClient;
 pub use crate::db::client::MockDbClient;
 use crate::db::error::DbResult;
-use crate::db::User;
 use crate::notification::Notification;
 use async_trait::async_trait;
 use std::collections::HashSet;

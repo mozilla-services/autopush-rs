@@ -5,8 +5,8 @@ use crate::extractors::message_id::MessageId;
 use crate::extractors::notification::Notification;
 use crate::extractors::routers::{RouterType, Routers};
 use crate::server::AppState;
-use actix_web::web::Data;
 use actix_web::HttpResponse;
+use actix_web::web::Data;
 
 /// Handle the `POST /wpush/{api_version}/{token}` and `POST /wpush/{token}` routes
 /// This is the endpoint for all incoming Push subscription updates.

@@ -5,8 +5,8 @@ use std::io;
 use std::num;
 
 use actix_web::{
-    dev::ServiceResponse, http::StatusCode, middleware::ErrorHandlerResponse, HttpResponse,
-    HttpResponseBuilder, ResponseError,
+    HttpResponse, HttpResponseBuilder, ResponseError, dev::ServiceResponse, http::StatusCode,
+    middleware::ErrorHandlerResponse,
 };
 // Sentry 0.29 uses the backtrace crate, not std::backtrace
 use backtrace::Backtrace;

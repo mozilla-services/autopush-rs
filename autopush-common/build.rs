@@ -6,6 +6,8 @@ pub fn main() {
         feature = "postgres",
         feature = "redis"
     ))) {
-        panic!("No database defined! Please compile with one of  `features=bigtable`, `features=redis`, `features=postgres`");
+        panic!(
+            "No database defined! Please compile with one of  `features=bigtable`, `features=redis`, `features=postgres`"
+        );
     }
 }

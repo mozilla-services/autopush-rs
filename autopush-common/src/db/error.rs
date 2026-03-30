@@ -116,7 +116,7 @@ impl ReportableError for DbError {
             DbError::PgError(e) => vec![(
                 "error",
                 match e {
-                    sqlx::Error::Database(ref db_err) => db_err.message().to_owned(),
+                    sqlx::Error::Database(db_err) => db_err.message().to_owned(),
                     _ => "No error message".to_owned(),
                 },
             )],

@@ -3,13 +3,13 @@
 use std::collections::{BTreeMap, HashMap};
 
 use actix_web::{
-    dev::{Payload, RequestHead},
     Error, FromRequest, HttpMessage, HttpRequest,
+    dev::{Payload, RequestHead},
 };
 use futures::{future, future::Ready};
 use serde::{
-    ser::{SerializeMap, Serializer},
     Serialize,
+    ser::{SerializeMap, Serializer},
 };
 use serde_json::value::Value;
 

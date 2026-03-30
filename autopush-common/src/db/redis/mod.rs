@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::db::error::DbError;
-use crate::notification::{default_ttl, Notification};
+use crate::notification::{Notification, default_ttl};
 use crate::util::deserialize_opt_u32_to_duration;
 
 use serde_derive::{Deserialize, Serialize};
@@ -59,19 +59,19 @@ impl TryFrom<&str> for RedisDbSettings {
                 e
             )))?,
         };
-        if let Some(router_ttl) = me.router_ttl {
-            if router_ttl.as_secs() == 0 {
-                return Err(DbError::General(
-                    "router_ttl must be greater than 0".to_string(),
-                ));
-            }
+        if let Some(router_ttl) = me.router_ttl
+            && router_ttl.as_secs() == 0
+        {
+            return Err(DbError::General(
+                "router_ttl must be greater than 0".to_string(),
+            ));
         }
-        if let Some(notification_ttl) = me.notification_ttl {
-            if notification_ttl.as_secs() == 0 {
-                return Err(DbError::General(
-                    "notification_ttl must be greater than 0".to_string(),
-                ));
-            }
+        if let Some(notification_ttl) = me.notification_ttl
+            && notification_ttl.as_secs() == 0
+        {
+            return Err(DbError::General(
+                "notification_ttl must be greater than 0".to_string(),
+            ));
         }
         Ok(me)
     }
