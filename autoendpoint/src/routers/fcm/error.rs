@@ -45,9 +45,9 @@ impl FcmError {
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
-            FcmError::NoRegistrationToken | FcmError::NoAppId | FcmError::InvalidAppId(_) => {
-                StatusCode::GONE
-            }
+            FcmError::InvalidAppId(_) => StatusCode::BAD_REQUEST,
+
+            FcmError::NoRegistrationToken | FcmError::NoAppId => StatusCode::GONE,
 
             FcmError::CredentialDecode(_)
             | FcmError::OAuthClientBuild(_)
