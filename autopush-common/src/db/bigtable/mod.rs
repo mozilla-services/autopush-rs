@@ -22,8 +22,8 @@
 mod bigtable_client;
 mod pool;
 
-pub use bigtable_client::error::BigTableError;
 pub use bigtable_client::BigTableClientImpl;
+pub use bigtable_client::error::BigTableError;
 
 use grpcio::Metadata;
 use serde::Deserialize;

@@ -355,8 +355,7 @@ impl WebPushClient {
     async fn check_msg_limit(&mut self) -> Result<(), SMError> {
         trace!(
             "WebPushClient::check_msg_limit: sent_from_storage: {} msg_limit: {}",
-            self.sent_from_storage,
-            self.app_state.settings.msg_limit
+            self.sent_from_storage, self.app_state.settings.msg_limit
         );
         if self.sent_from_storage > self.app_state.settings.msg_limit {
             // Exceeded the max limit of stored messages: drop the user to

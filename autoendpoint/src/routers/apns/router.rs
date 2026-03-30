@@ -12,10 +12,9 @@ use crate::routers::common::{
 };
 use crate::routers::{Router, RouterError, RouterResponse};
 use a2::{
-    self,
-    request::payload::{Payload, PayloadLike},
-    DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
+    self, DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
     Response,
+    request::payload::{Payload, PayloadLike},
 };
 use actix_web::http::StatusCode;
 use async_trait::async_trait;
@@ -523,7 +522,7 @@ mod tests {
     use crate::routers::apns::error::ApnsError;
     use crate::routers::apns::router::{ApnsClient, ApnsClientData, ApnsRouter};
     use crate::routers::apns::settings::ApnsSettings;
-    use crate::routers::common::tests::{make_notification, CHANNEL_ID};
+    use crate::routers::common::tests::{CHANNEL_ID, make_notification};
     use crate::routers::{Router, RouterError, RouterResponse};
     use a2::request::payload::Payload;
     use a2::{Error, Response};

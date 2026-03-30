@@ -3,12 +3,12 @@
 use crate::headers::vapid::VapidError;
 use crate::routers::RouterError;
 use actix_web::{
+    HttpResponse, Result,
     dev::ServiceResponse,
     error::{JsonPayloadError, PayloadError, ResponseError},
-    http::header::{CacheControl, CacheDirective},
     http::StatusCode,
+    http::header::{CacheControl, CacheDirective},
     middleware::ErrorHandlerResponse,
-    HttpResponse, Result,
 };
 // Sentry uses the backtrace crate, not std::backtrace.
 use actix_http::header;

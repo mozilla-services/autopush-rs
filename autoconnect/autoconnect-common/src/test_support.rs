@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::protocol::MessageType;
 use autopush_common::{
-    db::{mock::MockDbClient, User},
+    db::{User, mock::MockDbClient},
     util::timing::ms_since_epoch,
 };
 

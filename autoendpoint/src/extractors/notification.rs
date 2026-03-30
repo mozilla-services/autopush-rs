@@ -3,16 +3,16 @@ use crate::extractors::{
     message_id::MessageId, notification_headers::NotificationHeaders, subscription::Subscription,
 };
 use crate::server::AppState;
-use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
+use actix_web::{FromRequest, HttpRequest, dev::Payload, web};
 use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
 use cadence::CountedExt;
 use fernet::MultiFernet;
-use futures::{future, FutureExt};
+use futures::{FutureExt, future};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use uuid::Uuid;
 
@@ -161,13 +161,13 @@ impl FromRequest for Notification {
             notif.in_process_counter.fetch_add(1, Ordering::Relaxed);
 
             // Record the encoding if we have an encrypted payload
-            if let Some(encoding) = &notif.headers.encoding {
-                if notif.data.is_some() {
-                    app_state
-                        .metrics
-                        .incr(&format!("updates.notification.encoding.{encoding}"))
-                        .ok();
-                }
+            if let Some(encoding) = &notif.headers.encoding
+                && notif.data.is_some()
+            {
+                app_state
+                    .metrics
+                    .incr(&format!("updates.notification.encoding.{encoding}"))
+                    .ok();
             }
 
             Ok(notif)

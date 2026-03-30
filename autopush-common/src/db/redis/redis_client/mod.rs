@@ -7,15 +7,15 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use cadence::{CountedExt, StatsdClient};
-use deadpool_redis::redis::{pipe, AsyncCommands, SetExpiry, SetOptions};
 use deadpool_redis::Config;
+use deadpool_redis::redis::{AsyncCommands, SetExpiry, SetOptions, pipe};
 use uuid::Uuid;
 
 use crate::db::redis::StorableNotification;
 use crate::db::{
+    DbSettings, Notification, User,
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
-    DbSettings, Notification, User,
 };
 use crate::util::{ms_since_epoch, sec_since_epoch};
 
@@ -418,8 +418,7 @@ impl DbClient for RedisClientImpl {
 
             trace!(
                 "🐰🔥:rem: Deleting {} : [{:?}]",
-                msg_list_key,
-                &delete_msg_keys
+                msg_list_key, &delete_msg_keys
             );
             trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
             pipe()
@@ -453,13 +452,11 @@ impl DbClient for RedisClientImpl {
         // it can't be removed from the list before the message is removed
         trace!(
             "🐰🔥:remsg: Deleting {} : {:?}",
-            msg_list_key,
-            &chidmessageid
+            msg_list_key, &chidmessageid
         );
         trace!(
             "🐰🔥:remsg: Deleting {} : {:?}",
-            exp_list_key,
-            &chidmessageid
+            exp_list_key, &chidmessageid
         );
         pipe()
             .del(&msg_key)
@@ -511,9 +508,7 @@ impl DbClient for RedisClientImpl {
         // ZRANGE Key (x) +inf LIMIT 0 limit
         trace!(
             "🐇 SEARCH: zrangebyscore {:?} {} +inf withscores limit 0 {:?}",
-            &msg_list_key,
-            timestamp,
-            limit,
+            &msg_list_key, timestamp, limit,
         );
         let results = con
             .zrangebyscore_limit_withscores::<&str, &str, &str, Vec<(String, u64)>>(
@@ -850,10 +845,12 @@ mod tests {
         assert_eq!(fetched.messages.len(), 0);
 
         // can we clean up our toys?
-        assert!(client
-            .remove_message(&uaid, &test_notification.chidmessageid())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_message(&uaid, &test_notification.chidmessageid())
+                .await
+                .is_ok()
+        );
 
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
 
@@ -882,10 +879,12 @@ mod tests {
             sortkey_timestamp: Some(sort_key),
             ..Default::default()
         };
-        assert!(client
-            .save_message(&uaid, test_notification_0.clone())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .save_message(&uaid, test_notification_0.clone())
+                .await
+                .is_ok()
+        );
 
         let test_notification = crate::db::Notification {
             timestamp: now_secs(),
@@ -894,10 +893,12 @@ mod tests {
             ..test_notification_0
         };
 
-        assert!(client
-            .save_message(&uaid, test_notification.clone())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .save_message(&uaid, test_notification.clone())
+                .await
+                .is_ok()
+        );
 
         let mut fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_eq!(fetched.messages.len(), 1);
@@ -910,10 +911,12 @@ mod tests {
         assert_ne!(fetched.messages.len(), 0);
 
         // can we clean up our toys?
-        assert!(client
-            .remove_message(&uaid, &test_notification.chidmessageid())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_message(&uaid, &test_notification.chidmessageid())
+                .await
+                .is_ok()
+        );
 
         assert!(client.remove_channel(&uaid, &topic_chid).await.is_ok());
 
@@ -924,10 +927,12 @@ mod tests {
         assert!(msgs.is_empty());
 
         let fetched = client.get_user(&uaid).await?.unwrap();
-        assert!(client
-            .remove_node_id(&uaid, &node_id, connected_at, &fetched.version)
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_node_id(&uaid, &node_id, connected_at, &fetched.version)
+                .await
+                .is_ok()
+        );
         // did we remove it?
         let fetched = client.get_user(&uaid).await?.unwrap();
         assert_eq!(fetched.node_id, None);

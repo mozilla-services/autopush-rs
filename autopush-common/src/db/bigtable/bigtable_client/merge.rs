@@ -6,7 +6,7 @@ use futures::StreamExt;
 use google_cloud_rust_raw::bigtable::v2::bigtable::{ReadRowsResponse, ReadRowsResponse_CellChunk};
 use grpcio::ClientSStreamReceiver;
 
-use super::{cell::Cell, error::BigTableError, row::Row, FamilyId, Qualifier, RowKey};
+use super::{FamilyId, Qualifier, RowKey, cell::Cell, error::BigTableError, row::Row};
 
 /// List of the potential states when we are reading each value from the
 /// returned stream and composing a "row"
@@ -147,12 +147,12 @@ impl RowMerger {
             );
             self.last_seen_cell_family = Some(chunk.get_family_name().get_value().to_owned());
         }
-        if let Some(last_key) = self.last_seen_row_key.clone() {
-            if last_key.as_bytes().to_vec() >= chunk.row_key {
-                return Err(BigTableError::InvalidChunk(
-                    "Out of order row keys".to_owned(),
-                ));
-            }
+        if let Some(last_key) = self.last_seen_row_key.clone()
+            && last_key.as_bytes().to_vec() >= chunk.row_key
+        {
+            return Err(BigTableError::InvalidChunk(
+                "Out of order row keys".to_owned(),
+            ));
         }
 
         let row = &mut self.row_in_progress;

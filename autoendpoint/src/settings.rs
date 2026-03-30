@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_with::serde_as;
 use url::Url;
 
-use autopush_common::{util, MAX_NOTIFICATION_TTL_SECS};
+use autopush_common::{MAX_NOTIFICATION_TTL_SECS, util};
 
 use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
@@ -270,11 +270,7 @@ impl VapidTracker {
         let result = self.0.contains(&key);
 
         debug!("🔍 Checking {:?} {}", &vapid.public_key, {
-            if result {
-                "Match!"
-            } else {
-                "no match"
-            }
+            if result { "Match!" } else { "no match" }
         });
         result
     }

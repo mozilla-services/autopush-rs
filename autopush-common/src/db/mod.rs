@@ -225,7 +225,7 @@ impl User {
 
 #[cfg(test)]
 mod tests {
-    use super::{User, USER_RECORD_VERSION};
+    use super::{USER_RECORD_VERSION, User};
 
     #[test]
     fn user_defaults() {

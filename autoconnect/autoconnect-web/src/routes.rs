@@ -1,4 +1,4 @@
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{HttpRequest, HttpResponse, web};
 use uuid::Uuid;
 
 use autoconnect_settings::AppState;
@@ -24,8 +24,7 @@ pub async fn push_route(
 ) -> HttpResponse {
     trace!(
         "⏩ in push_route, uaid: {} channel_id: {}",
-        uaid,
-        notif.channel_id,
+        uaid, notif.channel_id,
     );
     #[cfg(feature = "reliable_report")]
     {

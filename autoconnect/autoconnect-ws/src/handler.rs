@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use actix_ws::{CloseReason, Message};
-use futures::{channel::mpsc, Stream, StreamExt};
+use futures::{Stream, StreamExt, channel::mpsc};
 use tokio::{select, time::timeout};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};

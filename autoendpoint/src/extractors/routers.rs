@@ -1,10 +1,10 @@
 use crate::error::{ApiError, ApiResult};
+use crate::routers::Router;
 use crate::routers::apns::router::ApnsRouter;
 use crate::routers::fcm::router::FcmRouter;
 #[cfg(feature = "stub")]
 use crate::routers::stub::router::StubRouter;
 use crate::routers::webpush::WebPushRouter;
-use crate::routers::Router;
 use crate::server::AppState;
 use actix_web::dev::Payload;
 use actix_web::web::Data;

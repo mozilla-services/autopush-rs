@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 
 use again::RetryPolicy;
@@ -24,20 +24,20 @@ use protobuf::RepeatedField;
 use serde_json::{from_str, json};
 use uuid::Uuid;
 
+use crate::MAX_ROUTER_TTL_SECS;
 use crate::db::{
+    DbSettings, Notification, USER_RECORD_VERSION, User,
     client::{DbClient, FetchMessageResponse},
     error::{DbError, DbResult},
     models::RangeKey,
-    DbSettings, Notification, User, USER_RECORD_VERSION,
 };
 use crate::metric_name::MetricName;
 use crate::metrics::StatsdClientExt;
-use crate::MAX_ROUTER_TTL_SECS;
 
 pub use self::metadata::MetadataBuilder;
 use self::row::{Row, RowCells};
-use super::pool::BigTablePool;
 use super::BigTableDbSettings;
+use super::pool::BigTablePool;
 
 pub mod cell;
 pub mod error;
@@ -1309,15 +1309,15 @@ impl DbClient for BigTableClientImpl {
                 ..Default::default()
             },
         ]);
-        if let Some(headers) = message.headers {
-            if !headers.is_empty() {
-                cells.push(cell::Cell {
-                    qualifier: "headers".to_owned(),
-                    value: json!(headers).to_string().into_bytes(),
-                    timestamp: expiry,
-                    ..Default::default()
-                });
-            }
+        if let Some(headers) = message.headers
+            && !headers.is_empty()
+        {
+            cells.push(cell::Cell {
+                qualifier: "headers".to_owned(),
+                value: json!(headers).to_string().into_bytes(),
+                timestamp: expiry,
+                ..Default::default()
+            });
         }
         #[cfg(feature = "reliable_report")]
         {
@@ -1815,10 +1815,12 @@ mod tests {
         assert_eq!(fetched.messages.len(), 0);
 
         // can we clean up our toys?
-        assert!(client
-            .remove_message(&uaid, &test_notification.chidmessageid())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_message(&uaid, &test_notification.chidmessageid())
+                .await
+                .is_ok()
+        );
 
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
 
@@ -1838,10 +1840,12 @@ mod tests {
             sortkey_timestamp: Some(sort_key),
             ..Default::default()
         };
-        assert!(client
-            .save_message(&uaid, test_notification.clone())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .save_message(&uaid, test_notification.clone())
+                .await
+                .is_ok()
+        );
 
         let mut fetched = client.fetch_topic_messages(&uaid, 999).await?;
         assert_ne!(fetched.messages.len(), 0);
@@ -1854,10 +1858,12 @@ mod tests {
         assert_ne!(fetched.messages.len(), 0);
 
         // can we clean up our toys?
-        assert!(client
-            .remove_message(&uaid, &test_notification.chidmessageid())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_message(&uaid, &test_notification.chidmessageid())
+                .await
+                .is_ok()
+        );
 
         assert!(client.remove_channel(&uaid, &topic_chid).await.is_ok());
 
@@ -1868,10 +1874,12 @@ mod tests {
         assert!(msgs.is_empty());
 
         let fetched = client.get_user(&uaid).await?.unwrap();
-        assert!(client
-            .remove_node_id(&uaid, &node_id, connected_at, &fetched.version)
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_node_id(&uaid, &node_id, connected_at, &fetched.version)
+                .await
+                .is_ok()
+        );
         // did we remove it?
         let fetched = client.get_user(&uaid).await?.unwrap();
         assert_eq!(fetched.node_id, None);

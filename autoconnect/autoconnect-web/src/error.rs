@@ -1,5 +1,5 @@
 use actix_http::ws::HandshakeError;
-use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
+use actix_web::{HttpResponse, error::ResponseError, http::StatusCode};
 use serde_json::json;
 
 use autopush_common::errors::ReportableError;

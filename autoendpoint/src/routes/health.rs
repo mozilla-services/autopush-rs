@@ -4,8 +4,8 @@ use std::fs::read_to_string;
 use std::thread;
 
 use actix_web::{
-    web::{Data, Json},
     HttpResponse,
+    web::{Data, Json},
 };
 use reqwest::StatusCode;
 use serde_json::json;
@@ -30,10 +30,11 @@ pub fn memory_usage_percentage(memory_path: &str) -> Option<f64> {
         && let Ok(mem_limit) = mem_limit_str.trim().parse::<u64>()
         // get the current memory usage snapshot
         && let Ok(mem_current_str) = read_to_string(format!("{}/{}", memory_path, "memory.current"))
-        && let Ok(mem_current) = mem_current_str.trim().parse::<u64>() {
-                        // Stars have aligned, and we can return a value.
-                        return Some((mem_current as f64 / mem_limit as f64) * 100.0);
-                    }
+        && let Ok(mem_current) = mem_current_str.trim().parse::<u64>()
+    {
+        // Stars have aligned, and we can return a value.
+        return Some((mem_current as f64 / mem_limit as f64) * 100.0);
+    }
 
     None
 }

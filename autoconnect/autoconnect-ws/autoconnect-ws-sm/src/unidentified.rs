@@ -9,7 +9,7 @@ use autoconnect_common::{
 };
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
-    db::{User, USER_RECORD_VERSION},
+    db::{USER_RECORD_VERSION, User},
     metric_name::MetricName,
     metrics::StatsdClientExt,
     util::{ms_since_epoch, ms_utc_midnight},
@@ -148,32 +148,33 @@ impl UnidentifiedClient {
         );
         let connected_at = ms_since_epoch();
 
-        if let Some(uaid) = uaid {
-            if let Some(mut user) = self.app_state.db.get_user(&uaid).await? {
-                let flags = ClientFlags {
-                    check_storage: true,
-                    old_record_version: user
-                        .record_version
-                        .is_none_or(|rec_ver| rec_ver < USER_RECORD_VERSION),
-                    emit_channel_metrics: user.connected_at < ms_utc_midnight(),
-                    ..Default::default()
-                };
-                user.node_id = Some(self.app_state.router_url.to_owned());
-                if user.connected_at > connected_at {
-                    let _ = self.app_state.metrics.incr(MetricName::UaAlreadyConnected);
-                    return Err(SMErrorKind::AlreadyConnected.into());
-                }
-                user.connected_at = connected_at;
-                if !self.app_state.db.update_user(&mut user).await? {
-                    let _ = self.app_state.metrics.incr(MetricName::UaAlreadyConnected);
-                    return Err(SMErrorKind::AlreadyConnected.into());
-                }
-                return Ok(GetOrCreateUser {
-                    user,
-                    existing_user: true,
-                    flags,
-                });
+        if let Some(uaid) = uaid
+            && let Some(mut user) = self.app_state.db.get_user(&uaid).await?
+        {
+            let flags = ClientFlags {
+                check_storage: true,
+                old_record_version: user
+                    .record_version
+                    .is_none_or(|rec_ver| rec_ver < USER_RECORD_VERSION),
+                emit_channel_metrics: user.connected_at < ms_utc_midnight(),
+                ..Default::default()
+            };
+            user.node_id = Some(self.app_state.router_url.to_owned());
+            if user.connected_at > connected_at {
+                let _ = self.app_state.metrics.incr(MetricName::UaAlreadyConnected);
+                return Err(SMErrorKind::AlreadyConnected.into());
             }
+            user.connected_at = connected_at;
+            if !self.app_state.db.update_user(&mut user).await? {
+                let _ = self.app_state.metrics.incr(MetricName::UaAlreadyConnected);
+                return Err(SMErrorKind::AlreadyConnected.into());
+            }
+            return Ok(GetOrCreateUser {
+                user,
+                existing_user: true,
+                flags,
+            });
+
             // NOTE: when the client's specified a uaid but get_user returns
             // None (or process_existing_user dropped the user record due to it
             // being invalid) we're now deferring the db.add_user call (a
@@ -229,7 +230,7 @@ mod tests {
 
     use autoconnect_common::{
         protocol::{ClientMessage, MessageType},
-        test_support::{hello_again_db, hello_again_json, hello_db, DUMMY_CHID, DUMMY_UAID, UA},
+        test_support::{DUMMY_CHID, DUMMY_UAID, UA, hello_again_db, hello_again_json, hello_db},
     };
     use autoconnect_settings::AppState;
 

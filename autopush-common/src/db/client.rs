@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use mockall::automock;
 use uuid::Uuid;
 
-use crate::db::error::DbResult;
 use crate::db::User;
+use crate::db::error::DbResult;
 use crate::notification::Notification;
 
 #[derive(Default, Debug)]
