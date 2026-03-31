@@ -15,7 +15,7 @@ use deadpool_redis::Config;
 use prometheus_client::{
     encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
 };
-use redis::{aio::ConnectionLike, AsyncCommands};
+use redis::{AsyncCommands, aio::ConnectionLike};
 use redis::{Pipeline, Value};
 
 use crate::db::client::DbClient;
@@ -402,11 +402,10 @@ impl PushReliability {
                 if let Some(operations) = result.as_sequence() {
                     // We have responses, the first items report the state of the commands,
                     // the final line is a list of command results.
-                    if let Some(result_values) = operations.last() {
-                        if let Some(results) = result_values.as_sequence() {
+                    if let Some(result_values) = operations.last() && let Some(results) = result_values.as_sequence() &&
                             // The last command should contain the prior state. If it returned `Nil`
                             // for some, unexpected reason, note the error.
-                            if Some(&redis::Value::Nil) == results.last() {
+                            Some(&redis::Value::Nil) == results.last() {
                                 error!("🔍🚨 WARNING: Lock Issue for {id}")
                                 // There is some debate about whether or not to rerun
                                 // the transaction if this state is reached.
@@ -414,8 +413,8 @@ impl PushReliability {
                                 // might address any other issues that caused the
                                 // `Nil` to be returned.
                                 // For now, let's just log the error.
-                            }
-                        }
+
+
                     }
                     Ok(Some(redis::Value::Okay))
                 } else {
@@ -434,11 +433,11 @@ impl PushReliability {
 
     /// Perform a garbage collection cycle on a reliability object.
     pub async fn gc(&self) -> Result<()> {
-        if let Some(pool) = &self.pool {
-            if let Ok(mut conn) = pool.get().await {
-                debug!("🔍 performing pre-report garbage collection");
-                return self.internal_gc(&mut conn, sec_since_epoch()).await;
-            }
+        if let Some(pool) = &self.pool
+            && let Ok(mut conn) = pool.get().await
+        {
+            debug!("🔍 performing pre-report garbage collection");
+            return self.internal_gc(&mut conn, sec_since_epoch()).await;
         }
         Ok(())
     }
@@ -507,12 +506,12 @@ impl PushReliability {
     // Return a snapshot of milestone states
     // This will probably not be called directly, but useful for debugging.
     pub async fn report(&self) -> Result<HashMap<String, i32>> {
-        if let Some(pool) = &self.pool {
-            if let Ok(mut conn) = pool.get().await {
-                return Ok(conn.hgetall(COUNTS).await.map_err(|e| {
-                    ApcErrorKind::GeneralError(format!("Could not read report {e:?}"))
-                })?);
-            }
+        if let Some(pool) = &self.pool
+            && let Ok(mut conn) = pool.get().await
+        {
+            return Ok(conn.hgetall(COUNTS).await.map_err(|e| {
+                ApcErrorKind::GeneralError(format!("Could not read report {e:?}"))
+            })?);
         }
         Ok(HashMap::new())
     }

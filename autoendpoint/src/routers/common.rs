@@ -221,7 +221,7 @@ pub mod tests {
     use crate::extractors::subscription::Subscription;
     use autopush_common::db::User;
     use std::collections::HashMap;
-    use std::sync::{atomic::AtomicUsize, Arc};
+    use std::sync::{Arc, atomic::AtomicUsize};
     use uuid::Uuid;
 
     pub const CHANNEL_ID: &str = "deadbeef-13f9-4639-87f9-2ff731824f34";

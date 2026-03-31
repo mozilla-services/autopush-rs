@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use super::{merge::PartialCell, FamilyId, Qualifier};
+use super::{FamilyId, Qualifier, merge::PartialCell};
 
 /// A finished Cell. An individual Cell contains the
 /// data. There can be multiple cells for a given

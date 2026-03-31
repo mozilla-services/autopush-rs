@@ -102,10 +102,10 @@ async fn updater(
 fn is_io(err: &reqwest::Error) -> bool {
     let mut source = err.source();
     while let Some(err) = source {
-        if let Some(hyper_err) = err.downcast_ref::<hyper::Error>() {
-            if is_hyper_io(hyper_err) {
-                return true;
-            }
+        if let Some(hyper_err) = err.downcast_ref::<hyper::Error>()
+            && is_hyper_io(hyper_err)
+        {
+            return true;
         }
         source = err.source();
     }

@@ -2,8 +2,9 @@
 extern crate slog_scope;
 
 use actix_web::{
+    Error, HttpRequest, HttpResponse,
     http::header::{HeaderValue, USER_AGENT},
-    web, Error, HttpRequest, HttpResponse,
+    web,
 };
 
 use autoconnect_settings::AppState;

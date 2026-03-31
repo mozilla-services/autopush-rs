@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_with::serde_as;
 use url::Url;
 
-use autopush_common::{util, MAX_NOTIFICATION_TTL_SECS};
+use autopush_common::{MAX_NOTIFICATION_TTL_SECS, util};
 
 use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::apns::settings::ApnsSettings;
@@ -139,7 +139,7 @@ impl Default for Settings {
             reliability_retry_count: autopush_common::redis_util::MAX_TRANSACTION_LOOP,
             max_notification_ttl: Duration::from_secs(MAX_NOTIFICATION_TTL_SECS),
             disable_sentry: false,
-            // From imperical observation, kubernetes stores this in the main
+            // From empirical observation, kubernetes stores this in the main
             // cgroup. Other docs say that this should be in the "memory" subdir.
             // Going with what I can see for now.
             kubernetes_memory_path: "/sys/fs/cgroup".to_string(),
@@ -270,11 +270,7 @@ impl VapidTracker {
         let result = self.0.contains(&key);
 
         debug!("🔍 Checking {:?} {}", &vapid.public_key, {
-            if result {
-                "Match!"
-            } else {
-                "no match"
-            }
+            if result { "Match!" } else { "no match" }
         });
         result
     }

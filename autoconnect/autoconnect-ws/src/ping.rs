@@ -1,4 +1,4 @@
-use tokio::time::{interval, Interval};
+use tokio::time::{Interval, interval};
 
 use autoconnect_common::{broadcast::Broadcast, protocol::ServerMessage};
 use autoconnect_settings::Settings;

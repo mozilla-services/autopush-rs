@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::error::Error;
 
-use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
+use actix_web::{FromRequest, HttpRequest, dev::Payload, web::Data};
 use autopush_common::{
     db::User,
     metric_name::MetricName,
@@ -11,7 +11,7 @@ use autopush_common::{
 };
 
 use cadence::StatsdClient;
-use futures::{future::LocalBoxFuture, FutureExt};
+use futures::{FutureExt, future::LocalBoxFuture};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openssl::hash::MessageDigest;
 use uuid::Uuid;
@@ -406,7 +406,7 @@ fn validate_vapid_jwt(
 
 #[cfg(test)]
 pub mod tests {
-    use super::{term_to_label, validate_vapid_jwt, VapidClaims};
+    use super::{VapidClaims, term_to_label, validate_vapid_jwt};
     use crate::error::ApiErrorKind;
     use crate::extractors::subscription::repad_base64;
     use crate::headers::vapid::{VapidError, VapidHeader, VapidHeaderWithKey, VapidVersionData};

@@ -8,7 +8,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use autoconnect_common::protocol::MessageType;
 use autoconnect_common::test_support::{
-    hello_again_db, hello_again_json, hello_db, hello_json, DUMMY_UAID,
+    DUMMY_UAID, hello_again_db, hello_again_json, hello_db, hello_json,
 };
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::notification::Notification;

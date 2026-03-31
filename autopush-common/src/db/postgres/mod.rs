@@ -36,7 +36,7 @@ use crate::db::client::DbClient;
 use crate::db::error::{DbError, DbResult};
 use crate::db::{DbSettings, User};
 use crate::notification::Notification;
-use crate::{util, MAX_ROUTER_TTL_SECS};
+use crate::{MAX_ROUTER_TTL_SECS, util};
 
 use super::client::FetchMessageResponse;
 
@@ -1066,8 +1066,7 @@ mod tests {
         let chid_to_remove = uuid::Uuid::new_v4();
         trace!(
             "📮 Adding removable channel {} to user {}",
-            &chid_to_remove,
-            &user_id
+            &chid_to_remove, &user_id
         );
         new_channels.insert(chid_to_remove);
         client.add_channels(&uaid, new_channels.clone()).await?;
@@ -1077,14 +1076,12 @@ mod tests {
         // can we remove a channel?
         trace!(
             "📮 Removing channel {} from user {}",
-            &chid_to_remove,
-            &user_id
+            &chid_to_remove, &user_id
         );
         assert!(client.remove_channel(&uaid, &chid_to_remove).await?);
         trace!(
             "📮 retrying Removing channel {} from user {}",
-            &chid_to_remove,
-            &user_id
+            &chid_to_remove, &user_id
         );
         assert!(!client.remove_channel(&uaid, &chid_to_remove).await?);
         new_channels.remove(&chid_to_remove);
@@ -1100,8 +1097,7 @@ mod tests {
         };
         trace!(
             "📮 Attempting to update user {} with old connected_at: {}",
-            &user_id,
-            &updated.connected_at
+            &user_id, &updated.connected_at
         );
         let result = client.update_user(&mut updated).await;
         assert!(result.is_ok());
@@ -1184,10 +1180,12 @@ mod tests {
             &user_id,
             &test_notification.chidmessageid()
         );
-        assert!(client
-            .remove_message(&uaid, &test_notification.chidmessageid())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_message(&uaid, &test_notification.chidmessageid())
+                .await
+                .is_ok()
+        );
 
         trace!("📮 Removing channel for user {}", &user_id);
         assert!(client.remove_channel(&uaid, &chid).await.is_ok());
@@ -1218,10 +1216,12 @@ mod tests {
             sortkey_timestamp: Some(sort_key),
             ..Default::default()
         };
-        assert!(client
-            .save_message(&uaid, test_notification_0.clone())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .save_message(&uaid, test_notification_0.clone())
+                .await
+                .is_ok()
+        );
 
         let test_notification = crate::db::Notification {
             timestamp: sec_since_epoch(),
@@ -1230,10 +1230,12 @@ mod tests {
             ..test_notification_0
         };
 
-        assert!(client
-            .save_message(&uaid, test_notification.clone())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .save_message(&uaid, test_notification.clone())
+                .await
+                .is_ok()
+        );
 
         let mut fetched = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_eq!(fetched.messages.len(), 1);
@@ -1246,10 +1248,12 @@ mod tests {
         assert_ne!(fetched.messages.len(), 0);
 
         // can we clean up our toys?
-        assert!(client
-            .remove_message(&uaid, &test_notification.chidmessageid())
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_message(&uaid, &test_notification.chidmessageid())
+                .await
+                .is_ok()
+        );
 
         assert!(client.remove_channel(&uaid, &topic_chid).await.is_ok());
 
@@ -1260,10 +1264,12 @@ mod tests {
         assert!(msgs.is_empty());
 
         let fetched = client.get_user(&uaid).await?.unwrap();
-        assert!(client
-            .remove_node_id(&uaid, &node_id, fetched.connected_at, &fetched.version)
-            .await
-            .is_ok());
+        assert!(
+            client
+                .remove_node_id(&uaid, &node_id, fetched.connected_at, &fetched.version)
+                .await
+                .is_ok()
+        );
         // did we remove it?
         let fetched = client.get_user(&uaid).await?.unwrap();
         assert_eq!(fetched.node_id, None);
