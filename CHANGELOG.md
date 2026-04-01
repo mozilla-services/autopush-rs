@@ -1,3 +1,21 @@
+<a name="1.81.0"></a>
+## 1.81.0 (2026-04-01)
+
+
+#### Features
+
+*   restore the "latest_enterprise" tag w/ ent gar (#1134) ([0419ba26](https://github.com/mozilla-services/autopush-rs/commit/0419ba268d3469fc13a21f00f5e2c6fa27b2dc66))
+*   Return error code 400 for invalid AppIds (#1130) ([e5b5ef9e](https://github.com/mozilla-services/autopush-rs/commit/e5b5ef9e95ca1175bbc6eda924dab21d0344e2b6))
+*   Add memory check to __health__ (#1128) ([ac6157dc](https://github.com/mozilla-services/autopush-rs/commit/ac6157dc9638346c88f9031645e8ae208178ae6c))
+*   Add number of in-process requests to health check (#1127) ([c09dc2a6](https://github.com/mozilla-services/autopush-rs/commit/c09dc2a65710bb3910639c8a986c14dff72d991f))
+
+#### Chore
+
+*   Updates for 03/2026 (#1131) ([0758afbd](https://github.com/mozilla-services/autopush-rs/commit/0758afbd39d8492381cd4bc3315a77efb97824db))
+*   tag 1.80.1 (#1126) ([823bc2fb](https://github.com/mozilla-services/autopush-rs/commit/823bc2fbd10e0a814ffb1a688f4a3916d7422293))
+
+
+
 <a name="1.80.1"></a>
 ## 1.80.1 (2026-03-20)
 
