@@ -15,6 +15,7 @@
 ## Developing
 * [Configuring a Stand Alone Development Environment](development.md)
 *    [Data Storage Systems](datastore.md)
+*    [Metrics](metrics.md)
 * [Style](style.md)
 * [Testing](testing.md)
 * [Release Process](releasing.md)

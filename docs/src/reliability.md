@@ -1,4 +1,4 @@
-# Push Reliability Tracking
+# Push Reliability Tracking{#reliability}
 
 AutoPush does a lot to ensure that messages and subscriptions stay private. There are many reasons for this, aside from simply respecting user privacy, which include the high cost of data capture and retention. Tracking this information can easily increase costs by thousands of dollars a month.
 

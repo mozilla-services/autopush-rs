@@ -1,12 +1,8 @@
 Release Process {#releasing}
 ===============
 
-<div style="color:red;border:2px solid red;padding:5px; margin:10px 5px ">
-<b><i>NOTE</i></b> This page is outdated, however the "Release Steps" are still a useful checklist.
-</div>
-
 Autopush has a regular 2-3 week release to production depending on
-developer and QA availability. The developer creating a release should
+developer availability. The developer creating a release should
 handle all aspects of the following process as they\'re done closely in
 order and time.
 
@@ -21,7 +17,7 @@ that requires a bug fix immediately.
 Dev Releases
 ------------
 
-When changes are committed to the `master` branch, an operations Jenkins
+When changes are committed to the `master` branch, an operations
 instance will build and deploy the code automatically to the dev
 environment.
 
@@ -53,35 +49,31 @@ i.e. If a new minor version is being released after `1.21.0`, the
 1. Switch to the `master` branch of autopush.
 2. `git pull` to ensure the local copy is completely up-to-date.
 3. `git diff origin/master` to ensure there are no local staged or
-    uncommited changes.
-4. Run `tox` locally to ensure no artifacts or other local changes that
-    might break tests have been introduced.
-5. Change to the release branch.
+    uncommitted changes.
+4. Change to the release branch.
 
     If this is a new major/minor release,
-    `git checkout -b release/{major}.{minor}` to create a new release
+    `git checkout -b release/{major}.{minor}.{patch}` to create a new release
     branch.
 
     If this is a new patch release, you will first need to ensure you
     have the minor release branch checked out, then:
 
-    > 1.  `git checkout release/{major}.{minor}`
+    > 1.  `git checkout release/{major}.{minor}.{patch}`
     > 2.  `git pull` to ensure the branch is up-to-date.
     > 3.  `git merge master` to merge the new changes into the release
     >     branch.
 
-    **Note that the release branch does not include a \`\`{patch}\`\`
-    component**.
-
-6. Edit `autopush/__init__.py` so that the version number reflects the
+5. Run `cargo test` locally to ensure no artifacts or other local changes that
+    might break tests have been introduced. (_NOTE_: you may needs to run various feature
+    versions based on production vs. enterprise. For production, you should run `cargo test --features=production`. For enterprise, you should run `cargo test --no-default-features --features=enterprise`.)
+6. Edit `Cargo.toml` so that the version number reflects the
     desired release version.
 7. Run `clog --setversion {version}`, verify changes were properly
     accounted for in `CHANGELOG.md`.
-8. `git add CHANGELOG.md autopush/__init__.py` to add the two changes
-    to the new release commit.
-9. `git commit -m "chore: tag {version}"` to commit the new version and
+9. `git commit -am "chore: tag {version}"` to commit the new version and
     record of changes.
-10. `git tag -s -m "chore: tag {version}" {version}` to create a signed
+10. `git tag -sm "chore: tag {version}" {version}` to create a signed
     tag of the current HEAD commit for release.
 11. `git push --set-upstream origin release/{major}.{minor}` to push the
     commits to a new origin release branch.
@@ -109,6 +101,4 @@ i.e. If a new minor version is being released after `1.21.0`, the
     instructions to operations regarding deployment changes and special
     test cases if needed for QA to verify.
 
-At this point, QA will take-over, verify stage, and create a production
-deployment Bugzilla ticket. QA will also schedule production deployment
-for the release.
+At this point, the Continuous deployment system will note the new tag and auto-promote to stage. Once the stage deployment is verified, you will need to promote to production.
