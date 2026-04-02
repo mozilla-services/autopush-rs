@@ -82,13 +82,17 @@ jobs:
 
       - name: Compute autoconnect tags
         run: |
-          TAGS=$(cat <<EOF
+          if [[ "${{ steps.setup.outputs.push_latest }}" == "true" ]]; then
+            TAGS=$(cat <<EOF
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:${{ steps.setup.outputs.image_tag }}_enterprise
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:latest_enterprise
+          EOF
+          )
+          else
+            TAGS=$(cat <<EOF
           us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:${{ steps.setup.outputs.image_tag }}
           EOF
           )
-          if [[ "${{ steps.setup.outputs.push_latest }}" == "true" ]]; then
-            TAGS="$TAGS
-          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:latest_enterprise"
           fi
           echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
           echo "$TAGS" >> "$GITHUB_ENV"
@@ -109,13 +113,17 @@ jobs:
 
       - name: Compute autoendpoint tags
         run: |
-          TAGS=$(cat <<EOF
+          if [[ "${{ steps.setup.outputs.push_latest }}" == "true" ]]; then
+            TAGS=$(cat <<EOF
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:${{ steps.setup.outputs.image_tag }}_enterprise
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:latest_enterprise
+          EOF
+          )
+          else
+            TAGS=$(cat <<EOF
           us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:${{ steps.setup.outputs.image_tag }}
           EOF
           )
-          if [[ "${{ steps.setup.outputs.push_latest }}" == "true" ]]; then
-            TAGS="$TAGS
-          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:latest_enterprise"
           fi
           echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
           echo "$TAGS" >> "$GITHUB_ENV"
