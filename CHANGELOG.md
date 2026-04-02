@@ -1,3 +1,13 @@
+<a name="1.81.1"></a>
+## 1.81.1 (2026-04-02)
+
+
+#### Features
+
+*   restore the "<release tag>_enterprise" tag w/ ent gar (#1136) ([4a6abdc6](https://github.com/mozilla-services/autopush-rs/commit/4a6abdc6424cb681ee7f4188b8ac29e40a661cd4))
+
+
+
 <a name="1.81.0"></a>
 ## 1.81.0 (2026-04-01)
 
