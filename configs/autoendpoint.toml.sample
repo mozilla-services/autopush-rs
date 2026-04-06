@@ -6,32 +6,61 @@
 # For example `AUTOEND__FCM__MIN_TTL` sets the `fcm.min_ttl` argument.
 # See [Configuration Options](docs/src/config_options.md) for details.
 
-# The URI scheme to use when referencing this server
-#scheme = "http"
+## The following configuration options are required. Example values are provided.
+##
 
-# The host to use
-#host = "127.0.0.1"
+# The DSN to the database you wish to use.
+# For `production` systems, this is the Bigtable connection string, shown here.
+#db_dsn = "grpc://localhost:8086"
 
-# The port to use
-#port = 8000
-
-# The router table name
-#router_table_name = "router"
-
-# The message table name
-#message_table_name = "message"
-
-# The maximum payload size to accept in HTTP requests to this server
-#max_data_bytes = 4096
+# a JSON structure containing database specific settings.
+# We use this instead of a structure because different datastores can take different arguments.
+# Note that for Bigtable, the `table_name` argument contains the full path to the data store.
+# In this example, we use `test` for the project and instance names. Your system will be different.
+#db_settings = "{\"message_family\":\"message\",\"router_family\":\"router\", \"table_name\":\"projects/test/instances/test/tables/autopush\", \"max_router_ttl\":5184000}"
 
 # A (stringified) list of comma-separated Fernet keys to use when encrypting the
 # notification endpoint URL. The default is a single auto-generated key.
 # You can generate a key with `scripts/fernet_key.py`.
+# **THIS VALUE MUST MATCH FOR BOTH AUTOENDPOINT AND AUTOCONNECT**
 #crypto_keys = "[replace-me-with-a-real-key]"
 
 # The HMAC SHA256 keys to use, for authenticating registration update requests.
 # Multiple are allowed when separated by a comma.
 #auth_keys = "["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]"
+
+
+# The following values are used by the application.
+# The URI scheme to use when referencing this server
+#scheme = "http"
+
+# The hostname to use.
+#host = "127.0.0.1"
+
+# The port to use
+#port = 8000
+
+# Override the constructed endpoint URL (using the above values). This endpoint URL is
+# reported out to mobile devices, and (while not recommended) may be different than the value
+# constructed by autoconnect.
+#endpoint_url=None
+
+## The following configuration options are optional. The default values are provided.
+##
+
+# The router table name for the Bigtable data store (legacy)
+#router_table_name = "router"
+
+# The message table name for the Bigtable data store (legacy)
+#message_table_name = "message"
+
+# The maximum payload size to accept in HTTP requests to this server
+#max_data_bytes = 4096
+
+# Max time in seconds a Notification should be allowed to "live" in Autopush.
+# RFC8030 specifies this as 30 days. Messages that exceed this value will have
+# their TTL adjusted to match this value.
+#max_notification_ttl=2492000
 
 # If human-readable logging should be used
 #human_logs = false
@@ -56,16 +85,20 @@
 #pool_idle_timeout_secs = 30
 
 # The Max Notification Time To Live (in seconds) (See autopush_common::lib for details)
-# max_notification_ttl = 2592000
+#max_notification_ttl = 2592000
 
-# The DSN to the database you wish to use.
-# db_dsn = "grpc://localhost:8086"
+## The following settings define the various "bridge" protocols for mobile devices.
 
-# a JSON structure containing database specific settings.
-# We use this instead of a structure because different datastores can take different arguments.
-# db_settings = "{\"message_family\":\"message\",\"router_family\":\"router\", \"table_name\":\"projects/test/instances/test/tables/autopush\", \"max_router_ttl\":5184000}"
+# Number of milliseconds to wait before a given bridge connection times out. This will
+# produce a 503 error response.
+#connection_timeout_millis=1000
+
+# Number of milliseconds to wait for a bridge request response times out. This will
+# produce a 503 error message.
+#request_timeout_millis=3000
 
 # Settings for the Firebase Cloud Messaging router
+# See [FCM](docs/src/fcm.md) for details.
 [fcm]
 # The minimum TTL to use. If a notification's TTL is shorter than this, it will
 # be set to this value.
@@ -96,6 +129,7 @@
 #max_ttl = 2_419_200
 
 # Settings for the Apple Push Notification Service router
+# See [APNs](docs/src/apns.md) for details
 [apns]
 # The max size of notification data in bytes. This is usually dictated by Apple
 # to be 4KB.
@@ -112,3 +146,18 @@
 #        "sandbox": true
 #    }
 #}"""
+
+# Autopush Reliability
+# Autopush can track messages associated with some VAPID public keys. Tracking
+# is limited to where a given message is in the Autopush system (e.g. received,
+# in storage, delivered, etc.) and is only enabled if the `reliable_report` feature
+# is set.
+# The DSN to the Redis based Reliability store
+#reliability_dsn = None
+
+# The max number of retries for a reliability write
+#reliability_retry_count = 10
+
+# A comma separated set of VAPID public keys to track.
+tracking_keys=None
+

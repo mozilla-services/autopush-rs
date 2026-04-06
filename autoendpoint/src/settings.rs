@@ -18,6 +18,8 @@ use crate::routers::stub::settings::StubSettings;
 
 pub const ENV_PREFIX: &str = "autoend";
 
+/// Remember to update the [Sample Config](configs/autoendpoint.toml.sample) file and
+/// the [documentation](docs/src/config_options.md) when adding new settings.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]

@@ -8,7 +8,7 @@ package.
 
 - Rust 1.66 (or later)
 
-* build-essential (a meta package that includes):  
+* build-essential (a meta package that includes):
     -   autoconf
     -   automake
     -   gcc
@@ -71,6 +71,8 @@ You can build all applications by running
 cargo build
 ```
 
+See [Configuration options](./config_options.md) for more information on how to configure the applications, and [Running](./running.md) for more information on how to run the applications.
+
 ## Scripts
 
 After installation of autopush the following command line utilities are
@@ -111,10 +113,10 @@ Local storage can be useful for development and testing. It is not advised to us
 
 Specifying storage is done via two main environment variables / configuration settings.
 
-**db_dsn**  
+**db_dsn**
 This specifies the URL to the storage system to use. See following sections for details.
 
-**db_settings**  
+**db_settings**
 This is a serialized JSON dictionary containing the storage specific settings.
 
 ## Using Google Bigtable Emulator locally
@@ -142,7 +144,7 @@ command from the SDK:
 scripts/setup_bt.sh
 ```
 
-The `db_dsn` to access this data store with Autopendpoint would be:  
+The `db_dsn` to access this data store with Autopendpoint would be:
 `grpc://localhost:8086`
 
 The `db_setings` contains a JSON dictionary indicating the names of the message and router families, as well as the path to the table name.
@@ -151,16 +153,6 @@ For example, if we were to use the values from the initializion script above (re
 
 ```json
 {"message_family":"message","message_topic_family":"message_topic","router_family":"router","table_name":"projects/test/instances/test/tables/autopush"}
-```
-
-## Using the "Dual" storage configuration (legacy)
-
-Dual is a temporary system to be used to transition user data from one system to another. The "primary" system is read/write, while the "secondary" is read only, and is only read when a value is not found in the "primary" storage.
-
-Dual's DSN Is `dual`. All connection information is stored in the `db_settings` parameter. (Remember to escape these values for whatever system you are using):
-
-```json
-{"primary":{"db_settings":"{\"message_family\":\"message\",\"router_family\":\"router\",\"table_name\":\"projects/test/instances/test/tables/autopush\"}","dsn":"grpc://localhost:8086"},"secondary":{"db_settings":"{\"message_table\":\"test_message\",\"router_table\":\"test_router\"}","dsn":"http://localhost:8000/"}}
 ```
 
 ## Configuring for Third Party Bridge services:

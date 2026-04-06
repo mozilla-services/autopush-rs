@@ -1,4 +1,4 @@
-# Configuration options
+# Configuration options{#config}
 
 Configuration options can be specified either as environment variables or as values in a
 configuration file. Configuration files can be specified using the Command Line Interface (CLI) argument "-c"
@@ -21,7 +21,8 @@ using their environment variable form.
 | <span id="AUTOCONNECT__ACTIX_WORKERS" />actix_workers | AUTOCONNECT__ACTIX_WORKERS | num | _None_ | Number of worker threads for the Actix web server per bind address |
 | <span id="AUTOCONNECT__AUTO_PING_INTERVAL" />auto_ping_interval | AUTOCONNECT__AUTO_PING_INTERVAL | num | 300 | Seconds between server generated pings to the client |
 | <span id="AUTOCONNECT__AUTO_PING_TIMEOUT" />auto_ping_timeout | AUTOCONNECT__AUTO_PING_TIMEOUT | num | 4 | Seconds to wait for a ping response from the client |
-| <span id="AUTOCONNECT__CRYPTO_KEY" />crypto_key | AUTOCONNECT__CRYPTO_KEY | string | _internally generated value_ | The cryptographic key to use for endpoint encryption |
+| <span id="AUTOCONNECT__CRYPTO_KEY" />crypto_key | AUTOCONNECT__CRYPTO_KEY | string | _internally generated value_ | OBSOLETE: A convenience value for `crypto_keys` |
+| <span id="AUTOCONNECT__CRYPTO_KEYS" />crypto_keys | AUTOCONNECT__CRYPTO_KEYS | string | _internally generated value_ | A comma separated list of cryptographic keys to use for endpoint encryption |
 | <span id="AUTOCONNECT__DB_DSN" />db_dsn | AUTOCONNECT__DB_DSN | string | _None_ | Data Source Name for the back end database |
 | <span id="AUTOCONNECT__DB_SETTINGS" />db_settings | AUTOCONNECT__DB_SETTINGS | string | _None_ | Serialized JSON structure of Database settings (see each data store for details)
 | <span id="AUTOCONNECT__ENDPOINT_HOSTNAME" />endpoint_hostname | AUTOCONNECT__ENDPOINT_HOSTNAME | string | "localhost" | The hostname for the endpoint URL |
@@ -29,8 +30,7 @@ using their environment variable form.
 | <span id="AUTOCONNECT__ENDPOINT_SCHEME" />endpoint_scheme | AUTOCONNECT__ENDPOINT_SCHEME | string | "http" | The URL scheme (http/https) for the endpoint URL |
 | <span id="AUTOCONNECT__HOSTNAME" />hostname | AUTOCONNECT__HOSTNAME | string | _None_ | The machine host name (e.g. `localhost`) |
 | <span id="AUTOCONNECT__HUMAN_LOGS" />human_logs | AUTOCONNECT__HUMAN_LOGS | bool | false | Whether to use human readable log formatting (e.g. timestamps, log levels) |
-| <span id="AUTOCONNECT__MEGAPHONE_API_TOKEN" />megaphone_api_token | AUTOCONNECT__MEGAPHONE_API_TOKEN | string | _None_ | Access token for the Remote Settings "Megaphone" API server |
-| <span id="AUTOCONNECT__MEGAPHONE_API_URL" />megaphone_api_url | AUTOCONNECT__MEGAPHONE_API_URL | string | _None_ | URL to the Remote Settings "Megaphone" API server |
+| <span id="AUTOCONNECT__MEGAPHONE_API_TOKEN" />megaphone_api_token | | <span id="AUTOCONNECT__MEGAPHONE_API_URL" />megaphone_api_url | AUTOCONNECT__MEGAPHONE_API_URL | string | _None_ | URL to the Remote Settings "Megaphone" API server |
 | <span id="AUTOCONNECT__MEGAPHONE_POLL_INTERVAL" />megaphone_poll_interval | AUTOCONNECT__MEGAPHONE_POLL_INTERVAL | string | _None_ | Period in seconds to poll the Remote Settings "Megaphone" server |
 | <span id="AUTOCONNECT__MSG_LIMIT" />msg_limit | AUTOCONNECT__MSG_LIMIT | num | 1000 | Maximum number of messages to store per client |
 | <span id="AUTOCONNECT__OPEN_HANDSHAKE_TIMEOUT" />open_handshake_timeout | AUTOCONNECT__OPEN_HANDSHAKE_TIMEOUT | num | 5 | Seconds to wait for a valid `Hello` message from the client |

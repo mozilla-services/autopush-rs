@@ -4,7 +4,45 @@
 # See [Configuration Options](docs/src/config_options.md) for details.
 #
 
-# The host to use for HTTP connections. Defaults to the machine's hostname.
+## The following configuration options are required. Example values are provided.
+##
+
+# The DSN to the database you wish to use.
+# For `production` systems, this is the Bigtable connection string, shown here.
+#db_dsn = "grpc://localhost:8086"
+
+# a JSON structure containing database specific settings.
+# We use this instead of a structure because different datastores can take different arguments.
+# Note that for Bigtable, the `table_name` argument contains the full path to the data store.
+# In this example, we use `test` for the project and instance names. Your system will be different.
+#db_settings = "{\"message_family\":\"message\",\"router_family\":\"router\", \"table_name\":\"projects/test/instances/test/tables/autopush\", \"max_router_ttl\":5184000}"
+
+# A (stringified) list of comma-separated Fernet keys to use when encrypting the
+# notification endpoint URL. The default is a single auto-generated key.
+# You can generate a key with `scripts/fernet_key.py`.
+# Note, the obsolete `crypto_key` is still supported at this time.
+# **THIS VALUE MUST MATCH FOR BOTH AUTOENDPOINT AND AUTOCONNECT**
+#crypto_keys = "[replace-me-with-a-real-key]"
+
+# Autoconnect needs to know the URL of the endpoint server. This should be the public hostname, since it is
+# used to construct the published endpoint. As a reminder, Autopush does NOT do TLS termination, so you
+# should add either a TLS terminating load balancer or nginx instance to act as the front proxy for Autopush.
+#
+# The URI scheme to use for the endpoint server URL
+#endpoint_scheme = "http"
+
+# The hostname of the endpoint server
+#endpoint_hostname = "localhost"
+
+# The port of the endpoint server (if this is different than the standard port per endpoint_scheme)
+#endpoint_port = 8082
+
+## The following configuration options are optional. The default values are provided.
+##
+
+# The host to use for Websocket HTTP connections. Defaults to the machine's hostname.
+# (Again, remember that this will need to accessible by your User Agents. It will probably also
+# be a publicly accessible address, and probably either your load balancer or nginx proxy.)
 #hostname = "localhost"
 
 # The WebSocket port
@@ -16,57 +54,45 @@
 # If human-readable logging should be used
 #human_logs = false
 
+# Autopush uses internal routing to deliver in-system messages. This does NOT need to be public,
+# but should be accessible by both autoendpoint and autoconnect nodes.
 # The HTTP router host. Defaults to the hostname setting.
 #router_hostname = "localhost"
 
 # The HTTP router port
 #router_port = 8081
 
-# Path to the SSL key to use for the router HTTP server. If not set, only HTTP
-# connections are supported.
-#router_ssl_key = "..."
-
-# Path to the SSL cert to use for the router HTTP server. Required if
-# router_ssl_key is set.
-#router_ssl_cert = "..."
-
 # Optional path to Diffie-Hellman parameters to use during SSL key exchange
 #router_ssl_dh_param = "..."
 
-# The URI scheme to use for the endpoint server URL
-#endpoint_scheme = "http"
-
-# The hostname of the endpoint server
-#endpoint_hostname = "localhost"
-
-# The port of the endpoint server
-#endpoint_port = 8082
-
+# "Megaphone" is the remote settings service that can use Autopush to deliver
+# system states (See https://github.com/mozilla-services/megaphone).
+#
 # The URL to use for megaphone. If not set, megaphone functionality is disabled.
 #megaphone_api_url = "..."
-
-# The token to use for megaphone. Required if megaphone_api_url is set.
-#megaphone_api_token = "..."
 
 # The number of seconds between megaphone polls
 #megaphone_poll_interval = 30
 
-# The host of the metrics server. An empty string disables metrics.
+# The host of the statsd style metrics server. An empty string disables metrics.
 #statsd_host = "localhost"
 
 # The port of the metrics server
 #statsd_port = 8125
 
+# The prefix label for metrics.
+#statsd_label = "autoconnect"
+
+# Do not attempt to report errors to Sentry, instead, dump them to STDERR
+#disable_sentry = false
+
 # The name of the router table
+# (This is legacy, and only used by Bigtable data stores)
 #router_tablename = "router"
 
 # The prefix of the message table(s)
+# (This is legacy, and only used by Bigtable data stores)
 #message_tablename = "message"
-
-# A (stringified) list of comma-separated Fernet keys to use when encrypting the
-# notification endpoint URL. The default is a single auto-generated key.
-# You can generate a key with `scripts/fernet_key.py`.
-#crypto_key = "[replace-me-with-a-real-key]"
 
 # How often we send WebSocket pings. 0 indicates no limit.
 #auto_ping_interval = 300
@@ -75,12 +101,30 @@
 # indicates no limit.
 #auto_ping_timeout = 4
 
+# Actix is the rust web framework we use to manage the server.
+
+# The max number of concurrent connections per actix-web worker (if set).
+# Each socket listener will stop accepting new connections when this limit is
+# reached. This is *per worker*, not *per system*.
+#actix_max_connections: None
+
+# The max number of workers to start (per bind address)
+# Normally, this is approximately the number of physical CPU cores available to the
+# application. If set, this will allow a lower number to be specified.
+#actix_workers: None
+
+# Socket Operations
+
 # Maximum number of WebSocket clients. 0 indicates no limit.
 #max_connections = 0
 
 # The max number of stored messages to return to a connecting client. If this
 # limit is reached, the client is dropped and must re-register.
 #msg_limit = 150
+
+# Maximum number of buffered notifications allowed per client before backpressure
+# is applied on the notification channel.
+#client_channel_capacity: 128
 
 # Maximum idle connections per host in the HTTP connection pool.
 # Under load spikes, unbounded pools can accumulate idle connections and
@@ -91,9 +135,18 @@
 # are closed to return memory. Default: 30
 #pool_idle_timeout_secs = 30
 
-# The DSN to the database you wish to use.
-# db_dsn = "grpc://localhost:8086"
+# How long to wait for a "HELLO" from the client (in seconds)
+# You want this to be fairly aggressive as it helps prevent some attacks.
+#open_handshake_timeout = 5
 
-# a JSON structure containing database specific settings.
-# We use this instead of a structure because different datastores can take different arguments.
-# db_settings = "{\"message_family\":\"message\",\"router_family\":\"router\", \"table_name\":\"projects/test/instances/test/tables/autopush\", \"max_router_ttl\":5184000}"
+# Autopush Reliability
+# Autopush can track messages associated with some VAPID public keys. Tracking
+# is limited to where a given message is in the Autopush system (e.g. received,
+# in storage, delivered, etc.) and is only enabled if the `reliable_report` feature
+# is set.
+
+# The DSN to the Redis based Reliability store
+#reliability_dsn = None
+
+# The max number of retries for a reliability write
+#reliability_retry_count = 10
