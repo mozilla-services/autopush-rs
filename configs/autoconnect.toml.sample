@@ -106,12 +106,12 @@
 # The max number of concurrent connections per actix-web worker (if set).
 # Each socket listener will stop accepting new connections when this limit is
 # reached. This is *per worker*, not *per system*.
-#actix_max_connections: None
+#actix_max_connections = None
 
 # The max number of workers to start (per bind address)
 # Normally, this is approximately the number of physical CPU cores available to the
 # application. If set, this will allow a lower number to be specified.
-#actix_workers: None
+#actix_workers = None
 
 # Socket Operations
 
@@ -124,7 +124,7 @@
 
 # Maximum number of buffered notifications allowed per client before backpressure
 # is applied on the notification channel.
-#client_channel_capacity: 128
+#client_channel_capacity = 128
 
 # Maximum idle connections per host in the HTTP connection pool.
 # Under load spikes, unbounded pools can accumulate idle connections and

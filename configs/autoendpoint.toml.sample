@@ -27,7 +27,7 @@
 
 # The HMAC SHA256 keys to use, for authenticating registration update requests.
 # Multiple are allowed when separated by a comma.
-#auth_keys = "["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]"
+#auth_keys = "[\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"]"
 
 
 # The following values are used by the application.
@@ -43,7 +43,7 @@
 # Override the constructed endpoint URL (using the above values). This endpoint URL is
 # reported out to mobile devices, and (while not recommended) may be different than the value
 # constructed by autoconnect.
-#endpoint_url=None
+#endpoint_url = None
 
 ## The following configuration options are optional. The default values are provided.
 ##
@@ -91,11 +91,11 @@
 
 # Number of milliseconds to wait before a given bridge connection times out. This will
 # produce a 503 error response.
-#connection_timeout_millis=1000
+#connection_timeout_millis = 1000
 
 # Number of milliseconds to wait for a bridge request response times out. This will
 # produce a 503 error message.
-#request_timeout_millis=3000
+#request_timeout_millis = 3000
 
 # Settings for the Firebase Cloud Messaging router
 # See [FCM](docs/src/fcm.md) for details.
@@ -159,5 +159,5 @@
 #reliability_retry_count = 10
 
 # A comma separated set of VAPID public keys to track.
-tracking_keys=None
+#tracking_keys = None
 

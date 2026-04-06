@@ -8,14 +8,21 @@ section on Autopush architecture documented these components and their
 relation to each other. If you plan on running Autopush in a production environment,
 you will also need to set up TLS termination. This can be done using either a reverse
 proxy (like nginx) or by using a load balancer system from your provider. This document
-will not go in to details on how to create this system. Your TLS termination system
-should be configured to point websocket traffic to the connection node point (default port 8080) and HTTP traffic to the endpoint node point (default port 8082). Note that some proxy systems require adding an `UPGRADE` header to the websocket traffic, so you may need to add that to your configuration.
+will not go into details on how to create this system. Your TLS termination system
+should be configured to point Websocket traffic to the connection node point (default
+port 8080) and HTTP traffic to the endpoint node point (default port 8082). Note that
+some proxy systems require adding an `UPGRADE` header to the Websocket traffic, so you
+may need to add that to your configuration.
 
 When constructing your firewall rules, remember that autoconnect and autendpoint will
-need to be able to route messages using the `router_port` (default 8081). This port should NOT be public, but should be accessible to all nodes in the cluster.
+need to be able to route messages using the `router_port` (default 8081). This port
+should NOT be public, but should be accessible to all nodes in the cluster.
 
 While there are some docker files present, these are mostly used for testing
-and are not intended for production use. The instructions below will allow you to run Autopush "locally" in a Ubuntu / Debian environment. If you prefer, the [development](development.md) document has more details. This may be addressed at a later date.
+and are not intended for production use. The instructions below will allow you to run
+Autopush "locally" in a Ubuntu / Debian environment. If you prefer, the
+[development](development.md) document has more details. This may be addressed at a
+later date.
 
 If you want to run the latest Autopush code from source then you should
 follow the [Installing](install.md) instructions.
@@ -44,8 +51,8 @@ AUTOEND__AUTH_KEYS=["63-...8A="]
 Store the key for later use (including any trailing `=`). By default autopush will look for this value as an environment variable, so you may want to use something like [direnv](https://direnv.net/) and add
 
 ```
-export AUTOCONNECT__CRYPTO_KEYS="Your-Key-Here00000000000000000000000000000=="
-export AUTOEND__CRYPTO_KEYS="Your-Key-Here00000000000000000000000000000=="
+export AUTOCONNECT__CRYPTO_KEYS="[Your-Key-Here00000000000000000000000000000==]"
+export AUTOEND__CRYPTO_KEYS="[Your-Key-Here00000000000000000000000000000==]"
 ```
 
 ## Starting optional emulators
