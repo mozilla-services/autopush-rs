@@ -188,6 +188,7 @@ impl Settings {
 
         let built = s.build()?;
         let mut s = built.try_deserialize::<Settings>()?;
+        dbg!(&s.crypto_key, &s.crypto_keys);
         if s.crypto_keys.is_none() && s.crypto_key.is_some() {
             s.crypto_keys = s.crypto_key.clone();
         }

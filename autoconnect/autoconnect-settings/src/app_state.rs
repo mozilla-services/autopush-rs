@@ -45,19 +45,24 @@ pub struct AppState {
 
 impl AppState {
     pub fn from_settings(settings: Settings) -> Result<Self, ConfigError> {
+        dbg!(&settings.crypto_key, &settings.crypto_keys);
+
         if settings.crypto_key.is_none() && settings.crypto_keys.is_none() {
             return Err(ConfigError::Message(format!(
-                "Missing required configuration: {ENV_PREFIX}__CRYPTO_KEY or {ENV_PREFIX}__CRYPTO_KEYS"
+                "Missing required configuration: {}__CRYPTO_KEY or {}__CRYPTO_KEYS",
+                ENV_PREFIX.to_uppercase(),
+                ENV_PREFIX.to_uppercase()
             )));
         };
         let crypto_keys = &settings
             .crypto_keys
             .clone()
-            .unwrap_or(settings.crypto_key.clone().unwrap());
+            .unwrap_or_else(|| settings.crypto_key.clone().unwrap());
         // TODO: switch to make_fernet(); move make_fernet() to autopush_common.
         if !(crypto_keys.starts_with('[') && crypto_keys.ends_with(']')) {
             return Err(ConfigError::Message(format!(
-                "Invalid {ENV_PREFIX}_CRYPTO_KEY"
+                "Invalid {}__CRYPTO_KEY",
+                ENV_PREFIX.to_uppercase()
             )));
         }
         let fernet_keys = &crypto_keys[1..crypto_keys.len() - 1];
