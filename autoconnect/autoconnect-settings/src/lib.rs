@@ -11,6 +11,7 @@ use std::env;
 use std::{io, net::ToSocketAddrs, time::Duration};
 
 use config::{Config, ConfigError, Environment, File};
+use fernet::Fernet;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Deserializer};
 
@@ -188,7 +189,6 @@ impl Settings {
 
         let built = s.build()?;
         let mut s = built.try_deserialize::<Settings>()?;
-        dbg!(&s.crypto_key, &s.crypto_keys);
         if s.crypto_keys.is_none() && s.crypto_key.is_some() {
             s.crypto_keys = s.crypto_key.clone();
         }
@@ -259,6 +259,8 @@ impl Settings {
     pub fn test_settings() -> Self {
         // Provide test settings based on enabled features.
         // semi-hack to satisfy clippy --all --all-features
+        let crypto_keys = Some(format!("[\"{}\"]", Fernet::generate_key()));
+
         if cfg!(feature = "bigtable") {
             let host = env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8086".to_owned());
             let db_dsn = Some(format!("grpc://{}", host));
@@ -273,6 +275,7 @@ impl Settings {
             return Self {
                 db_dsn,
                 db_settings,
+                crypto_keys,
                 ..Default::default()
             };
         }
@@ -283,6 +286,7 @@ impl Settings {
             return Self {
                 db_dsn,
                 db_settings,
+                crypto_keys,
                 ..Default::default()
             };
         }
@@ -293,6 +297,7 @@ impl Settings {
             return Self {
                 db_dsn,
                 db_settings,
+                crypto_keys,
                 ..Default::default()
             };
         }

@@ -9,6 +9,8 @@ use actix_web::{
     App, HttpServer, dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data,
 };
 use cadence::StatsdClient;
+#[cfg(test)]
+use fernet::Fernet;
 use fernet::MultiFernet;
 use serde_json::json;
 
@@ -68,7 +70,8 @@ impl AppState {
     /// build a fake AppState with a MockDbClient and default settings, for use in tests.
     pub(crate) async fn test_default(mock_db: autopush_common::db::mock::MockDbClient) -> Self {
         let settings = Settings {
-            auth_keys: "HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned(),
+            auth_keys: Fernet::generate_key(),
+            crypto_keys: format!("[\"{:?}\"]", Fernet::generate_key()),
             ..Default::default()
         };
         let metrics = Arc::new(crate::metrics::Metrics::sink());

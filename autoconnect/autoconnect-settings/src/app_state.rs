@@ -45,8 +45,6 @@ pub struct AppState {
 
 impl AppState {
     pub fn from_settings(settings: Settings) -> Result<Self, ConfigError> {
-        dbg!(&settings.crypto_key, &settings.crypto_keys);
-
         if settings.crypto_key.is_none() && settings.crypto_keys.is_none() {
             return Err(ConfigError::Message(format!(
                 "Missing required configuration: {}__CRYPTO_KEY or {}__CRYPTO_KEYS",
@@ -69,9 +67,10 @@ impl AppState {
         debug!("🔐 Fernet keys: {:?}", &fernet_keys);
         let fernets: Vec<Fernet> = fernet_keys
             .split(',')
-            .map(|s| s.trim().to_string())
+            .map(|s| s.to_string().replace([' ', '"'], ""))
             .map(|key| {
-                Fernet::new(&key).unwrap_or_else(|| panic!("Invalid {ENV_PREFIX}_CRYPTO_KEY"))
+                Fernet::new(&key)
+                    .unwrap_or_else(|| panic!("Invalid {}_CRYPTO_KEY", ENV_PREFIX.to_uppercase()))
             })
             .collect();
         let fernet = MultiFernet::new(fernets);
