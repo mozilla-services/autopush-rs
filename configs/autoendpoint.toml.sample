@@ -114,6 +114,8 @@
 #}"""
 
 # Specify the kubernetes memory path for the health check info.
-# This should be the path to the 
+# This should be the directory path to the local kubernetes memory virtual file, not the
+# actual memory file.
+# e.g. "/sys/fs/cgroup"
 # (This is mostly used to diagnose a problem with high memory usage in some cases.)
 #kubernetes_memory_path = None
