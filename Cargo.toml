@@ -12,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.81.1"
+version = "1.81.2"
 authors = [
     "Ben Bangert <ben@groovie.org>",
     "JR Conlin <jrconlin@mozilla.com>",
