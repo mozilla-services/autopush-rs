@@ -13,6 +13,7 @@ RUN \
     apt-get -qq update && \
     apt-get -qq install --no-install-recommends -y cmake clang
 
+# cargo install is the equivalent of cargo build --release
 RUN \
     cargo --version && \
     rustc --version && \
