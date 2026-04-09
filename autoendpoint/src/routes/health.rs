@@ -69,7 +69,9 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     });
 
     // if we can display memory usage, do so.
-    if let Some(mem_usage) = memory_usage_percentage(&state.settings.kubernetes_memory_path) {
+    if let Some(path) = &state.settings.kubernetes_memory_path
+        && let Some(mem_usage) = memory_usage_percentage(path)
+    {
         health["memory_usage_percentage"] = json!(mem_usage);
     }
 
