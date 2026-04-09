@@ -100,7 +100,7 @@ pub struct Settings {
     #[serde_as(as = "serde_with::DurationSeconds<u64>")]
     pub max_notification_ttl: Duration,
     /// Path to read kubernetes internal memory information.
-    pub kubernetes_memory_path: String,
+    pub kubernetes_memory_path: Option<String>,
 }
 // Did you update the documentation in `docs/src/config_options.md`?
 
@@ -144,7 +144,7 @@ impl Default for Settings {
             // From empirical observation, kubernetes stores this in the main
             // cgroup. Other docs say that this should be in the "memory" subdir.
             // Going with what I can see for now.
-            kubernetes_memory_path: "/sys/fs/cgroup".to_string(),
+            kubernetes_memory_path: None,
         }
     }
 }
