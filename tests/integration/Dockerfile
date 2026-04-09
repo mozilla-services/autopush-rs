@@ -57,7 +57,7 @@ COPY . .
 COPY --from=cacher /app/target target
 COPY --from=cacher $CARGO_HOME $CARGO_HOME
 
-RUN cargo build --features=emulator
+RUN cargo build --features=emulator --features=production
 
 FROM python:3.12-slim-bookworm AS integration-tests
 

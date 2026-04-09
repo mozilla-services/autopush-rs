@@ -131,7 +131,7 @@ commands:
     steps:
       - run:
           name: Build Applications
-          command: cargo build --features=production --features=emulator
+          command: cargo build --features=production --features=emulator --release
   setup_sudo:
     steps:
       - run:
