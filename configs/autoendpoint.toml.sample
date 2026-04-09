@@ -112,3 +112,8 @@
 #        "sandbox": true
 #    }
 #}"""
+
+# Specify the kubernetes memory path for the health check info.
+# This should be the path to the 
+# (This is mostly used to diagnose a problem with high memory usage in some cases.)
+#kubernetes_memory_path = None
