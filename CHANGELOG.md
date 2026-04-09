@@ -1,3 +1,19 @@
+<a name="1.81.2"></a>
+## 1.81.2 (2026-04-09)
+
+
+#### Chore
+
+*   tag 1.81.1 (#1137) ([4837054c](https://github.com/mozilla-services/autopush-rs/commit/4837054c4a378548bf872eb3a2f42185c9422727))
+*   tag 1.81.0 (#1135) ([a4a88adc](https://github.com/mozilla-services/autopush-rs/commit/a4a88adc37262a93d5b9ba280614c01b22abca77))
+
+#### Features
+
+*   Make the kubernetes memory check optional (#1140) ([e4fca57d](https://github.com/mozilla-services/autopush-rs/commit/e4fca57dabe10d86bb6faffe5c16af29ed5db705))
+*   restore the "<release tag>_enterprise" tag w/ ent gar (#1136) ([4a6abdc6](https://github.com/mozilla-services/autopush-rs/commit/4a6abdc6424cb681ee7f4188b8ac29e40a661cd4))
+
+
+
 <a name="1.81.1"></a>
 ## 1.81.1 (2026-04-02)
 
