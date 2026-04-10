@@ -114,3 +114,12 @@ result_large_err = "allow" # rust 1.87.0+ will flag ApiError as too large.
 
 [profile.release]
 debug = 1
+
+[profile.profile]
+inherits = "release"
+# turn on full debugging. This may help resolve symbol names
+debug = 2
+# The following is not yet supported by cargo.
+# Instead, use the following build flags:
+# `RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile profile`
+# rustflags = ["-C", "force-frame-pointers=yes"]

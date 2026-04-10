@@ -103,6 +103,10 @@ notification-test:
 notification-test-clean:
 	docker rm notification-tests
 
+.PHONY: build-profile
+build-profile: ##  Run the profiler with the `profile` profile. See Cargo.toml for details.
+	RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile profile
+
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code
 	$(POETRY) run isort $(TESTS_DIR)
