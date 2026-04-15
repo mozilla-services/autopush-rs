@@ -273,10 +273,10 @@ class AutopushUser(FastHttpUser):
         record = NotificationRecord(send_time=time.perf_counter(), data=data)
         headers = self.REST_HEADERS
         if self.vapid:
-            logging.info("🔍 Using VAPID key for Autopush notification.")
             parsed = urlparse(endpoint_url)
             host = f"{parsed.scheme}://{parsed.netloc}"
             # The key should already be created.
+            logging.info(f"🔍 Using VAPID key for Autopush notification (aud: {host}).")
             vapid = self.vapid.sign(
                 claims={
                     "sub": "mailto:loadtest@example.com",

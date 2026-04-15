@@ -13,7 +13,7 @@ actix-server = "2.3"
 actix-service = "2.0"
 actix-web.workspace = true
 docopt = "1.1"
-mimalloc.workspace = true
+mimalloc = {workspace = true, optional = true}
 env_logger.workspace = true
 sentry.workspace = true
 serde.workspace = true
@@ -49,3 +49,5 @@ reliable_report = [
 ]
 
 unsafe = ["autoconnect_settings/unsafe"]
+
+mimalloc = ["dep:mimalloc"]

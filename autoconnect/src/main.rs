@@ -1,5 +1,6 @@
 #![warn(rust_2018_idioms)]
 
+#[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

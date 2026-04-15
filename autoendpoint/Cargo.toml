@@ -23,7 +23,7 @@ futures.workspace = true
 hex.workspace = true
 jsonwebtoken = {version="10.3.0", features=["rust_crypto"]}
 lazy_static.workspace = true
-mimalloc.workspace = true
+mimalloc = {workspace = true, optional = true}
 openssl.workspace = true
 regex.workspace = true
 reqwest.workspace = true
@@ -77,6 +77,10 @@ stub = []
 log_vapid = []
 
 reliable_report = ["autopush_common/reliable_report"]
+
+# mimalloc may cause very high CPU rates for autoendpoint, but does
+# reduce memory load considerably. Use with caution.
+mimalloc = ["dep:mimalloc"]
 
 [lints]
 workspace = true
