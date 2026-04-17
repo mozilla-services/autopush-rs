@@ -87,9 +87,14 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
                     .tracking_keys()
                     .unwrap_or_default()
                     .iter()
+                    .filter(|k| !k.is_empty())
                     .map(|k|
                         // Hint the key values
-                        b64_encode_url(k)[..8].to_string())
+                        if k.len() > 8 {
+                            b64_encode_url(k)[..8].to_string()
+                        } else {
+                            "".to_owned()
+                        })
                     .collect();
                 if keys.is_empty() {
                     Ok("NO_TRACKING_KEYS".to_owned())
@@ -168,4 +173,25 @@ pub async fn log_check() -> ApiResult<String> {
     });
 
     Err(ApiErrorKind::LogCheck.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[actix_rt::test]
+    async fn test_health_route() {
+        let mut mock_db = autopush_common::db::mock::MockDbClient::new();
+        mock_db.expect_router_table_exists().returning(|| Ok(true));
+        mock_db.expect_message_table_exists().returning(|| Ok(true));
+        mock_db.expect_health_check().returning(|| Ok(true));
+
+        let state: AppState = AppState::test_default(mock_db).await;
+        let response = health_route(Data::new(state)).await;
+        assert_eq!(
+            response["reliability"].get("Ok"),
+            Some(&serde_json::Value::String("NO_TRACKING_KEYS".to_owned()))
+        );
+        assert_eq!(response["status"], "OK");
+    }
 }
