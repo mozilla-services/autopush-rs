@@ -18,6 +18,8 @@ use crate::routers::stub::settings::StubSettings;
 
 pub const ENV_PREFIX: &str = "autoend";
 
+/// Remember to update the [Sample Config](configs/autoendpoint.toml.sample) file and
+/// the [documentation](docs/src/config_options.md) when adding new settings.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
@@ -118,7 +120,7 @@ impl Default for Settings {
             // 4216 byte data block. Since we're going to be receiving this, we have to
             // presume base64 encoding, so we can bump things up to 5630 bytes max.
             max_data_bytes: 5630,
-            crypto_keys: format!("[{}]", Fernet::generate_key()),
+            crypto_keys: "".to_string(),
             auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
             tracking_keys: r#"[]"#.to_string(),
             human_logs: false,

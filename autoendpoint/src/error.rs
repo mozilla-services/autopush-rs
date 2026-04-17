@@ -13,6 +13,7 @@ use actix_web::{
 // Sentry uses the backtrace crate, not std::backtrace.
 use actix_http::header;
 use backtrace::Backtrace;
+use config::ConfigError;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
@@ -49,6 +50,9 @@ impl ApiError {
 /// The possible errors this application could encounter
 #[derive(Debug, Error)]
 pub enum ApiErrorKind {
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
@@ -165,6 +169,7 @@ impl ApiErrorKind {
             ApiErrorKind::Database(e) => e.status(),
 
             ApiErrorKind::General(_)
+            | ApiErrorKind::Config(_)
             | ApiErrorKind::Io(_)
             | ApiErrorKind::Metrics(_)
             | ApiErrorKind::EndpointUrl(_)
@@ -206,6 +211,7 @@ impl ApiErrorKind {
             ApiErrorKind::Database(e) => return e.metric_label(),
             ApiErrorKind::Conditional(_) => "conditional",
             ApiErrorKind::EndpointUrl(e) => return e.metric_label(),
+            ApiErrorKind::Config(_) => "config",
             ApiErrorKind::RegistrationSecretHash(_) => "registration_secret_hash",
             ApiErrorKind::ReqwestError(_) => "reqwest",
         })
@@ -281,6 +287,7 @@ impl ApiErrorKind {
             | ApiErrorKind::RegistrationSecretHash(_)
             | ApiErrorKind::EndpointUrl(_)
             | ApiErrorKind::InvalidMessageId
+            | ApiErrorKind::Config(_)
             | ApiErrorKind::ReqwestError(_) => None,
         }
     }

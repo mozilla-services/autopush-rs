@@ -49,6 +49,8 @@ fn include_port(scheme: &str, port: u16) -> bool {
 /// The Applications settings, read from CLI, Environment or settings file, for the
 /// autoconnect application. These are later converted to
 /// [autoconnect::autoconnect-settings::AppState].
+/// Remember to update the [Sample Config](configs/autoconnect.toml.sample) file and
+/// the [documentation](docs/src/config_options.md) when adding new settings.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -78,7 +80,8 @@ pub struct Settings {
     /// The optional port override for the endpoint URL
     pub endpoint_port: u16,
     /// The seed key to use for endpoint encryption
-    pub crypto_key: String,
+    pub crypto_key: Option<String>, // obsolete, use `crypto_keys` instead
+    pub crypto_keys: Option<String>,
     /// The host name to send recorded metrics
     pub statsd_host: Option<String>,
     /// The port number to send recorded metrics
@@ -144,7 +147,8 @@ impl Default for Settings {
             endpoint_scheme: "http".to_owned(),
             endpoint_hostname: "localhost".to_owned(),
             endpoint_port: 8082,
-            crypto_key: format!("[{}]", Fernet::generate_key()),
+            crypto_keys: None,
+            crypto_key: None,
             statsd_host: Some("localhost".to_owned()),
             // Matches the legacy value
             statsd_label: "autoconnect".to_owned(),
@@ -184,7 +188,15 @@ impl Settings {
         s = s.add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
 
         let built = s.build()?;
-        let s = built.try_deserialize::<Settings>()?;
+        let mut s = built.try_deserialize::<Settings>()?;
+        if s.crypto_keys.is_none() && s.crypto_key.is_some() {
+            s.crypto_keys = s.crypto_key.clone();
+        }
+        if s.crypto_keys.is_none() {
+            return Err(ConfigError::Message(format!(
+                "Missing required {ENV_PREFIX}_CRYPTO_KEYS environment variable"
+            )));
+        }
         s.validate()?;
         Ok(s)
     }
@@ -247,6 +259,8 @@ impl Settings {
     pub fn test_settings() -> Self {
         // Provide test settings based on enabled features.
         // semi-hack to satisfy clippy --all --all-features
+        let crypto_keys = Some(format!("[\"{}\"]", Fernet::generate_key()));
+
         if cfg!(feature = "bigtable") {
             let host = env::var("BIGTABLE_EMULATOR_HOST").unwrap_or("localhost:8086".to_owned());
             let db_dsn = Some(format!("grpc://{}", host));
@@ -261,6 +275,7 @@ impl Settings {
             return Self {
                 db_dsn,
                 db_settings,
+                crypto_keys,
                 ..Default::default()
             };
         }
@@ -271,6 +286,7 @@ impl Settings {
             return Self {
                 db_dsn,
                 db_settings,
+                crypto_keys,
                 ..Default::default()
             };
         }
@@ -281,6 +297,7 @@ impl Settings {
             return Self {
                 db_dsn,
                 db_settings,
+                crypto_keys,
                 ..Default::default()
             };
         }
@@ -351,26 +368,34 @@ mod tests {
     fn test_default_settings() {
         // Test that the Config works the way we expect it to.
         use std::env;
+        let key: &str = "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=, SomeOtherKey-x6iWJov9wm70Us6kA9veeXdb8QUuzL=]";
         let port = format!("{ENV_PREFIX}__PORT").to_uppercase();
         let msg_limit = format!("{ENV_PREFIX}__MSG_LIMIT").to_uppercase();
-        let fernet = format!("{ENV_PREFIX}__CRYPTO_KEY").to_uppercase();
+        let fernet = format!("{ENV_PREFIX}__CRYPTO_KEYS").to_uppercase();
+        let old_fernet = format!("{ENV_PREFIX}__CRYPTO_KEY").to_uppercase();
 
         let v1 = env::var(&port);
         let v2 = env::var(&msg_limit);
         unsafe {
             env::set_var(&port, "9123");
             env::set_var(&msg_limit, "123");
-            env::set_var(&fernet, "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]");
+            env::set_var(&fernet, key);
         }
         let settings = Settings::with_env_and_config_files(&Vec::new()).unwrap();
         assert_eq!(settings.endpoint_hostname, "localhost".to_owned());
         assert_eq!(&settings.port, &9123);
         assert_eq!(&settings.msg_limit, &123);
-        assert_eq!(
-            &settings.crypto_key,
-            "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]"
-        );
+        assert_eq!(&settings.crypto_keys, &Some(key.to_owned()));
         assert_eq!(settings.open_handshake_timeout, Duration::from_secs(5));
+
+        // Ensure that the old `CRYPTO_KEY` env var is still supported for backwards
+        // compatibility.
+        unsafe {
+            env::remove_var(&fernet);
+            env::set_var(&old_fernet, key);
+        }
+        let settings = Settings::with_env_and_config_files(&Vec::new()).unwrap();
+        assert_eq!(&settings.crypto_keys, &Some(key.to_owned()));
 
         // reset (just in case)
         if let Ok(p) = v1 {
@@ -390,6 +415,6 @@ mod tests {
             unsafe { env::remove_var(&msg_limit) };
         }
         // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { env::remove_var(&fernet) };
+        unsafe { env::remove_var(&old_fernet) };
     }
 }

@@ -26,6 +26,7 @@ actix-http.workspace = true
 actix-test.workspace = true
 ctor.workspace = true
 tokio.workspace = true
+fernet.workspace = true
 
 autoconnect_common = { workspace = true, features = ["test-support"] }
 

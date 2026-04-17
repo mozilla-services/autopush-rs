@@ -605,6 +605,7 @@ dependencies = [
  "autoconnect_ws",
  "autopush_common",
  "ctor",
+ "fernet",
  "futures-util",
  "serde_json",
  "slog-scope",
