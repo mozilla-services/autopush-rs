@@ -1,3 +1,4 @@
+pub mod forward;
 pub mod health;
 pub mod registration;
 #[cfg(feature = "reliable_report")]
