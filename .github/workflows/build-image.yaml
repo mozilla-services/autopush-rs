@@ -1,0 +1,82 @@
+name: Build Image for public
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - "master"
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  build:
+    name: Build image
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        component:
+          - autoconnect
+          - autoendpoint
+        features:
+          - production
+          - redis
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          filter: blob:none
+          fetch-depth: 0
+
+      - name: Checkout last commit
+        id: checkout
+        run: |
+          LAST_TAG=$(git for-each-ref refs/tags --sort=-authordate --format='%(refname:short)' | grep '^[[:digit:]]*\.[[:digit:]]*\.[[:digit:]]$' | head -n1)
+          echo "LAST_TAG: $LAST_TAG"
+          echo "tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+          git checkout $LAST_TAG
+
+      - name: Generate container meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # list of Docker images to use as base name for tags
+          images: |
+            ghcr.io/${{ github.repository }}/${{ matrix.component }}
+          tags: |
+            type=schedule
+            type=raw,value=latest,enable=${{matrix.features == 'production'}}
+            type=semver,pattern={{version}},value=${{ steps.checkout.outputs.tag }},enable=${{matrix.features == 'production'}}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.checkout.outputs.tag }},enable=${{matrix.features == 'production'}}
+            type=semver,pattern={{major}},value=${{ steps.checkout.outputs.tag }},enable=${{matrix.features == 'production'}}
+            type=raw,value=latest-${{matrix.features}}
+            type=semver,pattern={{version}}-${{matrix.features}},value=${{ steps.checkout.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}}-${{matrix.features}},value=${{ steps.checkout.outputs.tag }}
+            type=semver,pattern={{major}}-${{matrix.features}},value=${{ steps.checkout.outputs.tag }}
+
+      - name: Build image
+        uses: redhat-actions/buildah-build@v2
+        id: build-image
+        with:
+          oci: true
+          archs:
+          build-args: |
+            BUILD_ARGS=${{ matrix.features != 'production' && format('--features {0}', matrix.features) || '' }}
+            CRATE=${{ matrix.component }}
+            BINARY=${{ matrix.component }}
+          image: ${{ matrix.component }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          containerfiles: ./Dockerfile
+
+      - name: Push to ghcr.io
+        id: push-to-ghcr
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
