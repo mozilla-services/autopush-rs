@@ -31,7 +31,9 @@ use crate::metrics;
 #[cfg(feature = "stub")]
 use crate::routers::stub::router::StubRouter;
 use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
+use crate::routes::forward::new_forward_endpoint_route;
 use crate::routes::{
+    forward::forward_route,
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
     registration::{
         get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
@@ -290,6 +292,11 @@ impl Server {
                     web::resource(["/wpush/{api_version}/{token}", "/wpush/{token}"])
                         .route(web::post().to(webpush_route)),
                 )
+                .service(
+                    web::resource("/fpush/v1/new")
+                        .route(web::post().to(new_forward_endpoint_route)),
+                )
+                .service(web::resource("/fpush/v1/{token}").route(web::post().to(forward_route)))
                 .service(
                     web::resource("/m/{message_id}")
                         .route(web::delete().to(delete_notification_route)),
