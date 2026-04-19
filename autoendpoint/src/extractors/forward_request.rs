@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use actix_http::header::{self, HeaderMap};
 use actix_web::{FromRequest, HttpRequest, web::Data};
 use autopush_common::{
@@ -8,6 +6,7 @@ use autopush_common::{
 use cadence::StatsdClient;
 use futures::{FutureExt, future};
 use openssl::{ec::PointConversionForm, hash::MessageDigest};
+use reqwest::header::HeaderValue;
 
 use crate::{
     error::{ApiError, ApiErrorKind, ApiResult},
@@ -196,7 +195,6 @@ impl FromRequest for ForwardRequest {
             } else {
                 in_headers.remove(header::AUTHORIZATION);
             }
-            in_headers.remove(header::HOST);
             let req_headers = actix_to_reqwest_headers(in_headers);
 
             // Note: we should not follow redirect. reqwest can't handle per-request
@@ -249,19 +247,26 @@ fn set_vapid_authorization(
     Ok(())
 }
 
+/// Make actix headers with TTL, Urgency, Topic, Authorization from the request
+///
+/// Set Content-Encoding to `application/octet-stream`
+///
+/// Authorization header must already be updated to target the forwarded endpoint
 fn actix_to_reqwest_headers(in_headers: HeaderMap) -> reqwest::header::HeaderMap {
     let mut req_headers = reqwest::header::HeaderMap::new();
-    for (name, value) in in_headers {
-        if let Ok(name) = reqwest::header::HeaderName::from_str(name.as_str()) {
+    for header_name in ["ttl", "urgency", "topic", "authorization"] {
+        if let Some(value) = in_headers.get(header_name) {
             if let Ok(value) = value.as_bytes().try_into() {
-                req_headers.append(name, value);
+                req_headers.insert(header_name, value);
             } else {
                 trace!("⏩️forward: received invalid header value {value:?}");
             }
-        } else {
-            trace!("⏩️forward: received invalid header {name}");
         }
     }
+    req_headers.insert(
+        "content-type",
+        HeaderValue::from_static("application/octet-stream"),
+    );
     req_headers
 }
 
