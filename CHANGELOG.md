@@ -1,3 +1,21 @@
+<a name="1.81.3"></a>
+## 1.81.3 (2026-04-17)
+
+
+#### Features
+
+*   Add profile specific build (#1144) ([567c8694](https://github.com/mozilla-services/autopush-rs/commit/567c8694328d2e7f6dad120f7783b8205b70706b))
+
+#### Bug Fixes
+
+*   Handle no tracking keys for health check. (#1149) ([511c95a9](https://github.com/mozilla-services/autopush-rs/commit/511c95a9b162eb11ef26ece28cc7ec8505f64f8a))
+
+#### Chore
+
+*   tag 1.81.2 (#1141) ([d4557b6a](https://github.com/mozilla-services/autopush-rs/commit/d4557b6a7238dc11ab97b1cd8f6c65dc8eb4132e))
+
+
+
 <a name="1.81.2"></a>
 ## 1.81.2 (2026-04-09)
 
