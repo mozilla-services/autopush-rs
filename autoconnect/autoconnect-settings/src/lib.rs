@@ -177,28 +177,28 @@ impl Default for Settings {
 impl Settings {
     /// Load the settings from the config files in order first then the environment.
     pub fn with_env_and_config_files(filenames: &[String]) -> Result<Self, ConfigError> {
-        let mut s = Config::builder();
+        let mut settings_collection = Config::builder();
 
         // Merge the configs from the files
         for filename in filenames {
-            s = s.add_source(File::with_name(filename));
+            settings_collection = settings_collection.add_source(File::with_name(filename));
         }
 
         // Merge the environment overrides
-        s = s.add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
+        settings_collection = settings_collection.add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
 
-        let built = s.build()?;
-        let mut s = built.try_deserialize::<Settings>()?;
-        if s.crypto_keys.is_none() && s.crypto_key.is_some() {
-            s.crypto_keys = s.crypto_key.clone();
+        let built = settings_collection.build()?;
+        let mut settings = built.try_deserialize::<Settings>()?;
+        if settings.crypto_keys.is_none() && settings.crypto_key.is_some() {
+            settings.crypto_keys = settings.crypto_key.clone();
         }
-        if s.crypto_keys.is_none() {
+        if settings.crypto_keys.is_none() {
             return Err(ConfigError::Message(format!(
                 "Missing required {ENV_PREFIX}_CRYPTO_KEYS environment variable"
             )));
         }
-        s.validate()?;
-        Ok(s)
+        settings.validate()?;
+        Ok(settings)
     }
 
     pub fn router_url(&self) -> String {

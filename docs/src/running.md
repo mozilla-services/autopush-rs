@@ -104,13 +104,13 @@ docker run \
 ## Configuration
 
 Autopush can be configured in two ways; by
-environment variables, and by configuration files. See [the configuration documentation](config_options.md) for more details on the available options and how to set them. Each application has it's own configuration file, specified using the `--config` option. This option specifies the path of the TOML configuration file to use.
+environment variables, and by configuration files. See [the configuration documentation](config_options.md) for more details on the available options and how to set them. Each application has its own configuration file, specified using the `--config` option. This option specifies the path of the TOML configuration file to use.
 
 ## Start Autopush
 
 The following instructions will allow you to run Autopush "locally" in a Ubuntu / Debian environment. If you prefer, the [development](development.md) document has more details.
 
-One pattern that has helped with development and local testing is to create configuration files that match the application and data store. For example, you might have a configuration for `autoconnect_bigtable.toml` which contains configuration information for the connect node using bigtable as it's data store. (You would also want to use
+One pattern that has helped with development and local testing is to create configuration files that match the application and data store. For example, you might have a configuration for `autoconnect_bigtable.toml` which contains configuration information for the connect node using bigtable as its data store. (You would also want to use
 `autoendpoint_bigtable.toml` in this case since data stores need to be shared between the applications.)
 
 This allows you to run an easier command like:
@@ -133,7 +133,7 @@ For `run.bash`:
 # convention.
 #
 # First, increase the file limit for the process, which is required for the Bigtable emulator.
-ulimit -s 64000
+ulimit -n 64000
 # Set the application from the first argument, or default to `autoconnect`
 APP=${1:-autoconnect}
 # Set the data store from the second argument, or default to `bigtable`

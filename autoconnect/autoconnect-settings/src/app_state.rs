@@ -57,6 +57,8 @@ impl AppState {
             .clone()
             .unwrap_or_else(|| settings.crypto_key.clone().unwrap());
         // TODO: switch to make_fernet(); move make_fernet() to autopush_common.
+        // Be consistent with the format of the keys arguments. This matches how the keys are
+        // specified in autoendpoint.
         if !(crypto_keys.starts_with('[') && crypto_keys.ends_with(']')) {
             return Err(ConfigError::Message(format!(
                 "Invalid {}__CRYPTO_KEY",

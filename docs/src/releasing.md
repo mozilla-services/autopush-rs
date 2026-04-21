@@ -71,30 +71,30 @@ i.e. If a new minor version is being released after `1.21.0`, the
     desired release version.
 7. Run `clog --setversion {version}`, verify changes were properly
     accounted for in `CHANGELOG.md`.
-9. `git commit -am "chore: tag {version}"` to commit the new version and
+8. `git commit -am "chore: tag {version}"` to commit the new version and
     record of changes.
-10. `git tag -sm "chore: tag {version}" {version}` to create a signed
+9. `git tag -sm "chore: tag {version}" {version}` to create a signed
     tag of the current HEAD commit for release.
-11. `git push --set-upstream origin release/{major}.{minor}` to push the
+10. `git push --set-upstream origin release/{major}.{minor}` to push the
     commits to a new origin release branch.
-12. `git push --tags origin release/{major}.{minor}` to push the tags to
+11. `git push --tags origin release/{major}.{minor}` to push the tags to
     the release branch.
-13. Submit a pull request on github to merge the release branch to
+12. Submit a pull request on github to merge the release branch to
     master.
-14. Go to the [autopush releases
+13. Go to the [autopush releases
     page](https://github.com/mozilla-services/autopush/releases), you
     should see the new tag with no release information under it.
-15. Click the `Draft a new release` button.
-16. Enter the tag for `Tag version`.
-17. Copy/paste the changes from `CHANGELOG.md` into the release
+14. Click the `Draft a new release` button.
+15. Enter the tag for `Tag version`.
+16. Copy/paste the changes from `CHANGELOG.md` into the release
     description omitting the top 2 lines (the a name HTML and the
     version) of the file.
 
     Keep these changes handy, you\'ll need them again shortly.
 
-18. Once the release branch pull request is approved and merged, click
+17. Once the release branch pull request is approved and merged, click
     `Publish Release`.
-19. File a bug for stage deployment in Bugzilla, in the `Cloud Services`
+18. File a bug for stage deployment in Bugzilla, in the `Cloud Services`
     product, under the `Operations: Deployment Requests` component. It
     should be titled `Please deploy autopush {major}.{minor} to STAGE`
     and include the changes in the Description along with any additional
