@@ -5,4 +5,5 @@ ignore = [
     "RUSTSEC-2026-0049", # Bound by rustls 0.22.4, bound by tokio-rustls 0.25, hyper-rustls 0.26, and a2 0.10
     "RUSTSEC-2026-0098", # Bound by rustls 0.22.4, bound by tokio-rustls 0.25, hyper-rustls 0.26, and a2 0.10
     "RUSTSEC-2026-0099", # Bound by rustls 0.22.4, bound by tokio-rustls 0.25, hyper-rustls 0.26, and a2 0.10
+    "RUSTSEC-2026-0104", # Bound by rustls 0.22.4, bound by tokio-rustls 0.25, hyper-rustls 0.26, and a2 0.10
 ]
