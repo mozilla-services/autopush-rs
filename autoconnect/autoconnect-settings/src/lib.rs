@@ -185,7 +185,8 @@ impl Settings {
         }
 
         // Merge the environment overrides
-        settings_collection = settings_collection.add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
+        settings_collection = settings_collection
+            .add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
 
         let built = settings_collection.build()?;
         let mut settings = built.try_deserialize::<Settings>()?;
