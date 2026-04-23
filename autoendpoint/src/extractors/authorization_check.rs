@@ -3,9 +3,9 @@ use crate::error::{ApiError, ApiErrorKind};
 use crate::headers::util::get_header;
 use crate::server::AppState;
 use actix_web::dev::Payload;
-use actix_web::{web::Data, FromRequest, HttpRequest};
-use futures::future::LocalBoxFuture;
+use actix_web::{FromRequest, HttpRequest, web::Data};
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use openssl::error::ErrorStack;
 use uuid::Uuid;
 

@@ -9,9 +9,9 @@ use cadence::StatsdClient;
 use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, RecycleError, Timeouts};
 use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
 
-use crate::db::bigtable::{bigtable_client::BigtableDb, BigTableDbSettings, BigTableError};
-use crate::db::error::{DbError, DbResult};
 use crate::db::DbSettings;
+use crate::db::bigtable::{BigTableDbSettings, BigTableError, bigtable_client::BigtableDb};
+use crate::db::error::{DbError, DbResult};
 
 const MAX_MESSAGE_LEN: i32 = 1 << 28; // 268,435,456 bytes
 const DEFAULT_GRPC_PORT: u16 = 443;
@@ -194,19 +194,18 @@ impl Manager for BigtableClientManager {
         client: &mut Self::Type,
         metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        if let Some(timeout) = self.settings.database_pool_connection_ttl {
-            if Instant::now() - metrics.created > timeout {
-                debug!("🏊 Recycle requested (old).");
-                return Err(RecycleError::message("Connection too old"));
-            }
+        if let Some(timeout) = self.settings.database_pool_connection_ttl
+            && Instant::now() - metrics.created > timeout
+        {
+            debug!("🏊 Recycle requested (old).");
+            return Err(RecycleError::message("Connection too old"));
         }
-        if let Some(timeout) = self.settings.database_pool_max_idle {
-            if let Some(recycled) = metrics.recycled {
-                if Instant::now() - recycled > timeout {
-                    debug!("🏊 Recycle requested (idle).");
-                    return Err(RecycleError::message("Connection too idle"));
-                }
-            }
+        if let Some(timeout) = self.settings.database_pool_max_idle
+            && let Some(recycled) = metrics.recycled
+            && Instant::now() - recycled > timeout
+        {
+            debug!("🏊 Recycle requested (idle).");
+            return Err(RecycleError::message("Connection too idle"));
         }
 
         if !client

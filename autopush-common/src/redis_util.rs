@@ -1,4 +1,4 @@
-use redis::{aio::ConnectionLike, cmd, pipe, AsyncCommands, Pipeline, RedisError, ToRedisArgs};
+use redis::{AsyncCommands, Pipeline, RedisError, ToRedisArgs, aio::ConnectionLike, cmd, pipe};
 
 pub const MAX_TRANSACTION_LOOP: usize = 10;
 

@@ -1,10 +1,11 @@
 //! Health and Dockerflow routes
 use std::collections::HashMap;
+use std::fs::read_to_string;
 use std::thread;
 
 use actix_web::{
-    web::{Data, Json},
     HttpResponse,
+    web::{Data, Json},
 };
 use reqwest::StatusCode;
 use serde_json::json;
@@ -21,6 +22,23 @@ use autopush_common::metrics::StatsdClientExt;
 #[cfg(feature = "reliable_report")]
 use autopush_common::util::b64_encode_url;
 
+/// get the local memory usage in percentage of limit (presumes running under kubernetes)
+pub fn memory_usage_percentage(memory_path: &str) -> Option<f64> {
+    // If we can read (and there is a limit)
+    if let Ok(mem_limit_str) = read_to_string(format!("{}/{}", memory_path, "memory.max"))
+        && mem_limit_str.trim() != "max"
+        && let Ok(mem_limit) = mem_limit_str.trim().parse::<u64>()
+        // get the current memory usage snapshot
+        && let Ok(mem_current_str) = read_to_string(format!("{}/{}", memory_path, "memory.current"))
+        && let Ok(mem_current) = mem_current_str.trim().parse::<u64>()
+    {
+        // Stars have aligned, and we can return a value.
+        return Some((mem_current as f64 / mem_limit as f64) * 100.0);
+    }
+
+    None
+}
+
 /// Handle the `/health` and `/__heartbeat__` routes
 pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     let router_health = interpret_table_health(state.db.router_table_exists().await);
@@ -29,8 +47,6 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
     routers.insert("apns", state.apns_router.active());
     routers.insert("fcm", state.fcm_router.active());
 
-    // This is only mutable if `reliable_report` is enabled
-    #[allow(unused_mut)]
     let mut health = json!({
         "status": if state
             .db
@@ -49,7 +65,15 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
         "router_table": router_health,
         "message_table": message_health,
         "routers": routers,
+        "request_count":state.in_process_subscription_updates.load(std::sync::atomic::Ordering::Relaxed),
     });
+
+    // if we can display memory usage, do so.
+    if let Some(path) = &state.settings.kubernetes_memory_path
+        && let Some(mem_usage) = memory_usage_percentage(path)
+    {
+        health["memory_usage_percentage"] = json!(mem_usage);
+    }
 
     #[cfg(feature = "reliable_report")]
     {
@@ -63,9 +87,14 @@ pub async fn health_route(state: Data<AppState>) -> Json<serde_json::Value> {
                     .tracking_keys()
                     .unwrap_or_default()
                     .iter()
+                    .filter(|k| !k.is_empty())
                     .map(|k|
                         // Hint the key values
-                        b64_encode_url(k)[..8].to_string())
+                        if k.len() > 8 {
+                            b64_encode_url(k)[..8].to_string()
+                        } else {
+                            "".to_owned()
+                        })
                     .collect();
                 if keys.is_empty() {
                     Ok("NO_TRACKING_KEYS".to_owned())
@@ -144,4 +173,25 @@ pub async fn log_check() -> ApiResult<String> {
     });
 
     Err(ApiErrorKind::LogCheck.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[actix_rt::test]
+    async fn test_health_route() {
+        let mut mock_db = autopush_common::db::mock::MockDbClient::new();
+        mock_db.expect_router_table_exists().returning(|| Ok(true));
+        mock_db.expect_message_table_exists().returning(|| Ok(true));
+        mock_db.expect_health_check().returning(|| Ok(true));
+
+        let state: AppState = AppState::test_default(mock_db).await;
+        let response = health_route(Data::new(state)).await;
+        assert_eq!(
+            response["reliability"].get("Ok"),
+            Some(&serde_json::Value::String("NO_TRACKING_KEYS".to_owned()))
+        );
+        assert_eq!(response["status"], "OK");
+    }
 }

@@ -5,8 +5,8 @@ use crate::server::AppState;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
-use futures::future::LocalBoxFuture;
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use uuid::Uuid;
 
 use autopush_common::db::User;

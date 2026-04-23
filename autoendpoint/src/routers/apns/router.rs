@@ -12,10 +12,9 @@ use crate::routers::common::{
 };
 use crate::routers::{Router, RouterError, RouterResponse};
 use a2::{
-    self,
-    request::payload::{Payload, PayloadLike},
-    DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
+    self, DefaultNotificationBuilder, Endpoint, NotificationBuilder, NotificationOptions, Priority,
     Response,
+    request::payload::{Payload, PayloadLike},
 };
 use actix_web::http::StatusCode;
 use async_trait::async_trait;
@@ -465,6 +464,7 @@ impl Router for ApnsRouter {
                 ..Default::default()
             },
         );
+        let message_length = message_data.get("body").map(|s| s.len()).unwrap_or(0);
         payload.data = message_data
             .into_iter()
             .map(|(k, v)| (k, Value::String(v)))
@@ -474,7 +474,7 @@ impl Router for ApnsRouter {
         let payload_json = payload
             .clone()
             .to_json_string()
-            .map_err(ApnsError::SizeLimit)?;
+            .map_err(|_| RouterError::TooMuchData(message_length))?;
         message_size_check(payload_json.as_bytes(), self.settings.max_data)?;
 
         // Send to APNS
@@ -522,7 +522,7 @@ mod tests {
     use crate::routers::apns::error::ApnsError;
     use crate::routers::apns::router::{ApnsClient, ApnsClientData, ApnsRouter};
     use crate::routers::apns::settings::ApnsSettings;
-    use crate::routers::common::tests::{make_notification, CHANNEL_ID};
+    use crate::routers::common::tests::{CHANNEL_ID, make_notification};
     use crate::routers::{Router, RouterError, RouterResponse};
     use a2::request::payload::Payload;
     use a2::{Error, Response};

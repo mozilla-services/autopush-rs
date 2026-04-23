@@ -5,7 +5,7 @@ use futures::pin_mut;
 
 use autoconnect_common::{
     protocol::ServerMessage,
-    test_support::{hello_db, hello_json, UA},
+    test_support::{UA, hello_db, hello_json},
 };
 use autoconnect_settings::{AppState, Settings};
 use autoconnect_ws_sm::UnidentifiedClient;

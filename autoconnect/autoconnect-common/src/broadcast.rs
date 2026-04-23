@@ -254,13 +254,13 @@ impl BroadcastChangeTracker {
             if !client_set.broadcast_list.contains(&bcast.broadcast) {
                 continue;
             }
-            if let Some(ver) = self.broadcast_versions.get(&bcast.broadcast) {
-                if let Some(bcast_id) = self.broadcast_registry.lookup_id(bcast.broadcast) {
-                    bcast_delta.push(Broadcast {
-                        broadcast_id: bcast_id,
-                        version: (*ver).clone(),
-                    });
-                }
+            if let Some(ver) = self.broadcast_versions.get(&bcast.broadcast)
+                && let Some(bcast_id) = self.broadcast_registry.lookup_id(bcast.broadcast)
+            {
+                bcast_delta.push(Broadcast {
+                    broadcast_id: bcast_id,
+                    version: (*ver).clone(),
+                });
             }
         }
         client_set.change_count = self.change_count;
@@ -274,13 +274,13 @@ impl BroadcastChangeTracker {
         let mut bcast_delta = Vec::new();
         for bcast in broadcasts.iter() {
             if let Some(bcast_key) = self.broadcast_registry.lookup_key(&bcast.broadcast_id) {
-                if let Some(ver) = self.broadcast_versions.get(&bcast_key) {
-                    if *ver != bcast.version {
-                        bcast_delta.push(Broadcast {
-                            broadcast_id: bcast.broadcast_id.clone(),
-                            version: (*ver).clone(),
-                        });
-                    }
+                if let Some(ver) = self.broadcast_versions.get(&bcast_key)
+                    && *ver != bcast.version
+                {
+                    bcast_delta.push(Broadcast {
+                        broadcast_id: bcast.broadcast_id.clone(),
+                        version: (*ver).clone(),
+                    });
                 }
                 bcast_list.insert(bcast_key);
             }
@@ -305,13 +305,13 @@ impl BroadcastChangeTracker {
         let mut bcast_delta = self.change_count_delta(broadcast_subs).unwrap_or_default();
         for bcast in broadcasts.iter() {
             if let Some(bcast_key) = self.broadcast_registry.lookup_key(&bcast.broadcast_id) {
-                if let Some(ver) = self.broadcast_versions.get(&bcast_key) {
-                    if *ver != bcast.version {
-                        bcast_delta.push(Broadcast {
-                            broadcast_id: bcast.broadcast_id.clone(),
-                            version: (*ver).clone(),
-                        });
-                    }
+                if let Some(ver) = self.broadcast_versions.get(&bcast_key)
+                    && *ver != bcast.version
+                {
+                    bcast_delta.push(Broadcast {
+                        broadcast_id: bcast.broadcast_id.clone(),
+                        version: (*ver).clone(),
+                    });
                 }
                 broadcast_subs.broadcast_list.insert(bcast_key);
             }

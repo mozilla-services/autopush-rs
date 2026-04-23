@@ -4,9 +4,9 @@ use autopush_common::reliability::PushReliability;
 use cadence::{Counted, StatsdClient, Timed};
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
-use std::collections::{hash_map::RandomState, HashMap};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{HashMap, hash_map::RandomState};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use url::Url;
 use uuid::Uuid;
@@ -16,7 +16,7 @@ use crate::extractors::{notification::Notification, router_data_input::RouterDat
 use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::{Router, RouterError, RouterResponse};
 
-use autopush_common::db::{client::DbClient, User};
+use autopush_common::db::{User, client::DbClient};
 use autopush_common::metric_name::MetricName;
 use autopush_common::metrics::StatsdClientExt;
 
@@ -151,9 +151,7 @@ impl WebPushRouter {
             if let Some(revert_state) = revert_state {
                 trace!(
                     "🔎⚠️ Revert {:?} from {:?} to {:?}",
-                    &notification.reliability_id,
-                    &notification.reliable_state,
-                    revert_state
+                    &notification.reliability_id, &notification.reliable_state, revert_state
                 );
                 notification
                     .record_reliability(&self.reliability, revert_state)
@@ -405,7 +403,7 @@ mod test {
 
     use reqwest;
 
-    use crate::extractors::subscription::tests::{make_vapid, PUB_KEY};
+    use crate::extractors::subscription::tests::{PUB_KEY, make_vapid};
     use crate::headers::vapid::VapidClaims;
     use autopush_common::errors::ReportableError;
     #[cfg(feature = "reliable_report")]

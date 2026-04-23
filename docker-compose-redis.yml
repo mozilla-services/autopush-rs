@@ -1,0 +1,48 @@
+services:
+  autoconnect:
+    container_name: autopush-autoconnect
+    build:
+      # context: https://github.com/mozilla-services/autopush-rs.git
+      args:
+        BUILD_ARGS: "--no-default-features --features redis"
+        CRATE: autoconnect
+        BINARY: autoconnect
+    environment:
+      - "AUTOCONNECT__DB_DSN=redis://redis"
+      - "AUTOCONNECT__CRYPTO_KEY=[<CRYPTOKEYHERE>]"
+      - "AUTOCONNECT__ENDPOINT_SCHEME=https" # The ENDPOINT* var are for the public facing autoendpoint url
+      - "AUTOCONNECT__ENDPOINT_HOSTNAME=update.push.example.com"
+      - "AUTOCONNECT__ENDPOINT_PORT=443" # change to something else if the scheme above is not set to https
+      - "AUTOCONNECT__ROUTER_HOSTNAME=autoconnect" # This is used by autoendpoint to reach this autoconnect
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  autoendpoint:
+    container_name: autopush-autoend
+    build:
+      # context: https://github.com/mozilla-services/autopush-rs.git
+      args:
+        BUILD_ARGS: "--no-default-features --features redis"
+        CRATE: autoendpoint
+        BINARY: autoendpoint
+    environment:
+      - "AUTOEND__DB_DSN=redis://redis"
+      - 'AUTOEND__CRYPTO_KEYS=[<CRYPTOKEYHERE>]'
+      - "AUTOEND__HOST=0.0.0.0" # autoendpoint must listen on 0.0.0.0 with docker
+      - "AUTOEND__PORT=8082" # This is the port we listen on locally
+      - "AUTOEND__ENDPOINT_URL=https://update.push.example.com" # This is the public facing url to reach autoendpoint
+    ports:
+      - "8082:8082"
+    depends_on:
+      - redis
+      - autoconnect
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    container_name: autopush-redis
+    restart: unless-stopped
+    command: redis-server

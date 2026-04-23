@@ -1,3 +1,87 @@
+<a name="1.81.3"></a>
+## 1.81.3 (2026-04-17)
+
+
+#### Features
+
+*   Add profile specific build (#1144) ([567c8694](https://github.com/mozilla-services/autopush-rs/commit/567c8694328d2e7f6dad120f7783b8205b70706b))
+
+#### Bug Fixes
+
+*   Handle no tracking keys for health check. (#1149) ([511c95a9](https://github.com/mozilla-services/autopush-rs/commit/511c95a9b162eb11ef26ece28cc7ec8505f64f8a))
+
+#### Chore
+
+*   tag 1.81.2 (#1141) ([d4557b6a](https://github.com/mozilla-services/autopush-rs/commit/d4557b6a7238dc11ab97b1cd8f6c65dc8eb4132e))
+
+
+
+<a name="1.81.2"></a>
+## 1.81.2 (2026-04-09)
+
+
+#### Chore
+
+*   tag 1.81.1 (#1137) ([4837054c](https://github.com/mozilla-services/autopush-rs/commit/4837054c4a378548bf872eb3a2f42185c9422727))
+*   tag 1.81.0 (#1135) ([a4a88adc](https://github.com/mozilla-services/autopush-rs/commit/a4a88adc37262a93d5b9ba280614c01b22abca77))
+
+#### Features
+
+*   Make the kubernetes memory check optional (#1140) ([e4fca57d](https://github.com/mozilla-services/autopush-rs/commit/e4fca57dabe10d86bb6faffe5c16af29ed5db705))
+*   restore the "<release tag>_enterprise" tag w/ ent gar (#1136) ([4a6abdc6](https://github.com/mozilla-services/autopush-rs/commit/4a6abdc6424cb681ee7f4188b8ac29e40a661cd4))
+
+
+
+<a name="1.81.1"></a>
+## 1.81.1 (2026-04-02)
+
+
+#### Features
+
+*   restore the "<release tag>_enterprise" tag w/ ent gar (#1136) ([4a6abdc6](https://github.com/mozilla-services/autopush-rs/commit/4a6abdc6424cb681ee7f4188b8ac29e40a661cd4))
+
+
+
+<a name="1.81.0"></a>
+## 1.81.0 (2026-04-01)
+
+
+#### Features
+
+*   restore the "latest_enterprise" tag w/ ent gar (#1134) ([0419ba26](https://github.com/mozilla-services/autopush-rs/commit/0419ba268d3469fc13a21f00f5e2c6fa27b2dc66))
+*   Return error code 400 for invalid AppIds (#1130) ([e5b5ef9e](https://github.com/mozilla-services/autopush-rs/commit/e5b5ef9e95ca1175bbc6eda924dab21d0344e2b6))
+*   Add memory check to __health__ (#1128) ([ac6157dc](https://github.com/mozilla-services/autopush-rs/commit/ac6157dc9638346c88f9031645e8ae208178ae6c))
+*   Add number of in-process requests to health check (#1127) ([c09dc2a6](https://github.com/mozilla-services/autopush-rs/commit/c09dc2a65710bb3910639c8a986c14dff72d991f))
+
+#### Chore
+
+*   Updates for 03/2026 (#1131) ([0758afbd](https://github.com/mozilla-services/autopush-rs/commit/0758afbd39d8492381cd4bc3315a77efb97824db))
+*   tag 1.80.1 (#1126) ([823bc2fb](https://github.com/mozilla-services/autopush-rs/commit/823bc2fbd10e0a814ffb1a688f4a3916d7422293))
+
+
+
+<a name="1.80.1"></a>
+## 1.80.1 (2026-03-20)
+
+
+#### Chore
+
+*   tag 1.80.1 ([db8140f5](https://github.com/mozilla-services/autopush-rs/commit/db8140f5e7f8419a56393f7bf09d89a73de9ccfc))
+*   tag 1.80.0 (#1112) ([dfeed4a2](https://github.com/mozilla-services/autopush-rs/commit/dfeed4a2f9bb9107c917eb5a6f4783ee7e844893))
+
+#### Bug Fixes
+
+*   Fix tests and build.rs to allow multi-database configs (#1119) ([712f1a12](https://github.com/mozilla-services/autopush-rs/commit/712f1a12d8796b2a586030190bab67f85deeb1c3))
+*   push enterprise gars via the GHA workflow (#1125) ([4064a226](https://github.com/mozilla-services/autopush-rs/commit/4064a2268212e4a7a7027924df3b54c4fd472a4b))
+*   Ensure redis config ttls are not 0 (#1115) ([f7e58768](https://github.com/mozilla-services/autopush-rs/commit/f7e58768fd385b5e2c2556c529edf4f81ca535be))
+
+#### Doc
+
+*   re-init docker compose setup documentation with Redis (#1109) ([5fd7ef68](https://github.com/mozilla-services/autopush-rs/commit/5fd7ef68f8f29e82ee86c4b498129b7d1e7c7888))
+*   Add some clarity to options and requirements (#1117) ([8e5d850d](https://github.com/mozilla-services/autopush-rs/commit/8e5d850d5a99bf44c407174d2c95c3a5deea1c14))
+
+
+
 <a name="1.80.0"></a>
 ## 1.80.0 (2026-03-10)
 

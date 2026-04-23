@@ -221,15 +221,15 @@ impl Router for FcmRouter {
 mod tests {
     use crate::error::ApiErrorKind;
     use crate::extractors::routers::RouterType;
-    use crate::routers::common::tests::{make_notification, CHANNEL_ID};
+    use crate::routers::RouterError;
+    use crate::routers::common::tests::{CHANNEL_ID, make_notification};
     use crate::routers::fcm::client::tests::{
-        make_service_key, mock_fcm_endpoint_builder, mock_token_endpoint, GCM_PROJECT_ID,
-        PROJECT_ID,
+        GCM_PROJECT_ID, PROJECT_ID, make_service_key, mock_fcm_endpoint_builder,
+        mock_token_endpoint,
     };
     use crate::routers::fcm::error::FcmError;
     use crate::routers::fcm::router::FcmRouter;
     use crate::routers::fcm::settings::FcmSettings;
-    use crate::routers::RouterError;
     use crate::routers::{Router, RouterResponse};
     use autopush_common::db::client::DbClient;
     use autopush_common::db::mock::MockDbClient;
@@ -237,6 +237,7 @@ mod tests {
     use autopush_common::{redis_util::MAX_TRANSACTION_LOOP, reliability::PushReliability};
     use std::sync::Arc;
 
+    use actix_web::http::StatusCode;
     use cadence::StatsdClient;
     use mockall::predicate;
     use std::collections::HashMap;
@@ -402,13 +403,15 @@ mod tests {
 
         let result = router.route_notification(notification).await;
         assert!(result.is_err());
+        let result_kind = &result.as_ref().err().unwrap().kind;
         assert!(
             matches!(
-                &result.as_ref().unwrap_err().kind,
+                &result_kind,
                 ApiErrorKind::Router(RouterError::Fcm(FcmError::InvalidAppId(_app_id)))
             ),
             "result = {result:?}"
         );
+        assert_eq!(result_kind.status(), StatusCode::BAD_REQUEST);
         fcm_mock.assert();
     }
 

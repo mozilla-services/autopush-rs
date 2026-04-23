@@ -1,7 +1,7 @@
+use crate::routers::RouterError;
 use crate::routers::common::message_size_check;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
-use crate::routers::RouterError;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -197,10 +197,10 @@ struct FcmErrorResponse {
 
 #[cfg(test)]
 pub mod tests {
+    use crate::routers::RouterError;
     use crate::routers::fcm::client::FcmClient;
     use crate::routers::fcm::error::FcmError;
     use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
-    use crate::routers::RouterError;
     use std::collections::HashMap;
     use url::Url;
 

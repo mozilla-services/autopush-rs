@@ -3,13 +3,17 @@ use crate::extractors::{
     message_id::MessageId, notification_headers::NotificationHeaders, subscription::Subscription,
 };
 use crate::server::AppState;
-use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
+use actix_web::{FromRequest, HttpRequest, dev::Payload, web};
 use autopush_common::util::{b64_encode_url, ms_since_epoch, sec_since_epoch};
 use cadence::CountedExt;
 use fernet::MultiFernet;
-use futures::{future, FutureExt};
+use futures::{FutureExt, future};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use uuid::Uuid;
 
 /// Wire format for delivering notifications to connection servers.
@@ -35,7 +39,9 @@ pub struct TransportNotification<'a> {
 }
 
 /// Extracts notification data from `Subscription` and request data
-#[derive(Clone, Debug)]
+// Note: Because we introduced the `in_process_counter` field and added the `Drop`
+// implementation, be very careful if adding `Clone` or `Copy` traits.
+#[derive(Debug)]
 pub struct Notification {
     /// Unique message_id for this notification
     pub message_id: String,
@@ -54,6 +60,32 @@ pub struct Notification {
     pub reliable_state: Option<autopush_common::reliability::ReliabilityState>,
     #[cfg(feature = "reliable_report")]
     pub reliability_id: Option<String>,
+    /// Internal reference to the appstate count of in process notifications.
+    /// _Note:_ This only tracks notifications that have been delivered
+    /// from a subscription provider. This does not track notifications that may
+    /// have been retrieved from storage.
+    /// This counter is in response to an incident where a large number of
+    /// valid, inbound notifications caused a cascade impact on our storage
+    /// engine, which resulted in a node OOM error killing the process. This
+    /// metric will be reported as part of the health check to allow the load
+    /// balancer to make informed routing decisions.
+    pub(crate) in_process_counter: Arc<AtomicUsize>,
+}
+
+impl Drop for Notification {
+    fn drop(&mut self) {
+        // `Clone` or `Copy` can cause the counter to decrement too many times.
+        // We'll set a floor for now.
+        let _ =
+            self.in_process_counter
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                    current.checked_sub(1)
+                });
+        trace!(
+            "🧹 Dropping notification with message_id: {}",
+            self.message_id
+        );
+    }
 }
 
 impl FromRequest for Notification {
@@ -113,6 +145,7 @@ impl FromRequest for Notification {
                 reliable_state: None,
                 #[cfg(feature = "reliable_report")]
                 reliability_id,
+                in_process_counter: app_state.in_process_subscription_updates.clone(),
             };
 
             #[cfg(feature = "reliable_report")]
@@ -124,14 +157,17 @@ impl FromRequest for Notification {
                 )
                 .await;
 
+            // record that we have a notification in process
+            notif.in_process_counter.fetch_add(1, Ordering::Relaxed);
+
             // Record the encoding if we have an encrypted payload
-            if let Some(encoding) = &notif.headers.encoding {
-                if notif.data.is_some() {
-                    app_state
-                        .metrics
-                        .incr(&format!("updates.notification.encoding.{encoding}"))
-                        .ok();
-                }
+            if let Some(encoding) = &notif.headers.encoding
+                && notif.data.is_some()
+            {
+                app_state
+                    .metrics
+                    .incr(&format!("updates.notification.encoding.{encoding}"))
+                    .ok();
             }
 
             Ok(notif)
@@ -258,5 +294,78 @@ impl Notification {
                 warn!("🔍⚠️ Unable to record reliability state log: {:?}", e);
             })
             .unwrap_or(Some(state))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use autopush_common::endpoint::make_endpoint;
+
+    use super::*;
+    use crate::server::AppState;
+
+    #[actix_rt::test]
+    async fn test_notification_counter() {
+        // If you're ever wondering how to set up a mock request, this is it.
+        let chid = uuid::Uuid::new_v4();
+        let channels = std::collections::HashSet::from([chid]);
+
+        // Set up the mock database returning only the required calls.
+        let mut mock_db = autopush_common::db::mock::MockDbClient::new();
+        mock_db
+            .expect_get_user()
+            .returning(|_| Ok(Some(autopush_common::db::User::default())));
+        mock_db
+            .expect_get_channels()
+            .returning(move |_| Ok(channels.clone()));
+        let app_state = AppState::test_default(mock_db).await;
+
+        // Now build the endpoint so that it passes all validation steps.
+        // First, build a valid endpoint with dummy data.
+        let endpoint = make_endpoint(
+            &uuid::Uuid::new_v4(),
+            &chid,
+            None,
+            "http://example.com/v2",
+            &app_state.fernet,
+        )
+        .unwrap();
+        // We have to extract the token from the endpoint. This is normally done by the actix URL parser, but that's not available..
+        let token_str = endpoint.rsplit('/').next().unwrap().to_owned();
+        let test_request = actix_web::test::TestRequest::with_uri(&endpoint)
+            .param("api_version", "v1")
+            .param("token", token_str)
+            .insert_header((
+                // Remember kids, gotta set the TTL.
+                actix_http::header::HeaderName::from_static("ttl"),
+                actix_http::header::HeaderValue::from_static("0"),
+            ))
+            .app_data(actix_web::web::Data::new(app_state.clone()))
+            .to_http_request();
+        // This has no payload. It's valid, but means no message encryption checks.
+        let mut payload = actix_web::dev::Payload::None;
+
+        // Begin the test.
+        let initial_count = app_state
+            .in_process_subscription_updates
+            .load(Ordering::Relaxed);
+        {
+            // Lets get a notification. This should bump the counter.
+            let result = Notification::from_request(&test_request, &mut payload).await;
+            assert!(
+                initial_count
+                    < app_state
+                        .in_process_subscription_updates
+                        .load(Ordering::Relaxed)
+            );
+            assert!(result.is_ok());
+        }
+        // At this point, the notification is out of context and the `Drop` should have been called.
+        assert_eq!(
+            initial_count,
+            app_state
+                .in_process_subscription_updates
+                .load(Ordering::Relaxed)
+        );
     }
 }

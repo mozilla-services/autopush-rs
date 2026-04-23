@@ -15,11 +15,11 @@ use autoconnect_common::{
     broadcast::BroadcastChangeTracker, megaphone::init_and_spawn_megaphone_updater,
     registry::ClientRegistry,
 };
-use autopush_common::db::{client::DbClient, DbSettings, StorageType};
+use autopush_common::db::{DbSettings, StorageType, client::DbClient};
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::PushReliability;
 
-use crate::{Settings, ENV_PREFIX};
+use crate::{ENV_PREFIX, Settings};
 
 #[derive(Clone)]
 pub struct AppState {

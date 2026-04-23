@@ -1,6 +1,6 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::extractors::routers::RouterType;
-use actix_web::{dev::Payload, FromRequest, HttpRequest};
+use actix_web::{FromRequest, HttpRequest, dev::Payload};
 use futures::future;
 
 /// Extracts and validates the `router_type` and `app_id` path arguments

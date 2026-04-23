@@ -1,6 +1,6 @@
 use crate::error::{ApiError, ApiErrorKind};
 use crate::headers::util::get_owned_header;
-use actix_web::{dev::Payload, FromRequest, HttpRequest};
+use actix_web::{FromRequest, HttpRequest, dev::Payload};
 use futures::future;
 use std::str::FromStr;
 

@@ -1,4 +1,4 @@
-use actix_web::{web::Data, HttpResponse};
+use actix_web::{HttpResponse, web::Data};
 
 use crate::{
     error::{ApiErrorKind, ApiResult},

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::db::error::{DbError, DbResult};
 
-use super::{cell::Cell, RowKey};
+use super::{RowKey, cell::Cell};
 
 pub type RowCells = HashMap<String, Vec<Cell>>;
 
