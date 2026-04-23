@@ -93,7 +93,7 @@ pub struct Settings {
     pub db_settings: String,
     /// Server endpoint to pull Broadcast ID change values (Sent in Pings)
     pub megaphone_api_url: Option<String>,
-    /// Broadcast token for authentication
+    /// Broadcast token for authentication (deprecated, no longer used)
     pub megaphone_api_token: Option<String>,
     /// How often to poll the server for new data
     #[serde(deserialize_with = "deserialize_u32_to_duration")]

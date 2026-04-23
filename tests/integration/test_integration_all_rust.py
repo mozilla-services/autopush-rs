@@ -173,7 +173,6 @@ MEGAPHONE_CONFIG.update(
     auto_ping_timeout=10.0,
     max_connections=5000,
     megaphone_api_url=f"http://127.0.0.1:{MOCK_SERVER_PORT}/v1/broadcasts/",
-    megaphone_api_token=MOCK_MP_TOKEN,
     megaphone_poll_interval=1,
 )
 

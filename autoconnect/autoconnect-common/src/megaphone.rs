@@ -25,20 +25,18 @@ pub async fn init_and_spawn_megaphone_updater(
     http: &reqwest::Client,
     metrics: &Arc<StatsdClient>,
     url: &str,
-    token: &str,
     poll_interval: Duration,
 ) -> reqwest::Result<()> {
-    updater(broadcaster, http, url, token).await?;
+    updater(broadcaster, http, url).await?;
 
     let broadcaster = Arc::clone(broadcaster);
     let http = http.clone();
     let metrics = Arc::clone(metrics);
     let url = url.to_owned();
-    let token = token.to_owned();
     rt::spawn(async move {
         loop {
             rt::time::sleep(poll_interval).await;
-            if let Err(e) = updater(&broadcaster, &http, &url, &token).await {
+            if let Err(e) = updater(&broadcaster, &http, &url).await {
                 report_updater_error(&metrics, e);
             } else {
                 metrics
@@ -79,12 +77,10 @@ async fn updater(
     broadcaster: &Arc<RwLock<BroadcastChangeTracker>>,
     http: &reqwest::Client,
     url: &str,
-    token: &str,
 ) -> reqwest::Result<()> {
     trace!("📢megaphone::updater");
     let MegaphoneResponse { broadcasts } = http
         .get(url)
-        .header("Authorization", token)
         .send()
         .await?
         .error_for_status()?
