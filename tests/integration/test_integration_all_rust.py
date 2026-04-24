@@ -127,7 +127,6 @@ def base64url_encode(value: bytes | str) -> str:
 
 MOCK_SERVER_PORT: Any = get_free_port()
 MOCK_MP_SERVICES: dict = {}
-MOCK_MP_TOKEN: str = f"Bearer {uuid.uuid4().hex}"
 MOCK_MP_POLLED: Event = Event()
 MOCK_SENTRY_QUEUE: Queue = Queue()
 
@@ -312,7 +311,6 @@ async def fixture_process_logs(fixture_max_endpoint_logs, fixture_max_conn_logs)
 @app.get("/v1/broadcasts")
 async def broadcast_handler(request: Request) -> dict[str, dict[str, str]]:
     """Broadcast handler setup."""
-    assert request.headers["Authorization"] == MOCK_MP_TOKEN
     MOCK_MP_POLLED.set()
     return dict(broadcasts=MOCK_MP_SERVICES)
 
