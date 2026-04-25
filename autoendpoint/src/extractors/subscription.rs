@@ -160,7 +160,7 @@ impl FromRequest for Subscription {
 }
 
 /// Add back padding to a base64 string
-fn repad_base64(data: &str) -> Cow<'_, str> {
+pub fn repad_base64(data: &str) -> Cow<'_, str> {
     let trailing_chars = data.len() % 4;
 
     if trailing_chars != 0 {
@@ -240,7 +240,7 @@ fn version_1_validation(token: &[u8]) -> ApiResult<()> {
 /// NOTE: Some customers send a VAPID public key with incorrect padding and
 /// in standard base64 encoding. (Both of these violate the VAPID RFC)
 /// Prior python versions ignored these errors, so we should too.
-fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
+pub fn decode_public_key(public_key: &str) -> ApiResult<Vec<u8>> {
     if public_key.contains(['/', '+']) {
         b64_decode_std(public_key.trim_end_matches('='))
     } else {
@@ -295,7 +295,7 @@ fn term_to_label(term: &str) -> String {
 /// - Make sure the expiration isn't too far into the future
 ///
 /// This is mostly taken care of by the jsonwebtoken library
-fn validate_vapid_jwt(
+pub fn validate_vapid_jwt(
     vapid: &VapidHeaderWithKey,
     settings: &Settings,
     metrics: &StatsdClient,
