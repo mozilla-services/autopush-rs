@@ -32,8 +32,10 @@ pub struct RedisDbSettings {
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub create_timeout: Option<Duration>,
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    // Minimum value is 1 (second), defaults to MAX_ROUTER_TTL_SECS
     pub router_ttl: Option<Duration>,
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    // Minimum value is 1 (second), defaults to MAX_NOTIFICATION_TTL_SECS
     pub notification_ttl: Option<Duration>,
 }
 
@@ -74,7 +76,7 @@ impl TryFrom<&str> for RedisDbSettings {
             ));
         }
         // Supply defaults for explicitly null values (deserializer handles missing keys)
-        // Otherwise defaults to 0 duration which is not a valid TTL
+        // Otherwise it defaults to 0 duration, which is not a valid TTL
         let me = Self {
             router_ttl: me
                 .router_ttl
