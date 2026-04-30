@@ -32,8 +32,10 @@ pub struct RedisDbSettings {
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub create_timeout: Option<Duration>,
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    // Minimum value is 1 (second), defaults to MAX_ROUTER_TTL_SECS
     pub router_ttl: Option<Duration>,
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
+    // Minimum value is 1 (second), defaults to MAX_NOTIFICATION_TTL_SECS
     pub notification_ttl: Option<Duration>,
 }
 
@@ -73,6 +75,17 @@ impl TryFrom<&str> for RedisDbSettings {
                 "notification_ttl must be greater than 0".to_string(),
             ));
         }
+        // Supply defaults for explicitly null values (deserializer handles missing keys)
+        // Otherwise it defaults to 0 duration, which is not a valid TTL
+        let me = Self {
+            router_ttl: me
+                .router_ttl
+                .or(Some(Duration::from_secs(crate::MAX_ROUTER_TTL_SECS))),
+            notification_ttl: me
+                .notification_ttl
+                .or(Some(Duration::from_secs(crate::MAX_NOTIFICATION_TTL_SECS))),
+            ..me
+        };
         Ok(me)
     }
 }
@@ -162,6 +175,18 @@ mod tests {
         assert_ne!(settings.notification_ttl, Some(Duration::from_secs(0)));
         let settings = super::RedisDbSettings::try_from("{\"router_ttl\":0}");
         assert!(settings.is_err());
+        let settings =
+            super::RedisDbSettings::try_from("{\"notification_ttl\": null, \"router_ttl\": null}")?;
+        assert_eq!(
+            settings.notification_ttl,
+            Some(std::time::Duration::from_secs(
+                crate::MAX_NOTIFICATION_TTL_SECS
+            ))
+        );
+        assert_eq!(
+            settings.router_ttl,
+            Some(std::time::Duration::from_secs(crate::MAX_ROUTER_TTL_SECS))
+        );
         Ok(())
     }
 }
