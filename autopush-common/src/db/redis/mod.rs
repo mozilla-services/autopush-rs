@@ -101,14 +101,14 @@ pub struct StorableNotification {
     pub version: String,
     pub timestamp: u64,
     // Possibly stored values, provided with a default.
-    #[serde(default = "default_ttl", skip_serializing)]
+    #[serde(default = "default_ttl")]
     pub ttl: u64,
     // Optional values, which imply a "None" default.
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sortkey_timestamp: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
