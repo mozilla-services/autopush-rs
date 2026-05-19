@@ -3,7 +3,7 @@ use std::collections::HashMap;
 /// Settings for `ApnsRouter`
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
+//#[serde(deny_unknown_fields)] // Allow unknown fields so we can add comments to the secrets.
 pub struct ApnsSettings {
     /// A JSON dict of `ApnsChannel`s. This must be a `String` because
     /// environment variables cannot encode a `HashMap<String, ApnsChannel>`
@@ -20,7 +20,7 @@ pub struct ApnsSettings {
 /// Settings for a specific APNS release channel
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
+//#[serde(deny_unknown_fields)] // Allow unknown fields so we can add comments to the secrets.
 pub struct ApnsChannel {
     /// the cert and key are either paths
     /// or an inline value that starts with "-"
