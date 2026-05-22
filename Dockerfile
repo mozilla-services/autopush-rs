@@ -3,6 +3,8 @@
 FROM rust:1.91-bookworm AS builder
 ARG CRATE
 ARG BUILD_ARGS
+ARG CXXFLAGS
+ARG CMAKE_POLICY_VERSION_MINIMUM
 
 ADD . /app
 WORKDIR /app
@@ -17,7 +19,7 @@ RUN \
     cargo --version && \
     rustc --version && \
     mkdir -m 755 bin && \
-    cargo install --path $CRATE $BUILD_ARGS --locked --root /app
+    CXXFLAGS="$CXXFLAGS" CMAKE_POLICY_VERSION_MINIMUM="$CMAKE_POLICY_VERSION_MINIMUM" cargo install --path $CRATE $BUILD_ARGS --locked --root /app
 
 
 FROM debian:bookworm-slim
