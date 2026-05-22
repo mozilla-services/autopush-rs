@@ -24,6 +24,9 @@ pub mod fcm;
 pub mod stub;
 pub mod webpush;
 
+// TODO: put behind flag
+pub mod wns;
+
 #[async_trait(?Send)]
 pub trait Router {
     /// Validate that the user can use this router, and return data to be stored in
@@ -83,6 +86,9 @@ pub enum RouterError {
     #[error(transparent)]
     Fcm(#[from] FcmError),
 
+    #[error("WNS router error: {0}")]
+    Wns(#[from] crate::routers::wns::error::WnsError),
+
     #[cfg(feature = "stub")]
     #[error(transparent)]
     Stub(#[from] StubError),
@@ -118,6 +124,7 @@ impl RouterError {
         match self {
             RouterError::Apns(e) => e.status(),
             RouterError::Fcm(e) => StatusCode::from_u16(e.status().as_u16()).unwrap_or_default(),
+            RouterError::Wns(e) => e.status(),
 
             RouterError::SaveDb(e, _) => e.status(),
             #[cfg(feature = "stub")]
@@ -138,6 +145,7 @@ impl RouterError {
         match self {
             RouterError::Apns(e) => e.errno(),
             RouterError::Fcm(e) => e.errno(),
+            RouterError::Wns(e) => todo!(),
 
             #[cfg(feature = "stub")]
             RouterError::Stub(e) => e.errno(),
@@ -164,6 +172,7 @@ impl ReportableError for RouterError {
         match &self {
             RouterError::Apns(e) => Some(e),
             RouterError::Fcm(e) => Some(e),
+            RouterError::Wns(e) => Some(e),
             RouterError::SaveDb(e, _) => Some(e),
             _ => None,
         }
@@ -201,6 +210,7 @@ impl ReportableError for RouterError {
         match &self {
             RouterError::Apns(e) => e.extras(),
             RouterError::Fcm(e) => e.extras(),
+            RouterError::Wns(e) => e.extras(),
             RouterError::SaveDb(e, sub) => {
                 let mut extras = e.extras();
                 if let Some(sub) = sub {

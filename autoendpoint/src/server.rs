@@ -30,7 +30,7 @@ use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
 #[cfg(feature = "stub")]
 use crate::routers::stub::router::StubRouter;
-use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
+use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter, wns::router::WnsRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
     registration::{
@@ -56,6 +56,7 @@ pub struct AppState {
     pub in_process_subscription_updates: Arc<AtomicUsize>,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
+    pub wns_router: Arc<WnsRouter>,
     #[cfg(feature = "stub")]
     pub stub_router: Arc<StubRouter>,
     #[cfg(feature = "reliable_report")]
@@ -67,6 +68,7 @@ pub struct AppState {
 impl AppState {
     /// build a fake AppState with a MockDbClient and default settings, for use in tests.
     pub(crate) async fn test_default(mock_db: autopush_common::db::mock::MockDbClient) -> Self {
+
         let settings = Settings {
             auth_keys: "HJVPy4ZwF4Yz_JdvXTL8hRcwIhv742vC60Tg5Ycrvw8=".to_owned(),
             ..Default::default()
@@ -113,6 +115,17 @@ impl AppState {
             #[cfg(feature = "stub")]
             stub_router: Arc::new(
                 StubRouter::new(crate::routers::stub::settings::StubSettings::default()).unwrap(),
+            ),
+            wns_router: Arc::new(
+                WnsRouter::new(
+                    crate::routers::wns::settings::WnsSettings::default(),
+                    url::Url::parse("https://example.com").unwrap(),
+                    reqwest::Client::new(),
+                    metrics.clone(),
+                    db.clone(),
+                    #[cfg(feature = "reliable_report")]
+                    reliability.clone(),
+                ).unwrap(),
             ),
             #[cfg(feature = "reliable_report")]
             reliability,

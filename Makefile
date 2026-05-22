@@ -32,6 +32,9 @@ POETRY_LOCK := $(TESTS_DIR)/poetry.lock
 FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
 INSTALL_STAMP := .install.stamp
+# The following build flags are required due to changes in Ubuntu Trixie which cause
+# the grpc library to fail to compile.
+BUILD_FLAGS := 'CXXFLAGS="-include cstdint" CMAKE_POLICY_VERSION_MINIMUM=3.5"
 
 .PHONY: docker-dev-build
 docker-dev-build:
@@ -105,7 +108,7 @@ notification-test-clean:
 
 .PHONY: build-profile
 build-profile: ##  Run the profiler with the `profile` profile. See Cargo.toml for details.
-	RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile profile
+	RUSTFLAGS="-C force-frame-pointers=yes" $(BUILD_FLAGS) cargo build --profile profile
 
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code
