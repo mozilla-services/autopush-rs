@@ -3,7 +3,6 @@
 FROM rust:1.91-bookworm AS builder
 ARG CRATE
 ARG BUILD_ARGS
-ARG BUILD_FLAGS
 
 ADD . /app
 WORKDIR /app
@@ -18,7 +17,7 @@ RUN \
     cargo --version && \
     rustc --version && \
     mkdir -m 755 bin && \
-    $(BUILD_FLAGS) cargo install --path $CRATE $BUILD_ARGS --locked --root /app
+    python3 scripts/prefix_build_flags.py cargo install --path $CRATE $BUILD_ARGS --locked --root /app
 
 
 FROM debian:bookworm-slim

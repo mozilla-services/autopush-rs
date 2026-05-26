@@ -15,6 +15,8 @@ use crate::routers::apns::settings::ApnsSettings;
 use crate::routers::fcm::settings::FcmSettings;
 #[cfg(feature = "stub")]
 use crate::routers::stub::settings::StubSettings;
+#[cfg(feature = "wns")]
+use crate::routers::wns::settings::WnsSettings;
 
 pub const ENV_PREFIX: &str = "autoend";
 
@@ -82,6 +84,9 @@ pub struct Settings {
     pub fcm: FcmSettings,
     /// APNS bridge settings
     pub apns: ApnsSettings,
+    /// WNS bridge settings
+    #[cfg(feature = "wns")]
+    pub wns: WnsSettings,
     #[cfg(feature = "stub")]
     /// "Stub" is a predictable Mock bridge that allows us to "send" data and return an expected
     /// result.
@@ -133,6 +138,8 @@ impl Default for Settings {
             apns: ApnsSettings::default(),
             #[cfg(feature = "stub")]
             stub: StubSettings::default(),
+            #[cfg(feature = "wns")]
+            wns: WnsSettings::default(),
             #[cfg(feature = "reliable_report")]
             reliability_dsn: None,
             #[cfg(feature = "reliable_report")]
