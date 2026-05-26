@@ -132,6 +132,7 @@ impl AppState {
             wns_router: Arc::new(
                 WnsRouter::new(
                     &crate::routers::wns::settings::WnsSettings::default(),
+                    url::Url::parse("https://example.com").unwrap(),
                     reqwest::Client::new(),
                     metrics.clone(),
                     db.clone(),

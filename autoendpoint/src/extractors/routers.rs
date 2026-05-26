@@ -25,6 +25,7 @@ pub enum RouterType {
     APNS,
     #[cfg(feature = "stub")]
     STUB,
+    #[cfg(feature = "wns")]
     WNS,
 }
 
@@ -39,6 +40,7 @@ impl FromStr for RouterType {
             "apns" => Ok(RouterType::APNS),
             #[cfg(feature = "stub")]
             "stub" => Ok(RouterType::STUB),
+            #[cfg(feature = "wns")]
             "wns" => Ok(RouterType::WNS),
             _ => Err(()),
         }
@@ -54,6 +56,7 @@ impl Display for RouterType {
             RouterType::APNS => "apns",
             #[cfg(feature = "stub")]
             RouterType::STUB => "stub",
+            #[cfg(feature = "wns")]
             RouterType::WNS => "wns",
         })
     }

@@ -38,9 +38,11 @@ impl FromRequest for RouterDataInput {
             // Validate the token according to each router's token schema
             let is_valid = match path_args.router_type {
                 RouterType::WebPush => true,
-                RouterType::FCM | RouterType::GCM | RouterType::APNS | RouterType::WNS => {
+                RouterType::FCM | RouterType::GCM | RouterType::APNS => {
                     VALID_TOKEN.is_match(&data.token)
                 }
+                #[cfg(feature = "wns")]
+                RouterType::WNS => VALID_TOKEN.is_match(&data.token),
                 #[cfg(feature = "stub")]
                 RouterType::STUB => data.token.as_str() == "success",
             };
