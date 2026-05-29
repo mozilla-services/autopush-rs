@@ -33,11 +33,29 @@ FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
 INSTALL_STAMP := .install.stamp
 
+
+## Do an SOP build.
+PHONY: build
+build:
+	python3 scripts/prefix_build_flags.py cargo build --features=production
+
+## Build the stand-alone/enterprise version of Autopush.
+PHONY: build-enterprise
+build-enterprise:
+	python3 scripts/prefix_build_flags.py cargo build --features=enterprise
+
+## Some systems may require a dedicated environment to build Autopush. An example of this
+## was a problem with versions of Debian Trixie having changed a header file, which caused
+## grpcio to fail to build. The `Dockerfile-dev` environment allows you to create a container
+## built off of a prior Debian version which will allow you to build and test Autopush. (It's
+## worth noting that the built image runs fine on Trixie.)
 .PHONY: docker-dev-build
 docker-dev-build:
 	echo $(CMAKE_POLICY_VERSION_MINIMUM)
 	docker build -f Dockerfile-dev -t autopush-dev .
 
+## Initialize the docker environment. 
+## This is actually pretty useful to initialize a local build environment as well.
 .PHONY: docker-init
 docker-init:
 	sudo apt update
@@ -45,9 +63,13 @@ docker-init:
 	cargo install cargo-audit
 	rustup update 1.93.1 	## RUST_VER
 
+## Install python poetry dependencies.
 .PHONY: install
 install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
 $(INSTALL_STAMP): $(PYPROJECT_TOML) $(POETRY_LOCK)
+	echo "Installing poetry dependencies. Autopush generally doesn't have an 'install', since it"
+	echo "runs as a service and the docker image points to the binary directly. If you want to "
+	echo "run the applications you can either `"
 	@if [ -z $(POETRY) ]; then echo "Poetry could not be found. See https://python-poetry.org/docs/"; exit 2; fi
 	$(POETRY) install
 	touch $(INSTALL_STAMP)
@@ -55,12 +77,15 @@ $(INSTALL_STAMP): $(PYPROJECT_TOML) $(POETRY_LOCK)
 install_poetry:
 	curl -sSL https://install.python-poetry.org | python3 - --version 2.0.0
 
+## Upgrade rust crate dependencies. This doesn't bump everything, but it can help
+## with `cargo audit` issues.
 upgrade:
 	$(CARGO) install cargo-edit ||
 		echo "\n$(CARGO) install cargo-edit failed, continuing.."
 	$(CARGO) upgrade
 	$(CARGO) update
 
+## Run the unit tests.
 .ONESHELL:
 unit-test:
 	cargo llvm-cov --summary-only --json --output-path $(UNIT_COVERAGE_JSON) \
@@ -68,19 +93,24 @@ unit-test:
 	mv target/nextest/ci/junit.xml $(UNIT_JUNIT_XML)
 	exit $$exit_code
 
+## Build the integration test docker image.
 build-integration-test:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml build
 
+## Run the integration tests inside of the integration test docker container.
+## If you want to run these tests locally, use `make integration-test-local` instead.
 .ONESHELL:
 integration-test:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests; exit_code=$$?
 	docker cp integration-tests:/code/integration__results.xml $(INTEGRATION_JUNIT_XML)
 	exit $$exit_code
 
+## Clean up the integration test toys.
 integration-test-clean:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml down
 	docker rm integration-tests
 
+## This runs the older integration tests. Chances are good you'll not need these.
 integration-test-legacy: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
@@ -88,6 +118,9 @@ integration-test-legacy: ## pytest markers are stored in `tests/pytest.ini`
 		--junit-xml=$(INTEGRATION_JUNIT_XML_LEGACY) \
 		-v $(PYTEST_ARGS)
 
+## Run the integration tests locally. Useful for debugging and doing isolate tests.
+## (remember, you can pass a partial test name to run matching tests, e.g. 
+## `PYTEST_ARGS="-k test_fcm" make integration-test-local`)
 integration-test-local: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V
 	$(POETRY) install --without dev,load,notification --no-root
@@ -95,6 +128,7 @@ integration-test-local: ## pytest markers are stored in `tests/pytest.ini`
 		--junit-xml=$(INTEGRATION_JUNIT_XML) \
 		-v $(PYTEST_ARGS)
 
+## Run the notification tests
 notification-test:
 	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml build
 	$(DOCKER_COMPOSE) -f $(NOTIFICATION_TEST_DIR)/docker-compose.yml up -d server
@@ -104,13 +138,15 @@ notification-test:
 notification-test-clean:
 	docker rm notification-tests
 
+## Build the applications with profiling information active (see Cargo.toml for details).
+# `prefix_build_flags.py` is a hack to work around the fact that we need to set some platform specific env vars for the build, 
+# but doing so in a Makefile is a nightmare. This way, we can just call this script with the same args we would 
+# normally call cargo with, and it will add the necessary env vars before running the command.
 .PHONY: build-profile
-build-profile: ##  Run the profiler with the `profile` profile. See Cargo.toml for details.
-    # `prefix_build_flags.py` is a hack to work around the fact that we need to set some platform specific env vars for the build, 
-	# but doing so in a Makefile is a nightmare. This way, we can just call this script with the same args we would 
-	# normally call cargo with, and it will add the necessary env vars before running the command.
+build-profile:
 	python3 scripts/prefix_build_flags.py RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile profile
 
+## Python Hygiene functions
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code
 	$(POETRY) run isort $(TESTS_DIR)
@@ -150,6 +186,7 @@ lint:
 	$(POETRY) run pydocstyle --config=$(PYPROJECT_TOML) $(TESTS_DIR)
 	$(POETRY) run mypy $(TESTS_DIR) --config-file=$(PYPROJECT_TOML)
 
+## Load Testing
 load:
 	LOCUST_HOST=$(LOCUST_HOST) \
 	  $(DOCKER_COMPOSE) \
@@ -164,13 +201,15 @@ load-clean:
       down
 	docker rmi locust
 
+## Generate the documentation. (This is also kinda hacky, but works)
 .PHONY: doc-prev
 doc-prev:  ##  Generate live preview of autopush docs via browser
 	mdbook clean docs/
 	mdbook build docs/
 	mdbook serve docs/ --open
 
+##  Generate the CryptoKey values
 .PHONY: gen-key
-gen-key:   ##  Generate the CryptoKey values
+gen-key:   
 	$(POETRY) install --no-root
 	$(POETRY) run python3 $(CURDIR)/scripts/autokey.py

@@ -1,3 +1,5 @@
+#! venv/bin/python 
+
 """A command-line utility that generates endpoint encryption keys."""
 from cryptography.fernet import Fernet
 
