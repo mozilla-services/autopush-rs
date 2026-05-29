@@ -38,6 +38,7 @@ BUILD_FLAGS := 'CXXFLAGS="-include cstdint" CMAKE_POLICY_VERSION_MINIMUM=3.5"
 
 .PHONY: docker-dev-build
 docker-dev-build:
+	echo $(CMAKE_POLICY_VERSION_MINIMUM)
 	docker build -f Dockerfile-dev -t autopush-dev .
 
 .PHONY: docker-init
@@ -107,8 +108,11 @@ notification-test-clean:
 	docker rm notification-tests
 
 .PHONY: build-profile
-build-profile: ##  Run the profiler with the `profile` profile. See Cargo.toml for details.
-	RUSTFLAGS="-C force-frame-pointers=yes" $(BUILD_FLAGS) cargo build --profile profile
+build-profile:##  Run the profiler with the `profile` profile. See Cargo.toml for details.
+# 	`prefix_build_flags.py` is a hack to work around the fact that we need to set some platform specific env vars for the build, 
+# 	but doing so in a Makefile is a nightmare. This way, we can just call this script with the same args we would 
+# 	normally call cargo with, and it will add the necessary env vars before running the command. 
+	RUSTFLAGS="-C force-frame-pointers=yes" python3 scripts/prefix_build_flags.py cargo build --profile profile
 
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code
