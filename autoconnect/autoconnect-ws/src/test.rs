@@ -12,7 +12,7 @@ use autoconnect_ws_sm::UnidentifiedClient;
 
 use crate::{error::WSErrorKind, handler::webpush_ws, session::MockSession};
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn init_test_logging() {
     autopush_common::logging::init_test_logging();
 }
