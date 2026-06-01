@@ -17,7 +17,7 @@ use std::time::Duration;
 use chrono::TimeDelta;
 use serde_json::json;
 use sqlx::postgres::PgRow;
-use sqlx::{PgPool, Row};
+use sqlx::{AssertSqlSafe, PgPool, Row};
 
 use async_trait::async_trait;
 
@@ -230,7 +230,7 @@ impl DbClient for PgClientImpl {
             ",
             tablename = self.router_table()
         );
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(sql))
             .bind(user.uaid.simple().to_string()) // 1
             .bind(user.connected_at as i64) // 2
             .bind(&user.router_type) // 3
@@ -269,7 +269,7 @@ impl DbClient for PgClientImpl {
             ",
             tablename = self.router_table()
         );
-        let result = sqlx::query(&cmd)
+        let result = sqlx::query(AssertSqlSafe(&*cmd))
             .bind(user.uaid.simple().to_string()) // 1
             .bind(user.connected_at as i64) // 2
             .bind(&user.router_type) // 3
@@ -293,12 +293,12 @@ impl DbClient for PgClientImpl {
 
     /// fetch user information from router_table for uaid.
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
-        let row: Option<PgRow> = sqlx::query(&format!(
+        let row: Option<PgRow> = sqlx::query(AssertSqlSafe(format!(
             "SELECT connected_at, router_type, router_data, node_id, record_version, last_update, version, priv_channels
              FROM {tablename}
              WHERE uaid = $1",
             tablename = self.router_table()
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .fetch_optional(&self.pool)
         .await
@@ -363,11 +363,11 @@ impl DbClient for PgClientImpl {
 
     /// delete a user at uaid from router_table
     async fn remove_user(&self, uaid: &Uuid) -> DbResult<()> {
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "DELETE FROM {tablename}
              WHERE uaid = $1",
             tablename = self.router_table()
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .execute(&self.pool)
         .await
@@ -384,12 +384,12 @@ impl DbClient for PgClientImpl {
     /// For some efficiency (mostly around the mobile "daily refresh" call), I've broken
     /// the channels out by UAID into this table.
     async fn add_channel(&self, uaid: &Uuid, channel_id: &Uuid) -> DbResult<()> {
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "INSERT
              INTO {tablename} (uaid, channel_id) VALUES ($1, $2)
              ON CONFLICT DO NOTHING",
             tablename = self.meta_table()
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .bind(channel_id.simple().to_string())
         .execute(&self.pool)
@@ -428,10 +428,10 @@ impl DbClient for PgClientImpl {
     /// get all channels for uaid from meta table
     async fn get_channels(&self, uaid: &Uuid) -> DbResult<HashSet<Uuid>> {
         let mut result = HashSet::new();
-        let rows: Vec<PgRow> = sqlx::query(&format!(
+        let rows: Vec<PgRow> = sqlx::query(AssertSqlSafe(format!(
             "SELECT distinct channel_id FROM {tablename} WHERE uaid = $1;",
             tablename = self.meta_table()
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .fetch_all(&self.pool)
         .await
@@ -452,7 +452,7 @@ impl DbClient for PgClientImpl {
              WHERE uaid = $1 AND channel_id = $2;",
             tablename = self.meta_table()
         );
-        let result = sqlx::query(&cmd)
+        let result = sqlx::query(AssertSqlSafe(cmd))
             .bind(uaid.simple().to_string())
             .bind(channel_id.simple().to_string())
             .execute(&self.pool)
@@ -473,12 +473,12 @@ impl DbClient for PgClientImpl {
         let Some(version) = version else {
             return Err(DbError::General("Expected a user version field".to_owned()));
         };
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "UPDATE {tablename}
                 SET node_id = null
                 WHERE uaid=$1 AND node_id = $2 AND connected_at = $3 AND version= $4;",
             tablename = self.router_table()
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .bind(node_id)
         .bind(connected_at as i64)
@@ -537,7 +537,7 @@ impl DbClient for PgClientImpl {
             inputs = inputs.join(",")
         );
         #[allow(unused_mut)]
-        let mut q = sqlx::query(&cmd)
+        let mut q = sqlx::query(AssertSqlSafe(cmd))
             .bind(uaid.simple().to_string())
             .bind(message.channel_id.simple().to_string())
             .bind(message.chidmessageid())
@@ -566,11 +566,11 @@ impl DbClient for PgClientImpl {
             uaid.simple(),
             chidmessageid
         );
-        let result = sqlx::query(&format!(
+        let result = sqlx::query(AssertSqlSafe(format!(
             "DELETE FROM {tablename}
              WHERE uaid=$1 AND chid_message_id = $2;",
             tablename = self.message_table()
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .bind(chidmessageid)
         .execute(&self.pool)
@@ -706,14 +706,14 @@ impl DbClient for PgClientImpl {
         uaid: &Uuid,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        let messages: Vec<Notification> = sqlx::query(&format!(
+        let messages: Vec<Notification> = sqlx::query(AssertSqlSafe(format!(
             "SELECT channel_id, version, ttl, topic, timestamp, data, sortkey_timestamp, headers
              FROM {tablename}
              WHERE uaid=$1 AND expiry >= $2 AND (topic IS NOT NULL AND topic != '')
              ORDER BY timestamp DESC
              LIMIT $3",
             tablename = &self.message_table(),
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .bind(util::sec_since_epoch() as i64)
         .bind(limit as i64)
@@ -744,13 +744,13 @@ impl DbClient for PgClientImpl {
         let uaid = uaid.simple().to_string();
         let response: Vec<PgRow> = if let Some(ts) = timestamp {
             trace!("📮 Fetching messages for user {} since {}", &uaid, ts);
-            sqlx::query(&format!(
+            sqlx::query(AssertSqlSafe(format!(
                 "SELECT * FROM {}
                  WHERE uaid = $1 AND timestamp > $2 AND expiry >= $3
                  ORDER BY timestamp
                  LIMIT $4",
                 self.message_table()
-            ))
+            )))
             .bind(&uaid)
             .bind(ts as i64)
             .bind(util::sec_since_epoch() as i64)
@@ -759,14 +759,14 @@ impl DbClient for PgClientImpl {
             .await
         } else {
             trace!("📮 Fetching messages for user {}", &uaid);
-            sqlx::query(&format!(
+            sqlx::query(AssertSqlSafe(format!(
                 "SELECT *
                  FROM {}
                  WHERE uaid = $1
                  AND expiry >= $2
                  LIMIT $3",
                 self.message_table()
-            ))
+            )))
             .bind(&uaid)
             .bind(util::sec_since_epoch() as i64)
             .bind(limit as i64)
@@ -815,13 +815,13 @@ impl DbClient for PgClientImpl {
 
         let tablename = &self.reliability_table();
         let state = new_state.to_string();
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "INSERT INTO {tablename} (id, states, last_update_timestamp) VALUES ($1, json_build_object($2, $3), $3)
              ON CONFLICT (id) DO
              UPDATE SET states = EXCLUDED.states,
              last_update_timestamp = EXCLUDED.last_update_timestamp;",
             tablename = tablename
-        ))
+        )))
         .bind(reliability_id)
         .bind(&state)
         .bind(timestamp_epoch)
@@ -838,28 +838,28 @@ impl DbClient for PgClientImpl {
         trace!("📮 Purging git{uaid} for < {timestamp}");
         let mut tx = self.pool.begin().await.map_err(DbError::PgError)?;
         // Try to garbage collect old messages first.
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "DELETE FROM {} WHERE uaid = $1 and expiry < $2",
             &self.message_table()
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .bind(util::sec_since_epoch() as i64)
         .execute(&mut *tx)
         .await
         .map_err(|e| DbError::PgDbError(sqlx_err_to_string(&e)))?;
         // Now, delete messages that we've already delivered.
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "DELETE FROM {} WHERE uaid = $1 AND timestamp IS NOT NULL AND timestamp < $2",
             &self.message_table()
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .bind(timestamp as i64)
         .execute(&mut *tx)
         .await
         .map_err(|e| DbError::PgDbError(sqlx_err_to_string(&e)))?;
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "UPDATE {tablename} SET last_update = $2::BIGINT, expiry= $3::BIGINT WHERE uaid = $1"
-        ))
+        )))
         .bind(uaid.simple().to_string())
         .bind(timestamp as i64)
         .bind(self.router_expiry() as i64)
