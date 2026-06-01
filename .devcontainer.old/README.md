@@ -1,5 +1,13 @@
 # Building autopush using a VSCode docker container.
 
+> **NOTE**: This may no longer be needed, in addition it's using a very old version of rust, with no real way to update that version.
+> This was originally needed due to an incompatibility between Debian Trixie and Bookworm, that has since been resolved. 
+> If you experience a compile error with `grpcio`, please add the following environment variables to your build environment:
+> ```
+>   export CXXFLAGS='-include cstdint'
+>   export CMAKE_POLICY_VERSION_MINIMUM=3.5
+> ```
+
 ## Prerequisites:
 
 * [Docker](https://docs.docker.com/engine/install/)
