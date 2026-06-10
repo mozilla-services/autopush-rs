@@ -104,6 +104,22 @@
 # The credentials to use for each channel. This setting is a JSON dictionary
 # where the key is the app ID. The auth files, topic, and API sandbox switch
 # are supplied for each application.
+#
+# Token-based auth (preferred, the .p8 auth key does not expire):
+# "key" is the APNS provider auth key (.p8), either a file path or inline PEM.
+# "key_id" is the 10-character Apple key ID, "team_id" the Apple Developer
+# team ID.
+#channels = """{
+#    "test": {
+#        "key": "apns_auth_key.p8",
+#        "key_id": "ABC123DEFG",
+#        "team_id": "TEAMID1234",
+#        "topic": "com.mozilla.org.Firefox",
+#        "sandbox": true
+#    }
+#}"""
+#
+# Certificate-based auth (requires yearly certificate renewal):
 #channels = """{
 #    "test": {
 #        "cert": "apns_cert.pem",
