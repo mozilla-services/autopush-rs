@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::mem;
 use std::time::{Duration, SystemTime};
 
-use googleapis_tonic_google_bigtable_v2::google::bigtable::v2::ReadRowsResponse;
-use googleapis_tonic_google_bigtable_v2::google::bigtable::v2::read_rows_response::CellChunk;
-use googleapis_tonic_google_bigtable_v2::google::bigtable::v2::read_rows_response::cell_chunk::RowStatus;
+use googleapis_tonic_google_bigtable_v2::google::bigtable::v2::{
+    ReadRowsResponse,
+    read_rows_response::{CellChunk, cell_chunk::RowStatus},
+};
 use tonic::Streaming;
 
 use super::{FamilyId, Qualifier, RowKey, cell::Cell, error::BigTableError, row::Row};

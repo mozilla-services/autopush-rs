@@ -13,11 +13,7 @@ use cadence::StatsdClient;
 #[cfg(feature = "reliable_report")]
 use chrono::TimeDelta;
 use gcp_auth::TokenProvider;
-// The generated stubs keep both the service requests/responses and the data
-// types in a single `v2` module. Alias it twice to retain the historical
-// `bigtable::` (requests) and `data::` (row/filter/mutation types) split.
 use googleapis_tonic_google_bigtable_v2::google::bigtable::v2 as bigtable;
-use googleapis_tonic_google_bigtable_v2::google::bigtable::v2 as data;
 use googleapis_tonic_google_bigtable_v2::google::bigtable::v2::bigtable_client::BigtableClient;
 use serde_json::{from_str, json};
 use tonic::metadata::{AsciiMetadataValue, MetadataMap};
@@ -172,22 +168,22 @@ pub struct BigTableClientImpl {
 }
 
 /// Return a a RowFilter matching the GC policy of the router Column Family
-fn router_gc_policy_filter() -> data::RowFilter {
-    data::RowFilter {
-        filter: Some(data::row_filter::Filter::CellsPerColumnLimitFilter(1)),
+fn router_gc_policy_filter() -> bigtable::RowFilter {
+    bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::CellsPerColumnLimitFilter(1)),
     }
 }
 
 /// Return a chain of RowFilters matching the GC policy of the message Column
 /// Families
-fn message_gc_policy_filter() -> Result<Vec<data::RowFilter>, error::BigTableError> {
+fn message_gc_policy_filter() -> Result<Vec<bigtable::RowFilter>, error::BigTableError> {
     let bt_now: i64 = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_err(error::BigTableError::WriteTime)?
         .as_millis() as i64;
-    let timestamp_filter = data::RowFilter {
-        filter: Some(data::row_filter::Filter::TimestampRangeFilter(
-            data::TimestampRange {
+    let timestamp_filter = bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::TimestampRangeFilter(
+            bigtable::TimestampRange {
                 start_timestamp_micros: bt_now * 1000,
                 end_timestamp_micros: 0,
             },
@@ -198,9 +194,9 @@ fn message_gc_policy_filter() -> Result<Vec<data::RowFilter>, error::BigTableErr
 }
 
 /// Return a Column family regex RowFilter
-fn family_filter(regex: String) -> data::RowFilter {
-    data::RowFilter {
-        filter: Some(data::row_filter::Filter::FamilyNameRegexFilter(regex)),
+fn family_filter(regex: String) -> bigtable::RowFilter {
+    bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::FamilyNameRegexFilter(regex)),
     }
 }
 
@@ -228,16 +224,16 @@ fn escape_bytes(bytes: &[u8]) -> Vec<u8> {
 
 /// Return a chain of RowFilters limiting to a match of the specified
 /// `version`'s column value
-fn version_filter(version: &Uuid) -> Vec<data::RowFilter> {
-    let cq_filter = data::RowFilter {
-        filter: Some(data::row_filter::Filter::ColumnQualifierRegexFilter(
+fn version_filter(version: &Uuid) -> Vec<bigtable::RowFilter> {
+    let cq_filter = bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::ColumnQualifierRegexFilter(
             "^version$".as_bytes().to_vec(),
         )),
     };
-    let value_filter = data::RowFilter {
-        filter: Some(data::row_filter::Filter::ValueRegexFilter(escape_bytes(
-            version.as_bytes(),
-        ))),
+    let value_filter = bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::ValueRegexFilter(
+            escape_bytes(version.as_bytes()),
+        )),
     };
 
     vec![
@@ -258,11 +254,11 @@ fn new_version_cell(timestamp: SystemTime) -> cell::Cell {
 }
 
 /// Return a RowFilter chain from multiple RowFilters
-fn filter_chain(filters: Vec<data::RowFilter>) -> data::RowFilter {
-    data::RowFilter {
-        filter: Some(data::row_filter::Filter::Chain(data::row_filter::Chain {
-            filters,
-        })),
+fn filter_chain(filters: Vec<bigtable::RowFilter>) -> bigtable::RowFilter {
+    bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::Chain(
+            bigtable::row_filter::Chain { filters },
+        )),
     }
 }
 
@@ -275,7 +271,7 @@ fn read_row_request(
     bigtable::ReadRowsRequest {
         table_name: table_name.to_owned(),
         app_profile_id: app_profile_id.to_owned(),
-        rows: Some(data::RowSet {
+        rows: Some(bigtable::RowSet {
             row_keys: vec![row_key.as_bytes().to_vec()],
             row_ranges: Vec::new(),
         }),
@@ -595,7 +591,7 @@ impl BigTableClientImpl {
     fn get_mutations(
         &self,
         cells: HashMap<FamilyId, Vec<crate::db::bigtable::bigtable_client::cell::Cell>>,
-    ) -> Result<Vec<data::Mutation>, error::BigTableError> {
+    ) -> Result<Vec<bigtable::Mutation>, error::BigTableError> {
         let mut mutations = Vec::new();
         for (family_id, cells) in cells {
             for cell in cells {
@@ -604,15 +600,18 @@ impl BigTableClientImpl {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
                 debug!("🉑 expiring in {:?}", timestamp.as_millis());
-                mutations.push(data::Mutation {
-                    mutation: Some(data::mutation::Mutation::SetCell(data::mutation::SetCell {
-                        family_name: family_id.clone(),
-                        column_qualifier: cell.qualifier.clone().into_bytes(),
-                        // Yes, this is passing milli bounded time as a micro. Otherwise I get
-                        // a `Timestamp granularity mismatch` error
-                        timestamp_micros: (timestamp.as_millis() * 1000) as i64,
-                        value: cell.value,
-                    })),
+                mutations.push(bigtable::Mutation {
+                    mutation: Some(bigtable::mutation::Mutation::SetCell(
+                        bigtable::mutation::SetCell {
+                            family_name: family_id.clone(),
+                            column_qualifier: cell.qualifier.clone().into_bytes(),
+                            // Bigtable tables use millisecond cell-timestamp granularity;
+                            // timestamp_micros must be a multiple of 1,000 or the server
+                            // rejects the mutation with a granularity mismatch.
+                            timestamp_micros: (timestamp.as_millis() * 1000) as i64,
+                            value: cell.value,
+                        },
+                    )),
                 });
             }
         }
@@ -629,7 +628,7 @@ impl BigTableClientImpl {
     async fn check_and_mutate_row(
         &self,
         row: row::Row,
-        filter: data::RowFilter,
+        filter: bigtable::RowFilter,
         state: bool,
     ) -> Result<bool, error::BigTableError> {
         let mut req = self.check_and_mutate_row_request(&row.row_key);
@@ -671,16 +670,16 @@ impl BigTableClientImpl {
         &self,
         family: &str,
         column_names: &[&str],
-        time_range: Option<&data::TimestampRange>,
-    ) -> Result<Vec<data::Mutation>, error::BigTableError> {
+        time_range: Option<&bigtable::TimestampRange>,
+    ) -> Result<Vec<bigtable::Mutation>, error::BigTableError> {
         let mut mutations = Vec::new();
         for column in column_names {
             // DeleteFromRow -- Delete all cells for a given row.
             // DeleteFromFamily -- Delete all cells from a family for a given row.
             // DeleteFromColumn -- Delete all cells from a column name for a given row, restricted by timestamp range.
-            mutations.push(data::Mutation {
-                mutation: Some(data::mutation::Mutation::DeleteFromColumn(
-                    data::mutation::DeleteFromColumn {
+            mutations.push(bigtable::Mutation {
+                mutation: Some(bigtable::mutation::Mutation::DeleteFromColumn(
+                    bigtable::mutation::DeleteFromColumn {
                         family_name: family.to_owned(),
                         column_qualifier: column.as_bytes().to_vec(),
                         time_range: time_range.cloned(),
@@ -694,9 +693,9 @@ impl BigTableClientImpl {
     /// Delete all the cells for the given row. NOTE: This will drop the row.
     async fn delete_row(&self, row_key: &str) -> Result<(), error::BigTableError> {
         let mut req = self.mutate_row_request(row_key);
-        req.mutations = vec![data::Mutation {
-            mutation: Some(data::mutation::Mutation::DeleteFromRow(
-                data::mutation::DeleteFromRow {},
+        req.mutations = vec![bigtable::Mutation {
+            mutation: Some(bigtable::mutation::Mutation::DeleteFromRow(
+                bigtable::mutation::DeleteFromRow {},
             )),
         }];
         self.mutate_row(req).await
@@ -923,8 +922,8 @@ impl BigtableDb {
         // other than it does not return an error.
         let random_uaid = Uuid::new_v4().simple().to_string();
         let mut req = read_row_request(&self.table_name, app_profile_id, &random_uaid);
-        req.filter = Some(data::RowFilter {
-            filter: Some(data::row_filter::Filter::BlockAllFilter(true)),
+        req.filter = Some(bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::BlockAllFilter(true)),
         });
         let _r = retry_policy(RETRY_COUNT)
             .retry_if(
@@ -958,8 +957,8 @@ impl DbClient for BigTableClientImpl {
         let row = self.user_to_row(user, version);
 
         // Only add when the user doesn't already exist
-        let row_key_filter = data::RowFilter {
-            filter: Some(data::row_filter::Filter::RowKeyRegexFilter(
+        let row_key_filter = bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::RowKeyRegexFilter(
                 format!("^{}$", row.row_key).into_bytes(),
             )),
         };
@@ -1127,8 +1126,8 @@ impl DbClient for BigTableClientImpl {
         let row_key = uaid.simple().to_string();
         let mut req = self.read_row_request(&row_key);
 
-        let cq_filter = data::RowFilter {
-            filter: Some(data::row_filter::Filter::ColumnQualifierRegexFilter(
+        let cq_filter = bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::ColumnQualifierRegexFilter(
                 "^chid:.*$".as_bytes().to_vec(),
             )),
         };
@@ -1161,8 +1160,8 @@ impl DbClient for BigTableClientImpl {
         mutations.extend(self.get_mutations(row.cells)?);
 
         // check if the channel existed/was actually removed
-        let cq_filter = data::RowFilter {
-            filter: Some(data::row_filter::Filter::ColumnQualifierRegexFilter(
+        let cq_filter = bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::ColumnQualifierRegexFilter(
                 format!("^{column}$").into_bytes(),
             )),
         };
@@ -1378,13 +1377,15 @@ impl DbClient for BigTableClientImpl {
         let mut req = bigtable::ReadRowsRequest {
             table_name: self.settings.table_name.clone(),
             app_profile_id: self.settings.app_profile_id.clone(),
-            rows: Some(data::RowSet {
+            rows: Some(bigtable::RowSet {
                 row_keys: Vec::new(),
-                row_ranges: vec![data::RowRange {
-                    start_key: Some(data::row_range::StartKey::StartKeyOpen(
+                row_ranges: vec![bigtable::RowRange {
+                    start_key: Some(bigtable::row_range::StartKey::StartKeyOpen(
                         start_key.into_bytes(),
                     )),
-                    end_key: Some(data::row_range::EndKey::EndKeyOpen(end_key.into_bytes())),
+                    end_key: Some(bigtable::row_range::EndKey::EndKeyOpen(
+                        end_key.into_bytes(),
+                    )),
                 }],
             }),
             ..Default::default()
@@ -1435,13 +1436,15 @@ impl DbClient for BigTableClientImpl {
         let mut req = bigtable::ReadRowsRequest {
             table_name: self.settings.table_name.clone(),
             app_profile_id: self.settings.app_profile_id.clone(),
-            rows: Some(data::RowSet {
+            rows: Some(bigtable::RowSet {
                 row_keys: Vec::new(),
-                row_ranges: vec![data::RowRange {
-                    start_key: Some(data::row_range::StartKey::StartKeyOpen(
+                row_ranges: vec![bigtable::RowRange {
+                    start_key: Some(bigtable::row_range::StartKey::StartKeyOpen(
                         start_key.into_bytes(),
                     )),
-                    end_key: Some(data::row_range::EndKey::EndKeyOpen(end_key.into_bytes())),
+                    end_key: Some(bigtable::row_range::EndKey::EndKeyOpen(
+                        end_key.into_bytes(),
+                    )),
                 }],
             }),
             ..Default::default()
@@ -1614,6 +1617,35 @@ mod tests {
         let result = client.health_check().await;
         assert!(result.is_ok());
         assert!(result.unwrap());
+    }
+
+    /// Bigtable rejects SetCell timestamps that are not aligned to the table's
+    /// millisecond granularity (timestamp_micros must be a multiple of 1,000).
+    #[actix_rt::test]
+    async fn timestamp_granularity_rejects_sub_millisecond_micros() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let row_key = uaid.simple().to_string();
+        let _ = client.remove_user(&uaid).await;
+
+        let mut req = client.mutate_row_request(&row_key);
+        req.mutations = vec![bigtable::Mutation {
+            mutation: Some(bigtable::mutation::Mutation::SetCell(
+                bigtable::mutation::SetCell {
+                    family_name: ROUTER_FAMILY.to_owned(),
+                    column_qualifier: b"granularity_probe".to_vec(),
+                    timestamp_micros: 1,
+                    value: b"x".to_vec(),
+                },
+            )),
+        }];
+
+        assert!(
+            client.mutate_row(req).await.is_err(),
+            "expected granularity mismatch for timestamp_micros=1"
+        );
+
+        let _ = client.remove_user(&uaid).await;
     }
 
     /// run a gauntlet of testing. These are a bit linear because they need
