@@ -29,7 +29,7 @@ using their environment variable form.
 | <span id="AUTOCONNECT__ENDPOINT_SCHEME" />endpoint_scheme | AUTOCONNECT__ENDPOINT_SCHEME | string | "http" | The URL scheme (http/https) for the endpoint URL |
 | <span id="AUTOCONNECT__HOSTNAME" />hostname | AUTOCONNECT__HOSTNAME | string | _None_ | The machine host name (e.g. `localhost`) |
 | <span id="AUTOCONNECT__HUMAN_LOGS" />human_logs | AUTOCONNECT__HUMAN_LOGS | bool | false | Whether to use human readable log formatting (e.g. timestamps, log levels) |
-| <span id="AUTOCONNECT__MEGAPHONE_API_TOKEN" />megaphone_api_token | AUTOCONNECT__MEGAPHONE_API_TOKEN | string | _None_ | Access token for the Remote Settings "Megaphone" API server |
+| <span id="AUTOCONNECT__MEGAPHONE_API_TOKEN" />megaphone_api_token | AUTOCONNECT__MEGAPHONE_API_TOKEN | string | _None_ | Deprecated: Access token for the Remote Settings "Megaphone" API server, kept for compatibility |
 | <span id="AUTOCONNECT__MEGAPHONE_API_URL" />megaphone_api_url | AUTOCONNECT__MEGAPHONE_API_URL | string | _None_ | URL to the Remote Settings "Megaphone" API server |
 | <span id="AUTOCONNECT__MEGAPHONE_POLL_INTERVAL" />megaphone_poll_interval | AUTOCONNECT__MEGAPHONE_POLL_INTERVAL | string | _None_ | Period in seconds to poll the Remote Settings "Megaphone" server |
 | <span id="AUTOCONNECT__MSG_LIMIT" />msg_limit | AUTOCONNECT__MSG_LIMIT | num | 1000 | Maximum number of messages to store per client |

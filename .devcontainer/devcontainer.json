@@ -15,8 +15,9 @@
   "features": {
     "ghcr.io/devcontainers/features/rust:1": "latest"
   },
-  "mounts":[
-    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
   ],
   "containerEnv": {
     "INDOCKER": "1"

@@ -45,7 +45,7 @@
 # The URL to use for megaphone. If not set, megaphone functionality is disabled.
 #megaphone_api_url = "..."
 
-# The token to use for megaphone. Required if megaphone_api_url is set.
+# The token to use for megaphone. Deprecated and unused; kept for settings compatibility.
 #megaphone_api_token = "..."
 
 # The number of seconds between megaphone polls
