@@ -1,0 +1,183 @@
+# Covers the test/lint jobs: audit, python-checks, rust-checks, unit tests, and
+# integration tests. Container image builds/pushes live in publish-test-images.yml
+# (test images) and mozcloud-publish.yaml (service images).
+name: build-test-deploy
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - "**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  # NOTE: keep in sync with Dockerfile / Makefile  # RUST_VER
+  RUST_VERSION: "1.91"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+      - name: Cache cargo-audit
+        id: cache-cargo-audit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-${{ runner.os }}-${{ env.RUST_VERSION }}
+      - name: Install cargo-audit
+        if: steps.cache-cargo-audit.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit
+      - name: cargo audit
+        run: cargo audit
+
+  python-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang
+      - name: Install poetry
+        run: |
+          pip install --upgrade pip
+          pip install poetry==2.0.0
+      - name: isort, black, flake8, bandit, pydocstyle and mypy
+        run: make lint
+
+  rust-checks:
+    runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: 1
+      RUST_TEST_THREADS: 1
+      BIGTABLE_EMULATOR_HOST: localhost:8086
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          components: rustfmt clippy
+          system-deps: "true"
+          cache: "true"
+      - name: Echo Rust version
+        run: rustc --version
+      - name: Check formatting and clippy
+        run: |
+          cargo fmt -- --check
+          cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
+
+  test-unit:
+    runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: 1
+      RUST_TEST_THREADS: 1
+      BIGTABLE_EMULATOR_HOST: localhost:8086
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Create test result workspace
+        run: mkdir -p workspace/test-results
+      - name: Install Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          system-deps: "true"
+          cache: "true"
+      - name: Start Bigtable emulator
+        # Waits until emulator starts and is bootstrapped; emulator required for tests
+        run: docker compose -f docker-compose-bigtable.yml run --rm bigtable-setup
+      - name: Install cargo-nextest
+        run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "${CARGO_HOME:-$HOME/.cargo}/bin"
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+      - name: Echo Rust version
+        run: rustc --version
+      # NOTE: This build can exceed the memory available on a standard runner. The
+      # Makefile target limits cargo to --jobs=2 to reduce OOM risk;
+      # a larger runner may be needed if this OOMs.
+      - name: Unit tests
+        run: make unit-test
+      - name: Store test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: workspace/test-results
+
+  test-integration:
+    runs-on: ubuntu-latest
+    needs:
+      - python-checks
+    env:
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Create test result workspace
+        run: mkdir -p workspace/test-results
+      - name: Integration tests
+        # Mirrors `make integration-test`, but uses `-i` instead of `-it` since
+        # GitHub-hosted runners do not allocate a TTY.
+        run: |
+          docker compose -f tests/integration/docker-compose.yml run -i --name integration-tests tests; exit_code=$?
+          docker cp integration-tests:/code/integration__results.xml workspace/test-results/integration__results.xml
+          exit $exit_code
+      - name: Store test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: workspace/test-results
+
+  # Collect the junit/coverage artifacts from the test jobs and push them to the
+  # ETE metrics bucket. Only runs on main (the reusable workflow's auth needs
+  # the WIF provider). Split into two calls because the reusable workflow uploads
+  # one extension/destination per invocation.
+  upload-junit:
+    needs:
+      - test-unit
+      - test-integration
+    if: always() && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/upload-test-artifacts-to-gcs.yaml
+    with:
+      destination: gs://ecosystem-test-eng-metrics/autopush-rs/junit
+      extension: xml
+      service_account: ${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com
+
+  upload-coverage:
+    needs:
+      - test-unit
+      - test-integration
+    if: always() && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/upload-test-artifacts-to-gcs.yaml
+    with:
+      destination: gs://ecosystem-test-eng-metrics/autopush-rs/coverage
+      extension: json
+      service_account: ${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com

@@ -1,0 +1,76 @@
+# Converted from .circleci/config.yml: the build-test-container,
+# build-integration-test-container and build-reliability-cron jobs plus their
+# deploys. Builds the test/cron images and pushes them to the autopush GAR.
+name: Publish test images
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - "**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: autopush-load-tests
+            dockerfile: tests/load/Dockerfile
+          - image: autopush-end-to-end-tests
+            dockerfile: tests/notification/Dockerfile
+          - image: autopush-integration-tests
+            dockerfile: tests/integration/Dockerfile
+            target: integration-tests
+          - image: autopush-reliability-cron
+            dockerfile: scripts/reliability/Dockerfile
+            context: scripts/reliability
+    env:
+      PROJECT_ID: moz-fx-autopush-prod
+      GAR_NAME: autopush-prod
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-build-and-push
+        id: setup
+        with:
+          workload_identity_provider: ${{ vars.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
+          gcp_service_account: "${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com"
+
+      - name: Compute image tags
+        run: |
+          REGISTRY="us-docker.pkg.dev/${PROJECT_ID}/${GAR_NAME}/${MATRIX_IMAGE}"
+          {
+            echo "IMAGE_TAGS<<EOF"
+            echo "${REGISTRY}:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}"
+            echo "${REGISTRY}:latest"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+        env:
+          MATRIX_IMAGE: ${{ matrix.image }}
+          STEPS_SETUP_OUTPUTS_IMAGE_TAG: ${{ steps.setup.outputs.image_tag }}
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
+        with:
+          context: ${{ matrix.context || '.' }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target || '' }}
+          # Push only on master/tags; PRs build to validate the Dockerfiles.
+          push: ${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+          tags: ${{ env.IMAGE_TAGS }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

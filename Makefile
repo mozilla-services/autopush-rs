@@ -62,7 +62,7 @@ upgrade:
 	$(CARGO) update
 
 .ONESHELL:
-unit-test:
+unit-test: ## Run the Rust test suite (requires a running Bigtable emulator) and emit coverage
 	cargo llvm-cov --summary-only --json --output-path $(UNIT_COVERAGE_JSON) \
 	  nextest --features=emulator --features=bigtable --jobs=2 --profile=ci; exit_code=$$?
 	mv target/nextest/ci/junit.xml $(UNIT_JUNIT_XML)
