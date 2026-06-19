@@ -12,16 +12,13 @@ use async_trait::async_trait;
 use cadence::StatsdClient;
 #[cfg(feature = "reliable_report")]
 use chrono::TimeDelta;
-use futures_util::StreamExt;
-use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin::DropRowRangeRequest;
-use google_cloud_rust_raw::bigtable::admin::v2::bigtable_table_admin_grpc::BigtableTableAdminClient;
-use google_cloud_rust_raw::bigtable::v2::bigtable::ReadRowsRequest;
-use google_cloud_rust_raw::bigtable::v2::bigtable_grpc::BigtableClient;
-use google_cloud_rust_raw::bigtable::v2::data::{RowFilter, RowFilter_Chain};
-use google_cloud_rust_raw::bigtable::v2::{bigtable, data};
-use grpcio::{Channel, Metadata, RpcStatus, RpcStatusCode};
-use protobuf::RepeatedField;
+use gcp_auth::TokenProvider;
+use googleapis_tonic_google_bigtable_v2::google::bigtable::v2 as bigtable;
+use googleapis_tonic_google_bigtable_v2::google::bigtable::v2::bigtable_client::BigtableClient;
 use serde_json::{from_str, json};
+use tonic::metadata::{AsciiMetadataValue, MetadataMap};
+use tonic::transport::Channel;
+use tonic::{Code, Request, Status};
 use uuid::Uuid;
 
 use crate::MAX_ROUTER_TTL_SECS;
@@ -66,6 +63,12 @@ const RELIABLE_LOG_FAMILY: &str = "reliability";
 pub const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
 pub(crate) const RETRY_COUNT: usize = 5;
+
+/// Maximum gRPC message size (256MB), matching the prior grpcio configuration.
+const MAX_MESSAGE_LEN: usize = 1 << 28;
+
+/// OAuth2 scopes requested for the Bigtable data API.
+const BIGTABLE_DATA_SCOPES: &[&str] = &["https://www.googleapis.com/auth/bigtable.data"];
 
 /// Simple circuit breaker to prevent retry storms during BigTable outages.
 ///
@@ -159,39 +162,42 @@ pub struct BigTableClientImpl {
     metrics: Arc<StatsdClient>,
     /// Connection Channel (used for alternate calls)
     pool: BigTablePool,
-    metadata: Metadata,
-    admin_metadata: Metadata,
+    metadata: MetadataMap,
     /// Circuit breaker to prevent retry storms during BigTable outages
     circuit_breaker: Arc<CircuitBreaker>,
 }
 
 /// Return a a RowFilter matching the GC policy of the router Column Family
-fn router_gc_policy_filter() -> data::RowFilter {
-    let mut latest_cell_filter = data::RowFilter::default();
-    latest_cell_filter.set_cells_per_column_limit_filter(1);
-    latest_cell_filter
+fn router_gc_policy_filter() -> bigtable::RowFilter {
+    bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::CellsPerColumnLimitFilter(1)),
+    }
 }
 
 /// Return a chain of RowFilters matching the GC policy of the message Column
 /// Families
-fn message_gc_policy_filter() -> Result<Vec<data::RowFilter>, error::BigTableError> {
-    let mut timestamp_filter = data::RowFilter::default();
+fn message_gc_policy_filter() -> Result<Vec<bigtable::RowFilter>, error::BigTableError> {
     let bt_now: i64 = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_err(error::BigTableError::WriteTime)?
         .as_millis() as i64;
-    let mut range_filter = data::TimestampRange::default();
-    range_filter.set_start_timestamp_micros(bt_now * 1000);
-    timestamp_filter.set_timestamp_range_filter(range_filter);
+    let timestamp_filter = bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::TimestampRangeFilter(
+            bigtable::TimestampRange {
+                start_timestamp_micros: bt_now * 1000,
+                end_timestamp_micros: 0,
+            },
+        )),
+    };
 
     Ok(vec![router_gc_policy_filter(), timestamp_filter])
 }
 
 /// Return a Column family regex RowFilter
-fn family_filter(regex: String) -> data::RowFilter {
-    let mut filter = data::RowFilter::default();
-    filter.set_family_name_regex_filter(regex);
-    filter
+fn family_filter(regex: String) -> bigtable::RowFilter {
+    bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::FamilyNameRegexFilter(regex)),
+    }
 }
 
 /// Escape bytes for RE values
@@ -218,12 +224,17 @@ fn escape_bytes(bytes: &[u8]) -> Vec<u8> {
 
 /// Return a chain of RowFilters limiting to a match of the specified
 /// `version`'s column value
-fn version_filter(version: &Uuid) -> Vec<data::RowFilter> {
-    let mut cq_filter = data::RowFilter::default();
-    cq_filter.set_column_qualifier_regex_filter("^version$".as_bytes().to_vec());
-
-    let mut value_filter = data::RowFilter::default();
-    value_filter.set_value_regex_filter(escape_bytes(version.as_bytes()));
+fn version_filter(version: &Uuid) -> Vec<bigtable::RowFilter> {
+    let cq_filter = bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::ColumnQualifierRegexFilter(
+            "^version$".as_bytes().to_vec(),
+        )),
+    };
+    let value_filter = bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::ValueRegexFilter(
+            escape_bytes(version.as_bytes()),
+        )),
+    };
 
     vec![
         family_filter(format!("^{ROUTER_FAMILY}$")),
@@ -243,12 +254,12 @@ fn new_version_cell(timestamp: SystemTime) -> cell::Cell {
 }
 
 /// Return a RowFilter chain from multiple RowFilters
-fn filter_chain(filters: impl Into<RepeatedField<RowFilter>>) -> RowFilter {
-    let mut chain = RowFilter_Chain::default();
-    chain.set_filters(filters.into());
-    let mut filter = RowFilter::default();
-    filter.set_chain(chain);
-    filter
+fn filter_chain(filters: Vec<bigtable::RowFilter>) -> bigtable::RowFilter {
+    bigtable::RowFilter {
+        filter: Some(bigtable::row_filter::Filter::Chain(
+            bigtable::row_filter::Chain { filters },
+        )),
+    }
 }
 
 /// Return a ReadRowsRequest against table for a given row key
@@ -257,17 +268,15 @@ fn read_row_request(
     app_profile_id: &str,
     row_key: &str,
 ) -> bigtable::ReadRowsRequest {
-    let mut req = bigtable::ReadRowsRequest::default();
-    req.set_table_name(table_name.to_owned());
-    req.set_app_profile_id(app_profile_id.to_owned());
-
-    let mut row_keys = RepeatedField::default();
-    row_keys.push(row_key.as_bytes().to_vec());
-    let mut row_set = data::RowSet::default();
-    row_set.set_row_keys(row_keys);
-    req.set_rows(row_set);
-
-    req
+    bigtable::ReadRowsRequest {
+        table_name: table_name.to_owned(),
+        app_profile_id: app_profile_id.to_owned(),
+        rows: Some(bigtable::RowSet {
+            row_keys: vec![row_key.as_bytes().to_vec()],
+            row_ranges: Vec::new(),
+        }),
+        ..Default::default()
+    }
 }
 
 fn to_u64(value: Vec<u8>, name: &str) -> Result<u64, DbError> {
@@ -330,18 +339,18 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
         .with_jitter(true)
 }
 
-fn retryable_internal_err(status: &RpcStatus) -> bool {
+fn retryable_internal_err(status: &Status) -> bool {
     match status.code() {
-        RpcStatusCode::UNKNOWN => status
-            .message()
-            .eq_ignore_ascii_case("error occurred when fetching oauth2 token."),
-        RpcStatusCode::INTERNAL => [
+        // tonic surfaces transport-level failures (connection resets, etc.)
+        // as `Unknown`.
+        Code::Unknown => true,
+        Code::Internal => [
             "rst_stream",
             "rst stream",
             "received unexpected eos on data frame from server",
         ]
         .contains(&status.message().to_lowercase().as_str()),
-        RpcStatusCode::UNAVAILABLE | RpcStatusCode::DEADLINE_EXCEEDED => true,
+        Code::Unavailable | Code::DeadlineExceeded => true,
         _ => false,
     }
 }
@@ -357,37 +366,14 @@ pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
     metric.send();
 }
 
-pub fn retryable_grpcio_err(metrics: &Arc<StatsdClient>) -> impl Fn(&grpcio::Error) -> bool + '_ {
-    move |err| {
-        debug!("🉑 Checking grpcio::Error...{err}");
-        match err {
-            grpcio::Error::RpcFailure(status) => {
-                info!("GRPC Failure :{:?}", status);
-                let retry = retryable_internal_err(status);
-                if retry {
-                    metric(metrics, "RpcFailure", Some(&status.code().to_string()));
-                }
-                retry
-            }
-            grpcio::Error::BindFail(_) => {
-                metric(metrics, "BindFail", None);
-                true
-            }
-            // The parameter here is a [grpcio_sys::grpc_call_error] enum
-            // Not all of these are retryable.
-            grpcio::Error::CallFailure(grpc_call_status) => {
-                let retry = grpc_call_status == &grpcio_sys::grpc_call_error::GRPC_CALL_ERROR;
-                if retry {
-                    metric(
-                        metrics,
-                        "CallFailure",
-                        Some(&format!("{grpc_call_status:?}")),
-                    );
-                }
-                retry
-            }
-            _ => false,
+pub fn retryable_status(metrics: &Arc<StatsdClient>) -> impl Fn(&Status) -> bool + '_ {
+    move |status| {
+        info!("GRPC Failure: {:?}", status);
+        let retry = retryable_internal_err(status);
+        if retry {
+            metric(metrics, "RpcFailure", Some(&format!("{:?}", status.code())));
         }
+        retry
     }
 }
 
@@ -397,10 +383,16 @@ pub fn retryable_bt_err(
     move |err| {
         debug!("🉑 Checking BigTableError...{err}");
         match err {
-            error::BigTableError::InvalidRowResponse(e)
-            | error::BigTableError::Read(e)
-            | error::BigTableError::Write(e)
-            | error::BigTableError::GRPC(e) => retryable_grpcio_err(metrics)(e),
+            error::BigTableError::InvalidRowResponse(s)
+            | error::BigTableError::Read(s)
+            | error::BigTableError::Write(s) => retryable_status(metrics)(s),
+            // Failures to fetch an OAuth token (e.g. a transient metadata
+            // server hiccup) are retryable, matching the prior behavior of
+            // retrying grpcio's oauth token fetch errors.
+            error::BigTableError::Auth(_) => {
+                metric(metrics, "Auth", None);
+                true
+            }
             _ => false,
         }
     }
@@ -423,10 +415,6 @@ fn is_incomplete_router_record(cells: &RowCells) -> bool {
     cells
         .keys()
         .all(|k| ["current_timestamp", "version"].contains(&k.as_str()) || k.starts_with("chid:"))
-}
-
-fn call_opts(metadata: Metadata) -> ::grpcio::CallOption {
-    ::grpcio::CallOption::default().headers(metadata)
 }
 
 /// Connect to a BigTable storage model.
@@ -455,7 +443,6 @@ fn call_opts(metadata: Metadata) -> ::grpcio::CallOption {
 ///
 impl BigTableClientImpl {
     pub fn new(metrics: Arc<StatsdClient>, settings: &DbSettings) -> DbResult<Self> {
-        // let env = Arc::new(EnvBuilder::new().build());
         debug!("🏊 BT Pool new");
         let db_settings = BigTableDbSettings::try_from(settings.db_settings.as_ref())?;
         info!("🉑 {:#?}", db_settings);
@@ -463,12 +450,10 @@ impl BigTableClientImpl {
 
         // create the metadata header blocks required by Google for accessing GRPC resources.
         let metadata = db_settings.metadata()?;
-        let admin_metadata = db_settings.admin_metadata()?;
         Ok(Self {
             settings: db_settings,
             metrics,
             metadata,
-            admin_metadata,
             pool,
             circuit_breaker: Arc::new(CircuitBreaker::default()),
         })
@@ -496,20 +481,22 @@ impl BigTableClientImpl {
 
     /// Return a MutateRowRequest for a given row key
     fn mutate_row_request(&self, row_key: &str) -> bigtable::MutateRowRequest {
-        let mut req = bigtable::MutateRowRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_app_profile_id(self.settings.app_profile_id.clone());
-        req.set_row_key(row_key.as_bytes().to_vec());
-        req
+        bigtable::MutateRowRequest {
+            table_name: self.settings.table_name.clone(),
+            app_profile_id: self.settings.app_profile_id.clone(),
+            row_key: row_key.as_bytes().to_vec(),
+            ..Default::default()
+        }
     }
 
     /// Return a CheckAndMutateRowRequest for a given row key
     fn check_and_mutate_row_request(&self, row_key: &str) -> bigtable::CheckAndMutateRowRequest {
-        let mut req = bigtable::CheckAndMutateRowRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_app_profile_id(self.settings.app_profile_id.clone());
-        req.set_row_key(row_key.as_bytes().to_vec());
-        req
+        bigtable::CheckAndMutateRowRequest {
+            table_name: self.settings.table_name.clone(),
+            app_profile_id: self.settings.app_profile_id.clone(),
+            row_key: row_key.as_bytes().to_vec(),
+            ..Default::default()
+        }
     }
 
     /// Read a given row from the row key.
@@ -524,81 +511,23 @@ impl BigTableClientImpl {
         let result = retry_policy(self.settings.retry_count)
             .retry_if(
                 || async {
+                    let request = bigtable.request(req.clone(), &self.metadata).await?;
                     bigtable
                         .conn
-                        .mutate_row_opt(&req, call_opts(self.metadata.clone()))
+                        .clone()
+                        .mutate_row(request)
+                        .await
+                        .map_err(error::BigTableError::Write)?;
+                    Ok(())
                 },
-                retryable_grpcio_err(&self.metrics),
+                retryable_bt_err(&self.metrics),
             )
             .await;
         match &result {
-            Ok(_) => self.circuit_breaker.record_success(),
+            Ok(()) => self.circuit_breaker.record_success(),
             Err(_) => self.circuit_breaker.record_failure(),
         }
-        result.map_err(error::BigTableError::Write)?;
-        Ok(())
-    }
-
-    /// Perform a MutateRowsRequest
-    #[allow(unused)]
-    async fn mutate_rows(
-        &self,
-        req: bigtable::MutateRowsRequest,
-    ) -> Result<(), error::BigTableError> {
-        let bigtable = self.pool.get().await?;
-        // ClientSStreamReceiver will cancel an operation if it's dropped before it's done.
-        let resp = retry_policy(self.settings.retry_count)
-            .retry_if(
-                || async {
-                    bigtable
-                        .conn
-                        .mutate_rows_opt(&req, call_opts(self.metadata.clone()))
-                },
-                retryable_grpcio_err(&self.metrics),
-            )
-            .await
-            .map_err(error::BigTableError::Write)?;
-
-        // Scan the returned stream looking for errors.
-        // As I understand, the returned stream contains chunked MutateRowsResponse structs. Each
-        // struct contains the result of the row mutation, and contains a `status` (non-zero on error)
-        // and an optional message string (empty if none).
-        // The structure also contains an overall `status` but that does not appear to be exposed.
-        // Status codes are defined at https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-        let mut stream = Box::pin(resp);
-        let mut cnt = 0;
-        loop {
-            let (result, remainder) = StreamExt::into_future(stream).await;
-            if let Some(result) = result {
-                debug!("🎏 Result block: {}", cnt);
-                match result {
-                    Ok(r) => {
-                        for e in r.get_entries() {
-                            if e.has_status() {
-                                let status = e.get_status();
-                                // See status code definitions: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-                                let code = error::MutateRowStatus::from(status.get_code());
-                                if !code.is_ok() {
-                                    return Err(error::BigTableError::Status(
-                                        code,
-                                        status.get_message().to_owned(),
-                                    ));
-                                }
-                                debug!("🎏 Response: {} OK", e.index);
-                            }
-                        }
-                    }
-                    Err(e) => return Err(error::BigTableError::Write(e)),
-                };
-                cnt += 1;
-            } else {
-                debug!("🎏 Done!");
-                break;
-            }
-            stream = remainder;
-        }
-
-        Ok(())
+        result
     }
 
     /// Read one row for the [ReadRowsRequest] (assuming only a single row was requested).
@@ -615,7 +544,7 @@ impl BigTableClientImpl {
     ///
     async fn read_rows(
         &self,
-        req: ReadRowsRequest,
+        req: bigtable::ReadRowsRequest,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
         if !self.circuit_breaker.allow_request() {
             return Err(error::BigTableError::CircuitBreakerOpen);
@@ -624,10 +553,14 @@ impl BigTableClientImpl {
         let result = retry_policy(self.settings.retry_count)
             .retry_if(
                 || async {
-                    let resp: grpcio::ClientSStreamReceiver<bigtable::ReadRowsResponse> = bigtable
+                    let request = bigtable.request(req.clone(), &self.metadata).await?;
+                    let resp = bigtable
                         .conn
-                        .read_rows_opt(&req, call_opts(self.metadata.clone()))
-                        .map_err(error::BigTableError::Read)?;
+                        .clone()
+                        .read_rows(request)
+                        .await
+                        .map_err(error::BigTableError::Read)?
+                        .into_inner();
                     merge::RowMerger::process_chunks(resp).await
                 },
                 retryable_bt_err(&self.metrics),
@@ -649,8 +582,7 @@ impl BigTableClientImpl {
         // It's possible to do a lot here, including altering in process
         // mutations, clearing them, etc. It's all up for grabs until we commit
         // below. For now, let's just presume a write and be done.
-        let mutations = self.get_mutations(row.cells)?;
-        req.set_mutations(mutations);
+        req.mutations = self.get_mutations(row.cells)?;
         self.mutate_row(req).await?;
         Ok(())
     }
@@ -659,25 +591,28 @@ impl BigTableClientImpl {
     fn get_mutations(
         &self,
         cells: HashMap<FamilyId, Vec<crate::db::bigtable::bigtable_client::cell::Cell>>,
-    ) -> Result<protobuf::RepeatedField<data::Mutation>, error::BigTableError> {
-        let mut mutations = protobuf::RepeatedField::default();
+    ) -> Result<Vec<bigtable::Mutation>, error::BigTableError> {
+        let mut mutations = Vec::new();
         for (family_id, cells) in cells {
             for cell in cells {
-                let mut mutation = data::Mutation::default();
-                let mut set_cell = data::Mutation_SetCell::default();
                 let timestamp = cell
                     .timestamp
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(error::BigTableError::WriteTime)?;
-                set_cell.family_name.clone_from(&family_id);
-                set_cell.set_column_qualifier(cell.qualifier.clone().into_bytes());
-                set_cell.set_value(cell.value);
-                // Yes, this is passing milli bounded time as a micro. Otherwise I get
-                // a `Timestamp granularity mismatch` error
-                set_cell.set_timestamp_micros((timestamp.as_millis() * 1000) as i64);
                 debug!("🉑 expiring in {:?}", timestamp.as_millis());
-                mutation.set_set_cell(set_cell);
-                mutations.push(mutation);
+                mutations.push(bigtable::Mutation {
+                    mutation: Some(bigtable::mutation::Mutation::SetCell(
+                        bigtable::mutation::SetCell {
+                            family_name: family_id.clone(),
+                            column_qualifier: cell.qualifier.clone().into_bytes(),
+                            // Bigtable tables use millisecond cell-timestamp granularity;
+                            // timestamp_micros must be a multiple of 1,000 or the server
+                            // rejects the mutation with a granularity mismatch.
+                            timestamp_micros: (timestamp.as_millis() * 1000) as i64,
+                            value: cell.value,
+                        },
+                    )),
+                });
             }
         }
         Ok(mutations)
@@ -693,16 +628,16 @@ impl BigTableClientImpl {
     async fn check_and_mutate_row(
         &self,
         row: row::Row,
-        filter: RowFilter,
+        filter: bigtable::RowFilter,
         state: bool,
     ) -> Result<bool, error::BigTableError> {
         let mut req = self.check_and_mutate_row_request(&row.row_key);
         let mutations = self.get_mutations(row.cells)?;
-        req.set_predicate_filter(filter);
+        req.predicate_filter = Some(filter);
         if state {
-            req.set_true_mutations(mutations);
+            req.true_mutations = mutations;
         } else {
-            req.set_false_mutations(mutations);
+            req.false_mutations = mutations;
         }
         self.check_and_mutate(req).await
     }
@@ -715,106 +650,55 @@ impl BigTableClientImpl {
         let resp = retry_policy(self.settings.retry_count)
             .retry_if(
                 || async {
-                    // Note: check_and_mutate_row_async may return before the row
-                    // is written, which can cause race conditions for reads
+                    let request = bigtable.request(req.clone(), &self.metadata).await?;
                     bigtable
                         .conn
-                        .check_and_mutate_row_opt(&req, call_opts(self.metadata.clone()))
+                        .clone()
+                        .check_and_mutate_row(request)
+                        .await
+                        .map_err(error::BigTableError::Write)
                 },
-                retryable_grpcio_err(&self.metrics),
+                retryable_bt_err(&self.metrics),
             )
-            .await
-            .map_err(error::BigTableError::Write)?;
-        debug!("🉑 Predicate Matched: {}", &resp.get_predicate_matched(),);
-        Ok(resp.get_predicate_matched())
+            .await?
+            .into_inner();
+        debug!("🉑 Predicate Matched: {}", &resp.predicate_matched);
+        Ok(resp.predicate_matched)
     }
 
     fn get_delete_mutations(
         &self,
         family: &str,
         column_names: &[&str],
-        time_range: Option<&data::TimestampRange>,
-    ) -> Result<protobuf::RepeatedField<data::Mutation>, error::BigTableError> {
-        let mut mutations = protobuf::RepeatedField::default();
+        time_range: Option<&bigtable::TimestampRange>,
+    ) -> Result<Vec<bigtable::Mutation>, error::BigTableError> {
+        let mut mutations = Vec::new();
         for column in column_names {
-            let mut mutation = data::Mutation::default();
-            // Mutation_DeleteFromRow -- Delete all cells for a given row.
-            // Mutation_DeleteFromFamily -- Delete all cells from a family for a given row.
-            // Mutation_DeleteFromColumn -- Delete all cells from a column name for a given row, restricted by timestamp range.
-            let mut del_cell = data::Mutation_DeleteFromColumn::default();
-            del_cell.set_family_name(family.to_owned());
-            del_cell.set_column_qualifier(column.as_bytes().to_vec());
-            if let Some(range) = time_range {
-                del_cell.set_time_range(range.clone());
-            }
-            mutation.set_delete_from_column(del_cell);
-            mutations.push(mutation);
+            // DeleteFromRow -- Delete all cells for a given row.
+            // DeleteFromFamily -- Delete all cells from a family for a given row.
+            // DeleteFromColumn -- Delete all cells from a column name for a given row, restricted by timestamp range.
+            mutations.push(bigtable::Mutation {
+                mutation: Some(bigtable::mutation::Mutation::DeleteFromColumn(
+                    bigtable::mutation::DeleteFromColumn {
+                        family_name: family.to_owned(),
+                        column_qualifier: column.as_bytes().to_vec(),
+                        time_range: time_range.cloned(),
+                    },
+                )),
+            });
         }
         Ok(mutations)
-    }
-
-    #[allow(unused)]
-    /// Delete all cell data from the specified columns with the optional time range.
-    #[allow(unused)]
-    async fn delete_cells(
-        &self,
-        row_key: &str,
-        family: &str,
-        column_names: &[&str],
-        time_range: Option<&data::TimestampRange>,
-    ) -> Result<(), error::BigTableError> {
-        let mut req = self.mutate_row_request(row_key);
-        req.set_mutations(self.get_delete_mutations(family, column_names, time_range)?);
-        self.mutate_row(req).await
     }
 
     /// Delete all the cells for the given row. NOTE: This will drop the row.
     async fn delete_row(&self, row_key: &str) -> Result<(), error::BigTableError> {
         let mut req = self.mutate_row_request(row_key);
-        let mut mutations = protobuf::RepeatedField::default();
-        let mut mutation = data::Mutation::default();
-        mutation.set_delete_from_row(data::Mutation_DeleteFromRow::default());
-        mutations.push(mutation);
-        req.set_mutations(mutations);
+        req.mutations = vec![bigtable::Mutation {
+            mutation: Some(bigtable::mutation::Mutation::DeleteFromRow(
+                bigtable::mutation::DeleteFromRow {},
+            )),
+        }];
         self.mutate_row(req).await
-    }
-
-    /// This uses the admin interface to drop row ranges.
-    /// This will drop ALL data associated with these rows.
-    /// Note that deletion may take up to a week to occur.
-    /// see https://cloud.google.com/php/docs/reference/cloud-bigtable/latest/Admin.V2.DropRowRangeRequest
-    #[allow(unused)]
-    async fn delete_rows(&self, row_key: &str) -> Result<bool, error::BigTableError> {
-        let admin = BigtableTableAdminClient::new(self.pool.get_channel()?);
-        let mut req = DropRowRangeRequest::new();
-        req.set_name(self.settings.table_name.clone());
-        req.set_row_key_prefix(row_key.as_bytes().to_vec());
-
-        admin
-            .drop_row_range_async_opt(&req, call_opts(self.admin_metadata.clone()))
-            .map_err(|e| {
-                error!("{:?}", e);
-                error::BigTableError::Admin(
-                    format!(
-                        "Could not send delete command for {}",
-                        &self.settings.table_name
-                    ),
-                    Some(e.to_string()),
-                )
-            })?
-            .await
-            .map_err(|e| {
-                error!("post await: {:?}", e);
-                error::BigTableError::Admin(
-                    format!(
-                        "Could not delete data from table {}",
-                        &self.settings.table_name
-                    ),
-                    Some(e.to_string()),
-                )
-            })?;
-
-        Ok(true)
     }
 
     fn rows_to_notifications(
@@ -966,19 +850,59 @@ impl BigTableClientImpl {
 
 #[derive(Clone)]
 pub struct BigtableDb {
-    pub(super) conn: BigtableClient,
-    pub(super) health_metadata: Metadata,
+    pub(super) conn: BigtableClient<Channel>,
+    pub(super) health_metadata: MetadataMap,
+    /// Application Default Credentials token provider, shared across the
+    /// pool. `None` when running against the emulator (which needs no
+    /// credentials).
+    auth_provider: Option<Arc<dyn TokenProvider>>,
     table_name: String,
 }
 
 impl BigtableDb {
-    pub fn new(channel: Channel, health_metadata: &Metadata, table_name: &str) -> Self {
+    pub fn new(
+        channel: Channel,
+        auth_provider: Option<Arc<dyn TokenProvider>>,
+        health_metadata: &MetadataMap,
+        table_name: &str,
+    ) -> Self {
         Self {
-            conn: BigtableClient::new(channel),
+            conn: BigtableClient::new(channel)
+                .max_decoding_message_size(MAX_MESSAGE_LEN)
+                .max_encoding_message_size(MAX_MESSAGE_LEN),
             health_metadata: health_metadata.clone(),
+            auth_provider,
             table_name: table_name.to_owned(),
         }
     }
+
+    /// Build a [tonic::Request] for the given message, attaching the standard
+    /// Google routing metadata and (outside of the emulator) an OAuth2
+    /// `authorization` token from the Application Default Credentials.
+    ///
+    /// The token provider caches tokens internally, so this is cheap to call
+    /// per-request (and per retry attempt, where it transparently picks up a
+    /// fresh token if the prior one expired).
+    pub(super) async fn request<T>(
+        &self,
+        msg: T,
+        metadata: &MetadataMap,
+    ) -> Result<Request<T>, error::BigTableError> {
+        let mut request = Request::new(msg);
+        *request.metadata_mut() = metadata.clone();
+        if let Some(provider) = &self.auth_provider {
+            let token = provider
+                .token(BIGTABLE_DATA_SCOPES)
+                .await
+                .map_err(error::BigTableError::Auth)?;
+            let value: AsciiMetadataValue = format!("Bearer {}", token.as_str())
+                .parse()
+                .map_err(|e| error::BigTableError::Config(format!("Invalid auth token: {e}")))?;
+            request.metadata_mut().insert("authorization", value);
+        }
+        Ok(request)
+    }
+
     /// Perform a simple connectivity check. This should return no actual results
     /// but should verify that the connection is valid. We use this for the
     /// Recycle check as well, so it has to be fairly low in the implementation
@@ -998,19 +922,22 @@ impl BigtableDb {
         // other than it does not return an error.
         let random_uaid = Uuid::new_v4().simple().to_string();
         let mut req = read_row_request(&self.table_name, app_profile_id, &random_uaid);
-        let mut filter = data::RowFilter::default();
-        filter.set_block_all_filter(true);
-        req.set_filter(filter);
+        req.filter = Some(bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::BlockAllFilter(true)),
+        });
         let _r = retry_policy(RETRY_COUNT)
             .retry_if(
                 || async {
+                    let request = self.request(req.clone(), &self.health_metadata).await?;
                     self.conn
-                        .read_rows_opt(&req, call_opts(self.health_metadata.clone()))
+                        .clone()
+                        .read_rows(request)
+                        .await
+                        .map_err(error::BigTableError::Read)
                 },
-                retryable_grpcio_err(metrics),
+                retryable_bt_err(metrics),
             )
-            .await
-            .map_err(error::BigTableError::Read)?;
+            .await?;
 
         debug!("🉑 health check");
         Ok(true)
@@ -1030,8 +957,11 @@ impl DbClient for BigTableClientImpl {
         let row = self.user_to_row(user, version);
 
         // Only add when the user doesn't already exist
-        let mut row_key_filter = RowFilter::default();
-        row_key_filter.set_row_key_regex_filter(format!("^{}$", row.row_key).into_bytes());
+        let row_key_filter = bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::RowKeyRegexFilter(
+                format!("^{}$", row.row_key).into_bytes(),
+            )),
+        };
         let filter = filter_chain(vec![router_gc_policy_filter(), row_key_filter]);
 
         if self.check_and_mutate_row(row, filter, false).await? {
@@ -1080,7 +1010,7 @@ impl DbClient for BigTableClientImpl {
         let mut req = self.read_row_request(&row_key);
         let mut filters = vec![router_gc_policy_filter()];
         filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
-        req.set_filter(filter_chain(filters));
+        req.filter = Some(filter_chain(filters));
         let Some(mut row) = self.read_row(req).await? else {
             return Ok(None);
         };
@@ -1196,9 +1126,12 @@ impl DbClient for BigTableClientImpl {
         let row_key = uaid.simple().to_string();
         let mut req = self.read_row_request(&row_key);
 
-        let mut cq_filter = data::RowFilter::default();
-        cq_filter.set_column_qualifier_regex_filter("^chid:.*$".as_bytes().to_vec());
-        req.set_filter(filter_chain(vec![
+        let cq_filter = bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::ColumnQualifierRegexFilter(
+                "^chid:.*$".as_bytes().to_vec(),
+            )),
+        };
+        req.filter = Some(filter_chain(vec![
             router_gc_policy_filter(),
             family_filter(format!("^{ROUTER_FAMILY}$")),
             cq_filter,
@@ -1227,10 +1160,13 @@ impl DbClient for BigTableClientImpl {
         mutations.extend(self.get_mutations(row.cells)?);
 
         // check if the channel existed/was actually removed
-        let mut cq_filter = data::RowFilter::default();
-        cq_filter.set_column_qualifier_regex_filter(format!("^{column}$").into_bytes());
-        req.set_predicate_filter(filter_chain(vec![router_gc_policy_filter(), cq_filter]));
-        req.set_true_mutations(mutations);
+        let cq_filter = bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::ColumnQualifierRegexFilter(
+                format!("^{column}$").into_bytes(),
+            )),
+        };
+        req.predicate_filter = Some(filter_chain(vec![router_gc_policy_filter(), cq_filter]));
+        req.true_mutations = mutations;
 
         Ok(self.check_and_mutate(req).await?)
     }
@@ -1253,8 +1189,8 @@ impl DbClient for BigTableClientImpl {
 
         let mut filters = vec![router_gc_policy_filter()];
         filters.extend(version_filter(version));
-        req.set_predicate_filter(filter_chain(filters));
-        req.set_true_mutations(self.get_delete_mutations(ROUTER_FAMILY, &["node_id"], None)?);
+        req.predicate_filter = Some(filter_chain(filters));
+        req.true_mutations = self.get_delete_mutations(ROUTER_FAMILY, &["node_id"], None)?;
 
         Ok(self.check_and_mutate(req).await?)
     }
@@ -1436,28 +1372,32 @@ impl DbClient for BigTableClientImpl {
         uaid: &Uuid,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        let mut req = ReadRowsRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_app_profile_id(self.settings.app_profile_id.clone());
-
         let start_key = format!("{}#01:", uaid.simple());
         let end_key = format!("{}#02:", uaid.simple());
-        let mut rows = data::RowSet::default();
-        let mut row_range = data::RowRange::default();
-        row_range.set_start_key_open(start_key.into_bytes());
-        row_range.set_end_key_open(end_key.into_bytes());
-        let mut row_ranges = RepeatedField::default();
-        row_ranges.push(row_range);
-        rows.set_row_ranges(row_ranges);
-        req.set_rows(rows);
+        let mut req = bigtable::ReadRowsRequest {
+            table_name: self.settings.table_name.clone(),
+            app_profile_id: self.settings.app_profile_id.clone(),
+            rows: Some(bigtable::RowSet {
+                row_keys: Vec::new(),
+                row_ranges: vec![bigtable::RowRange {
+                    start_key: Some(bigtable::row_range::StartKey::StartKeyOpen(
+                        start_key.into_bytes(),
+                    )),
+                    end_key: Some(bigtable::row_range::EndKey::EndKeyOpen(
+                        end_key.into_bytes(),
+                    )),
+                }],
+            }),
+            ..Default::default()
+        };
 
         let mut filters = message_gc_policy_filter()?;
         filters.push(family_filter(format!("^{MESSAGE_TOPIC_FAMILY}$")));
 
-        req.set_filter(filter_chain(filters));
+        req.filter = Some(filter_chain(filters));
         if limit > 0 {
             trace!("🉑 Setting limit to {limit}");
-            req.set_rows_limit(limit as i64);
+            req.rows_limit = limit as i64;
         }
         let rows = self.read_rows(req).await?;
         debug!(
@@ -1485,13 +1425,6 @@ impl DbClient for BigTableClientImpl {
         timestamp: Option<u64>,
         limit: usize,
     ) -> DbResult<FetchMessageResponse> {
-        let mut req = ReadRowsRequest::default();
-        req.set_table_name(self.settings.table_name.clone());
-        req.set_app_profile_id(self.settings.app_profile_id.clone());
-
-        let mut rows = data::RowSet::default();
-        let mut row_range = data::RowRange::default();
-
         let start_key = if let Some(ts) = timestamp {
             // Fetch everything after the last message with timestamp: the "z"
             // moves past the last message's channel_id's 1st hex digit
@@ -1500,13 +1433,22 @@ impl DbClient for BigTableClientImpl {
             format!("{}#02:", uaid.simple())
         };
         let end_key = format!("{}#03:", uaid.simple());
-        row_range.set_start_key_open(start_key.into_bytes());
-        row_range.set_end_key_open(end_key.into_bytes());
-
-        let mut row_ranges = RepeatedField::default();
-        row_ranges.push(row_range);
-        rows.set_row_ranges(row_ranges);
-        req.set_rows(rows);
+        let mut req = bigtable::ReadRowsRequest {
+            table_name: self.settings.table_name.clone(),
+            app_profile_id: self.settings.app_profile_id.clone(),
+            rows: Some(bigtable::RowSet {
+                row_keys: Vec::new(),
+                row_ranges: vec![bigtable::RowRange {
+                    start_key: Some(bigtable::row_range::StartKey::StartKeyOpen(
+                        start_key.into_bytes(),
+                    )),
+                    end_key: Some(bigtable::row_range::EndKey::EndKeyOpen(
+                        end_key.into_bytes(),
+                    )),
+                }],
+            }),
+            ..Default::default()
+        };
 
         // We can fetch data and do [some remote filtering](https://cloud.google.com/bigtable/docs/filters),
         // unfortunately I don't think the filtering we need will be super helpful.
@@ -1524,9 +1466,9 @@ impl DbClient for BigTableClientImpl {
         let mut filters = message_gc_policy_filter()?;
         filters.push(family_filter(format!("^{MESSAGE_FAMILY}$")));
 
-        req.set_filter(filter_chain(filters));
+        req.filter = Some(filter_chain(filters));
         if limit > 0 {
-            req.set_rows_limit(limit as i64);
+            req.rows_limit = limit as i64;
         }
         let rows = self.read_rows(req).await?;
         debug!(
@@ -1675,6 +1617,35 @@ mod tests {
         let result = client.health_check().await;
         assert!(result.is_ok());
         assert!(result.unwrap());
+    }
+
+    /// Bigtable rejects SetCell timestamps that are not aligned to the table's
+    /// millisecond granularity (timestamp_micros must be a multiple of 1,000).
+    #[actix_rt::test]
+    async fn timestamp_granularity_rejects_sub_millisecond_micros() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let row_key = uaid.simple().to_string();
+        let _ = client.remove_user(&uaid).await;
+
+        let mut req = client.mutate_row_request(&row_key);
+        req.mutations = vec![bigtable::Mutation {
+            mutation: Some(bigtable::mutation::Mutation::SetCell(
+                bigtable::mutation::SetCell {
+                    family_name: ROUTER_FAMILY.to_owned(),
+                    column_qualifier: b"granularity_probe".to_vec(),
+                    timestamp_micros: 1,
+                    value: b"x".to_vec(),
+                },
+            )),
+        }];
+
+        assert!(
+            client.mutate_row(req).await.is_err(),
+            "expected granularity mismatch for timestamp_micros=1"
+        );
+
+        let _ = client.remove_user(&uaid).await;
     }
 
     /// run a gauntlet of testing. These are a bit linear because they need

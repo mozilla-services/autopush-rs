@@ -2,11 +2,23 @@ use std::collections::{BTreeMap, HashMap};
 use std::mem;
 use std::time::{Duration, SystemTime};
 
-use futures::StreamExt;
-use google_cloud_rust_raw::bigtable::v2::bigtable::{ReadRowsResponse, ReadRowsResponse_CellChunk};
-use grpcio::ClientSStreamReceiver;
+use googleapis_tonic_google_bigtable_v2::google::bigtable::v2::{
+    ReadRowsResponse,
+    read_rows_response::{CellChunk, cell_chunk::RowStatus},
+};
+use tonic::Streaming;
 
 use super::{FamilyId, Qualifier, RowKey, cell::Cell, error::BigTableError, row::Row};
+
+/// Return whether this chunk signals a row reset.
+fn is_reset_row(chunk: &CellChunk) -> bool {
+    matches!(chunk.row_status, Some(RowStatus::ResetRow(true)))
+}
+
+/// Return whether this chunk commits the row.
+fn has_commit_row(chunk: &CellChunk) -> bool {
+    matches!(chunk.row_status, Some(RowStatus::CommitRow(_)))
+}
 
 /// List of the potential states when we are reading each value from the
 /// returned stream and composing a "row"
@@ -88,7 +100,7 @@ pub struct RowMerger {
 
 impl RowMerger {
     /// discard data so far and return to a neutral state.
-    fn reset_row(&mut self, chunk: ReadRowsResponse_CellChunk) -> Result<&mut Self, BigTableError> {
+    fn reset_row(&mut self, chunk: CellChunk) -> Result<&mut Self, BigTableError> {
         if self.state == ReadState::RowStart {
             return Err(BigTableError::InvalidChunk("Bare Reset".to_owned()));
         };
@@ -97,12 +109,12 @@ impl RowMerger {
                 "Reset chunk has a row key".to_owned(),
             ));
         };
-        if chunk.has_family_name() {
+        if chunk.family_name.is_some() {
             return Err(BigTableError::InvalidChunk(
                 "Reset chunk has a family_name".to_owned(),
             ));
         }
-        if chunk.has_qualifier() {
+        if chunk.qualifier.is_some() {
             return Err(BigTableError::InvalidChunk(
                 "Reset chunk has a qualifier".to_owned(),
             ));
@@ -112,7 +124,7 @@ impl RowMerger {
                 "Reset chunk has a timestamp".to_owned(),
             ));
         }
-        if !chunk.get_labels().is_empty() {
+        if !chunk.labels.is_empty() {
             return Err(BigTableError::InvalidChunk(
                 "Reset chunk has a labels".to_owned(),
             ));
@@ -130,22 +142,19 @@ impl RowMerger {
 
     /// The initial row contains the first cell data. There may be additional data that we
     /// have to use later, so capture that as well.
-    fn row_start(
-        &mut self,
-        chunk: &mut ReadRowsResponse_CellChunk,
-    ) -> Result<&Self, BigTableError> {
+    fn row_start(&mut self, chunk: &mut CellChunk) -> Result<&Self, BigTableError> {
         if chunk.row_key.is_empty() {
             return Err(BigTableError::InvalidChunk(
                 "New row is missing a row key".to_owned(),
             ));
         }
-        if chunk.has_family_name() {
+        if let Some(family_name) = &chunk.family_name {
             info!(
                 "👪Family name: {}: {:?}",
                 String::from_utf8(chunk.row_key.clone()).unwrap_or_default(),
-                &chunk.get_family_name()
+                family_name
             );
-            self.last_seen_cell_family = Some(chunk.get_family_name().get_value().to_owned());
+            self.last_seen_cell_family = Some(family_name.clone());
         }
         if let Some(last_key) = self.last_seen_row_key.clone()
             && last_key.as_bytes().to_vec() >= chunk.row_key
@@ -166,17 +175,13 @@ impl RowMerger {
 
     /// cell_start seems to be the main worker. It starts a new cell value (rows contain cells, which
     /// can have multiple versions).
-    fn cell_start(
-        &mut self,
-        chunk: &mut ReadRowsResponse_CellChunk,
-    ) -> Result<&Self, BigTableError> {
+    fn cell_start(&mut self, chunk: &mut CellChunk) -> Result<&Self, BigTableError> {
         // cells must have qualifiers.
-        if !chunk.has_qualifier() {
+        let Some(qualifier) = chunk.qualifier.take() else {
             self.state = ReadState::CellComplete;
             return Ok(self);
             // return Err(BigTableError::InvalidChunk("Cell missing qualifier for new cell".to_owned()))
-        }
-        let qualifier = chunk.take_qualifier().get_value().to_vec();
+        };
         let row = &mut self.row_in_progress;
 
         if !row.cells.is_empty()
@@ -189,11 +194,8 @@ impl RowMerger {
         }
 
         let cell = &mut row.cell_in_progress;
-        if chunk.has_family_name() {
-            chunk
-                .take_family_name()
-                .get_value()
-                .clone_into(&mut cell.family);
+        if let Some(family_name) = chunk.family_name.take() {
+            cell.family = family_name;
         } else {
             if self.last_seen_cell_family.is_none() {
                 return Err(BigTableError::InvalidChunk(
@@ -213,11 +215,7 @@ impl RowMerger {
             SystemTime::UNIX_EPOCH + Duration::from_micros(chunk.timestamp_micros as u64);
 
         // If there are additional labels for this cell, record them.
-        // can't call map, so do this the semi-hard way
-        let mut labels = chunk.take_labels();
-        while let Some(label) = labels.pop() {
-            cell.labels.push(label)
-        }
+        cell.labels.append(&mut chunk.labels);
 
         // Pre-allocate space for this cell version data. The data will be delivered in
         // multiple chunks. (Not strictly neccessary, but can save us some future allocs)
@@ -235,10 +233,7 @@ impl RowMerger {
 
     /// Continue adding data to the cell version. Cell data may exceed a chunk's max size,
     /// so we contine feeding data into it.
-    fn cell_in_progress(
-        &mut self,
-        chunk: &mut ReadRowsResponse_CellChunk,
-    ) -> Result<&Self, BigTableError> {
+    fn cell_in_progress(&mut self, chunk: &mut CellChunk) -> Result<&Self, BigTableError> {
         let row = &mut self.row_in_progress;
         let cell = &mut row.cell_in_progress;
 
@@ -249,29 +244,29 @@ impl RowMerger {
                     "Found row key mid cell".to_owned(),
                 ));
             }
-            if chunk.has_family_name() {
+            if chunk.family_name.is_some() {
                 return Err(BigTableError::InvalidChunk(
                     "Found family name mid cell".to_owned(),
                 ));
             }
-            if chunk.has_qualifier() {
+            if chunk.qualifier.is_some() {
                 return Err(BigTableError::InvalidChunk(
                     "Found qualifier mid cell".to_owned(),
                 ));
             }
-            if chunk.get_timestamp_micros() > 0 {
+            if chunk.timestamp_micros > 0 {
                 return Err(BigTableError::InvalidChunk(
                     "Found timestamp mid cell".to_owned(),
                 ));
             }
-            if chunk.get_labels().is_empty() {
+            if chunk.labels.is_empty() {
                 return Err(BigTableError::InvalidChunk(
                     "Found labels mid cell".to_owned(),
                 ));
             }
         }
 
-        let mut val = chunk.take_value();
+        let mut val = mem::take(&mut chunk.value);
         cell.value_index += val.len();
         cell.value.append(&mut val);
 
@@ -285,10 +280,7 @@ impl RowMerger {
     }
 
     /// Wrap up a cell that's been in progress.
-    fn cell_complete(
-        &mut self,
-        chunk: &mut ReadRowsResponse_CellChunk,
-    ) -> Result<&Self, BigTableError> {
+    fn cell_complete(&mut self, chunk: &mut CellChunk) -> Result<&Self, BigTableError> {
         let row_in_progress = &mut self.row_in_progress;
         let cell_in_progress = &mut row_in_progress.cell_in_progress;
 
@@ -340,7 +332,7 @@ impl RowMerger {
         cell_in_progress.value_index = 0;
 
         // If this isn't the last item in the row, keep going.
-        self.state = if !chunk.has_commit_row() {
+        self.state = if !has_commit_row(chunk) {
             ReadState::CellStart
         } else {
             ReadState::RowComplete
@@ -350,10 +342,7 @@ impl RowMerger {
     }
 
     /// wrap up a row, reinitialize our state to read the next row.
-    fn row_complete(
-        &mut self,
-        _chunk: &mut ReadRowsResponse_CellChunk,
-    ) -> Result<Row, BigTableError> {
+    fn row_complete(&mut self, _chunk: &mut CellChunk) -> Result<Row, BigTableError> {
         // now that we're done, write a clean version.
         let row = mem::take(&mut self.row_in_progress);
         self.state = ReadState::RowStart;
@@ -377,7 +366,7 @@ impl RowMerger {
 
     /// Iterate through all the returned chunks and compile them into a hash of finished cells indexed by row_key
     pub async fn process_chunks(
-        mut stream: ClientSStreamReceiver<ReadRowsResponse>,
+        mut stream: Streaming<ReadRowsResponse>,
     ) -> Result<BTreeMap<RowKey, Row>, BigTableError> {
         // Work object
         let mut merger = Self::default();
@@ -385,25 +374,15 @@ impl RowMerger {
         // finished collection
         let mut rows = BTreeMap::<RowKey, Row>::new();
 
-        while let (Some(row_resp_res), s) = StreamExt::into_future(stream).await {
-            stream = s;
-
-            // Bigtable's responses are not reliable.
-            // A read can fail for any number of reasons and return either 500 class errors or a corrupted data block,
-            // depending on what system failed on the Bigtable side.
-            // We want to retry the read in those cases and pick up from where we left off.
-            let row = match row_resp_res {
-                Ok(v) => v,
-                Err(e) => return Err(BigTableError::InvalidRowResponse(e)),
-            };
-            /*
-            ReadRowsResponse:
-                pub chunks: ::protobuf::RepeatedField<ReadRowsResponse_CellChunk>,
-                pub last_scanned_row_key: ::std::vec::Vec<u8>,
-                // special fields
-                pub unknown_fields: ::protobuf::UnknownFields,
-                pub cached_size: ::protobuf::CachedSize,
-            */
+        // Bigtable's responses are not reliable.
+        // A read can fail for any number of reasons and return either 500 class errors or a corrupted data block,
+        // depending on what system failed on the Bigtable side.
+        // We want to retry the read in those cases and pick up from where we left off.
+        while let Some(row) = stream
+            .message()
+            .await
+            .map_err(BigTableError::InvalidRowResponse)?
+        {
             if !row.last_scanned_row_key.is_empty() {
                 let row_key = String::from_utf8(row.last_scanned_row_key).unwrap_or_default();
                 if merger.last_seen_row_key.clone().unwrap_or_default() >= row_key {
@@ -416,7 +395,7 @@ impl RowMerger {
 
             for mut chunk in row.chunks {
                 debug!("🧩 Chunk >> {:?}", &chunk);
-                if chunk.get_reset_row() {
+                if is_reset_row(&chunk) {
                     debug!("‼ resetting row");
                     merger.reset_row(chunk)?;
                     continue;
@@ -427,7 +406,7 @@ impl RowMerger {
                     merger.row_start(&mut chunk)?;
                 }
                 if merger.state == ReadState::CellStart {
-                    debug!("🟡   cell start {:?}", chunk.get_qualifier());
+                    debug!("🟡   cell start {:?}", chunk.qualifier);
                     merger.cell_start(&mut chunk)?;
                 }
                 if merger.state == ReadState::CellInProgress {
@@ -442,7 +421,7 @@ impl RowMerger {
                     debug! {"🟧 row complete"};
                     let finished_row = merger.row_complete(&mut chunk)?;
                     rows.insert(finished_row.row_key.clone(), finished_row);
-                } else if chunk.has_commit_row() {
+                } else if has_commit_row(&chunk) {
                     return Err(BigTableError::InvalidChunk(format!(
                         "Chunk tried to commit in row in wrong state {:?}",
                         merger.state

@@ -1,3 +1,7 @@
+use tonic::metadata::{AsciiMetadataValue, MetadataMap};
+
+use super::error::BigTableError;
+
 /// gRPC metadata Resource prefix header
 ///
 /// Generic across Google APIs. This "improves routing by the backend" as
@@ -31,7 +35,7 @@ const LEADER_AWARE_KEY: &str = "x-goog-spanner-route-to-leader";
 /// Its meaning is not to be known to the uninitiated.
 const USER_AGENT: &str = "gl-external/1.0 gccl/1.0";
 
-/// Builds the [grpcio::Metadata] for all db operations
+/// Builds the [tonic::metadata::MetadataMap] for all db operations
 #[derive(Default)]
 pub struct MetadataBuilder<'a> {
     prefix: &'a str,
@@ -62,19 +66,25 @@ impl<'a> MetadataBuilder<'a> {
         self
     }
 
-    /// Build the [grpcio::Metadata]
-    pub fn build(self) -> Result<grpcio::Metadata, grpcio::Error> {
-        let mut meta = grpcio::MetadataBuilder::new();
+    /// Build the [MetadataMap]
+    pub fn build(self) -> Result<MetadataMap, BigTableError> {
+        let mut meta = MetadataMap::new();
 
-        meta.add_str(PREFIX_KEY, self.prefix)?;
-        meta.add_str(METRICS_KEY, USER_AGENT)?;
+        meta.insert(PREFIX_KEY, Self::value(self.prefix)?);
+        meta.insert(METRICS_KEY, Self::value(USER_AGENT)?);
         if self.route_to_leader {
-            meta.add_str(LEADER_AWARE_KEY, "true")?;
+            meta.insert(LEADER_AWARE_KEY, Self::value("true")?);
         }
         if !self.routing_params.is_empty() {
-            meta.add_str(ROUTING_KEY, &self.routing_header())?;
+            let routing_header = self.routing_header();
+            meta.insert(ROUTING_KEY, Self::value(&routing_header)?);
         }
-        Ok(meta.build())
+        Ok(meta)
+    }
+
+    fn value(val: &str) -> Result<AsciiMetadataValue, BigTableError> {
+        AsciiMetadataValue::try_from(val)
+            .map_err(|e| BigTableError::Config(format!("Invalid gRPC metadata value: {e}")))
     }
 
     fn routing_header(self) -> String {
@@ -90,8 +100,6 @@ impl<'a> MetadataBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, str};
-
     use super::{
         LEADER_AWARE_KEY, METRICS_KEY, MetadataBuilder, PREFIX_KEY, ROUTING_KEY, USER_AGENT,
     };
@@ -107,16 +115,12 @@ mod tests {
             .routing_param("foo", "bar baz")
             .build()
             .unwrap();
-        let meta: HashMap<_, _> = meta.into_iter().collect();
 
         assert_eq!(meta.len(), 3);
-        assert_eq!(str::from_utf8(meta.get(PREFIX_KEY).unwrap()).unwrap(), DB);
+        assert_eq!(meta.get(PREFIX_KEY).unwrap().to_str().unwrap(), DB);
+        assert_eq!(meta.get(METRICS_KEY).unwrap().to_str().unwrap(), USER_AGENT);
         assert_eq!(
-            str::from_utf8(meta.get(METRICS_KEY).unwrap()).unwrap(),
-            USER_AGENT
-        );
-        assert_eq!(
-            str::from_utf8(meta.get(ROUTING_KEY).unwrap()).unwrap(),
+            meta.get(ROUTING_KEY).unwrap().to_str().unwrap(),
             format!("session={SESSION}&foo=bar+baz")
         );
     }
@@ -127,11 +131,10 @@ mod tests {
             .route_to_leader(true)
             .build()
             .unwrap();
-        let meta: HashMap<_, _> = meta.into_iter().collect();
 
         assert_eq!(meta.len(), 3);
         assert_eq!(
-            str::from_utf8(meta.get(LEADER_AWARE_KEY).unwrap()).unwrap(),
+            meta.get(LEADER_AWARE_KEY).unwrap().to_str().unwrap(),
             "true"
         );
     }
