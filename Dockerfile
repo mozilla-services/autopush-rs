@@ -19,7 +19,7 @@ RUN \
     cargo --version && \
     rustc --version && \
     mkdir -m 755 bin && \
-    CXXFLAGS="$CXXFLAGS" CMAKE_POLICY_VERSION_MINIMUM="$CMAKE_POLICY_VERSION_MINIMUM" cargo install --path $CRATE $BUILD_ARGS --locked --root /app
+    python3 scripts/prefix_build_flags.py cargo install --path $CRATE $BUILD_ARGS --locked --root /app
 
 
 FROM debian:bookworm-slim

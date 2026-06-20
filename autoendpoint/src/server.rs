@@ -4,6 +4,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+#[cfg(feature = "wns")]
+use std::collections::HashMap;
+#[cfg(feature = "wns")]
+use std::sync::RwLock;
+
 use actix_cors::Cors;
 use actix_web::{
     App, HttpServer, dev, http::StatusCode, middleware::ErrorHandlers, web, web::Data,
@@ -30,6 +35,8 @@ use crate::error::{ApiError, ApiErrorKind, ApiResult};
 use crate::metrics;
 #[cfg(feature = "stub")]
 use crate::routers::stub::router::StubRouter;
+#[cfg(feature = "wns")]
+use crate::routers::wns::router::WnsRouter;
 use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
@@ -56,6 +63,8 @@ pub struct AppState {
     pub in_process_subscription_updates: Arc<AtomicUsize>,
     pub fcm_router: Arc<FcmRouter>,
     pub apns_router: Arc<ApnsRouter>,
+    #[cfg(feature = "wns")]
+    pub wns_router: Arc<WnsRouter>,
     #[cfg(feature = "stub")]
     pub stub_router: Arc<StubRouter>,
     #[cfg(feature = "reliable_report")]
@@ -77,6 +86,11 @@ impl AppState {
         let reliability =
             Arc::new(PushReliability::new(&None, db.box_clone(), &metrics.clone(), 0).unwrap());
         let fernet = settings.make_fernet();
+        #[cfg(feature = "wns")]
+        // Because every bridge is it's own form of awful, WNS tokens have a lifespan, and need to be updated.
+        // We can't store those in the router, since routers are immutable, so we need to pass a reference to the
+        // AppState to the router.
+        let wns_tokens = Arc::new(RwLock::new(HashMap::new()));
         Self {
             metrics: metrics.clone(),
             settings,
@@ -113,6 +127,20 @@ impl AppState {
             #[cfg(feature = "stub")]
             stub_router: Arc::new(
                 StubRouter::new(crate::routers::stub::settings::StubSettings::default()).unwrap(),
+            ),
+            #[cfg(feature = "wns")]
+            wns_router: Arc::new(
+                WnsRouter::new(
+                    &crate::routers::wns::settings::WnsSettings::default(),
+                    url::Url::parse("https://example.com").unwrap(),
+                    reqwest::Client::new(),
+                    metrics.clone(),
+                    db.clone(),
+                    wns_tokens.clone(),
+                    #[cfg(feature = "reliable_report")]
+                    reliability.clone(),
+                )
+                .unwrap(),
             ),
             #[cfg(feature = "reliable_report")]
             reliability,
@@ -211,6 +239,19 @@ impl Server {
             )
             .await?,
         );
+        #[cfg(feature = "wns")]
+        let wns_tokens = Arc::new(RwLock::new(HashMap::new()));
+        #[cfg(feature = "wns")]
+        let wns_router = Arc::new(WnsRouter::new(
+            &settings.wns,
+            endpoint_url.clone(),
+            http.clone(),
+            metrics.clone(),
+            db.clone(),
+            wns_tokens.clone(),
+            #[cfg(feature = "reliable_report")]
+            reliability.clone(),
+        )?);
         #[cfg(feature = "stub")]
         let stub_router = Arc::new(StubRouter::new(settings.stub.clone())?);
         let in_flight_requests = Arc::new(AtomicUsize::new(0));
@@ -225,6 +266,8 @@ impl Server {
             in_process_subscription_updates: in_process_subscription_updates.clone(),
             fcm_router,
             apns_router,
+            #[cfg(feature = "wns")]
+            wns_router,
             #[cfg(feature = "stub")]
             stub_router,
             #[cfg(feature = "reliable_report")]

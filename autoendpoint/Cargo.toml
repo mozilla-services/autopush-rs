@@ -76,6 +76,9 @@ stub = []
 # Verbosely log vapid assertions (NOT ADVISED FOR WIDE PRODUCTION USE)
 log_vapid = []
 
+# Windows Notification Service (WNS) support
+wns = []
+
 reliable_report = ["autopush_common/reliable_report"]
 
 [lints]

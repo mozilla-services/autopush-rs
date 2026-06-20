@@ -1,3 +1,4 @@
+#![allow(clippy::result_large_err)]
 use std::{sync::Arc, time::Duration};
 
 use async_stream::stream;

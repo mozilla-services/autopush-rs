@@ -32,6 +32,9 @@ POETRY_LOCK := $(TESTS_DIR)/poetry.lock
 FLAKE8_CONFIG := $(TESTS_DIR)/.flake8
 LOCUST_HOST := "wss://autoconnect.stage.mozaws.net"
 INSTALL_STAMP := .install.stamp
+# The following build flags are required due to changes in Ubuntu Trixie which cause
+# the grpc library to fail to compile.
+BUILD_FLAGS := 'CXXFLAGS="-include cstdint" CMAKE_POLICY_VERSION_MINIMUM=3.5"
 
 .PHONY: docker-dev-build
 docker-dev-build:
@@ -105,11 +108,11 @@ notification-test-clean:
 	docker rm notification-tests
 
 .PHONY: build-profile
-build-profile: ##  Run the profiler with the `profile` profile. See Cargo.toml for details.
-    # `prefix_build_flags.py` is a hack to work around the fact that we need to set some platform specific env vars for the build, 
-	# but doing so in a Makefile is a nightmare. This way, we can just call this script with the same args we would 
-	# normally call cargo with, and it will add the necessary env vars before running the command.
-	python3 scripts/prefix_build_flags.py RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile profile
+build-profile:##  Run the profiler with the `profile` profile. See Cargo.toml for details.
+# 	`prefix_build_flags.py` is a hack to work around the fact that we need to set some platform specific env vars for the build, 
+# 	but doing so in a Makefile is a nightmare. This way, we can just call this script with the same args we would 
+# 	normally call cargo with, and it will add the necessary env vars before running the command. 
+	RUSTFLAGS="-C force-frame-pointers=yes" python3 scripts/prefix_build_flags.py cargo build --profile profile
 
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code

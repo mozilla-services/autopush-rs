@@ -5,6 +5,8 @@ use crate::routers::fcm::router::FcmRouter;
 #[cfg(feature = "stub")]
 use crate::routers::stub::router::StubRouter;
 use crate::routers::webpush::WebPushRouter;
+#[cfg(feature = "wns")]
+use crate::routers::wns::router::WnsRouter;
 use crate::server::AppState;
 use actix_web::dev::Payload;
 use actix_web::web::Data;
@@ -23,6 +25,8 @@ pub enum RouterType {
     APNS,
     #[cfg(feature = "stub")]
     STUB,
+    #[cfg(feature = "wns")]
+    WNS,
 }
 
 impl FromStr for RouterType {
@@ -36,6 +40,8 @@ impl FromStr for RouterType {
             "apns" => Ok(RouterType::APNS),
             #[cfg(feature = "stub")]
             "stub" => Ok(RouterType::STUB),
+            #[cfg(feature = "wns")]
+            "wns" => Ok(RouterType::WNS),
             _ => Err(()),
         }
     }
@@ -50,6 +56,8 @@ impl Display for RouterType {
             RouterType::APNS => "apns",
             #[cfg(feature = "stub")]
             RouterType::STUB => "stub",
+            #[cfg(feature = "wns")]
+            RouterType::WNS => "wns",
         })
     }
 }
@@ -62,6 +70,8 @@ pub struct Routers {
     apns: Arc<ApnsRouter>,
     #[cfg(feature = "stub")]
     stub: Arc<StubRouter>,
+    #[cfg(feature = "wns")]
+    wns: Arc<WnsRouter>,
 }
 
 impl FromRequest for Routers {
@@ -87,6 +97,8 @@ impl FromRequest for Routers {
             apns: app_state.apns_router.clone(),
             #[cfg(feature = "stub")]
             stub: app_state.stub_router.clone(),
+            #[cfg(feature = "wns")]
+            wns: app_state.wns_router.clone(),
         })
     }
 }
@@ -100,6 +112,8 @@ impl Routers {
             RouterType::APNS => self.apns.as_ref(),
             #[cfg(feature = "stub")]
             RouterType::STUB => self.stub.as_ref(),
+            #[cfg(feature = "wns")]
+            RouterType::WNS => self.wns.as_ref(),
         }
     }
 }
