@@ -1,0 +1,100 @@
+# Self-contained local Autopush stack (Redis storage).
+#
+# Unlike docker-compose-redis.yml, this file needs NO manual editing: the
+# `keygen` service generates a shared Fernet crypto key on first run and both
+# daemons read it at startup. Endpoints stay valid across restarts because the
+# key is persisted in a named volume (it is only regenerated if the volume is
+# removed, e.g. `docker compose -f docker-compose-local.yaml down -v`).
+#
+# Usage (from the repo root, so the build context can see the Dockerfile):
+#   docker compose -f docker-compose-local.yaml up --build
+#
+# Exposed services:
+#   ws://localhost:8080/    - websocket connection server (clients connect here)
+#   http://localhost:8082/  - HTTP endpoint server (senders POST push messages here)
+
+services:
+  # One-shot: generate a url-safe base64 (Fernet-compatible) 32-byte key once,
+  # writing it to the shared `keys` volume. Idempotent: skips if already present.
+  keygen:
+    image: alpine:3
+    container_name: autopush-keygen
+    volumes:
+      - keys:/keys
+    command:
+      - /bin/sh
+      - -c
+      - test -f /keys/crypto.key || head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '\n' > /keys/crypto.key
+    restart: "no"
+
+  autoconnect:
+    container_name: autopush-autoconnect
+    build:
+      context: .
+      args:
+        BUILD_ARGS: "--no-default-features --features redis"
+        CRATE: autoconnect
+        BINARY: autoconnect
+    environment:
+      - "AUTOCONNECT__DB_DSN=redis://redis"
+      # endpoint_scheme/hostname/port already default to http/localhost/8082,
+      # which is exactly the local public-facing autoendpoint URL.
+      - "AUTOCONNECT__ENDPOINT_SCHEME=http"
+      - "AUTOCONNECT__ENDPOINT_HOSTNAME=localhost"
+      - "AUTOCONNECT__ENDPOINT_PORT=8082"
+      - "AUTOCONNECT__ROUTER_HOSTNAME=autoconnect" # used by autoendpoint to reach this autoconnect
+    # Load the shared key, wrap it in the `[...]` list form the parser expects,
+    # then exec the image's binary ($BINARY is set in the Dockerfile).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - export AUTOCONNECT__CRYPTO_KEY="[$$(cat /keys/crypto.key)]"; exec "$$BINARY"
+    volumes:
+      - keys:/keys:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  autoendpoint:
+    container_name: autopush-autoend
+    build:
+      context: .
+      args:
+        BUILD_ARGS: "--no-default-features --features redis"
+        CRATE: autoendpoint
+        BINARY: autoendpoint
+    environment:
+      - "AUTOEND__DB_DSN=redis://redis"
+      - "AUTOEND__HOST=0.0.0.0" # autoendpoint must listen on 0.0.0.0 with docker
+      - "AUTOEND__PORT=8082"
+      - "AUTOEND__ENDPOINT_URL=http://localhost:8082" # public facing url to reach autoendpoint
+    entrypoint:
+      - /bin/sh
+      - -c
+      - export AUTOEND__CRYPTO_KEYS="[$$(cat /keys/crypto.key)]"; exec "$$BINARY"
+    volumes:
+      - keys:/keys:ro
+    ports:
+      - "8082:8082"
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      autoconnect:
+        condition: service_started
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    container_name: autopush-redis
+    restart: unless-stopped
+    command: redis-server
+
+volumes:
+  keys:
