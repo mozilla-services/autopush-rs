@@ -110,7 +110,7 @@ impl RedisClientImpl {
     async fn connection(&self) -> DbResult<deadpool_redis::Connection> {
         self.pool.get().await.map_err(|e| {
             DbError::RedisError(redis::RedisError::from((
-                redis::ErrorKind::IoError,
+                redis::ErrorKind::Io,
                 "Could not get Redis connection from pool",
                 format!("{:?}", e),
             )))
@@ -178,8 +178,12 @@ impl DbClient for RedisClientImpl {
         trace!("🐰 Adding user {} at {}:{}", &user.uaid, &user_key, &co_key);
         trace!("🐰 Logged at {}", &user.connected_at);
         pipe()
-            .set_options(co_key, ms_since_epoch(), self.router_opts)
-            .set_options(user_key, serde_json::to_string(user)?, self.router_opts)
+            .set_options(co_key, ms_since_epoch(), self.router_opts.clone())
+            .set_options(
+                user_key,
+                serde_json::to_string(user)?,
+                self.router_opts.clone(),
+            )
             .exec_async(&mut con)
             .await?;
         Ok(())
@@ -256,7 +260,7 @@ impl DbClient for RedisClientImpl {
 
         let _: () = pipe()
             .rpush(chan_list_key, channel_id.as_hyphenated().to_string())
-            .set_options(co_key, ms_since_epoch(), self.router_opts)
+            .set_options(co_key, ms_since_epoch(), self.router_opts.clone())
             .exec_async(&mut con)
             .await?;
         Ok(())
@@ -270,7 +274,7 @@ impl DbClient for RedisClientImpl {
         let co_key = self.last_co_key(&uaid);
         let chan_list_key = self.channel_list_key(&uaid);
         pipe()
-            .set_options(co_key, ms_since_epoch(), self.router_opts)
+            .set_options(co_key, ms_since_epoch(), self.router_opts.clone())
             .rpush(
                 chan_list_key,
                 channels
@@ -307,7 +311,7 @@ impl DbClient for RedisClientImpl {
         // Remove {channel_id} from autopush/channel/{auid}
         trace!("🐰 Removing channel {}", channel_id);
         let (status,): (bool,) = pipe()
-            .set_options(co_key, ms_since_epoch(), self.router_opts)
+            .set_options(co_key, ms_since_epoch(), self.router_opts.clone())
             .ignore()
             .lrem(&chan_list_key, 1, channel_id.to_string())
             .query_async(&mut con)
@@ -365,6 +369,7 @@ impl DbClient for RedisClientImpl {
         // see autoendpoint/src/extractors/notification_headers.rs
         let notif_opts = self
             .notification_opts
+            .clone()
             .with_expiration(SetExpiry::EXAT(expiry));
 
         // Store notification record in autopush/msg/{uaid}/{chidmessageid}
@@ -422,15 +427,19 @@ impl DbClient for RedisClientImpl {
             );
             trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
             pipe()
-                .set_options::<_, _>(&storage_timestamp_key, timestamp, self.router_opts)
+                .set_options::<_, _>(&storage_timestamp_key, timestamp, self.router_opts.clone())
                 .del(&delete_msg_keys)
                 .zrem(&msg_list_key, &exp_id_list)
                 .zrem(&exp_list_key, &exp_id_list)
                 .exec_async(&mut con)
                 .await?;
         } else {
-            con.set_options::<_, _, ()>(&storage_timestamp_key, timestamp, self.router_opts)
-                .await?;
+            con.set_options::<_, _, ()>(
+                &storage_timestamp_key,
+                timestamp,
+                self.router_opts.clone(),
+            )
+            .await?;
         }
         Ok(())
     }
