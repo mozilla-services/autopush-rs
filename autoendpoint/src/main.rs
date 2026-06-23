@@ -37,6 +37,11 @@ struct Args {
 
 #[actix_rt::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Must run before any TLS use: reqwest (outbound HTTPS to push services)
+    // builds its rustls config via the default provider and panics if none is
+    // installed when multiple providers are compiled in; tonic/bigtable adopts
+    // whatever we install here.
+    autopush_common::tls::install_crypto_provider();
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());

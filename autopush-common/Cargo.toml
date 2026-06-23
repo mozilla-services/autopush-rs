@@ -45,6 +45,14 @@ url.workspace = true
 
 again = "0.1"
 async-trait = "0.1"
+# Used solely to install a process-level rustls CryptoProvider. In the bigtable
+# build, transitive deps unify onto a single rustls 0.23 with *both* the `ring`
+# (tonic's `tls-ring`) and `aws-lc-rs` (reqwest) provider features enabled, so
+# rustls can't pick one automatically and panics at first TLS use. We pin
+# `aws-lc-rs` because reqwest already pulls it into *every* build (redis,
+# postgres, bigtable); picking `ring` would instead force a second provider
+# into the otherwise single-provider redis/postgres builds.
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "std"] }
 derive_builder = "0.20"
 gethostname = "1.0"
 num_cpus = "1.16"
