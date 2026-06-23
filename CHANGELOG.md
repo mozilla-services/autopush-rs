@@ -1,3 +1,25 @@
+<a name="1.82.0"></a>
+## 1.82.0 (2026-06-23)
+
+
+#### Features
+
+*   Add var prefixer to resolve grpcio builds under trixie (#1162) ([3c594792](https://github.com/mozilla-services/autopush-rs/commit/3c594792277dc367b79046be673c7b8ba489a3d0))
+
+#### Bug Fixes
+
+*   defaults for explicitly null keys in settings (#1156) ([ec675ffe](https://github.com/mozilla-services/autopush-rs/commit/ec675ffecc7cf1bf198e2859f5b7c860da71b7ad))
+
+#### Chore
+
+*   tag 1.81.3 (#1151) ([202f78b3](https://github.com/mozilla-services/autopush-rs/commit/202f78b3b297d1b4ad8f05af607c7a1eb4835017))
+*   remove token auth (#1153) ([ffc7fa4b](https://github.com/mozilla-services/autopush-rs/commit/ffc7fa4b5376c77574c84b43aaccacb5f4a714bb))
+*   apply zizmor autofixes (#1158) ([ca4dfd2e](https://github.com/mozilla-services/autopush-rs/commit/ca4dfd2e84c7b22a0402c8f6ad7c1cb0a2b4232c))
+*   Add APNs cert update docs and scripts (#1161) ([702d0658](https://github.com/mozilla-services/autopush-rs/commit/702d06581066e244d5954c980c6a335089781776))
+*   Replace grpcio with tonic (#1165) ([d1c8d22e](https://github.com/mozilla-services/autopush-rs/commit/d1c8d22e78069232b087a701ccbd9c019017fbee))
+
+
+
 <a name="1.81.3"></a>
 ## 1.81.3 (2026-04-17)
 
