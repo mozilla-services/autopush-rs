@@ -750,6 +750,7 @@ dependencies = [
  "redis-module",
  "redis-test",
  "regex",
+ "rustls 0.23.41",
  "sentry",
  "sentry-backtrace",
  "serde",
