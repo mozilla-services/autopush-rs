@@ -12,7 +12,7 @@ use autoconnect_ws_sm::UnidentifiedClient;
 
 use crate::{error::WSErrorKind, handler::webpush_ws, session::MockSession};
 
-#[ctor::ctor(unsafe)]
+#[ctor::ctor]
 fn init_test_logging() {
     autopush_common::logging::init_test_logging();
 }
@@ -39,7 +39,6 @@ async fn handshake_timeout() {
     assert!(matches!(err.kind, WSErrorKind::HandshakeTimeout));
 }
 
-#[allow(clippy::result_large_err)]
 #[actix_web::test]
 async fn basic() {
     let client = uclient(AppState {
@@ -63,7 +62,6 @@ async fn basic() {
         .expect("Handler failed");
 }
 
-#[allow(clippy::result_large_err)]
 #[actix_web::test]
 async fn websocket_ping() {
     let settings = Settings {
@@ -88,7 +86,6 @@ async fn websocket_ping() {
         .expect("Handler failed");
 }
 
-#[allow(clippy::result_large_err)]
 #[actix_web::test]
 async fn auto_ping_timeout() {
     let settings = Settings {
@@ -113,7 +110,6 @@ async fn auto_ping_timeout() {
     assert!(matches!(err.kind, WSErrorKind::PongTimeout));
 }
 
-#[allow(clippy::result_large_err)]
 #[actix_web::test]
 async fn auto_ping_timeout_after_pong() {
     let settings = Settings {

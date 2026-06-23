@@ -43,7 +43,7 @@ docker-init:
 	sudo apt update
 	sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv python3-poetry python-is-python3 git glibc-source cmake clang --assume-yes
 	cargo install cargo-audit
-	rustup update 1.96.0 	## RUST_VER
+	rustup update 1.93.1 	## RUST_VER
 
 .PHONY: install
 install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
