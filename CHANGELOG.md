@@ -1,3 +1,16 @@
+<a name="1.82.1"></a>
+## 1.82.1 (2026-06-24)
+
+
+#### Bug Fixes
+
+*   install rustls CryptoProvider to prevent startup panic (#1174) ([b3e7a8b](https://github.com/mozilla-services/autopush-rs/pull/1174))
+
+#### Chore
+
+*   tag 1.82.0 (#1168) ([5c32e76](https://github.com/mozilla-services/autopush-rs/pull/1168))
+
+
 <a name="1.82.0"></a>
 ## 1.82.0 (2026-06-23)
 
