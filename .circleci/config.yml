@@ -198,7 +198,7 @@ commands:
           name: Upload << parameters.source >> << parameters.extension >> Files to GCS
           when: always  # Ensure the step runs even if previous steps, like test runs, fail
           command: |
-            if [ "$CIRCLE_BRANCH" = "master" ]; then
+            if [ "$CIRCLE_BRANCH" = "master" ] || [ "$CIRCLE_BRANCH" = "main" ]; then
               FILES=$(ls -1 << parameters.source>>/*.<< parameters.extension>> )
               if [ -z "$FILES" ]; then
                 echo "No << parameters.extension >> files found in << parameters.source >>/"
@@ -206,7 +206,7 @@ commands:
               fi
               gsutil cp $FILES << parameters.destination >>
             else
-              echo "Skipping artifact upload, not on 'master' branch."
+              echo "Skipping artifact upload, not on 'master'/'main' branch."
             fi
 
 jobs:
@@ -641,7 +641,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - main
 
       - build-test-container:
           name: Build Load Test Image
@@ -658,7 +660,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - main
       - build-integration-test-container:
           name: Build Integration Test Image
           image: autopush-integration-tests
@@ -683,7 +687,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - main
 
       - deploy:
           name: deploy-autoendpoint
@@ -699,7 +705,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - main
 
       - deploy:
           name: deploy-reliability-cron
@@ -710,7 +718,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - main
 
 #      - deploy:
 #          name: deploy-autoconnect-enterprise
@@ -763,7 +773,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - main
       - deploy:
           name: Push End-To-End Test Image
           image: autopush-end-to-end-tests
@@ -774,7 +786,9 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - main
       - deploy:
           name: Push Integration Test Image
           image: autopush-integration-tests
@@ -786,4 +800,6 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only:
+                - master
+                - main
