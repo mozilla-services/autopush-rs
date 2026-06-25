@@ -25,9 +25,9 @@ mod pool;
 pub use bigtable_client::BigTableClientImpl;
 pub use bigtable_client::error::BigTableError;
 
-use grpcio::Metadata;
 use serde::Deserialize;
 use std::time::Duration;
+use tonic::metadata::MetadataMap;
 
 use crate::db::bigtable::bigtable_client::MetadataBuilder;
 use crate::db::error::DbError;
@@ -119,32 +119,16 @@ impl Default for BigTableDbSettings {
 }
 
 impl BigTableDbSettings {
-    pub fn metadata(&self) -> Result<Metadata, BigTableError> {
+    pub fn metadata(&self) -> Result<MetadataMap, BigTableError> {
         MetadataBuilder::with_prefix(&self.table_name)
             .routing_param("table_name", &self.table_name)
             .route_to_leader(self.route_to_leader)
             .build()
-            .map_err(BigTableError::GRPC)
     }
 
     // Health may require a different metadata declaration.
-    pub fn health_metadata(&self) -> Result<Metadata, BigTableError> {
+    pub fn health_metadata(&self) -> Result<MetadataMap, BigTableError> {
         self.metadata()
-    }
-
-    pub fn admin_metadata(&self) -> Result<Metadata, BigTableError> {
-        // Admin calls use a slightly different routing param and a truncated prefix
-        // See https://github.com/googleapis/google-cloud-cpp/issues/190#issuecomment-370520185
-        let Some(admin_prefix) = self.table_name.split_once("/tables/").map(|v| v.0) else {
-            return Err(BigTableError::Config(
-                "Invalid table name specified".to_owned(),
-            ));
-        };
-        MetadataBuilder::with_prefix(admin_prefix)
-            .routing_param("name", &self.table_name)
-            .route_to_leader(self.route_to_leader)
-            .build()
-            .map_err(BigTableError::GRPC)
     }
 
     pub fn get_instance_name(&self) -> Result<String, BigTableError> {

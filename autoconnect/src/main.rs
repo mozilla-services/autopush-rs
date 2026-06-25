@@ -38,6 +38,11 @@ struct Args {
 
 #[actix_web::main]
 async fn main() -> Result<()> {
+    // Must run before any TLS use. reqwest (e.g. the megaphone/remote-settings
+    // HTTPS fetch on the actix arbiter threads) builds its rustls config via the
+    // default provider and panics if none is installed when multiple providers
+    // are compiled in; tonic/bigtable adopts whatever we install here.
+    autopush_common::tls::install_crypto_provider();
     env_logger::init();
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
