@@ -1,17 +1,11 @@
-# Covers the test/lint jobs: audit, python-checks, rust-checks, unit tests, and
-# integration tests. Container image builds/pushes live in publish-test-images.yml
-# (test images) and mozcloud-publish.yaml (service images).
-name: build-test-deploy
+# Reusable workflow: the test/lint jobs (audit, python-checks, rust-checks, unit,
+# integration) plus the test-result GCS upload. Invoked by build-test-deploy.yml.
+# Test/cron images are published by build-and-push-test-images.yml; service images
+# by mozcloud-publish.yaml.
+name: check-and-test
 
 on:
-  pull_request:
-  push:
-    branches:
-      - master
-      - main
-    tags:
-      - "**"
-  workflow_dispatch: {}
+  workflow_call: {}
 
 permissions:
   contents: read
@@ -147,35 +141,3 @@ jobs:
         with:
           name: integration-test-results
           path: workspace/test-results
-
-  # Collect the junit/coverage artifacts from the test jobs and push them to the
-  # ETE metrics bucket. Only runs on main (the reusable workflow's auth needs
-  # the WIF provider). Split into two calls because the reusable workflow uploads
-  # one extension/destination per invocation.
-  upload-junit:
-    needs:
-      - test-unit
-      - test-integration
-    if: always() && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/upload-test-artifacts-to-gcs.yaml
-    with:
-      destination: gs://ecosystem-test-eng-metrics/autopush-rs/junit
-      extension: xml
-      service_account: ${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com
-
-  upload-coverage:
-    needs:
-      - test-unit
-      - test-integration
-    if: always() && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/upload-test-artifacts-to-gcs.yaml
-    with:
-      destination: gs://ecosystem-test-eng-metrics/autopush-rs/coverage
-      extension: json
-      service_account: ${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com

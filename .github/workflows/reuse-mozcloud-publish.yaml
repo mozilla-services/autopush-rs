@@ -1,25 +1,12 @@
 name: Build, Tag and Push Container Images to GAR Repository
 
 on:
-  pull_request:
-    types: [opened, labeled, unlabeled, synchronize]
-  push:
-    branches:
-      - master
-      - main
-    tags:
-      - '**'
-  workflow_dispatch: {}
+  # Reusable workflow. Invocation/gating is owned by the caller (build-test-deploy.yml
+  # gates the release deploy on the test suite; a separate caller handles preview).
+  workflow_call: {}
 
 jobs:
   build-and-push-autoconnect:
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'pull_request' &&
-        contains(github.event.pull_request.labels.*.name, 'preview') &&
-        github.event.pull_request.head.repo.full_name == github.repository
-      )
     permissions:
       contents: read
       id-token: write
@@ -34,13 +21,6 @@ jobs:
         BINARY=autoconnect
 
   build-and-push-autoendpoint:
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'pull_request' &&
-        contains(github.event.pull_request.labels.*.name, 'preview') &&
-        github.event.pull_request.head.repo.full_name == github.repository
-      )
     permissions:
       contents: read
       id-token: write
@@ -55,17 +35,6 @@ jobs:
         BINARY=autoendpoint
 
   build-and-push-enterprise:
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'push' &&
-        (github.ref_name == 'master' || github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/'))
-      ) ||
-      (
-        github.event_name == 'pull_request' &&
-        contains(github.event.pull_request.labels.*.name, 'preview') &&
-        github.event.pull_request.head.repo.full_name == github.repository
-      )
     permissions:
       contents: read
       id-token: write

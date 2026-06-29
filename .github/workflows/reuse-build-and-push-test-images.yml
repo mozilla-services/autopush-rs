@@ -4,14 +4,10 @@
 name: Publish test images
 
 on:
-  pull_request:
-  push:
-    branches:
-      - master
-      - main
-    tags:
-      - "**"
-  workflow_dispatch: {}
+  # Reusable workflow invoked by build-test-deploy.yml after check-and-test
+  # succeeds. The build step below still only *pushes* on master/main/tags;
+  # other events build to validate the Dockerfiles.
+  workflow_call: {}
 
 permissions:
   contents: read
