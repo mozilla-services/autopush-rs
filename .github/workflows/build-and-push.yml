@@ -137,8 +137,6 @@ jobs:
       - name: Create test result workspace
         run: mkdir -p workspace/test-results
       - name: Integration tests
-        # Mirrors `make integration-test`, but uses `-i` instead of `-it` since
-        # GitHub-hosted runners do not allocate a TTY.
         run: |
           docker compose -f tests/integration/docker-compose.yml run -i --name integration-tests tests; exit_code=$?
           docker cp integration-tests:/code/integration__results.xml workspace/test-results/integration__results.xml

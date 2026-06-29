@@ -32,10 +32,11 @@ runs:
     - name: Install Rust
       shell: bash
       run: |
+        # rustup-init takes one value per --component flag, so repeat it for each.
         comp_flag=""
-        if [ -n "$INPUT_COMPONENTS" ]; then
-          comp_flag="--component $INPUT_COMPONENTS"
-        fi
+        for c in $INPUT_COMPONENTS; do
+          comp_flag="$comp_flag --component $c"
+        done
         curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain "$INPUT_RUST_VERSION" -y $comp_flag
         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       env:
