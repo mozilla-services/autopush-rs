@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  publish:
+  build-and-push-test-images:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -63,14 +63,14 @@ jobs:
           MATRIX_IMAGE: ${{ matrix.image }}
           STEPS_SETUP_OUTPUTS_IMAGE_TAG: ${{ steps.setup.outputs.image_tag }}
 
-      - name: Build and push ${{ matrix.image }}
+      - name: Build and conditionally push ${{ matrix.image }}
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
           context: ${{ matrix.context || '.' }}
           file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target || '' }}
-          # Push only on master/tags; PRs build to validate the Dockerfiles.
-          push: ${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+          # Push only on master/main/tags; PRs build to validate the Dockerfiles.
+          push: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
           tags: ${{ env.IMAGE_TAGS }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
