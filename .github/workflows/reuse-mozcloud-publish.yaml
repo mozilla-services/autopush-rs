@@ -9,6 +9,12 @@ on:
         description: Whether to push the built images (false = build-only validation)
         type: boolean
         default: true
+      should_tag_latest:
+        description: >
+          Tag the images `:latest`. True for releases (dev/ent-dev track :latest);
+          MUST be false for preview so a PR image never clobbers the shared :latest.
+        type: boolean
+        default: true
 
 jobs:
   build-and-push-autoconnect:
@@ -26,7 +32,7 @@ jobs:
       docker_build_args: |
         CRATE=autoconnect
         BINARY=autoconnect
-      should_tag_latest: true
+      should_tag_latest: ${{ inputs.should_tag_latest }}
 
   build-and-push-autoendpoint:
     permissions:
@@ -43,7 +49,7 @@ jobs:
       docker_build_args: |
         CRATE=autoendpoint
         BINARY=autoendpoint
-      should_tag_latest: true
+      should_tag_latest: ${{ inputs.should_tag_latest }}
 
   # Kept inline rather than using the shared mozilla/deploy-actions reusable on
   # purpose. The fx-enterprise tenant auto-deploys these images by matching

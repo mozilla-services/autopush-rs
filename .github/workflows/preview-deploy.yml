@@ -28,4 +28,7 @@ jobs:
     uses: ./.github/workflows/reuse-mozcloud-publish.yaml
     with:
       push: true
+      # Never move the shared :latest tag from a preview PR — dev/ent-dev track it.
+      # Preview envs use the per-commit SHA tag instead.
+      should_tag_latest: false
     secrets: inherit

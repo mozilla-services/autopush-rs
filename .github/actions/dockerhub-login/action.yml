@@ -2,7 +2,7 @@ name: Docker Hub login
 description: >
   Authenticate to Docker Hub so base-image pulls use authenticated rate limits
   instead of the lower anonymous per-IP limit. No-op when no token is provided
-  (e.g. forks or when the secret is unset), matching CircleCI's behavior.
+  (e.g. forks or when the secret is unset)
 
 inputs:
   username:
