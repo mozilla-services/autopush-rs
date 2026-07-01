@@ -50,4 +50,13 @@ runs:
           ~/.cargo/registry/
           ~/.cargo/git/
           target/
-        key: rust-v2-cache-${{ hashFiles('Cargo.lock') }}
+        # Scoped per job because callers build with different features/RUSTFLAGS
+        # (e.g. rust-checks' --all-features vs test-unit's coverage build), so they
+        # must not share a target/ cache. os + toolchain keep it correct across bumps.
+        # restore-keys let a changed Cargo.lock reuse the newest prior cache as a base
+        # (partial hit) instead of a full miss; the last, job-agnostic key still lets
+        # any job seed the downloaded-crate registry/git cache.
+        key: cargo-${{ runner.os }}-${{ inputs.rust-version }}-${{ github.job }}-${{ hashFiles('Cargo.lock') }}
+        restore-keys: |
+          cargo-${{ runner.os }}-${{ inputs.rust-version }}-${{ github.job }}-
+          cargo-${{ runner.os }}-${{ inputs.rust-version }}-

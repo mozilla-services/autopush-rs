@@ -18,6 +18,13 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same ref so a new push to a PR stops the older,
+# in-progress run (faster feedback, frees runners). Scoped to PRs only, so a
+# push/tag deploy in progress is never cancelled by a subsequent one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check-and-test:
     permissions:
@@ -26,10 +33,10 @@ jobs:
     uses: ./.github/workflows/reuse-check-and-test.yml
     secrets: inherit
 
-  # Service images. Like the test images, gated on the test suite passing and run
-  # for every event so PRs validate the Dockerfile build (push: false); the images
-  # are only published on master/main/tags. Skipped on preview-labeled PRs, where
-  # preview-deploy.yml already builds + pushes these images.
+  # Service images. Gated on the test suite passing and run for every event so
+  # PRs validate the Dockerfile build (push: false); the images are only published
+  # on master/main/tags. Skipped on preview-labeled PRs, where preview-deploy.yml
+  # already builds + pushes these images.
   build-and-push-service-images:
     needs: check-and-test
     if: >
