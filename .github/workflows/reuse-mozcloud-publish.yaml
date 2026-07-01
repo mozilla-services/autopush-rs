@@ -1,17 +1,24 @@
 name: Build, Tag and Push Container Images to GAR Repository
 
 on:
-  # Reusable workflow. Invocation/gating is owned by the caller (build-test-deploy.yml
-  # gates the release deploy on the test suite; a separate caller handles preview).
-  workflow_call: {}
+  # Reusable workflow. The caller (build-test-deploy.yml) owns invocation and sets
+  # `push`: false on PRs (build-only Dockerfile validation), true on release.
+  workflow_call:
+    inputs:
+      push:
+        description: Whether to push the built images (false = build-only validation)
+        type: boolean
+        default: true
 
 jobs:
   build-and-push-autoconnect:
     permissions:
       contents: read
       id-token: write
-    uses: mozilla/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
+    # TODO: Pin to release once it's available
+    uses: mozilla/deploy-actions/.github/workflows/build-and-push.yml@ef0f037316873ff408a598f1cd98876dd7851e53 # main (push input, pre-release)
     with:
+      push: ${{ inputs.push }}
       image_name: autoconnect
       gar_name: autopush-prod
       project_id: moz-fx-autopush-prod
@@ -19,13 +26,16 @@ jobs:
       docker_build_args: |
         CRATE=autoconnect
         BINARY=autoconnect
+      should_tag_latest: true
 
   build-and-push-autoendpoint:
     permissions:
       contents: read
       id-token: write
-    uses: mozilla/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
+    # TODO: Pin to release once it's available
+    uses: mozilla/deploy-actions/.github/workflows/build-and-push.yml@ef0f037316873ff408a598f1cd98876dd7851e53 # main (push input, pre-release)
     with:
+      push: ${{ inputs.push }}
       image_name: autoendpoint
       gar_name: autopush-prod
       project_id: moz-fx-autopush-prod
@@ -33,7 +43,16 @@ jobs:
       docker_build_args: |
         CRATE=autoendpoint
         BINARY=autoendpoint
+      should_tag_latest: true
 
+  # Kept inline rather than using the shared mozilla/deploy-actions reusable on
+  # purpose. The fx-enterprise tenant auto-deploys these images by matching
+  # `image_regex: ^\d+\.\d+\.\d+_enterprise$` (global-platform-admin
+  # tenants/fx-enterprise.yaml) and using `latest_enterprise` suffix.
+  # The reusable can only append tag metadata as
+  # `<tag>--enterprise` (double dash), which would not match that regex, so we
+  # hand-roll the `_enterprise` tag scheme here. Unifying onto the reusable would
+  # require changing the tenant's regex in lockstep.
   build-and-push-enterprise:
     permissions:
       contents: read
@@ -49,6 +68,12 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
           gcp_service_account: "${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-fx-enterprise-prod.iam.gserviceaccount.com"
+
+      - name: Log in to Docker Hub
+        uses: ./.github/actions/dockerhub-login
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Compute autoconnect tags
         run: |
@@ -75,7 +100,7 @@ jobs:
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
           context: .
-          push: true
+          push: ${{ inputs.push }}
           build-args: |
             CRATE=autoconnect
             BINARY=autoconnect
@@ -109,7 +134,7 @@ jobs:
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
         with:
           context: .
-          push: true
+          push: ${{ inputs.push }}
           build-args: |
             CRATE=autoendpoint
             BINARY=autoendpoint

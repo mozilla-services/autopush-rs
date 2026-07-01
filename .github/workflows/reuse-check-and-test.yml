@@ -97,6 +97,11 @@ jobs:
           rust-version: ${{ env.RUST_VERSION }}
           system-deps: "true"
           cache: "true"
+      - name: Log in to Docker Hub
+        uses: ./.github/actions/dockerhub-login
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Start Bigtable emulator
         # Waits until emulator starts and is bootstrapped; emulator required for tests
         run: docker compose -f docker-compose-bigtable.yml run --rm bigtable-setup
@@ -130,6 +135,11 @@ jobs:
           persist-credentials: false
       - name: Create test result workspace
         run: mkdir -p workspace/test-results
+      - name: Log in to Docker Hub
+        uses: ./.github/actions/dockerhub-login
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Integration tests
         run: |
           docker compose -f tests/integration/docker-compose.yml run -i --name integration-tests tests; exit_code=$?

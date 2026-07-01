@@ -1,20 +1,22 @@
-# Converted from .circleci/config.yml: the build-test-container,
-# build-integration-test-container and build-reliability-cron jobs plus their
-# deploys. Builds the test/cron images and pushes them to the autopush GAR.
+# Reusable workflow invoked by build-test-deploy.yml after check-and-test
+# succeeds. Builds the test/cron images and pushes them to the autopush GAR via
+# the shared mozilla/deploy-actions build-and-push reusable. The caller sets
+# `push`: false on PRs (build-only Dockerfile validation), true on release.
 name: Publish test images
 
 on:
-  # Reusable workflow invoked by build-test-deploy.yml after check-and-test
-  # succeeds. The build step below still only *pushes* on master/main/tags;
-  # other events build to validate the Dockerfiles.
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      push:
+        description: Whether to push the built images (false = build-only validation)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   build-and-push-test-images:
-    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
@@ -22,51 +24,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: autopush-load-tests
-            dockerfile: tests/load/Dockerfile
-          - image: autopush-end-to-end-tests
-            dockerfile: tests/notification/Dockerfile
-          - image: autopush-integration-tests
-            dockerfile: tests/integration/Dockerfile
-            target: integration-tests
-          - image: autopush-reliability-cron
-            dockerfile: scripts/reliability/Dockerfile
-            context: scripts/reliability
-    env:
-      PROJECT_ID: moz-fx-autopush-prod
-      GAR_NAME: autopush-prod
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/setup-build-and-push
-        id: setup
-        with:
-          workload_identity_provider: ${{ vars.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
-          gcp_service_account: "${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com"
-
-      - name: Compute image tags
-        run: |
-          REGISTRY="us-docker.pkg.dev/${PROJECT_ID}/${GAR_NAME}/${MATRIX_IMAGE}"
-          {
-            echo "IMAGE_TAGS<<EOF"
-            echo "${REGISTRY}:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}"
-            echo "${REGISTRY}:latest"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-        env:
-          MATRIX_IMAGE: ${{ matrix.image }}
-          STEPS_SETUP_OUTPUTS_IMAGE_TAG: ${{ steps.setup.outputs.image_tag }}
-
-      - name: Build and conditionally push ${{ matrix.image }}
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
-        with:
-          context: ${{ matrix.context || '.' }}
-          file: ${{ matrix.dockerfile }}
-          target: ${{ matrix.target || '' }}
-          # Push only on master/main/tags; PRs build to validate the Dockerfiles.
-          push: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
-          tags: ${{ env.IMAGE_TAGS }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          - image_name: autopush-load-tests
+            dockerfile_path: tests/load/Dockerfile
+          - image_name: autopush-end-to-end-tests
+            dockerfile_path: tests/notification/Dockerfile
+          # The reusable has no build `target` input, but integration-tests is the
+          # final stage of its Dockerfile, so the default target already builds it.
+          - image_name: autopush-integration-tests
+            dockerfile_path: tests/integration/Dockerfile
+          - image_name: autopush-reliability-cron
+            dockerfile_path: scripts/reliability/Dockerfile
+            image_build_context: scripts/reliability
+    uses: mozilla/deploy-actions/.github/workflows/build-and-push.yml@ef0f037316873ff408a598f1cd98876dd7851e53 # main (push input, pre-release)
+    with:
+      image_name: ${{ matrix.image_name }}
+      gar_name: autopush-prod
+      project_id: moz-fx-autopush-prod
+      dockerfile_path: ${{ matrix.dockerfile_path }}
+      image_build_context: ${{ matrix.image_build_context || './' }}
+      should_tag_latest: true
+      push: ${{ inputs.push }}
