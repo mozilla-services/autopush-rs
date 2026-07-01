@@ -1026,7 +1026,7 @@ version = "0.16.0"
 description = "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1"
 optional = false
 python-versions = ">=3.8"
-groups = ["dev", "integration", "load", "notification"]
+groups = ["integration", "load", "notification"]
 files = [
     {file = "h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86"},
     {file = "h11-0.16.0.tar.gz", hash = "sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1"},
@@ -2430,7 +2430,7 @@ version = "4.13.2"
 description = "Engine.IO server and client for Python"
 optional = false
 python-versions = ">=3.8"
-groups = ["dev", "load"]
+groups = ["load"]
 files = [
     {file = "python_engineio-4.13.2-py3-none-any.whl", hash = "sha256:8c101cd170e400dc4e970cd523325cde22df8fc25140953f379327055d701a6b"},
     {file = "python_engineio-4.13.2.tar.gz", hash = "sha256:a7732e99cfb7db6ed1aee31f18d7f73bbae086a92f31dee019bc646155d9684e"},
@@ -2470,14 +2470,14 @@ test = ["pytest", "pytest-cov"]
 
 [[package]]
 name = "python-multipart"
-version = "0.0.22"
+version = "0.0.31"
 description = "A streaming multipart parser for Python"
 optional = false
 python-versions = ">=3.10"
-groups = ["integration"]
+groups = ["dev", "integration"]
 files = [
-    {file = "python_multipart-0.0.22-py3-none-any.whl", hash = "sha256:2b2cd894c83d21bf49d702499531c7bafd057d730c201782048f7945d82de155"},
-    {file = "python_multipart-0.0.22.tar.gz", hash = "sha256:7340bef99a7e0032613f56dc36027b959fd3b30a787ed62d310e951f7c3a3a58"},
+    {file = "python_multipart-0.0.31-py3-none-any.whl", hash = "sha256:8408153d68a9773291fc1da39a8b85a50044bddbabd2dd72e9229776b7b15e28"},
+    {file = "python_multipart-0.0.31.tar.gz", hash = "sha256:fc631183bb13e56db3158a4909908dfb2e23565286744e798241e63750e5d680"},
 ]
 
 [[package]]
@@ -2846,7 +2846,7 @@ version = "1.1.0"
 description = "Simple WebSocket server and client for Python"
 optional = false
 python-versions = ">=3.6"
-groups = ["dev", "load"]
+groups = ["load"]
 files = [
     {file = "simple_websocket-1.1.0-py3-none-any.whl", hash = "sha256:4af6069630a38ed6c561010f0e11a5bc0d4ca569b36306eb257cd9a192497c8c"},
     {file = "simple_websocket-1.1.0.tar.gz", hash = "sha256:7939234e7aa067c534abdab3a9ed933ec9ce4691b0713c78acb195560aa52ae4"},
@@ -3407,7 +3407,7 @@ version = "1.3.2"
 description = "Pure-Python WebSocket protocol implementation"
 optional = false
 python-versions = ">=3.10"
-groups = ["dev", "load", "notification"]
+groups = ["load", "notification"]
 files = [
     {file = "wsproto-1.3.2-py3-none-any.whl", hash = "sha256:61eea322cdf56e8cc904bd3ad7573359a242ba65688716b0710a5eb12beab584"},
     {file = "wsproto-1.3.2.tar.gz", hash = "sha256:b86885dcf294e15204919950f666e06ffc6c7c114ca900b060d6e16293528294"},
