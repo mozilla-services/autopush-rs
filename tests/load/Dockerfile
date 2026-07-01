@@ -1,3 +1,4 @@
+# check=skip=SecretsUsedInArgOrEnv
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
@@ -20,7 +21,8 @@ ENV PATH="${PYTHON_VENV}/bin:${PATH}"
 RUN python -m pip install --upgrade pip
 
 # Setup poetry and install requirements
-# `AUTOPUSH_VAPID_KEY` should match what's specified in `setup_k8s.sh`
+# `AUTOPUSH_VAPID_KEY` is a path to a checked-in test key (see COPY below), not a
+# secret; should match `setup_k8s.sh`. (SecretsUsedInArgOrEnv skipped at file top.)
 ENV POETRY_VIRTUALENVS_CREATE=false \
   POETRY_VERSION=1.7.0 \
   AUTOPUSH_VAPID_KEY=./tests/load/keys/private_key.pem
