@@ -35,6 +35,7 @@ jobs:
           - image_name: autopush-reliability-cron
             dockerfile_path: scripts/reliability/Dockerfile
             image_build_context: scripts/reliability
+    # TODO: Pin to release once it's available
     uses: mozilla/deploy-actions/.github/workflows/build-and-push.yml@ef0f037316873ff408a598f1cd98876dd7851e53 # main (push input, pre-release)
     with:
       image_name: ${{ matrix.image_name }}

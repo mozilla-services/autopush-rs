@@ -7,7 +7,7 @@ ENV POETRY_HOME="/opt/poetry" \
 
 ENV PATH="$POETRY_HOME/bin:$PATH"
 
-ENV NOTIFICATION_TEST_ENV ="dev"
+ENV NOTIFICATION_TEST_ENV="dev"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -59,4 +59,4 @@ ADD ./tests/pyproject.toml /code
 
 RUN poetry install --no-root --only=notification
 
-CMD xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" poetry run pytest --driver Firefox --env ${NOTIFICATION_TEST_ENV}
+CMD ["sh", "-c", "xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' poetry run pytest --driver Firefox --env ${NOTIFICATION_TEST_ENV}"]
