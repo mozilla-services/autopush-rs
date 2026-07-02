@@ -22,9 +22,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust
-        uses: ./.github/actions/setup-rust
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          rust-version: ${{ env.RUST_VERSION }}
+          toolchain: ${{ env.RUST_VERSION }}
       - name: Cache cargo-audit
         id: cache-cargo-audit
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -65,13 +65,15 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake libssl-dev pkg-config
       - name: Install Rust
-        uses: ./.github/actions/setup-rust
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          rust-version: ${{ env.RUST_VERSION }}
-          components: rustfmt clippy
-          system-deps: "true"
-          cache: "true"
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt, clippy
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Echo Rust version
         run: rustc --version
       - name: Check formatting and clippy
@@ -91,12 +93,14 @@ jobs:
           persist-credentials: false
       - name: Create test result workspace
         run: mkdir -p workspace/test-results
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake libssl-dev pkg-config
       - name: Install Rust
-        uses: ./.github/actions/setup-rust
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          rust-version: ${{ env.RUST_VERSION }}
-          system-deps: "true"
-          cache: "true"
+          toolchain: ${{ env.RUST_VERSION }}
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Log in to Docker Hub
         uses: ./.github/actions/dockerhub-login
         with:
