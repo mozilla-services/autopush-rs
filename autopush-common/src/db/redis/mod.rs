@@ -101,14 +101,17 @@ pub struct StorableNotification {
     pub version: String,
     pub timestamp: u64,
     // Possibly stored values, provided with a default.
-    #[serde(default = "default_ttl", skip_serializing)]
+    // Note: Unlike client-facing `Notification`, these fields
+    // should round-trip faithfully through Redis and not
+    // `skip_serializing` unless truly None.
+    #[serde(default = "default_ttl")]
     pub ttl: u64,
     // Optional values, which imply a "None" default.
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sortkey_timestamp: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
@@ -162,6 +165,62 @@ impl From<StorableNotification> for Notification {
 mod tests {
 
     use std::time::Duration;
+
+    /// A stored notification must round-trip every field through JSON: dropping
+    /// `ttl`, `topic`, or `sortkey_timestamp` makes fetched records look like
+    /// expired legacy messages, breaking deletion and delivery (autopush-rs#1189).
+    #[test]
+    fn test_storable_notification_roundtrip() {
+        use super::StorableNotification;
+        use crate::notification::Notification;
+        use uuid::Uuid;
+
+        // A regular (non-topic) timestamp message.
+        let notif = Notification {
+            channel_id: Uuid::parse_str("DECAFBAD-0000-0000-0000-0123456789AB").unwrap(),
+            version: "gAAAAAdeadbeef".to_owned(),
+            ttl: 300,
+            timestamp: 1_700_000_000,
+            data: Some("encrypted".to_owned()),
+            sortkey_timestamp: Some(1_700_000_000_123),
+            ..Default::default()
+        };
+        let expected_id = notif.chidmessageid();
+
+        let stored: StorableNotification = notif.into();
+        let json = serde_json::to_string(&stored).unwrap();
+        let back: Notification = serde_json::from_str::<StorableNotification>(&json)
+            .unwrap()
+            .into();
+
+        assert_eq!(back.ttl, 300);
+        assert_eq!(back.sortkey_timestamp, Some(1_700_000_000_123));
+        assert_eq!(back.topic, None);
+        // The id used for storage/deletion must survive the round-trip, and must
+        // not degrade into the legacy `{chid}:{version}` form.
+        assert_eq!(back.chidmessageid(), expected_id);
+        assert!(back.chidmessageid().starts_with("02:"));
+
+        // A topic message.
+        let topic_notif = Notification {
+            channel_id: Uuid::parse_str("DECAFBAD-1111-0000-0000-0123456789AB").unwrap(),
+            version: "gAAAAAtopic".to_owned(),
+            ttl: 60,
+            timestamp: 1_700_000_000,
+            topic: Some("mytopic".to_owned()),
+            data: Some("encrypted".to_owned()),
+            ..Default::default()
+        };
+        let expected_topic_id = topic_notif.chidmessageid();
+        let stored: StorableNotification = topic_notif.into();
+        let json = serde_json::to_string(&stored).unwrap();
+        let back: Notification = serde_json::from_str::<StorableNotification>(&json)
+            .unwrap()
+            .into();
+        assert_eq!(back.topic, Some("mytopic".to_owned()));
+        assert_eq!(back.chidmessageid(), expected_topic_id);
+        assert!(back.chidmessageid().starts_with("01:"));
+    }
 
     #[test]
     fn test_settings_parse() -> Result<(), crate::db::error::DbError> {
