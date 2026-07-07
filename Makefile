@@ -35,6 +35,7 @@ INSTALL_STAMP := .install.stamp
 
 .PHONY: docker-dev-build
 docker-dev-build:
+	echo $(CMAKE_POLICY_VERSION_MINIMUM)
 	docker build -f Dockerfile-dev -t autopush-dev .
 
 .PHONY: docker-init
@@ -42,7 +43,7 @@ docker-init:
 	sudo apt update
 	sudo apt-get install build-essential libffi-dev libssl-dev pypy3-dev python3-virtualenv python3-poetry python-is-python3 git glibc-source cmake clang --assume-yes
 	cargo install cargo-audit
-	rustup update 1.93.1 	## RUST_VER
+	rustup update 1.96.0 	## RUST_VER
 
 .PHONY: install
 install: $(INSTALL_STAMP)  ##  Install dependencies with poetry
@@ -105,7 +106,10 @@ notification-test-clean:
 
 .PHONY: build-profile
 build-profile: ##  Run the profiler with the `profile` profile. See Cargo.toml for details.
-	RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile profile
+    # `prefix_build_flags.py` is a hack to work around the fact that we need to set some platform specific env vars for the build, 
+	# but doing so in a Makefile is a nightmare. This way, we can just call this script with the same args we would 
+	# normally call cargo with, and it will add the necessary env vars before running the command.
+	python3 scripts/prefix_build_flags.py RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile profile
 
 .PHONY: format
 format: $(INSTALL_STAMP)  ##  Sort imports and reformats code

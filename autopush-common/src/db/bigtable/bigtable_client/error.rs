@@ -100,30 +100,30 @@ impl MutateRowStatus {
 #[derive(Debug, Error)]
 pub enum BigTableError {
     #[error("Invalid Row Response: {0}")]
-    InvalidRowResponse(#[source] grpcio::Error),
+    InvalidRowResponse(#[source] tonic::Status),
 
     #[error("Invalid Chunk")]
     InvalidChunk(String),
 
     #[error("BigTable read error: {0}")]
-    Read(#[source] grpcio::Error),
+    Read(#[source] tonic::Status),
 
     #[error("BigTable write timestamp error: {0}")]
     WriteTime(#[source] std::time::SystemTimeError),
 
     #[error("Bigtable write error: {0}")]
-    Write(#[source] grpcio::Error),
+    Write(#[source] tonic::Status),
 
-    #[error("GRPC Error: {0}")]
-    GRPC(#[source] grpcio::Error),
+    #[error("BigTable connection error: {0}")]
+    Connect(#[source] tonic::transport::Error),
+
+    #[error("BigTable authentication error: {0}")]
+    Auth(#[source] gcp_auth::Error),
 
     /// Return a GRPC status code and any message.
     /// See https://grpc.github.io/grpc/core/md_doc_statuscodes.html
     #[error("Bigtable status response: {0:?}")]
     Status(MutateRowStatus, String),
-
-    #[error("BigTable Admin Error: {0}")]
-    Admin(String, Option<String>),
 
     /// General Pool errors
     #[error("Pool Error: {0}")]
@@ -167,12 +167,12 @@ impl ReportableError for BigTableError {
             BigTableError::InvalidChunk(_) => "storage.bigtable.error.invalid_chunk",
             BigTableError::Read(_) => "storage.bigtable.error.read",
             BigTableError::Write(_) => "storage.bigtable.error.write",
+            BigTableError::Connect(_) => "storage.bigtable.error.connect",
+            BigTableError::Auth(_) => "storage.bigtable.error.auth",
             BigTableError::Status(_, _) => "storage.bigtable.error.status",
             BigTableError::WriteTime(_) => "storage.bigtable.error.writetime",
-            BigTableError::Admin(_, _) => "storage.bigtable.error.admin",
             BigTableError::Pool(_) => "storage.bigtable.error.pool",
             BigTableError::PoolTimeout(_) => "storage.bigtable.error.pool_timeout",
-            BigTableError::GRPC(_) => "storage.bigtable.error.grpc",
             BigTableError::Config(_) => "storage.bigtable.error.config",
             BigTableError::CircuitBreakerOpen => "storage.bigtable.error.circuit_breaker",
         };
@@ -191,20 +191,14 @@ impl ReportableError for BigTableError {
         match self {
             BigTableError::InvalidRowResponse(s) => vec![("error", s.to_string())],
             BigTableError::InvalidChunk(s) => vec![("error", s.to_string())],
-            BigTableError::GRPC(s) => vec![("error", s.to_string())],
             BigTableError::Read(s) => vec![("error", s.to_string())],
             BigTableError::Write(s) => vec![("error", s.to_string())],
+            BigTableError::Connect(e) => vec![("error", e.to_string())],
+            BigTableError::Auth(e) => vec![("error", e.to_string())],
             BigTableError::Status(code, s) => {
                 vec![("code", code.to_string()), ("error", s.to_string())]
             }
             BigTableError::WriteTime(s) => vec![("error", s.to_string())],
-            BigTableError::Admin(s, raw) => {
-                let mut x = vec![("error", s.to_owned())];
-                if let Some(raw) = raw {
-                    x.push(("raw", raw.to_string()));
-                };
-                x
-            }
             BigTableError::Pool(e) => vec![("error", e.to_string())],
             _ => vec![],
         }

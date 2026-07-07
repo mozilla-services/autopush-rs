@@ -238,7 +238,7 @@ mod tests {
 
     use super::UnidentifiedClient;
 
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn init_test_logging() {
         autopush_common::logging::init_test_logging();
     }

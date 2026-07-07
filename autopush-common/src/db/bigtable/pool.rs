@@ -7,21 +7,20 @@ use std::{
 use actix_web::rt;
 use cadence::StatsdClient;
 use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, RecycleError, Timeouts};
-use grpcio::{Channel, ChannelBuilder, ChannelCredentials, EnvBuilder};
+use gcp_auth::TokenProvider;
+use tokio::sync::OnceCell;
+use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 
 use crate::db::DbSettings;
 use crate::db::bigtable::{BigTableDbSettings, BigTableError, bigtable_client::BigtableDb};
 use crate::db::error::{DbError, DbResult};
 
-const MAX_MESSAGE_LEN: i32 = 1 << 28; // 268,435,456 bytes
 const DEFAULT_GRPC_PORT: u16 = 443;
 
 /// The pool of BigTable Clients.
 /// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
 /// that we have control over is the "channel". For now, we're using the ClientManager to
 /// create new Bigtable clients, which have channels associated with them.
-/// The Manager also has the ability to return a channel, which is useful for
-/// Bigtable administrative calls, which use their own channel.
 #[derive(Clone)]
 pub struct BigTablePool {
     /// Pool of db connections
@@ -48,11 +47,6 @@ impl BigTablePool {
         })?;
         debug!("🉑 Got db from pool");
         Ok(obj)
-    }
-
-    /// Get the pools manager, because we would like to talk to them.
-    pub fn get_channel(&self) -> Result<Channel, BigTableError> {
-        self.pool.manager().get_channel()
     }
 
     /// Creates a new pool of BigTable db connections.
@@ -145,6 +139,11 @@ pub struct BigtableClientManager {
     dsn: Option<String>,
     connection: String,
     metrics: Arc<StatsdClient>,
+    /// Lazily initialized Application Default Credentials (ADC) token
+    /// provider, shared across all pooled connections (it caches and
+    /// refreshes tokens internally). `None` until first used; never
+    /// initialized when running against the emulator.
+    auth_provider: OnceCell<Arc<dyn TokenProvider>>,
 }
 
 impl BigtableClientManager {
@@ -159,7 +158,32 @@ impl BigtableClientManager {
             dsn,
             connection,
             metrics,
+            auth_provider: OnceCell::new(),
         })
+    }
+
+    /// Are we running against a local Bigtable emulator?
+    fn is_emulator(&self) -> bool {
+        self.dsn
+            .as_ref()
+            .map(|v| v.contains("localhost"))
+            .unwrap_or(false)
+            || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
+    }
+
+    /// Return the shared ADC token provider, or `None` when running against
+    /// the emulator (which requires no credentials).
+    async fn token_provider(&self) -> Result<Option<Arc<dyn TokenProvider>>, BigTableError> {
+        if self.is_emulator() {
+            debug!("🉑 Using emulator");
+            return Ok(None);
+        }
+        debug!("🉑 Using real");
+        let provider = self
+            .auth_provider
+            .get_or_try_init(|| async { gcp_auth::provider().await.map_err(BigTableError::Auth) })
+            .await?;
+        Ok(Some(provider.clone()))
     }
 }
 
@@ -180,7 +204,8 @@ impl Manager for BigtableClientManager {
     async fn create(&self) -> Result<BigtableDb, Self::Error> {
         debug!("🏊 Create a new pool entry.");
         let entry = BigtableDb::new(
-            self.get_channel()?,
+            self.get_channel().await?,
+            self.token_provider().await?,
             &self.settings.health_metadata()?,
             &self.settings.table_name,
         );
@@ -223,27 +248,26 @@ impl Manager for BigtableClientManager {
 
 impl BigtableClientManager {
     /// Get a new Channel, based on the application settings.
-    pub fn get_channel(&self) -> Result<Channel, BigTableError> {
-        Ok(Self::create_channel(self.dsn.clone())?.connect(self.connection.as_str()))
+    pub async fn get_channel(&self) -> Result<Channel, BigTableError> {
+        Self::create_channel(&self.connection, self.is_emulator()).await
     }
-    /// Channels are GRPCIO constructs that contain the actual command data paths.
-    /// Channels seem to be fairly light weight.
-    pub fn create_channel(dsn: Option<String>) -> Result<ChannelBuilder, BigTableError> {
+
+    /// Channels are the tonic transport constructs that contain the actual
+    /// HTTP/2 connection. Channels are fairly light weight.
+    pub async fn create_channel(
+        connection: &str,
+        is_emulator: bool,
+    ) -> Result<Channel, BigTableError> {
         debug!("🏊 Creating new channel...");
-        let mut chan = ChannelBuilder::new(Arc::new(EnvBuilder::new().build()))
-            .max_send_message_len(MAX_MESSAGE_LEN)
-            .max_receive_message_len(MAX_MESSAGE_LEN);
-        // Don't get the credentials if we are running in the emulator
-        if dsn.map(|v| v.contains("localhost")).unwrap_or(false)
-            || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
-        {
-            debug!("🉑 Using emulator");
-        } else {
-            chan = chan.set_credentials(
-                ChannelCredentials::google_default_credentials().map_err(BigTableError::GRPC)?,
-            );
-            debug!("🉑 Using real");
+        // The emulator runs plain HTTP/2 without TLS or credentials.
+        let scheme = if is_emulator { "http" } else { "https" };
+        let mut endpoint = Endpoint::from_shared(format!("{scheme}://{connection}"))
+            .map_err(BigTableError::Connect)?;
+        if !is_emulator {
+            endpoint = endpoint
+                .tls_config(ClientTlsConfig::new().with_native_roots())
+                .map_err(BigTableError::Connect)?;
         }
-        Ok(chan)
+        endpoint.connect().await.map_err(BigTableError::Connect)
     }
 }

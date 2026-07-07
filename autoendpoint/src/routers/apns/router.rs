@@ -122,8 +122,20 @@ impl ApnsRouter {
     ) -> Result<Self, ApnsError> {
         let channels = settings.channels()?;
 
+        // An explicitly null timeout in the config would otherwise mean "no
+        // timeout" in a2, so backstop with the documented defaults.
+        let defaults = ApnsSettings::default();
+        let request_timeout_secs = settings
+            .request_timeout_secs
+            .or(defaults.request_timeout_secs);
+        let pool_idle_timeout_secs = settings
+            .pool_idle_timeout_secs
+            .or(defaults.pool_idle_timeout_secs);
+
         let clients: HashMap<String, ApnsClientData> = futures::stream::iter(channels)
-            .then(|(name, settings)| Self::create_client(name, settings))
+            .then(|(name, channel)| {
+                Self::create_client(name, channel, request_timeout_secs, pool_idle_timeout_secs)
+            })
             .try_collect()
             .await?;
 
@@ -139,47 +151,78 @@ impl ApnsRouter {
         })
     }
 
-    /// Create an APNS client for the channel
+    /// Create an APNS client for the channel.
+    ///
+    /// If `key_id` and `team_id` are set, the client uses token-based
+    /// authentication with the `.p8` provider auth key in `key`. Otherwise it
+    /// falls back to certificate-based authentication with `cert`/`key`.
     async fn create_client(
         name: String,
-        settings: ApnsChannel,
+        channel: ApnsChannel,
+        request_timeout_secs: Option<u64>,
+        pool_idle_timeout_secs: Option<u64>,
     ) -> Result<(String, ApnsClientData), ApnsError> {
-        let endpoint = if settings.sandbox {
+        let endpoint = if channel.sandbox {
             Endpoint::Sandbox
         } else {
             Endpoint::Production
         };
-        let cert = if !settings.cert.starts_with('-') {
-            tokio::fs::read(settings.cert).await?
-        } else {
-            settings.cert.as_bytes().to_vec()
-        };
-        let key = if !settings.key.starts_with('-') {
-            tokio::fs::read(settings.key).await?
-        } else {
-            settings.key.as_bytes().to_vec()
-        };
-        // Timeouts defined in ApnsSettings settings.rs config and can be modified.
-        // We define them to prevent possible a2 library changes that could
-        // create unexpected behavior if timeouts are altered.
-        // They currently map to values matching the detaults in the a2 lib v0.10.
-        let apns_settings = ApnsSettings::default();
+        // Timeouts come from the `ApnsSettings` config; `ApnsRouter::new`
+        // backstops explicitly-null values with the defaults, so these are
+        // always set here.
         let config = a2::ClientConfig {
             endpoint,
-            request_timeout_secs: apns_settings.request_timeout_secs,
-            pool_idle_timeout_secs: apns_settings.pool_idle_timeout_secs,
+            request_timeout_secs,
+            pool_idle_timeout_secs,
+        };
+        let client: Box<dyn ApnsClient> = match (&channel.key_id, &channel.team_id) {
+            (Some(key_id), Some(team_id)) => {
+                if !channel.cert.is_empty() {
+                    warn!(
+                        "APNS channel '{}' specifies `cert`, but it is ignored because \
+                         `key_id`/`team_id` select token-based auth",
+                        name
+                    );
+                }
+                let key = Self::read_pem(&channel.key).await?;
+                Box::new(
+                    a2::Client::token(key.as_slice(), key_id, team_id, config)
+                        .map_err(ApnsError::ApnsClient)?,
+                )
+            }
+            (None, None) => {
+                let cert = Self::read_pem(&channel.cert).await?;
+                let key = Self::read_pem(&channel.key).await?;
+                Box::new(
+                    a2::Client::certificate_parts(&cert, &key, config)
+                        .map_err(ApnsError::ApnsClient)?,
+                )
+            }
+            _ => {
+                return Err(ApnsError::Config(
+                    name,
+                    "`key_id` and `team_id` must both be set for token-based auth".to_owned(),
+                ));
+            }
         };
         let client = ApnsClientData {
-            client: Box::new(
-                a2::Client::certificate_parts(&cert, &key, config)
-                    .map_err(ApnsError::ApnsClient)?,
-            ),
-            topic: settings
+            client,
+            topic: channel
                 .topic
                 .unwrap_or_else(|| format!("com.mozilla.org.{name}")),
         };
 
         Ok((name, client))
+    }
+
+    /// Read PEM material that is either an inline value (starting with "-",
+    /// e.g. `-----BEGIN PRIVATE KEY-----`) or a path to a file
+    async fn read_pem(value: &str) -> Result<Vec<u8>, ApnsError> {
+        if value.starts_with('-') {
+            Ok(value.as_bytes().to_vec())
+        } else {
+            Ok(tokio::fs::read(value).await?)
+        }
     }
 
     /// The default APS data for a notification
@@ -521,7 +564,7 @@ mod tests {
     use crate::extractors::routers::RouterType;
     use crate::routers::apns::error::ApnsError;
     use crate::routers::apns::router::{ApnsClient, ApnsClientData, ApnsRouter};
-    use crate::routers::apns::settings::ApnsSettings;
+    use crate::routers::apns::settings::{ApnsChannel, ApnsSettings};
     use crate::routers::common::tests::{CHANNEL_ID, make_notification};
     use crate::routers::{Router, RouterError, RouterResponse};
     use a2::request::payload::Payload;
@@ -539,6 +582,22 @@ mod tests {
 
     const DEVICE_TOKEN: &str = "test-token";
     const APNS_ID: &str = "deadbeef-4f5e-4403-be8f-35d0251655f5";
+
+    /// Generate a throwaway P-256 private key in PKCS#8 PEM, the same shape
+    /// as an Apple `.p8` auth key. Generated at test time so no PEM block
+    /// (even a fake one) lives in the source tree to trip secret scanners.
+    fn test_p8_key() -> String {
+        use openssl::{
+            ec::{EcGroup, EcKey},
+            nid::Nid,
+            pkey::PKey,
+        };
+
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
+        let key = EcKey::generate(&group).unwrap();
+        let pem = PKey::from_ec_key(key).unwrap();
+        String::from_utf8(pem.private_key_to_pem_pkcs8().unwrap()).unwrap()
+    }
 
     #[allow(clippy::type_complexity)]
     /// A mock APNS client which allows one to supply a custom APNS response/error
@@ -613,6 +672,40 @@ mod tests {
             serde_json::to_value("test-channel").unwrap(),
         );
         map
+    }
+
+    /// A channel with `key_id` and `team_id` creates a token-auth client
+    #[tokio::test]
+    async fn create_client_token_auth() {
+        let channel = ApnsChannel {
+            key: test_p8_key(),
+            key_id: Some("ABC123DEFG".to_string()),
+            team_id: Some("TEAMID1234".to_string()),
+            topic: Some("com.mozilla.org.Firefox".to_string()),
+            ..Default::default()
+        };
+
+        let (name, client) = ApnsRouter::create_client("test".to_string(), channel, None, None)
+            .await
+            .expect("token client creation failed");
+        assert_eq!(name, "test");
+        assert_eq!(client.topic, "com.mozilla.org.Firefox");
+    }
+
+    /// Setting only one of `key_id`/`team_id` is a config error
+    #[tokio::test]
+    async fn create_client_partial_token_auth() {
+        let channel = ApnsChannel {
+            key: test_p8_key(),
+            key_id: Some("ABC123DEFG".to_string()),
+            ..Default::default()
+        };
+
+        let result = ApnsRouter::create_client("test".to_string(), channel, None, None).await;
+        assert!(
+            matches!(result, Err(ApnsError::Config(ref name, _)) if name == "test"),
+            "expected ApnsError::Config"
+        );
     }
 
     /// A notification with no data is packaged correctly and sent to APNS

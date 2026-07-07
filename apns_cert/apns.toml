@@ -1,0 +1,13 @@
+# This file contains setting information for the
+# Certificate Request that we will need to send to
+# Apple.
+[req]
+default_bit=2048
+distinguished_name=req_distinguished_name
+prompt=no
+
+[req_distinguished_name]
+countryName=US
+stateOrProvinceName=California
+organizationName=Mozilla
+

@@ -152,17 +152,11 @@ impl AppState {
         let Some(ref url) = self.settings.megaphone_api_url else {
             return Ok(());
         };
-        let Some(ref token) = self.settings.megaphone_api_token else {
-            return Err(ConfigError::Message(format!(
-                "{ENV_PREFIX}__MEGAPHONE_API_URL requires {ENV_PREFIX}__MEGAPHONE_API_TOKEN"
-            )));
-        };
         init_and_spawn_megaphone_updater(
             &self.broadcaster,
             &self.http,
             &self.metrics,
             url,
-            token,
             self.settings.megaphone_poll_interval,
         )
         .await

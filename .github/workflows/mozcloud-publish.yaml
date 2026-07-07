@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - master
+      - main
     tags:
       - '**'
   workflow_dispatch: {}
@@ -22,7 +23,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
+    uses: mozilla/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
     with:
       image_name: autoconnect
       gar_name: autopush-prod
@@ -43,7 +44,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: mozilla-it/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
+    uses: mozilla/deploy-actions/.github/workflows/build-and-push.yml@4784cb70739a4f32ce010921f60fb1ebbc791a38 # v6.2.2
     with:
       image_name: autoendpoint
       gar_name: autopush-prod
@@ -58,7 +59,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'push' &&
-        (github.ref_name == 'master' || startsWith(github.ref, 'refs/tags/'))
+        (github.ref_name == 'master' || github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/'))
       ) ||
       (
         github.event_name == 'pull_request' &&
@@ -82,21 +83,24 @@ jobs:
 
       - name: Compute autoconnect tags
         run: |
-          if [[ "${{ steps.setup.outputs.push_latest }}" == "true" ]]; then
+          if [[ "${STEPS_SETUP_OUTPUTS_PUSH_LATEST}" == "true" ]]; then
             TAGS=$(cat <<EOF
-          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:${{ steps.setup.outputs.image_tag }}_enterprise
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}_enterprise
           us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:latest_enterprise
           EOF
           )
           else
             TAGS=$(cat <<EOF
-          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:${{ steps.setup.outputs.image_tag }}
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}
           EOF
           )
           fi
           echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
           echo "$TAGS" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
+        env:
+          STEPS_SETUP_OUTPUTS_PUSH_LATEST: ${{ steps.setup.outputs.push_latest }}
+          STEPS_SETUP_OUTPUTS_IMAGE_TAG: ${{ steps.setup.outputs.image_tag }}
 
       - name: Build and push autoconnect to enterprise GAR
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
@@ -113,21 +117,24 @@ jobs:
 
       - name: Compute autoendpoint tags
         run: |
-          if [[ "${{ steps.setup.outputs.push_latest }}" == "true" ]]; then
+          if [[ "${STEPS_SETUP_OUTPUTS_PUSH_LATEST}" == "true" ]]; then
             TAGS=$(cat <<EOF
-          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:${{ steps.setup.outputs.image_tag }}_enterprise
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}_enterprise
           us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:latest_enterprise
           EOF
           )
           else
             TAGS=$(cat <<EOF
-          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:${{ steps.setup.outputs.image_tag }}
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}
           EOF
           )
           fi
           echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
           echo "$TAGS" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
+        env:
+          STEPS_SETUP_OUTPUTS_PUSH_LATEST: ${{ steps.setup.outputs.push_latest }}
+          STEPS_SETUP_OUTPUTS_IMAGE_TAG: ${{ steps.setup.outputs.image_tag }}
 
       - name: Build and push autoendpoint to enterprise GAR
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
