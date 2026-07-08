@@ -1,3 +1,24 @@
+<a name="1.82.2"></a>
+## 1.82.2 (2026-07-08)
+
+### Features
+
+- *(apns)* Add ability for token-based connection to APNS (#1166) ([bcb8df40](https://github.com/mozilla-services/autopush-rs/commit/bcb8df404591a84af5c3e3f828bcd2556f41303b))
+
+### Bug Fixes
+
+- *(tests)* Wait for Bigtable emulator before creating tables (#1178) ([ed0272ab](https://github.com/mozilla-services/autopush-rs/commit/ed0272abc0fe6642c00cea53c41e4fc5f6346b37))
+- *(redis)* Persist topic/ttl/sortkey_timestamp in stored notifications (#1191) ([df62df16](https://github.com/mozilla-services/autopush-rs/commit/df62df16ee27596cacea41420ba3fbf3b765db6b))
+
+### Documentation
+
+- Update release process (#1176) ([493d99ba](https://github.com/mozilla-services/autopush-rs/commit/493d99ba4ce5594723eb935d2f21df1670ad77ca))
+
+### Chore
+
+- Tag 1.82.0 (#1175) ([f18ade81](https://github.com/mozilla-services/autopush-rs/commit/f18ade81144dccde297dd25f04ddede1360d5b39))
+- *(ci)* Trigger builds and deploys on both master and main (#1177) ([64d90c88](https://github.com/mozilla-services/autopush-rs/commit/64d90c888c731a4f9b0b4707f724602f42931ef4))
+
 <a name="1.82.1"></a>
 ## 1.82.1 (2026-06-24)
 
