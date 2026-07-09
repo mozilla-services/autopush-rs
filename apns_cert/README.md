@@ -1,5 +1,12 @@
 # APNS cert update utility scripts.
 
+> **Note:** Autopush also supports [token-based APNs
+> authentication](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns)
+> using a `.p8` provider auth key, which does not expire and avoids the yearly
+> certificate renewal described below. On the channel, set `key` to the `.p8`
+> auth key (as a path or inline PEM) and add `key_id` and `team_id`; `cert` is
+> no longer needed. See `configs/autoendpoint.toml.sample` for an example.
+
 Every year, we will need to update the APNs certificate. See the
 Autopush Operations Manual for additional details. This directory
 contains some tooling that has been useful for this process.

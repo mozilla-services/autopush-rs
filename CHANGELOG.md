@@ -1,3 +1,60 @@
+<a name="1.82.2"></a>
+## 1.82.2 (2026-07-08)
+
+### Features
+
+- *(apns)* Add ability for token-based connection to APNS (#1166) ([bcb8df40](https://github.com/mozilla-services/autopush-rs/commit/bcb8df404591a84af5c3e3f828bcd2556f41303b))
+
+### Bug Fixes
+
+- *(tests)* Wait for Bigtable emulator before creating tables (#1178) ([ed0272ab](https://github.com/mozilla-services/autopush-rs/commit/ed0272abc0fe6642c00cea53c41e4fc5f6346b37))
+- *(redis)* Persist topic/ttl/sortkey_timestamp in stored notifications (#1191) ([df62df16](https://github.com/mozilla-services/autopush-rs/commit/df62df16ee27596cacea41420ba3fbf3b765db6b))
+
+### Documentation
+
+- Update release process (#1176) ([493d99ba](https://github.com/mozilla-services/autopush-rs/commit/493d99ba4ce5594723eb935d2f21df1670ad77ca))
+
+### Chore
+
+- Tag 1.82.0 (#1175) ([f18ade81](https://github.com/mozilla-services/autopush-rs/commit/f18ade81144dccde297dd25f04ddede1360d5b39))
+- *(ci)* Trigger builds and deploys on both master and main (#1177) ([64d90c88](https://github.com/mozilla-services/autopush-rs/commit/64d90c888c731a4f9b0b4707f724602f42931ef4))
+
+<a name="1.82.1"></a>
+## 1.82.1 (2026-06-24)
+
+
+#### Bug Fixes
+
+*   install rustls CryptoProvider to prevent startup panic (#1174) ([b3e7a8b](https://github.com/mozilla-services/autopush-rs/pull/1174))
+
+#### Chore
+
+*   tag 1.82.0 (#1168) ([5c32e76](https://github.com/mozilla-services/autopush-rs/pull/1168))
+
+
+<a name="1.82.0"></a>
+## 1.82.0 (2026-06-23)
+
+
+#### Features
+
+*   Add var prefixer to resolve grpcio builds under trixie (#1162) ([3c594792](https://github.com/mozilla-services/autopush-rs/commit/3c594792277dc367b79046be673c7b8ba489a3d0))
+
+#### Bug Fixes
+
+*   defaults for explicitly null keys in settings (#1156) ([ec675ffe](https://github.com/mozilla-services/autopush-rs/commit/ec675ffecc7cf1bf198e2859f5b7c860da71b7ad))
+
+#### Chore
+
+*   tag 1.81.3 (#1151) ([202f78b3](https://github.com/mozilla-services/autopush-rs/commit/202f78b3b297d1b4ad8f05af607c7a1eb4835017))
+*   remove token auth (#1153) ([ffc7fa4b](https://github.com/mozilla-services/autopush-rs/commit/ffc7fa4b5376c77574c84b43aaccacb5f4a714bb))
+*   apply zizmor autofixes (#1158) ([ca4dfd2e](https://github.com/mozilla-services/autopush-rs/commit/ca4dfd2e84c7b22a0402c8f6ad7c1cb0a2b4232c))
+*   Add APNs cert update docs and scripts (#1161) ([702d0658](https://github.com/mozilla-services/autopush-rs/commit/702d06581066e244d5954c980c6a335089781776))
+*   Replace grpcio with tonic (#1165) ([d1c8d22e](https://github.com/mozilla-services/autopush-rs/commit/d1c8d22e78069232b087a701ccbd9c019017fbee))
+*   Updates for 06/2026 (#1164) ([4ef7531c](https://github.com/mozilla-services/autopush-rs/commit/4ef7531cd384e2fe57d9989bd96f40cfec4f2574))
+
+
+
 <a name="1.81.3"></a>
 ## 1.81.3 (2026-04-17)
 

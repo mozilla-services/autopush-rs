@@ -21,6 +21,7 @@ pub mod reliability;
 pub mod sentry;
 pub mod tags;
 pub mod test_support;
+pub mod tls;
 
 #[macro_use]
 pub mod util;

@@ -18,6 +18,12 @@ pub struct ApnsSettings {
 }
 
 /// Settings for a specific APNS release channel
+///
+/// Two authentication modes are supported:
+/// - Token-based auth (preferred): set `key` to the APNS provider auth key
+///   (`.p8`), and set both `key_id` and `team_id`. `cert` is unused.
+/// - Certificate-based auth: set `cert` and `key` to the provider
+///   certificate/key pair, and leave `key_id`/`team_id` unset.
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 #[serde(default)]
 //#[serde(deny_unknown_fields)] // Allow unknown fields so we can add comments to the secrets.
@@ -27,6 +33,10 @@ pub struct ApnsChannel {
     /// e.g. `-----BEGIN PRIVATE KEY-----\n`
     pub cert: String,
     pub key: String,
+    /// The 10-character Apple key ID for the `.p8` auth key (token-based auth)
+    pub key_id: Option<String>,
+    /// The 10-character Apple Developer team ID (token-based auth)
+    pub team_id: Option<String>,
     pub topic: Option<String>,
     pub sandbox: bool,
 }
