@@ -24,7 +24,6 @@ pub fn build_message_data(notification: &Notification) -> ApiResult<HashMap<&'st
         message_data.insert_opt("con", notification.headers.encoding.as_ref());
         message_data.insert_opt("enc", notification.headers.encryption.as_ref());
         message_data.insert_opt("cryptokey", notification.headers.crypto_key.as_ref());
-        message_data.insert_opt("enckey", notification.headers.encryption_key.as_ref());
         // Report the data to the UA. How this value is reported back is still a work in progress, but
         // we do set the state to "accepted" on desktop "ACK" at least.
         trace!(
@@ -255,7 +254,6 @@ pub mod tests {
                 topic: Some("test-topic".to_string()),
                 encoding: Some("test-encoding".to_string()),
                 encryption: Some("test-encryption".to_string()),
-                encryption_key: Some("test-encryption-key".to_string()),
                 crypto_key: Some("test-crypto-key".to_string()),
             },
             timestamp: 0,
