@@ -1,0 +1,34 @@
+# Preview / on-demand service-image deploy. Builds and pushes the autoconnect,
+# autoendpoint, and enterprise images via the shared reuse-mozcloud-publish
+# workflow. Triggered by a `preview`-labeled PR (same-repo only, for secrets/OIDC
+# safety) or manual dispatch. Intentionally NOT gated on the test suite — preview
+# is for fast iteration; the test-gated release path lives in build-test-deploy.yml.
+name: preview-deploy
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        contains(github.event.pull_request.labels.*.name, 'preview') &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reuse-mozcloud-publish.yaml
+    with:
+      push: true
+      # Never move the shared :latest tag from a preview PR — dev/ent-dev track it.
+      # Preview envs use the per-commit SHA tag instead.
+      should_tag_latest: false
+    secrets: inherit

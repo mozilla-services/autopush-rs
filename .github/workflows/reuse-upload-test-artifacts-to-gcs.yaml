@@ -1,0 +1,80 @@
+name: upload-test-artifacts-to-gcs
+
+on:
+  workflow_call:
+    inputs:
+      service_account:
+        description: "Service account to use for authentication"
+        required: false
+        type: string
+        default: "artifact-writer@moz-fx-autopush-prod.iam.gserviceaccount.com"
+      source:
+        description: "Source directory containing test artifacts"
+        required: false
+        type: string
+        default: "workspace/test-results"
+      destination:
+        description: "GCS bucket destination for uploaded artifacts"
+        required: true
+        type: string
+      extension:
+        description: "File extension filter for artifacts (e.g. xml, json)"
+        required: false
+        type: string
+      workflow:
+        description: "Workflow name used in the metrics filename prefix"
+        required: false
+        type: string
+        default: "build-test-deploy"
+
+jobs:
+  upload-to-gcs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+    steps:
+      - name: Set up Google Cloud Authentication
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          service_account: ${{ inputs.service_account }}
+          workload_identity_provider: ${{ vars.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Download Unit Test Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: unit-test-results
+          path: ${{ inputs.source }}
+      - name: Download Integration Test Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: integration-test-results
+          path: ${{ inputs.source }}
+      - name: Upload Artifacts to GCS
+        env:
+          INPUT_SOURCE: ${{ inputs.source }}
+          INPUT_DESTINATION: ${{ inputs.destination }}
+          INPUT_EXTENSION: ${{ inputs.extension }}
+          INPUT_WORKFLOW: ${{ inputs.workflow }}
+        run: |
+          shopt -s nullglob
+          if [ -n "$INPUT_EXTENSION" ]; then
+            files=("${INPUT_SOURCE}"/*."${INPUT_EXTENSION}")
+          else
+            files=("${INPUT_SOURCE}"/*)
+          fi
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No ${INPUT_EXTENSION} files found in ${INPUT_SOURCE}/"
+            exit 1
+          fi
+
+          # The ETE test metric pipeline requires a strict filename convention:
+          # {job_number}__{utc_epoch}__{repository}__{workflow}__{suite}__results{-index}.{ext}
+          # The Makefile already names files "{suite}__results.{ext}", so we only
+          # prepend the run-level prefix here.
+          prefix="${GITHUB_RUN_NUMBER}__$(date +%s)__${GITHUB_REPOSITORY##*/}__${INPUT_WORKFLOW}__"
+
+          for f in "${files[@]}"; do
+            gcloud storage cp "$f" "${INPUT_DESTINATION}/${prefix}$(basename "$f")"
+          done
