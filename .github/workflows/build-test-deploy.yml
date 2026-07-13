@@ -1,0 +1,93 @@
+# Entrypoint which orchestrates CI/CD workflow for PRs,
+# tags, and main pushes
+# Runs audits, checks, and tests, pushes canary test images,
+# validates builds on all PRs, and publishes service images
+# on deploys to 'main' and tags.
+name: build-test-deploy
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - "**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref so a new push to a PR stops the older,
+# in-progress run (faster feedback, frees runners). Scoped to PRs only, so a
+# push/tag deploy in progress is never cancelled by a subsequent one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check-and-test:
+    permissions:
+      contents: read
+      id-token: write # the test-result GCS upload jobs authenticate via WIF
+    uses: ./.github/workflows/reuse-check-and-test.yml
+    secrets: inherit
+
+  # Service images. Gated on the test suite passing and run for every event so
+  # PRs validate the Dockerfile build (push: false); the images are only published
+  # on master/main/tags. Skipped on preview-labeled PRs, where preview-deploy.yml
+  # already builds + pushes these images.
+  build-and-push-service-images:
+    needs: check-and-test
+    if: >
+      !(github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'preview'))
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reuse-mozcloud-publish.yaml
+    with:
+      push: ${{ github.event_name == 'push' && (github.ref_name == 'master' || github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/')) }}
+    secrets: inherit
+
+  # Test/cron images. Gated on the test suite passing and run for every event so
+  # PRs validate the Dockerfile build (push: false); published on master/main/tags.
+  build-and-push-test-images:
+    needs: check-and-test
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reuse-build-and-push-test-images.yml
+    with:
+      push: ${{ github.event_name == 'push' && (github.ref_name == 'master' || github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/')) }}
+    secrets: inherit
+
+  # Push the junit/coverage artifacts produced by check-and-test to the ETE
+  # metrics bucket. Decoupled from `deploy`: these run in parallel with it and a
+  # GCS hiccup never blocks a release. `always()` so results upload even when
+  # tests failed; main-only because the upload's WIF auth needs the provider.
+  # Split into two calls because the reusable workflow uploads one
+  # extension/destination per invocation.
+  upload-junit:
+    needs: check-and-test
+    if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reuse-upload-test-artifacts-to-gcs.yaml
+    with:
+      destination: gs://ecosystem-test-eng-metrics/autopush-rs/junit
+      extension: xml
+      service_account: ${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com
+
+  upload-coverage:
+    needs: check-and-test
+    if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reuse-upload-test-artifacts-to-gcs.yaml
+    with:
+      destination: gs://ecosystem-test-eng-metrics/autopush-rs/coverage
+      extension: json
+      service_account: ${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com

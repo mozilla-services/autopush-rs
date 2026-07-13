@@ -1,0 +1,23 @@
+name: Docker Hub login
+description: >
+  Authenticate to Docker Hub so base-image pulls use authenticated rate limits
+  instead of the lower anonymous per-IP limit. No-op when no token is provided
+  (e.g. forks or when the secret is unset)
+
+inputs:
+  username:
+    description: Docker Hub username
+    required: false
+  token:
+    description: Docker Hub access token / password
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Log in to Docker Hub
+      if: inputs.token != ''
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      with:
+        username: ${{ inputs.username }}
+        password: ${{ inputs.token }}

@@ -11,9 +11,8 @@ WORKDIR /app
 # ENV GOOGLE_APPLICATION_CREDENTIALS = /app/keys/service-account-key.json
 
 # Generate the report
-ENV AUTOTRACK_REPORT_BUCKET_NAME = "autopush_reliability"
+ENV AUTOTRACK_REPORT_BUCKET_NAME="autopush_reliability"
 ENV AUTOTRACK_OUTPUT="md json"
 RUN pip install .
 # Specifying the full paths here to avoid an issue with executables not found.
 CMD ["/usr/local/bin/python3", "/app/reliability_report.py"]
-

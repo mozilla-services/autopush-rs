@@ -1,0 +1,50 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Standalone Bigtable emulator for the emulator-backed Rust tests
+# and for running the service locally against a local BT emulator.
+# Unlike tests/integration/docker-compose.yml (which also sets up
+# the emulator service), this does not build or run autoconnect/autoendpoint.
+#
+# Usage:
+#   docker compose -f docker-compose-bigtable.yml run --rm bigtable-setup
+#   BIGTABLE_EMULATOR_HOST=localhost:8086 make unit-test
+#   # when done:
+#   docker compose -f docker-compose-bigtable.yml down
+#
+# Unlike tests/integration/docker-compose.yml (host networking, amd64-pinned),
+# this publishes 8086 via a port mapping and stays arch-agnostic, so it also
+# works on macOS / Apple Silicon.
+services:
+  bigtable:
+    image: google/cloud-sdk:latest
+    # Bind to 0.0.0.0 (not localhost) so the published port is reachable from
+    # the host running `cargo nextest`.
+    command: gcloud beta emulators bigtable start --host-port=0.0.0.0:8086
+    ports:
+      - "8086:8086"
+    healthcheck:
+      # The emulator is a gRPC server; a successful TCP connect means it is up.
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8086"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 5s
+
+  # Creates the `autopush` table + column families expected by code and tests
+  # setup_bt.sh needs the `cbt` CLI, so install in the throwaway container rather
+  # than onto the host/runner
+  bigtable-setup:
+    image: google/cloud-sdk:latest
+    depends_on:
+      bigtable:
+        condition: service_healthy
+    environment:
+      - BIGTABLE_EMULATOR_HOST=bigtable:8086
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint:
+      - /bin/sh
+      - -euc
+      - apt-get update -qq && apt-get install -y -qq google-cloud-cli-cbt && sh /scripts/setup_bt.sh
