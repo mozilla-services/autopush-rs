@@ -12,6 +12,14 @@ inputs:
   gcp_service_account:
     description: GCP service account email
     required: true
+  authenticate:
+    description: >
+      Whether to authenticate to GCP and log in to GAR. Set false for
+      build-only runs (e.g. fork PRs) where the WIF secrets are unavailable;
+      version.json, the image tag, and buildx are still set up so the build
+      can proceed.
+    required: false
+    default: "true"
 
 outputs:
   image_tag:
@@ -52,6 +60,7 @@ runs:
 
     - name: GCP auth
       id: gcp_auth
+      if: ${{ inputs.authenticate == 'true' }}
       uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
@@ -59,6 +68,7 @@ runs:
         token_format: access_token
 
     - name: Log in to GAR
+      if: ${{ inputs.authenticate == 'true' }}
       uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
       with:
         registry: us-docker.pkg.dev

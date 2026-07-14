@@ -72,6 +72,9 @@ jobs:
       - uses: ./.github/actions/setup-build-and-push
         id: setup
         with:
+          # Only need to authenticate if intend to push; allows to run
+          # build verification on forks without auth
+          authenticate: ${{ inputs.push }}
           workload_identity_provider: ${{ vars.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
           gcp_service_account: "${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-fx-enterprise-prod.iam.gserviceaccount.com"
 
