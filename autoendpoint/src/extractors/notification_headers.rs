@@ -42,7 +42,6 @@ pub struct NotificationHeaders {
     // and based upon the content encoding
     pub encoding: Option<String>,
     pub encryption: Option<String>,
-    pub encryption_key: Option<String>,
     pub crypto_key: Option<String>,
 }
 
@@ -52,7 +51,6 @@ impl From<NotificationHeaders> for HashMap<String, String> {
 
         map.insert_opt("encoding", headers.encoding);
         map.insert_opt("encryption", headers.encryption);
-        map.insert_opt("encryption_key", headers.encryption_key);
         map.insert_opt("crypto_key", headers.crypto_key);
 
         map
@@ -86,7 +84,6 @@ impl NotificationHeaders {
                 topic,
                 encoding: get_owned_header(req, "content-encoding"),
                 encryption: get_owned_header(req, "encryption").map(Self::strip_header),
-                encryption_key: get_owned_header(req, "encryption-key"),
                 crypto_key: get_owned_header(req, "crypto-key").map(Self::strip_header),
             }
         } else {
@@ -96,7 +93,6 @@ impl NotificationHeaders {
                 topic,
                 encoding: None,
                 encryption: None,
-                encryption_key: None,
                 crypto_key: None,
             }
         };
@@ -144,13 +140,6 @@ impl NotificationHeaders {
     /// draft-ietf-webpush-encryption-04
     fn validate_encryption_04_rules(&self) -> ApiResult<()> {
         Self::assert_base64_item_exists("Encryption", self.encryption.as_deref(), "salt")?;
-
-        if self.encryption_key.is_some() {
-            return Err(ApiErrorKind::InvalidEncryption(
-                "Encryption-Key header is not valid for webpush draft 02 or later".to_string(),
-            )
-            .into());
-        }
 
         if self.crypto_key.is_some() {
             Self::assert_base64_item_exists("Crypto-Key", self.crypto_key.as_deref(), "dh")?;
@@ -397,7 +386,6 @@ mod tests {
                 topic: None,
                 encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
-                encryption_key: None,
                 crypto_key: Some("dh=bar".to_string())
             }
         );
@@ -426,7 +414,6 @@ mod tests {
                 topic: None,
                 encoding: Some("aes128gcm".to_string()),
                 encryption: Some("notsalt=foo".to_string()),
-                encryption_key: None,
                 crypto_key: Some("notdh=bar".to_string())
             }
         );
@@ -456,7 +443,6 @@ mod tests {
                 topic: None,
                 encoding: Some("aesgcm".to_string()),
                 encryption: Some("salt=foo".to_string()),
-                encryption_key: None,
                 crypto_key: Some("keyid=p256dh;dh=deadbeef".to_string())
             }
         );

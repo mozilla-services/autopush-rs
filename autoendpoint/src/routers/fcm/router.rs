@@ -355,8 +355,7 @@ mod tests {
                                 "body": "test-data",
                                 "con": "test-encoding",
                                 "enc": "test-encryption",
-                                "cryptokey": "test-crypto-key",
-                                "enckey": "test-encryption-key"
+                                "cryptokey": "test-crypto-key"
                             },
                             "ttl": "60s"
                         },

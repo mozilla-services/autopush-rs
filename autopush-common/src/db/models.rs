@@ -25,8 +25,6 @@ pub(crate) struct NotificationHeaders {
     #[serde(skip_serializing_if = "Option::is_none")]
     encryption: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    encryption_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     encoding: Option<String>,
 }
 
@@ -36,7 +34,6 @@ impl From<NotificationHeaders> for HashMap<String, String> {
         let mut map = Self::new();
         map.insert_opt("crypto_key", val.crypto_key);
         map.insert_opt("encryption", val.encryption);
-        map.insert_opt("encryption_key", val.encryption_key);
         map.insert_opt("encoding", val.encoding);
         map
     }
@@ -47,7 +44,6 @@ impl From<HashMap<String, String>> for NotificationHeaders {
         Self {
             crypto_key: val.get("crypto_key").map(|v| v.to_string()),
             encryption: val.get("encryption").map(|v| v.to_string()),
-            encryption_key: val.get("encryption_key").map(|v| v.to_string()),
             encoding: val.get("encoding").map(|v| v.to_string()),
         }
     }
