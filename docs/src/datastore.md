@@ -28,9 +28,12 @@ It offers reasonable cost for the sort of scale that we see, and the performance
 The Bigtable DSN begins with the prefix `grpc` and points to the host and port of the Bigtable database (e.g. to point to a local emulator you would specify `grpc://localhost:8086`)
 
 Bigtable's database configuration options are stored in the `db_settings` as a serialized JSON string. The settings include:
+
 * `message_family` the Bigtable cell family that refers to the **message** data collections
 * `router_family` the Bigtable cell family that refers to the **router** data collections
 * `table_name` the Bigtable internal path URI to the table. You construct this by using the following template `projects/{YOUR PROJECT}/instances/{INSTANCE NAME}/tables/{TABLE NAME}`. For example, if I had created a GCP project named "test-prod", that has an instance ID of "test-prod-us" which contained a table named "auto-test", the `table_name` would be `projects/test-prod/instances/test-prod-us/tables/auto-test`.
+* `retry_count` the number of retries after the initial Bigtable data operation. It defaults to 2 (reduced from 5 to limit retry storms). Health checks also use 2 retries, but their retry count is not separately configurable.
+
 The `scripts/setup_bt.sh` file contains a collection of commands that can be used to configure Bigtable storage, or at least aid in setting up the table.
 
 ### Redis/Valkey

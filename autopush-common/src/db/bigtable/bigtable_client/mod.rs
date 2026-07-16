@@ -62,6 +62,12 @@ const RELIABLE_LOG_FAMILY: &str = "reliability";
 /// /// In most use cases, converted to seconds through .num_seconds().
 pub const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
+/// Default number of retries after the initial Bigtable RPC attempt.
+///
+/// So a connectivity failure cannot fan out into a
+/// retry storm, we try to keep this number small.
+/// Can be overriden through `db_settings`.retry_count`;
+/// health checks use this default directly.
 pub(crate) const RETRY_COUNT: usize = 2;
 
 /// Maximum gRPC message size (256MB), matching the prior grpcio configuration.
@@ -459,47 +465,31 @@ pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
     metric.send();
 }
 
-pub fn retryable_status(metrics: &Arc<StatsdClient>) -> impl Fn(&Status) -> bool + '_ {
-    move |status| {
-        info!("GRPC Failure: {:?}", status);
-        let retry = retryable_internal_err(status);
-        if retry {
-            metric(metrics, "RpcFailure", Some(&format!("{:?}", status.code())));
-        }
-        retry
-    }
-}
-
-pub fn retryable_read_status(metrics: &Arc<StatsdClient>) -> impl Fn(&Status) -> bool + '_ {
-    move |status| {
-        info!("GRPC read failure: {:?}", status);
-        let retry = retryable_read_err(status);
-        if retry {
-            metric(metrics, "RpcFailure", Some(&format!("{:?}", status.code())));
-        }
-        retry
-    }
-}
-
 pub fn retryable_bt_err(
     metrics: &Arc<StatsdClient>,
 ) -> impl Fn(&error::BigTableError) -> bool + '_ {
     move |err| {
         debug!("🉑 Checking BigTableError...{err}");
-        match err {
+        let (status, retry) = match err {
             error::BigTableError::InvalidRowResponse(s) | error::BigTableError::Read(s) => {
-                retryable_read_status(metrics)(s)
+                (s, retryable_read_err(s))
             }
-            error::BigTableError::Write(s) => retryable_status(metrics)(s),
+            error::BigTableError::Write(s) => (s, retryable_internal_err(s)),
             // Failures to fetch an OAuth token (e.g. a transient metadata
             // server hiccup) are retryable, matching the prior behavior of
             // retrying grpcio's oauth token fetch errors.
             error::BigTableError::Auth(_) => {
                 metric(metrics, "Auth", None);
-                true
+                return true;
             }
-            _ => false,
+            _ => return false,
+        };
+
+        info!("GRPC Failure: {:?}", status);
+        if retry {
+            metric(metrics, "RpcFailure", Some(&format!("{:?}", status.code())));
         }
+        retry
     }
 }
 

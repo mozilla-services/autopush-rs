@@ -83,7 +83,9 @@ pub struct BigTableDbSettings {
     /// Include route to leader header in metadata
     #[serde(default)]
     pub route_to_leader: bool,
-    /// Number of times to retry a GRPC function
+    /// Number of retries after the initial gRPC data operation. Defaults to
+    /// two. Health checks always use the same default and cannot be
+    /// configured separately.
     #[serde(default = "retry_default")]
     pub retry_count: usize,
     /// Max lifetime (in seconds) for a router entry
@@ -175,6 +177,7 @@ mod tests {
             settings.database_pool_create_timeout,
             Some(std::time::Duration::from_secs(123))
         );
+        assert_eq!(settings.retry_count, 2);
         Ok(())
     }
     #[test]
