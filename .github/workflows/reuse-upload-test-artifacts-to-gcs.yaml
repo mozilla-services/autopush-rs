@@ -5,9 +5,8 @@ on:
     inputs:
       service_account:
         description: "Service account to use for authentication"
-        required: false
+        required: true
         type: string
-        default: "artifact-writer@moz-fx-autopush-prod.iam.gserviceaccount.com"
       source:
         description: "Source directory containing test artifacts"
         required: false
