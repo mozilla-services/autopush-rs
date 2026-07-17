@@ -78,7 +78,7 @@ jobs:
     with:
       destination: gs://ecosystem-test-eng-metrics/autopush-rs/junit
       extension: xml
-      service_account: ${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com
+      service_account: ${{ vars.GCS_ARTIFACT_UPLOAD_SERVICE_ACCOUNT }}
 
   upload-coverage:
     needs: check-and-test
@@ -90,4 +90,4 @@ jobs:
     with:
       destination: gs://ecosystem-test-eng-metrics/autopush-rs/coverage
       extension: json
-      service_account: ${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-autopush-prod.iam.gserviceaccount.com
+      service_account: ${{ vars.GCS_ARTIFACT_UPLOAD_SERVICE_ACCOUNT }}
