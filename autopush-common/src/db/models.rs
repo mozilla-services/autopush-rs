@@ -2,52 +2,13 @@
 use lazy_static::lazy_static;
 #[cfg(any(test, feature = "bigtable"))]
 use regex::RegexSet;
-use std::collections::HashMap;
 
 #[cfg(any(test, feature = "bigtable"))]
 use crate::errors::{ApcErrorKind, Result};
 #[cfg(any(test, feature = "bigtable"))]
 use crate::notification::{STANDARD_NOTIFICATION_PREFIX, TOPIC_NOTIFICATION_PREFIX};
-use serde_derive::{Deserialize, Serialize};
 #[cfg(any(test, feature = "bigtable"))]
 use uuid::Uuid;
-
-use crate::util::InsertOpt;
-
-/// Direct representation of an incoming subscription notification header set
-/// as we store it in the database.
-/// It is possible to have a "data free" notification, which does not have a
-/// message component, and thus, no headers.
-#[derive(Default, Deserialize, PartialEq, Debug, Clone, Serialize)]
-pub(crate) struct NotificationHeaders {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    crypto_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    encryption: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    encoding: Option<String>,
-}
-
-#[allow(clippy::implicit_hasher)]
-impl From<NotificationHeaders> for HashMap<String, String> {
-    fn from(val: NotificationHeaders) -> Self {
-        let mut map = Self::new();
-        map.insert_opt("crypto_key", val.crypto_key);
-        map.insert_opt("encryption", val.encryption);
-        map.insert_opt("encoding", val.encoding);
-        map
-    }
-}
-
-impl From<HashMap<String, String>> for NotificationHeaders {
-    fn from(val: HashMap<String, String>) -> Self {
-        Self {
-            crypto_key: val.get("crypto_key").map(|v| v.to_string()),
-            encryption: val.get("encryption").map(|v| v.to_string()),
-            encoding: val.get("encoding").map(|v| v.to_string()),
-        }
-    }
-}
 
 /// Contains some meta info regarding the message we're handling.
 #[cfg(any(test, feature = "bigtable"))]
