@@ -79,12 +79,8 @@ impl BigTablePool {
         debug!("🉑 connection string {}", &connection);
 
         // Construct a new manager and put them in a pool for handling future requests.
-        let manager = BigtableClientManager::new(
-            &bt_settings,
-            settings.dsn.clone(),
-            connection.clone(),
-            metrics.clone(),
-        )?;
+        let manager =
+            BigtableClientManager::new(&bt_settings, settings.dsn.clone(), connection.clone())?;
         let mut config = PoolConfig {
             // Prefer LIFO to allow the sweeper task to evict least frequently
             // used connections
@@ -138,7 +134,6 @@ pub struct BigtableClientManager {
     settings: BigTableDbSettings,
     dsn: Option<String>,
     connection: String,
-    metrics: Arc<StatsdClient>,
     /// Lazily initialized Application Default Credentials (ADC) token
     /// provider, shared across all pooled connections (it caches and
     /// refreshes tokens internally). `None` until first used; never
@@ -151,13 +146,11 @@ impl BigtableClientManager {
         settings: &BigTableDbSettings,
         dsn: Option<String>,
         connection: String,
-        metrics: Arc<StatsdClient>,
     ) -> Result<Self, BigTableError> {
         Ok(Self {
             settings: settings.clone(),
             dsn,
             connection,
-            metrics,
             auth_provider: OnceCell::new(),
         })
     }
@@ -204,7 +197,7 @@ impl Manager for BigtableClientManager {
     async fn create(&self) -> Result<BigtableDb, Self::Error> {
         debug!("🏊 Create a new pool entry.");
         let entry = BigtableDb::new(
-            self.get_channel().await?,
+            self.get_channel()?,
             self.token_provider().await?,
             &self.settings.health_metadata()?,
             &self.settings.table_name,
@@ -216,7 +209,7 @@ impl Manager for BigtableClientManager {
     /// Recycle if the connection has outlived it's lifespan.
     async fn recycle(
         &self,
-        client: &mut Self::Type,
+        _client: &mut Self::Type,
         metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
         if let Some(timeout) = self.settings.database_pool_connection_ttl
@@ -233,30 +226,31 @@ impl Manager for BigtableClientManager {
             return Err(RecycleError::message("Connection too idle"));
         }
 
-        if !client
-            .health_check(&self.metrics.clone(), &self.settings.app_profile_id)
-            .await
-            .inspect_err(|e| debug!("🏊 Recycle requested (health). {:?}", e))?
-        {
-            debug!("🏊 Health check failed");
-            return Err(RecycleError::message("Health check failed"));
-        }
-
+        // A tonic Channel reconnects its transport as needed. Do not issue a
+        // Bigtable ReadRows RPC merely to check a pooled object back out: that
+        // doubles healthy traffic and can amplify an outage through retries.
+        // The application's explicit health endpoint still performs a real
+        // Bigtable health check.
         Ok(())
     }
 }
 
 impl BigtableClientManager {
     /// Get a new Channel, based on the application settings.
-    pub async fn get_channel(&self) -> Result<Channel, BigTableError> {
-        Self::create_channel(&self.connection, self.is_emulator()).await
+    pub fn get_channel(&self) -> Result<Channel, BigTableError> {
+        Self::create_channel(
+            &self.connection,
+            self.is_emulator(),
+            self.settings.database_pool_create_timeout,
+        )
     }
 
     /// Channels are the tonic transport constructs that contain the actual
     /// HTTP/2 connection. Channels are fairly light weight.
-    pub async fn create_channel(
+    pub fn create_channel(
         connection: &str,
         is_emulator: bool,
+        connect_timeout: Option<Duration>,
     ) -> Result<Channel, BigTableError> {
         debug!("🏊 Creating new channel...");
         // The emulator runs plain HTTP/2 without TLS or credentials.
@@ -268,6 +262,28 @@ impl BigtableClientManager {
                 .tls_config(ClientTlsConfig::new().with_native_roots())
                 .map_err(BigTableError::Connect)?;
         }
-        endpoint.connect().await.map_err(BigTableError::Connect)
+        if let Some(connect_timeout) = connect_timeout {
+            endpoint = endpoint.connect_timeout(connect_timeout);
+        }
+        Ok(endpoint.connect_lazy())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[actix_rt::test]
+    async fn channel_creation_is_lazy() {
+        // Port 9 is intentionally not expected to host a Bigtable emulator.
+        // Constructing the channel must still succeed without touching the
+        // network; the first RPC is responsible for establishing a connection.
+        let channel = BigtableClientManager::create_channel(
+            "127.0.0.1:9",
+            true,
+            Some(Duration::from_millis(10)),
+        );
+
+        assert!(channel.is_ok());
     }
 }

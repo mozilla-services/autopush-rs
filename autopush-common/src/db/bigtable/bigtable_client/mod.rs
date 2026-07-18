@@ -62,7 +62,13 @@ const RELIABLE_LOG_FAMILY: &str = "reliability";
 /// /// In most use cases, converted to seconds through .num_seconds().
 pub const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 
-pub(crate) const RETRY_COUNT: usize = 5;
+/// Default number of retries after the initial Bigtable RPC attempt.
+///
+/// So a connectivity failure cannot fan out into a
+/// retry storm, we try to keep this number small.
+/// Can be overriden through `db_settings`.retry_count`;
+/// health checks use this default directly.
+pub(crate) const RETRY_COUNT: usize = 2;
 
 /// Maximum gRPC message size (256MB), matching the prior grpcio configuration.
 const MAX_MESSAGE_LEN: usize = 1 << 28;
@@ -341,9 +347,13 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
 
 fn retryable_internal_err(status: &Status) -> bool {
     match status.code() {
-        // tonic surfaces transport-level failures (connection resets, etc.)
-        // as `Unknown`.
-        Code::Unknown => true,
+        // Generated tonic clients synthesize this status when the Channel is
+        // not ready, before sending the RPC. Other Unknown statuses are
+        // ambiguous and must not be replayed indiscriminately.
+        Code::Unknown => status
+            .message()
+            .to_ascii_lowercase()
+            .starts_with("service was not ready:"),
         Code::Internal => [
             "rst_stream",
             "rst stream",
@@ -352,6 +362,95 @@ fn retryable_internal_err(status: &Status) -> bool {
         .contains(&status.message().to_lowercase().as_str()),
         Code::Unavailable | Code::DeadlineExceeded => true,
         _ => false,
+    }
+}
+
+/// Return whether a failed read is safe to retry.
+///
+/// In addition to the statuses that are retryable for every operation, tonic
+/// can surface HTTP/2 connection retirement as either:
+///
+/// - `Internal("h2 protocol error: http2 error")` for a remote GOAWAY, or
+/// - `Cancelled("operation was canceled")` when hyper closes the connection.
+///
+/// Reads are idempotent, so replaying these bounded attempts is safe.
+/// A write may have reached Bigtable before its connection closed,
+/// making its outcome ambiguous.
+fn retryable_read_err(status: &Status) -> bool {
+    if retryable_internal_err(status) {
+        return true;
+    }
+
+    match status.code() {
+        Code::Internal => status
+            .message()
+            .eq_ignore_ascii_case("h2 protocol error: http2 error"),
+        Code::Cancelled => status
+            .message()
+            .eq_ignore_ascii_case("operation was canceled"),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[test]
+    fn retries_tonic_pre_send_readiness_errors() {
+        let status = Status::unknown("Service was not ready: transport error");
+        assert!(retryable_internal_err(&status));
+    }
+
+    #[test]
+    fn does_not_retry_arbitrary_unknown_errors() {
+        let status = Status::unknown("operation outcome is unknown");
+        assert!(!retryable_internal_err(&status));
+    }
+
+    #[test]
+    fn retries_transient_bigtable_statuses() {
+        assert!(retryable_internal_err(&Status::unavailable(
+            "No zones were available"
+        )));
+        assert!(retryable_internal_err(&Status::deadline_exceeded(
+            "deadline exceeded"
+        )));
+    }
+
+    #[test]
+    fn retries_observed_tonic_transport_failures_for_reads() {
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+
+        let goaway = Status::internal("h2 protocol error: http2 error");
+        assert!(retryable_read_err(&goaway));
+        assert!(retryable_bt_err(&metrics)(&error::BigTableError::Read(
+            goaway
+        )));
+
+        let connection_closed = Status::cancelled("operation was canceled");
+        assert!(retryable_read_err(&connection_closed));
+        assert!(retryable_bt_err(&metrics)(&error::BigTableError::Read(
+            connection_closed
+        )));
+    }
+
+    #[test]
+    fn does_not_replay_writes_for_observed_tonic_transport_failures() {
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+
+        let goaway =
+            error::BigTableError::Write(Status::internal("h2 protocol error: http2 error"));
+        assert!(!retryable_bt_err(&metrics)(&goaway));
+
+        let connection_closed =
+            error::BigTableError::Write(Status::cancelled("operation was canceled"));
+        assert!(!retryable_bt_err(&metrics)(&connection_closed));
+    }
+
+    #[test]
+    fn default_retry_budget_is_bounded() {
+        assert_eq!(RETRY_COUNT, 2);
     }
 }
 
@@ -366,35 +465,31 @@ pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
     metric.send();
 }
 
-pub fn retryable_status(metrics: &Arc<StatsdClient>) -> impl Fn(&Status) -> bool + '_ {
-    move |status| {
-        info!("GRPC Failure: {:?}", status);
-        let retry = retryable_internal_err(status);
-        if retry {
-            metric(metrics, "RpcFailure", Some(&format!("{:?}", status.code())));
-        }
-        retry
-    }
-}
-
 pub fn retryable_bt_err(
     metrics: &Arc<StatsdClient>,
 ) -> impl Fn(&error::BigTableError) -> bool + '_ {
     move |err| {
         debug!("🉑 Checking BigTableError...{err}");
-        match err {
-            error::BigTableError::InvalidRowResponse(s)
-            | error::BigTableError::Read(s)
-            | error::BigTableError::Write(s) => retryable_status(metrics)(s),
+        let (status, retry) = match err {
+            error::BigTableError::InvalidRowResponse(s) | error::BigTableError::Read(s) => {
+                (s, retryable_read_err(s))
+            }
+            error::BigTableError::Write(s) => (s, retryable_internal_err(s)),
             // Failures to fetch an OAuth token (e.g. a transient metadata
             // server hiccup) are retryable, matching the prior behavior of
             // retrying grpcio's oauth token fetch errors.
             error::BigTableError::Auth(_) => {
                 metric(metrics, "Auth", None);
-                true
+                return true;
             }
-            _ => false,
+            _ => return false,
+        };
+
+        info!("GRPC Failure: {:?}", status);
+        if retry {
+            metric(metrics, "RpcFailure", Some(&format!("{:?}", status.code())));
         }
+        retry
     }
 }
 
