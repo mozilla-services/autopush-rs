@@ -1,7 +1,7 @@
 #[cfg(feature = "reliable_report")]
 use std::mem;
 
-use cadence::Counted;
+use cadence::{Counted, Timed};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autopush_common::{
@@ -390,5 +390,15 @@ impl WebPushClient {
             .with_tag("source", source)
             .with_tag("os", &ua_info.metrics_os)
             .send();
+        // For messages pulled from storage, record how long they were stored before delivery.
+        // Don't record for direct sends (never entered storage)
+        if source == "Stored" {
+            let stored_ms = sec_since_epoch().saturating_sub(notif.timestamp) * 1000;
+            metrics
+                .time_with_tags(MetricName::NotificationStorageTime.as_ref(), stored_ms)
+                .with_tag("topic", &notif.topic.is_some().to_string())
+                .with_tag("os", &ua_info.metrics_os)
+                .send();
+        }
     }
 }

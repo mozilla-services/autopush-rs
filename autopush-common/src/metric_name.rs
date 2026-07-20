@@ -80,6 +80,8 @@ pub enum MetricName {
     NotificationAuthError,
 
     /// Notification message expired
+    /// Notification had TTL=0 and was undeliverable
+    /// (i.e. no live client) so it was discarded
     #[strum(serialize = "notification.message.expired")]
     NotificationMessageExpired,
 
@@ -106,6 +108,12 @@ pub enum MetricName {
     /// Notifcation message deleted
     #[strum(serialize = "notification.message.deleted")]
     NotificationMessageDeleted,
+
+    /// Time a message spent in storage before being sent to a (re)connected
+    /// client, in milliseconds. Emitted at retrieval time (where the client's
+    /// user agent is known) and tagged with a low-cardinality `os`.
+    #[strum(serialize = "notification.storage.time")]
+    NotificationStorageTime,
 
     //
     // Error metrics
