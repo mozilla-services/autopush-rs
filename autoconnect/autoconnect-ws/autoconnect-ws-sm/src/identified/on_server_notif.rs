@@ -12,6 +12,26 @@ use autopush_common::{
 use super::WebPushClient;
 use crate::error::{SMError, SMErrorKind};
 
+/// Where a Notification being sent to the client originated, used to tag send
+/// metrics and to gate storage-only measurements.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SendSource {
+    /// Pushed live to a connected client (never entered storage).
+    Direct,
+    /// Retrieved from storage on (re)connect.
+    Stored,
+}
+
+impl SendSource {
+    /// The tag value emitted to metrics.
+    fn as_tag(&self) -> &'static str {
+        match self {
+            SendSource::Direct => "Direct",
+            SendSource::Stored => "Stored",
+        }
+    }
+}
+
 impl WebPushClient {
     /// Handle a `ServerNotification` for this user
     ///
@@ -54,7 +74,7 @@ impl WebPushClient {
             let key = notif.version.clone();
             self.ack_state.unacked_direct_notifs.insert(key, notif);
         }
-        self.emit_send_metrics(&response, "Direct");
+        self.emit_send_metrics(&response, SendSource::Direct);
         Ok(ServerMessage::Notification(response))
     }
 
@@ -173,7 +193,7 @@ impl WebPushClient {
             .into_iter()
             .inspect(|msg| {
                 trace!("🗄️ WebPushClient::check_storage_advance Sending stored");
-                self.emit_send_metrics(msg, "Stored")
+                self.emit_send_metrics(msg, SendSource::Stored)
             })
             .map(ServerMessage::Notification)
             .collect();
@@ -372,12 +392,12 @@ impl WebPushClient {
     }
 
     /// Emit metrics for a Notification to be sent to the user
-    fn emit_send_metrics(&self, notif: &Notification, source: &'static str) {
+    fn emit_send_metrics(&self, notif: &Notification, source: SendSource) {
         let metrics = &self.app_state.metrics;
         let ua_info = &self.ua_info;
         metrics
             .incr_with_tags(MetricName::UaNotificationSent)
-            .with_tag("source", source)
+            .with_tag("source", source.as_tag())
             .with_tag("topic", &notif.topic.is_some().to_string())
             .with_tag("os", &ua_info.metrics_os)
             // TODO: include `internal` if meta is set
@@ -387,12 +407,12 @@ impl WebPushClient {
                 "ua.message_data",
                 notif.data.as_ref().map_or(0, |data| data.len() as i64),
             )
-            .with_tag("source", source)
+            .with_tag("source", source.as_tag())
             .with_tag("os", &ua_info.metrics_os)
             .send();
         // For messages pulled from storage, record how long they were stored before delivery.
         // Don't record for direct sends (never entered storage)
-        if source == "Stored" {
+        if source == SendSource::Stored {
             let stored_ms = sec_since_epoch().saturating_sub(notif.timestamp) * 1000;
             metrics
                 .time_with_tags(MetricName::NotificationStorageTime.as_ref(), stored_ms)
