@@ -1,3 +1,32 @@
+<a name="1.82.3"></a>
+## 1.82.3 (2026-07-21)
+
+### Features
+
+- *(apns)* Add ability for token-based connection to APNS (#1166) ([bcb8df40](https://github.com/mozilla-services/autopush-rs/commit/bcb8df404591a84af5c3e3f828bcd2556f41303b))
+- *(metrics)* Add time spent in storage before send (#1202) ([cfd2354a](https://github.com/mozilla-services/autopush-rs/commit/cfd2354a0a39d20a0319c31589ea94730da5caf6))
+
+### Bug Fixes
+
+- *(tests)* Wait for Bigtable emulator before creating tables (#1178) ([ed0272ab](https://github.com/mozilla-services/autopush-rs/commit/ed0272abc0fe6642c00cea53c41e4fc5f6346b37))
+- *(redis)* Persist topic/ttl/sortkey_timestamp in stored notifications (#1191) ([df62df16](https://github.com/mozilla-services/autopush-rs/commit/df62df16ee27596cacea41420ba3fbf3b765db6b))
+- *(ci)* Enterprise image build verification on forks (#1197) ([864eb3a6](https://github.com/mozilla-services/autopush-rs/commit/864eb3a69018ab953df649b6eb912b3b3906e089))
+- Remove unused encryption_key/enckey support (#1194) ([17adc0bc](https://github.com/mozilla-services/autopush-rs/commit/17adc0bc84f834b1ef95581933d899d130ca511c))
+- *(ci)* Fix service account for coverage and test upload (#1201) ([2951d51f](https://github.com/mozilla-services/autopush-rs/commit/2951d51f5584a48d5aa3ca4260fac22a19f57d90))
+- *(grpc)* PUSH-746 Use connect_lazy for BigTable connections (#1199) ([e535c7a1](https://github.com/mozilla-services/autopush-rs/commit/e535c7a12b579dfaece486fd3fb1b93fe55900fd))
+
+### Documentation
+
+- Update release process (#1176) ([493d99ba](https://github.com/mozilla-services/autopush-rs/commit/493d99ba4ce5594723eb935d2f21df1670ad77ca))
+
+### Chore
+
+- *(ci)* Trigger builds and deploys on both master and main (#1177) ([64d90c88](https://github.com/mozilla-services/autopush-rs/commit/64d90c888c731a4f9b0b4707f724602f42931ef4))
+- Tag 1.82.2 (#1193) ([9077c217](https://github.com/mozilla-services/autopush-rs/commit/9077c21767902fcd006a055212ade5298e715fb7))
+- *(ci)* Move from circleci to gha (#1179) ([ab80b719](https://github.com/mozilla-services/autopush-rs/commit/ab80b7194473ee3d42dc440fd5385e8e37f89a4e))
+- Remove 'db::models::NotificationHeaders' (#1200) ([64af7f49](https://github.com/mozilla-services/autopush-rs/commit/64af7f49a92479e4ebdb25b223f186a2f1518a6d))
+
+
 <a name="1.82.2"></a>
 ## 1.82.2 (2026-07-08)
 
