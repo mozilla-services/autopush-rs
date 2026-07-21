@@ -16,6 +16,12 @@ use crate::db::bigtable::{BigTableDbSettings, BigTableError, bigtable_client::Bi
 use crate::db::error::{DbError, DbResult};
 
 const DEFAULT_GRPC_PORT: u16 = 443;
+// Following defaults from Google's bigtable client grpc library
+// https://github.com/googleapis/google-cloud-cpp/blob/f5f12f3cc5ee1293deab4c8e3c0d918bfa8c3b5a/google/cloud/bigtable/internal/defaults.cc#L63-L68
+const DEFAULT_H2_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+const DEFAULT_H2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10);
+// Mirroring H2_KEEPALIVE_INTERVAL
+const DEFAULT_TCP_KEEPALIVE: Duration = Duration::from_secs(30);
 
 /// The pool of BigTable Clients.
 /// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
@@ -256,7 +262,25 @@ impl BigtableClientManager {
         // The emulator runs plain HTTP/2 without TLS or credentials.
         let scheme = if is_emulator { "http" } else { "https" };
         let mut endpoint = Endpoint::from_shared(format!("{scheme}://{connection}"))
-            .map_err(BigTableError::Connect)?;
+            .map_err(BigTableError::Connect)?
+            // HTTP/2 keepalive pings detect a connection that dies *while an RPC
+            // is in flight* (a stream is open) within roughly
+            // interval + timeout, rather than riding the TCP retransmission
+            // timeout. We intentionally do NOT set `keep_alive_while_idle(true)`:
+            // these connections are pooled and mostly idle, and pinging while
+            // idle (which hyper does not self-throttle, unlike grpcio's C-core)
+            // risks a GOAWAY(ENHANCE_YOUR_CALM) from the GFE for pinging without
+            // data more often than it permits. Idle-connection liveness is
+            // instead handled by `tcp_keepalive` below plus retrying the
+            // resulting transport error on the (idempotent) read path.
+            .http2_keep_alive_interval(DEFAULT_H2_KEEPALIVE_INTERVAL)
+            // If a ping isn't ACKed within this window, drop the connection.
+            .keep_alive_timeout(DEFAULT_H2_KEEPALIVE_TIMEOUT)
+            // OS-level keepalive probes on the socket itself. Unlike the HTTP/2
+            // pings above, these fire on idle connections too, so a GFE-reaped
+            // idle connection can be torn down before a request is handed it
+            // (=> Os { code: 32, BrokenPipe }).
+            .tcp_keepalive(Some(DEFAULT_TCP_KEEPALIVE));
         if !is_emulator {
             endpoint = endpoint
                 .tls_config(ClientTlsConfig::new().with_native_roots())

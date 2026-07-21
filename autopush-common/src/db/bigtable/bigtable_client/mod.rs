@@ -371,7 +371,11 @@ fn retryable_internal_err(status: &Status) -> bool {
 /// can surface HTTP/2 connection retirement as either:
 ///
 /// - `Internal("h2 protocol error: http2 error")` for a remote GOAWAY, or
-/// - `Cancelled("operation was canceled")` when hyper closes the connection.
+/// - `Cancelled("operation was canceled")` when hyper closes the connection, or
+/// - `Unknown("transport error")` when a connection-level failure (e.g. a
+///   GFE-reaped idle connection surfacing as a broken pipe) is written to. The
+///   underlying io error (`Broken pipe`) appears in the error *source*, not in
+///   `status.message()`, so we match the transport-layer message here.
 ///
 /// Reads are idempotent, so replaying these bounded attempts is safe.
 /// A write may have reached Bigtable before its connection closed,
@@ -380,14 +384,13 @@ fn retryable_read_err(status: &Status) -> bool {
     if retryable_internal_err(status) {
         return true;
     }
+    let msg = status.message().to_ascii_lowercase();
 
+    // TODO: match on error kinds rather than messages
     match status.code() {
-        Code::Internal => status
-            .message()
-            .eq_ignore_ascii_case("h2 protocol error: http2 error"),
-        Code::Cancelled => status
-            .message()
-            .eq_ignore_ascii_case("operation was canceled"),
+        Code::Internal => msg == "h2 protocol error: http2 error",
+        Code::Cancelled => msg == "operation was canceled",
+        Code::Unknown => msg.contains("transport error"),
         _ => false,
     }
 }
@@ -433,6 +436,24 @@ mod retry_tests {
         assert!(retryable_bt_err(&metrics)(&error::BigTableError::Read(
             connection_closed
         )));
+
+        // A GFE-reaped idle connection written to surfaces as
+        // `Unknown("transport error")` (the "broken pipe" io error is in the
+        // source, not the status message).
+        let transport_error = Status::unknown("transport error");
+        assert!(retryable_read_err(&transport_error));
+        assert!(retryable_bt_err(&metrics)(&error::BigTableError::Read(
+            transport_error
+        )));
+    }
+
+    #[test]
+    fn does_not_retry_non_transport_unknown_reads() {
+        // `Unknown` is a catch-all that also covers server-returned application
+        // errors; only the transport-layer message is safe to replay.
+        assert!(!retryable_read_err(&Status::unknown(
+            "some application error"
+        )));
     }
 
     #[test]
@@ -446,6 +467,12 @@ mod retry_tests {
         let connection_closed =
             error::BigTableError::Write(Status::cancelled("operation was canceled"));
         assert!(!retryable_bt_err(&metrics)(&connection_closed));
+
+        // Transport errors are ambiguous for writes (the request may have
+        // reached Bigtable before the connection closed), so they are not
+        // replayed even though the read path retries them.
+        let transport_error = error::BigTableError::Write(Status::unknown("transport error"));
+        assert!(!retryable_bt_err(&metrics)(&transport_error));
     }
 
     #[test]
