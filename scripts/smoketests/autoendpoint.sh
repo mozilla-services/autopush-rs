@@ -33,6 +33,7 @@ CONTAINER_ID=$(docker run --detach --quiet \
   -e AUTOEND__HOST=0.0.0.0 \
   -e AUTOEND__DB_DSN=grpc://localhost:8086 \
   -e AUTOEND__DB_SETTINGS='{"table_name":"projects/test/instances/test/tables/autopush"}' \
+  -e AUTOEND__AUTH_KEYS='["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]' \
   -p "$PORT:$PORT" \
   "$IMAGE_NAME")
 
