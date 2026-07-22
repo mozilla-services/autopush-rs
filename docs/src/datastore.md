@@ -32,7 +32,15 @@ Bigtable's database configuration options are stored in the `db_settings` as a s
 * `message_family` the Bigtable cell family that refers to the **message** data collections
 * `router_family` the Bigtable cell family that refers to the **router** data collections
 * `table_name` the Bigtable internal path URI to the table. You construct this by using the following template `projects/{YOUR PROJECT}/instances/{INSTANCE NAME}/tables/{TABLE NAME}`. For example, if I had created a GCP project named "test-prod", that has an instance ID of "test-prod-us" which contained a table named "auto-test", the `table_name` would be `projects/test-prod/instances/test-prod-us/tables/auto-test`.
-* `retry_count` the number of retries after the initial Bigtable data operation. It defaults to 2 (reduced from 5 to limit retry storms). Health checks also use 2 retries, but their retry count is not separately configurable.
+* `retry_count` the number of retries after the initial Bigtable data operation. It defaults to 2 (reduced from 5 to limit retry storms). Health checks use the same configured retry count.
+* `database_pool_max_size` the maximum number of concurrent Bigtable operations. Pool entries are lightweight client handles, not physical connections.
+* `grpc_channel_count` the steady-state number of shared tonic channel slots per process. Each connected channel normally owns one Bigtable HTTP/2 connection and supports up to 100 concurrent streams. It defaults to two. Tune it using observed per-process QPS, latency, and queueing rather than the maximum logical operation-pool size. Eager refresh connects a replacement before swapping it in, so old connections with in-flight RPCs can temporarily overlap the configured slots while they drain.
+* `grpc_connect_timeout` the DNS/TCP/TLS connection timeout in seconds (default 5).
+* `grpc_point_attempt_timeout` and `grpc_point_total_timeout` bound one attempt and the complete retry budget for point reads and writes (defaults 5 and 15 seconds).
+* `grpc_scan_attempt_timeout` and `grpc_scan_total_timeout` independently bound message range scans (defaults 20 and 30 seconds).
+* `grpc_channel_refresh_min` and `grpc_channel_refresh_max` define the randomized eager channel-replacement window (defaults 60–180 seconds). Refresh is disabled for the emulator. A replacement is connected before it is swapped in, and in-flight RPCs drain on clones of the prior channel.
+
+The `database.pool.active`, `database.pool.idle`, and `database.pool.waiting` metrics describe logical operation handles. `database.pool.channels.configured` reports configuration, not the number of currently established sockets. `database.channel_refresh.success` and `database.channel_refresh.failure` report proactive refresh outcomes.
 
 The `scripts/setup_bt.sh` file contains a collection of commands that can be used to configure Bigtable storage, or at least aid in setting up the table.
 

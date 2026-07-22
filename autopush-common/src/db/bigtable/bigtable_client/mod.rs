@@ -1,10 +1,12 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::error::Error as StdError;
 use std::fmt;
 use std::fmt::Display;
+use std::future::Future;
 use std::str::FromStr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use again::RetryPolicy;
@@ -66,8 +68,8 @@ pub const RELIABLE_LOG_TTL: TimeDelta = TimeDelta::days(60);
 ///
 /// So a connectivity failure cannot fan out into a
 /// retry storm, we try to keep this number small.
-/// Can be overriden through `db_settings`.retry_count`;
-/// health checks use this default directly.
+/// Can be overridden through `db_settings.retry_count`; health checks use the
+/// same configured value as other point reads.
 pub(crate) const RETRY_COUNT: usize = 2;
 
 /// Maximum gRPC message size (256MB), matching the prior grpcio configuration.
@@ -161,12 +163,12 @@ impl From<Uaid> for String {
 }
 
 #[derive(Clone)]
-/// Wrapper for the BigTable connection
+/// Bigtable-backed implementation of the application's database interface.
 pub struct BigTableClientImpl {
     pub(crate) settings: BigTableDbSettings,
     /// Metrics client
     metrics: Arc<StatsdClient>,
-    /// Connection Channel (used for alternate calls)
+    /// Logical-operation pool and shared tonic channel set.
     pool: BigTablePool,
     metadata: MetadataMap,
     /// Circuit breaker to prevent retry storms during BigTable outages
@@ -345,21 +347,75 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
         .with_jitter(true)
 }
 
-fn retryable_internal_err(status: &Status) -> bool {
-    match status.code() {
-        // Generated tonic clients synthesize this status when the Channel is
-        // not ready, before sending the RPC. Other Unknown statuses are
-        // ambiguous and must not be replayed indiscriminately.
-        Code::Unknown => status
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RetryKind {
+    Read,
+    IdempotentWrite,
+    ConditionalWrite,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RpcClass {
+    Point,
+    Scan,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BreakerPolicy {
+    Track,
+    Ignore,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RpcPolicy {
+    attempt_timeout: Duration,
+    total_timeout: Duration,
+    retry_kind: RetryKind,
+    breaker: BreakerPolicy,
+}
+
+async fn rpc_attempt_until<T>(
+    deadline: tokio::time::Instant,
+    future: impl Future<Output = Result<T, error::BigTableError>>,
+) -> Result<T, error::BigTableError> {
+    tokio::time::timeout_at(deadline, future)
+        .await
+        .map_err(|_| error::BigTableError::AttemptTimeout)?
+}
+
+async fn operation_budget_until<T>(
+    deadline: tokio::time::Instant,
+    future: impl Future<Output = Result<T, error::BigTableError>>,
+) -> Result<T, error::BigTableError> {
+    tokio::time::timeout_at(deadline, future)
+        .await
+        .map_err(|_| error::BigTableError::OperationTimeout)?
+}
+
+fn retryable_pre_send_err(status: &Status) -> bool {
+    (status.code() == Code::Unknown
+        && status
             .message()
             .to_ascii_lowercase()
-            .starts_with("service was not ready:"),
-        Code::Internal => [
-            "rst_stream",
-            "rst stream",
-            "received unexpected eos on data frame from server",
-        ]
-        .contains(&status.message().to_lowercase().as_str()),
+            .starts_with("service was not ready:"))
+        || has_connect_source(status)
+}
+
+fn retryable_transient_err(status: &Status) -> bool {
+    if retryable_pre_send_err(status) {
+        return true;
+    }
+    match status.code() {
+        Code::Internal => {
+            let message = status.message().to_ascii_lowercase();
+            [
+                "rst_stream",
+                "rst stream",
+                "received unexpected eos on data frame from server",
+            ]
+            .iter()
+            .any(|fragment| message.contains(fragment))
+        }
         Code::Unavailable | Code::DeadlineExceeded => true,
         _ => false,
     }
@@ -373,111 +429,448 @@ fn retryable_internal_err(status: &Status) -> bool {
 /// - `Internal("h2 protocol error: http2 error")` for a remote GOAWAY, or
 /// - `Cancelled("operation was canceled")` when hyper closes the connection, or
 /// - `Unknown("transport error")` when a connection-level failure (e.g. a
-///   GFE-reaped idle connection surfacing as a broken pipe) is written to. The
-///   underlying io error (`Broken pipe`) appears in the error *source*, not in
-///   `status.message()`, so we match the transport-layer message here.
+///   GFE-reaped idle connection surfacing as a broken pipe) is written to.
 ///
-/// Reads are idempotent, so replaying these bounded attempts is safe.
-/// A write may have reached Bigtable before its connection closed,
-/// making its outcome ambiguous.
+/// Reads are idempotent, so replaying these bounded attempts is safe. Autopush
+/// `MutateRow` requests are also replay-safe: set-cell retries reuse the same
+/// explicit timestamp, delete mutations are idempotent, and every attempt
+/// clones the same request. Conditional `CheckAndMutateRow` operations use the
+/// narrower pre-send-only policy because their returned predicate result can
+/// change after an applied-but-lost attempt.
 fn retryable_read_err(status: &Status) -> bool {
-    if retryable_internal_err(status) {
+    if retryable_transient_err(status) {
         return true;
     }
-    let msg = status.message().to_ascii_lowercase();
-
-    // TODO: match on error kinds rather than messages
+    // Tonic 0.14.6 uses both Internal (for some header/GOAWAY paths) and
+    // Unknown (for a connection lost while streaming a body) for this wrapper
+    // message. The exact Hyper/H2 suffix is not a stable API.
+    if matches!(status.code(), Code::Internal | Code::Unknown)
+        && status
+            .message()
+            .to_ascii_lowercase()
+            .starts_with("h2 protocol error:")
+    {
+        return true;
+    }
     match status.code() {
-        Code::Internal => msg == "h2 protocol error: http2 error",
-        Code::Cancelled => msg == "operation was canceled",
-        Code::Unknown => msg.contains("transport error"),
+        Code::Cancelled => status
+            .message()
+            .eq_ignore_ascii_case("operation was canceled"),
+        // Tonic retains the transport and OS errors in the source chain. Use
+        // their types rather than matching an unstable display string.
+        Code::Unknown => has_transport_source(status),
         _ => false,
     }
 }
 
+fn has_transport_source(status: &Status) -> bool {
+    let mut source = StdError::source(status);
+    while let Some(error) = source {
+        if error.downcast_ref::<tonic::transport::Error>().is_some()
+            || error.downcast_ref::<std::io::Error>().is_some()
+        {
+            return true;
+        }
+        source = error.source();
+    }
+    false
+}
+
+fn has_connect_source(status: &Status) -> bool {
+    let mut source = StdError::source(status);
+    while let Some(error) = source {
+        if error.downcast_ref::<tonic::ConnectError>().is_some() {
+            return true;
+        }
+        source = error.source();
+    }
+    false
+}
+
+fn counts_toward_breaker(error: &error::BigTableError, operation_timed_out_in_rpc: bool) -> bool {
+    matches!(
+        error,
+        error::BigTableError::InvalidRowResponse(_)
+            | error::BigTableError::InvalidChunk(_)
+            | error::BigTableError::Read(_)
+            | error::BigTableError::Write(_)
+            | error::BigTableError::AttemptTimeout
+            | error::BigTableError::Status(_, _)
+    ) || matches!(error, error::BigTableError::OperationTimeout) && operation_timed_out_in_rpc
+}
+
 #[cfg(test)]
 mod retry_tests {
+    use std::convert::Infallible;
+    use std::sync::Mutex;
+    use std::sync::atomic::AtomicUsize;
+
+    use futures::StreamExt;
+    use http_body_util::StreamBody;
+    use hyper::body::{Bytes, Frame, Incoming};
+    use hyper::server::conn::http2;
+    use hyper::service::service_fn;
+    use hyper::{Request as HyperRequest, Response as HyperResponse};
+    use hyper_util::rt::{TokioExecutor, TokioIo};
+    use tokio::net::TcpListener;
+    use tokio::sync::oneshot;
+
     use super::*;
+    #[derive(Debug, thiserror::Error)]
+    #[error("transport error")]
+    struct TestTransportError {
+        #[source]
+        source: std::io::Error,
+    }
+
+    fn broken_pipe_status() -> Status {
+        Status::from_error(Box::new(TestTransportError {
+            source: std::io::Error::from(std::io::ErrorKind::BrokenPipe),
+        }))
+    }
 
     #[test]
     fn retries_tonic_pre_send_readiness_errors() {
         let status = Status::unknown("Service was not ready: transport error");
-        assert!(retryable_internal_err(&status));
+        assert!(retryable_pre_send_err(&status));
+    }
+
+    #[test]
+    fn retries_source_backed_connect_errors_before_conditional_writes() {
+        let connect = tonic::ConnectError(Box::new(std::io::Error::from(
+            std::io::ErrorKind::ConnectionRefused,
+        )));
+        let status = Status::from_error(Box::new(connect));
+
+        assert_eq!(status.code(), Code::Unavailable);
+        assert!(retryable_pre_send_err(&status));
     }
 
     #[test]
     fn does_not_retry_arbitrary_unknown_errors() {
         let status = Status::unknown("operation outcome is unknown");
-        assert!(!retryable_internal_err(&status));
+        assert!(!retryable_pre_send_err(&status));
     }
 
     #[test]
     fn retries_transient_bigtable_statuses() {
-        assert!(retryable_internal_err(&Status::unavailable(
+        assert!(retryable_transient_err(&Status::unavailable(
             "No zones were available"
         )));
-        assert!(retryable_internal_err(&Status::deadline_exceeded(
+        assert!(retryable_transient_err(&Status::deadline_exceeded(
             "deadline exceeded"
+        )));
+        assert!(retryable_transient_err(&Status::internal(
+            "stream terminated by RST_STREAM before headers"
         )));
     }
 
     #[test]
     fn retries_observed_tonic_transport_failures_for_reads() {
-        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
-
         let goaway = Status::internal("h2 protocol error: http2 error");
         assert!(retryable_read_err(&goaway));
-        assert!(retryable_bt_err(&metrics)(&error::BigTableError::Read(
-            goaway
-        )));
+        assert!(classify_retry(RetryKind::Read, &error::BigTableError::Read(goaway)).is_some());
 
         let connection_closed = Status::cancelled("operation was canceled");
         assert!(retryable_read_err(&connection_closed));
-        assert!(retryable_bt_err(&metrics)(&error::BigTableError::Read(
-            connection_closed
-        )));
+        assert!(
+            classify_retry(
+                RetryKind::Read,
+                &error::BigTableError::Read(connection_closed)
+            )
+            .is_some()
+        );
 
         // A GFE-reaped idle connection written to surfaces as
         // `Unknown("transport error")` (the "broken pipe" io error is in the
         // source, not the status message).
-        let transport_error = Status::unknown("transport error");
+        let transport_error = broken_pipe_status();
+        assert_eq!(transport_error.code(), Code::Unknown);
+        assert_eq!(transport_error.message(), "transport error");
         assert!(retryable_read_err(&transport_error));
-        assert!(retryable_bt_err(&metrics)(&error::BigTableError::Read(
-            transport_error
-        )));
+        assert!(
+            classify_retry(
+                RetryKind::Read,
+                &error::BigTableError::Read(transport_error)
+            )
+            .is_some()
+        );
     }
 
     #[test]
     fn does_not_retry_non_transport_unknown_reads() {
         // `Unknown` is a catch-all that also covers server-returned application
-        // errors; only the transport-layer message is safe to replay.
+        // errors; require a transport or IO error in the source chain.
         assert!(!retryable_read_err(&Status::unknown(
             "some application error"
         )));
     }
 
     #[test]
-    fn does_not_replay_writes_for_observed_tonic_transport_failures() {
-        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
-
+    fn retries_idempotent_but_not_conditional_writes() {
         let goaway =
             error::BigTableError::Write(Status::internal("h2 protocol error: http2 error"));
-        assert!(!retryable_bt_err(&metrics)(&goaway));
+        assert!(classify_retry(RetryKind::IdempotentWrite, &goaway).is_some());
+        let conditional_goaway =
+            error::BigTableError::Write(Status::internal("h2 protocol error: http2 error"));
+        assert!(classify_retry(RetryKind::ConditionalWrite, &conditional_goaway).is_none());
 
         let connection_closed =
             error::BigTableError::Write(Status::cancelled("operation was canceled"));
-        assert!(!retryable_bt_err(&metrics)(&connection_closed));
+        assert!(classify_retry(RetryKind::IdempotentWrite, &connection_closed).is_some());
 
-        // Transport errors are ambiguous for writes (the request may have
-        // reached Bigtable before the connection closed), so they are not
-        // replayed even though the read path retries them.
-        let transport_error = error::BigTableError::Write(Status::unknown("transport error"));
-        assert!(!retryable_bt_err(&metrics)(&transport_error));
+        let transport_error = error::BigTableError::Write(broken_pipe_status());
+        assert!(classify_retry(RetryKind::IdempotentWrite, &transport_error).is_some());
+
+        let unavailable = error::BigTableError::Write(Status::unavailable("try again"));
+        assert!(classify_retry(RetryKind::IdempotentWrite, &unavailable).is_some());
+        assert!(classify_retry(RetryKind::ConditionalWrite, &unavailable).is_none());
+
+        let attempt_timeout = error::BigTableError::AttemptTimeout;
+        assert!(classify_retry(RetryKind::Read, &attempt_timeout).is_some());
+        assert!(classify_retry(RetryKind::ConditionalWrite, &attempt_timeout).is_none());
+    }
+
+    #[actix_rt::test]
+    async fn attempt_and_operation_timeouts_are_enforced() {
+        let attempt = rpc_attempt_until::<()>(
+            tokio::time::Instant::now() + Duration::from_millis(1),
+            async { futures::future::pending().await },
+        )
+        .await;
+        assert!(matches!(attempt, Err(error::BigTableError::AttemptTimeout)));
+
+        let operation = operation_budget_until::<()>(
+            tokio::time::Instant::now() + Duration::from_millis(1),
+            async { futures::future::pending().await },
+        )
+        .await;
+        assert!(matches!(
+            operation,
+            Err(error::BigTableError::OperationTimeout)
+        ));
+    }
+
+    #[actix_rt::test]
+    async fn retries_a_midstream_drop_on_the_next_channel() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (drop_connection, wait_for_drop) = oneshot::channel::<()>();
+        let (finish_server, wait_for_finish) = oneshot::channel::<()>();
+
+        let server = tokio::spawn(async move {
+            // The first channel begins a valid streaming response and then
+            // loses its transport. This is the failure mode observed when a
+            // load balancer reaps an idle HTTP/2 connection.
+            let (socket, _) = listener.accept().await.unwrap();
+            let service = service_fn(|_request: HyperRequest<Incoming>| async move {
+                // One valid, empty ReadRowsResponse followed by a body that
+                // never completes. The client signals only after tonic has
+                // decoded this message, guaranteeing a mid-stream drop.
+                let first_message = Frame::data(Bytes::from_static(&[0, 0, 0, 0, 0]));
+                let body = StreamBody::new(
+                    futures::stream::once(
+                        async move { Ok::<Frame<Bytes>, Infallible>(first_message) },
+                    )
+                    .chain(futures::stream::pending::<Result<Frame<Bytes>, Infallible>>()),
+                );
+                Ok::<_, Infallible>(
+                    HyperResponse::builder()
+                        .status(200)
+                        .header("content-type", "application/grpc")
+                        .body(body)
+                        .unwrap(),
+                )
+            });
+            {
+                let connection = http2::Builder::new(TokioExecutor::new())
+                    .serve_connection(TokioIo::new(socket), service);
+                tokio::pin!(connection);
+                tokio::select! {
+                    result = &mut connection => {
+                        panic!("test HTTP/2 connection ended before it was dropped: {result:?}");
+                    }
+                    _ = wait_for_drop => {}
+                }
+            }
+
+            // A retry must select the second channel. Return a complete,
+            // successful gRPC stream there so success proves both retry
+            // classification and fresh-channel selection end to end.
+            let (socket, _) = listener.accept().await.unwrap();
+            let service = service_fn(|_request: HyperRequest<Incoming>| async move {
+                // A trailers-only success is the canonical empty gRPC
+                // streaming response and ends the stream immediately.
+                let body =
+                    StreamBody::new(futures::stream::empty::<Result<Frame<Bytes>, Infallible>>());
+                Ok::<_, Infallible>(
+                    HyperResponse::builder()
+                        .status(200)
+                        .header("content-type", "application/grpc")
+                        .header("grpc-status", "0")
+                        .body(body)
+                        .unwrap(),
+                )
+            });
+            let connection = http2::Builder::new(TokioExecutor::new())
+                .serve_connection(TokioIo::new(socket), service);
+            tokio::pin!(connection);
+            tokio::select! {
+                result = &mut connection => {
+                    panic!("successful HTTP/2 connection ended unexpectedly: {result:?}");
+                }
+                _ = wait_for_finish => {}
+            }
+        });
+
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+        let settings = DbSettings {
+            dsn: Some(format!("grpc://localhost:{}", address.port())),
+            db_settings: json!({
+                "table_name": "projects/test/instances/test/tables/test",
+                "grpc_channel_count": 2,
+                "retry_count": 1,
+                "grpc_connect_timeout": 2,
+                "grpc_point_attempt_timeout": 5,
+                "grpc_point_total_timeout": 10
+            })
+            .to_string(),
+        };
+        let client = BigTableClientImpl::new(metrics, &settings).unwrap();
+        let drop_connection = Arc::new(Mutex::new(Some(drop_connection)));
+        let policy = client.rpc_policy(RpcClass::Point, RetryKind::Read, BreakerPolicy::Track);
+        let started = tokio::time::Instant::now();
+        tokio::time::timeout(
+            Duration::from_secs(8),
+            client.execute_rpc(
+                bigtable::ReadRowsRequest::default(),
+                policy,
+                move |channel, request| {
+                    let drop_connection = drop_connection.clone();
+                    async move {
+                        let mut bigtable = BigtableDb::client(channel);
+                        let mut stream = bigtable
+                            .read_rows(request)
+                            .await
+                            .map_err(error::BigTableError::Read)?
+                            .into_inner();
+
+                        let signal = drop_connection
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .take();
+                        if let Some(signal) = signal {
+                            assert!(stream.message().await.unwrap().is_some());
+                            signal.send(()).unwrap();
+                        }
+                        while stream
+                            .message()
+                            .await
+                            .map_err(error::BigTableError::Read)?
+                            .is_some()
+                        {}
+                        Ok(())
+                    }
+                },
+            ),
+        )
+        .await
+        .expect("Bigtable retry exceeded the test budget")
+        .expect("the second channel should complete the read");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the retry waited for the attempt deadline instead of classifying the transport drop"
+        );
+
+        finish_server.send(()).unwrap();
+        server.await.unwrap();
     }
 
     #[test]
     fn default_retry_budget_is_bounded() {
         assert_eq!(RETRY_COUNT, 2);
+    }
+
+    #[actix_rt::test]
+    async fn request_preserves_metadata_and_grpc_timeout() {
+        let db = BigtableDb::new(None);
+        let mut metadata = MetadataMap::new();
+        metadata.insert("x-goog-request-params", "table_name=test".parse().unwrap());
+
+        let request = db
+            .request(
+                bigtable::ReadRowsRequest::default(),
+                &metadata,
+                tokio::time::Instant::now() + Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            request.metadata().get("x-goog-request-params").unwrap(),
+            "table_name=test"
+        );
+        assert!(request.metadata().get("grpc-timeout").is_some());
+    }
+
+    #[actix_rt::test]
+    async fn retry_metric_is_consumed_only_by_a_followup_attempt() {
+        let pending = Arc::new(Mutex::new(None));
+        let attempt_pending = pending.clone();
+        let condition_pending = pending.clone();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempt_count = attempts.clone();
+        let emitted = Arc::new(AtomicUsize::new(0));
+        let emitted_count = emitted.clone();
+
+        let result = RetryPolicy::fixed(Duration::ZERO)
+            .with_max_retries(1)
+            .retry_if(
+                || {
+                    attempt_count.fetch_add(1, Ordering::Relaxed);
+                    if take_pending_retry_metric(&attempt_pending).is_some() {
+                        emitted_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                    async { Err::<(), _>(error::BigTableError::AttemptTimeout) }
+                },
+                move |error: &error::BigTableError| {
+                    if let Some(retry_metric) = classify_retry(RetryKind::Read, error) {
+                        set_pending_retry_metric(&condition_pending, retry_metric);
+                        true
+                    } else {
+                        false
+                    }
+                },
+            )
+            .await;
+
+        assert!(matches!(result, Err(error::BigTableError::AttemptTimeout)));
+        assert_eq!(attempts.load(Ordering::Relaxed), 2);
+        assert_eq!(emitted.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn local_failures_do_not_count_toward_the_backend_breaker() {
+        assert!(!counts_toward_breaker(
+            &error::BigTableError::PreSendTimeout,
+            false,
+        ));
+        assert!(!counts_toward_breaker(
+            &error::BigTableError::CircuitBreakerOpen,
+            false,
+        ));
+        assert!(!counts_toward_breaker(
+            &error::BigTableError::OperationTimeout,
+            false,
+        ));
+        assert!(counts_toward_breaker(
+            &error::BigTableError::OperationTimeout,
+            true,
+        ));
+        assert!(counts_toward_breaker(
+            &error::BigTableError::Read(Status::unavailable("backend unavailable")),
+            false,
+        ));
     }
 }
 
@@ -492,31 +885,70 @@ pub fn metric(metrics: &Arc<StatsdClient>, err_type: &str, code: Option<&str>) {
     metric.send();
 }
 
-pub fn retryable_bt_err(
-    metrics: &Arc<StatsdClient>,
-) -> impl Fn(&error::BigTableError) -> bool + '_ {
-    move |err| {
-        debug!("🉑 Checking BigTableError...{err}");
-        let (status, retry) = match err {
-            error::BigTableError::InvalidRowResponse(s) | error::BigTableError::Read(s) => {
-                (s, retryable_read_err(s))
-            }
-            error::BigTableError::Write(s) => (s, retryable_internal_err(s)),
-            // Failures to fetch an OAuth token (e.g. a transient metadata
-            // server hiccup) are retryable, matching the prior behavior of
-            // retrying grpcio's oauth token fetch errors.
-            error::BigTableError::Auth(_) => {
-                metric(metrics, "Auth", None);
-                return true;
-            }
-            _ => return false,
-        };
+#[derive(Clone, Copy, Debug)]
+struct RetryMetric {
+    error: &'static str,
+    code: Option<Code>,
+}
 
-        info!("GRPC Failure: {:?}", status);
-        if retry {
-            metric(metrics, "RpcFailure", Some(&format!("{:?}", status.code())));
+impl RetryMetric {
+    fn send(self, metrics: &Arc<StatsdClient>) {
+        let code = self.code.map(|code| format!("{code:?}"));
+        metric(metrics, self.error, code.as_deref());
+    }
+}
+
+fn take_pending_retry_metric(pending: &Mutex<Option<RetryMetric>>) -> Option<RetryMetric> {
+    pending
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+}
+
+fn set_pending_retry_metric(pending: &Mutex<Option<RetryMetric>>, metric: RetryMetric) {
+    *pending
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(metric);
+}
+
+/// Classify a safe retry and describe the metric to emit if its next attempt
+/// actually starts.
+fn classify_retry(kind: RetryKind, err: &error::BigTableError) -> Option<RetryMetric> {
+    debug!("🉑 Checking BigTableError...{err}");
+    match err {
+        error::BigTableError::InvalidRowResponse(status)
+        | error::BigTableError::Read(status)
+        | error::BigTableError::Write(status) => {
+            let retry = match kind {
+                RetryKind::Read | RetryKind::IdempotentWrite => retryable_read_err(status),
+                RetryKind::ConditionalWrite => retryable_pre_send_err(status),
+            };
+            info!("GRPC Failure: {:?}", status);
+            retry.then_some(RetryMetric {
+                error: "RpcFailure",
+                code: Some(status.code()),
+            })
         }
-        retry
+        error::BigTableError::AttemptTimeout if kind != RetryKind::ConditionalWrite => {
+            Some(RetryMetric {
+                error: "AttemptTimeout",
+                code: None,
+            })
+        }
+        // Authentication and request construction happen before the RPC is
+        // dispatched, so their deadline is safe to retry for every method,
+        // including conditional mutations.
+        error::BigTableError::PreSendTimeout => Some(RetryMetric {
+            error: "PreSendTimeout",
+            code: None,
+        }),
+        // Failures to fetch an OAuth token (e.g. a transient metadata server
+        // hiccup) are retryable, matching grpcio's prior behavior.
+        error::BigTableError::Auth(_) => Some(RetryMetric {
+            error: "Auth",
+            code: None,
+        }),
+        _ => None,
     }
 }
 
@@ -587,7 +1019,7 @@ impl BigTableClientImpl {
             .unwrap_or(Duration::from_secs(MAX_ROUTER_TTL_SECS))
     }
 
-    /// Spawn a task to periodically evict idle connections
+    /// Spawn a task to periodically evict idle logical client handles.
     pub fn spawn_sweeper(&self, interval: Duration) {
         self.pool.spawn_sweeper(interval);
     }
@@ -621,35 +1053,146 @@ impl BigTableClientImpl {
         }
     }
 
-    /// Read a given row from the row key.
+    fn rpc_policy(
+        &self,
+        class: RpcClass,
+        retry_kind: RetryKind,
+        breaker: BreakerPolicy,
+    ) -> RpcPolicy {
+        let (attempt_timeout, total_timeout) = match class {
+            RpcClass::Point => (
+                self.settings.grpc_point_attempt_timeout,
+                self.settings.grpc_point_total_timeout,
+            ),
+            RpcClass::Scan => (
+                self.settings.grpc_scan_attempt_timeout,
+                self.settings.grpc_scan_total_timeout,
+            ),
+        };
+        RpcPolicy {
+            attempt_timeout,
+            total_timeout,
+            retry_kind,
+            breaker,
+        }
+    }
+
+    /// Execute one logical Bigtable operation within a total budget.
+    ///
+    /// A deadpool checkout is a local concurrency permit. It is included in the
+    /// caller's total budget, but checkout failures do not affect the Bigtable
+    /// circuit breaker. Once checked out, every retry selects a fresh channel
+    /// slot and rebuilds request metadata and credentials.
+    async fn execute_rpc<M, T, Call, CallFuture>(
+        &self,
+        message: M,
+        policy: RpcPolicy,
+        call: Call,
+    ) -> Result<T, error::BigTableError>
+    where
+        M: Clone,
+        Call: Fn(Channel, Request<M>) -> CallFuture + Clone,
+        CallFuture: Future<Output = Result<T, error::BigTableError>>,
+    {
+        if policy.breaker == BreakerPolicy::Track && !self.circuit_breaker.allow_request() {
+            return Err(error::BigTableError::CircuitBreakerOpen);
+        }
+
+        let operation_deadline = tokio::time::Instant::now() + policy.total_timeout;
+        let pooled = match tokio::time::timeout_at(operation_deadline, self.pool.get()).await {
+            Ok(result) => result?,
+            Err(_) => return Err(error::BigTableError::OperationTimeout),
+        };
+        let bigtable = (*pooled).clone();
+        let metadata = self.metadata.clone();
+        let retry_policy = retry_policy(self.settings.retry_count);
+        let pending_retry_metric = Arc::new(Mutex::new(None));
+        let attempt_retry_metric = pending_retry_metric.clone();
+        let condition_retry_metric = pending_retry_metric;
+        let metrics = self.metrics.clone();
+        // If the total budget cancels the retry future, this remains true only
+        // when cancellation happened inside a dispatched RPC. Request
+        // preparation and retry backoff leave it false.
+        let rpc_in_flight = Arc::new(AtomicBool::new(false));
+        let attempt_rpc_in_flight = rpc_in_flight.clone();
+        let result = operation_budget_until(
+            operation_deadline,
+            retry_policy.retry_if(
+                || {
+                    // The retry predicate runs even for a terminal failure.
+                    // Emit only when the next attempt actually starts.
+                    if let Some(retry_metric) = take_pending_retry_metric(&attempt_retry_metric) {
+                        retry_metric.send(&metrics);
+                    }
+                    // The final attempt may start near the end of the total
+                    // retry budget. Clamp its grpc-timeout to that remaining
+                    // budget so the server does not keep abandoned work alive
+                    // after this logical operation has already returned.
+                    let attempt_deadline = std::cmp::min(
+                        tokio::time::Instant::now() + policy.attempt_timeout,
+                        operation_deadline,
+                    );
+                    let bigtable = bigtable.clone();
+                    let metadata = metadata.clone();
+                    let message = message.clone();
+                    let channel = self.pool.next_channel();
+                    let call = call.clone();
+                    let rpc_in_flight = attempt_rpc_in_flight.clone();
+                    async move {
+                        let request = bigtable
+                            .request(message, &metadata, attempt_deadline)
+                            .await?;
+                        rpc_in_flight.store(true, Ordering::Relaxed);
+                        let result =
+                            rpc_attempt_until(attempt_deadline, call(channel, request)).await;
+                        rpc_in_flight.store(false, Ordering::Relaxed);
+                        result
+                    }
+                },
+                move |error: &error::BigTableError| {
+                    if let Some(retry_metric) = classify_retry(policy.retry_kind, error) {
+                        set_pending_retry_metric(&condition_retry_metric, retry_metric);
+                        true
+                    } else {
+                        false
+                    }
+                },
+            ),
+        )
+        .await;
+
+        if policy.breaker == BreakerPolicy::Track {
+            let operation_timed_out_in_rpc = rpc_in_flight.load(Ordering::Relaxed);
+            match &result {
+                Ok(_) => self.circuit_breaker.record_success(),
+                Err(error) if counts_toward_breaker(error, operation_timed_out_in_rpc) => {
+                    self.circuit_breaker.record_failure();
+                }
+                Err(_) => {}
+            }
+        }
+        result
+    }
+
+    /// Apply an idempotent mutation to one row.
     async fn mutate_row(
         &self,
         req: bigtable::MutateRowRequest,
     ) -> Result<(), error::BigTableError> {
-        if !self.circuit_breaker.allow_request() {
-            return Err(error::BigTableError::CircuitBreakerOpen);
-        }
-        let bigtable = self.pool.get().await?;
-        let result = retry_policy(self.settings.retry_count)
-            .retry_if(
-                || async {
-                    let request = bigtable.request(req.clone(), &self.metadata).await?;
-                    bigtable
-                        .conn
-                        .clone()
-                        .mutate_row(request)
-                        .await
-                        .map_err(error::BigTableError::Write)?;
-                    Ok(())
-                },
-                retryable_bt_err(&self.metrics),
-            )
-            .await;
-        match &result {
-            Ok(()) => self.circuit_breaker.record_success(),
-            Err(_) => self.circuit_breaker.record_failure(),
-        }
-        result
+        let policy = self.rpc_policy(
+            RpcClass::Point,
+            RetryKind::IdempotentWrite,
+            BreakerPolicy::Track,
+        );
+        self.execute_rpc(req, policy, |channel, request| async move {
+            let mut client = BigtableDb::client(channel);
+            client
+                .mutate_row(request)
+                .await
+                .map_err(error::BigTableError::Write)?;
+            Ok(())
+        })
+        .await
     }
 
     /// Read one row for the [ReadRowsRequest] (assuming only a single row was requested).
@@ -657,7 +1200,7 @@ impl BigTableClientImpl {
         &self,
         req: bigtable::ReadRowsRequest,
     ) -> Result<Option<row::Row>, error::BigTableError> {
-        let mut rows = self.read_rows(req).await?;
+        let mut rows = self.read_rows_with_class(req, RpcClass::Point).await?;
         Ok(rows.pop_first().map(|(_, v)| v))
     }
 
@@ -668,31 +1211,35 @@ impl BigTableClientImpl {
         &self,
         req: bigtable::ReadRowsRequest,
     ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
-        if !self.circuit_breaker.allow_request() {
-            return Err(error::BigTableError::CircuitBreakerOpen);
-        }
-        let bigtable = self.pool.get().await?;
-        let result = retry_policy(self.settings.retry_count)
-            .retry_if(
-                || async {
-                    let request = bigtable.request(req.clone(), &self.metadata).await?;
-                    let resp = bigtable
-                        .conn
-                        .clone()
-                        .read_rows(request)
-                        .await
-                        .map_err(error::BigTableError::Read)?
-                        .into_inner();
-                    merge::RowMerger::process_chunks(resp).await
-                },
-                retryable_bt_err(&self.metrics),
-            )
-            .await;
-        match &result {
-            Ok(_) => self.circuit_breaker.record_success(),
-            Err(_) => self.circuit_breaker.record_failure(),
-        }
-        result
+        self.read_rows_with_class(req, RpcClass::Scan).await
+    }
+
+    async fn read_rows_with_class(
+        &self,
+        req: bigtable::ReadRowsRequest,
+        class: RpcClass,
+    ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
+        self.read_rows_with_policy(req, class, BreakerPolicy::Track)
+            .await
+    }
+
+    async fn read_rows_with_policy(
+        &self,
+        req: bigtable::ReadRowsRequest,
+        class: RpcClass,
+        breaker: BreakerPolicy,
+    ) -> Result<BTreeMap<RowKey, row::Row>, error::BigTableError> {
+        let policy = self.rpc_policy(class, RetryKind::Read, breaker);
+        self.execute_rpc(req, policy, |channel, request| async move {
+            let mut client = BigtableDb::client(channel);
+            let response = client
+                .read_rows(request)
+                .await
+                .map_err(error::BigTableError::Read)?
+                .into_inner();
+            merge::RowMerger::process_chunks(response).await
+        })
+        .await
     }
 
     /// write a given row.
@@ -768,24 +1315,23 @@ impl BigTableClientImpl {
         &self,
         req: bigtable::CheckAndMutateRowRequest,
     ) -> Result<bool, error::BigTableError> {
-        let bigtable = self.pool.get().await?;
-        let resp = retry_policy(self.settings.retry_count)
-            .retry_if(
-                || async {
-                    let request = bigtable.request(req.clone(), &self.metadata).await?;
-                    bigtable
-                        .conn
-                        .clone()
-                        .check_and_mutate_row(request)
-                        .await
-                        .map_err(error::BigTableError::Write)
-                },
-                retryable_bt_err(&self.metrics),
-            )
-            .await?
-            .into_inner();
-        debug!("🉑 Predicate Matched: {}", &resp.predicate_matched);
-        Ok(resp.predicate_matched)
+        let policy = self.rpc_policy(
+            RpcClass::Point,
+            RetryKind::ConditionalWrite,
+            BreakerPolicy::Track,
+        );
+        let predicate_matched = self
+            .execute_rpc(req, policy, |channel, request| async move {
+                let mut client = BigtableDb::client(channel);
+                let response = client
+                    .check_and_mutate_row(request)
+                    .await
+                    .map_err(error::BigTableError::Write)?;
+                Ok(response.into_inner().predicate_matched)
+            })
+            .await?;
+        debug!("🉑 Predicate Matched: {predicate_matched}");
+        Ok(predicate_matched)
     }
 
     fn get_delete_mutations(
@@ -972,30 +1518,21 @@ impl BigTableClientImpl {
 
 #[derive(Clone)]
 pub struct BigtableDb {
-    pub(super) conn: BigtableClient<Channel>,
-    pub(super) health_metadata: MetadataMap,
     /// Application Default Credentials token provider, shared across the
     /// pool. `None` when running against the emulator (which needs no
     /// credentials).
     auth_provider: Option<Arc<dyn TokenProvider>>,
-    table_name: String,
 }
 
 impl BigtableDb {
-    pub fn new(
-        channel: Channel,
-        auth_provider: Option<Arc<dyn TokenProvider>>,
-        health_metadata: &MetadataMap,
-        table_name: &str,
-    ) -> Self {
-        Self {
-            conn: BigtableClient::new(channel)
-                .max_decoding_message_size(MAX_MESSAGE_LEN)
-                .max_encoding_message_size(MAX_MESSAGE_LEN),
-            health_metadata: health_metadata.clone(),
-            auth_provider,
-            table_name: table_name.to_owned(),
-        }
+    pub fn new(auth_provider: Option<Arc<dyn TokenProvider>>) -> Self {
+        Self { auth_provider }
+    }
+
+    pub(super) fn client(channel: Channel) -> BigtableClient<Channel> {
+        BigtableClient::new(channel)
+            .max_decoding_message_size(MAX_MESSAGE_LEN)
+            .max_encoding_message_size(MAX_MESSAGE_LEN)
     }
 
     /// Build a [tonic::Request] for the given message, attaching the standard
@@ -1004,65 +1541,46 @@ impl BigtableDb {
     ///
     /// The token provider caches tokens internally, so this is cheap to call
     /// per-request (and per retry attempt, where it transparently picks up a
-    /// fresh token if the prior one expired).
+    /// fresh token if the prior one expired). Token preparation is bounded by
+    /// `deadline`; the remaining time is also sent to Bigtable as the
+    /// `grpc-timeout` metadata value. A local deadline expiry is reported as
+    /// [error::BigTableError::PreSendTimeout].
     pub(super) async fn request<T>(
         &self,
         msg: T,
         metadata: &MetadataMap,
+        deadline: tokio::time::Instant,
     ) -> Result<Request<T>, error::BigTableError> {
+        let authorization = if let Some(provider) = &self.auth_provider {
+            let token = tokio::time::timeout_at(deadline, provider.token(BIGTABLE_DATA_SCOPES))
+                .await
+                .map_err(|_| error::BigTableError::PreSendTimeout)?
+                .map_err(error::BigTableError::Auth)?;
+            Some(
+                format!("Bearer {}", token.as_str())
+                    .parse::<AsciiMetadataValue>()
+                    .map_err(|e| {
+                        error::BigTableError::Config(format!("Invalid auth token: {e}"))
+                    })?,
+            )
+        } else {
+            None
+        };
+
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return Err(error::BigTableError::PreSendTimeout);
+        }
+
         let mut request = Request::new(msg);
         *request.metadata_mut() = metadata.clone();
-        if let Some(provider) = &self.auth_provider {
-            let token = provider
-                .token(BIGTABLE_DATA_SCOPES)
-                .await
-                .map_err(error::BigTableError::Auth)?;
-            let value: AsciiMetadataValue = format!("Bearer {}", token.as_str())
-                .parse()
-                .map_err(|e| error::BigTableError::Config(format!("Invalid auth token: {e}")))?;
+        // Set this after copying metadata: set_timeout is implemented by
+        // inserting the grpc-timeout entry into the request metadata map.
+        request.set_timeout(remaining);
+        if let Some(value) = authorization {
             request.metadata_mut().insert("authorization", value);
         }
         Ok(request)
-    }
-
-    /// Perform a simple connectivity check. This should return no actual results
-    /// but should verify that the connection is valid. We use this for the
-    /// Recycle check as well, so it has to be fairly low in the implementation
-    /// stack.
-    ///
-    ///
-    pub async fn health_check(
-        &mut self,
-        metrics: &Arc<StatsdClient>,
-        app_profile_id: &str,
-    ) -> Result<bool, error::BigTableError> {
-        // It is recommended that we pick a random key to perform the health check. Selecting
-        // a single key for all health checks causes a "hot tablet" to arise. The `PingAndWarm`
-        // is intended to be used prior to large updates and is not recommended for use in
-        // health checks.
-        // This health check is to see if the database is present, the response is not important
-        // other than it does not return an error.
-        let random_uaid = Uuid::new_v4().simple().to_string();
-        let mut req = read_row_request(&self.table_name, app_profile_id, &random_uaid);
-        req.filter = Some(bigtable::RowFilter {
-            filter: Some(bigtable::row_filter::Filter::BlockAllFilter(true)),
-        });
-        let _r = retry_policy(RETRY_COUNT)
-            .retry_if(
-                || async {
-                    let request = self.request(req.clone(), &self.health_metadata).await?;
-                    self.conn
-                        .clone()
-                        .read_rows(request)
-                        .await
-                        .map_err(error::BigTableError::Read)
-                },
-                retryable_bt_err(metrics),
-            )
-            .await?;
-
-        debug!("🉑 health check");
-        Ok(true)
     }
 }
 
@@ -1610,12 +2128,22 @@ impl DbClient for BigTableClientImpl {
     }
 
     async fn health_check(&self) -> DbResult<bool> {
-        Ok(self
-            .pool
-            .get()
-            .await?
-            .health_check(&self.metrics.clone(), &self.settings.app_profile_id)
-            .await?)
+        // Use a random key so health checks do not create a hot tablet. The
+        // BlockAll filter verifies the data path without returning row data.
+        let random_uaid = Uuid::new_v4().simple().to_string();
+        let mut req = read_row_request(
+            &self.settings.table_name,
+            &self.settings.app_profile_id,
+            &random_uaid,
+        );
+        req.filter = Some(bigtable::RowFilter {
+            filter: Some(bigtable::row_filter::Filter::BlockAllFilter(true)),
+        });
+        // Health is an independent, bounded backend probe. It must neither be
+        // blocked by nor mutate the application traffic circuit breaker.
+        self.read_rows_with_policy(req, RpcClass::Point, BreakerPolicy::Ignore)
+            .await?;
+        Ok(true)
     }
 
     /// Returns true, because there's only one table in BigTable. We divide things up
@@ -1666,6 +2194,10 @@ impl DbClient for BigTableClientImpl {
 
     fn pool_status(&self) -> Option<deadpool::Status> {
         Some(self.pool.pool.status())
+    }
+
+    fn configured_channel_count(&self) -> Option<usize> {
+        Some(self.pool.configured_channel_count())
     }
 }
 
