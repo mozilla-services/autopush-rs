@@ -57,7 +57,7 @@ derive_builder = "0.20"
 gethostname = "1.0"
 num_cpus = "1.16"
 woothee = "0.13"
-tokio = { workspace = true, features = ["macros", "sync" ] }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 
 # #[cfg(bigtable)] for this section.
 # Pre-generated tonic/prost stubs for the `google.bigtable.v2` API.
@@ -66,6 +66,7 @@ tonic = { version = "0.14", features = [
     "tls-ring",
     "tls-native-roots",
 ], optional = true }
+hyper = { workspace = true, optional = true }
 # Application Default Credentials (ADC) token provider for Google APIs.
 gcp_auth = { version = "0.12", optional = true }
 prometheus-client = { version = "0.24", optional = true }
@@ -78,6 +79,9 @@ redis = { version = "1.2", features=["aio", "tokio-comp"], optional = true }
 
 [dev-dependencies]
 actix-rt = "2.8"
+http-body-util = "0.1"
+hyper = { workspace = true, features = ["http2", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 mockito = "0.31"                                     # mockito > 0.31 will require significant reworking of the tests and is not critical yet.
 redis = { version = "1.2", features = ["aio", "tokio-comp"] }       # needed by redis-test's aio feature
 redis-test = { version = "1.0", features = ["aio"] }
@@ -89,6 +93,7 @@ tempfile = "3.2.0"
 bigtable = [
     "dep:googleapis-tonic-google-bigtable-v2",
     "dep:tonic",
+    "dep:hyper",
     "dep:gcp_auth",
     "dep:form_urlencoded",
 ]
