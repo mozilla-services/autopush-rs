@@ -60,23 +60,30 @@ pub struct BigTableDbSettings {
     pub message_topic_family: String,
     #[serde(default)]
     pub database_pool_max_size: Option<u32>,
-    /// Max time (in seconds) to wait to create a new connection to bigtable
+    /// Number of shared tonic channels used for Bigtable RPCs. Defaults to two;
+    /// tune this from observed per-process concurrency and queueing rather than
+    /// from the maximum logical operation-pool size.
+    #[serde(default)]
+    pub grpc_channel_count: Option<u32>,
+    /// Max time (in seconds) to create a pooled client handle. The same value
+    /// is also used as the timeout for a lazy tonic channel connection attempt.
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_create_timeout: Option<Duration>,
-    /// Max time (in seconds) to wait for a socket to become available
+    /// Max time (in seconds) to wait for a logical operation slot.
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_wait_timeout: Option<Duration>,
-    /// Max time(in seconds) to recycle a connection
+    /// Max time (in seconds) to recycle a client handle.
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_recycle_timeout: Option<Duration>,
-    /// Max time (in seconds) a connection should live
+    /// Max time (in seconds) a pooled client handle should live. Tonic channel
+    /// lifetime and reconnection are managed independently.
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_connection_ttl: Option<Duration>,
-    /// Max idle time(in seconds) for a connection
+    /// Max idle time (in seconds) for a pooled client handle.
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_max_idle: Option<Duration>,
@@ -107,6 +114,7 @@ impl Default for BigTableDbSettings {
             message_family: Default::default(),
             message_topic_family: Default::default(),
             database_pool_max_size: Default::default(),
+            grpc_channel_count: Default::default(),
             database_pool_create_timeout: Default::default(),
             database_pool_wait_timeout: Default::default(),
             database_pool_recycle_timeout: Default::default(),
@@ -156,6 +164,12 @@ impl TryFrom<&str> for BigTableDbSettings {
             ));
         };
 
+        if me.grpc_channel_count == Some(0) {
+            return Err(DbError::ConnectionError(
+                "grpc_channel_count must be greater than zero".to_owned(),
+            ));
+        }
+
         // specify the default string "default" if it's not specified.
         // There's a small chance that this could be reported as "unspecified", so this
         // removes that confusion.
@@ -178,7 +192,14 @@ mod tests {
             Some(std::time::Duration::from_secs(123))
         );
         assert_eq!(settings.retry_count, 2);
+        assert_eq!(settings.grpc_channel_count, None);
         Ok(())
+    }
+
+    #[test]
+    fn test_zero_grpc_channel_count_is_rejected() {
+        let result = super::BigTableDbSettings::try_from("{\"grpc_channel_count\": 0}");
+        assert!(result.is_err());
     }
     #[test]
     fn test_get_instance() -> Result<(), super::BigTableError> {
