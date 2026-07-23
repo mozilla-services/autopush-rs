@@ -180,6 +180,14 @@ pub enum MetricName {
     #[strum(serialize = "database.retry")]
     DatabaseRetry,
 
+    /// A scheduled Bigtable channel refresh connected and swapped successfully.
+    #[strum(serialize = "database.channel_refresh.success")]
+    DatabaseChannelRefreshSuccess,
+
+    /// A scheduled Bigtable channel refresh failed; the prior channel remains.
+    #[strum(serialize = "database.channel_refresh.failure")]
+    DatabaseChannelRefreshFailure,
+
     // Database metric for dropping user
     #[strum(serialize = "database.drop_user")]
     DatabaseDropUser,

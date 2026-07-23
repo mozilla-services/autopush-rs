@@ -22,20 +22,27 @@ pub fn spawn_pool_periodic_reporter(
 }
 
 fn pool_periodic_reporter(db: &dyn DbClient, metrics: &StatsdClient, _hostname: &str) {
-    let Some(status) = db.pool_status() else {
-        return;
-    };
-    metrics
-        .gauge_with_tags(
-            "database.pool.active",
-            (status.size - status.available) as u64,
-        )
-        //.with_tag("hostname", hostname)  // Do not include hostname due to cardinality
-        .send();
-    metrics
-        .gauge_with_tags("database.pool.idle", status.available as u64)
-        .send();
-    metrics
-        .gauge_with_tags("database.pool.waiting", status.waiting as u64)
-        .send();
+    if let Some(status) = db.pool_status() {
+        metrics
+            .gauge_with_tags(
+                "database.pool.active",
+                (status.size - status.available) as u64,
+            )
+            //.with_tag("hostname", hostname)  // Do not include hostname due to cardinality
+            .send();
+        metrics
+            .gauge_with_tags("database.pool.idle", status.available as u64)
+            .send();
+        metrics
+            .gauge_with_tags("database.pool.waiting", status.waiting as u64)
+            .send();
+    }
+
+    // Tonic multiplexes many logical client handles over each HTTP/2 channel,
+    // so deadpool size is not the physical connection count.
+    if let Some(count) = db.configured_channel_count() {
+        metrics
+            .gauge_with_tags("database.pool.channels.configured", count as u64)
+            .send();
+    }
 }
