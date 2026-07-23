@@ -45,14 +45,11 @@ impl BigTablePool {
     pub async fn get(
         &self,
     ) -> Result<deadpool::managed::Object<BigtableClientManager>, BigTableError> {
-        let mut obj = self.pool.get().await.map_err(|e| match e {
+        let obj = self.pool.get().await.map_err(|e| match e {
             PoolError::Timeout(tt) => BigTableError::PoolTimeout(tt),
             PoolError::Backend(e) => e,
             e => BigTableError::Pool(Box::new(e)),
         })?;
-        // Select a channel per operation rather than permanently pinning a
-        // frequently reused LIFO entry to one channel.
-        obj.set_channel(self.pool.manager().get_channel());
         debug!("🉑 Got db from pool");
         Ok(obj)
     }
@@ -158,6 +155,11 @@ impl BigTablePool {
     pub fn configured_channel_count(&self) -> usize {
         self.pool.manager().channels.len()
     }
+
+    /// Select a shared channel for one RPC attempt.
+    pub(super) fn next_channel(&self) -> Channel {
+        self.pool.manager().get_channel()
+    }
 }
 
 fn sweeper(pool: &deadpool::managed::Pool<BigtableClientManager>, max_idle: Duration) {
@@ -191,7 +193,7 @@ impl BigtableClientManager {
                 Self::create_channel(
                     &connection,
                     is_emulator,
-                    settings.database_pool_create_timeout,
+                    Some(settings.grpc_connect_timeout),
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -243,15 +245,10 @@ impl Manager for BigtableClientManager {
     type Error = BigTableError;
     type Type = BigtableDb;
 
-    /// Create a lightweight client handle sharing one of the bounded channels.
+    /// Create a lightweight logical-operation handle.
     async fn create(&self) -> Result<BigtableDb, Self::Error> {
         debug!("🏊 Create a new pool entry.");
-        let entry = BigtableDb::new(
-            self.get_channel(),
-            self.token_provider().await?,
-            &self.settings.health_metadata()?,
-            &self.settings.table_name,
-        );
+        let entry = BigtableDb::new(self.token_provider().await?);
         debug!("🏊 Bigtable client handle acquired");
         Ok(entry)
     }

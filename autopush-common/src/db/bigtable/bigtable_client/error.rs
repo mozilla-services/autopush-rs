@@ -120,6 +120,15 @@ pub enum BigTableError {
     #[error("BigTable authentication error: {0}")]
     Auth(#[source] gcp_auth::Error),
 
+    #[error("Bigtable RPC attempt exceeded its deadline")]
+    AttemptTimeout,
+
+    #[error("Bigtable request preparation exceeded its deadline")]
+    PreSendTimeout,
+
+    #[error("Bigtable operation exhausted its total retry budget")]
+    OperationTimeout,
+
     /// Return a GRPC status code and any message.
     /// See https://grpc.github.io/grpc/core/md_doc_statuscodes.html
     #[error("Bigtable status response: {0:?}")]
@@ -129,7 +138,7 @@ pub enum BigTableError {
     #[error("Pool Error: {0}")]
     Pool(Box<PoolError<BigTableError>>),
 
-    /// Timeout occurred while getting a pooled connection
+    /// Timeout occurred while getting a pooled logical client handle.
     #[error("Pool Timeout: {0:?}")]
     PoolTimeout(TimeoutType),
 
@@ -143,9 +152,11 @@ pub enum BigTableError {
 impl BigTableError {
     pub fn status(&self) -> StatusCode {
         match self {
-            BigTableError::PoolTimeout(_) | BigTableError::CircuitBreakerOpen => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
+            BigTableError::PoolTimeout(_)
+            | BigTableError::CircuitBreakerOpen
+            | BigTableError::AttemptTimeout
+            | BigTableError::PreSendTimeout
+            | BigTableError::OperationTimeout => StatusCode::SERVICE_UNAVAILABLE,
             BigTableError::Status(e, _) => e.status(),
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -156,7 +167,11 @@ impl ReportableError for BigTableError {
     fn is_sentry_event(&self) -> bool {
         #[allow(clippy::match_like_matches_macro)]
         match self {
-            BigTableError::PoolTimeout(_) | BigTableError::CircuitBreakerOpen => false,
+            BigTableError::PoolTimeout(_)
+            | BigTableError::CircuitBreakerOpen
+            | BigTableError::AttemptTimeout
+            | BigTableError::PreSendTimeout
+            | BigTableError::OperationTimeout => false,
             _ => true,
         }
     }
@@ -169,6 +184,9 @@ impl ReportableError for BigTableError {
             BigTableError::Write(_) => "storage.bigtable.error.write",
             BigTableError::Connect(_) => "storage.bigtable.error.connect",
             BigTableError::Auth(_) => "storage.bigtable.error.auth",
+            BigTableError::AttemptTimeout => "storage.bigtable.error.attempt_timeout",
+            BigTableError::PreSendTimeout => "storage.bigtable.error.pre_send_timeout",
+            BigTableError::OperationTimeout => "storage.bigtable.error.operation_timeout",
             BigTableError::Status(_, _) => "storage.bigtable.error.status",
             BigTableError::WriteTime(_) => "storage.bigtable.error.writetime",
             BigTableError::Pool(_) => "storage.bigtable.error.pool",
@@ -202,5 +220,18 @@ impl ReportableError for BigTableError {
             BigTableError::Pool(e) => vec![("error", e.to_string())],
             _ => vec![],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expected_timeout_failures_are_metrics_only() {
+        assert!(!BigTableError::AttemptTimeout.is_sentry_event());
+        assert!(!BigTableError::PreSendTimeout.is_sentry_event());
+        assert!(!BigTableError::OperationTimeout.is_sentry_event());
+        assert!(BigTableError::Read(tonic::Status::internal("boom")).is_sentry_event());
     }
 }

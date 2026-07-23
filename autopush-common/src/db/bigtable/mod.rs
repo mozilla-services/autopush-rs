@@ -31,7 +31,33 @@ use tonic::metadata::MetadataMap;
 
 use crate::db::bigtable::bigtable_client::MetadataBuilder;
 use crate::db::error::DbError;
-use crate::util::deserialize_opt_u32_to_duration;
+use crate::util::{deserialize_opt_u32_to_duration, deserialize_u32_to_duration};
+
+const DEFAULT_GRPC_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_GRPC_POINT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_GRPC_SCAN_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(20);
+const DEFAULT_GRPC_POINT_TOTAL_TIMEOUT: Duration = Duration::from_secs(15);
+const DEFAULT_GRPC_SCAN_TOTAL_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn grpc_connect_timeout_default() -> Duration {
+    DEFAULT_GRPC_CONNECT_TIMEOUT
+}
+
+fn grpc_point_attempt_timeout_default() -> Duration {
+    DEFAULT_GRPC_POINT_ATTEMPT_TIMEOUT
+}
+
+fn grpc_scan_attempt_timeout_default() -> Duration {
+    DEFAULT_GRPC_SCAN_ATTEMPT_TIMEOUT
+}
+
+fn grpc_point_total_timeout_default() -> Duration {
+    DEFAULT_GRPC_POINT_TOTAL_TIMEOUT
+}
+
+fn grpc_scan_total_timeout_default() -> Duration {
+    DEFAULT_GRPC_SCAN_TOTAL_TIMEOUT
+}
 
 fn retry_default() -> usize {
     bigtable_client::RETRY_COUNT
@@ -65,8 +91,7 @@ pub struct BigTableDbSettings {
     /// from the maximum logical operation-pool size.
     #[serde(default)]
     pub grpc_channel_count: Option<u32>,
-    /// Max time (in seconds) to create a pooled client handle. The same value
-    /// is also used as the timeout for a lazy tonic channel connection attempt.
+    /// Max time (in seconds) to create a pooled client handle.
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_create_timeout: Option<Duration>,
@@ -87,12 +112,41 @@ pub struct BigTableDbSettings {
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_opt_u32_to_duration")]
     pub database_pool_max_idle: Option<Duration>,
+    /// Max time (in seconds) for DNS, TCP, and TLS connection establishment.
+    #[serde(
+        default = "grpc_connect_timeout_default",
+        deserialize_with = "deserialize_u32_to_duration"
+    )]
+    pub grpc_connect_timeout: Duration,
+    /// Per-attempt deadline (in seconds) for point reads and writes.
+    #[serde(
+        default = "grpc_point_attempt_timeout_default",
+        deserialize_with = "deserialize_u32_to_duration"
+    )]
+    pub grpc_point_attempt_timeout: Duration,
+    /// Per-attempt deadline (in seconds) for message range scans.
+    #[serde(
+        default = "grpc_scan_attempt_timeout_default",
+        deserialize_with = "deserialize_u32_to_duration"
+    )]
+    pub grpc_scan_attempt_timeout: Duration,
+    /// End-to-end retry budget (in seconds) for point reads and writes.
+    #[serde(
+        default = "grpc_point_total_timeout_default",
+        deserialize_with = "deserialize_u32_to_duration"
+    )]
+    pub grpc_point_total_timeout: Duration,
+    /// End-to-end retry budget (in seconds) for message range scans.
+    #[serde(
+        default = "grpc_scan_total_timeout_default",
+        deserialize_with = "deserialize_u32_to_duration"
+    )]
+    pub grpc_scan_total_timeout: Duration,
     /// Include route to leader header in metadata
     #[serde(default)]
     pub route_to_leader: bool,
     /// Number of retries after the initial gRPC data operation. Defaults to
-    /// two. Health checks always use the same default and cannot be
-    /// configured separately.
+    /// two. Health checks use this same configured value.
     #[serde(default = "retry_default")]
     pub retry_count: usize,
     /// Max lifetime (in seconds) for a router entry
@@ -120,6 +174,11 @@ impl Default for BigTableDbSettings {
             database_pool_recycle_timeout: Default::default(),
             database_pool_connection_ttl: Default::default(),
             database_pool_max_idle: Default::default(),
+            grpc_connect_timeout: grpc_connect_timeout_default(),
+            grpc_point_attempt_timeout: grpc_point_attempt_timeout_default(),
+            grpc_scan_attempt_timeout: grpc_scan_attempt_timeout_default(),
+            grpc_point_total_timeout: grpc_point_total_timeout_default(),
+            grpc_scan_total_timeout: grpc_scan_total_timeout_default(),
             route_to_leader: Default::default(),
             retry_count: Default::default(),
             app_profile_id: Default::default(),
@@ -134,11 +193,6 @@ impl BigTableDbSettings {
             .routing_param("table_name", &self.table_name)
             .route_to_leader(self.route_to_leader)
             .build()
-    }
-
-    // Health may require a different metadata declaration.
-    pub fn health_metadata(&self) -> Result<MetadataMap, BigTableError> {
-        self.metadata()
     }
 
     pub fn get_instance_name(&self) -> Result<String, BigTableError> {
@@ -170,6 +224,31 @@ impl TryFrom<&str> for BigTableDbSettings {
             ));
         }
 
+        let nonzero_durations = [
+            ("grpc_connect_timeout", me.grpc_connect_timeout),
+            ("grpc_point_attempt_timeout", me.grpc_point_attempt_timeout),
+            ("grpc_scan_attempt_timeout", me.grpc_scan_attempt_timeout),
+            ("grpc_point_total_timeout", me.grpc_point_total_timeout),
+            ("grpc_scan_total_timeout", me.grpc_scan_total_timeout),
+        ];
+        if let Some((name, _)) = nonzero_durations
+            .into_iter()
+            .find(|(_, duration)| duration.is_zero())
+        {
+            return Err(DbError::ConnectionError(format!(
+                "{name} must be greater than zero"
+            )));
+        }
+        if me.grpc_point_attempt_timeout > me.grpc_point_total_timeout {
+            return Err(DbError::ConnectionError(
+                "grpc_point_attempt_timeout must not exceed grpc_point_total_timeout".to_owned(),
+            ));
+        }
+        if me.grpc_scan_attempt_timeout > me.grpc_scan_total_timeout {
+            return Err(DbError::ConnectionError(
+                "grpc_scan_attempt_timeout must not exceed grpc_scan_total_timeout".to_owned(),
+            ));
+        }
         // specify the default string "default" if it's not specified.
         // There's a small chance that this could be reported as "unspecified", so this
         // removes that confusion.
@@ -193,6 +272,26 @@ mod tests {
         );
         assert_eq!(settings.retry_count, 2);
         assert_eq!(settings.grpc_channel_count, None);
+        assert_eq!(
+            settings.grpc_connect_timeout,
+            std::time::Duration::from_secs(5)
+        );
+        assert_eq!(
+            settings.grpc_point_attempt_timeout,
+            std::time::Duration::from_secs(5)
+        );
+        assert_eq!(
+            settings.grpc_scan_attempt_timeout,
+            std::time::Duration::from_secs(20)
+        );
+        assert_eq!(
+            settings.grpc_point_total_timeout,
+            std::time::Duration::from_secs(15)
+        );
+        assert_eq!(
+            settings.grpc_scan_total_timeout,
+            std::time::Duration::from_secs(30)
+        );
         Ok(())
     }
 
@@ -200,6 +299,16 @@ mod tests {
     fn test_zero_grpc_channel_count_is_rejected() {
         let result = super::BigTableDbSettings::try_from("{\"grpc_channel_count\": 0}");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_grpc_timeouts_are_rejected() {
+        assert!(
+            super::BigTableDbSettings::try_from(
+                "{\"grpc_point_attempt_timeout\": 6, \"grpc_point_total_timeout\": 5}"
+            )
+            .is_err()
+        );
     }
     #[test]
     fn test_get_instance() -> Result<(), super::BigTableError> {
