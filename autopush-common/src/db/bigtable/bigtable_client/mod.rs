@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::error::Error as StdError;
 use std::fmt;
 use std::fmt::Display;
 use std::future::Future;
@@ -349,7 +350,8 @@ pub fn retry_policy(max: usize) -> RetryPolicy {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RetryKind {
     Read,
-    Write,
+    IdempotentWrite,
+    ConditionalWrite,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -391,11 +393,12 @@ async fn operation_budget_until<T>(
 }
 
 fn retryable_pre_send_err(status: &Status) -> bool {
-    status.code() == Code::Unknown
+    (status.code() == Code::Unknown
         && status
             .message()
             .to_ascii_lowercase()
-            .starts_with("service was not ready:")
+            .starts_with("service was not ready:"))
+        || has_connect_source(status)
 }
 
 fn retryable_transient_err(status: &Status) -> bool {
@@ -424,22 +427,64 @@ fn retryable_transient_err(status: &Status) -> bool {
 /// can surface HTTP/2 connection retirement as either:
 ///
 /// - `Internal("h2 protocol error: http2 error")` for a remote GOAWAY, or
-/// - `Cancelled("operation was canceled")` when hyper closes the connection.
+/// - `Cancelled("operation was canceled")` when hyper closes the connection, or
+/// - `Unknown("transport error")` when a connection-level failure (e.g. a
+///   GFE-reaped idle connection surfacing as a broken pipe) is written to.
 ///
-/// Reads are idempotent, so replaying these bounded attempts is safe.
+/// Reads are idempotent, so replaying these bounded attempts is safe. Autopush
+/// `MutateRow` requests are also replay-safe: set-cell retries reuse the same
+/// explicit timestamp, delete mutations are idempotent, and every attempt
+/// clones the same request. Conditional `CheckAndMutateRow` operations use the
+/// narrower pre-send-only policy because their returned predicate result can
+/// change after an applied-but-lost attempt.
 fn retryable_read_err(status: &Status) -> bool {
     if retryable_transient_err(status) {
         return true;
     }
-    match status.code() {
-        Code::Internal => status
+    // Tonic 0.14.6 uses both Internal (for some header/GOAWAY paths) and
+    // Unknown (for a connection lost while streaming a body) for this wrapper
+    // message. The exact Hyper/H2 suffix is not a stable API.
+    if matches!(status.code(), Code::Internal | Code::Unknown)
+        && status
             .message()
-            .eq_ignore_ascii_case("h2 protocol error: http2 error"),
+            .to_ascii_lowercase()
+            .starts_with("h2 protocol error:")
+    {
+        return true;
+    }
+    match status.code() {
         Code::Cancelled => status
             .message()
             .eq_ignore_ascii_case("operation was canceled"),
+        // Tonic retains the transport and OS errors in the source chain. Use
+        // their types rather than matching an unstable display string.
+        Code::Unknown => has_transport_source(status),
         _ => false,
     }
+}
+
+fn has_transport_source(status: &Status) -> bool {
+    let mut source = StdError::source(status);
+    while let Some(error) = source {
+        if error.downcast_ref::<tonic::transport::Error>().is_some()
+            || error.downcast_ref::<std::io::Error>().is_some()
+        {
+            return true;
+        }
+        source = error.source();
+    }
+    false
+}
+
+fn has_connect_source(status: &Status) -> bool {
+    let mut source = StdError::source(status);
+    while let Some(error) = source {
+        if error.downcast_ref::<tonic::ConnectError>().is_some() {
+            return true;
+        }
+        source = error.source();
+    }
+    false
 }
 
 fn counts_toward_breaker(error: &error::BigTableError, operation_timed_out_in_rpc: bool) -> bool {
@@ -456,14 +501,48 @@ fn counts_toward_breaker(error: &error::BigTableError, operation_timed_out_in_rp
 
 #[cfg(test)]
 mod retry_tests {
+    use std::convert::Infallible;
     use std::sync::Mutex;
     use std::sync::atomic::AtomicUsize;
 
+    use futures::StreamExt;
+    use http_body_util::StreamBody;
+    use hyper::body::{Bytes, Frame, Incoming};
+    use hyper::server::conn::http2;
+    use hyper::service::service_fn;
+    use hyper::{Request as HyperRequest, Response as HyperResponse};
+    use hyper_util::rt::{TokioExecutor, TokioIo};
+    use tokio::net::TcpListener;
+    use tokio::sync::oneshot;
+
     use super::*;
+    #[derive(Debug, thiserror::Error)]
+    #[error("transport error")]
+    struct TestTransportError {
+        #[source]
+        source: std::io::Error,
+    }
+
+    fn broken_pipe_status() -> Status {
+        Status::from_error(Box::new(TestTransportError {
+            source: std::io::Error::from(std::io::ErrorKind::BrokenPipe),
+        }))
+    }
 
     #[test]
     fn retries_tonic_pre_send_readiness_errors() {
         let status = Status::unknown("Service was not ready: transport error");
+        assert!(retryable_pre_send_err(&status));
+    }
+
+    #[test]
+    fn retries_source_backed_connect_errors_before_conditional_writes() {
+        let connect = tonic::ConnectError(Box::new(std::io::Error::from(
+            std::io::ErrorKind::ConnectionRefused,
+        )));
+        let status = Status::from_error(Box::new(connect));
+
+        assert_eq!(status.code(), Code::Unavailable);
         assert!(retryable_pre_send_err(&status));
     }
 
@@ -501,29 +580,55 @@ mod retry_tests {
             )
             .is_some()
         );
+
+        // A GFE-reaped idle connection written to surfaces as
+        // `Unknown("transport error")` (the "broken pipe" io error is in the
+        // source, not the status message).
+        let transport_error = broken_pipe_status();
+        assert_eq!(transport_error.code(), Code::Unknown);
+        assert_eq!(transport_error.message(), "transport error");
+        assert!(retryable_read_err(&transport_error));
+        assert!(
+            classify_retry(
+                RetryKind::Read,
+                &error::BigTableError::Read(transport_error)
+            )
+            .is_some()
+        );
     }
 
     #[test]
     fn does_not_retry_non_transport_unknown_reads() {
         // `Unknown` is a catch-all that also covers server-returned application
-        // errors, so do not retry it without a known pre-send wrapper.
+        // errors; require a transport or IO error in the source chain.
         assert!(!retryable_read_err(&Status::unknown(
             "some application error"
         )));
     }
 
     #[test]
-    fn writes_preserve_the_existing_transient_retry_policy() {
+    fn retries_idempotent_but_not_conditional_writes() {
         let goaway =
             error::BigTableError::Write(Status::internal("h2 protocol error: http2 error"));
-        assert!(classify_retry(RetryKind::Write, &goaway).is_none());
+        assert!(classify_retry(RetryKind::IdempotentWrite, &goaway).is_some());
+        let conditional_goaway =
+            error::BigTableError::Write(Status::internal("h2 protocol error: http2 error"));
+        assert!(classify_retry(RetryKind::ConditionalWrite, &conditional_goaway).is_none());
+
+        let connection_closed =
+            error::BigTableError::Write(Status::cancelled("operation was canceled"));
+        assert!(classify_retry(RetryKind::IdempotentWrite, &connection_closed).is_some());
+
+        let transport_error = error::BigTableError::Write(broken_pipe_status());
+        assert!(classify_retry(RetryKind::IdempotentWrite, &transport_error).is_some());
 
         let unavailable = error::BigTableError::Write(Status::unavailable("try again"));
-        assert!(classify_retry(RetryKind::Write, &unavailable).is_some());
+        assert!(classify_retry(RetryKind::IdempotentWrite, &unavailable).is_some());
+        assert!(classify_retry(RetryKind::ConditionalWrite, &unavailable).is_none());
 
         let attempt_timeout = error::BigTableError::AttemptTimeout;
         assert!(classify_retry(RetryKind::Read, &attempt_timeout).is_some());
-        assert!(classify_retry(RetryKind::Write, &attempt_timeout).is_none());
+        assert!(classify_retry(RetryKind::ConditionalWrite, &attempt_timeout).is_none());
     }
 
     #[actix_rt::test]
@@ -544,6 +649,141 @@ mod retry_tests {
             operation,
             Err(error::BigTableError::OperationTimeout)
         ));
+    }
+
+    #[actix_rt::test]
+    async fn retries_a_midstream_drop_on_the_next_channel() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (drop_connection, wait_for_drop) = oneshot::channel::<()>();
+        let (finish_server, wait_for_finish) = oneshot::channel::<()>();
+
+        let server = tokio::spawn(async move {
+            // The first channel begins a valid streaming response and then
+            // loses its transport. This is the failure mode observed when a
+            // load balancer reaps an idle HTTP/2 connection.
+            let (socket, _) = listener.accept().await.unwrap();
+            let service = service_fn(|_request: HyperRequest<Incoming>| async move {
+                // One valid, empty ReadRowsResponse followed by a body that
+                // never completes. The client signals only after tonic has
+                // decoded this message, guaranteeing a mid-stream drop.
+                let first_message = Frame::data(Bytes::from_static(&[0, 0, 0, 0, 0]));
+                let body = StreamBody::new(
+                    futures::stream::once(
+                        async move { Ok::<Frame<Bytes>, Infallible>(first_message) },
+                    )
+                    .chain(futures::stream::pending::<Result<Frame<Bytes>, Infallible>>()),
+                );
+                Ok::<_, Infallible>(
+                    HyperResponse::builder()
+                        .status(200)
+                        .header("content-type", "application/grpc")
+                        .body(body)
+                        .unwrap(),
+                )
+            });
+            {
+                let connection = http2::Builder::new(TokioExecutor::new())
+                    .serve_connection(TokioIo::new(socket), service);
+                tokio::pin!(connection);
+                tokio::select! {
+                    result = &mut connection => {
+                        panic!("test HTTP/2 connection ended before it was dropped: {result:?}");
+                    }
+                    _ = wait_for_drop => {}
+                }
+            }
+
+            // A retry must select the second channel. Return a complete,
+            // successful gRPC stream there so success proves both retry
+            // classification and fresh-channel selection end to end.
+            let (socket, _) = listener.accept().await.unwrap();
+            let service = service_fn(|_request: HyperRequest<Incoming>| async move {
+                // A trailers-only success is the canonical empty gRPC
+                // streaming response and ends the stream immediately.
+                let body =
+                    StreamBody::new(futures::stream::empty::<Result<Frame<Bytes>, Infallible>>());
+                Ok::<_, Infallible>(
+                    HyperResponse::builder()
+                        .status(200)
+                        .header("content-type", "application/grpc")
+                        .header("grpc-status", "0")
+                        .body(body)
+                        .unwrap(),
+                )
+            });
+            let connection = http2::Builder::new(TokioExecutor::new())
+                .serve_connection(TokioIo::new(socket), service);
+            tokio::pin!(connection);
+            tokio::select! {
+                result = &mut connection => {
+                    panic!("successful HTTP/2 connection ended unexpectedly: {result:?}");
+                }
+                _ = wait_for_finish => {}
+            }
+        });
+
+        let metrics = Arc::new(StatsdClient::builder("", cadence::NopMetricSink).build());
+        let settings = DbSettings {
+            dsn: Some(format!("grpc://localhost:{}", address.port())),
+            db_settings: json!({
+                "table_name": "projects/test/instances/test/tables/test",
+                "grpc_channel_count": 2,
+                "retry_count": 1,
+                "grpc_connect_timeout": 2,
+                "grpc_point_attempt_timeout": 5,
+                "grpc_point_total_timeout": 10
+            })
+            .to_string(),
+        };
+        let client = BigTableClientImpl::new(metrics, &settings).unwrap();
+        let drop_connection = Arc::new(Mutex::new(Some(drop_connection)));
+        let policy = client.rpc_policy(RpcClass::Point, RetryKind::Read, BreakerPolicy::Track);
+        let started = tokio::time::Instant::now();
+        tokio::time::timeout(
+            Duration::from_secs(8),
+            client.execute_rpc(
+                bigtable::ReadRowsRequest::default(),
+                policy,
+                move |channel, request| {
+                    let drop_connection = drop_connection.clone();
+                    async move {
+                        let mut bigtable = BigtableDb::client(channel);
+                        let mut stream = bigtable
+                            .read_rows(request)
+                            .await
+                            .map_err(error::BigTableError::Read)?
+                            .into_inner();
+
+                        let signal = drop_connection
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .take();
+                        if let Some(signal) = signal {
+                            assert!(stream.message().await.unwrap().is_some());
+                            signal.send(()).unwrap();
+                        }
+                        while stream
+                            .message()
+                            .await
+                            .map_err(error::BigTableError::Read)?
+                            .is_some()
+                        {}
+                        Ok(())
+                    }
+                },
+            ),
+        )
+        .await
+        .expect("Bigtable retry exceeded the test budget")
+        .expect("the second channel should complete the read");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the retry waited for the attempt deadline instead of classifying the transport drop"
+        );
+
+        finish_server.send(()).unwrap();
+        server.await.unwrap();
     }
 
     #[test]
@@ -680,8 +920,8 @@ fn classify_retry(kind: RetryKind, err: &error::BigTableError) -> Option<RetryMe
         | error::BigTableError::Read(status)
         | error::BigTableError::Write(status) => {
             let retry = match kind {
-                RetryKind::Read => retryable_read_err(status),
-                RetryKind::Write => retryable_transient_err(status),
+                RetryKind::Read | RetryKind::IdempotentWrite => retryable_read_err(status),
+                RetryKind::ConditionalWrite => retryable_pre_send_err(status),
             };
             info!("GRPC Failure: {:?}", status);
             retry.then_some(RetryMetric {
@@ -689,10 +929,12 @@ fn classify_retry(kind: RetryKind, err: &error::BigTableError) -> Option<RetryMe
                 code: Some(status.code()),
             })
         }
-        error::BigTableError::AttemptTimeout if kind == RetryKind::Read => Some(RetryMetric {
-            error: "AttemptTimeout",
-            code: None,
-        }),
+        error::BigTableError::AttemptTimeout if kind != RetryKind::ConditionalWrite => {
+            Some(RetryMetric {
+                error: "AttemptTimeout",
+                code: None,
+            })
+        }
         // Authentication and request construction happen before the RPC is
         // dispatched, so their deadline is safe to retry for every method,
         // including conditional mutations.
@@ -839,8 +1081,8 @@ impl BigTableClientImpl {
     ///
     /// A deadpool checkout is a local concurrency permit. It is included in the
     /// caller's total budget, but checkout failures do not affect the Bigtable
-    /// circuit breaker. Each retry rebuilds request metadata and credentials
-    /// while remaining on the channel selected for this operation.
+    /// circuit breaker. Once checked out, every retry selects a fresh channel
+    /// slot and rebuilds request metadata and credentials.
     async fn execute_rpc<M, T, Call, CallFuture>(
         &self,
         message: M,
@@ -862,7 +1104,6 @@ impl BigTableClientImpl {
             Err(_) => return Err(error::BigTableError::OperationTimeout),
         };
         let bigtable = (*pooled).clone();
-        let channel = self.pool.next_channel();
         let metadata = self.metadata.clone();
         let retry_policy = retry_policy(self.settings.retry_count);
         let pending_retry_metric = Arc::new(Mutex::new(None));
@@ -894,7 +1135,7 @@ impl BigTableClientImpl {
                     let bigtable = bigtable.clone();
                     let metadata = metadata.clone();
                     let message = message.clone();
-                    let channel = channel.clone();
+                    let channel = self.pool.next_channel();
                     let call = call.clone();
                     let rpc_in_flight = attempt_rpc_in_flight.clone();
                     async move {
@@ -933,12 +1174,16 @@ impl BigTableClientImpl {
         result
     }
 
-    /// Apply a mutation to one row.
+    /// Apply an idempotent mutation to one row.
     async fn mutate_row(
         &self,
         req: bigtable::MutateRowRequest,
     ) -> Result<(), error::BigTableError> {
-        let policy = self.rpc_policy(RpcClass::Point, RetryKind::Write, BreakerPolicy::Track);
+        let policy = self.rpc_policy(
+            RpcClass::Point,
+            RetryKind::IdempotentWrite,
+            BreakerPolicy::Track,
+        );
         self.execute_rpc(req, policy, |channel, request| async move {
             let mut client = BigtableDb::client(channel);
             client
@@ -1070,7 +1315,11 @@ impl BigTableClientImpl {
         &self,
         req: bigtable::CheckAndMutateRowRequest,
     ) -> Result<bool, error::BigTableError> {
-        let policy = self.rpc_policy(RpcClass::Point, RetryKind::Write, BreakerPolicy::Track);
+        let policy = self.rpc_policy(
+            RpcClass::Point,
+            RetryKind::ConditionalWrite,
+            BreakerPolicy::Track,
+        );
         let predicate_matched = self
             .execute_rpc(req, policy, |channel, request| async move {
                 let mut client = BigtableDb::client(channel);

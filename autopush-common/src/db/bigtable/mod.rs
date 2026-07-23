@@ -38,6 +38,8 @@ const DEFAULT_GRPC_POINT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_GRPC_SCAN_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(20);
 const DEFAULT_GRPC_POINT_TOTAL_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_GRPC_SCAN_TOTAL_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_GRPC_CHANNEL_REFRESH_MIN: Duration = Duration::from_secs(60);
+const DEFAULT_GRPC_CHANNEL_REFRESH_MAX: Duration = Duration::from_secs(180);
 
 fn grpc_connect_timeout_default() -> Duration {
     DEFAULT_GRPC_CONNECT_TIMEOUT
@@ -57,6 +59,14 @@ fn grpc_point_total_timeout_default() -> Duration {
 
 fn grpc_scan_total_timeout_default() -> Duration {
     DEFAULT_GRPC_SCAN_TOTAL_TIMEOUT
+}
+
+fn grpc_channel_refresh_min_default() -> Duration {
+    DEFAULT_GRPC_CHANNEL_REFRESH_MIN
+}
+
+fn grpc_channel_refresh_max_default() -> Duration {
+    DEFAULT_GRPC_CHANNEL_REFRESH_MAX
 }
 
 fn retry_default() -> usize {
@@ -142,6 +152,20 @@ pub struct BigTableDbSettings {
         deserialize_with = "deserialize_u32_to_duration"
     )]
     pub grpc_scan_total_timeout: Duration,
+    /// Minimum randomized period (in seconds) before eagerly replacing each
+    /// Bigtable channel. Refresh is disabled for the emulator.
+    #[serde(
+        default = "grpc_channel_refresh_min_default",
+        deserialize_with = "deserialize_u32_to_duration"
+    )]
+    pub grpc_channel_refresh_min: Duration,
+    /// Maximum randomized period (in seconds) before eagerly replacing each
+    /// Bigtable channel.
+    #[serde(
+        default = "grpc_channel_refresh_max_default",
+        deserialize_with = "deserialize_u32_to_duration"
+    )]
+    pub grpc_channel_refresh_max: Duration,
     /// Include route to leader header in metadata
     #[serde(default)]
     pub route_to_leader: bool,
@@ -179,6 +203,8 @@ impl Default for BigTableDbSettings {
             grpc_scan_attempt_timeout: grpc_scan_attempt_timeout_default(),
             grpc_point_total_timeout: grpc_point_total_timeout_default(),
             grpc_scan_total_timeout: grpc_scan_total_timeout_default(),
+            grpc_channel_refresh_min: grpc_channel_refresh_min_default(),
+            grpc_channel_refresh_max: grpc_channel_refresh_max_default(),
             route_to_leader: Default::default(),
             retry_count: Default::default(),
             app_profile_id: Default::default(),
@@ -230,6 +256,8 @@ impl TryFrom<&str> for BigTableDbSettings {
             ("grpc_scan_attempt_timeout", me.grpc_scan_attempt_timeout),
             ("grpc_point_total_timeout", me.grpc_point_total_timeout),
             ("grpc_scan_total_timeout", me.grpc_scan_total_timeout),
+            ("grpc_channel_refresh_min", me.grpc_channel_refresh_min),
+            ("grpc_channel_refresh_max", me.grpc_channel_refresh_max),
         ];
         if let Some((name, _)) = nonzero_durations
             .into_iter()
@@ -249,6 +277,12 @@ impl TryFrom<&str> for BigTableDbSettings {
                 "grpc_scan_attempt_timeout must not exceed grpc_scan_total_timeout".to_owned(),
             ));
         }
+        if me.grpc_channel_refresh_min > me.grpc_channel_refresh_max {
+            return Err(DbError::ConnectionError(
+                "grpc_channel_refresh_min must not exceed grpc_channel_refresh_max".to_owned(),
+            ));
+        }
+
         // specify the default string "default" if it's not specified.
         // There's a small chance that this could be reported as "unspecified", so this
         // removes that confusion.
@@ -306,6 +340,12 @@ mod tests {
         assert!(
             super::BigTableDbSettings::try_from(
                 "{\"grpc_point_attempt_timeout\": 6, \"grpc_point_total_timeout\": 5}"
+            )
+            .is_err()
+        );
+        assert!(
+            super::BigTableDbSettings::try_from(
+                "{\"grpc_channel_refresh_min\": 181, \"grpc_channel_refresh_max\": 180}"
             )
             .is_err()
         );
