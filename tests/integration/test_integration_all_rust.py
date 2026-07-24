@@ -190,6 +190,7 @@ ENDPOINT_CONFIG = dict(
     crypto_keys=f"[{CRYPTO_KEY}]",
     # convert to x692 format
     tracking_keys=f"""[{encoded}]""",
+    auth_keys='["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]',
 )
 
 # Note: These are only used by the `reliable_report` feature, however, specifying them

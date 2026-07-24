@@ -119,7 +119,7 @@ impl Default for Settings {
             // presume base64 encoding, so we can bump things up to 5630 bytes max.
             max_data_bytes: 5630,
             crypto_keys: format!("[{}]", Fernet::generate_key()),
-            auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_string(),
+            auth_keys: r#"[]"#.to_string(),
             tracking_keys: r#"[]"#.to_string(),
             human_logs: false,
             connection_timeout_millis: 1000,
@@ -182,7 +182,9 @@ impl Settings {
                 }
             }
         })?;
-
+        // Reject empty or missing auth_keys; may pass deserialization
+        // so have to check here
+        built.validate_auth_keys()?;
         Ok(built)
     }
 
@@ -218,6 +220,15 @@ impl Settings {
         Self::read_list_from_str(keys, "Invalid AUTOEND_AUTH_KEYS")
             .map(|v| v.to_owned())
             .collect()
+    }
+    /// Validate at least one usable (non-empty) auth key is configured.
+    fn validate_auth_keys(&self) -> Result<(), ConfigError> {
+        if self.auth_keys().iter().all(|key| key.is_empty()) {
+            return Err(ConfigError::Message(
+                "AUTOEND__AUTH_KEYS must contain at least one non-empty key".to_owned(),
+            ));
+        }
+        Ok(())
     }
 
     /// Get the list of tracking public keys converted to raw, x962 format byte arrays.
@@ -322,6 +333,30 @@ mod tests {
         };
         let result = settings.auth_keys();
         assert_eq!(result, success);
+        Ok(())
+    }
+    #[test]
+    fn test_auth_keys_rejects() -> ApiResult<()> {
+        // Unset *(rejects default)
+        assert!(Settings::default().validate_auth_keys().is_err());
+        // Empty array
+        let settings = Settings {
+            auth_keys: r#"[]"#.to_owned(),
+            ..Default::default()
+        };
+        assert!(settings.validate_auth_keys().is_err());
+        // Only empty strings
+        let settings = Settings {
+            auth_keys: r#"["", ""]"#.to_owned(),
+            ..Default::default()
+        };
+        assert!(settings.validate_auth_keys().is_err());
+        // A non-empty key passes
+        let settings = Settings {
+            auth_keys: r#"["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB="]"#.to_owned(),
+            ..Default::default()
+        };
+        assert!(settings.validate_auth_keys().is_ok());
         Ok(())
     }
 

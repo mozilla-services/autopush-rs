@@ -31,6 +31,8 @@
 
 # The HMAC SHA256 keys to use, for authenticating registration update requests.
 # Multiple are allowed when separated by a comma.
+# Should be replaced with a real key when deployed
+# Defaults to an empty array which will cause startup to fail
 #auth_keys = "["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]"
 
 # If human-readable logging should be used
