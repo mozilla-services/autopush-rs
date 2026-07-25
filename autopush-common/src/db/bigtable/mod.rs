@@ -238,6 +238,7 @@ impl TryFrom<&str> for BigTableDbSettings {
                 "grpc_scan_attempt_timeout must not exceed grpc_scan_total_timeout".to_owned(),
             ));
         }
+
         // specify the default string "default" if it's not specified.
         // There's a small chance that this could be reported as "unspecified", so this
         // removes that confusion.
@@ -295,6 +296,12 @@ mod tests {
         assert!(
             super::BigTableDbSettings::try_from(
                 "{\"grpc_point_attempt_timeout\": 6, \"grpc_point_total_timeout\": 5}"
+            )
+            .is_err()
+        );
+        assert!(
+            super::BigTableDbSettings::try_from(
+                "{\"grpc_scan_attempt_timeout\": 31, \"grpc_scan_total_timeout\": 30}"
             )
             .is_err()
         );

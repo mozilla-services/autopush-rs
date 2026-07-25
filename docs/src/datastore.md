@@ -39,6 +39,12 @@ Bigtable's database configuration options are stored in the `db_settings` as a s
 * `grpc_point_attempt_timeout` and `grpc_point_total_timeout` bound one attempt and the complete retry budget for point reads and writes (defaults 5 and 15 seconds).
 * `grpc_scan_attempt_timeout` and `grpc_scan_total_timeout` independently bound message range scans (defaults 20 and 25 seconds). The scan budget is deliberately under the 30 second GCP backend-service default `timeoutSec` so a stalled scan returns our own error rather than racing the load balancer.
 
+Channel slots are created once and never replaced. A tonic channel re-dials on the
+next use after a transport failure, so it recovers on its own. Bigtable's middleware
+deletes a connection that has not seen a request in five minutes; that arrives as a
+graceful GOAWAY, which the retry path treats as retryable and reattempts on another
+channel.
+
 `database.ops.inflight`, `database.ops.available`, and `database.ops.queued` count logical RPC slots, not connections. `database.channels` is the configured channel count, which is the ceiling on sockets to Bigtable rather than a live socket count, since channels connect lazily.
 
 The `scripts/setup_bt.sh` file contains a collection of commands that can be used to configure Bigtable storage, or at least aid in setting up the table.
