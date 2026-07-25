@@ -560,11 +560,6 @@ impl BigTableClientImpl {
             .unwrap_or(Duration::from_secs(MAX_ROUTER_TTL_SECS))
     }
 
-    /// Spawn a task to periodically evict idle connections
-    pub fn spawn_sweeper(&self, interval: Duration) {
-        self.pool.spawn_sweeper(interval);
-    }
-
     /// Return a ReadRowsRequest for a given row key
     fn read_row_request(&self, row_key: &str) -> bigtable::ReadRowsRequest {
         read_row_request(
@@ -962,13 +957,21 @@ impl BigtableDb {
         table_name: &str,
     ) -> Self {
         Self {
-            conn: BigtableClient::new(channel)
-                .max_decoding_message_size(MAX_MESSAGE_LEN)
-                .max_encoding_message_size(MAX_MESSAGE_LEN),
+            conn: Self::client(channel),
             health_metadata: health_metadata.clone(),
             auth_provider,
             table_name: table_name.to_owned(),
         }
+    }
+
+    fn client(channel: Channel) -> BigtableClient<Channel> {
+        BigtableClient::new(channel)
+            .max_decoding_message_size(MAX_MESSAGE_LEN)
+            .max_encoding_message_size(MAX_MESSAGE_LEN)
+    }
+
+    pub(super) fn set_channel(&mut self, channel: Channel) {
+        self.conn = Self::client(channel);
     }
 
     /// Build a [tonic::Request] for the given message, attaching the standard
@@ -1639,6 +1642,10 @@ impl DbClient for BigTableClientImpl {
 
     fn pool_status(&self) -> Option<deadpool::Status> {
         Some(self.pool.pool.status())
+    }
+
+    fn configured_channel_count(&self) -> Option<usize> {
+        Some(self.pool.configured_channel_count())
     }
 }
 

@@ -1,12 +1,12 @@
 use std::{
     fmt,
     sync::Arc,
-    time::{Duration, Instant},
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
 };
 
-use actix_web::rt;
 use cadence::StatsdClient;
-use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, RecycleError, Timeouts};
+use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, Timeouts};
 use gcp_auth::TokenProvider;
 use tokio::sync::OnceCell;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
@@ -16,21 +16,41 @@ use crate::db::bigtable::{BigTableDbSettings, BigTableError, bigtable_client::Bi
 use crate::db::error::{DbError, DbResult};
 
 const DEFAULT_GRPC_PORT: u16 = 443;
+/// Default number of shared channels.
+///
+/// Google sizes a Bigtable pool from measured peak concurrency `C`, at about
+/// twice the count needed for saturation: `2 * (C / 50) = C / 25`. We do not
+/// have `C` yet, so this default is picked for failure isolation instead. A slot
+/// stalled inside tonic's `Reconnect` parks every request queued behind it for
+/// the duration of the dial, so four is the smallest count where one stalled
+/// slot taxes a quarter of attempts rather than half.
+///
+/// To replace this with a sized value, set `grpc_channel_count` to
+/// `ceil(C / 25)` using peak `database.ops.inflight`. Two corrections are needed
+/// before that number means anything: the metric carries no hostname tag, so
+/// divide by the pod count to get a per-process figure, and one Bigtable
+/// instance serves both autoconnect and autoendpoint, so tag by workload and
+/// size each service from its own peak.
+/// https://cloud.google.com/bigtable/docs/configure-connection-pools
+const DEFAULT_GRPC_CHANNEL_COUNT: usize = 4;
+/// Bigtable's documented maximum concurrent streams per gRPC connection.
+const MAX_CONCURRENT_STREAMS_PER_CHANNEL: usize = 100;
 
-/// The pool of BigTable Clients.
-/// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
-/// that we have control over is the "channel". For now, we're using the ClientManager to
-/// create new Bigtable clients, which have channels associated with them.
+/// Pool of Bigtable client handles used to limit application-level concurrency.
+///
+/// A deadpool entry is not a physical connection. Entries share a small,
+/// bounded set of tonic channels, and each channel multiplexes concurrent RPCs
+/// over HTTP/2.
 #[derive(Clone)]
 pub struct BigTablePool {
-    /// Pool of db connections
+    /// Pool of logical operation handles.
     pub pool: deadpool::managed::Pool<BigtableClientManager>,
     _metrics: Arc<StatsdClient>,
 }
 
 impl fmt::Debug for BigTablePool {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("SpannerDbPool").finish()
+        fmt.debug_struct("BigTablePool").finish()
     }
 }
 
@@ -40,16 +60,19 @@ impl BigTablePool {
     pub async fn get(
         &self,
     ) -> Result<deadpool::managed::Object<BigtableClientManager>, BigTableError> {
-        let obj = self.pool.get().await.map_err(|e| match e {
+        let mut obj = self.pool.get().await.map_err(|e| match e {
             PoolError::Timeout(tt) => BigTableError::PoolTimeout(tt),
             PoolError::Backend(e) => e,
             e => BigTableError::Pool(Box::new(e)),
         })?;
+        // Select a channel per operation rather than permanently pinning a
+        // frequently reused LIFO entry to one channel.
+        obj.set_channel(self.pool.manager().get_channel());
         debug!("🉑 Got db from pool");
         Ok(obj)
     }
 
-    /// Creates a new pool of BigTable db connections.
+    /// Creates a new pool of Bigtable operation handles and shared channels.
     pub fn new(settings: &DbSettings, metrics: &Arc<StatsdClient>) -> DbResult<Self> {
         let Some(endpoint) = &settings.dsn else {
             return Err(DbError::ConnectionError(
@@ -78,12 +101,9 @@ impl BigTablePool {
         }
         debug!("🉑 connection string {}", &connection);
 
-        // Construct a new manager and put them in a pool for handling future requests.
-        let manager =
-            BigtableClientManager::new(&bt_settings, settings.dsn.clone(), connection.clone())?;
         let mut config = PoolConfig {
-            // Prefer LIFO to allow the sweeper task to evict least frequently
-            // used connections
+            // Entries are interchangeable auth handles, so LIFO simply keeps the
+            // working set small.
             queue_mode: QueueMode::Lifo,
             ..Default::default()
         };
@@ -91,12 +111,39 @@ impl BigTablePool {
             debug!("🏊 Setting pool max size {}", &size);
             config.max_size = size as usize;
         };
+        // No recycle timeout: `Manager::recycle` returns immediately, so deadpool
+        // has nothing to bound there.
         config.timeouts = Timeouts {
             wait: bt_settings.database_pool_wait_timeout,
             create: bt_settings.database_pool_create_timeout,
-            recycle: bt_settings.database_pool_recycle_timeout,
+            ..Default::default()
         };
         debug!("🏊 Timeouts: {:?}", &config.timeouts);
+
+        let channel_count = bt_settings
+            .grpc_channel_count
+            .map(|count| count as usize)
+            .unwrap_or(DEFAULT_GRPC_CHANNEL_COUNT);
+        info!(
+            "🏊 Sharing {channel_count} tonic channels across {} Bigtable operation slots",
+            config.max_size
+        );
+        let stream_capacity = channel_count.saturating_mul(MAX_CONCURRENT_STREAMS_PER_CHANNEL);
+        if config.max_size > stream_capacity {
+            warn!(
+                "Configured Bigtable operation pool size {} exceeds the nominal HTTP/2 stream capacity of {stream_capacity} across {channel_count} channels; requests may queue inside tonic",
+                config.max_size
+            );
+        }
+
+        // Construct a manager whose lightweight client handles share the
+        // bounded tonic channel set.
+        let manager = BigtableClientManager::new(
+            &bt_settings,
+            settings.dsn.clone(),
+            connection,
+            channel_count,
+        )?;
 
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
@@ -110,32 +157,21 @@ impl BigTablePool {
         })
     }
 
-    /// Spawn a task to periodically evict idle connections
-    pub fn spawn_sweeper(&self, interval: Duration) {
-        let Some(max_idle) = self.pool.manager().settings.database_pool_max_idle else {
-            return;
-        };
-        let pool = self.pool.clone();
-        rt::spawn(async move {
-            loop {
-                sweeper(&pool, max_idle);
-                rt::time::sleep(interval).await;
-            }
-        });
+    /// Number of tonic channels shared by all logical pool entries.
+    pub fn configured_channel_count(&self) -> usize {
+        self.pool.manager().channels.len()
     }
 }
 
-fn sweeper(pool: &deadpool::managed::Pool<BigtableClientManager>, max_idle: Duration) {
-    pool.retain(|_, metrics| metrics.last_used() < max_idle);
-}
-
-/// BigTable Pool Manager. This contains everything needed to create a new connection.
+/// Bigtable pool manager. This owns the bounded shared channel set and creates
+/// lightweight client handles for deadpool.
 pub struct BigtableClientManager {
     settings: BigTableDbSettings,
     dsn: Option<String>,
-    connection: String,
+    channels: Vec<Channel>,
+    next_channel: AtomicUsize,
     /// Lazily initialized Application Default Credentials (ADC) token
-    /// provider, shared across all pooled connections (it caches and
+    /// provider, shared across all pooled handles (it caches and
     /// refreshes tokens internally). `None` until first used; never
     /// initialized when running against the emulator.
     auth_provider: OnceCell<Arc<dyn TokenProvider>>,
@@ -146,22 +182,36 @@ impl BigtableClientManager {
         settings: &BigTableDbSettings,
         dsn: Option<String>,
         connection: String,
+        channel_count: usize,
     ) -> Result<Self, BigTableError> {
+        let is_emulator = Self::is_emulator_dsn(dsn.as_deref());
+        let channels = (0..channel_count)
+            .map(|_| {
+                Self::create_channel(
+                    &connection,
+                    is_emulator,
+                    settings.database_pool_create_timeout,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             settings: settings.clone(),
             dsn,
-            connection,
+            channels,
+            next_channel: AtomicUsize::new(0),
             auth_provider: OnceCell::new(),
         })
     }
 
-    /// Are we running against a local Bigtable emulator?
-    fn is_emulator(&self) -> bool {
-        self.dsn
-            .as_ref()
-            .map(|v| v.contains("localhost"))
+    fn is_emulator_dsn(dsn: Option<&str>) -> bool {
+        dsn.map(|value| value.contains("localhost"))
             .unwrap_or(false)
             || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
+    }
+
+    /// Are we running against a local Bigtable emulator?
+    fn is_emulator(&self) -> bool {
+        Self::is_emulator_dsn(self.dsn.as_deref())
     }
 
     /// Return the shared ADC token provider, or `None` when running against
@@ -192,57 +242,38 @@ impl Manager for BigtableClientManager {
     type Error = BigTableError;
     type Type = BigtableDb;
 
-    /// Create a new Bigtable Client with it's own channel.
-    /// `BigtableClient` is the most atomic we can go.
+    /// Create a lightweight client handle sharing one of the bounded channels.
     async fn create(&self) -> Result<BigtableDb, Self::Error> {
         debug!("🏊 Create a new pool entry.");
         let entry = BigtableDb::new(
-            self.get_channel()?,
+            self.get_channel(),
             self.token_provider().await?,
             &self.settings.health_metadata()?,
             &self.settings.table_name,
         );
-        debug!("🏊 Bigtable connection acquired");
+        debug!("🏊 Bigtable client handle acquired");
         Ok(entry)
     }
 
-    /// Recycle if the connection has outlived it's lifespan.
+    /// A pool entry is an auth handle, not a connection, so it has no lifespan
+    /// to enforce and nothing to health check. Channel liveness belongs to the
+    /// shared channels, where tonic's `Reconnect` handles it, and the
+    /// application's health endpoint still performs a real Bigtable RPC.
     async fn recycle(
         &self,
         _client: &mut Self::Type,
-        metrics: &deadpool::managed::Metrics,
+        _metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        if let Some(timeout) = self.settings.database_pool_connection_ttl
-            && Instant::now() - metrics.created > timeout
-        {
-            debug!("🏊 Recycle requested (old).");
-            return Err(RecycleError::message("Connection too old"));
-        }
-        if let Some(timeout) = self.settings.database_pool_max_idle
-            && let Some(recycled) = metrics.recycled
-            && Instant::now() - recycled > timeout
-        {
-            debug!("🏊 Recycle requested (idle).");
-            return Err(RecycleError::message("Connection too idle"));
-        }
-
-        // A tonic Channel reconnects its transport as needed. Do not issue a
-        // Bigtable ReadRows RPC merely to check a pooled object back out: that
-        // doubles healthy traffic and can amplify an outage through retries.
-        // The application's explicit health endpoint still performs a real
-        // Bigtable health check.
         Ok(())
     }
 }
 
 impl BigtableClientManager {
-    /// Get a new Channel, based on the application settings.
-    pub fn get_channel(&self) -> Result<Channel, BigTableError> {
-        Self::create_channel(
-            &self.connection,
-            self.is_emulator(),
-            self.settings.database_pool_create_timeout,
-        )
+    /// Clone the next shared channel in round-robin order. Tonic channel clones
+    /// use the same underlying HTTP/2 connection and are cheap to create.
+    fn get_channel(&self) -> Channel {
+        let index = self.next_channel.fetch_add(1, Ordering::Relaxed) % self.channels.len();
+        self.channels[index].clone()
     }
 
     /// Channels are the tonic transport constructs that contain the actual
