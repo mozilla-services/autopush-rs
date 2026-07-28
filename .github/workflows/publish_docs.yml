@@ -18,8 +18,7 @@ jobs:
       MERMAID_ENV: 0.15.0
       DEST_DIR: /home/runner/.cargo/bin
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/6
+      - uses: actions/checkout@v6
         with:
           path: |
             ~/.cargo/bin/
