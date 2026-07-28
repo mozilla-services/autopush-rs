@@ -1,3 +1,16 @@
+<a name="1.83.0"></a>
+## 1.83.0 (2026-07-28)
+
+### Bug Fixes
+
+- *(config)* [**breaking**] Require user-set AUTOEND__AUTH_KEYS (#1203) ([1080af8b](https://github.com/mozilla-services/autopush-rs/commit/1080af8b8dda8e1251cbf24431ed7dfe15bbf678))
+- *(bigtable)* Tonic connection and retry management (#1209) ([7de5c3ea](https://github.com/mozilla-services/autopush-rs/commit/7de5c3ea083266d0d6e06e04ca2d3c3ef39df59f))
+- *(docs)* Fix publish docs missing step (#1216) ([83b0638b](https://github.com/mozilla-services/autopush-rs/commit/83b0638bebcc978590bad0c4890819888894b8cd))
+
+### Chore
+
+- *(ci:docs)* Fix actions/checkout step (#1206) ([7dea068a](https://github.com/mozilla-services/autopush-rs/commit/7dea068aba113d983679af39e5c9e89da2ac9d12))
+
 <a name="1.82.3"></a>
 ## 1.82.3 (2026-07-21)
 
