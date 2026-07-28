@@ -19,6 +19,7 @@ jobs:
       DEST_DIR: /home/runner/.cargo/bin
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -49,5 +50,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to GitHub Pages
-        id: depolyment
+        id: deployment
         uses: actions/deploy-pages@v4
