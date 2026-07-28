@@ -149,7 +149,6 @@ impl Server {
             StorageType::BigTable => {
                 debug!("Using BigTable");
                 let client = BigTableClientImpl::new(metrics.clone(), &db_settings)?;
-                client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
             #[cfg(feature = "postgres")]
