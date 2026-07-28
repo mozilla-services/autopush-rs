@@ -17,7 +17,7 @@ versions are for backwards-compatible bug fixes.
 
 ## Dev Releases
 
-When changes are committed to the `master` branch, a github action will build and deploy the code automatically. The new image is pushed to Google Artifact Registry with the "latest" tag,
+When changes are committed to the `main` branch, a github action will build and deploy the code automatically. The new image is pushed to Google Artifact Registry with the "latest" tag,
 which is automatically synced in autopush dev namespace by ArgoCD.
 
 The development environment can be verified at its endpoint/wss
@@ -44,22 +44,22 @@ release.
 i.e. If a new minor version is being released after `1.21.0`, the
 `{version}` would be `1.22.0`.
 
-1. Switch to the `master` branch of autopush.
+1. Switch to the `main` branch of autopush.
 2. `git pull` to ensure the local copy is completely up-to-date.
-3. `git diff origin/master` to ensure there are no local staged or
+3. `git diff origin/main` to ensure there are no local staged or
    uncommited changes.
-4. Create the release branch from `master`:
+4. Create the release branch from `main`:
    `git checkout -b release/{version}`.
 
    The branch name includes the full `{major}.{minor}.{patch}` version,
    so every release (major, minor, or patch) gets its own branch off the
-   current `master`.
+   current `main`.
 
 5. Edit `Cargo.toml` `version` key so that the version number reflects the
    desired release version.
 6. Regenerate the Cargo lockfile by running `cargo generate-lockfile`,
    and ensure there are no unwanted changes.
-7. Generate a changelog with `git cliff --latest`, and coy into `CHANGELOG.md`
+7. Update `CHANGELOG.md` by running `git cliff -u`.
 8. `git add CHANGELOG.md Cargo*` to add the changes
    to the new release commit.
 9. `git commit -m "chore: tag {version}"` to commit the new version and
@@ -67,14 +67,14 @@ i.e. If a new minor version is being released after `1.21.0`, the
 10. `git push --set-upstream origin release/{version}` to push the
     commits to a new origin release branch.
 11. Submit a pull request on github to merge the release branch to
-    master.
-12. Once merged, `git checkout master && git pull` to fast-forward to current head.
-13. Get the merge commit SHA, either from the PR page ("merged commit `abc1234` into master")
+    main.
+12. Once merged, `git checkout main && git pull` to fast-forward to current head.
+13. Get the merge commit SHA, either from the PR page ("merged commit `abc1234` into main")
     or programmatically with `gh pr view <pr-number> --json mergeCommit --jq '.mergeCommit.oid'`
-14. Run `git tag -s -m "chore: tag {version}" {version} <merge-commit-sha>` to tag the commit that actually landed on `master`.
+14. Run `git tag -s -m "chore: tag {version}" {version} <merge-commit-sha>` to tag the commit that actually landed on `main`.
 15. Push the tag with `git push origin {version}`; this is what triggers the deployment in CircleCI.
 16. Go to the [autopush releases
-    page](https://github.com/mozilla-services/autopush/releases), you
+    page](https://github.com/mozilla-services/autopush-rs/releases), you
     should see the new tag with no release information under it.
 17. Click the `Draft a new release` button.
 18. Enter the tag for `Tag version`.
