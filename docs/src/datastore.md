@@ -32,7 +32,20 @@ Bigtable's database configuration options are stored in the `db_settings` as a s
 * `message_family` the Bigtable cell family that refers to the **message** data collections
 * `router_family` the Bigtable cell family that refers to the **router** data collections
 * `table_name` the Bigtable internal path URI to the table. You construct this by using the following template `projects/{YOUR PROJECT}/instances/{INSTANCE NAME}/tables/{TABLE NAME}`. For example, if I had created a GCP project named "test-prod", that has an instance ID of "test-prod-us" which contained a table named "auto-test", the `table_name` would be `projects/test-prod/instances/test-prod-us/tables/auto-test`.
-* `retry_count` the number of retries after the initial Bigtable data operation. It defaults to 2 (reduced from 5 to limit retry storms). Health checks also use 2 retries, but their retry count is not separately configurable.
+* `retry_count` the number of retries after the initial Bigtable data operation. It defaults to 2 (reduced from 5 to limit retry storms). Health checks use the same configured retry count.
+* `database_pool_max_size` an admission ceiling on how many Bigtable operations may be in flight at once. Pool entries are lightweight client handles, not physical connections. This is a permit count, not wire capacity: the real limit is `grpc_channel_count` multiplied by the 100 concurrent streams a Bigtable connection allows. Set above that, the excess does not error or backpressure. Hyper's HTTP/2 `poll_ready` reports ready whenever the connection is open and hands requests to an unbounded queue, and the stream limit is only applied further down, so operations pile up invisibly with no metric to show it. Their per-attempt deadline is already running while they wait, so the symptom is `AttemptTimeout` rather than queueing. Keep `database_pool_max_size` at or below `grpc_channel_count * 100`. Left unset, the ceiling is deadpool's default of twice the CPU count.
+* `grpc_channel_count` the number of shared tonic channels per process. Each connected channel owns one Bigtable HTTP/2 connection and supports up to 100 concurrent streams. It defaults to four, chosen so that one channel stalled in a reconnect only affects a quarter of attempts. Size it from measured peak concurrency as `ceil(peak database.ops.inflight / 25)`, not from the maximum logical operation-pool size.
+* `grpc_connect_timeout` the DNS/TCP/TLS connection timeout in seconds (default 5).
+* `grpc_point_attempt_timeout` and `grpc_point_total_timeout` bound one attempt and the complete retry budget for point reads and writes (defaults 5 and 15 seconds).
+* `grpc_scan_attempt_timeout` and `grpc_scan_total_timeout` independently bound message range scans (defaults 20 and 25 seconds). The scan budget is deliberately under the 30 second GCP backend-service default `timeoutSec` so a stalled scan returns our own error rather than racing the load balancer.
+
+Channel slots are created once and never replaced. A tonic channel re-dials on the
+next use after a transport failure, so it recovers on its own. Bigtable's middleware
+deletes a connection that has not seen a request in five minutes; that arrives as a
+graceful GOAWAY, which the retry path treats as retryable and reattempts on another
+channel.
+
+`database.ops.inflight`, `database.ops.available`, and `database.ops.queued` count logical RPC slots, not connections. `database.channels` is the configured channel count, which is the ceiling on sockets to Bigtable rather than a live socket count, since channels connect lazily.
 
 The `scripts/setup_bt.sh` file contains a collection of commands that can be used to configure Bigtable storage, or at least aid in setting up the table.
 

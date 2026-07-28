@@ -84,7 +84,6 @@ impl AppState {
             StorageType::BigTable => {
                 let client = BigTableClientImpl::new(metrics.clone(), &db_settings)
                     .map_err(|e| ConfigError::Message(e.to_string()))?;
-                client.spawn_sweeper(Duration::from_secs(30));
                 Box::new(client)
             }
             #[cfg(feature = "postgres")]

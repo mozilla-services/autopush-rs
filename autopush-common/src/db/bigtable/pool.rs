@@ -1,13 +1,17 @@
 use std::{
     fmt,
+    future::Future,
     sync::Arc,
-    time::{Duration, Instant},
+    sync::LazyLock,
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
 };
 
-use actix_web::rt;
 use cadence::StatsdClient;
-use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, RecycleError, Timeouts};
+use deadpool::managed::{Manager, PoolConfig, PoolError, QueueMode, Timeouts};
 use gcp_auth::TokenProvider;
+use hyper::rt::Executor;
+use tokio::runtime::{Handle, Runtime};
 use tokio::sync::OnceCell;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 
@@ -16,21 +20,121 @@ use crate::db::bigtable::{BigTableDbSettings, BigTableError, bigtable_client::Bi
 use crate::db::error::{DbError, DbResult};
 
 const DEFAULT_GRPC_PORT: u16 = 443;
+// These HTTP/2 keepalive values follow the Google Cloud C++ Bigtable client.
+// They are new transport settings for autopush; the previous grpcio channel
+// builder did not configure keepalive explicitly.
+// https://github.com/googleapis/google-cloud-cpp/blob/f5f12f3cc5ee1293deab4c8e3c0d918bfa8c3b5a/google/cloud/bigtable/internal/defaults.cc#L63-L68
+const DEFAULT_H2_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+const DEFAULT_H2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Default number of shared channels.
+///
+/// Google sizes a Bigtable pool from measured peak concurrency `C`, at about
+/// twice the count needed for saturation: `2 * (C / 50) = C / 25`. We do not
+/// have `C` yet, so this default is picked for failure isolation instead. A slot
+/// stalled inside tonic's `Reconnect` parks every request queued behind it for
+/// the duration of the dial, so four is the smallest count where one stalled
+/// slot taxes a quarter of attempts rather than half.
+///
+/// To replace this with a sized value, set `grpc_channel_count` to
+/// `ceil(C / 25)` using peak `database.ops.inflight`. Two corrections are needed
+/// before that number means anything: the metric carries no hostname tag, so
+/// divide by the pod count to get a per-process figure, and one Bigtable
+/// instance serves both autoconnect and autoendpoint, so tag by workload and
+/// size each service from its own peak.
+/// https://cloud.google.com/bigtable/docs/configure-connection-pools
+const DEFAULT_GRPC_CHANNEL_COUNT: usize = 4;
+/// Bigtable's documented maximum concurrent streams per gRPC connection.
+const MAX_CONCURRENT_STREAMS_PER_CHANNEL: usize = 100;
 
-/// The pool of BigTable Clients.
-/// Note: BigTable uses HTTP/2 as the backbone, so the only really important bit
-/// that we have control over is the "channel". For now, we're using the ClientManager to
-/// create new Bigtable clients, which have channels associated with them.
+/// Tonic normally spawns its buffer and Hyper connection drivers onto the
+/// runtime where an Endpoint is constructed. Autopush constructs the database
+/// before Actix starts its worker runtimes, so using tonic's default executor
+/// pins all Bigtable I/O to Actix's single-threaded main runtime. Keep transport
+/// work on a small, explicit multithreaded runtime instead.
+static BIGTABLE_TRANSPORT_RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .thread_name("bigtable-transport")
+        .enable_all()
+        .build()
+        .expect("failed to create the Bigtable transport runtime")
+});
+
+#[derive(Clone)]
+struct BigtableExecutor {
+    handle: Handle,
+}
+
+impl<F> Executor<F> for BigtableExecutor
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    fn execute(&self, future: F) {
+        self.handle.spawn(future);
+    }
+}
+
+/// A fixed set of lazily-connected channels, selected round-robin.
+///
+/// Slots are never replaced. A tonic `Channel` owns a `Reconnect` that re-dials
+/// on the next `poll_ready` after a transport failure, so a channel recovers on
+/// its own. Bigtable's middleware deletes a connection that has not seen a
+/// request in five minutes.
+///
+/// A reap discovered before dispatch is invisible: `poll_ready` fails, the
+/// channel re-dials, and the request goes out on the new connection. A reap that
+/// lands while a request is in flight leaves that request's outcome ambiguous,
+/// and what happens next depends on the operation:
+///
+/// - Reads and `MutateRow` are replayed on another slot. Explicit cell
+///   timestamps make a replay byte-identical, so the cost is the documented
+///   server-side cache miss and a latency blip.
+/// - `CheckAndMutateRow` is not replayed, because its predicate would be
+///   re-evaluated against state the first attempt may have created. `add_user`
+///   would then report a completed registration as `DbError::Conditional`, a
+///   wrong answer rather than a failure. These surface as an error instead, and
+///   the push client retries the registration.
+struct SharedChannels {
+    channels: Vec<Channel>,
+    next_channel: AtomicUsize,
+}
+
+impl SharedChannels {
+    fn new(endpoint: &Endpoint, count: usize) -> Self {
+        // Settings validation rejects zero, but keep the invariant local so
+        // `next` cannot divide by zero.
+        let count = count.max(1);
+        Self {
+            channels: (0..count).map(|_| endpoint.connect_lazy()).collect(),
+            next_channel: AtomicUsize::new(0),
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.channels.len()
+    }
+
+    fn next(&self) -> Channel {
+        let index = self.next_channel.fetch_add(1, Ordering::Relaxed) % self.channels.len();
+        self.channels[index].clone()
+    }
+}
+
+/// Pool of Bigtable client handles used to limit application-level concurrency.
+///
+/// A deadpool entry is not a physical connection. Entries share a small,
+/// bounded set of tonic channels, and each channel multiplexes concurrent RPCs
+/// over HTTP/2.
 #[derive(Clone)]
 pub struct BigTablePool {
-    /// Pool of db connections
+    /// Pool of logical operation handles.
     pub pool: deadpool::managed::Pool<BigtableClientManager>,
     _metrics: Arc<StatsdClient>,
 }
 
 impl fmt::Debug for BigTablePool {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("SpannerDbPool").finish()
+        fmt.debug_struct("BigTablePool").finish()
     }
 }
 
@@ -49,7 +153,7 @@ impl BigTablePool {
         Ok(obj)
     }
 
-    /// Creates a new pool of BigTable db connections.
+    /// Creates a new pool of Bigtable operation handles and shared channels.
     pub fn new(settings: &DbSettings, metrics: &Arc<StatsdClient>) -> DbResult<Self> {
         let Some(endpoint) = &settings.dsn else {
             return Err(DbError::ConnectionError(
@@ -78,12 +182,9 @@ impl BigTablePool {
         }
         debug!("🉑 connection string {}", &connection);
 
-        // Construct a new manager and put them in a pool for handling future requests.
-        let manager =
-            BigtableClientManager::new(&bt_settings, settings.dsn.clone(), connection.clone())?;
         let mut config = PoolConfig {
-            // Prefer LIFO to allow the sweeper task to evict least frequently
-            // used connections
+            // Entries are interchangeable auth handles, so LIFO simply keeps the
+            // working set small.
             queue_mode: QueueMode::Lifo,
             ..Default::default()
         };
@@ -91,12 +192,39 @@ impl BigTablePool {
             debug!("🏊 Setting pool max size {}", &size);
             config.max_size = size as usize;
         };
+        // No recycle timeout: `Manager::recycle` returns immediately, so deadpool
+        // has nothing to bound there.
         config.timeouts = Timeouts {
             wait: bt_settings.database_pool_wait_timeout,
             create: bt_settings.database_pool_create_timeout,
-            recycle: bt_settings.database_pool_recycle_timeout,
+            ..Default::default()
         };
         debug!("🏊 Timeouts: {:?}", &config.timeouts);
+
+        let channel_count = bt_settings
+            .grpc_channel_count
+            .map(|count| count as usize)
+            .unwrap_or(DEFAULT_GRPC_CHANNEL_COUNT);
+        info!(
+            "🏊 Sharing {channel_count} tonic channels across {} Bigtable operation slots",
+            config.max_size
+        );
+        let stream_capacity = channel_count.saturating_mul(MAX_CONCURRENT_STREAMS_PER_CHANNEL);
+        if config.max_size > stream_capacity {
+            warn!(
+                "Configured Bigtable operation pool size {} exceeds the nominal HTTP/2 stream capacity of {stream_capacity} across {channel_count} channels; requests may queue inside tonic",
+                config.max_size
+            );
+        }
+
+        // Construct a manager whose lightweight client handles share the
+        // bounded tonic channel set.
+        let manager = BigtableClientManager::new(
+            &bt_settings,
+            settings.dsn.clone(),
+            connection,
+            channel_count,
+        )?;
 
         let pool = deadpool::managed::Pool::builder(manager)
             .config(config)
@@ -110,32 +238,26 @@ impl BigTablePool {
         })
     }
 
-    /// Spawn a task to periodically evict idle connections
-    pub fn spawn_sweeper(&self, interval: Duration) {
-        let Some(max_idle) = self.pool.manager().settings.database_pool_max_idle else {
-            return;
-        };
-        let pool = self.pool.clone();
-        rt::spawn(async move {
-            loop {
-                sweeper(&pool, max_idle);
-                rt::time::sleep(interval).await;
-            }
-        });
+    /// Number of tonic channels shared by all logical pool entries.
+    pub fn configured_channel_count(&self) -> usize {
+        self.pool.manager().channels.len()
+    }
+
+    /// Select a shared channel for one RPC attempt. Retried operations call
+    /// this again so a dead transport does not consume the entire retry budget.
+    pub(super) fn next_channel(&self) -> Channel {
+        self.pool.manager().channels.next()
     }
 }
 
-fn sweeper(pool: &deadpool::managed::Pool<BigtableClientManager>, max_idle: Duration) {
-    pool.retain(|_, metrics| metrics.last_used() < max_idle);
-}
-
-/// BigTable Pool Manager. This contains everything needed to create a new connection.
+/// Bigtable pool manager. This owns the bounded shared channel set and creates
+/// lightweight client handles for deadpool.
 pub struct BigtableClientManager {
     settings: BigTableDbSettings,
     dsn: Option<String>,
-    connection: String,
+    channels: Arc<SharedChannels>,
     /// Lazily initialized Application Default Credentials (ADC) token
-    /// provider, shared across all pooled connections (it caches and
+    /// provider, shared across all pooled handles (it caches and
     /// refreshes tokens internally). `None` until first used; never
     /// initialized when running against the emulator.
     auth_provider: OnceCell<Arc<dyn TokenProvider>>,
@@ -146,22 +268,29 @@ impl BigtableClientManager {
         settings: &BigTableDbSettings,
         dsn: Option<String>,
         connection: String,
+        channel_count: usize,
     ) -> Result<Self, BigTableError> {
+        let is_emulator = Self::is_emulator_dsn(dsn.as_deref());
+        let endpoint =
+            Self::create_endpoint(&connection, is_emulator, settings.grpc_connect_timeout)?;
+        let channels = Arc::new(SharedChannels::new(&endpoint, channel_count));
         Ok(Self {
             settings: settings.clone(),
             dsn,
-            connection,
+            channels,
             auth_provider: OnceCell::new(),
         })
     }
 
-    /// Are we running against a local Bigtable emulator?
-    fn is_emulator(&self) -> bool {
-        self.dsn
-            .as_ref()
-            .map(|v| v.contains("localhost"))
+    fn is_emulator_dsn(dsn: Option<&str>) -> bool {
+        dsn.map(|value| value.contains("localhost"))
             .unwrap_or(false)
             || std::env::var("BIGTABLE_EMULATOR_HOST").is_ok()
+    }
+
+    /// Are we running against a local Bigtable emulator?
+    fn is_emulator(&self) -> bool {
+        Self::is_emulator_dsn(self.dsn.as_deref())
     }
 
     /// Return the shared ADC token provider, or `None` when running against
@@ -192,80 +321,71 @@ impl Manager for BigtableClientManager {
     type Error = BigTableError;
     type Type = BigtableDb;
 
-    /// Create a new Bigtable Client with it's own channel.
-    /// `BigtableClient` is the most atomic we can go.
+    /// Create a lightweight client handle sharing one of the bounded channels.
     async fn create(&self) -> Result<BigtableDb, Self::Error> {
         debug!("🏊 Create a new pool entry.");
-        let entry = BigtableDb::new(
-            self.get_channel()?,
-            self.token_provider().await?,
-            &self.settings.health_metadata()?,
-            &self.settings.table_name,
-        );
-        debug!("🏊 Bigtable connection acquired");
+        let entry = BigtableDb::new(self.token_provider().await?);
+        debug!("🏊 Bigtable client handle acquired");
         Ok(entry)
     }
 
-    /// Recycle if the connection has outlived it's lifespan.
+    /// A pool entry is an auth handle, not a connection, so it has no lifespan
+    /// to enforce and nothing to health check. Channel liveness belongs to the
+    /// shared channels, where tonic's `Reconnect` handles it, and the
+    /// application's health endpoint still performs a real Bigtable RPC.
     async fn recycle(
         &self,
         _client: &mut Self::Type,
-        metrics: &deadpool::managed::Metrics,
+        _metrics: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<Self::Error> {
-        if let Some(timeout) = self.settings.database_pool_connection_ttl
-            && Instant::now() - metrics.created > timeout
-        {
-            debug!("🏊 Recycle requested (old).");
-            return Err(RecycleError::message("Connection too old"));
-        }
-        if let Some(timeout) = self.settings.database_pool_max_idle
-            && let Some(recycled) = metrics.recycled
-            && Instant::now() - recycled > timeout
-        {
-            debug!("🏊 Recycle requested (idle).");
-            return Err(RecycleError::message("Connection too idle"));
-        }
-
-        // A tonic Channel reconnects its transport as needed. Do not issue a
-        // Bigtable ReadRows RPC merely to check a pooled object back out: that
-        // doubles healthy traffic and can amplify an outage through retries.
-        // The application's explicit health endpoint still performs a real
-        // Bigtable health check.
         Ok(())
     }
 }
 
 impl BigtableClientManager {
-    /// Get a new Channel, based on the application settings.
-    pub fn get_channel(&self) -> Result<Channel, BigTableError> {
-        Self::create_channel(
-            &self.connection,
-            self.is_emulator(),
-            self.settings.database_pool_create_timeout,
-        )
-    }
-
-    /// Channels are the tonic transport constructs that contain the actual
-    /// HTTP/2 connection. Channels are fairly light weight.
-    pub fn create_channel(
+    fn create_endpoint(
         connection: &str,
         is_emulator: bool,
-        connect_timeout: Option<Duration>,
-    ) -> Result<Channel, BigTableError> {
-        debug!("🏊 Creating new channel...");
+        connect_timeout: Duration,
+    ) -> Result<Endpoint, BigTableError> {
+        debug!("🏊 Creating Bigtable endpoint...");
         // The emulator runs plain HTTP/2 without TLS or credentials.
         let scheme = if is_emulator { "http" } else { "https" };
         let mut endpoint = Endpoint::from_shared(format!("{scheme}://{connection}"))
-            .map_err(BigTableError::Connect)?;
+            .map_err(BigTableError::Connect)?
+            // Detect a dead connection while an RPC stream is active. These
+            // are HTTP/2 PINGs, not TCP keepalive probes.
+            .http2_keep_alive_interval(DEFAULT_H2_KEEPALIVE_INTERVAL)
+            // If a ping isn't ACKed within this window, drop the connection.
+            .keep_alive_timeout(DEFAULT_H2_KEEPALIVE_TIMEOUT)
+            // Do not ping an idle channel. Bigtable intentionally reaps idle
+            // connections, and excessive pings can trigger ENHANCE_YOUR_CALM.
+            .keep_alive_while_idle(false)
+            .connect_timeout(connect_timeout)
+            .executor(BigtableExecutor {
+                handle: BIGTABLE_TRANSPORT_RUNTIME.handle().clone(),
+            });
         if !is_emulator {
             endpoint = endpoint
-                .tls_config(ClientTlsConfig::new().with_native_roots())
+                .tls_config(
+                    ClientTlsConfig::new()
+                        .with_native_roots()
+                        .timeout(connect_timeout),
+                )
                 .map_err(BigTableError::Connect)?;
         }
-        if let Some(connect_timeout) = connect_timeout {
-            endpoint = endpoint.connect_timeout(connect_timeout);
-        }
-        Ok(endpoint.connect_lazy())
+        Ok(endpoint)
+    }
+
+    /// Create one lazy channel for tests and callers that only need to verify
+    /// endpoint construction.
+    #[cfg(test)]
+    pub fn create_channel(
+        connection: &str,
+        is_emulator: bool,
+        connect_timeout: Duration,
+    ) -> Result<Channel, BigTableError> {
+        Ok(Self::create_endpoint(connection, is_emulator, connect_timeout)?.connect_lazy())
     }
 }
 
@@ -278,12 +398,24 @@ mod tests {
         // Port 9 is intentionally not expected to host a Bigtable emulator.
         // Constructing the channel must still succeed without touching the
         // network; the first RPC is responsible for establishing a connection.
-        let channel = BigtableClientManager::create_channel(
-            "127.0.0.1:9",
-            true,
-            Some(Duration::from_millis(10)),
-        );
+        let channel =
+            BigtableClientManager::create_channel("127.0.0.1:9", true, Duration::from_millis(10));
 
         assert!(channel.is_ok());
+    }
+
+    #[test]
+    fn channel_selection_advances_for_each_attempt() {
+        let endpoint =
+            BigtableClientManager::create_endpoint("127.0.0.1:9", true, Duration::from_millis(10))
+                .unwrap();
+        let channels = SharedChannels::new(&endpoint, 2);
+
+        let _first = channels.next();
+        assert_eq!(channels.next_channel.load(Ordering::Relaxed), 1);
+        let _second = channels.next();
+        assert_eq!(channels.next_channel.load(Ordering::Relaxed), 2);
+        let _wrapped = channels.next();
+        assert_eq!(channels.next_channel.load(Ordering::Relaxed), 3);
     }
 }

@@ -107,6 +107,12 @@ pub trait DbClient: Send + Sync {
         None
     }
 
+    /// Return the configured number of transport channels, when it differs
+    /// from the number of logical objects reported by `pool_status`.
+    fn configured_channel_count(&self) -> Option<usize> {
+        None
+    }
+
     /// Record the Reliability Report to long term storage.
     #[cfg(feature = "reliable_report")]
     async fn log_report(
