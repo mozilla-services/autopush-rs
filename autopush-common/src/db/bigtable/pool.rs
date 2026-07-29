@@ -28,12 +28,18 @@ const DEFAULT_H2_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const DEFAULT_H2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Default number of shared channels.
 ///
-/// Google sizes a Bigtable pool from measured peak concurrency `C`, at about
-/// twice the count needed for saturation: `2 * (C / 50) = C / 25`. We do not
-/// have `C` yet, so this default is picked for failure isolation instead. A slot
-/// stalled inside tonic's `Reconnect` parks every request queued behind it for
-/// the duration of the dial, so four is the smallest count where one stalled
-/// slot taxes a quarter of attempts rather than half.
+/// Sixteen keeps wire capacity (16 x 100 streams) above any plausible
+/// admission ceiling, so requests wait for a deadpool permit, which is visible
+/// in `database.ops.queued` and covered by the operation budget, and never
+/// inside hyper's dispatch queue, which is unbounded, invisible, and burns the
+/// per-attempt deadline while a request is parked. The sizing case is
+/// autoconnect's deploy-time reconnect storm: every client of a replaced pod
+/// re-runs hello at once, each hello is a point read plus scans that hold
+/// their stream slots, and any Bigtable latency blip multiplies concurrency
+/// (Little's law) toward the wire ceiling. Four channels (400 streams) sat
+/// below the deployed admission ceiling, which our own startup warning calls
+/// out, and a storm that crosses the wire ceiling burns deadlines and slows
+/// the shared-path health check, so congestion reads as backend failure.
 ///
 /// To replace this with a sized value, set `grpc_channel_count` to
 /// `ceil(C / 25)` using peak `database.ops.inflight`. Two corrections are needed
@@ -42,7 +48,7 @@ const DEFAULT_H2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10);
 /// instance serves both autoconnect and autoendpoint, so tag by workload and
 /// size each service from its own peak.
 /// https://cloud.google.com/bigtable/docs/configure-connection-pools
-const DEFAULT_GRPC_CHANNEL_COUNT: usize = 4;
+const DEFAULT_GRPC_CHANNEL_COUNT: usize = 16;
 /// Bigtable's documented maximum concurrent streams per gRPC connection.
 const MAX_CONCURRENT_STREAMS_PER_CHANNEL: usize = 100;
 

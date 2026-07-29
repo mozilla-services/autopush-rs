@@ -90,7 +90,7 @@ pub struct BigTableDbSettings {
     pub message_topic_family: String,
     #[serde(default)]
     pub database_pool_max_size: Option<u32>,
-    /// Number of shared tonic channels used for Bigtable RPCs. Defaults to four.
+    /// Number of shared tonic channels used for Bigtable RPCs. Defaults to sixteen.
     /// Size it from peak concurrent operations for this workload on one pod,
     /// rather than from the maximum logical operation-pool size. See
     /// `DEFAULT_GRPC_CHANNEL_COUNT` for the arithmetic and its caveats.
