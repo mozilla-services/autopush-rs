@@ -487,6 +487,13 @@ fn has_connect_source(status: &Status) -> bool {
     false
 }
 
+/// `AttemptTimeout` is excluded: the per-attempt deadline starts before the
+/// request reaches the wire, and `rpc_in_flight` is set before dispatch, so a
+/// timeout cannot distinguish a congested local queue from a slow backend.
+/// Counting it lets load open the breaker and convert congestion into 30
+/// seconds of fail-fast. Genuine outages still trip the breaker through
+/// transport and server status errors, and the attempt and operation budgets
+/// bound retry storms, which was the breaker's original job.
 fn counts_toward_breaker(error: &error::BigTableError, operation_timed_out_in_rpc: bool) -> bool {
     matches!(
         error,
@@ -494,7 +501,6 @@ fn counts_toward_breaker(error: &error::BigTableError, operation_timed_out_in_rp
             | error::BigTableError::InvalidChunk(_)
             | error::BigTableError::Read(_)
             | error::BigTableError::Write(_)
-            | error::BigTableError::AttemptTimeout
             | error::BigTableError::Status(_, _)
     ) || matches!(error, error::BigTableError::OperationTimeout) && operation_timed_out_in_rpc
 }
@@ -854,6 +860,16 @@ mod retry_tests {
         assert!(!counts_toward_breaker(
             &error::BigTableError::PreSendTimeout,
             false,
+        ));
+        // An attempt deadline can expire while the request is still parked in
+        // the channel's local queue, so it says nothing about the backend.
+        assert!(!counts_toward_breaker(
+            &error::BigTableError::AttemptTimeout,
+            false,
+        ));
+        assert!(!counts_toward_breaker(
+            &error::BigTableError::AttemptTimeout,
+            true,
         ));
         assert!(!counts_toward_breaker(
             &error::BigTableError::CircuitBreakerOpen,
