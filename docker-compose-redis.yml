@@ -31,6 +31,7 @@ services:
     environment:
       - "AUTOEND__DB_DSN=redis://redis"
       - 'AUTOEND__CRYPTO_KEYS=[<CRYPTOKEYHERE>]'
+      - 'AUTOEND__AUTH_KEYS=[<AUTHKEYSHERE>]'
       - "AUTOEND__HOST=0.0.0.0" # autoendpoint must listen on 0.0.0.0 with docker
       - "AUTOEND__PORT=8082" # This is the port we listen on locally
       - "AUTOEND__ENDPOINT_URL=https://update.push.example.com" # This is the public facing url to reach autoendpoint
