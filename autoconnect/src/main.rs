@@ -55,6 +55,7 @@ async fn main() -> Result<()> {
         Settings::with_env_and_config_files(&filenames).map_err(ApcErrorKind::ConfigError)?;
     logging::init_logging(
         !settings.human_logs,
+        settings.log_chan_size,
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
     )

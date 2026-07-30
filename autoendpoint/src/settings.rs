@@ -58,6 +58,11 @@ pub struct Settings {
     pub auth_keys: String,
     /// Whether to include human readable logs in the output.
     pub human_logs: bool,
+    /// Number of log records to buffer before dropping them. Records are dropped
+    /// when the buffer is full, and each drop emits an ERROR level overflow
+    /// report, so this should comfortably exceed the peak logging rate. 0 uses
+    /// the default.
+    pub log_chan_size: usize,
 
     /// Bridge connection timeout in milliseconds.
     pub connection_timeout_millis: u64,
@@ -122,6 +127,7 @@ impl Default for Settings {
             auth_keys: r#"[]"#.to_string(),
             tracking_keys: r#"[]"#.to_string(),
             human_logs: false,
+            log_chan_size: autopush_common::logging::DEFAULT_LOG_CHAN_SIZE,
             connection_timeout_millis: 1000,
             request_timeout_millis: 3000,
             pool_max_idle_per_host: 10,

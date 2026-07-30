@@ -21,6 +21,10 @@ fernet.workspace = true
 futures.workspace = true
 futures-util.workspace = true
 lazy_static.workspace = true
+# Depended on directly so the workspace's `release_max_level_info` feature is
+# actually applied: it compiles out `log`-crate debug/trace at the callsite,
+# which is where our dependencies' `tracing` output lands (see logging.rs).
+log.workspace = true
 mockall.workspace = true
 openssl.workspace = true
 rand.workspace = true
