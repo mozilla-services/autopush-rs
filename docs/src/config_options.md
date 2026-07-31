@@ -29,6 +29,7 @@ using their environment variable form.
 | <span id="AUTOCONNECT__ENDPOINT_SCHEME" />endpoint_scheme | AUTOCONNECT__ENDPOINT_SCHEME | string | "http" | The URL scheme (http/https) for the endpoint URL |
 | <span id="AUTOCONNECT__HOSTNAME" />hostname | AUTOCONNECT__HOSTNAME | string | _None_ | The machine host name (e.g. `localhost`) |
 | <span id="AUTOCONNECT__HUMAN_LOGS" />human_logs | AUTOCONNECT__HUMAN_LOGS | bool | false | Whether to use human readable log formatting (e.g. timestamps, log levels) |
+| <span id="AUTOCONNECT__LOG_CHAN_SIZE" />log_chan_size | AUTOCONNECT__LOG_CHAN_SIZE | num | 20000 | Number of log records to buffer before dropping them. Each dropped record emits an ERROR level overflow report, so this should comfortably exceed the peak logging rate. Costs roughly 110 bytes per slot, allocated at startup. 0 uses the default |
 | <span id="AUTOCONNECT__MEGAPHONE_API_TOKEN" />megaphone_api_token | AUTOCONNECT__MEGAPHONE_API_TOKEN | string | _None_ | Deprecated: Access token for the Remote Settings "Megaphone" API server, kept for compatibility |
 | <span id="AUTOCONNECT__MEGAPHONE_API_URL" />megaphone_api_url | AUTOCONNECT__MEGAPHONE_API_URL | string | _None_ | URL to the Remote Settings "Megaphone" API server |
 | <span id="AUTOCONNECT__MEGAPHONE_POLL_INTERVAL" />megaphone_poll_interval | AUTOCONNECT__MEGAPHONE_POLL_INTERVAL | string | _None_ | Period in seconds to poll the Remote Settings "Megaphone" server |
@@ -64,6 +65,7 @@ The following configuration options can be specified either in the configuration
 | <span id="AUTOEND__CRYPTO_KEYS" />crypto_keys | AUTOEND__CRYPTO_KEYS | string | _internally generated value_ | Comma separated list of cryptographic keys to use for endpoint encryption (the first key will be used for encrypting new messages) |
 | <span id="AUTOEND__AUTH_KEYS" />auth_keys | AUTOEND__AUTH_KEYS | string | "[]" | Comma separated list of authentication keys to use for client endpoint authentication (the first key will be used for authenticating new messages). Must contain at least one valid non-empty string. |
 | <span id="AUTOEND__HUMAN_LOGS" />human_logs | AUTOEND__HUMAN_LOGS | bool | false | Whether to use human readable log formatting (e.g. timestamps, log levels) |
+| <span id="AUTOEND__LOG_CHAN_SIZE" />log_chan_size | AUTOEND__LOG_CHAN_SIZE | num | 20000 | Number of log records to buffer before dropping them. Each dropped record emits an ERROR level overflow report, so this should comfortably exceed the peak logging rate. Costs roughly 110 bytes per slot, allocated at startup. 0 uses the default |
 | <span id="AUTOEND__CONNECTION_TIMEOUT_MILLIS" />connection_timeout_millis | AUTOEND__CONNECTION_TIMEOUT_MILLIS | num | 1000 | Number of milliseconds to wait for a bridge connection before timing out |
 | <span id="AUTOEND__REQUEST_TIMEOUT_MILLIS" />request_timeout_millis | AUTOEND__REQUEST_TIMEOUT_MILLIS | num | 3000 | Number of milliseconds to wait for a bridge request before timing out |
 | <span id="AUTOEND__STATSD_HOST" />statsd_host | AUTOEND__STATSD_HOST | string | "localhost" | Name of the statsd collector host |

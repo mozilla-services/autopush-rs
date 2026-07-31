@@ -100,6 +100,11 @@ pub struct Settings {
     pub megaphone_poll_interval: Duration,
     /// Use human readable (simplified, non-JSON)
     pub human_logs: bool,
+    /// Number of log records to buffer before dropping them. Records are dropped
+    /// when the buffer is full, and each drop emits an ERROR level overflow
+    /// report, so this should comfortably exceed the peak logging rate. 0 uses
+    /// the default.
+    pub log_chan_size: usize,
     /// Maximum allowed number of backlogged messages. Exceeding this number will
     /// trigger a user reset because the user may have been offline way too long.
     pub msg_limit: u32,
@@ -156,6 +161,7 @@ impl Default for Settings {
             megaphone_api_token: None,
             megaphone_poll_interval: Duration::from_secs(30),
             human_logs: false,
+            log_chan_size: autopush_common::logging::DEFAULT_LOG_CHAN_SIZE,
             msg_limit: 150,
             client_channel_capacity: 128,
             actix_max_connections: None,

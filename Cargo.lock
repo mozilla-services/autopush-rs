@@ -743,6 +743,7 @@ dependencies = [
  "hyper 1.11.0",
  "hyper-util",
  "lazy_static",
+ "log",
  "mockall",
  "mockito 0.31.1",
  "num_cpus",

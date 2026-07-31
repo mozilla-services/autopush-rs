@@ -49,6 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host_port = format!("{}:{}", &settings.host, &settings.port);
     logging::init_logging(
         !settings.human_logs,
+        settings.log_chan_size,
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
     )
