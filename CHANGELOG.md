@@ -1,3 +1,12 @@
+<a name="1.83.1"></a>
+## 1.83.1 (2026-07-31)
+
+### Bug Fixes
+
+- *(docs)* Add missing AUTHEND__AUTH_KEYS docs to docker compose setup guide (#1219) ([a20c5dd2](https://github.com/mozilla-services/autopush-rs/commit/a20c5dd2254f12a3397a4fa8fc295880b5d44cd8))
+- *(logging)* Stop ERROR-level log flood from slog-async channel overflow (#1220) ([5c82f1b7](https://github.com/mozilla-services/autopush-rs/commit/5c82f1b7f2e2d9e0e7ec611aad39c32964984f0c))
+
+
 <a name="1.83.0"></a>
 ## 1.83.0 (2026-07-28)
 
