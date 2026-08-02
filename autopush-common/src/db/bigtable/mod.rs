@@ -5,11 +5,13 @@
 /// perform garbage collection.
 ///
 /// Keys for the data are
-/// `{uaid}` - the meta data record around a given UAID record
-/// `{uaid}#{channelid}` - the meta record for a channel associated with a
-///     UAID
-/// `{uaid}#{channelid}#{sortkey_timestamp}` - a message record for a UAID
-///     and channel
+/// `{uaid-simple}` - the router record for a UAID; its `router` family also
+///     contains `chid:<hyphenated-channel-id>` cells
+/// `{uaid-simple}#01:{hyphenated-channel-id}:{topic}` - a replaceable Topic
+///     message
+/// `{uaid-simple}#02:{millisecond-sort-timestamp}:{hyphenated-channel-id}` -
+///     an ordinary stored message
+/// `{reliability-id}` - an optional reliability transition record
 ///
 /// Bigtable will automatically sort by the primary key. This schema uses
 /// regular expression lookups in order to do things like return the channels
