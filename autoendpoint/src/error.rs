@@ -134,6 +134,15 @@ pub enum ApiErrorKind {
 }
 
 impl ApiErrorKind {
+    /// The `Retry-After` to advertise, in seconds, when an upstream supplied
+    /// one. Falls back to [`RETRY_AFTER_PERIOD`] otherwise.
+    pub fn retry_after(&self) -> Option<u64> {
+        match self {
+            ApiErrorKind::Router(e) => e.retry_after(),
+            _ => None,
+        }
+    }
+
     /// Get the associated HTTP status code
     pub fn status(&self) -> StatusCode {
         match self {
@@ -325,8 +334,13 @@ impl ResponseError for ApiError {
             StatusCode::GONE => {
                 builder.insert_header(CacheControl(vec![CacheDirective::MaxAge(86400)]));
             }
-            StatusCode::SERVICE_UNAVAILABLE => {
-                builder.insert_header((header::RETRY_AFTER, RETRY_AFTER_PERIOD));
+            StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE => {
+                let retry_after = self
+                    .kind
+                    .retry_after()
+                    .map(|secs| secs.to_string())
+                    .unwrap_or_else(|| RETRY_AFTER_PERIOD.to_owned());
+                builder.insert_header((header::RETRY_AFTER, retry_after));
             }
             _ => {}
         }
