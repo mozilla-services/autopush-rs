@@ -2,16 +2,46 @@ use crate::routers::RouterError;
 use crate::routers::common::message_size_check;
 use crate::routers::fcm::error::FcmError;
 use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
+use actix_web::http::header::HttpDate;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use url::Url;
 use yup_oauth2::authenticator::DefaultAuthenticator;
 use yup_oauth2::{ServiceAccountAuthenticator, ServiceAccountKey};
 
 const OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/firebase.messaging"];
+
+// Firebase docs recommend a minimum 10 second wait for any retry.
+const MIN_RETRY_AFTER_SECS: u64 = 10;
+const MAX_RETRY_AFTER_SECS: u64 = 3600;
+
+/// Parse an upstream `Retry-After` into delta-seconds. Accepts delta-seconds
+/// or an HTTP-date.
+///
+/// A date already in the past means "retry now" and is floored
+/// to the minimum rather than discarded. Anything unparseable yields `None`,
+/// leaving the caller to its own default.
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    let raw = headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim();
+
+    let secs = match raw.parse::<u64>() {
+        Ok(secs) => secs,
+        Err(_) => {
+            let when: SystemTime = raw.parse::<HttpDate>().ok()?.into();
+            when.duration_since(SystemTime::now())
+                .map_or(0, |delay| delay.as_secs())
+        }
+    };
+
+    Some(secs.clamp(MIN_RETRY_AFTER_SECS, MAX_RETRY_AFTER_SECS))
+}
 
 /// Holds application-specific Firebase data and authentication. This client
 /// handles sending notifications to Firebase.
@@ -133,6 +163,7 @@ impl FcmClient {
         // Handle error
         let status = response.status();
         if status.is_client_error() || status.is_server_error() {
+            let retry_after = parse_retry_after(response.headers());
             let raw_data = response
                 .bytes()
                 .await
@@ -156,6 +187,7 @@ impl FcmClient {
                     FcmError::Upstream {
                         error_code: error.status, // Note: this is the FCM error status enum value
                         message: error.message,
+                        retry_after,
                     }
                     .into()
                 }
@@ -172,6 +204,7 @@ impl FcmClient {
                     FcmError::Upstream {
                         error_code: "UNKNOWN".to_string(),
                         message: format!("Unknown reason: {:?}", status.to_string()),
+                        retry_after,
                     }
                 }
                 .into(),
@@ -198,10 +231,12 @@ struct FcmErrorResponse {
 #[cfg(test)]
 pub mod tests {
     use crate::routers::RouterError;
-    use crate::routers::fcm::client::FcmClient;
+    use crate::routers::fcm::client::{FcmClient, MIN_RETRY_AFTER_SECS};
     use crate::routers::fcm::error::FcmError;
     use crate::routers::fcm::settings::{FcmServerCredential, FcmSettings};
+    use actix_web::http::header::HttpDate;
     use std::collections::HashMap;
+    use std::time::{Duration, SystemTime};
     use url::Url;
 
     pub const PROJECT_ID: &str = "yup-test-243420";
@@ -356,6 +391,135 @@ pub mod tests {
         );
     }
 
+    /// A throttled send reports 429 and forwards FCM's `Retry-After` value
+    #[tokio::test]
+    async fn resource_exhausted_is_throttled() {
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: Some(false),
+                server_access_token: make_service_key(&server),
+            },
+        )
+        .await;
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
+            .with_status(429)
+            .with_header("Retry-After", "30")
+            .with_body(r#"{"error":{"status":"RESOURCE_EXHAUSTED","message":"quota"}}"#)
+            .create_async()
+            .await;
+
+        let result = client
+            .send(HashMap::new(), "test-token".to_string(), 42)
+            .await;
+        let err = result.unwrap_err();
+
+        assert_eq!(err.status().as_u16(), 429);
+        assert_eq!(err.errno(), Some(201));
+        assert_eq!(err.retry_after(), Some(30));
+    }
+
+    /// An HTTP-date `Retry-After` is accepted and converted to a delay
+    #[tokio::test]
+    async fn retry_after_accepts_http_date() {
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: Some(false),
+                server_access_token: make_service_key(&server),
+            },
+        )
+        .await;
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        // Generated rather than hardcoded so the test doesn't expire.
+        let when = HttpDate::from(SystemTime::now() + Duration::from_secs(120)).to_string();
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
+            .with_status(429)
+            .with_header("Retry-After", &when)
+            .with_body(r#"{"error":{"status":"RESOURCE_EXHAUSTED","message":"quota"}}"#)
+            .create_async()
+            .await;
+
+        let result = client
+            .send(HashMap::new(), "test-token".to_string(), 42)
+            .await;
+        let retry_after = result.unwrap_err().retry_after().expect("a delay");
+        // Ranged: the header has second granularity and time passes during the
+        // request.
+        assert!(
+            (110..=120).contains(&retry_after),
+            "retry_after = {retry_after}"
+        );
+    }
+
+    /// An unparseable `Retry-After` leaves the caller to its own default
+    #[tokio::test]
+    async fn retry_after_ignores_unparseable() {
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: Some(false),
+                server_access_token: make_service_key(&server),
+            },
+        )
+        .await;
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
+            .with_status(429)
+            .with_header("Retry-After", "soon")
+            .with_body(r#"{"error":{"status":"RESOURCE_EXHAUSTED","message":"quota"}}"#)
+            .create_async()
+            .await;
+
+        let result = client
+            .send(HashMap::new(), "test-token".to_string(), 42)
+            .await;
+        assert_eq!(result.unwrap_err().retry_after(), None);
+    }
+
+    /// An HTTP-date already in the past floors to the minimum, rather than
+    /// falling back to the caller's default
+    #[tokio::test]
+    async fn retry_after_floors_past_http_date() {
+        let mut server = mockito::Server::new_async().await;
+
+        let client = make_client(
+            &server,
+            FcmServerCredential {
+                project_id: PROJECT_ID.to_owned(),
+                is_gcm: Some(false),
+                server_access_token: make_service_key(&server),
+            },
+        )
+        .await;
+        let _token_mock = mock_token_endpoint(&mut server).await;
+        let when = HttpDate::from(SystemTime::now() - Duration::from_secs(60)).to_string();
+        let _fcm_mock = mock_fcm_endpoint_builder(&mut server, PROJECT_ID)
+            .with_status(429)
+            .with_header("Retry-After", &when)
+            .with_body(r#"{"error":{"status":"RESOURCE_EXHAUSTED","message":"quota"}}"#)
+            .create_async()
+            .await;
+
+        let result = client
+            .send(HashMap::new(), "test-token".to_string(), 42)
+            .await;
+        assert_eq!(
+            result.unwrap_err().retry_after(),
+            Some(MIN_RETRY_AFTER_SECS)
+        );
+    }
+
     /// Unhandled errors (where an error object is returned) are wrapped and returned
     #[tokio::test]
     async fn other_fcm_error() {
@@ -384,7 +548,7 @@ pub mod tests {
         assert!(
             matches!(
                 result.as_ref().unwrap_err(),
-                RouterError::Fcm(FcmError::Upstream{ error_code, message })
+                RouterError::Fcm(FcmError::Upstream{ error_code, message, .. })
                     if error_code == "TEST_ERROR" && message == "test-message"
             ),
             "result = {result:?}"
@@ -419,7 +583,7 @@ pub mod tests {
         assert!(
             matches!(
                 result.as_ref().unwrap_err(),
-                RouterError::Fcm(FcmError::Upstream { error_code, message })
+                RouterError::Fcm(FcmError::Upstream { error_code, message, .. })
                     if error_code == "UNKNOWN" && message.starts_with("Unknown reason")
             ),
             "result = {result:?}"
