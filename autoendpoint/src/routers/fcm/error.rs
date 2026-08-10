@@ -38,7 +38,12 @@ pub enum FcmError {
     InvalidAppId(String),
 
     #[error("Upstream error, {error_code}: {message}")]
-    Upstream { error_code: String, message: String },
+    Upstream {
+        error_code: String,
+        message: String,
+        /// Sourced from upstream `Retry-After` if provided (otherise default)
+        retry_after: Option<u64>,
+    },
 }
 
 impl FcmError {
@@ -54,6 +59,15 @@ impl FcmError {
             | FcmError::OAuthToken(_)
             | FcmError::NoOAuthToken => StatusCode::INTERNAL_SERVER_ERROR,
 
+            // FCM is rate-limiting us
+            FcmError::Upstream { error_code, .. } if error_code == "RESOURCE_EXHAUSTED" => {
+                StatusCode::TOO_MANY_REQUESTS
+            }
+            // FCM is transiently unable to accept the message
+            FcmError::Upstream { error_code, .. } if error_code == "UNAVAILABLE" => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+
             FcmError::DeserializeResponse(_)
             | FcmError::EmptyResponse(_)
             | FcmError::InvalidResponse(_, _, _)
@@ -68,6 +82,20 @@ impl FcmError {
                 Some(106)
             }
 
+            FcmError::Upstream { error_code, .. }
+                if error_code == "RESOURCE_EXHAUSTED" || error_code == "UNAVAILABLE" =>
+            {
+                Some(201)
+            }
+
+            _ => None,
+        }
+    }
+
+    /// The upstream-supplied `Retry-After`, in seconds, when the bridge sent one.
+    pub fn retry_after(&self) -> Option<u64> {
+        match self {
+            FcmError::Upstream { retry_after, .. } => *retry_after,
             _ => None,
         }
     }
