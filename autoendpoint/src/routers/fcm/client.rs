@@ -16,6 +16,7 @@ const OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/firebase.messag
 
 // Firebase docs recommend a minimum 10 second wait for any retry.
 const MIN_RETRY_AFTER_SECS: u64 = 10;
+// Adding a maximum value to avoid scheduling far into the future; value chosen by convention
 const MAX_RETRY_AFTER_SECS: u64 = 3600;
 
 /// Parse an upstream `Retry-After` into delta-seconds. Accepts delta-seconds
