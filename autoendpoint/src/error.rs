@@ -13,6 +13,7 @@ use actix_web::{
 // Sentry uses the backtrace crate, not std::backtrace.
 use actix_http::header;
 use backtrace::Backtrace;
+use rand::RngExt;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::error::Error;
@@ -27,7 +28,23 @@ pub type ApiResult<T> = Result<T, ApiError>;
 
 /// A link for more info on the returned error
 const ERROR_URL: &str = "http://autopush.readthedocs.io/en/latest/http.html#error-codes";
-const RETRY_AFTER_PERIOD: &str = "120"; // retry after 2 minutes;
+/// The base `Retry-After` period, in seconds, when no upstream supplied one.
+const RETRY_AFTER_PERIOD: u64 = 120; // retry after 2 minutes;
+/// How far either side of [`RETRY_AFTER_PERIOD`] a generated `Retry-After` may
+/// land. See [`jittered_retry_after`].
+const RETRY_AFTER_JITTER: u64 = 30;
+
+/// A `Retry-After`, in seconds, for when no upstream supplied one.
+///
+/// Jittered around [`RETRY_AFTER_PERIOD`] so that senders throttled in the same
+/// moment don't all retry in the same later moment, rebuilding the spike that
+/// throttled them. The jitter is symmetric, leaving the mean at the base
+/// period: spreading retries costs no additional delivery latency on average.
+fn jittered_retry_after() -> u64 {
+    rand::rng().random_range(
+        RETRY_AFTER_PERIOD - RETRY_AFTER_JITTER..=RETRY_AFTER_PERIOD + RETRY_AFTER_JITTER,
+    )
+}
 
 /// The main error type.
 #[derive(Debug)]
@@ -134,8 +151,10 @@ pub enum ApiErrorKind {
 }
 
 impl ApiErrorKind {
-    /// The `Retry-After` to advertise, in seconds, when an upstream supplied
-    /// one. Falls back to [`RETRY_AFTER_PERIOD`] otherwise.
+    /// The upstream-supplied `Retry-After`, in seconds, when a bridge sent one.
+    ///
+    /// `None` leaves the caller to its own default; see
+    /// [`jittered_retry_after`].
     pub fn retry_after(&self) -> Option<u64> {
         match self {
             ApiErrorKind::Router(e) => e.retry_after(),
@@ -335,12 +354,8 @@ impl ResponseError for ApiError {
                 builder.insert_header(CacheControl(vec![CacheDirective::MaxAge(86400)]));
             }
             StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE => {
-                let retry_after = self
-                    .kind
-                    .retry_after()
-                    .map(|secs| secs.to_string())
-                    .unwrap_or_else(|| RETRY_AFTER_PERIOD.to_owned());
-                builder.insert_header((header::RETRY_AFTER, retry_after));
+                let retry_after = self.kind.retry_after().unwrap_or_else(jittered_retry_after);
+                builder.insert_header((header::RETRY_AFTER, retry_after.to_string()));
             }
             _ => {}
         }
@@ -429,11 +444,17 @@ fn errno_from_validation_errors(e: &ValidationErrors) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    use actix_web::ResponseError;
     use autopush_common::{db::error::DbError, sentry::event_from_error};
+    use std::collections::HashSet;
 
     use crate::routers::RouterError;
+    use crate::routers::fcm::error::FcmError;
 
-    use super::{ApiError, ApiErrorKind};
+    use super::{
+        ApiError, ApiErrorKind, RETRY_AFTER_JITTER, RETRY_AFTER_PERIOD, header,
+        jittered_retry_after,
+    };
     use crate::error::ReportableError;
 
     #[test]
@@ -445,6 +466,69 @@ mod tests {
         assert_eq!(event.exception[0].ty, "Integrity");
         assert_eq!(event.exception[1].ty, "ApiError");
         assert_eq!(event.extra.get("row"), Some(&"bar".into()));
+    }
+
+    /// A generated `Retry-After` stays inside the jitter band, and varies
+    /// across calls so throttled senders don't retry in lockstep.
+    #[test]
+    fn jittered_retry_after_spreads_within_band() {
+        let band =
+            (RETRY_AFTER_PERIOD - RETRY_AFTER_JITTER)..=(RETRY_AFTER_PERIOD + RETRY_AFTER_JITTER);
+        let values: HashSet<u64> = (0..200).map(|_| jittered_retry_after()).collect();
+
+        for value in &values {
+            assert!(band.contains(value), "{value} outside {band:?}");
+        }
+        // 200 draws from a 61-wide band collide into one value with
+        // probability 61 * (1/61)^200, so this cannot flake in practice.
+        assert!(values.len() > 1, "no jitter applied");
+    }
+
+    /// An upstream-supplied `Retry-After` is forwarded verbatim, unjittered:
+    /// the bridge's instruction wins over our own guess.
+    #[test]
+    fn retry_after_header_prefers_upstream() {
+        let e: ApiError = ApiErrorKind::Router(RouterError::Fcm(FcmError::Upstream {
+            error_code: "RESOURCE_EXHAUSTED".to_owned(),
+            message: "quota".to_owned(),
+            retry_after: Some(45),
+        }))
+        .into();
+        let response = e.error_response();
+
+        assert_eq!(response.status().as_u16(), 429);
+        assert_eq!(
+            response.headers().get(header::RETRY_AFTER).unwrap(),
+            "45",
+            "upstream Retry-After should not be jittered"
+        );
+    }
+
+    /// Without an upstream value, the header falls back to a jittered default.
+    #[test]
+    fn retry_after_header_falls_back_to_jitter() {
+        let e: ApiError = ApiErrorKind::Router(RouterError::Fcm(FcmError::Upstream {
+            error_code: "UNAVAILABLE".to_owned(),
+            message: "try later".to_owned(),
+            retry_after: None,
+        }))
+        .into();
+        let response = e.error_response();
+
+        assert_eq!(response.status().as_u16(), 503);
+        let secs: u64 = response
+            .headers()
+            .get(header::RETRY_AFTER)
+            .expect("a Retry-After header")
+            .to_str()
+            .unwrap()
+            .parse()
+            .expect("delta-seconds");
+        assert!(
+            ((RETRY_AFTER_PERIOD - RETRY_AFTER_JITTER)..=(RETRY_AFTER_PERIOD + RETRY_AFTER_JITTER))
+                .contains(&secs),
+            "secs = {secs}"
+        );
     }
 
     /// Ensure that Pool error metric labels are specified and that they return a 503 status code.

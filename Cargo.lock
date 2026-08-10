@@ -699,6 +699,7 @@ dependencies = [
  "mockall",
  "mockito 1.7.2",
  "openssl",
+ "rand 0.10.2",
  "regex",
  "reqwest 0.13.4",
  "sentry",
