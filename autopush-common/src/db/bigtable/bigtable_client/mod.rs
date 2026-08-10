@@ -175,30 +175,46 @@ pub struct BigTableClientImpl {
     circuit_breaker: Arc<CircuitBreaker>,
 }
 
-/// Return a a RowFilter matching the GC policy of the router Column Family
-fn router_gc_policy_filter() -> bigtable::RowFilter {
+/// Return a RowFilter matching the `maxversions=1` portion of a family's GC
+/// policy (keep only the most recent cell per column). Shared by the router and
+/// message family filters below.
+fn max_versions_filter() -> bigtable::RowFilter {
     bigtable::RowFilter {
         filter: Some(bigtable::row_filter::Filter::CellsPerColumnLimitFilter(1)),
     }
 }
 
-/// Return a chain of RowFilters matching the GC policy of the message Column
-/// Families
-fn message_gc_policy_filter() -> Result<Vec<bigtable::RowFilter>, error::BigTableError> {
+/// Return a RowFilter that excludes already-expired cells.
+///
+/// Bigtable's server-side garbage collection can lag the expiry time by days,
+/// so this filters out any cells that have expired in the past but haven't yet
+/// been garbage collected.
+fn expiry_filter() -> Result<bigtable::RowFilter, error::BigTableError> {
     let bt_now: i64 = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_err(error::BigTableError::WriteTime)?
         .as_millis() as i64;
-    let timestamp_filter = bigtable::RowFilter {
+    Ok(bigtable::RowFilter {
         filter: Some(bigtable::row_filter::Filter::TimestampRangeFilter(
             bigtable::TimestampRange {
                 start_timestamp_micros: bt_now * 1000,
                 end_timestamp_micros: 0,
             },
         )),
-    };
+    })
+}
 
-    Ok(vec![router_gc_policy_filter(), timestamp_filter])
+/// Return a chain of RowFilters matching the GC policy of the router Column
+/// Family: the `maxversions=1` limit plus `max_age`-based expiry (see
+/// [expiry_filter]). Mirrors [message_gc_policy_filter] for the router family.
+fn router_gc_policy_filter() -> Result<Vec<bigtable::RowFilter>, error::BigTableError> {
+    Ok(vec![max_versions_filter(), expiry_filter()?])
+}
+
+/// Return a chain of RowFilters matching the GC policy of the message Column
+/// Families
+fn message_gc_policy_filter() -> Result<Vec<bigtable::RowFilter>, error::BigTableError> {
+    Ok(vec![max_versions_filter(), expiry_filter()?])
 }
 
 /// Return a Column family regex RowFilter
@@ -1597,7 +1613,9 @@ impl DbClient for BigTableClientImpl {
                 format!("^{}$", row.row_key).into_bytes(),
             )),
         };
-        let filter = filter_chain(vec![router_gc_policy_filter(), row_key_filter]);
+        let mut filters = router_gc_policy_filter()?;
+        filters.push(row_key_filter);
+        let filter = filter_chain(filters);
 
         if self.check_and_mutate_row(row, filter, false).await? {
             return Err(DbError::Conditional);
@@ -1627,7 +1645,7 @@ impl DbClient for BigTableClientImpl {
             ));
         };
 
-        let mut filters = vec![router_gc_policy_filter()];
+        let mut filters = router_gc_policy_filter()?;
         filters.extend(version_filter(version));
         let filter = filter_chain(filters);
 
@@ -1643,7 +1661,11 @@ impl DbClient for BigTableClientImpl {
     async fn get_user(&self, uaid: &Uuid) -> DbResult<Option<User>> {
         let row_key = uaid.as_simple().to_string();
         let mut req = self.read_row_request(&row_key);
-        let mut filters = vec![router_gc_policy_filter()];
+        // `router_gc_policy_filter` hides cells whose TTL has passed. The
+        // `connected_at` cell is always the earliest-expiring cell in the router
+        // row, so an expired record is treated as "no user" (via
+        // `is_incomplete_router_record`) even with recent notifications.
+        let mut filters = router_gc_policy_filter()?;
         filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
         req.filter = Some(filter_chain(filters));
         let Some(mut row) = self.read_row(req).await? else {
@@ -1766,11 +1788,10 @@ impl DbClient for BigTableClientImpl {
                 "^chid:.*$".as_bytes().to_vec(),
             )),
         };
-        req.filter = Some(filter_chain(vec![
-            router_gc_policy_filter(),
-            family_filter(format!("^{ROUTER_FAMILY}$")),
-            cq_filter,
-        ]));
+        let mut filters = router_gc_policy_filter()?;
+        filters.push(family_filter(format!("^{ROUTER_FAMILY}$")));
+        filters.push(cq_filter);
+        req.filter = Some(filter_chain(filters));
 
         let Some(row) = self.read_row(req).await? else {
             return Ok(Default::default());
@@ -1800,7 +1821,9 @@ impl DbClient for BigTableClientImpl {
                 format!("^{column}$").into_bytes(),
             )),
         };
-        req.predicate_filter = Some(filter_chain(vec![router_gc_policy_filter(), cq_filter]));
+        let mut filters = router_gc_policy_filter()?;
+        filters.push(cq_filter);
+        req.predicate_filter = Some(filter_chain(filters));
         req.true_mutations = mutations;
 
         Ok(self.check_and_mutate(req).await?)
@@ -1822,7 +1845,7 @@ impl DbClient for BigTableClientImpl {
 
         let mut req = self.check_and_mutate_row_request(&row_key);
 
-        let mut filters = vec![router_gc_policy_filter()];
+        let mut filters = router_gc_policy_filter()?;
         filters.extend(version_filter(version));
         req.predicate_filter = Some(filter_chain(filters));
         req.true_mutations = self.get_delete_mutations(ROUTER_FAMILY, &["node_id"], None)?;
@@ -2708,5 +2731,51 @@ mod tests {
         }
 
         client.remove_user(&uaid).await.unwrap();
+    }
+
+    /// A router record whose core `connected_at` cell has expired (its TTL
+    /// timestamp is in the past) but which still has fresher subordinate cells
+    //  must be treated as "no user": `get_user` returns `None` and purges the
+    /// leftover cells rather than erroring or resurrecting a partial record.
+    #[actix_rt::test]
+    async fn expired_router_record_is_dropped() {
+        let client = new_client().unwrap();
+        let uaid = gen_test_uaid();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        client.remove_user(&uaid).await.unwrap();
+
+        // Hand-write a partially-expired record: `connected_at` (a core user
+        // cell) has an expiry in the past, while `version` and a `chid:` cell
+        // still have future expiries. This happens when a e.g. a user has not
+        // checked in recently but notifications were added for them.
+        let row_key = uaid.simple().to_string();
+        let past = SystemTime::now() - Duration::from_secs(10);
+        let future = SystemTime::now() + Duration::from_secs(3600);
+        let mut row = Row::new(row_key.clone());
+        let mut cells = vec![
+            cell::Cell {
+                qualifier: "connected_at".to_owned(),
+                value: 0u64.to_be_bytes().to_vec(),
+                timestamp: past,
+                ..Default::default()
+            },
+            cell::Cell {
+                qualifier: "version".to_owned(),
+                value: Uuid::new_v4().into_bytes().to_vec(),
+                timestamp: future,
+                ..Default::default()
+            },
+        ];
+        cells.extend(channels_to_cells(Cow::Owned(HashSet::from([chid])), future));
+        row.add_cells(ROUTER_FAMILY, cells);
+        client.write_row(row).await.unwrap();
+
+        // The expired core cell is filtered out at read time, leaving only
+        // subordinate cells, so the record reads as absent.
+        assert!(client.get_user(&uaid).await.unwrap().is_none());
+
+        //  `get_user` should have purged the leftover row entirely
+        let req = client.read_row_request(&row_key);
+        assert!(client.read_row(req).await.unwrap().is_none());
     }
 }
