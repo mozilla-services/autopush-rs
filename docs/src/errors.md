@@ -86,6 +86,15 @@ statuses:
 
     -   errno 104 - Data payload too large
 
+* 429 - **Too many requests** - An upstream Bridge service is rate-limiting
+    message delivery. The response carries a `Retry-After` header indicating
+    how long to wait before retrying; the Bridge's own value is used when it
+    supplies one, otherwise a jittered default near 120 seconds. The jitter is
+    deliberate; senders should honor the value they were given rather than
+    rounding it, so that retries stay spread out.
+
+    -   errno 201 - Use exponential back-off for retries
+
 * 500 - **Unknown server error** - An internal error occurred within
     the Push Server.
 

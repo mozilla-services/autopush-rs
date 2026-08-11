@@ -133,6 +133,14 @@ impl RouterError {
         }
     }
 
+    /// The upstream-supplied `Retry-After`, in seconds, when the bridge sent one.
+    pub fn retry_after(&self) -> Option<u64> {
+        match self {
+            RouterError::Fcm(e) => e.retry_after(),
+            _ => None,
+        }
+    }
+
     /// Get the associated error number
     pub fn errno(&self) -> Option<usize> {
         match self {
