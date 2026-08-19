@@ -1,3 +1,11 @@
+<a name="1.84.0"></a>
+## 1.84.0 (2026-08-19)
+
+### Bug Fixes
+
+- *(autoendpoint)* Update FCM error mappings to HTTP status codes (#1223) ([ab6065cd](https://github.com/mozilla-services/autopush-rs/commit/ab6065cdd8682caa215319e48c705bf128e926a9))
+- *(bigtable)* Enforce router record expiry at read time (#1224) ([41d5b25e](https://github.com/mozilla-services/autopush-rs/commit/41d5b25e018080b5ddd1b3a8566a1e0b0a0f698a))
+
 <a name="1.83.1"></a>
 ## 1.83.1 (2026-07-31)
 
