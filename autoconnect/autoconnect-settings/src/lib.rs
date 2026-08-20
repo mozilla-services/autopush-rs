@@ -78,6 +78,7 @@ pub struct Settings {
     /// The optional port override for the endpoint URL
     pub endpoint_port: u16,
     /// The seed key to use for endpoint encryption (deprecated: use crypto_keys instead)
+    #[deprecated(since = "{version}", note = "Use `crypto_keys` instead")]
     #[serde(default)]
     pub crypto_key: String,
     /// The cryptographic keys to use for endpoint encryption. Format: [key1,key2,...].
