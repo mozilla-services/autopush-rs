@@ -77,8 +77,14 @@ pub struct Settings {
     pub endpoint_hostname: String,
     /// The optional port override for the endpoint URL
     pub endpoint_port: u16,
-    /// The seed key to use for endpoint encryption
+    /// The seed key to use for endpoint encryption (deprecated: use crypto_keys instead)
+    #[deprecated(since = "1.84.1", note = "Use `crypto_keys` instead")]
+    #[serde(default)]
     pub crypto_key: String,
+    /// The cryptographic keys to use for endpoint encryption. Format: [key1,key2,...].
+    /// If not set, a random key is generated. Supports multiple keys for rotation.
+    #[serde(default)]
+    pub crypto_keys: String,
     /// The host name to send recorded metrics
     pub statsd_host: Option<String>,
     /// The port number to send recorded metrics
@@ -149,7 +155,8 @@ impl Default for Settings {
             endpoint_scheme: "http".to_owned(),
             endpoint_hostname: "localhost".to_owned(),
             endpoint_port: 8082,
-            crypto_key: format!("[{}]", Fernet::generate_key()),
+            crypto_key: String::new(),
+            crypto_keys: format!("[{}]", Fernet::generate_key()),
             statsd_host: Some("localhost".to_owned()),
             // Matches the legacy value
             statsd_label: "autoconnect".to_owned(),
@@ -190,9 +197,10 @@ impl Settings {
         s = s.add_source(Environment::with_prefix(&ENV_PREFIX.to_uppercase()).separator("__"));
 
         let built = s.build()?;
-        let s = built.try_deserialize::<Settings>()?;
-        s.validate()?;
-        Ok(s)
+        let mut settings = built.try_deserialize::<Settings>()?;
+        settings.normalize_crypto_keys();
+        settings.validate()?;
+        Ok(settings)
     }
 
     pub fn router_url(&self) -> String {
@@ -248,6 +256,16 @@ impl Settings {
         non_zero(self.auto_ping_interval, "AUTO_PING_INTERVAL")?;
         non_zero(self.auto_ping_timeout, "AUTO_PING_TIMEOUT")?;
         Ok(())
+    }
+
+    /// Normalize crypto key settings: prefer crypto_keys, fall back to crypto_key
+    pub fn normalize_crypto_keys(&mut self) {
+        if self.crypto_keys.is_empty() && !self.crypto_key.is_empty() {
+            warn!("AUTOCONNECT__CRYPTO_KEY is deprecated; use AUTOCONNECT__CRYPTO_KEYS instead");
+            self.crypto_keys = self.crypto_key.clone();
+        } else if self.crypto_keys.is_empty() {
+            self.crypto_keys = format!("[{}]", Fernet::generate_key());
+        }
     }
 
     pub fn test_settings() -> Self {
@@ -312,6 +330,32 @@ mod tests {
     use slog_scope::trace;
 
     #[test]
+    fn test_normalize_crypto_keys_prefers_new_field() {
+        let test_key = "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]";
+        let mut settings = Settings {
+            crypto_key: "[old-key-mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]".to_string(),
+            crypto_keys: test_key.to_string(),
+            ..Default::default()
+        };
+        settings.normalize_crypto_keys();
+        // crypto_keys should be unchanged when already set
+        assert_eq!(settings.crypto_keys, test_key);
+    }
+
+    #[test]
+    fn test_normalize_crypto_keys_falls_back_to_old_field() {
+        let test_key = "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]";
+        let mut settings = Settings {
+            crypto_key: test_key.to_string(),
+            crypto_keys: String::new(),
+            ..Default::default()
+        };
+        settings.normalize_crypto_keys();
+        // Should copy crypto_key to crypto_keys when crypto_keys is empty
+        assert_eq!(settings.crypto_keys, test_key);
+    }
+
+    #[test]
     fn test_router_url() {
         let mut settings = Settings {
             router_hostname: Some("testname".to_string()),
@@ -359,10 +403,11 @@ mod tests {
         use std::env;
         let port = format!("{ENV_PREFIX}__PORT").to_uppercase();
         let msg_limit = format!("{ENV_PREFIX}__MSG_LIMIT").to_uppercase();
-        let fernet = format!("{ENV_PREFIX}__CRYPTO_KEY").to_uppercase();
+        let fernet = format!("{ENV_PREFIX}__CRYPTO_KEYS").to_uppercase();
 
         let v1 = env::var(&port);
         let v2 = env::var(&msg_limit);
+        let v3 = env::var(&fernet);
         unsafe {
             env::set_var(&port, "9123");
             env::set_var(&msg_limit, "123");
@@ -373,9 +418,10 @@ mod tests {
         assert_eq!(&settings.port, &9123);
         assert_eq!(&settings.msg_limit, &123);
         assert_eq!(
-            &settings.crypto_key,
+            &settings.crypto_keys,
             "[mqCGb8D-N7mqx6iWJov9wm70Us6kA9veeXdb8QUuzLQ=]"
         );
+
         assert_eq!(settings.open_handshake_timeout, Duration::from_secs(5));
 
         // reset (just in case)
@@ -394,6 +440,13 @@ mod tests {
         } else {
             // TODO: Audit that the environment access only happens in single-threaded code.
             unsafe { env::remove_var(&msg_limit) };
+        }
+        // reset fernet var
+        if let Ok(p) = v3 {
+            trace!("Resetting {}", &fernet);
+            unsafe { env::set_var(&fernet, p) };
+        } else {
+            unsafe { env::remove_var(&fernet) };
         }
         // TODO: Audit that the environment access only happens in single-threaded code.
         unsafe { env::remove_var(&fernet) };

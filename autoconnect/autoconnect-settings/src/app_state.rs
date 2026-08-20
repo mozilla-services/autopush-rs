@@ -45,19 +45,19 @@ pub struct AppState {
 
 impl AppState {
     pub fn from_settings(settings: Settings) -> Result<Self, ConfigError> {
-        let crypto_key = &settings.crypto_key;
-        if !(crypto_key.starts_with('[') && crypto_key.ends_with(']')) {
+        let crypto_keys = &settings.crypto_keys;
+        if !(crypto_keys.starts_with('[') && crypto_keys.ends_with(']')) {
             return Err(ConfigError::Message(format!(
-                "Invalid {ENV_PREFIX}_CRYPTO_KEY"
+                "Invalid {ENV_PREFIX}_CRYPTO_KEYS"
             )));
         }
-        let crypto_key = &crypto_key[1..crypto_key.len() - 1];
-        debug!("🔐 Fernet keys: {:?}", &crypto_key);
-        let fernets: Vec<Fernet> = crypto_key
+        let crypto_keys = &crypto_keys[1..crypto_keys.len() - 1];
+        debug!("🔐 Fernet keys: {:?}", &crypto_keys);
+        let fernets: Vec<Fernet> = crypto_keys
             .split(',')
             .map(|s| s.trim().to_string())
             .map(|key| {
-                Fernet::new(&key).unwrap_or_else(|| panic!("Invalid {ENV_PREFIX}_CRYPTO_KEY"))
+                Fernet::new(&key).unwrap_or_else(|| panic!("Invalid {ENV_PREFIX}_CRYPTO_KEYS"))
             })
             .collect();
         let fernet = MultiFernet::new(fernets);

@@ -79,7 +79,7 @@ jobs:
       - name: Check formatting and clippy
         run: |
           cargo fmt -- --check
-          cargo clippy --all --all-targets --all-features -- -D warnings --deny=clippy::dbg_macro
+          cargo clippy --all --all-targets --all-features -- -D warnings -A deprecated --deny=clippy::dbg_macro
 
   test-unit:
     runs-on: ubuntu-latest
