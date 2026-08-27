@@ -140,7 +140,10 @@ impl WebPushRouter {
                         .incr_with_tags(MetricName::DirectDeliveryStatus)
                         .with_tag("status", status_tag)
                         .send();
-                    debug!("✉ Error while sending webpush notification: {}", error);
+                    debug!(
+                        "✉ Error while sending webpush notification to {}: {} ({})",
+                        node_id, error, status_tag
+                    );
                     self.remove_node_id(&notification.subscription.user, &node_id)
                         .await?
                 }
@@ -345,6 +348,11 @@ impl WebPushRouter {
             .remove_node_id(&user.uaid, node_id, user.connected_at, &user.version)
             .await?;
         if !removed {
+            // The predicate didn't match (stale version, or the record expired
+            // between our read and this write), so the dead node_id is still on
+            // the record and the next send for this user will pay the connect
+            // timeout all over again.
+            self.metrics.incr(MetricName::ErrorNodeStale).ok();
             debug!("✉ The node id was not removed");
         }
         Ok(())

@@ -126,6 +126,12 @@ pub enum MetricName {
     #[strum(serialize = "error.node.connect")]
     ErrorNodeConnect,
 
+    /// A stale `node_id` could not be cleared: the `remove_node_id` predicate
+    /// didn't match, so the next notification for this user will attempt direct
+    /// delivery to the same dead node and pay the connect timeout again.
+    #[strum(serialize = "error.node.stale")]
+    ErrorNodeStale,
+
     /// Disconnect semaphore full, unacked direct notifications dropped
     #[strum(serialize = "error.disconnect.semaphore_full")]
     ErrorDisconnectSemaphoreFull,
@@ -183,6 +189,11 @@ pub enum MetricName {
     // Database metric for dropping user
     #[strum(serialize = "database.drop_user")]
     DatabaseDropUser,
+
+    /// A router record was hidden because its TTL had passed. The row is left
+    /// in place for server-side GC to reclaim
+    #[strum(serialize = "database.expired_user")]
+    DatabaseExpiredUser,
 
     //
     // Reliability metrics
