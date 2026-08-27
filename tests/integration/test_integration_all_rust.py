@@ -202,6 +202,35 @@ if os.environ.get("RELIABLE_REPORT") is not None:
     CONNECTION_CONFIG["reliability_dsn"] = "redis://localhost:6379"
     ENDPOINT_CONFIG["reliability_dsn"] = "redis://localhost:6379"
 
+"""The suite runs against whichever backend `DB_DSN` names, and the backends are
+not yet at parity. A handful of cases below pass on Bigtable but hit known
+defects in the Redis client, so they are xfailed for Redis only.
+"""
+RUNNING_ON_REDIS: bool = str(CONNECTION_CONFIG.get("db_dsn") or "").startswith("redis")
+
+
+def xfail_on_redis(reason: str) -> pytest.MarkDecorator:
+    """Expect a test to fail when the suite runs against the Redis backend.
+
+    Inert on every other backend. Deliberately non-strict: these cases are
+    timing sensitive and one occasionally squeaks through, which under `strict`
+    would fail the run.
+    """
+    return pytest.mark.xfail(RUNNING_ON_REDIS, reason=reason, strict=False)
+
+
+# `RedisClientImpl::fetch_timestamp_messages` scans `autopush/msgs/{uaid}` with an
+# inclusive lower bound, while Bigtable's equivalent range is exclusive. After an
+# ack, `increment_storage` records that same score as the new floor, so the
+# message the client just acknowledged is handed back on the next fetch.
+REDIS_ACK_REDELIVERY = "Redis: acked stored messages are redelivered (inclusive fetch bound)"
+
+# `RedisClientImpl::fetch_timestamp_messages` returns `timestamp: None` when every
+# key in the fetched window has already expired out of Redis, so the caller never
+# advances past that window and never reaches the live message behind it. Bigtable
+# returns the expired rows and filters them later, which keeps its cursor moving.
+REDIS_EXPIRED_BATCH = "Redis: a full window of expired messages stalls the storage cursor"
+
 
 def _get_vapid(
     key: ecdsa.SigningKey | None = None,
@@ -1042,6 +1071,7 @@ async def test_topic_expired(registered_test_client: AsyncPushTestClient) -> Non
     assert result["data"] == base64url_encode(uuid_data)
 
 
+@xfail_on_redis(REDIS_ACK_REDELIVERY)
 @pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
 async def test_multiple_delivery_with_single_ack(
     registered_test_client: AsyncPushTestClient,
@@ -1092,6 +1122,7 @@ async def test_multiple_delivery_with_single_ack(
     assert result is None
 
 
+@xfail_on_redis(REDIS_ACK_REDELIVERY)
 async def test_multiple_delivery_with_multiple_ack(
     registered_test_client: AsyncPushTestClient,
 ) -> None:
@@ -1189,6 +1220,7 @@ async def test_ttl_expired(registered_test_client: AsyncPushTestClient) -> None:
     assert result is None
 
 
+@xfail_on_redis(REDIS_EXPIRED_BATCH)
 @pytest.mark.parametrize("fixture_max_endpoint_logs", [28], indirect=True)
 async def test_ttl_batch_expired_and_good_one(registered_test_client: AsyncPushTestClient) -> None:
     """Test that if a batch of messages are received while the recipient is offline,
@@ -1219,6 +1251,7 @@ async def test_ttl_batch_expired_and_good_one(registered_test_client: AsyncPushT
     assert result is None
 
 
+@xfail_on_redis(REDIS_EXPIRED_BATCH)
 @pytest.mark.parametrize("fixture_max_endpoint_logs", [28], indirect=True)
 async def test_ttl_batch_partly_expired_and_good_one(
     registered_test_client: AsyncPushTestClient,

@@ -13,7 +13,9 @@ EPOCH_TIME := $(shell date +"%s")
 TEST_FILE_PREFIX := $(if $(CIRCLECI),$(CIRCLE_BUILD_NUM)__$(EPOCH_TIME)__$(CIRCLE_PROJECT_REPONAME)__$(WORKFLOW)__)
 UNIT_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)unit__results.xml
 UNIT_COVERAGE_JSON := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)unit__coverage.json
+UNIT_REDIS_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)unit-redis__results.xml
 INTEGRATION_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integration__results.xml
+INTEGRATION_REDIS_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integration-redis__results.xml
 INTEGRATION_JUNIT_XML_LEGACY := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integration__legacy-results.xml
 
 # NOTE: Do not be clever.
@@ -23,6 +25,8 @@ INTEGRATION_JUNIT_XML_LEGACY := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integrati
 PYTEST_ARGS := ${PYTEST_ARGS}
 INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
 INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
+INTEGRATION_COMPOSE := $(INTEGRATION_TEST_DIR)/docker-compose.yml
+INTEGRATION_REDIS_COMPOSE := $(INTEGRATION_TEST_DIR)/docker-compose-redis.yml
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
@@ -68,18 +72,40 @@ unit-test: ## Run the Rust test suite (requires a running Bigtable emulator) and
 	mv target/nextest/ci/junit.xml $(UNIT_JUNIT_XML)
 	exit $$exit_code
 
+# Redis and Bigtable are mutually exclusive builds, so this is a separate
+# invocation rather than another feature on `unit-test`. Only autopush_common
+# carries Redis-backed tests; the other crates are storage agnostic.
+.ONESHELL:
+unit-test-redis: ## Run the Redis-backed Rust tests (requires a Redis server on $$REDIS_HOST, default localhost)
+	cargo nextest run -p autopush_common --no-default-features --features=redis --profile=ci; exit_code=$$?
+	mv target/nextest/ci/junit.xml $(UNIT_REDIS_JUNIT_XML)
+	exit $$exit_code
+
 build-integration-test:
-	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml build
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_COMPOSE) build
 
 .ONESHELL:
 integration-test:
-	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml run -it --name integration-tests tests; exit_code=$$?
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_COMPOSE) run -it --name integration-tests tests; exit_code=$$?
 	docker cp integration-tests:/code/integration__results.xml $(INTEGRATION_JUNIT_XML)
 	exit $$exit_code
 
 integration-test-clean:
-	$(DOCKER_COMPOSE) -f $(INTEGRATION_TEST_DIR)/docker-compose.yml down
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_COMPOSE) down
 	docker rm integration-tests
+
+build-integration-test-redis:
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_REDIS_COMPOSE) build
+
+.ONESHELL:
+integration-test-redis: ## Run the integration suite against a Redis backend instead of Bigtable
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_REDIS_COMPOSE) run -it --name integration-tests-redis tests; exit_code=$$?
+	docker cp integration-tests-redis:/code/integration__results.xml $(INTEGRATION_REDIS_JUNIT_XML)
+	exit $$exit_code
+
+integration-test-redis-clean:
+	$(DOCKER_COMPOSE) -f $(INTEGRATION_REDIS_COMPOSE) down
+	docker rm integration-tests-redis
 
 integration-test-legacy: ## pytest markers are stored in `tests/pytest.ini`
 	$(POETRY) -V

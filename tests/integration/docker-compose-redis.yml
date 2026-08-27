@@ -1,0 +1,39 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Runs the python integration suite against a Redis backend rather than the
+# Bigtable emulator (see `docker-compose.yml`). Redis and Bigtable are mutually
+# exclusive builds, so this builds its own `--features=redis` binaries via the
+# `CARGO_BUILD_ARGS` build arg, and skips the Bigtable table bootstrap that the
+# Dockerfile's default CMD performs.
+#
+# A distinct project name keeps this from clobbering the Bigtable images and
+# containers of the same service name.
+name: autopush-integration-redis
+
+services:
+  redis:
+    image: redis:8
+    network_mode: host
+    # Storage is per-run and throwaway; skip RDB/AOF persistence entirely.
+    command: redis-server --save "" --appendonly no
+  tests:
+    environment:
+      - DB_DSN=redis://localhost:6379
+      # Default settings
+      - DB_SETTINGS={}
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+      args:
+        CARGO_BUILD_ARGS: "--no-default-features --features=redis"
+        # Not using bigtable so don't install `cbt`
+        INSTALL_CBT: "0"
+    depends_on:
+      - redis
+    network_mode: host
+    command:
+      - sh
+      - -c
+      - poetry run pytest tests/integration/test_integration_all_rust.py --junit-xml=integration__results.xml -v

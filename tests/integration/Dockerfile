@@ -23,6 +23,10 @@ RUN cargo chef prepare --recipe-path recipe.json
 # build process change.
 FROM chef AS cacher
 COPY --from=planner /app/recipe.json recipe.json
+# Must match the `builder` stage's flags below: cook a different feature set and
+# every fingerprint changes, so `builder` rebuilds the whole dependency tree
+# instead of reusing what was cooked here. Keep the two ARGs in lockstep.
+ARG CARGO_BUILD_ARGS="--features=emulator"
 
 RUN \
   apt-get -qq update && \
@@ -34,30 +38,22 @@ RUN \
   pkg-config \
   build-essential
 
-RUN cargo chef cook --recipe-path recipe.json
+RUN cargo chef cook --recipe-path recipe.json ${CARGO_BUILD_ARGS}
 
 # =============================================================================
 # Now build the project, taking advantage of the cached dependencies from above.
-FROM chef AS builder
-ARG APT_CACHE_BUST
+FROM cacher AS builder
+# Must match the cacher's ARG above. Storage backends are mutually exclusive
+# builds, so which one the integration suite exercises is decided here; defaults
+# to Bigtable-against-the-emulator and `docker-compose-redis.yml` overrides it.
+ARG CARGO_BUILD_ARGS="--features=emulator"
 
 RUN mkdir -m 755 bin
-RUN apt-get -qq update && \
-  apt-get -qq upgrade && apt-get -qq install --no-install-recommends -y \
-  cmake \
-  clang \
-  libssl-dev \
-  ca-certificates \
-  libstdc++6 \
-  libstdc++-12-dev
-
 RUN cargo --version && \
   rustc --version
 COPY . .
-COPY --from=cacher /app/target target
-COPY --from=cacher $CARGO_HOME $CARGO_HOME
 
-RUN cargo build --features=emulator
+RUN cargo build ${CARGO_BUILD_ARGS}
 
 FROM python:3.12-slim-bookworm AS integration-tests
 
@@ -94,10 +90,14 @@ RUN python -m pip install --no-cache-dir --quiet poetry
 COPY ./tests/pyproject.toml ./tests/poetry.lock ./
 RUN poetry install --only=integration --no-root --no-interaction --no-ansi
 
-# Setup cloud big table
-RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-RUN apt-get update -y && apt install google-cloud-cli-cbt -y
+# Setup cloud big table. `cbt` is only used by `scripts/setup_bt.sh`; backends
+# that don't need it (e.g. redis) can turn it off to save some build time
+ARG INSTALL_CBT=1
+RUN if [ "${INSTALL_CBT}" = "1" ]; then \
+  curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && \
+  echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
+  apt-get update -y && apt install google-cloud-cli-cbt -y; \
+  fi
 
 COPY . /code
 
