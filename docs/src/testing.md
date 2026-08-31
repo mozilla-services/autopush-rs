@@ -48,6 +48,20 @@ Run Rust unit tests with the `cargo test` command from the root of the directory
 
 To run a specific test, provide the function name to `cargo test`. Ex. `cargo test test_function_name`.
 
+#### Redis-backed unit tests
+
+The storage backends are mutually exclusive builds, so `cargo test` only covers whichever
+one the enabled features select — by default Bigtable. The Redis client's tests live behind
+`--features=redis` and talk to a real server, so they need one running:
+
+```bash
+docker run -d --name autopush-redis -p 6379:6379 redis:8
+make unit-test-redis
+```
+
+Point them at a different server with `REDIS_HOST` (which accepts a `host:port` pair, not
+just a hostname). CI runs this as the `test-unit-redis` job.
+
 ## Integration Tests
 The autopush-rs tests are written in Python and located in the [integration test directory][integration_tests]. 
 
@@ -104,6 +118,18 @@ Integration tests in CI will be triggered automatically whenever a commit is pus
 
 #### Using Docker to run the Integration Tests.
 If you aren't needing to run specific tests you can use the containerized version of the integration tests with the following make command: `make integration-test`. This will build a docker image and set up the Big Table emulator as well as execute a default set of tests with the `not stub` marker.
+
+#### Running the Integration Tests against Redis
+
+`make integration-test-redis` runs the same suite against a Redis backend instead: it builds
+the services with `--no-default-features --features=redis` and stands up a throwaway Redis
+container in place of the Bigtable emulator. CI runs this as the `test-integration-redis` job,
+alongside the Bigtable one.
+
+The backends are not yet at parity. Cases that pass on Bigtable but hit a known defect in the
+Redis client are marked with `xfail_on_redis` in the test module, which is inert on every
+other backend. Once a defect is fixed its test starts reporting XPASS on Redis -- that is the
+cue to drop the mark.
 
 ### Debugging
 In some instances after making test changes, the test client can potentially hang in a dangling process. This can result in inaccurate results or tests not running correctly. You can run the following commands to determine the PID's of the offending processes and terminate them:
