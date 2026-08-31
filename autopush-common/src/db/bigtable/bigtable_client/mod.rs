@@ -1215,6 +1215,23 @@ impl BigTableClientImpl {
         Ok(rows.pop_first().map(|(_, v)| v))
     }
 
+    /// Read a router row *without* [expiry_filter], so callers can tell an
+    /// expired record apart from a structurally incomplete one. Once expiry
+    /// filtering has hidden the expired cells the two are indistinguishable,
+    /// and they want opposite treatment: expired rows are left for server-side
+    /// GC, incomplete ones are purged (see [DbClient::get_user]).
+    async fn read_router_row_ignoring_expiry(
+        &self,
+        row_key: &str,
+    ) -> Result<Option<row::Row>, error::BigTableError> {
+        let mut req = self.read_row_request(row_key);
+        req.filter = Some(filter_chain(vec![
+            max_versions_filter(),
+            family_filter(format!("^{ROUTER_FAMILY}$")),
+        ]));
+        self.read_row(req).await
+    }
+
     /// Take a big table ReadRowsRequest (containing the keys and filters) and return a set of row data indexed by row key.
     ///
     ///
@@ -1683,10 +1700,31 @@ impl DbClient for BigTableClientImpl {
                         Some(format!("{row:#?}")),
                     ));
                 }
-                // Special case incomplete records: they're equivalent to no
-                // user exists. Incompletes caused by the migration bug in #640
-                // will have their migration re-triggered by returning None:
-                // https://github.com/mozilla-services/autopush-rs/pull/640
+                // Differentiate between records with TTL passed vs.
+                // records missing `connected_at` due to migration bug in #640.
+                //
+                // If the record's TTL has passed, report no user but wait
+                // for server-side GC to delete.
+                //
+                // If `connected_at` is absent from migration bug in #640,
+                // purge so the migration is re-triggered on next write
+                //
+                // Re-read ignoring expiry to tell them apart. Only reachable
+                // when `connected_at` is missing from the filtered read, so it
+                // costs nothing on the common path.
+                let expired = self
+                    .read_router_row_ignoring_expiry(&row_key)
+                    .await?
+                    .is_some_and(|unfiltered| unfiltered.cells.contains_key("connected_at"));
+
+                if expired {
+                    trace!("🉑 Ignoring an expired user record for {}", row_key);
+                    self.metrics
+                        .incr_with_tags(MetricName::DatabaseExpiredUser)
+                        .send();
+                    return Ok(None);
+                }
+
                 trace!("🉑 Dropping an incomplete user record for {}", row_key);
                 self.metrics
                     .incr_with_tags(MetricName::DatabaseDropUser)
@@ -1821,8 +1859,9 @@ impl DbClient for BigTableClientImpl {
                 format!("^{column}$").into_bytes(),
             )),
         };
-        let mut filters = router_gc_policy_filter()?;
-        filters.push(cq_filter);
+        // Deliberately no expiry filter, since this is for a delete operation
+        // and we don't want keep channels that have expired
+        let filters = vec![max_versions_filter(), cq_filter];
         req.predicate_filter = Some(filter_chain(filters));
         req.true_mutations = mutations;
 
@@ -1845,7 +1884,9 @@ impl DbClient for BigTableClientImpl {
 
         let mut req = self.check_and_mutate_row_request(&row_key);
 
-        let mut filters = router_gc_policy_filter()?;
+        // Deliberately no expiry filter, since this is a delete operation
+        // and we don't want to keep stale `node_ids` (and pay connection timeout)
+        let mut filters = vec![max_versions_filter()];
         filters.extend(version_filter(version));
         req.predicate_filter = Some(filter_chain(filters));
         req.true_mutations = self.get_delete_mutations(ROUTER_FAMILY, &["node_id"], None)?;
@@ -2735,10 +2776,11 @@ mod tests {
 
     /// A router record whose core `connected_at` cell has expired (its TTL
     /// timestamp is in the past) but which still has fresher subordinate cells
-    //  must be treated as "no user": `get_user` returns `None` and purges the
-    /// leftover cells rather than erroring or resurrecting a partial record.
+    /// must be treated as "no user": `get_user` returns `None` rather than
+    /// erroring or resurrecting a partial record. It must not delete the row —
+    /// that's server-side GC's job (see the comment in `get_user`).
     #[actix_rt::test]
-    async fn expired_router_record_is_dropped() {
+    async fn expired_router_record_reads_as_absent() {
         let client = new_client().unwrap();
         let uaid = gen_test_uaid();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
@@ -2774,8 +2816,10 @@ mod tests {
         // subordinate cells, so the record reads as absent.
         assert!(client.get_user(&uaid).await.unwrap().is_none());
 
-        //  `get_user` should have purged the leftover row entirely
+        // but it does still exist
         let req = client.read_row_request(&row_key);
-        assert!(client.read_row(req).await.unwrap().is_none());
+        assert!(client.read_row(req).await.unwrap().is_some());
+
+        client.remove_user(&uaid).await.unwrap();
     }
 }
