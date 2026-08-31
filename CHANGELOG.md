@@ -1,3 +1,15 @@
+<a name="1.84.1"></a>
+## 1.84.1 (2026-08-20)
+
+### Bug Fixes
+
+- *(bigtable)* Remove expiration filter for delete operations (#1230) ([43bf2448](https://github.com/mozilla-services/autopush-rs/commit/43bf244836ffbdd5b9c04a10f10b066c0a159ead))
+- *(ci)* Run redis backend tests (#1229) ([6e452d1c](https://github.com/mozilla-services/autopush-rs/commit/6e452d1c03da23ca433423a130b4938a0e39dfcf))
+
+### Chore
+
+- *(autoconnect)* Add crypto_keys setting, deprecate crypto_key (#1226) ([2f9c8427](https://github.com/mozilla-services/autopush-rs/commit/2f9c84276ed59a650b5705c468b348442d1b6fa8))
+
 <a name="1.84.0"></a>
 ## 1.84.0 (2026-08-19)
 
