@@ -2,6 +2,8 @@
 //! the incoming request data.
 
 pub mod authorization_check;
+pub mod forward_request;
+pub mod forward_token;
 pub mod message_id;
 pub mod new_channel_data;
 pub mod notification;
