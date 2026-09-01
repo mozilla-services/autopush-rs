@@ -190,10 +190,17 @@ pub enum MetricName {
     #[strum(serialize = "database.drop_user")]
     DatabaseDropUser,
 
-    /// A router record was hidden because its TTL had passed. The row is left
-    /// in place for server-side GC to reclaim
+    /// A router record was read whose TTL had passed. It is still served: this
+    /// counts what a `max_age` GC policy on the router family would have
+    /// hidden. Tagged by `router_type` and `app_id`
     #[strum(serialize = "database.expired_user")]
     DatabaseExpiredUser,
+
+    /// Channels read from a router record whose TTL had passed. As with
+    /// [MetricName::DatabaseExpiredUser] they are still served; channel cells
+    /// expire independently of the record that holds them
+    #[strum(serialize = "database.expired_channels")]
+    DatabaseExpiredChannels,
 
     //
     // Reliability metrics
