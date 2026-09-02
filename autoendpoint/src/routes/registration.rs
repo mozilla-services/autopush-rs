@@ -169,29 +169,30 @@ pub async fn get_channels_route(
     path_args: RegistrationPathArgsWithUaid,
     app_state: Data<AppState>,
 ) -> ApiResult<HttpResponse> {
-    let uaid = path_args.user.uaid;
+    // The extractor already read the user (and 410s when there isn't one), so
+    // reuse it rather than doubling check-in's db round trips
+    let mut user = path_args.user;
+    let uaid = user.uaid;
     let db = &app_state.db;
     debug!("🌍 Getting channel IDs for UAID {uaid}");
-    //
-    if let Some(mut user) = db.get_user(&uaid).await? {
-        db.update_user(&mut user).await?;
-        // report the rough user agent so we know what clients are actively pinging us.
-        let os = auth.user_agent.metrics_os.clone();
-        let browser = auth.user_agent.metrics_browser.clone();
-        // use the "real" version here. (these are less normalized)
-        info!("Mobile client check";
-            "os" => auth.user_agent.os,
-            "os_version" => auth.user_agent.os_version,
-            "browser" => auth.user_agent.browser_name,
-            "browser_version" => auth.user_agent.browser_version);
-        // use the "metrics" version since we need to consider cardinality.
-        app_state
-            .metrics
-            .incr_with_tags(MetricName::UaConnectionCheck)
-            .with_tag("os", &os)
-            .with_tag("browser", &browser)
-            .send();
-    }
+    db.update_user(&mut user).await?;
+    // report the rough user agent so we know what clients are actively pinging us.
+    let os = auth.user_agent.metrics_os.clone();
+    let browser = auth.user_agent.metrics_browser.clone();
+    // use the "real" version here. (these are less normalized)
+    info!("Mobile client check";
+        "os" => auth.user_agent.os,
+        "os_version" => auth.user_agent.os_version,
+        "browser" => auth.user_agent.browser_name,
+        "browser_version" => auth.user_agent.browser_version);
+    // use the "metrics" version since we need to consider cardinality.
+    app_state
+        .metrics
+        .incr_with_tags(MetricName::UaConnectionCheck)
+        .with_tag("os", &os)
+        .with_tag("browser", &browser)
+        .send();
+
     let channel_ids = db.get_channels(&uaid).await?;
 
     app_state
