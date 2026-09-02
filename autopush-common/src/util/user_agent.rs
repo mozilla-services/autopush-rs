@@ -9,9 +9,25 @@ const VALID_UA_BROWSER: &[&str] = &["Chrome", "Firefox", "Safari", "Opera"];
 // See dataset.rs in https://github.com/woothee/woothee-rust for the
 // full list (WootheeResult's 'os' field may fall back to its 'name'
 // field). Windows has many values and we only care that its Windows
-const VALID_UA_OS: &[&str] = &["Firefox OS", "Linux", "Mac OSX"];
+//
+// The mobile entries matter for the bridge registration API, which only
+// mobile clients call: without them every iOS and Android check-in collapses
+// into `Other`, hiding the platform split that separates APNS from FCM.
+// iOS reports the device rather than the OS, so it arrives as three values.
+const VALID_UA_OS: &[&str] = &[
+    "Firefox OS",
+    "Linux",
+    "Mac OSX",
+    "Android",
+    "iPhone",
+    "iPad",
+    "iPod",
+];
 
-#[derive(Clone, Debug, Default)]
+/// The tag value for a user agent we could not resolve.
+const UA_METRIC_UNKNOWN: &str = "Other";
+
+#[derive(Debug)]
 pub struct UserAgentInfo {
     _user_agent_string: String,
     pub category: String,
@@ -25,6 +41,27 @@ pub struct UserAgentInfo {
     // ["smartphone", "mobilephone"].contains(category)
 }
 
+impl Default for UserAgentInfo {
+    /// Used when a request carries no `User-Agent` header at all.
+    ///
+    /// The raw fields stay empty so logs can tell a missing header from an
+    /// unparsable one, but the `metrics_*` fields take the same
+    /// [UA_METRIC_UNKNOWN] bucket an unparsable header gets, to avoid
+    /// sending empty tags to metrics backend.
+    fn default() -> Self {
+        Self {
+            _user_agent_string: String::new(),
+            category: String::new(),
+            browser_name: String::new(),
+            browser_version: String::new(),
+            metrics_browser: UA_METRIC_UNKNOWN.to_owned(),
+            metrics_os: UA_METRIC_UNKNOWN.to_owned(),
+            os_version: String::new(),
+            os: String::new(),
+        }
+    }
+}
+
 impl From<&str> for UserAgentInfo {
     fn from(user_agent_string: &str) -> Self {
         let parser = Parser::new();
@@ -36,12 +73,12 @@ impl From<&str> for UserAgentInfo {
         } else if VALID_UA_OS.contains(&wresult.os) {
             wresult.os
         } else {
-            "Other"
+            UA_METRIC_UNKNOWN
         };
         let metrics_browser = if VALID_UA_BROWSER.contains(&wresult.name) {
             wresult.name
         } else {
-            "Other"
+            UA_METRIC_UNKNOWN
         };
 
         Self {
@@ -97,6 +134,44 @@ mod tests {
         assert_eq!(ua_result.metrics_os, "Mac OSX");
         assert_eq!(ua_result.os, "Mac OSX");
         assert_eq!(ua_result.metrics_browser, "Firefox");
+    }
+
+    /// Firefox iOS reports the device, not the OS, so each iOS device kind is
+    /// its own `metrics_os` value.
+    #[test]
+    fn test_firefox_ios() {
+        let agent = r#"Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/127.0 Mobile/15E148 Safari/605.1.15"#;
+        let ua_result = UserAgentInfo::from(agent);
+        assert_eq!(ua_result.metrics_os, "iPhone");
+        assert_eq!(ua_result.os, "iPhone");
+        // woothee resolves `FxiOS/` to Firefox despite the WebKit shell, so
+        // the browser can't distinguish iOS from Android. `os` is what does.
+        assert_eq!(ua_result.metrics_browser, "Firefox");
+
+        let ipad = r#"Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/127.0 Mobile/15E148 Safari/605.1.15"#;
+        assert_eq!(UserAgentInfo::from(ipad).metrics_os, "iPad");
+    }
+
+    #[test]
+    fn test_firefox_android() {
+        let agent = r#"Mozilla/5.0 (Android 14; Mobile; rv:127.0) Gecko/127.0 Firefox/127.0"#;
+        let ua_result = UserAgentInfo::from(agent);
+        assert_eq!(ua_result.metrics_os, "Android");
+        assert_eq!(ua_result.os, "Android");
+        assert_eq!(ua_result.metrics_browser, "Firefox");
+    }
+
+    /// A request with no `User-Agent` header must still produce a usable tag
+    /// value (default).
+    #[test]
+    fn test_missing_user_agent() {
+        let ua_result = UserAgentInfo::default();
+        assert_eq!(ua_result.metrics_os, "Other");
+        assert_eq!(ua_result.metrics_browser, "Other");
+        // the raw fields stay empty, so logs can still tell a missing header
+        // apart from an unparsable one (which yields woothee's "UNKNOWN")
+        assert_eq!(ua_result.os, "");
+        assert_eq!(ua_result.browser_name, "");
     }
 
     #[test]
