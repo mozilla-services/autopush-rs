@@ -27,7 +27,7 @@ const VALID_UA_OS: &[&str] = &[
 /// The tag value for a user agent we could not resolve.
 const UA_METRIC_UNKNOWN: &str = "Other";
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct UserAgentInfo {
     _user_agent_string: String,
     pub category: String,
