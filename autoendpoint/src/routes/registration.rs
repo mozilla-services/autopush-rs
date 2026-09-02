@@ -171,6 +171,10 @@ pub async fn get_channels_route(
 ) -> ApiResult<HttpResponse> {
     // The extractor already read the user (and 410s when there isn't one), so
     // reuse it rather than doubling check-in's db round trips
+    // The bridge the device registered against: authoritative for the
+    // platform split (apns/fcm), and unlike the user agent it's always
+    // present, since it's part of the route.
+    let router_type = path_args.router_type.to_string();
     let mut user = path_args.user;
     let uaid = user.uaid;
     let db = &app_state.db;
@@ -191,6 +195,7 @@ pub async fn get_channels_route(
         .incr_with_tags(MetricName::UaConnectionCheck)
         .with_tag("os", &os)
         .with_tag("browser", &browser)
+        .with_tag("router_type", &router_type)
         .send();
 
     let channel_ids = db.get_channels(&uaid).await?;
