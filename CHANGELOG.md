@@ -1,3 +1,11 @@
+<a name="1.84.2"></a>
+## 1.84.2 (2026-09-02)
+
+### Features
+
+- *(bigtable)* Count records that would be gc'd (#1231) ([9418ea7c](https://github.com/mozilla-services/autopush-rs/commit/9418ea7cd9ef930c64dd6bf6cc975c0f53a2ff8d))
+- *(metrics)* Check in additional ua types (#1232) ([7acd8e28](https://github.com/mozilla-services/autopush-rs/commit/7acd8e28cd11b391e4d1268e6af0bcacc4bd7890))
+
 <a name="1.84.1"></a>
 ## 1.84.1 (2026-08-20)
 

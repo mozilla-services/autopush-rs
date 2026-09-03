@@ -537,7 +537,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "autoconnect"
-version = "1.84.1"
+version = "1.84.2"
 dependencies = [
  "actix-http",
  "actix-server",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_common"
-version = "1.84.1"
+version = "1.84.2"
 dependencies = [
  "actix-web",
  "autopush_common",
@@ -581,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_settings"
-version = "1.84.1"
+version = "1.84.2"
 dependencies = [
  "autoconnect_common",
  "autopush_common",
@@ -601,7 +601,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_web"
-version = "1.84.1"
+version = "1.84.2"
 dependencies = [
  "actix-codec",
  "actix-http",
@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_ws"
-version = "1.84.1"
+version = "1.84.2"
 dependencies = [
  "actix-http",
  "actix-rt",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "autoconnect_ws_sm"
-version = "1.84.1"
+version = "1.84.2"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -674,7 +674,7 @@ dependencies = [
 
 [[package]]
 name = "autoendpoint"
-version = "1.84.1"
+version = "1.84.2"
 dependencies = [
  "a2",
  "actix-cors",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "autopush_common"
-version = "1.84.1"
+version = "1.84.2"
 dependencies = [
  "actix-rt",
  "actix-web",
