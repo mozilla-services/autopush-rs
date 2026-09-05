@@ -379,7 +379,7 @@ impl DbClient for RedisClientImpl {
             // The function [fetch_timestamp_messages] takes a timestamp in input,
             // here we use the timestamp of the record
             .zadd(&exp_list_key, msg_id, expiry)
-            .zadd(&msg_list_key, msg_id, sec_since_epoch());
+            .zadd(&msg_list_key, msg_id, storable.timestamp);
 
         let _: () = pipe.exec_async(&mut con).await?;
         self.metrics
@@ -410,12 +410,14 @@ impl DbClient for RedisClientImpl {
         let exp_list_key = self.message_exp_list_key(&uaid);
         let storage_timestamp_key = self.storage_timestamp_key(&uaid);
         let mut con = self.connection().await?;
-        trace!("🐇 SEARCH: increment: {:?} - {}", &exp_list_key, timestamp);
-        let exp_id_list: Vec<String> = con.zrangebyscore(&exp_list_key, 0, timestamp).await?;
-        if !exp_id_list.is_empty() {
+        // Search msg_list_key for messages with timestamp <= the given timestamp.
+        // msg_list_key is sorted by message timestamp (after fix to save_message).
+        trace!("🐇 SEARCH: increment: {:?} - {}", &msg_list_key, timestamp);
+        let msg_id_list: Vec<String> = con.zrangebyscore(&msg_list_key, 0, timestamp).await?;
+        if !msg_id_list.is_empty() {
             // Remember, we store just the message_ids in the exp and msg lists, but need to convert back to
             // the full message keys for deletion.
-            let delete_msg_keys: Vec<String> = exp_id_list
+            let delete_msg_keys: Vec<String> = msg_id_list
                 .clone()
                 .into_iter()
                 .map(|msg_id| self.message_key(&uaid, &msg_id))
@@ -425,12 +427,12 @@ impl DbClient for RedisClientImpl {
                 "🐰🔥:rem: Deleting {} : [{:?}]",
                 msg_list_key, &delete_msg_keys
             );
-            trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
+            trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &msg_id_list);
             pipe()
                 .set_options::<_, _>(&storage_timestamp_key, timestamp, self.router_opts.clone())
                 .del(&delete_msg_keys)
-                .zrem(&msg_list_key, &exp_id_list)
-                .zrem(&exp_list_key, &exp_id_list)
+                .zrem(&msg_list_key, &msg_id_list)
+                .zrem(&exp_list_key, &msg_id_list)
                 .exec_async(&mut con)
                 .await?;
         } else {
@@ -509,7 +511,7 @@ impl DbClient for RedisClientImpl {
         let mut con = self.connection().await?;
         let msg_list_key = self.message_list_key(&uaid);
         let timestamp = if let Some(timestamp) = timestamp {
-            timestamp
+            timestamp.saturating_add(1)  // Make exclusive to avoid re-fetching ACK'd messages
         } else {
             let storage_timestamp_key = self.storage_timestamp_key(&uaid);
             con.get(&storage_timestamp_key).await.unwrap_or(0)
@@ -709,6 +711,48 @@ mod tests {
         client.increment_storage(&uaid, timestamp + 1).await?;
         let msgs = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_eq!(msgs.messages.len(), 0);
+        assert!(client.remove_user(&uaid).await.is_ok());
+        Ok(())
+    }
+
+    /// Test that [increment_storage] removes acked messages so a reconnecting
+    /// client doesn't get them delivered again.
+    ///
+    /// The message timestamp is pinned in the past (rather than `now_secs()`)
+    /// to keep this deterministic: increment_storage must find the message via
+    /// its msg_list_key score (the message timestamp), not the wall clock.
+    #[actix_rt::test]
+    async fn increment_storage_removes_acked() -> DbResult<()> {
+        init_test_logging();
+        let client = new_client()?;
+
+        let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
+        let chid = Uuid::parse_str(TEST_CHID).unwrap();
+        let timestamp = now_secs() - 60;
+
+        // purge the user record if it exists.
+        let _ = client.remove_user(&uaid).await;
+
+        let test_notification = crate::db::Notification {
+            channel_id: chid,
+            version: "test".to_owned(),
+            ttl: 300,
+            timestamp,
+            data: Some("Encrypted".into()),
+            sortkey_timestamp: Some(timestamp),
+            ..Default::default()
+        };
+        let msg_id = test_notification.chidmessageid();
+        client.save_message(&uaid, test_notification).await?;
+
+        // Simulate the client ack'ing everything up to the message's timestamp
+        client.increment_storage(&uaid, timestamp + 1).await?;
+
+        let msgs = client.fetch_timestamp_messages(&uaid, None, 999).await?;
+        assert_eq!(msgs.messages.len(), 0);
+        // The message record itself should be gone too
+        assert_eq!(client.fetch_message(&uaid, &msg_id).await?, None);
+        // clean up after the test.
         assert!(client.remove_user(&uaid).await.is_ok());
         Ok(())
     }
