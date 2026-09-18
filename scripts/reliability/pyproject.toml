@@ -18,14 +18,9 @@ dependencies = [
 license = "MPL-2.0"
 readme = "README.md"
 
-[project.optional-dependencies]
-dev = ["pytest", "pytest-asyncio"]
-
 [tool.setuptools]
 packages = []
 
-[tool.pytest.ini_options]
-# The module is async throughout, so async tests/fixtures need no decorators.
-asyncio_mode = "auto"
-# `test_reliability_report.py` needs a Redis server; see its module docstring.
-testpaths = ["test_reliability_report.py"]
+# Tests for this script live in `tests/reliability/`, with their dependencies in
+# `tests/pyproject.toml` (see `docs/src/testing.md`). Keep the runtime
+# dependencies above in sync with the `reliability` Poetry group there.

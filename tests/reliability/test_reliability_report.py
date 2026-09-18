@@ -6,6 +6,9 @@ Redis rather than a fake, because the defects they guard against are exact
 Redis semantics -- chiefly `ZRANGE ... BYSCORE` versus the default rank-index
 form -- that a reimplementation may not reproduce faithfully.
 
+The module under test is `scripts/reliability/reliability_report.py`, put on
+`sys.path` by this directory's `conftest.py`.
+
 Requires a Redis server. Set `RELIABILITY_TEST_REDIS_DSN` to override the
 default of `redis://localhost:6379`. Run via `make reliability-test`.
 """
@@ -17,7 +20,6 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 import reliability_report
 
 # A fixed day to anchor the tests; `terminal_snapshot` keys its behavior off
@@ -72,7 +74,7 @@ def make_settings() -> argparse.Namespace:
 
 @pytest.fixture
 async def client(monkeypatch):
-    """A `Redis` helper wired to a flushed test keyspace."""
+    """Provide a `Redis` helper wired to a flushed test keyspace."""
     # The Bigtable client is constructed eagerly in `Redis.__init__` and would
     # otherwise hunt for application default credentials. Pointing it at an
     # emulator keeps construction credential-free; nothing here connects.
@@ -105,9 +107,7 @@ async def seed(instance, state="delivered", value=1000):
 
 async def add_snapshot(instance, payload: dict, score: float):
     """Write a terminal snapshot at an explicit expiry score."""
-    await instance.redis.zadd(
-        instance.settings.terminal_table, {json.dumps(payload): score}
-    )
+    await instance.redis.zadd(instance.settings.terminal_table, {json.dumps(payload): score})
 
 
 # --------------------------------------------------------------------------
@@ -224,9 +224,7 @@ async def test_frequent_runs_do_not_corrupt_counters(client, monkeypatch):
     # (arrivals, reaped) per 10-minute window.
     windows = [(0, 0), (40, 0), (35, 12), (5, 30), (40, 3), (10, 45), (20, 8)]
     for arrivals, reaped in windows:
-        await client.redis.hincrby(
-            client.settings.count_table, "delivered", arrivals - reaped
-        )
+        await client.redis.hincrby(client.settings.count_table, "delivered", arrivals - reaped)
         await client.terminal_snapshot()
         current = await counts(client)
         assert current >= 0, f"counter went negative: {current}"
