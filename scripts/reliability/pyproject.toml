@@ -20,3 +20,7 @@ readme = "README.md"
 
 [tool.setuptools]
 packages = []
+
+# Tests for this script live in `tests/reliability/`, with their dependencies in
+# `tests/pyproject.toml` (see `docs/src/testing.md`). Keep the runtime
+# dependencies above in sync with the `reliability` Poetry group there.

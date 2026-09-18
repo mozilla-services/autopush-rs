@@ -55,6 +55,52 @@ jobs:
       - name: isort, black, flake8, bandit, pydocstyle and mypy
         run: make lint
 
+  # Unit tests for the Python reliability cron script
+  # (`scripts/reliability/reliability_report.py`). Needs only Redis; the script's
+  # Bigtable client is constructed but never called on these paths.
+  test-reliability:
+    runs-on: ubuntu-latest
+    env:
+      RELIABILITY_TEST_REDIS_DSN: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Create test result workspace
+        run: mkdir -p workspace/test-results
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install poetry
+        run: |
+          pip install --upgrade pip
+          pip install poetry==2.0.0
+      - name: Log in to Docker Hub
+        uses: ./.github/actions/dockerhub-login
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Started via `docker run` rather than a `services:` block so the Docker Hub
+      # login above applies: service containers are pulled before any step runs.
+      - name: Start Redis
+        run: |
+          docker run -d --name autopush-redis-reliability -p 6379:6379 redis:8 \
+            redis-server --save "" --appendonly no
+          for _ in $(seq 30); do
+            docker exec autopush-redis-reliability redis-cli ping && exit 0
+            sleep 1
+          done
+          echo "Redis did not become ready" >&2
+          exit 1
+      - name: Reliability cron tests
+        run: make reliability-test
+      - name: Store test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reliability-test-results
+          path: workspace/test-results
+
   rust-checks:
     runs-on: ubuntu-latest
     env:
