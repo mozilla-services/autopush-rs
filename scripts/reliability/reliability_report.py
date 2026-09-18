@@ -37,6 +37,10 @@ from google.cloud import storage
 
 RELIABILITY_FAMILY = "reliability"
 
+# Redis key used to serialize the daily maintenance/report run. This must be a
+# stable constant across invocations for the lock to exclude anything.
+LOCK_NAME = "LOCK_reliability_report"
+
 """
 This file is a combination tool that performs daily maintenance of the Push Reliability
 data, as well as generate a daily report of the stats. These reports are stored in a
@@ -311,11 +315,15 @@ class Redis:
         """Adjust counts to remove records we no longer care about."""
         try:
             self.log.info(f"🧹 Generating daily snapshot for {start_of_day}")
-            # get all the unresolved terminals (since we remove them after we process them.)
+            # get the unresolved terminals that have aged out (we remove them
+            # after we process them).
+            #
+            # `byscore=True` is REQUIRED (defaults to rank indexes, not scores).
             terminals = await self.redis.zrange(
                 self.settings.terminal_table,
                 0,
                 int(start_of_day.timestamp()),
+                byscore=True,
                 withscores=True,
             )
             if not terminals:
@@ -360,6 +368,17 @@ class Redis:
             hour=0, minute=0, second=0, microsecond=0
         )
 
+        # This mutates the live counters, so it must happen at most once per day.
+        # The lock is NOT sufficient for that: it is released as soon as the run
+        # ends, so a `backoffLimit` retry or a manual run re-applies the whole
+        # adjustment. Guard on the day we last completed instead. The lock gives
+        # us mutual exclusion, so a read-then-write here is safe.
+        day = start_of_day.strftime("%Y-%m-%d")
+        last_run = await self.redis.get(self.settings.snapshot_marker)
+        if last_run is not None and last_run.decode() == day:
+            self.log.info(f"🧹 Daily snapshot for {day} already taken, skipping")
+            return {}
+
         # These are defined in autopush-common::reliability::ReliabilityState::is_terminal().
         # Make sure to use the `snake_case` string variant.
         terminal_states = [
@@ -398,13 +417,17 @@ class Redis:
             )
         else:
             self.log.info(f"🧹 No matching terminal states found?")
+        # Claim the day only once the adjustment and the snapshot have both
+        # landed, so a run that died partway through is retried rather than
+        # skipped.
+        await self.redis.set(self.settings.snapshot_marker, day)
         return term_counts
 
     async def get_lock(self) -> bool:
-        """Use RedLock locking"""
-        lock_name = f"LOCK_{datetime.now().isoformat()}"
+        """Use RedLock locking to prevent concurrent reporting jobs.
+        """
         # set the default hold time fairly short, we'll extend the lock later if we succeed.
-        self.lock = self.redis.lock(lock_name, timeout=self.settings.lock_acquire_time)
+        self.lock = self.redis.lock(LOCK_NAME, timeout=self.settings.lock_acquire_time)
         # Fail the lock check quickly.
         if await self.lock.acquire(blocking_timeout=1):
             await self.lock.extend(self.settings.lock_hold_time)
@@ -426,7 +449,8 @@ async def write_report(
     for style in settings.output:
         blob_name = f"{report_name.strip()}.{style.strip(", ")}"
         log.info(f"Creating {blob_name}")
-        bucket.blob(blob_name).open("w").write(await bigtable.output(style))
+        with bucket.blob(blob_name).open("w") as fh:
+            fh.write(await bigtable.output(style))
 
 
 async def clean_bucket(
@@ -487,6 +511,7 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     parser.add_argument(
         "--bucket_retention_days",
         help="Number of days to retain generated reports in the Bucket",
+        type=int,
         default=env_args.get("AUTOTRACK_BUCKET_RETENTION_DAYS", 30),
     )
 
@@ -528,6 +553,13 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--snapshot_marker",
+        help="Name of the Redis key recording the last day the terminal "
+        "snapshot completed (guards against running it twice in one day)",
+        default=env_args.get("AUTOTRACK_SNAPSHOT_MARKER", "terminus_last_run"),
+    )
+
+    parser.add_argument(
         "--log_family",
         help="Name of the reliability report logging family, must match `autopush_common::db::bigtable::bigtable_client::RELIABLE_LOG_FAMILY`",
         default=env_args.get("AUTOTRACK_LOG_FAMILY", "reliability"),
@@ -541,24 +573,28 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
     parser.add_argument(
         "--terminal_max_retention_days",
         help="Number of days that data will be retained",
+        type=int,
         default=env_args.get("AUTOTRACK_TERM_MAX_RETENTION_DAYS", 1),
     )
 
     parser.add_argument(
         "--report_bucket_name",
-        help="Name of the bucket to store reliability reports",
-        default=env_args.get("AUTOTRACK_REPORT_BUCKET_NAME", "autopush-reliability"),
+        help="Name of the bucket to store reliability reports "
+        "(if unset, the report is written to stdout instead)",
+        default=env_args.get("AUTOTRACK_REPORT_BUCKET_NAME"),
     )
 
     parser.add_argument(
         "--lock_hold_time",
         help="seconds to hold the lock, once acquired (lock expires in # seconds)",
+        type=int,
         default=env_args.get("AUTOTRACK__LOCK_HOLD_TIME", 600),
     )
 
     parser.add_argument(
         "--lock_acquire_time",
         help="seconds to hold the lock for initial acquisition",
+        type=int,
         default=env_args.get("AUTOTRACK__LOCK_ACQUISITION_TIME", 10),
     )
 
@@ -580,11 +616,9 @@ def config(env_args: os._Environ = os.environ) -> argparse.Namespace:
             # `projects`, `instances`, & `tables`
             bt_settings[parts[i].rstrip("s")] = parts[i + 1]
         args.bigtable = bt_settings
-    # If we have a bucket, we'll write the report there.
     # Filter the provided output formats to ones we know.
-    # The reports will be date stamped and stored in the bucket with the output prefixes.
-    if args.report_bucket_name is not None:
-        formats = os.environ.get("AUTOTRACK_OUTPUT", "md json")
+    if not args.output:
+        formats = env_args.get("AUTOTRACK_OUTPUT", "md json")
         if formats:
             setattr(args, "output", clean_formats(formats, report_formats))
     return args
@@ -608,39 +642,37 @@ async def amain(log: logging.Logger, settings: argparse.Namespace):
     except google_exceptions.NotFound as e:
         log.warning(f"Garbage collection reported an error: {e}")
     if await counter.get_lock():
-        await counter.terminal_snapshot()
-        # if we have a bucket to write to, write the reports to the bucket.
-        if settings.report_bucket_name:
-            try:
-                client = storage.Client()
+        try:
+            await counter.terminal_snapshot()
+            # if we have a bucket to write to, write the reports to the bucket.
+            if settings.report_bucket_name:
                 try:
-                    bucket = client.lookup_bucket(
-                        bucket_name=settings.report_bucket_name
-                    )
-                except google_exceptions.NotFound:
-                    try:
-                        bucket = client.create_bucket(settings.report_bucket_name)
-                    except google_exceptions.Conflict:
-                        pass
-                if bucket:
+                    client = storage.Client()
+                    bucket = client.bucket(settings.report_bucket_name)
                     report_name = datetime.now().strftime("%Y-%m-%d")
                     # technically, `bucket.list_blobs` can return `.num_results` but since this is
                     # an iterator for the actual call and the call is only performed on demand, that
                     # would return 0.
                     reports = [blob for blob in bucket.list_blobs(prefix=report_name)]
                     if len(reports) == 0:
-                        if await counter.get_lock():
-                            await write_report(
-                                log, settings, bigtable, bucket, report_name
-                            )
-                            await clean_bucket(log, settings, bucket)
-                            await counter.release_lock()
-                        else:
-                            log.debug("Could not get lock, skipping...")
+                        await write_report(log, settings, bigtable, bucket, report_name)
+                        await clean_bucket(log, settings, bucket)
                     else:
-                        log.debug("Reports already generated, skipping...")
-            except google_exceptions.Forbidden as e:
-                log.error(f"Could not access bucket {settings.report_bucket_name}: {e}")
+                        log.info("Reports already generated, skipping...")
+                except google_exceptions.NotFound as e:
+                    log.error(
+                        f"Report bucket {settings.report_bucket_name} does not exist: {e}"
+                    )
+                except google_exceptions.Forbidden as e:
+                    log.error(
+                        f"Could not access bucket {settings.report_bucket_name}: {e}"
+                    )
+        finally:
+            # Always release; otherwise a failed run blocks the next one for the
+            # full `lock_hold_time`.
+            await counter.release_lock()
+    else:
+        log.info("Could not get lock, skipping...")
     # Maybe we're just interested in getting a report?
     if not settings.report_bucket_name:
         for style in settings.output:
