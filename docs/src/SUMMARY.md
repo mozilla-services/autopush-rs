@@ -4,6 +4,14 @@
      so (foo.md#bar) will create a doc named "foo.md#bar".
 -->
 * [Introduction](index.md)
+* [Developer Onboarding](onboarding/index.md)
+  * [Actors, services, and registration](onboarding/actors-and-services.md)
+  * [Desktop connection lifecycle](onboarding/connection-lifecycle.md)
+  * [Notification lifecycle](onboarding/notification-lifecycle.md)
+  * [Bigtable data model](onboarding/bigtable.md)
+  * [Observing and debugging](onboarding/observing-and-debugging.md)
+  * [Developer workflow](onboarding/developer-workflow.md)
+  * [Verification notes](onboarding/verification-notes.md)
 * [General Architecture](architecture.md)
   * [Push Reliability Tracking](reliability.md)
   * [Legacy table rotation](table_rotation.md)

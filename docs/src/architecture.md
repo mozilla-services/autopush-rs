@@ -2,6 +2,11 @@
 
 ![image](assets/push_architecture.svg)
 
+For the implementation-level connection, notification, and storage paths, see
+the [developer onboarding chapter](onboarding/index.md). This page retains some
+historical DynamoDB context; the onboarding chapter documents the current Rust
+and Bigtable behavior.
+
 ## Overview
 
 For Autopush, we will focus on the section in the above diagram in the
@@ -22,9 +27,9 @@ nodes then attempt delivery to the appropriate connection node. If the
 UAID is not online, the message may be stored in Storage in the
 appropriate message table.
 
-Push connection nodes accept websocket connections (this can easily be
-HTTP/2 for WebPush), and deliver notifications to connected clients.
-They check Storage for missed notifications as necessary.
+Push connection nodes accept WebSocket connections and deliver notifications
+to connected desktop clients. They check Storage for missed notifications as
+necessary.
 
 There will be many more Push servers to handle the connection node,
 while more Endpoint nodes can be handled as needed for notification
@@ -46,23 +51,18 @@ scale deployments of Autopush.
 
 ## WebPush Sort Keys
 
-Messages for WebPush are stored using a partition key + sort key, originally the sort key was:
+The current Bigtable row-key suffix identifies the message kind:
 
-    CHID : Encrypted(UAID: CHID)
+```text
+01:{CHID}:{TOPIC}                  replaceable Topic message
+02:{MILLISECOND-TIMESTAMP}:{CHID} ordinary timestamped message
+```
 
-The encrypted portion was returned as the Location to the Application Server. Decrypting it resulted in enough information to create the sort key so that the message could be deleted and located again.
-
-For WebPush Topic messages, a new scheme was needed since the only way to locate the prior message is the UAID + CHID + Topic. Using Encryption in the sort key is therefore not useful since it would change every update.
-
-The sort key scheme for WebPush messages is:
-
-    VERSION : CHID : TOPIC
-
-To ensure updated messages are not deleted, each message will still have an update-id key/value in its item.
-
-Non-versioned messages are assumed to be original messages from before this scheme was adopted.
-
-``VERSION`` is a 2-digit 0-padded number, starting at 01 for Topic messages.
+Both are prefixed by the 32-character, non-hyphenated UAID and `#`. A stable
+Topic key allows a newer message for the same UAID, CHID, and Topic to replace
+the pending row. The opaque `version` value stored in the row is the message ID
+used for client delivery and publisher cancellation; it is not part of the
+ordinary row key.
 
 ## Storage Tables
 
@@ -81,26 +81,23 @@ For Bigtable, Autopush presumes
 that the table `autopush` has already been allocated, and that the following Cell Families
 have been created:
 
-* `message` with a garbage collection policy set to max age of 1 second
-* `router` with a garbage collection policy set to max versions of 1
-* `message_topic` with a garbage collection policy set to max versions of 1 or max age of 1 second
+* `message` with a garbage collection policy of max age 1 second **or** max
+  versions 1;
+* `message_topic` with the same policy;
+* `router` with max versions 1;
+* `reliability` with max age 1 second **or** max versions 1.
 
-the following BASH script may be a useful example. It presumes that the [google-cloud-sdk](https://cloud.google.com/cli) has already been installed and initialized.
+Message and reliability cells use future timestamps to turn the one-second age
+policy into their effective TTL. For the full explanation, see
+[Bigtable data model](onboarding/bigtable.md#message-expiry-mechanism).
+
+The repository setup script is the maintained example. It presumes that the
+[google-cloud-sdk](https://cloud.google.com/cli) has been installed and
+initialized:
 
 ```bash
-PROJECT=test &&\
-INSTANCE=test &&\
-DATABASE=autopush &&\
-MESSAGE=message &&\
-TOPIC=message_topic &&\
-ROUTER=router &&\
-cbt -project $PROJECT -instance $INSTANCE createtable $DATABASE && \
-cbt -project $PROJECT -instance $INSTANCE createfamily $DATABASE $MESSAGE && \
-cbt -project $PROJECT -instance $INSTANCE createfamily $DATABASE $TOPIC && \
-cbt -project $PROJECT -instance $INSTANCE createfamily $DATABASE $ROUTER && \
-cbt -project $PROJECT -instance $INSTANCE setgcpolicy $DATABASE $MESSAGE maxage=1s && \
-cbt -project $PROJECT -instance $INSTANCE setgcpolicy $DATABASE $TOPIC maxversions=1 or maxage=1s && \
-cbt -project $PROJECT -instance $INSTANCE setgcpolicy $DATABASE $ROUTER maxversions=1
+export BIGTABLE_EMULATOR_HOST=localhost:8086
+sh scripts/setup_bt.sh test test
 ```
 
 Please note, this document will refer to the `message` table and the `router` table for
@@ -156,13 +153,17 @@ retrieval.
 The `Router` table is identified by entries with just the `UAID`, containing cells
 that are of the `router` family. These values are similar to the ones listed above.
 
-|              |                                                                                  |
-|--------------|----------------------------------------------------------------------------------|
-| Key          | `UAID`                                                                           |
-| router_type  | Router Type (See [`autoendpoint::extractors::routers::RouterType`])              |
-| node_id      | Hostname of the connection node the client is connected to.                      |
-| connected_at | Precise time (in milliseconds) the client connected to the node.                 |
-| last_connect | year-month-hour that the client has last connected.                              |
+| Field | Meaning |
+|---|---|
+| Key | The 32-character, non-hyphenated `UAID`. |
+| `router_type` | `webpush`, `fcm`, `apns`, or a legacy/test value. |
+| `router_data` | Optional router-specific JSON, including native tokens and application data for mobile clients. |
+| `node_id` | Internal URL of the autoconnect process that most recently registered a desktop UAID. It may be stale. |
+| `connected_at` | Millisecond timestamp used to resolve concurrent connection updates. |
+| `current_timestamp` | Cursor after the last fully ACKed ordinary-message batch. |
+| `record_version` | Data-model version. |
+| `version` | Random UUID used for optimistic conditional updates. |
+| `chid:<uuid>` | Empty-valued set-membership cell for a subscription channel. |
 
 ### Message Table Schema
 
@@ -188,34 +189,38 @@ blank space set for `chidmessageid`. Before storing or delivering a
 
 #### Bigtable
 
-|               |                                                                                                                                       |
-|---------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| Key           | `UAID`#`CHID`#`Message-ID`                                                                                                            |
-| data          | Payload of the message, provided in the Notification body.                                                                            |
-| headers       | HTTP headers for the Notification.                                                                                                    |
-| ttl           | Time-To-Live for the Notification.                                                                                                    |
-| timestamp     | Time (in seconds) that the message was saved.                                                                                         |
-| updateid      | UUID generated when the message is stored to track if the message is updated between a client reading it and attempting to delete it. |
+| Field | Meaning |
+|---|---|
+| Key, ordinary | `{uaid-simple}#02:{millisecond-sort-timestamp}:{hyphenated-chid}`. |
+| Key, Topic | `{uaid-simple}#01:{hyphenated-chid}:{topic}`. A later publication for this tuple overwrites the pending row. |
+| `data` | Base64URL form of the already encrypted notification body. |
+| `headers` | JSON containing the content-encoding and encryption metadata needed by Firefox. |
+| `ttl` | Effective message TTL in seconds. |
+| `timestamp` | Original publication time in Unix seconds. |
+| `version` | Opaque message ID sent to Firefox and returned in the publisher `Location` header. |
+| `reliability_id`, `reliable_state` | Optional reliability-reporting fields. |
 
 Autopush used a [table rotation system](table_rotation.md), which is now legacy. You may see some references to this as we continue to remove it.
 
 ## Push Characteristics
 
-* When the Push server has sent a client a notification, no further
-    notifications will be accepted for delivery (except in one edge
-    case). In this state, the Push server will reply to the Endpoint
-    with a 503 to indicate it cannot currently deliver the notification.
-    Once the Push server has received ACKs for all sent notifications,
-    new notifications can flow again, and a check of storage will be
-    done if the Push server had to reply with a 503. The Endpoint will
-    put the Notification in storage in this case.
-* (Edge Case) Multiple notifications can be sent at once, if a
-    notification comes in during a Storage check, but before it has
-    completed.
-* If a connected client is able to accept a notification, then the
-    Endpoint will deliver the message to the client completely bypassing
-    Storage. This Notification will be referred to as a Direct
-    Notification vs. a Stored Notification.
+* A connection node has a bounded in-process channel for each connected UAID.
+  Multiple direct notifications can be queued and tracked while waiting for
+  ACKs. If the UAID is absent or that channel cannot accept the command, the
+  current internal route returns `404`, not `503`.
+* Internal `PUT /push/{uaid}` and `PUT /notif/{uaid}` return `200` once the
+  process-local command is queued. This is not proof of a WebSocket write,
+  Bigtable read, or Firefox ACK.
+* Direct desktop delivery avoids an initial **message-row write**, but it does
+  not bypass Bigtable entirely: autoendpoint reads the router row and channel
+  set before routing every valid desktop publication.
+* Autoconnect keeps non-zero-TTL direct notifications in memory until ACK. If
+  the connection closes first, shutdown recovery writes them to Bigtable.
+  TTL-zero direct delivery is intentionally best-effort.
+* Stored notifications are sent in small batches. Autoconnect waits for all
+  outstanding direct and stored ACKs before advancing to another stored batch.
+  Topic ACKs delete the row; ordinary ACKs advance `current_timestamp`, and
+  the rows remain until TTL garbage collection.
 * (_DynamoDb (legacy)_) Provisioned Write Throughput for the Router table determines how
     many connections per second can be accepted across the entire
     cluster.
@@ -229,17 +234,12 @@ Autopush used a [table rotation system](table_rotation.md), which is now legacy.
 * (_DynamoDb (legacy)_) Provisioned Read Throughput on for the Storage table is an important
     factor in maximum notification throughput, as many slow clients may
     require frequent Storage checks.
-* If a client is reconnecting, their Router record will be old. Router
-    records have the node_id cleared optimistically by Endpoints when
-    the Endpoint discovers it cannot deliver the notification to the
-    Push node on file. If the conditional delete fails, it implies that
-    the client has during this period managed to connect somewhere
-    again. It's entirely possible that the client has reconnected and
-    checked storage before the Endpoint stored the Notification, as a
-    result the Endpoint must read the Router table again, and attempt to
-    tell the node_id for that client to check storage. Further action
-    isn't required, since any more reconnects in this period will have
-    seen the stored notification.
+* A request/transport error while calling a connection node conditionally
+  clears `node_id`. A reachable node's non-`200` response currently does not,
+  so `node_id` is a route worth trying rather than proof of a live socket.
+* After storing a notification, autoendpoint reads the router row again and,
+  if the UAID reconnected during the write, asks its node to check storage.
+  This closes the store-versus-reconnect race.
 
 ### Push Endpoint Length
 
