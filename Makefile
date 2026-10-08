@@ -4,7 +4,7 @@ CARGO = cargo
 # can confuse relative path lookups.
 # Let's be very explicit about it for now.
 TESTS_DIR := $(shell pwd)/tests
-TEST_RESULTS_DIR ?= workspace/test-results
+TEST_RESULTS_DIR ?= $(CURDIR)/workspace/test-results
 
 # In order to be consumed by the ETE Test Metric Pipeline, files need to follow a strict naming convention:
 # {job_number}__{utc_epoch_datetime}__{repository}__{workflow}__{test_suite}__results{-index}.xml
@@ -14,6 +14,7 @@ TEST_FILE_PREFIX := $(if $(CIRCLECI),$(CIRCLE_BUILD_NUM)__$(EPOCH_TIME)__$(CIRCL
 UNIT_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)unit__results.xml
 UNIT_COVERAGE_JSON := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)unit__coverage.json
 UNIT_REDIS_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)unit-redis__results.xml
+RELIABILITY_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)reliability__results.xml
 INTEGRATION_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integration__results.xml
 INTEGRATION_REDIS_JUNIT_XML := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integration-redis__results.xml
 INTEGRATION_JUNIT_XML_LEGACY := $(TEST_RESULTS_DIR)/$(TEST_FILE_PREFIX)integration__legacy-results.xml
@@ -27,6 +28,7 @@ INTEGRATION_TEST_DIR := $(TESTS_DIR)/integration
 INTEGRATION_TEST_FILE := $(INTEGRATION_TEST_DIR)/test_integration_all_rust.py
 INTEGRATION_COMPOSE := $(INTEGRATION_TEST_DIR)/docker-compose.yml
 INTEGRATION_REDIS_COMPOSE := $(INTEGRATION_TEST_DIR)/docker-compose-redis.yml
+RELIABILITY_TEST_DIR := $(TESTS_DIR)/reliability
 NOTIFICATION_TEST_DIR := $(TESTS_DIR)/notification
 LOAD_TEST_DIR := $(TESTS_DIR)/load
 POETRY := poetry --directory $(TESTS_DIR)
@@ -80,6 +82,17 @@ unit-test-redis: ## Run the Redis-backed Rust tests (requires a Redis server on 
 	cargo nextest run -p autopush_common --no-default-features --features=redis --profile=ci; exit_code=$$?
 	mv target/nextest/ci/junit.xml $(UNIT_REDIS_JUNIT_XML)
 	exit $$exit_code
+
+# Unit tests for the Python reliability cron script. Needs only a Redis server;
+# no Bigtable emulator, since the script's Bigtable client is constructed but
+# never called on these paths (the test fixture points it at an emulator host so
+# construction stays credential-free).
+.PHONY: reliability-test
+reliability-test: ## Run the reliability cron script's unit tests (requires a Redis server on $$RELIABILITY_TEST_REDIS_DSN, default redis://localhost:6379)
+	$(POETRY) install --only reliability --no-root
+	$(POETRY) run pytest $(RELIABILITY_TEST_DIR) \
+	  --junit-xml=$(RELIABILITY_JUNIT_XML) \
+	  $(PYTEST_ARGS)
 
 build-integration-test:
 	$(DOCKER_COMPOSE) -f $(INTEGRATION_COMPOSE) build

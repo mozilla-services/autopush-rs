@@ -78,6 +78,23 @@ httpx = "^0.27.2"
 fastapi = "^0.111.1"
 uvicorn = { extras = ["standard"], version = "^0.29.0" }
 
+[tool.poetry.group.reliability]
+# Optional so the heavy google-cloud stack stays out of `poetry install` for the
+# lint and integration jobs. Install with `poetry install --with reliability`
+# (or `make reliability-test`).
+optional = true
+
+[tool.poetry.group.reliability.dependencies]
+# Mirrors the runtime dependencies of `scripts/reliability/pyproject.toml` that
+# are needed to import the module under test; keep the two in sync.
+google-cloud-bigtable = "^2.26"
+google-cloud-storage = "^2.18"
+jinja2 = "^3.1"
+redis = "^5.0"
+toml = "^0.10"
+pytest = "^8.3.3"
+pytest-asyncio = "^0.23.8"
+
 [tool.poetry.group.load.dependencies]
 locust = "^2.32.1"
 numpy = "^1.26.4"
