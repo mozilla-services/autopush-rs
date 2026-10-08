@@ -88,7 +88,11 @@ slog-envlogger = "=2.2.0"
 slog-mozlog-json = "=0.1"
 slog-scope = "=4.4"
 slog-stdlog = "=4.1"
-slog-term = "=2.6"
+# 2.9 drops the unmaintained/unsound `atty` (RUSTSEC-2024-0375,
+# RUSTSEC-2021-0145) for `is-terminal`, and the unmaintained `term` 0.6
+# (RUSTSEC-2018-0015) for `term` 1.x. Needs only `slog ^2`, so the `=2.7` slog
+# pin above still holds.
+slog-term = "=2.9"
 strum = { version = "0.28", features = ["derive"] }
 strum_macros = "0.28"
 thiserror = "2.0"
