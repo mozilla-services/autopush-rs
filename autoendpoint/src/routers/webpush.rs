@@ -17,6 +17,7 @@ use crate::headers::vapid::VapidHeaderWithKey;
 use crate::routers::{Router, RouterError, RouterResponse};
 
 use autopush_common::db::{User, client::DbClient};
+use autopush_common::delivery_metrics::{DeliveryPath, Outcome, emit_outcome};
 use autopush_common::metric_name::MetricName;
 use autopush_common::metrics::StatsdClientExt;
 
@@ -173,6 +174,7 @@ impl WebPushRouter {
                 // TODO: include `internal` if meta is set.
                 .with_tag("topic", &topic)
                 .send();
+            emit_outcome(&self.metrics, DeliveryPath::Ws, Outcome::Expired);
             #[cfg(feature = "reliable_report")]
             notification
                 .record_reliability(
@@ -229,16 +231,6 @@ impl WebPushRouter {
                 trace!("Response = {:?}", response);
                 if response.status() == 200 {
                     trace!("✉ Node has delivered the message");
-                    self.metrics
-                        .time_with_tags(
-                            MetricName::NotificationTotalRequestTime.as_ref(),
-                            (notification.timestamp - autopush_common::util::sec_since_epoch())
-                                * 1000,
-                        )
-                        .with_tag("platform", "websocket")
-                        .with_tag("app_id", "direct")
-                        .send();
-
                     Ok(self.make_delivered_response(&notification))
                 } else {
                     trace!("✉ Node has not delivered the message, returning stored response");

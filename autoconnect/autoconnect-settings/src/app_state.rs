@@ -16,6 +16,7 @@ use autoconnect_common::{
     registry::ClientRegistry,
 };
 use autopush_common::db::{DbSettings, StorageType, client::DbClient};
+use autopush_common::delivery_metrics::DeliveryMetrics;
 #[cfg(feature = "reliable_report")]
 use autopush_common::reliability::PushReliability;
 
@@ -26,6 +27,8 @@ pub struct AppState {
     /// Handle to the data storage object
     pub db: Box<dyn DbClient>,
     pub metrics: Arc<StatsdClient>,
+    /// Prometheus histograms served from the internal router's `/metrics`
+    pub delivery_metrics: Arc<DeliveryMetrics>,
     pub http: reqwest::Client,
 
     /// Encryption object for the endpoint URL
@@ -130,6 +133,7 @@ impl AppState {
         Ok(Self {
             db,
             metrics,
+            delivery_metrics: Arc::new(DeliveryMetrics::new()),
             http,
             fernet,
             clients: Arc::new(ClientRegistry::with_channel_capacity(

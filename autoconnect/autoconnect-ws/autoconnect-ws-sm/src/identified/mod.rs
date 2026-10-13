@@ -218,7 +218,9 @@ impl WebPushClient {
     /// Direct messages are solely stored in memory until Ack'd by the Client,
     /// so on shutdown, any not Ack'd are stored in the db to not be lost
     fn save_and_notify_unacked_direct_notifs(&mut self) {
-        let notif_map = mem::take(&mut self.ack_state.unacked_direct_notifs);
+        let mut notif_map = mem::take(&mut self.ack_state.unacked_direct_notifs);
+        // TTL=0 notifications are delivered immediately or not at all
+        notif_map.retain(|_, notif| notif.ttl != 0);
         trace!(
             "👁‍🗨WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
             notif_map.len()
@@ -416,7 +418,7 @@ mod tests {
     use uuid::Uuid;
 
     use autoconnect_common::{
-        protocol::{ClientMessage, ServerMessage, ServerNotification},
+        protocol::{ClientAck, ClientMessage, ServerMessage, ServerNotification},
         test_support::{DUMMY_CHID, DUMMY_UAID, UA},
     };
     use autoconnect_settings::AppState;
@@ -459,6 +461,95 @@ mod tests {
         let (mut client, _) = wpclient(DUMMY_UAID, Default::default()).await;
         let pong = client.on_client_msg(ClientMessage::Ping).await.unwrap();
         assert!(matches!(pong.as_slice(), [ServerMessage::Ping]));
+    }
+
+    #[actix_rt::test]
+    async fn direct_ack_records_delivery() {
+        let app_state = AppState::default();
+        let delivery_metrics = app_state.delivery_metrics.clone();
+        let (mut client, _) = wpclient(DUMMY_UAID, app_state).await;
+        let notif = Notification {
+            version: "v1".to_owned(),
+            received_ms: Some(ms_since_epoch() - 2_000),
+            ..new_timestamp_notif(&DUMMY_CHID, 60)
+        };
+        let smsgs = client
+            .on_server_notif(ServerNotification::Notification(notif))
+            .await
+            .unwrap();
+        assert!(matches!(smsgs.as_slice(), [ServerMessage::Notification(_)]));
+
+        client
+            .on_client_msg(ClientMessage::Ack {
+                updates: vec![ClientAck {
+                    channel_id: DUMMY_CHID,
+                    version: "v1".to_owned(),
+                    code: Some(101),
+                }],
+            })
+            .await
+            .unwrap();
+
+        let report = delivery_metrics.encode().unwrap();
+        // Received 2s before the ACK
+        assert!(
+            report.contains(
+                r#"autopush_delivery_seconds_bucket{le="1.0",path="ws",route="direct"} 0"#
+            )
+        );
+        assert!(
+            report.contains(
+                r#"autopush_delivery_seconds_bucket{le="2.5",path="ws",route="direct"} 1"#
+            )
+        );
+        // Not a stored message
+        assert!(report.contains("autopush_stored_delivery_after_connect_seconds_count 0"));
+    }
+
+    #[actix_rt::test]
+    async fn direct_ttl0_ack_records_delivery_and_is_not_stored() {
+        let mut db = MockDbClient::new();
+        // TTL=0 notifications are never saved on shutdown
+        db.expect_save_messages().never();
+        let app_state = AppState {
+            db: db.into_boxed_arc(),
+            ..Default::default()
+        };
+        let delivery_metrics = app_state.delivery_metrics.clone();
+        let (mut client, _) = wpclient(DUMMY_UAID, app_state).await;
+        let notif = Notification {
+            version: "v1".to_owned(),
+            received_ms: Some(ms_since_epoch()),
+            ..new_timestamp_notif(&DUMMY_CHID, 0)
+        };
+        client
+            .on_server_notif(ServerNotification::Notification(notif))
+            .await
+            .unwrap();
+        // A second TTL=0 notification left unacked at shutdown
+        let notif = Notification {
+            version: "v2".to_owned(),
+            ..new_timestamp_notif(&DUMMY_CHID, 0)
+        };
+        client
+            .on_server_notif(ServerNotification::Notification(notif))
+            .await
+            .unwrap();
+
+        client
+            .on_client_msg(ClientMessage::Ack {
+                updates: vec![ClientAck {
+                    channel_id: DUMMY_CHID,
+                    version: "v1".to_owned(),
+                    code: Some(100),
+                }],
+            })
+            .await
+            .unwrap();
+        let report = delivery_metrics.encode().unwrap();
+        assert!(report.contains(r#"autopush_delivery_seconds_count{path="ws",route="direct"} 1"#));
+
+        client.shutdown(None);
     }
 
     #[actix_rt::test]

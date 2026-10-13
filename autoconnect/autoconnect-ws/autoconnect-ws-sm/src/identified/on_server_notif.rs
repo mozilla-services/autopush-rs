@@ -5,8 +5,12 @@ use cadence::{Counted, Timed};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autopush_common::{
-    db::CheckStorageResponse, metric_name::MetricName, metrics::StatsdClientExt,
-    notification::Notification, util::sec_since_epoch,
+    db::CheckStorageResponse,
+    delivery_metrics::{DeliveryPath, Outcome, emit_outcome},
+    metric_name::MetricName,
+    metrics::StatsdClientExt,
+    notification::Notification,
+    util::sec_since_epoch,
 };
 
 use super::WebPushClient;
@@ -68,12 +72,11 @@ impl WebPushClient {
         // The notification we return here is sent directly to the client.
         // No reliability state is recorded.
         let response = notif.clone();
-        if notif.ttl != 0 {
-            // Consume the original notification by adding it to the
-            // unacked map. This will eventually record the state.
-            let key = notif.version.clone();
-            self.ack_state.unacked_direct_notifs.insert(key, notif);
-        }
+        // Consume the original notification by adding it to the unacked map so
+        // the client's ACK records its delivery. TTL=0 notifications are
+        // tracked too, but are dropped rather than stored on shutdown.
+        let key = notif.version.clone();
+        self.ack_state.unacked_direct_notifs.insert(key, notif);
         self.emit_send_metrics(&response, SendSource::Direct);
         Ok(ServerMessage::Notification(response))
     }
@@ -154,6 +157,7 @@ impl WebPushClient {
             if !msg.expired(now_sec) {
                 return true;
             }
+            emit_outcome(&self.app_state.metrics, DeliveryPath::Ws, Outcome::Expired);
             if msg.sortkey_timestamp.is_none() {
                 expired_messages.push(msg.clone());
             }

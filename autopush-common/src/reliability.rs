@@ -536,6 +536,39 @@ impl PushReliability {
 
 const METRIC_NAME: &str = "autopush_reliability";
 
+/// A "family" is a grouping of metrics.
+/// we specify this as the ("label", "label value") which index to a Gauge.
+pub type ReportFamily = Family<Vec<(&'static str, String)>, Gauge>;
+
+/// Register the reliability state gauges with the given registry.
+pub fn register_report(registry: &mut Registry) -> ReportFamily {
+    let family = ReportFamily::default();
+    // This creates the top level association of the elements in the family with the metric.
+    registry.register(
+        METRIC_NAME,
+        "Count of messages at given states",
+        family.clone(),
+    );
+    family
+}
+
+/// Set the reliability state gauges from the given milestone counts.
+pub fn update_report(family: &ReportFamily, values: HashMap<String, i32>) {
+    family.clear();
+    for (milestone, value) in values.into_iter() {
+        // prevent any stray leakage of invalid state data
+        if ReliabilityState::from_str(&milestone).is_err() {
+            trace!("🔍 skipping invalid state {milestone:?}");
+            continue;
+        }
+        // Specify the static "state" label name with the given milestone, and add the
+        // value as the gauge value.
+        family
+            .get_or_create(&vec![("state", milestone)])
+            .set(value.into());
+    }
+}
+
 /// Generate a Prometheus compatible report. Output should follow the
 /// [instrumentation](https://prometheus.io/docs/practices/instrumentation/) guidelines.
 ///
@@ -566,28 +599,8 @@ const METRIC_NAME: &str = "autopush_reliability";
 ///
 pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
     let mut registry = Registry::default();
-
-    // A "family" is a grouping of metrics.
-    // we specify this as the ("label", "label value") which index to a Gauge.
-    let family = Family::<Vec<(&str, String)>, Gauge>::default();
-    // This creates the top level association of the elements in the family with the metric.
-    registry.register(
-        METRIC_NAME,
-        "Count of messages at given states",
-        family.clone(),
-    );
-    for (milestone, value) in values.into_iter() {
-        // prevent any stray leakage of invalid state data
-        if ReliabilityState::from_str(&milestone).is_err() {
-            trace!("🔍 skipping invalid state {milestone:?}");
-            continue;
-        }
-        // Specify the static "state" label name with the given milestone, and add the
-        // value as the gauge value.
-        family
-            .get_or_create(&vec![("state", milestone)])
-            .set(value.into());
-    }
+    let family = register_report(&mut registry);
+    update_report(&family, values);
 
     // Return the formatted string that Prometheus will eventually read.
     let mut encoded = String::new();

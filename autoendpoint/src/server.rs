@@ -22,6 +22,7 @@ use autopush_common::db::redis::RedisClientImpl;
 use autopush_common::reliability::PushReliability;
 use autopush_common::{
     db::{DbSettings, StorageType, client::DbClient, spawn_pool_periodic_reporter},
+    delivery_metrics::DeliveryMetrics,
     metric_name::MetricName,
     middleware::sentry::SentryWrapper,
 };
@@ -33,6 +34,7 @@ use crate::routers::stub::router::StubRouter;
 use crate::routers::{apns::router::ApnsRouter, fcm::router::FcmRouter};
 use crate::routes::{
     health::{health_route, lb_heartbeat_route, log_check, status_route, version_route},
+    metrics::metrics_route,
     registration::{
         get_channels_route, new_channel_route, register_uaid_route, unregister_channel_route,
         unregister_user_route, update_token_route,
@@ -61,6 +63,8 @@ pub struct AppState {
     #[cfg(feature = "reliable_report")]
     pub reliability: Arc<PushReliability>,
     pub reliability_filter: VapidTracker,
+    /// Prometheus histograms served from `/metrics`
+    pub delivery_metrics: Arc<DeliveryMetrics>,
 }
 
 #[cfg(test)]
@@ -117,6 +121,7 @@ impl AppState {
             #[cfg(feature = "reliable_report")]
             reliability,
             reliability_filter: VapidTracker(Vec::new()),
+            delivery_metrics: Arc::new(DeliveryMetrics::new()),
         }
     }
 }
@@ -229,6 +234,7 @@ impl Server {
             #[cfg(feature = "reliable_report")]
             reliability,
             reliability_filter,
+            delivery_metrics: Arc::new(DeliveryMetrics::new()),
         };
 
         spawn_pool_periodic_reporter(
@@ -269,7 +275,7 @@ impl Server {
                     actix_web::http::Method::PUT,
                 ])
                 .max_age(3600);
-            let app = App::new()
+            App::new()
                 // Actix 4 recommends wrapping structures wtih web::Data (internally an Arc)
                 .app_data(Data::new(app_state.clone()))
                 // Extractor configuration
@@ -323,16 +329,8 @@ impl Server {
                 // Dockerflow
                 .service(web::resource("/__heartbeat__").route(web::get().to(health_route)))
                 .service(web::resource("/__lbheartbeat__").route(web::get().to(lb_heartbeat_route)))
-                .service(web::resource("/__version__").route(web::get().to(version_route)));
-            #[cfg(feature = "reliable_report")]
-            // Note: Only the endpoint returns the Prometheus "/metrics" collection report. This report contains all metrics for both
-            // connection and endpoint, inclusive. It is served here mostly for simplicity's sake (since the endpoint handles more
-            // HTTP requests than the connection server, and this will simplify metric collection and reporting.)
-            let app = app.service(
-                web::resource("/metrics")
-                    .route(web::get().to(crate::routes::reliability::report_handler)),
-            );
-            app
+                .service(web::resource("/__version__").route(web::get().to(version_route)))
+                .service(web::resource("/metrics").route(web::get().to(metrics_route)))
         })
         .bind(bind_address)?
         .run();

@@ -7,8 +7,12 @@ use autoconnect_common::{
     protocol::{BroadcastValue, ClientAck, ClientMessage, MessageType, ServerMessage},
 };
 use autopush_common::{
-    endpoint::make_endpoint, metric_name::MetricName, metrics::StatsdClientExt,
-    util::sec_since_epoch,
+    delivery_metrics::{DeliveryPath, DeliveryRoute, Outcome, emit_outcome},
+    endpoint::make_endpoint,
+    metric_name::MetricName,
+    metrics::StatsdClientExt,
+    notification::Notification,
+    util::{ms_since_epoch, sec_since_epoch},
 };
 
 use super::WebPushClient;
@@ -191,11 +195,12 @@ impl WebPushClient {
         for notif in updates {
             let key = notif.version.clone();
             // Check the map of unacked "direct" (unstored) notifications.
-            if self.ack_state.unacked_direct_notifs.remove(&key).is_some() {
+            if let Some(acked_notification) = self.ack_state.unacked_direct_notifs.remove(&key) {
                 debug!("✅ Ack (Direct)";
                        "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                        "version" => &notif.version
                 );
+                self.record_delivered(&acked_notification, DeliveryRoute::Direct);
                 self.stats.direct_acked += 1;
                 continue;
             };
@@ -217,6 +222,7 @@ impl WebPushClient {
                     .map(|t| !t.is_empty())
                     .unwrap_or(false);
                 debug!("✅ Ack notif: {:?}", &acked_notification);
+                self.record_delivered(&acked_notification, DeliveryRoute::Stored);
                 // Only force delete Topic messages, since they don't have a timestamp.
                 // Other messages persist in the database, to be, eventually, cleaned up by their
                 // TTL. We will need to update the `CurrentTimestamp` field for the channel
@@ -258,6 +264,34 @@ impl WebPushClient {
         } else {
             self.post_process_all_acked().await
         }
+    }
+
+    /// Record the delivery latency and outcome of an ACK'd notification.
+    ///
+    /// Any ACK code counts as delivered: 101 (decryption error) and 102 (not
+    /// delivered) describe the client's processing after it received the message.
+    fn record_delivered(&self, notif: &Notification, route: DeliveryRoute) {
+        let ack_ms = ms_since_epoch();
+        // `timestamp` is persisted (in seconds) for stored messages.
+        let stored_ms = notif.timestamp * 1000;
+        let received_ms = match route {
+            DeliveryRoute::Direct => notif.received_ms.unwrap_or(stored_ms),
+            DeliveryRoute::Stored => stored_ms,
+        };
+        let delivery_metrics = &self.app_state.delivery_metrics;
+        delivery_metrics.observe_delivery(DeliveryPath::Ws, route, received_ms, ack_ms);
+        if route == DeliveryRoute::Stored {
+            delivery_metrics.observe_stored_delivery_after_connect(
+                self.connected_at,
+                received_ms,
+                ack_ms,
+            );
+        }
+        emit_outcome(
+            &self.app_state.metrics,
+            DeliveryPath::Ws,
+            Outcome::Delivered,
+        );
     }
 
     /// Negative Acknowledgement (a Client error occurred) of one or more Push
