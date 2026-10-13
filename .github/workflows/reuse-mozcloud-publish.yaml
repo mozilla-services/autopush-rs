@@ -150,3 +150,97 @@ jobs:
             BUILD_ARGS=--no-default-features --features=enterprise
           tags: ${{ env.IMAGE_TAGS }}
           cache-from: type=gha
+
+  # PostgreSQL-backed images (`enterprise-beta` feature). Suffixed `_enterprise-beta`
+  # to avoid collisions. Same tag scheme as enterprise otherwise.
+  # Uses its own GHA cache scope so it doesn't clobber the Redis job's cache.
+  build-and-push-enterprise-beta:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-build-and-push
+        id: setup
+        with:
+          authenticate: ${{ inputs.push }}
+          workload_identity_provider: ${{ vars.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
+          gcp_service_account: "${{ vars.SERVICE_ACCOUNT_NAME || 'artifact-writer' }}@moz-fx-fx-enterprise-prod.iam.gserviceaccount.com"
+
+      - name: Log in to Docker Hub
+        uses: ./.github/actions/dockerhub-login
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute autoconnect tags
+        run: |
+          if [[ "${STEPS_SETUP_OUTPUTS_PUSH_LATEST}" == "true" ]]; then
+            TAGS=$(cat <<EOF
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}_enterprise-beta
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:latest_enterprise-beta
+          EOF
+          )
+          else
+            TAGS=$(cat <<EOF
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoconnect:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}_enterprise-beta
+          EOF
+          )
+          fi
+          echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
+          echo "$TAGS" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+        env:
+          STEPS_SETUP_OUTPUTS_PUSH_LATEST: ${{ steps.setup.outputs.push_latest }}
+          STEPS_SETUP_OUTPUTS_IMAGE_TAG: ${{ steps.setup.outputs.image_tag }}
+
+      - name: Build and push autoconnect (postgres) to enterprise GAR
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
+        with:
+          context: .
+          push: ${{ inputs.push }}
+          build-args: |
+            CRATE=autoconnect
+            BINARY=autoconnect
+            BUILD_ARGS=--no-default-features --features=enterprise-beta
+          tags: ${{ env.IMAGE_TAGS }}
+          cache-from: type=gha,scope=enterprise-beta
+          cache-to: type=gha,mode=max,scope=enterprise-beta
+
+      - name: Compute autoendpoint tags
+        run: |
+          if [[ "${STEPS_SETUP_OUTPUTS_PUSH_LATEST}" == "true" ]]; then
+            TAGS=$(cat <<EOF
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}_enterprise-beta
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:latest_enterprise-beta
+          EOF
+          )
+          else
+            TAGS=$(cat <<EOF
+          us-docker.pkg.dev/moz-fx-fx-enterprise-prod/fx-enterprise-private/autoendpoint:${STEPS_SETUP_OUTPUTS_IMAGE_TAG}_enterprise-beta
+          EOF
+          )
+          fi
+          echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
+          echo "$TAGS" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+        env:
+          STEPS_SETUP_OUTPUTS_PUSH_LATEST: ${{ steps.setup.outputs.push_latest }}
+          STEPS_SETUP_OUTPUTS_IMAGE_TAG: ${{ steps.setup.outputs.image_tag }}
+
+      - name: Build and push autoendpoint (postgres) to enterprise GAR
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
+        with:
+          context: .
+          push: ${{ inputs.push }}
+          build-args: |
+            CRATE=autoendpoint
+            BINARY=autoendpoint
+            BUILD_ARGS=--no-default-features --features=enterprise-beta
+          tags: ${{ env.IMAGE_TAGS }}
+          cache-from: type=gha,scope=enterprise-beta
+          cache-to: type=gha,mode=max,scope=enterprise-beta
