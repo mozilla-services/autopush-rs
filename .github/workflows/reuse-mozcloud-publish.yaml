@@ -115,8 +115,6 @@ jobs:
             BINARY=autoconnect
             BUILD_ARGS=--no-default-features --features=enterprise
           tags: ${{ env.IMAGE_TAGS }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Compute autoendpoint tags
         run: |
@@ -149,7 +147,6 @@ jobs:
             BINARY=autoendpoint
             BUILD_ARGS=--no-default-features --features=enterprise
           tags: ${{ env.IMAGE_TAGS }}
-          cache-from: type=gha
 
   # PostgreSQL-backed images (`enterprise-beta` feature). Suffixed `_enterprise-beta`
   # to avoid collisions. Same tag scheme as enterprise otherwise.
@@ -208,8 +205,6 @@ jobs:
             BINARY=autoconnect
             BUILD_ARGS=--no-default-features --features=enterprise-beta
           tags: ${{ env.IMAGE_TAGS }}
-          cache-from: type=gha,scope=enterprise-beta
-          cache-to: type=gha,mode=max,scope=enterprise-beta
 
       - name: Compute autoendpoint tags
         run: |
@@ -242,5 +237,3 @@ jobs:
             BINARY=autoendpoint
             BUILD_ARGS=--no-default-features --features=enterprise-beta
           tags: ${{ env.IMAGE_TAGS }}
-          cache-from: type=gha,scope=enterprise-beta
-          cache-to: type=gha,mode=max,scope=enterprise-beta

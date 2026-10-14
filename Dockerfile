@@ -1,6 +1,15 @@
 # NOTE: Ensure builder's Rust version matches CI's in .circleci/config.yml
 # RUST_VER
 FROM rust:1.96-bookworm AS builder
+ENV PATH=$PATH:/root/.cargo/bin
+
+# cmake is required for grpcio & google-cloud-rust
+RUN \
+    apt-get -qq update && \
+    apt-get -qq install --no-install-recommends -y cmake clang
+
+# Declared after the apt layer so differing build args don't invalidate it
+# If we want to cache more, have to use something like cargo-chef
 ARG CRATE
 ARG BUILD_ARGS
 ARG CXXFLAGS
@@ -8,12 +17,6 @@ ARG CMAKE_POLICY_VERSION_MINIMUM
 
 ADD . /app
 WORKDIR /app
-ENV PATH=$PATH:/root/.cargo/bin
-
-# cmake is required for grpcio & google-cloud-rust
-RUN \
-    apt-get -qq update && \
-    apt-get -qq install --no-install-recommends -y cmake clang
 
 RUN \
     cargo --version && \
