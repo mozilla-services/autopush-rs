@@ -550,6 +550,10 @@ pub fn register_report(registry: &mut Registry) -> ReportFamily {
 }
 
 /// Set the reliability state gauges from the given milestone counts.
+///
+/// The family is long lived, so it's cleared first: states missing from
+/// `values` (e.g. when Redis is unavailable) are dropped rather than left at
+/// their last known value.
 pub fn update_report(family: &ReportFamily, values: HashMap<String, i32>) {
     family.clear();
     for (milestone, value) in values.into_iter() {
@@ -599,6 +603,20 @@ mod tests {
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{recv}\"}} 111")));
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{trns}\"}} 444")));
         assert!(!generated.contains(&format!("{METRIC_NAME}{{state=\"biginvalid\"}} -1")));
+    }
+
+    #[test]
+    fn update_report_drops_stale_states() {
+        let mut registry = Registry::default();
+        let family = register_report(&mut registry);
+        let recv = ReliabilityState::Received.to_string();
+        update_report(&family, HashMap::from([(recv.clone(), 5)]));
+        // e.g. Redis was unavailable
+        update_report(&family, HashMap::new());
+
+        let mut generated = String::new();
+        encode(&mut generated, &registry).unwrap();
+        assert!(!generated.contains(&format!("{METRIC_NAME}{{state=\"{recv}\"}}")));
     }
 
     #[test]

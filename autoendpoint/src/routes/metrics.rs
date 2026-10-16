@@ -31,6 +31,10 @@ async fn update_reliability_report(app_state: &AppState) {
     };
     match reliability.report().await {
         Ok(values) => autopush_common::reliability::update_report(family, values),
-        Err(e) => warn!("🔍⚠️ Reliability report error: {e}"),
+        Err(e) => {
+            // Serve no reliability gauges rather than the last known values
+            family.clear();
+            warn!("🔍⚠️ Reliability report error: {e}");
+        }
     }
 }
