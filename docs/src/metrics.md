@@ -4,18 +4,20 @@ Autopush reports aggregate metrics that describe how quickly and how reliably
 notifications are delivered. They cover all traffic and never identify
 individual messages, subscriptions, or users.
 
-There are three delivery metrics:
+There are four delivery metrics:
 
 - [`autopush_delivery_seconds`](#autopush_delivery_seconds): how long delivery
   took, from receipt at autoendpoint.
 - [`autopush_stored_delivery_after_connect_seconds`](#autopush_stored_delivery_after_connect_seconds):
   how long a stored message took to deliver once the client was connected.
+- [`autopush_stored_offline_seconds`](#autopush_stored_offline_seconds): how
+  long a stored message waited for the client to connect.
 - [`notification.outcome`](#notificationoutcome): the final result of each
   message, and who was responsible when it was not delivered.
 
 ## Where metrics are published
 
-The two latency metrics are Prometheus histograms. The outcome counter is a
+The three latency metrics are Prometheus histograms. The outcome counter is a
 statsd counter, sent to the host configured by `statsd_host`.
 
 | Service      | Prometheus endpoint                                                                                    | statsd prefix                          |
@@ -83,9 +85,19 @@ The time a stored WebSocket message took to deliver once it could be delivered.
 That is from the later of when the client connected and when the message was
 received, to the client's ACK. It has no labels.
 
-This isolates the part of stored-message latency that autopush controls. The
-difference between this histogram and `autopush_delivery_seconds{route="stored"}`
-is, in aggregate, the time devices spent offline.
+This isolates the part of stored-message latency that autopush controls.
+
+### `autopush_stored_offline_seconds`
+
+The time a stored WebSocket message waited for its client to connect. That is
+from receipt at autoendpoint to the later of when the client connected and when
+the message was received. It is 0 when the client was already connected. It has
+no labels.
+
+Together with `autopush_stored_delivery_after_connect_seconds`, it splits each
+`autopush_delivery_seconds{path="ws",route="stored"}` observation in two. It
+only covers messages that were eventually delivered, so messages that expired
+before the client came back are not counted.
 
 ## `notification.outcome`
 
@@ -153,12 +165,17 @@ Non-delivery by who was responsible:
 sum by (cause, outcome) (rate(notification_outcome{outcome!="delivered"}[1h]))
 ```
 
-Mean time clients are offline before retrieving messages (only for eventually delivered, non-expired messages):
+95th percentile time clients are offline before retrieving messages (only for
+eventually delivered, non-expired messages):
 
 ```promql
-(
-  sum(rate(autopush_delivery_seconds_sum{path="ws",route="stored"}[1h]))
-  - sum(rate(autopush_stored_delivery_after_connect_seconds_sum[1h]))
-)
-/ sum(rate(autopush_delivery_seconds_count{path="ws",route="stored"}[1h]))
+histogram_quantile(0.95,
+  sum by (le) (rate(autopush_stored_offline_seconds_bucket[1h])))
+```
+
+Mean time clients are offline before retrieving messages:
+
+```promql
+sum(rate(autopush_stored_offline_seconds_sum[1h]))
+  / sum(rate(autopush_stored_offline_seconds_count[1h]))
 ```

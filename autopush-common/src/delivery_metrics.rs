@@ -177,6 +177,7 @@ pub struct DeliveryMetrics {
     registry: Registry,
     delivery_seconds: Family<DeliveryLabels, Histogram, fn() -> Histogram>,
     stored_delivery_after_connect_seconds: Histogram,
+    stored_offline_seconds: Histogram,
     /// The legacy reliability state gauges, updated on each `/metrics` request.
     #[cfg(feature = "reliable_report")]
     pub reliability_report: crate::reliability::ReportFamily,
@@ -208,12 +209,20 @@ impl DeliveryMetrics {
             Unit::Seconds,
             stored_delivery_after_connect_seconds.clone(),
         );
+        let stored_offline_seconds = delivery_histogram();
+        registry.register_with_unit(
+            "autopush_stored_offline",
+            "Time a stored message waited for the client to connect",
+            Unit::Seconds,
+            stored_offline_seconds.clone(),
+        );
         #[cfg(feature = "reliable_report")]
         let reliability_report = crate::reliability::register_report(&mut registry);
         Self {
             registry,
             delivery_seconds,
             stored_delivery_after_connect_seconds,
+            stored_offline_seconds,
             #[cfg(feature = "reliable_report")]
             reliability_report,
         }
@@ -232,17 +241,19 @@ impl DeliveryMetrics {
             .observe(elapsed_secs(start_ms, end_ms));
     }
 
-    /// Record `autopush_stored_delivery_after_connect_seconds`: the time from
-    /// when the stored message became deliverable (the later of the client
-    /// connecting and the message being received) to its ACK.
-    pub fn observe_stored_delivery_after_connect(
-        &self,
-        connected_at_ms: u64,
-        received_ms: u64,
-        ack_ms: u64,
-    ) {
+    /// Record the two parts of a stored message's delivery, split at when it
+    /// became deliverable (the later of the client connecting and the message
+    /// being received):
+    ///
+    /// - `autopush_stored_offline_seconds`: receipt to deliverable, the time
+    ///   spent waiting for the client to connect.
+    /// - `autopush_stored_delivery_after_connect_seconds`: deliverable to ACK.
+    pub fn observe_stored_delivery(&self, connected_at_ms: u64, received_ms: u64, ack_ms: u64) {
+        let deliverable_ms = connected_at_ms.max(received_ms);
+        self.stored_offline_seconds
+            .observe(elapsed_secs(received_ms, deliverable_ms));
         self.stored_delivery_after_connect_seconds
-            .observe(elapsed_secs(connected_at_ms.max(received_ms), ack_ms));
+            .observe(elapsed_secs(deliverable_ms, ack_ms));
     }
 
     /// Encode the registry in the OpenMetrics text format.
@@ -277,7 +288,7 @@ mod tests {
         let metrics = DeliveryMetrics::new();
         metrics.observe_delivery(DeliveryPath::Ws, DeliveryRoute::Direct, 1_000, 1_030);
         metrics.observe_delivery(DeliveryPath::Fcm, DeliveryRoute::Direct, 2_000, 1_000);
-        metrics.observe_stored_delivery_after_connect(10_000, 5_000, 12_000);
+        metrics.observe_stored_delivery(10_000, 5_000, 12_000);
         let report = metrics.encode().unwrap();
         assert!(report.contains("# TYPE autopush_delivery_seconds histogram"));
         assert!(report.contains("# UNIT autopush_delivery_seconds seconds"));
@@ -292,6 +303,8 @@ mod tests {
         assert!(report.contains(r#"autopush_delivery_seconds_count{path="ws",route="direct"} 1"#));
         // 12s - max(10s, 5s) = 2s
         assert!(report.contains("autopush_stored_delivery_after_connect_seconds_sum 2.0"));
+        // max(10s, 5s) - 5s = 5s
+        assert!(report.contains("autopush_stored_offline_seconds_sum 5.0"));
         assert!(report.trim_end().ends_with("# EOF"));
     }
 

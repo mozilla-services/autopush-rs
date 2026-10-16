@@ -281,11 +281,7 @@ impl WebPushClient {
         let delivery_metrics = &self.app_state.delivery_metrics;
         delivery_metrics.observe_delivery(DeliveryPath::Ws, route, received_ms, ack_ms);
         if route == DeliveryRoute::Stored {
-            delivery_metrics.observe_stored_delivery_after_connect(
-                self.connected_at,
-                received_ms,
-                ack_ms,
-            );
+            delivery_metrics.observe_stored_delivery(self.connected_at, received_ms, ack_ms);
         }
         emit_outcome(
             &self.app_state.metrics,
