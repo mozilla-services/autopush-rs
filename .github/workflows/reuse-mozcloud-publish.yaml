@@ -148,8 +148,8 @@ jobs:
             BUILD_ARGS=--no-default-features --features=enterprise
           tags: ${{ env.IMAGE_TAGS }}
 
-  # PostgreSQL-backed images (`enterprise-beta` feature). Suffixed `_enterprise-beta`
-  # to avoid collisions. Same tag scheme as enterprise otherwise.
+  # Additional redis + PostgreSQL-backed images (`enterprise-beta` feature).
+  # Suffixed `_enterprise-beta` to avoid collisions. Same tag scheme as enterprise otherwise.
   # Uses its own GHA cache scope so it doesn't clobber the Redis job's cache.
   build-and-push-enterprise-beta:
     permissions:
@@ -203,7 +203,7 @@ jobs:
           build-args: |
             CRATE=autoconnect
             BINARY=autoconnect
-            BUILD_ARGS=--no-default-features --features=enterprise-beta
+            BUILD_ARGS=--no-default-features --features=enterprise,enterprise-beta
           tags: ${{ env.IMAGE_TAGS }}
 
       - name: Compute autoendpoint tags
@@ -235,5 +235,5 @@ jobs:
           build-args: |
             CRATE=autoendpoint
             BINARY=autoendpoint
-            BUILD_ARGS=--no-default-features --features=enterprise-beta
+            BUILD_ARGS=--no-default-features --features=enterprise,enterprise-beta
           tags: ${{ env.IMAGE_TAGS }}
