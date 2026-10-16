@@ -13,7 +13,7 @@ use autoconnect_common::test_support::{
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::notification::Notification;
 
-use crate::{build_app, config};
+use crate::{build_app, config, config_router};
 
 #[ctor::ctor(unsafe)]
 fn init_test_logging() {
@@ -230,4 +230,23 @@ pub async fn broadcast_after_ping() {
         .as_object()
         .expect("!broadcasts.is_object()");
     assert_eq!(broadcasts["foo/bar"].as_str(), Some("v2"));
+}
+
+#[actix_rt::test]
+pub async fn metrics_on_router_only() {
+    let app_state = AppState::default();
+
+    let router = actix_test::start({
+        let app_state = app_state.clone();
+        move || build_app!(app_state, config_router)
+    });
+    let mut resp = router.get("/metrics").send().await.unwrap();
+    assert_eq!(resp.status(), actix_http::StatusCode::OK);
+    let body = String::from_utf8(resp.body().await.unwrap().to_vec()).unwrap();
+    // Labeled histograms are only emitted after their first observation
+    assert!(body.contains("# TYPE autopush_stored_delivery_after_connect_seconds histogram"));
+
+    let public = test_server(app_state);
+    let resp = public.get("/metrics").send().await.unwrap();
+    assert_eq!(resp.status(), actix_http::StatusCode::NOT_FOUND);
 }

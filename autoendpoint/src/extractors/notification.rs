@@ -36,6 +36,10 @@ pub struct TransportNotification<'a> {
     pub data: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
+    /// Time (in milliseconds) this notification was received, for measuring
+    /// delivery latency in autoconnect
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub received_ms: Option<u64>,
 }
 
 /// Extracts notification data from `Subscription` and request data
@@ -198,6 +202,7 @@ impl From<&Notification> for autopush_common::notification::Notification {
                     Some(headers)
                 }
             },
+            received_ms: Some(notification.sort_key_timestamp),
             #[cfg(feature = "reliable_report")]
             reliable_state: notification.reliable_state,
         }
@@ -273,6 +278,7 @@ impl Notification {
             reliable_state: self.reliable_state.map(|s| s.to_string()),
             data: self.data.as_deref(),
             headers,
+            received_ms: Some(self.sort_key_timestamp),
         })
     }
 
