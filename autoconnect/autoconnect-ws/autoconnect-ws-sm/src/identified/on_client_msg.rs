@@ -191,6 +191,7 @@ impl WebPushClient {
     async fn ack(&mut self, updates: &[ClientAck]) -> Result<Vec<ServerMessage>, SMError> {
         trace!("✅ WebPushClient:ack"; "message_type" => MessageType::Ack.as_ref());
         let _ = self.app_state.metrics.incr(MetricName::UaCommandAck);
+        let ack_ms = ms_since_epoch();
 
         for notif in updates {
             let key = notif.version.clone();
@@ -200,7 +201,7 @@ impl WebPushClient {
                        "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                        "version" => &notif.version
                 );
-                self.record_delivered(&acked_notification, DeliveryRoute::Direct);
+                self.record_delivered(&acked_notification, DeliveryRoute::Direct, ack_ms);
                 self.stats.direct_acked += 1;
                 continue;
             };
@@ -210,7 +211,7 @@ impl WebPushClient {
                        "channel_id" => notif.channel_id.as_hyphenated().to_string(),
                        "version" => &notif.version
                 );
-                self.record_delivered(&acked_notification, DeliveryRoute::Direct);
+                self.record_delivered(&acked_notification, DeliveryRoute::Direct, ack_ms);
                 self.stats.direct_acked += 1;
                 continue;
             };
@@ -232,7 +233,6 @@ impl WebPushClient {
                     .map(|t| !t.is_empty())
                     .unwrap_or(false);
                 debug!("✅ Ack notif: {:?}", &acked_notification);
-                self.record_delivered(&acked_notification, DeliveryRoute::Stored);
                 // Only force delete Topic messages, since they don't have a timestamp.
                 // Other messages persist in the database, to be, eventually, cleaned up by their
                 // TTL. We will need to update the `CurrentTimestamp` field for the channel
@@ -248,19 +248,22 @@ impl WebPushClient {
                         .db
                         .remove_message(&self.uaid, chid_message_id)
                         .await?;
+                    // Recorded once removed: until then it may be read again
+                    self.record_delivered(&acked_notification, DeliveryRoute::Stored, ack_ms);
                     // NOTE: timestamp messages may still be in state of flux: they're not fully
                     // ack'd (removed/unable to be resurrected) until increment_storage is called,
-                    // so their reliability is recorded there
+                    // so their delivery (and reliability) is recorded there
                     #[cfg(feature = "reliable_report")]
                     acked_notification
                         .record_reliability(&self.app_state.reliability, notif.reliability_state())
                         .await;
-                }
-                #[cfg(feature = "reliable_report")]
-                if !is_topic {
+                } else {
                     self.ack_state
                         .acked_stored_timestamp_notifs
-                        .push(acked_notification);
+                        .push(super::AckedNotification {
+                            notif: acked_notification,
+                            ack_ms,
+                        });
                 }
                 self.stats.stored_acked += 1;
                 continue;
@@ -280,8 +283,7 @@ impl WebPushClient {
     ///
     /// Any ACK code counts as delivered: 101 (decryption error) and 102 (not
     /// delivered) describe the client's processing after it received the message.
-    fn record_delivered(&self, notif: &Notification, route: DeliveryRoute) {
-        let ack_ms = ms_since_epoch();
+    pub(super) fn record_delivered(&self, notif: &Notification, route: DeliveryRoute, ack_ms: u64) {
         // `timestamp` is persisted (in seconds) for stored messages.
         let stored_ms = notif.timestamp * 1000;
         let received_ms = match route {

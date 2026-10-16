@@ -4,7 +4,7 @@
 //! tracking individual messages. Latency is recorded in Prometheus histograms
 //! (served from `/metrics`) so quantiles can be aggregated across pods and time
 //! windows. Terminal outcomes are statsd counters (`notification.outcome`).
-use cadence::StatsdClient;
+use cadence::{Counted, StatsdClient};
 use prometheus_client::{
     encoding::{EncodeLabelSet, EncodeLabelValue, LabelValueEncoder, text::encode},
     metrics::{family::Family, histogram::Histogram},
@@ -12,7 +12,6 @@ use prometheus_client::{
 };
 
 use crate::metric_name::MetricName;
-use crate::metrics::StatsdClientExt;
 
 /// Latency histogram bucket boundaries, in seconds.
 ///
@@ -147,8 +146,16 @@ impl Outcome {
 
 /// Increment `notification.outcome`.
 pub fn emit_outcome(metrics: &StatsdClient, path: DeliveryPath, outcome: Outcome) {
+    emit_outcomes(metrics, path, outcome, 1);
+}
+
+/// Add `count` to `notification.outcome`.
+pub fn emit_outcomes(metrics: &StatsdClient, path: DeliveryPath, outcome: Outcome, count: i64) {
+    if count == 0 {
+        return;
+    }
     metrics
-        .incr_with_tags(MetricName::NotificationOutcome)
+        .count_with_tags(MetricName::NotificationOutcome.as_ref(), count)
         .with_tag("path", path.as_str())
         .with_tag("outcome", outcome.as_str())
         .with_tag("cause", outcome.cause().as_str())
