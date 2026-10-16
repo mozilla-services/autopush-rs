@@ -186,8 +186,9 @@ pub struct DeliveryMetrics {
     stored_delivery_after_connect_seconds: Histogram,
     stored_offline_seconds: Histogram,
     /// The legacy reliability state gauges, updated on each `/metrics` request.
+    /// Only registered by autoendpoint (see `with_reliability_report`).
     #[cfg(feature = "reliable_report")]
-    pub reliability_report: crate::reliability::ReportFamily,
+    pub reliability_report: Option<crate::reliability::ReportFamily>,
 }
 
 impl Default for DeliveryMetrics {
@@ -198,6 +199,18 @@ impl Default for DeliveryMetrics {
 
 impl DeliveryMetrics {
     pub fn new() -> Self {
+        Self::build(false)
+    }
+
+    /// Also register the legacy reliability state gauges. Only autoendpoint
+    /// serves these, since only it updates them.
+    #[cfg(feature = "reliable_report")]
+    pub fn with_reliability_report() -> Self {
+        Self::build(true)
+    }
+
+    #[cfg_attr(not(feature = "reliable_report"), allow(unused_variables))]
+    fn build(with_reliability_report: bool) -> Self {
         let mut registry = Registry::default();
         let delivery_seconds =
             Family::<DeliveryLabels, Histogram, fn() -> Histogram>::new_with_constructor(
@@ -224,7 +237,8 @@ impl DeliveryMetrics {
             stored_offline_seconds.clone(),
         );
         #[cfg(feature = "reliable_report")]
-        let reliability_report = crate::reliability::register_report(&mut registry);
+        let reliability_report =
+            with_reliability_report.then(|| crate::reliability::register_report(&mut registry));
         Self {
             registry,
             delivery_seconds,
@@ -313,6 +327,23 @@ mod tests {
         // max(10s, 5s) - 5s = 5s
         assert!(report.contains("autopush_stored_offline_seconds_sum 5.0"));
         assert!(report.trim_end().ends_with("# EOF"));
+    }
+
+    #[test]
+    fn reliability_report_is_opt_in() {
+        let report = DeliveryMetrics::new().encode().unwrap();
+        assert!(!report.contains("autopush_reliability"));
+        #[cfg(feature = "reliable_report")]
+        {
+            assert!(DeliveryMetrics::new().reliability_report.is_none());
+            let metrics = DeliveryMetrics::with_reliability_report();
+            crate::reliability::update_report(
+                metrics.reliability_report.as_ref().unwrap(),
+                std::collections::HashMap::from([("received".to_owned(), 5)]),
+            );
+            let report = metrics.encode().unwrap();
+            assert!(report.contains(r#"autopush_reliability{state="received"} 5"#));
+        }
     }
 
     #[test]

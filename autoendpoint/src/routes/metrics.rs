@@ -26,11 +26,11 @@ async fn update_reliability_report(app_state: &AppState) {
     if let Err(e) = reliability.gc().await {
         warn!("🔍⚠️ Reliability gc error: {e}");
     }
+    let Some(family) = &app_state.delivery_metrics.reliability_report else {
+        return;
+    };
     match reliability.report().await {
-        Ok(values) => autopush_common::reliability::update_report(
-            &app_state.delivery_metrics.reliability_report,
-            values,
-        ),
+        Ok(values) => autopush_common::reliability::update_report(family, values),
         Err(e) => warn!("🔍⚠️ Reliability report error: {e}"),
     }
 }

@@ -121,12 +121,21 @@ impl AppState {
             #[cfg(feature = "reliable_report")]
             reliability,
             reliability_filter: VapidTracker(Vec::new()),
-            delivery_metrics: Arc::new(DeliveryMetrics::new()),
+            delivery_metrics: Arc::new(new_delivery_metrics()),
         }
     }
 }
 
 pub struct Server;
+
+/// autoendpoint's Prometheus registry. It also serves the legacy reliability
+/// state gauges, which only autoendpoint updates.
+fn new_delivery_metrics() -> DeliveryMetrics {
+    #[cfg(feature = "reliable_report")]
+    return DeliveryMetrics::with_reliability_report();
+    #[cfg(not(feature = "reliable_report"))]
+    DeliveryMetrics::new()
+}
 
 impl Server {
     pub async fn with_settings(settings: Settings) -> ApiResult<dev::Server> {
@@ -234,7 +243,7 @@ impl Server {
             #[cfg(feature = "reliable_report")]
             reliability,
             reliability_filter,
-            delivery_metrics: Arc::new(DeliveryMetrics::new()),
+            delivery_metrics: Arc::new(new_delivery_metrics()),
         };
 
         spawn_pool_periodic_reporter(

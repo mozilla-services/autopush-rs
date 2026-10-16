@@ -245,6 +245,8 @@ pub async fn metrics_on_router_only() {
     let body = String::from_utf8(resp.body().await.unwrap().to_vec()).unwrap();
     // Labeled histograms are only emitted after their first observation
     assert!(body.contains("# TYPE autopush_stored_delivery_after_connect_seconds histogram"));
+    // Only autoendpoint serves the legacy reliability gauges
+    assert!(!body.contains("autopush_reliability"));
 
     let public = test_server(app_state);
     let resp = public.get("/metrics").send().await.unwrap();
