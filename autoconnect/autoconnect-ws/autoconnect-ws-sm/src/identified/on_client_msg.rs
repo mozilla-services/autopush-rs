@@ -204,6 +204,16 @@ impl WebPushClient {
                 self.stats.direct_acked += 1;
                 continue;
             };
+            // TTL=0 notifications are only tracked to record their delivery
+            if let Some(acked_notification) = self.ack_state.unacked_ttl0_notifs.remove(&key) {
+                debug!("✅ Ack (Direct, TTL=0)";
+                       "channel_id" => notif.channel_id.as_hyphenated().to_string(),
+                       "version" => &notif.version
+                );
+                self.record_delivered(&acked_notification, DeliveryRoute::Direct);
+                self.stats.direct_acked += 1;
+                continue;
+            };
 
             // Now, check the map of stored notifications
             #[allow(unused_mut)]

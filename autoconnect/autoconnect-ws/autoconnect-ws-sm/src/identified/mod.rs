@@ -218,9 +218,9 @@ impl WebPushClient {
     /// Direct messages are solely stored in memory until Ack'd by the Client,
     /// so on shutdown, any not Ack'd are stored in the db to not be lost
     fn save_and_notify_unacked_direct_notifs(&mut self) {
-        let mut notif_map = mem::take(&mut self.ack_state.unacked_direct_notifs);
         // TTL=0 notifications are delivered immediately or not at all
-        notif_map.retain(|_, notif| notif.ttl != 0);
+        self.ack_state.unacked_ttl0_notifs.clear();
+        let notif_map = mem::take(&mut self.ack_state.unacked_direct_notifs);
         trace!(
             "👁‍🗨WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
             notif_map.len()
@@ -376,6 +376,10 @@ type AckKey = String;
 struct AckState {
     /// Map of unAck'd directly sent (never stored) notifications
     unacked_direct_notifs: HashMap<AckKey, Notification>,
+    /// Map of unAck'd directly sent TTL=0 notifications, kept only to record
+    /// their delivery on ACK. Unlike `unacked_direct_notifs`, these are never
+    /// stored for redelivery.
+    unacked_ttl0_notifs: HashMap<AckKey, Notification>,
     /// Map of unAck'd sent notifications from storage
     unacked_stored_notifs: HashMap<AckKey, Notification>,
     /// List of Ack'd timestamp notifications from storage, cleared
@@ -406,6 +410,9 @@ struct AckState {
 impl AckState {
     /// Whether the Client has outstanding notifications sent to it that it has
     /// yet to Ack
+    ///
+    /// TTL=0 notifications are not included because they are not stored
+    /// for redelivery.
     fn unacked_notifs(&self) -> bool {
         !self.unacked_stored_notifs.is_empty() || !self.unacked_direct_notifs.is_empty()
     }
@@ -509,7 +516,8 @@ mod tests {
     #[actix_rt::test]
     async fn direct_ttl0_ack_records_delivery_and_is_not_stored() {
         let mut db = MockDbClient::new();
-        // TTL=0 notifications are never saved on shutdown
+        // TTL=0 notifications are never saved on shutdown, whether unacked or
+        // still queued
         db.expect_save_messages().never();
         let app_state = AppState {
             db: db.into_boxed_arc(),
@@ -549,6 +557,83 @@ mod tests {
         let report = delivery_metrics.encode().unwrap();
         assert!(report.contains(r#"autopush_delivery_seconds_count{path="ws",route="direct"} 1"#));
 
+        // A TTL=0 notification still queued when the session ends
+        client.on_server_notif_shutdown(ServerNotification::Notification(Notification {
+            version: "v3".to_owned(),
+            ..new_timestamp_notif(&DUMMY_CHID, 0)
+        }));
+        client.shutdown(None);
+    }
+
+    /// An unacked TTL=0 notification must not stop storage processing
+    #[actix_rt::test]
+    async fn unacked_ttl0_does_not_block_storage() {
+        let mut db = MockDbClient::new();
+        let mut seq = mockall::Sequence::new();
+        let timestamp = sec_since_epoch();
+        let stored = Notification {
+            version: "stored".to_owned(),
+            ..new_timestamp_notif(&DUMMY_CHID, 60)
+        };
+        db.expect_fetch_topic_messages()
+            .times(1)
+            .in_sequence(&mut seq)
+            .return_once(|_, _| Ok(FetchMessageResponse::default()));
+        db.expect_fetch_timestamp_messages()
+            .times(1)
+            .in_sequence(&mut seq)
+            .return_once(move |_, _, _| {
+                Ok(FetchMessageResponse {
+                    timestamp: Some(timestamp),
+                    messages: vec![stored],
+                })
+            });
+        // Acking the stored message advances storage and reads the next batch
+        db.expect_increment_storage()
+            .times(1)
+            .in_sequence(&mut seq)
+            .withf(move |_, ts| ts == &timestamp)
+            .return_once(|_, _| Ok(()));
+        db.expect_fetch_timestamp_messages()
+            .times(1)
+            .in_sequence(&mut seq)
+            .withf(move |_, ts, _| ts == &Some(timestamp))
+            .return_once(|_, _, _| Ok(FetchMessageResponse::default()));
+        db.expect_save_messages().never();
+
+        let (mut client, _) = wpclient(
+            DUMMY_UAID,
+            AppState {
+                db: db.into_boxed_arc(),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        // A TTL=0 notification the client never acks
+        client
+            .on_server_notif(ServerNotification::Notification(Notification {
+                version: "ttl0".to_owned(),
+                ..new_timestamp_notif(&DUMMY_CHID, 0)
+            }))
+            .await
+            .unwrap();
+        let smsgs = client
+            .on_server_notif(ServerNotification::CheckStorage)
+            .await
+            .unwrap();
+        assert!(matches!(smsgs.as_slice(), [ServerMessage::Notification(_)]));
+
+        client
+            .on_client_msg(ClientMessage::Ack {
+                updates: vec![ClientAck {
+                    channel_id: DUMMY_CHID,
+                    version: "stored".to_owned(),
+                    code: Some(100),
+                }],
+            })
+            .await
+            .unwrap();
         client.shutdown(None);
     }
 

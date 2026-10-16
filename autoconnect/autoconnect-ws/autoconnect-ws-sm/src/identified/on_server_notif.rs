@@ -57,10 +57,14 @@ impl WebPushClient {
 
     /// After disconnecting from the `ClientRegistry`, moves any queued Direct
     /// Push Notifications to unacked_direct_notifs (to be stored in the db on
-    /// `shutdown`)
+    /// `shutdown`). TTL=0 notifications are dropped, since they can't be
+    /// delivered later.
     pub fn on_server_notif_shutdown(&mut self, snotif: ServerNotification) {
         trace!("WebPushClient::on_server_notif_shutdown");
         if let ServerNotification::Notification(notif) = snotif {
+            if notif.ttl == 0 {
+                return;
+            }
             let key = notif.version.clone();
             self.ack_state.unacked_direct_notifs.insert(key, notif);
         }
@@ -72,11 +76,16 @@ impl WebPushClient {
         // The notification we return here is sent directly to the client.
         // No reliability state is recorded.
         let response = notif.clone();
-        // Consume the original notification by adding it to the unacked map so
-        // the client's ACK records its delivery. TTL=0 notifications are
-        // tracked too, but are dropped rather than stored on shutdown.
+        // Consume the original notification by adding it to an unacked map so
+        // the client's ACK records its delivery. TTL=0 notifications go in a
+        // separate map: they're never stored, and don't hold up storage
+        // processing while unacked.
         let key = notif.version.clone();
-        self.ack_state.unacked_direct_notifs.insert(key, notif);
+        if notif.ttl != 0 {
+            self.ack_state.unacked_direct_notifs.insert(key, notif);
+        } else {
+            self.ack_state.unacked_ttl0_notifs.insert(key, notif);
+        }
         self.emit_send_metrics(&response, SendSource::Direct);
         Ok(ServerMessage::Notification(response))
     }
