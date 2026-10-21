@@ -8,6 +8,11 @@
 # RUST_VER
 FROM lukemathwalker/cargo-chef:0.1.77-rust-1.96-slim-bookworm AS chef
 WORKDIR /app
+# Set here so `cacher` and `builder` share them (differing values would change
+# every fingerprint). Incremental data is useless in a one-shot build, and full
+# debuginfo bloats the cooked layer and binaries; line tables keep backtraces.
+ENV CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=line-tables-only
 
 # =============================================================================
 # Analyze the project, and produce a plan to compile its dependcies. This will
@@ -101,7 +106,9 @@ RUN if [ "${INSTALL_CBT}" = "1" ]; then \
 
 COPY . /code
 
-COPY --from=builder /app/target/debug /code/target/debug
+# Only the binaries the suite runs; the full debug target dir (deps, build,
+# incremental) is several GB and dominates image export/push time.
+COPY --from=builder /app/target/debug/autoconnect /app/target/debug/autoendpoint /code/target/debug/
 COPY --from=builder /app/version.json /code
 
 WORKDIR /code

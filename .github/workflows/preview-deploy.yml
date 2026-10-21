@@ -1,8 +1,9 @@
 # Preview / on-demand service-image deploy. Builds and pushes the autoconnect,
-# autoendpoint, and enterprise images via the shared reuse-mozcloud-publish
-# workflow. Triggered by a `preview`-labeled PR (same-repo only, for secrets/OIDC
-# safety) or manual dispatch. Intentionally NOT gated on the test suite — preview
-# is for fast iteration; the test-gated release path lives in build-test-deploy.yml.
+# autoendpoint, enterprise (Redis), and enterprise-beta (PostgreSQL) images via
+# the shared reuse-mozcloud-publish workflow. Triggered by a `preview`-labeled PR
+# (same-repo only, for secrets/OIDC safety) or manual dispatch. Intentionally NOT
+# gated on the test suite — preview is for fast iteration; the test-gated release
+# path lives in build-test-deploy.yml.
 name: preview-deploy
 
 on:
