@@ -1,12 +1,15 @@
-#[cfg(feature = "reliable_report")]
 use std::mem;
 
 use cadence::{Counted, Timed};
 
 use autoconnect_common::protocol::{ServerMessage, ServerNotification};
 use autopush_common::{
-    db::CheckStorageResponse, metric_name::MetricName, metrics::StatsdClientExt,
-    notification::Notification, util::sec_since_epoch,
+    db::CheckStorageResponse,
+    delivery_metrics::{DeliveryPath, DeliveryRoute, Outcome, emit_outcome, emit_outcomes},
+    metric_name::MetricName,
+    metrics::StatsdClientExt,
+    notification::Notification,
+    util::sec_since_epoch,
 };
 
 use super::WebPushClient;
@@ -53,10 +56,14 @@ impl WebPushClient {
 
     /// After disconnecting from the `ClientRegistry`, moves any queued Direct
     /// Push Notifications to unacked_direct_notifs (to be stored in the db on
-    /// `shutdown`)
+    /// `shutdown`). TTL=0 notifications are dropped, since they can't be
+    /// delivered later.
     pub fn on_server_notif_shutdown(&mut self, snotif: ServerNotification) {
         trace!("WebPushClient::on_server_notif_shutdown");
         if let ServerNotification::Notification(notif) = snotif {
+            if notif.ttl == 0 {
+                return;
+            }
             let key = notif.version.clone();
             self.ack_state.unacked_direct_notifs.insert(key, notif);
         }
@@ -68,11 +75,15 @@ impl WebPushClient {
         // The notification we return here is sent directly to the client.
         // No reliability state is recorded.
         let response = notif.clone();
+        // Consume the original notification by adding it to an unacked map so
+        // the client's ACK records its delivery. TTL=0 notifications go in a
+        // separate map: they're never stored, and don't hold up storage
+        // processing while unacked.
+        let key = notif.version.clone();
         if notif.ttl != 0 {
-            // Consume the original notification by adding it to the
-            // unacked map. This will eventually record the state.
-            let key = notif.version.clone();
             self.ack_state.unacked_direct_notifs.insert(key, notif);
+        } else {
+            self.ack_state.unacked_ttl0_notifs.insert(key, notif);
         }
         self.emit_send_metrics(&response, SendSource::Direct);
         Ok(ServerMessage::Notification(response))
@@ -148,6 +159,9 @@ impl WebPushClient {
         let now_sec = sec_since_epoch();
         // Topic messages require immediate deletion from the db
         let mut expired_messages = vec![];
+        // Expired timestamp messages are only skipped for good once
+        // increment_storage advances past them, so they're counted there
+        let mut expired_timestamp_count = 0;
         // NOTE: Vec::extract_if (stabilizing soon) can negate the need for the
         // inner msg.clone()
         messages.retain(|msg| {
@@ -156,9 +170,12 @@ impl WebPushClient {
             }
             if msg.sortkey_timestamp.is_none() {
                 expired_messages.push(msg.clone());
+            } else {
+                expired_timestamp_count += 1;
             }
             false
         });
+        self.ack_state.expired_stored_timestamp_count += expired_timestamp_count;
         // TODO: A batch remove_messages would be nicer
         #[allow(unused_mut)]
         for mut msg in expired_messages {
@@ -168,6 +185,7 @@ impl WebPushClient {
                 .db
                 .remove_message(&self.uaid, &chidmessageid)
                 .await?;
+            emit_outcome(&self.app_state.metrics, DeliveryPath::Ws, Outcome::Expired);
             #[cfg(feature = "reliable_report")]
             msg.record_reliability(
                 &self.app_state.reliability,
@@ -354,9 +372,26 @@ impl WebPushClient {
             .db
             .increment_storage(&self.uaid, timestamp)
             .await?;
+        // Storage has advanced past these messages, so they won't be read
+        // again: record their outcomes
+        let acked = mem::take(&mut self.ack_state.acked_stored_timestamp_notifs);
+        for acked_notif in &acked {
+            self.record_delivered(
+                &acked_notif.notif,
+                DeliveryRoute::Stored,
+                acked_notif.ack_ms,
+            );
+        }
+        let expired = mem::take(&mut self.ack_state.expired_stored_timestamp_count);
+        emit_outcomes(
+            &self.app_state.metrics,
+            DeliveryPath::Ws,
+            Outcome::Expired,
+            expired,
+        );
         #[cfg(feature = "reliable_report")]
         {
-            let mut notifs = mem::take(&mut self.ack_state.acked_stored_timestamp_notifs);
+            let mut notifs = acked.into_iter().map(|acked| acked.notif).collect();
             self.record_state(
                 &mut notifs,
                 autopush_common::reliability::ReliabilityState::Delivered,
