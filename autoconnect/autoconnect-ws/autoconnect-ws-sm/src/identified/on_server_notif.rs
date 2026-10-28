@@ -56,12 +56,13 @@ impl WebPushClient {
 
     /// After disconnecting from the `ClientRegistry`, moves any queued Direct
     /// Push Notifications to unacked_direct_notifs (to be stored in the db on
-    /// `shutdown`). TTL=0 notifications are dropped, since they can't be
-    /// delivered later.
+    /// `shutdown`). TTL=0 notifications are dropped as expired, since they
+    /// can't be delivered later.
     pub fn on_server_notif_shutdown(&mut self, snotif: ServerNotification) {
         trace!("WebPushClient::on_server_notif_shutdown");
         if let ServerNotification::Notification(notif) = snotif {
             if notif.ttl == 0 {
+                self.expire_ttl0_notifs(vec![notif]);
                 return;
             }
             let key = notif.version.clone();

@@ -19,6 +19,7 @@ use autoconnect_common::{
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
     db::User,
+    delivery_metrics::{DeliveryPath, Outcome, emit_outcomes},
     metric_name::MetricName,
     metrics::StatsdClientExt,
     notification::Notification,
@@ -219,7 +220,8 @@ impl WebPushClient {
     /// so on shutdown, any not Ack'd are stored in the db to not be lost
     fn save_and_notify_unacked_direct_notifs(&mut self) {
         // TTL=0 notifications are delivered immediately or not at all
-        self.ack_state.unacked_ttl0_notifs.clear();
+        let ttl0_notifs = mem::take(&mut self.ack_state.unacked_ttl0_notifs);
+        self.expire_ttl0_notifs(ttl0_notifs.into_values().collect());
         let notif_map = mem::take(&mut self.ack_state.unacked_direct_notifs);
         trace!(
             "👁‍🗨WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
@@ -288,6 +290,33 @@ impl WebPushClient {
             }
             Ok(())
         });
+    }
+
+    /// Record TTL=0 notifications that were dropped without an ACK as expired
+    fn expire_ttl0_notifs(&self, notifs: Vec<Notification>) {
+        if notifs.is_empty() {
+            return;
+        }
+        emit_outcomes(
+            &self.app_state.metrics,
+            DeliveryPath::Ws,
+            Outcome::Expired,
+            notifs.len() as i64,
+        );
+        #[cfg(feature = "reliable_report")]
+        {
+            let app_state = Arc::clone(&self.app_state);
+            rt::spawn(async move {
+                for mut notif in notifs {
+                    notif
+                        .record_reliability(
+                            &app_state.reliability,
+                            autopush_common::reliability::ReliabilityState::Expired,
+                        )
+                        .await;
+                }
+            });
+        }
     }
 
     /// Add User information and tags for this Client to a Sentry Event
