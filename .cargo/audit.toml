@@ -6,6 +6,7 @@ ignore = [
     "RUSTSEC-2026-0099", # Bound by rustls 0.22.4, bound by tokio-rustls 0.25, hyper-rustls 0.26, and a2 0.10
     "RUSTSEC-2026-0104", # Bound by rustls 0.22.4, bound by tokio-rustls 0.25, hyper-rustls 0.26, a2 0.10
     "RUSTSEC-2026-0258", # Bound by actix-http 3.13.3
+    "RUSTSEC-2026-0387", # crypto-bigint 0.5.5 bound by elliptic-curve 0.13 via p256/p384 0.13, bound by jsonwebtoken 10.4 (11.1 too)
     "RUSTSEC-2026-0346", # Bound by rustls 0.22.4, bound by tokio-rustls 0.25, hyper-rustls 0.26, a2 0.10
     "RUSTSEC-2026-0349", # Bound by rustls 0.22.4, bound by tokio-rustls 0.25, hyper-rustls 0.26, a2 0.10
     "RUSTSEC-2026-0381", # webpki-roots 0.26.11 is a shim re-exporting (patched) 1.0.10; bound by hyper-rustls 0.26, a2 0.10
