@@ -765,6 +765,39 @@ async def test_hello_with_bad_prior_uaid(test_client: AsyncPushTestClient) -> No
     assert result["use_webpush"] is True
 
 
+async def test_hello_only_uaid_not_persisted(test_client: AsyncPushTestClient) -> None:
+    """Test that a UAID issued on hello is not stored until the client registers.
+
+    A client that only sends hello (e.g. the Firefox notification helper) is
+    issued a fresh UAID on every connection, so reconnecting with a previously
+    issued UAID results in a mismatch.
+    """
+    await test_client.connect()
+    first = await test_client.hello()
+    await test_client.disconnect()
+
+    await test_client.connect()
+    second = await test_client.hello(uaid=first["uaid"])
+    await test_client.disconnect()
+    assert second["uaid"] != first["uaid"]
+
+    await test_client.connect()
+    third = await test_client.hello(uaid=second["uaid"])
+    assert third["uaid"] not in (first["uaid"], second["uaid"])
+
+
+async def test_registered_uaid_persisted(test_client: AsyncPushTestClient) -> None:
+    """Test that a UAID is kept across connections once the client registers."""
+    await test_client.connect()
+    first = await test_client.hello()
+    await test_client.register()
+    await test_client.disconnect()
+
+    await test_client.connect()
+    second = await test_client.hello(uaid=first["uaid"])
+    assert second["uaid"] == first["uaid"]
+
+
 async def test_basic_delivery(registered_test_client: AsyncPushTestClient) -> None:
     """Test basic regular push message delivery."""
     uuid_data: str = str(uuid.uuid4())
