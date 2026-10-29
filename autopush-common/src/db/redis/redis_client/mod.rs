@@ -372,14 +372,24 @@ impl DbClient for RedisClientImpl {
             .clone()
             .with_expiration(SetExpiry::EXAT(expiry));
 
+        // Score the message list with the message's millisecond
+        // `sortkey_timestamp`, matching the ordering of Bigtable's
+        // `{uaid}#02:{sortkey_timestamp}:{chid}` message row keys. This keeps
+        // the ACK pointer ([increment_storage]) and fetch floor
+        // ([fetch_timestamp_messages]) operating on the same values for both
+        // backends. Topic and legacy messages carry no sortkey: like
+        // [Notification::chidmessageid], score them at the current time in ms.
+        let score = match storable.sortkey_timestamp {
+            Some(0) | None => ms_since_epoch(),
+            Some(sortkey) => sortkey,
+        };
+
         // Store notification record in autopush/msg/{uaid}/{chidmessageid}
         // And store {chidmessageid} in autopush/msgs/{uaid}
         debug!("🐰 Saving to {}", &msg_key);
         pipe.set_options(msg_key, serde_json::to_string(&storable)?, notif_opts)
-            // The function [fetch_timestamp_messages] takes a timestamp in input,
-            // here we use the timestamp of the record
             .zadd(&exp_list_key, msg_id, expiry)
-            .zadd(&msg_list_key, msg_id, sec_since_epoch());
+            .zadd(&msg_list_key, msg_id, score);
 
         let _: () = pipe.exec_async(&mut con).await?;
         self.metrics
@@ -402,45 +412,25 @@ impl DbClient for RedisClientImpl {
         Ok(())
     }
 
-    /// Delete expired messages
+    /// Set the pointer of the last timestamp Message delivered to the user.
+    ///
+    /// Called when the Client has ACK'd all the timestamp Messages sent to it,
+    /// to move the timestamp Messages' "pointer".
+    ///
+    /// Like Bigtable's `current_timestamp`, ACK'd timestamp messages
+    /// deliberately persist in storage to be eventually cleaned up by their
+    /// TTL: delivery is managed by this pointer, as
+    /// [fetch_timestamp_messages] only returns messages scored after it.
+    /// Deleting by score range is not an option here: the pointer's resolution
+    /// is only as fine as the message scores (ms), so a range delete could
+    /// take out undelivered messages.
     async fn increment_storage(&self, uaid: &Uuid, timestamp: u64) -> DbResult<()> {
         let uaid = Uaid(uaid);
         debug!("🐰🔥 Incrementing storage to {}", timestamp);
-        let msg_list_key = self.message_list_key(&uaid);
-        let exp_list_key = self.message_exp_list_key(&uaid);
         let storage_timestamp_key = self.storage_timestamp_key(&uaid);
         let mut con = self.connection().await?;
-        trace!("🐇 SEARCH: increment: {:?} - {}", &exp_list_key, timestamp);
-        let exp_id_list: Vec<String> = con.zrangebyscore(&exp_list_key, 0, timestamp).await?;
-        if !exp_id_list.is_empty() {
-            // Remember, we store just the message_ids in the exp and msg lists, but need to convert back to
-            // the full message keys for deletion.
-            let delete_msg_keys: Vec<String> = exp_id_list
-                .clone()
-                .into_iter()
-                .map(|msg_id| self.message_key(&uaid, &msg_id))
-                .collect();
-
-            trace!(
-                "🐰🔥:rem: Deleting {} : [{:?}]",
-                msg_list_key, &delete_msg_keys
-            );
-            trace!("🐰🔥:rem: Deleting {} : [{:?}]", exp_list_key, &exp_id_list);
-            pipe()
-                .set_options::<_, _>(&storage_timestamp_key, timestamp, self.router_opts.clone())
-                .del(&delete_msg_keys)
-                .zrem(&msg_list_key, &exp_id_list)
-                .zrem(&exp_list_key, &exp_id_list)
-                .exec_async(&mut con)
-                .await?;
-        } else {
-            con.set_options::<_, _, ()>(
-                &storage_timestamp_key,
-                timestamp,
-                self.router_opts.clone(),
-            )
+        con.set_options::<_, _, ()>(&storage_timestamp_key, timestamp, self.router_opts.clone())
             .await?;
-        }
         Ok(())
     }
 
@@ -492,10 +482,13 @@ impl DbClient for RedisClientImpl {
         })
     }
 
-    /// Return [`limit`] messages pending for a [`uaid`] that have a record timestamp
-    /// after [`timestamp`] (secs).
+    /// Return [`limit`] messages pending for a [`uaid`] that have a record
+    /// `sortkey_timestamp` after [`timestamp`] (ms). `limit=0` for all messages.
     ///
-    /// If [`limit`] = 0, we fetch all messages after [`timestamp`].
+    /// If [`timestamp`] is None, the pointer written by [increment_storage]
+    /// is used as the floor. Either way the bound is exclusive, matching
+    /// Bigtable's `StartKeyOpen`: the pointer names the last message handed
+    /// to the Client, so an inclusive floor would re-deliver it.
     ///
     /// This can return expired messages, following bigtables behavior
     async fn fetch_timestamp_messages(
@@ -514,15 +507,18 @@ impl DbClient for RedisClientImpl {
             let storage_timestamp_key = self.storage_timestamp_key(&uaid);
             con.get(&storage_timestamp_key).await.unwrap_or(0)
         };
+        // Exclusive lower bound (the "(" prefix), like Bigtable's
+        // StartKeyOpen: only fetch messages strictly after the pointer.
         // ZRANGE Key (x) +inf LIMIT 0 limit
+        let min = format!("({}", timestamp);
         trace!(
             "🐇 SEARCH: zrangebyscore {:?} {} +inf withscores limit 0 {:?}",
-            &msg_list_key, timestamp, limit,
+            &msg_list_key, min, limit,
         );
         let results = con
             .zrangebyscore_limit_withscores::<&str, &str, &str, Vec<(String, u64)>>(
                 &msg_list_key,
-                &timestamp.to_string(),
+                &min,
                 "+inf",
                 0,
                 limit as isize,
@@ -630,6 +626,7 @@ mod tests {
     use crate::{logging::init_test_logging, util::ms_since_epoch};
     use rand::prelude::*;
     use std::env;
+    use std::time::Duration;
 
     use super::*;
     const TEST_CHID: &str = "DECAFBAD-0000-0000-0000-0123456789AB";
@@ -664,51 +661,61 @@ mod tests {
         assert!(result.unwrap());
     }
 
-    /// Test if [increment_storage] correctly wipe expired messages
+    /// Test that a reconnecting client is not delivered ACK'd messages again
+    /// (autopush-rs#1228), while newer, undelivered messages still are.
+    ///
+    /// ACK'd timestamp messages persist until their TTL: [increment_storage]
+    /// only moves the pointer, and [fetch_timestamp_messages] fetches
+    /// strictly after it. Message sortkeys are pinned in the past (rather
+    /// than the current time) to keep this deterministic.
     #[actix_rt::test]
-    async fn wipe_expired() -> DbResult<()> {
+    async fn increment_storage_blocks_redelivery() -> DbResult<()> {
         init_test_logging();
         let client = new_client()?;
 
-        let connected_at = ms_since_epoch();
-
         let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
-
-        let node_id = "test_node".to_owned();
+        // A minute ago, in ms: the resolution of the scores and pointer
+        let sortkey = ms_since_epoch() - 60_000;
 
         // purge the user record if it exists.
         let _ = client.remove_user(&uaid).await;
 
-        let test_user = User {
-            uaid,
-            router_type: "webpush".to_owned(),
-            connected_at,
-            router_data: None,
-            node_id: Some(node_id.clone()),
-            ..Default::default()
-        };
-
-        // purge the old user (if present)
-        // in case a prior test failed for whatever reason.
-        let _ = client.remove_user(&uaid).await;
-
-        // can we add the user?
-        let timestamp = now_secs();
-        client.add_user(&test_user).await?;
         let test_notification = crate::db::Notification {
             channel_id: chid,
             version: "test".to_owned(),
-            ttl: 1,
-            timestamp,
+            ttl: 300,
+            timestamp: sortkey / 1000,
             data: Some("Encrypted".into()),
-            sortkey_timestamp: Some(timestamp),
+            sortkey_timestamp: Some(sortkey),
             ..Default::default()
         };
-        client.save_message(&uaid, test_notification).await?;
-        client.increment_storage(&uaid, timestamp + 1).await?;
+        let msg_id = test_notification.chidmessageid();
+        client
+            .save_message(&uaid, test_notification.clone())
+            .await?;
+
+        // Simulate the Client ACK'ing the message: increment_storage moves
+        // the pointer past it.
+        client.increment_storage(&uaid, sortkey).await?;
+
         let msgs = client.fetch_timestamp_messages(&uaid, None, 999).await?;
         assert_eq!(msgs.messages.len(), 0);
+        // The message record itself deliberately persists until its TTL
+        assert!(client.fetch_message(&uaid, &msg_id).await?.is_some());
+
+        // Newer messages that were never delivered must not be lost
+        let undelivered = crate::db::Notification {
+            version: "undelivered".to_owned(),
+            timestamp: (sortkey + 1_000) / 1000,
+            sortkey_timestamp: Some(sortkey + 1_000),
+            ..test_notification
+        };
+        client.save_message(&uaid, undelivered).await?;
+        let msgs = client.fetch_timestamp_messages(&uaid, None, 999).await?;
+        assert_eq!(msgs.messages.len(), 1);
+        assert_eq!(msgs.messages[0].version, "undelivered");
+        // clean up after the test.
         assert!(client.remove_user(&uaid).await.is_ok());
         Ok(())
     }
@@ -820,8 +827,10 @@ mod tests {
 
         let test_data = "An_encrypted_pile_of_crap".to_owned();
         let timestamp = now_secs();
-        let sort_key = now_secs();
-        let fetch_timestamp = timestamp;
+        // The message score (and the pointer [increment_storage] writes) is
+        // the millisecond `sortkey_timestamp`
+        let sort_key = ms_since_epoch();
+        let fetch_timestamp = sort_key;
         // Can we store a message?
         let test_notification = crate::db::Notification {
             channel_id: chid,
@@ -843,13 +852,13 @@ mod tests {
 
         // Grab all 1 of the messages that were submitted within the past 10 seconds.
         let fetched = client
-            .fetch_timestamp_messages(&uaid, Some(fetch_timestamp - 10), 999)
+            .fetch_timestamp_messages(&uaid, Some(fetch_timestamp - 10_000), 999)
             .await?;
         assert_ne!(fetched.messages.len(), 0);
 
         // Try grabbing a message for 10 seconds from now.
         let fetched = client
-            .fetch_timestamp_messages(&uaid, Some(fetch_timestamp + 10), 999)
+            .fetch_timestamp_messages(&uaid, Some(fetch_timestamp + 10_000), 999)
             .await?;
         assert_eq!(fetched.messages.len(), 0);
 
@@ -875,7 +884,7 @@ mod tests {
         client.add_channel(&uaid, &topic_chid).await?;
         let test_data = "An_encrypted_pile_of_crap_with_a_topic".to_owned();
         let timestamp = now_secs();
-        let sort_key = now_secs();
+        let sort_key = ms_since_epoch();
 
         // We store 2 messages, with a single topic
         let test_notification_0 = crate::db::Notification {
@@ -961,6 +970,7 @@ mod tests {
         let uaid = Uuid::parse_str(&gen_test_user()).unwrap();
         let chid = Uuid::parse_str(TEST_CHID).unwrap();
         let now = now_secs();
+        let now_ms = ms_since_epoch();
 
         let test_notification = crate::db::Notification {
             channel_id: chid,
@@ -968,7 +978,7 @@ mod tests {
             ttl: 2,
             timestamp: now,
             data: Some("SomeData".into()),
-            sortkey_timestamp: Some(now),
+            sortkey_timestamp: Some(now_ms),
             ..Default::default()
         };
         debug!("Writing test notif");
@@ -980,8 +990,24 @@ mod tests {
             .fetch_message(&uaid, &test_notification.chidmessageid())
             .await?;
         assert!(!msg.unwrap().is_empty());
+
+        // ACK'd (incremented past) messages persist until their TTL: delivery
+        // is managed by the [increment_storage] pointer, so the record is
+        // still here...
+        client.increment_storage(&uaid, ms_since_epoch()).await?;
+        assert!(
+            client
+                .fetch_message(&uaid, &test_notification.chidmessageid())
+                .await?
+                .is_some()
+        );
+        // ...but it's no longer delivered
+        let msgs = client.fetch_timestamp_messages(&uaid, None, 999).await?;
+        assert_eq!(msgs.messages.len(), 0);
+
+        // Eventually Redis' per-record expiry purges it
         debug!("Purging...");
-        client.increment_storage(&uaid, now + 2).await?;
+        tokio::time::sleep(Duration::from_secs(3)).await;
         debug!("Checking {}...", &key);
         let cc = client
             .fetch_message(&uaid, &test_notification.chidmessageid())
