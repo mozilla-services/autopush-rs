@@ -1,3 +1,18 @@
+<a name="1.85.0"></a>
+## 1.85.0 (2026-11-02)
+
+### Features
+
+- *(enterprise)* Publish enterprise-beta (postgres) image (#1242) ([b81843a4](https://github.com/mozilla-services/autopush-rs/commit/b81843a4b6cf8921f420025d7d2f9eea0c4b0b90))
+- *(enterprise)* Publish enterprise-beta with redis backend option (#1247) ([16fef985](https://github.com/mozilla-services/autopush-rs/commit/16fef9859cfd3519b4bce94c3bab406e5a378f36))
+
+### Chore
+
+- *(docs)* Add daily check-in for mobile devices to http endpoint (#1235) ([30273093](https://github.com/mozilla-services/autopush-rs/commit/3027309309d3fd5735bca2725ec13ddc7cdc637c))
+- *(audit)* Fix audited deps 2026-09-18 (#1237) ([a79b7351](https://github.com/mozilla-services/autopush-rs/commit/a79b7351a8dd6496e6bd4ef01a07856ce01457f5))
+- *(audit)* Dependencies update 2026-10-14 (#1243) ([2113950d](https://github.com/mozilla-services/autopush-rs/commit/2113950ddccad4d3869ef592f6d61a8118c6a200))
+- *(ci)* Slim integration test image (#1244) ([bbe14980](https://github.com/mozilla-services/autopush-rs/commit/bbe149803249da1465e9a68ed1afbc8b080d77b6))
+
 <a name="1.84.2"></a>
 ## 1.84.2 (2026-09-02)
 
