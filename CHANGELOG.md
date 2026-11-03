@@ -1,4 +1,11 @@
 <a name="1.85.0"></a>
+## 1.86.0 (2026-11-03)
+
+### Features
+
+- *(reliability)* Add aggregate reliability metrics (#1246) ([72ed7884](https://github.com/mozilla-services/autopush-rs/commit/72ed7884b03756c9df25aadb0cd6c0bf9602b1e8))
+
+<a name="1.85.0"></a>
 ## 1.85.0 (2026-11-02)
 
 ### Features
