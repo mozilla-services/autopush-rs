@@ -2,7 +2,7 @@ use actix_web::{HttpRequest, HttpResponse, web};
 use uuid::Uuid;
 
 use autoconnect_settings::AppState;
-use autopush_common::notification::Notification;
+use autopush_common::{delivery_metrics::CONTENT_TYPE, notification::Notification};
 
 use crate::error::ApiError;
 
@@ -81,5 +81,16 @@ pub async fn check_storage_route(
         HttpResponse::Ok().finish()
     } else {
         HttpResponse::NotFound().body("Client not available")
+    }
+}
+
+/// Return a Prometheus compatible report of the delivery metrics
+pub async fn metrics_route(app_state: web::Data<AppState>) -> HttpResponse {
+    match app_state.delivery_metrics.encode() {
+        Ok(report) => HttpResponse::Ok().content_type(CONTENT_TYPE).body(report),
+        Err(e) => {
+            error!("Metrics report error: {e}");
+            HttpResponse::InternalServerError().finish()
+        }
     }
 }

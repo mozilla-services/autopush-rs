@@ -7,6 +7,9 @@ use strum::{AsRefStr, Display, EnumString};
 use strum_macros::IntoStaticStr;
 
 /// Represents all metric names used in the application.
+///
+/// These are statsd metrics. Prometheus histograms served from `/metrics` are
+/// defined in [`crate::delivery_metrics`].
 #[derive(Debug, Clone, IntoStaticStr, AsRefStr, Display, EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub enum MetricName {
@@ -93,9 +96,10 @@ pub enum MetricName {
     #[strum(serialize = "notification.bridge.sent")]
     NotificationBridgeSent,
 
-    /// Notification total request time
-    #[strum(serialize = "notification.total_request_time")]
-    NotificationTotalRequestTime,
+    /// Terminal outcome of a notification, tagged with `path`, `outcome`
+    /// and `cause` (see `autopush_common::delivery_metrics`)
+    #[strum(serialize = "notification.outcome")]
+    NotificationOutcome,
 
     /// Notification message data
     #[strum(serialize = "notification.message_data")]

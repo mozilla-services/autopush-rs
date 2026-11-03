@@ -19,6 +19,7 @@ use autoconnect_common::{
 use autoconnect_settings::{AppState, Settings};
 use autopush_common::{
     db::User,
+    delivery_metrics::{DeliveryPath, Outcome, emit_outcomes},
     metric_name::MetricName,
     metrics::StatsdClientExt,
     notification::Notification,
@@ -218,6 +219,9 @@ impl WebPushClient {
     /// Direct messages are solely stored in memory until Ack'd by the Client,
     /// so on shutdown, any not Ack'd are stored in the db to not be lost
     fn save_and_notify_unacked_direct_notifs(&mut self) {
+        // TTL=0 notifications are delivered immediately or not at all
+        let ttl0_notifs = mem::take(&mut self.ack_state.unacked_ttl0_notifs);
+        self.expire_ttl0_notifs(ttl0_notifs.into_values().collect());
         let notif_map = mem::take(&mut self.ack_state.unacked_direct_notifs);
         trace!(
             "👁‍🗨WebPushClient::save_and_notify_unacked_direct_notifs len: {}",
@@ -286,6 +290,33 @@ impl WebPushClient {
             }
             Ok(())
         });
+    }
+
+    /// Record TTL=0 notifications that were dropped without an ACK as expired
+    fn expire_ttl0_notifs(&self, notifs: Vec<Notification>) {
+        if notifs.is_empty() {
+            return;
+        }
+        emit_outcomes(
+            &self.app_state.metrics,
+            DeliveryPath::Ws,
+            Outcome::Expired,
+            notifs.len() as i64,
+        );
+        #[cfg(feature = "reliable_report")]
+        {
+            let app_state = Arc::clone(&self.app_state);
+            rt::spawn(async move {
+                for mut notif in notifs {
+                    notif
+                        .record_reliability(
+                            &app_state.reliability,
+                            autopush_common::reliability::ReliabilityState::Expired,
+                        )
+                        .await;
+                }
+            });
+        }
     }
 
     /// Add User information and tags for this Client to a Sentry Event
@@ -369,17 +400,32 @@ pub struct SessionStatistics {
 /// (fernet adds random padding), so `version` alone suffices as the key.
 type AckKey = String;
 
+/// A Notification the Client has Ack'd, and when.
+#[derive(Debug)]
+struct AckedNotification {
+    notif: Notification,
+    ack_ms: u64,
+}
+
 /// Record of Notifications sent to the Client.
 #[derive(Debug, Default)]
 struct AckState {
     /// Map of unAck'd directly sent (never stored) notifications
     unacked_direct_notifs: HashMap<AckKey, Notification>,
+    /// Map of unAck'd directly sent TTL=0 notifications, kept only to record
+    /// their delivery on ACK. Unlike `unacked_direct_notifs`, these are never
+    /// stored for redelivery.
+    unacked_ttl0_notifs: HashMap<AckKey, Notification>,
     /// Map of unAck'd sent notifications from storage
     unacked_stored_notifs: HashMap<AckKey, Notification>,
-    /// List of Ack'd timestamp notifications from storage, cleared
-    /// via `increment_storage`
-    #[cfg(feature = "reliable_report")]
-    acked_stored_timestamp_notifs: Vec<Notification>,
+    /// Ack'd timestamp notifications from storage, with when they were Ack'd.
+    /// The whole batch must be Ack'd before messages are removed from storage
+    /// via `increment_storage`; if the session ends first, they will be sent
+    /// again on reconnect, so their delivery is recorded in `increment_storage`.
+    acked_stored_timestamp_notifs: Vec<AckedNotification>,
+    /// Expired timestamp notifications skipped while reading storage. Like
+    /// `acked_stored_timestamp_notifs`, they're counted in `increment_storage`.
+    expired_stored_timestamp_count: i64,
     /// Either the `current_timestamp` value in storage (returned from
     /// `fetch_messages`) or the last unAck'd timestamp Message's
     /// `sortkey_timestamp` (returned from `fetch_timestamp_messages`).
@@ -404,6 +450,9 @@ struct AckState {
 impl AckState {
     /// Whether the Client has outstanding notifications sent to it that it has
     /// yet to Ack
+    ///
+    /// TTL=0 notifications are not included because they are not stored
+    /// for redelivery.
     fn unacked_notifs(&self) -> bool {
         !self.unacked_stored_notifs.is_empty() || !self.unacked_direct_notifs.is_empty()
     }
@@ -413,15 +462,16 @@ impl AckState {
 mod tests {
     use std::sync::Arc;
 
+    use cadence::{SpyMetricSink, StatsdClient};
     use uuid::Uuid;
 
     use autoconnect_common::{
-        protocol::{ClientMessage, ServerMessage, ServerNotification},
+        protocol::{ClientAck, ClientMessage, ServerMessage, ServerNotification},
         test_support::{DUMMY_CHID, DUMMY_UAID, UA},
     };
     use autoconnect_settings::AppState;
     use autopush_common::{
-        db::{client::FetchMessageResponse, mock::MockDbClient},
+        db::{client::FetchMessageResponse, error::DbError, mock::MockDbClient},
         notification::Notification,
         util::{ms_since_epoch, sec_since_epoch},
     };
@@ -454,11 +504,387 @@ mod tests {
         }
     }
 
+    /// An `AppState` using `db` whose statsd metrics are captured by the
+    /// returned receiver
+    fn spy_app_state(db: MockDbClient) -> (AppState, impl Fn() -> Vec<String>) {
+        let (rx, sink) = SpyMetricSink::new();
+        let app_state = AppState {
+            db: db.into_boxed_arc(),
+            metrics: Arc::new(StatsdClient::from_sink("autoconnect", sink)),
+            ..Default::default()
+        };
+        let packets = move || {
+            rx.try_iter()
+                .map(|packet| String::from_utf8(packet).unwrap())
+                .collect()
+        };
+        (app_state, packets)
+    }
+
+    /// Sum of `notification.outcome` for `outcome` in the statsd `packets`
+    fn outcome_count(packets: &[String], outcome: &str) -> i64 {
+        let tag = format!("outcome:{outcome},");
+        packets
+            .iter()
+            .filter(|p| p.starts_with("autoconnect.notification.outcome:") && p.contains(&tag))
+            .map(|p| {
+                p["autoconnect.notification.outcome:".len()..]
+                    .split('|')
+                    .next()
+                    .unwrap()
+                    .parse::<i64>()
+                    .unwrap()
+            })
+            .sum()
+    }
+
+    /// A topic `Notification` (no `sortkey_timestamp`)
+    fn new_topic_notif(channel_id: &Uuid, ttl: u64) -> Notification {
+        Notification {
+            topic: Some("topic".to_owned()),
+            sortkey_timestamp: None,
+            ..new_timestamp_notif(channel_id, ttl)
+        }
+    }
+
+    fn ack(version: &str) -> ClientMessage {
+        ClientMessage::Ack {
+            updates: vec![ClientAck {
+                channel_id: DUMMY_CHID,
+                version: version.to_owned(),
+                code: Some(100),
+            }],
+        }
+    }
+
+    /// Mock reading one batch of timestamp messages (`v1`, `v2` and an
+    /// expired one) at `timestamp`, with no topic messages
+    fn expect_timestamp_batch(db: &mut MockDbClient, seq: &mut mockall::Sequence, timestamp: u64) {
+        db.expect_fetch_topic_messages()
+            .times(1)
+            .in_sequence(seq)
+            .return_once(|_, _| Ok(FetchMessageResponse::default()));
+        db.expect_fetch_timestamp_messages()
+            .times(1)
+            .in_sequence(seq)
+            .withf(|_, ts, _| ts.is_none())
+            .return_once(move |_, _, _| {
+                Ok(FetchMessageResponse {
+                    timestamp: Some(timestamp),
+                    messages: vec![
+                        Notification {
+                            version: "v1".to_owned(),
+                            ..new_timestamp_notif(&DUMMY_CHID, 60)
+                        },
+                        Notification {
+                            version: "v2".to_owned(),
+                            ..new_timestamp_notif(&DUMMY_CHID, 60)
+                        },
+                        Notification {
+                            version: "expired".to_owned(),
+                            ..new_timestamp_notif(&DUMMY_CHID, 0)
+                        },
+                    ],
+                })
+            });
+    }
+
+    /// A stored batch that's only partly Ack'd before the session ends is
+    /// read again on reconnect, so nothing in it is counted yet
+    #[actix_rt::test]
+    async fn partial_stored_ack_counts_nothing() {
+        let mut db = MockDbClient::new();
+        let mut seq = mockall::Sequence::new();
+        expect_timestamp_batch(&mut db, &mut seq, sec_since_epoch());
+        db.expect_increment_storage().never();
+        let (app_state, packets) = spy_app_state(db);
+        let delivery_metrics = app_state.delivery_metrics.clone();
+        let (mut client, _) = wpclient(DUMMY_UAID, app_state).await;
+
+        let smsgs = client
+            .on_server_notif(ServerNotification::CheckStorage)
+            .await
+            .unwrap();
+        assert_eq!(smsgs.len(), 2);
+        client.on_client_msg(ack("v1")).await.unwrap();
+        client.shutdown(None);
+
+        let packets = packets();
+        assert_eq!(outcome_count(&packets, "delivered"), 0);
+        assert_eq!(outcome_count(&packets, "expired"), 0);
+        assert!(
+            !delivery_metrics
+                .encode()
+                .unwrap()
+                .contains(r#"route="stored""#)
+        );
+    }
+
+    /// Once a stored batch is fully Ack'd and storage advances, each message
+    /// is counted exactly once
+    #[actix_rt::test]
+    async fn full_stored_ack_counts_once() {
+        let mut db = MockDbClient::new();
+        let mut seq = mockall::Sequence::new();
+        let timestamp = sec_since_epoch();
+        expect_timestamp_batch(&mut db, &mut seq, timestamp);
+        db.expect_increment_storage()
+            .times(1)
+            .in_sequence(&mut seq)
+            .withf(move |_, ts| ts == &timestamp)
+            .return_once(|_, _| Ok(()));
+        db.expect_fetch_timestamp_messages()
+            .times(1)
+            .in_sequence(&mut seq)
+            .withf(move |_, ts, _| ts == &Some(timestamp))
+            .return_once(|_, _, _| Ok(FetchMessageResponse::default()));
+        let (app_state, packets) = spy_app_state(db);
+        let delivery_metrics = app_state.delivery_metrics.clone();
+        let (mut client, _) = wpclient(DUMMY_UAID, app_state).await;
+
+        client
+            .on_server_notif(ServerNotification::CheckStorage)
+            .await
+            .unwrap();
+        client.on_client_msg(ack("v1")).await.unwrap();
+        // Nothing is counted until the whole batch is Ack'd
+        assert_eq!(outcome_count(&packets(), "delivered"), 0);
+        client.on_client_msg(ack("v2")).await.unwrap();
+
+        let packets = packets();
+        assert_eq!(outcome_count(&packets, "delivered"), 2);
+        assert_eq!(outcome_count(&packets, "expired"), 1);
+        let report = delivery_metrics.encode().unwrap();
+        assert!(report.contains(r#"autopush_delivery_seconds_count{path="ws",route="stored"} 2"#));
+        assert!(report.contains("autopush_stored_delivery_after_connect_seconds_count 2"));
+    }
+
+    /// An Ack'd topic message is only counted once it's removed from storage
+    #[actix_rt::test]
+    async fn acked_topic_counted_after_remove() {
+        let mut db = MockDbClient::new();
+        db.expect_fetch_topic_messages()
+            .times(1)
+            .return_once(|_, _| {
+                Ok(FetchMessageResponse {
+                    timestamp: None,
+                    messages: vec![Notification {
+                        version: "topic".to_owned(),
+                        ..new_topic_notif(&DUMMY_CHID, 60)
+                    }],
+                })
+            });
+        db.expect_remove_message()
+            .times(1)
+            .return_once(|_, _| Err(DbError::General("remove failed".to_owned())));
+        let (app_state, packets) = spy_app_state(db);
+        let (mut client, _) = wpclient(DUMMY_UAID, app_state).await;
+
+        client
+            .on_server_notif(ServerNotification::CheckStorage)
+            .await
+            .unwrap();
+        client.on_client_msg(ack("topic")).await.unwrap_err();
+        assert_eq!(outcome_count(&packets(), "delivered"), 0);
+    }
+
+    /// An expired topic message is only counted once it's removed from storage
+    #[actix_rt::test]
+    async fn expired_topic_counted_after_remove() {
+        let mut db = MockDbClient::new();
+        db.expect_fetch_topic_messages()
+            .times(1)
+            .return_once(|_, _| {
+                Ok(FetchMessageResponse {
+                    timestamp: None,
+                    messages: vec![new_topic_notif(&DUMMY_CHID, 0)],
+                })
+            });
+        db.expect_remove_message()
+            .times(1)
+            .return_once(|_, _| Err(DbError::General("remove failed".to_owned())));
+        let (app_state, packets) = spy_app_state(db);
+        let (mut client, _) = wpclient(DUMMY_UAID, app_state).await;
+
+        client
+            .on_server_notif(ServerNotification::CheckStorage)
+            .await
+            .unwrap_err();
+        assert_eq!(outcome_count(&packets(), "expired"), 0);
+    }
+
     #[actix_rt::test]
     async fn webpush_ping() {
         let (mut client, _) = wpclient(DUMMY_UAID, Default::default()).await;
         let pong = client.on_client_msg(ClientMessage::Ping).await.unwrap();
         assert!(matches!(pong.as_slice(), [ServerMessage::Ping]));
+    }
+
+    #[actix_rt::test]
+    async fn direct_ack_records_delivery() {
+        let app_state = AppState::default();
+        let delivery_metrics = app_state.delivery_metrics.clone();
+        let (mut client, _) = wpclient(DUMMY_UAID, app_state).await;
+        let notif = Notification {
+            version: "v1".to_owned(),
+            received_ms: Some(ms_since_epoch() - 2_000),
+            ..new_timestamp_notif(&DUMMY_CHID, 60)
+        };
+        let smsgs = client
+            .on_server_notif(ServerNotification::Notification(notif))
+            .await
+            .unwrap();
+        assert!(matches!(smsgs.as_slice(), [ServerMessage::Notification(_)]));
+
+        client
+            .on_client_msg(ClientMessage::Ack {
+                updates: vec![ClientAck {
+                    channel_id: DUMMY_CHID,
+                    version: "v1".to_owned(),
+                    code: Some(101),
+                }],
+            })
+            .await
+            .unwrap();
+
+        let report = delivery_metrics.encode().unwrap();
+        // Received 2s before the ACK
+        assert!(
+            report.contains(
+                r#"autopush_delivery_seconds_bucket{le="1.0",path="ws",route="direct"} 0"#
+            )
+        );
+        assert!(
+            report.contains(
+                r#"autopush_delivery_seconds_bucket{le="2.5",path="ws",route="direct"} 1"#
+            )
+        );
+        // Not a stored message
+        assert!(report.contains("autopush_stored_delivery_after_connect_seconds_count 0"));
+    }
+
+    #[actix_rt::test]
+    async fn direct_ttl0_ack_records_delivery_and_is_not_stored() {
+        let mut db = MockDbClient::new();
+        // TTL=0 notifications are never saved on shutdown, whether unacked or
+        // still queued
+        db.expect_save_messages().never();
+        let app_state = AppState {
+            db: db.into_boxed_arc(),
+            ..Default::default()
+        };
+        let delivery_metrics = app_state.delivery_metrics.clone();
+        let (mut client, _) = wpclient(DUMMY_UAID, app_state).await;
+        let notif = Notification {
+            version: "v1".to_owned(),
+            received_ms: Some(ms_since_epoch()),
+            ..new_timestamp_notif(&DUMMY_CHID, 0)
+        };
+        client
+            .on_server_notif(ServerNotification::Notification(notif))
+            .await
+            .unwrap();
+        // A second TTL=0 notification left unacked at shutdown
+        let notif = Notification {
+            version: "v2".to_owned(),
+            ..new_timestamp_notif(&DUMMY_CHID, 0)
+        };
+        client
+            .on_server_notif(ServerNotification::Notification(notif))
+            .await
+            .unwrap();
+
+        client
+            .on_client_msg(ClientMessage::Ack {
+                updates: vec![ClientAck {
+                    channel_id: DUMMY_CHID,
+                    version: "v1".to_owned(),
+                    code: Some(100),
+                }],
+            })
+            .await
+            .unwrap();
+        let report = delivery_metrics.encode().unwrap();
+        assert!(report.contains(r#"autopush_delivery_seconds_count{path="ws",route="direct"} 1"#));
+
+        // A TTL=0 notification still queued when the session ends
+        client.on_server_notif_shutdown(ServerNotification::Notification(Notification {
+            version: "v3".to_owned(),
+            ..new_timestamp_notif(&DUMMY_CHID, 0)
+        }));
+        client.shutdown(None);
+    }
+
+    /// An unacked TTL=0 notification must not stop storage processing
+    #[actix_rt::test]
+    async fn unacked_ttl0_does_not_block_storage() {
+        let mut db = MockDbClient::new();
+        let mut seq = mockall::Sequence::new();
+        let timestamp = sec_since_epoch();
+        let stored = Notification {
+            version: "stored".to_owned(),
+            ..new_timestamp_notif(&DUMMY_CHID, 60)
+        };
+        db.expect_fetch_topic_messages()
+            .times(1)
+            .in_sequence(&mut seq)
+            .return_once(|_, _| Ok(FetchMessageResponse::default()));
+        db.expect_fetch_timestamp_messages()
+            .times(1)
+            .in_sequence(&mut seq)
+            .return_once(move |_, _, _| {
+                Ok(FetchMessageResponse {
+                    timestamp: Some(timestamp),
+                    messages: vec![stored],
+                })
+            });
+        // Acking the stored message advances storage and reads the next batch
+        db.expect_increment_storage()
+            .times(1)
+            .in_sequence(&mut seq)
+            .withf(move |_, ts| ts == &timestamp)
+            .return_once(|_, _| Ok(()));
+        db.expect_fetch_timestamp_messages()
+            .times(1)
+            .in_sequence(&mut seq)
+            .withf(move |_, ts, _| ts == &Some(timestamp))
+            .return_once(|_, _, _| Ok(FetchMessageResponse::default()));
+        db.expect_save_messages().never();
+
+        let (mut client, _) = wpclient(
+            DUMMY_UAID,
+            AppState {
+                db: db.into_boxed_arc(),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        // A TTL=0 notification the client never acks
+        client
+            .on_server_notif(ServerNotification::Notification(Notification {
+                version: "ttl0".to_owned(),
+                ..new_timestamp_notif(&DUMMY_CHID, 0)
+            }))
+            .await
+            .unwrap();
+        let smsgs = client
+            .on_server_notif(ServerNotification::CheckStorage)
+            .await
+            .unwrap();
+        assert!(matches!(smsgs.as_slice(), [ServerMessage::Notification(_)]));
+
+        client
+            .on_client_msg(ClientMessage::Ack {
+                updates: vec![ClientAck {
+                    channel_id: DUMMY_CHID,
+                    version: "stored".to_owned(),
+                    code: Some(100),
+                }],
+            })
+            .await
+            .unwrap();
+        client.shutdown(None);
     }
 
     #[actix_rt::test]
