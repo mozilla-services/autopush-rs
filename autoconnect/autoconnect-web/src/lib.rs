@@ -45,5 +45,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 pub fn config_router(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/push/{uaid}").route(web::put().to(routes::push_route)))
         .service(web::resource("/notif/{uaid}").route(web::put().to(routes::check_storage_route)))
+        .service(web::resource("/metrics").route(web::get().to(routes::metrics_route)))
         .service(web::scope("").configure(dockerflow::config));
 }

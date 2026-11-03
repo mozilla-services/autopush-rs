@@ -33,6 +33,10 @@ pub struct Notification {
     pub sortkey_timestamp: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
+    /// Time (in milliseconds) autoendpoint received this notification. Only
+    /// carried on direct delivery to autoconnect: never stored or sent to clients.
+    #[serde(default, skip_serializing)]
+    pub received_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg(feature = "reliable_report")]
     pub reliability_id: Option<String>,
@@ -158,6 +162,7 @@ impl TryFrom<&sqlx::postgres::PgRow> for Notification {
                     Some(hdrs)
                 })
                 .unwrap_or_default(),
+            received_ms: None,
             #[cfg(feature = "reliable_report")]
             reliability_id: row.try_get::<String, _>("reliability_id").ok(),
             #[cfg(feature = "reliable_report")]
