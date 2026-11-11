@@ -6,7 +6,7 @@
 /// `autopush/co/{uaid}` u64 to store the last time the user has interacted with the server
 /// `autopush/timestamp/{uaid}` u64 to store the last storage timestamp incremented by the server, once messages are delivered
 /// `autopush/channels/{uaid}` List to store the list of the channels of the user
-/// `autopush/msgs/{uaid}` SortedSet to store the list of the pending message ids for the user
+/// `autopush/msgs/{uaid}` SortedSet to store the list of the pending message ids for the user, scored by the message's millisecond `sortkey_timestamp` (matching the ordering of Bigtable's message row keys)
 /// `autopush/msgs_exp/{uaid}` SortedSet to store the list of the pending message ids, ordered by expiry date, this is because SortedSet elements can't have independent expiry date
 /// `autopush/msg/{uaid}/{chidmessageid}`, with `{chidmessageid} == {chid}:{version}` String to store
 /// the content of the messages

@@ -219,12 +219,6 @@ def xfail_on_redis(reason: str) -> pytest.MarkDecorator:
     return pytest.mark.xfail(RUNNING_ON_REDIS, reason=reason, strict=False)
 
 
-# `RedisClientImpl::fetch_timestamp_messages` scans `autopush/msgs/{uaid}` with an
-# inclusive lower bound, while Bigtable's equivalent range is exclusive. After an
-# ack, `increment_storage` records that same score as the new floor, so the
-# message the client just acknowledged is handed back on the next fetch.
-REDIS_ACK_REDELIVERY = "Redis: acked stored messages are redelivered (inclusive fetch bound)"
-
 # `RedisClientImpl::fetch_timestamp_messages` returns `timestamp: None` when every
 # key in the fetched window has already expired out of Redis, so the caller never
 # advances past that window and never reaches the live message behind it. Bigtable
@@ -1071,7 +1065,6 @@ async def test_topic_expired(registered_test_client: AsyncPushTestClient) -> Non
     assert result["data"] == base64url_encode(uuid_data)
 
 
-@xfail_on_redis(REDIS_ACK_REDELIVERY)
 @pytest.mark.parametrize("fixture_max_conn_logs", [4], indirect=True)
 async def test_multiple_delivery_with_single_ack(
     registered_test_client: AsyncPushTestClient,
@@ -1122,7 +1115,6 @@ async def test_multiple_delivery_with_single_ack(
     assert result is None
 
 
-@xfail_on_redis(REDIS_ACK_REDELIVERY)
 async def test_multiple_delivery_with_multiple_ack(
     registered_test_client: AsyncPushTestClient,
 ) -> None:
