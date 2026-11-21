@@ -10,13 +10,13 @@ use crate::extractors::{
     registration_path_args_with_uaid::RegistrationPathArgsWithUaid,
     router_data_input::RouterDataInput, routers::Routers,
 };
-use crate::headers::util::get_header;
 use crate::server::AppState;
 
 use autopush_common::db::User;
 use autopush_common::endpoint::make_endpoint;
 use autopush_common::metric_name::MetricName;
 use autopush_common::metrics::StatsdClientExt;
+use autopush_common::util::user_agent::UserAgentInfo;
 
 /// Handle the `POST /v1/{router_type}/{app_id}/registration` route
 pub async fn register_uaid_route(
@@ -246,14 +246,52 @@ pub async fn unregister_channel_route(
     }
 }
 
-/// Increment a metric with data from the request
+/// Increment a metric tagged with the request's rough user agent
+/// (os and browser).
+/// Not including the host or UA as it can explode cardinality and
+/// commas in the strings may result in unintended/injected tags
 fn incr_metric(metric: MetricName, metrics: &StatsdClient, request: &HttpRequest) {
+    let ua = UserAgentInfo::from(request);
     metrics
         .incr_with_tags(metric)
-        .with_tag(
-            "user_agent",
-            get_header(request, "User-Agent").unwrap_or("unknown"),
-        )
-        .with_tag("host", get_header(request, "Host").unwrap_or("unknown"))
+        .with_tag("os", &ua.metrics_os)
+        .with_tag("browser", &ua.metrics_browser)
         .send()
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::test::TestRequest;
+    use cadence::{SpyMetricSink, StatsdClient};
+
+    use super::*;
+
+    /// A user agent with every DogStatsD separator must not leak into the
+    /// emitted tags (see the `like_Gecko__...` label key GMP rejected).
+    #[test]
+    fn incr_metric_tags_are_bounded() {
+        let (rx, sink) = SpyMetricSink::new();
+        let metrics = StatsdClient::builder("", sink).build();
+        let request = TestRequest::default()
+            .insert_header((
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) \
+                 Version/4.0 Chrome/63.0.3239.83 Mobile Safari/537.36 wxwork/4.0.0 a:b|c#d",
+            ))
+            .insert_header(("Host", "evil,injected:tag"))
+            .to_http_request();
+
+        incr_metric(MetricName::UaCommandRegister, &metrics, &request);
+
+        let packet = String::from_utf8(rx.try_recv().unwrap()).unwrap();
+        let (_, tags) = packet.split_once("|#").expect("tags present");
+        let keys: Vec<&str> = tags
+            .split(',')
+            .map(|t| t.split_once(':').expect("key:value tag").0)
+            .collect();
+        // Raw host and user agent strings with commas could be interpreted as tags before
+        // Test that the only keys are what we expect
+        assert_eq!(keys, ["os", "browser"], "{packet}");
+        assert!(packet.starts_with("ua.command.register:1|c|#"), "{packet}");
+    }
 }
