@@ -7,14 +7,11 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use actix_web::HttpResponse;
 use cadence::StatsdClient;
 use chrono::TimeDelta;
 use deadpool_redis::Config;
 
-use prometheus_client::{
-    encoding::text::encode, metrics::family::Family, metrics::gauge::Gauge, registry::Registry,
-};
+use prometheus_client::{metrics::family::Family, metrics::gauge::Gauge, registry::Registry};
 use redis::{AsyncCommands, aio::ConnectionLike};
 use redis::{Pipeline, Value};
 
@@ -536,46 +533,29 @@ impl PushReliability {
 
 const METRIC_NAME: &str = "autopush_reliability";
 
-/// Generate a Prometheus compatible report. Output should follow the
-/// [instrumentation](https://prometheus.io/docs/practices/instrumentation/) guidelines.
-///
-/// In short form, the file should be a plain text output, with each metric on it's own line
-/// using the following format:
-/// ```text
-/// # HELP metric_name Optional description of this metric
-/// # TYPE metric_name {required type (gauge|count|histogram|summary)}
-/// metric_name{label="label1"} value
-/// metric_name{label="label2"} value
-/// ```
-/// An example which would return counts of messages in given states at the current
-/// time would be:
-/// ```text
-/// # HELP autopush_reliability Counts for messages in given states
-/// # TYPE metric_name gauge
-/// autopush_reliability{state="recv"} 123
-/// autopush_reliability{state="stor"} 123
-/// # EOF
-/// ```
-/// Note that time is not required. A timestamp has been added to the output, but is
-/// ignored by Prometheus, and is only provided to ensure that there is no intermediate
-/// caching occurring.
-///
-/// The report endpoint currently is only provided by `autoendpoint`, even though the report
-/// is inclusive for all push milestones. This is done for simplicity, both for serving the
-/// data and for collection and management of the metrics.
-///
-pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
-    let mut registry = Registry::default();
+/// A "family" is a grouping of metrics.
+/// we specify this as the ("label", "label value") which index to a Gauge.
+pub type ReportFamily = Family<Vec<(&'static str, String)>, Gauge>;
 
-    // A "family" is a grouping of metrics.
-    // we specify this as the ("label", "label value") which index to a Gauge.
-    let family = Family::<Vec<(&str, String)>, Gauge>::default();
+/// Register the reliability state gauges with the given registry.
+pub fn register_report(registry: &mut Registry) -> ReportFamily {
+    let family = ReportFamily::default();
     // This creates the top level association of the elements in the family with the metric.
     registry.register(
         METRIC_NAME,
         "Count of messages at given states",
         family.clone(),
     );
+    family
+}
+
+/// Set the reliability state gauges from the given milestone counts.
+///
+/// The family is long lived, so it's cleared first: states missing from
+/// `values` (e.g. when Redis is unavailable) are dropped rather than left at
+/// their last known value.
+pub fn update_report(family: &ReportFamily, values: HashMap<String, i32>) {
+    family.clear();
     for (milestone, value) in values.into_iter() {
         // prevent any stray leakage of invalid state data
         if ReliabilityState::from_str(&milestone).is_err() {
@@ -588,22 +568,6 @@ pub fn gen_report(values: HashMap<String, i32>) -> Result<String> {
             .get_or_create(&vec![("state", milestone)])
             .set(value.into());
     }
-
-    // Return the formatted string that Prometheus will eventually read.
-    let mut encoded = String::new();
-    encode(&mut encoded, &registry).map_err(|e| {
-        ApcErrorKind::GeneralError(format!("Could not generate Reliability report {e:?}"))
-    })?;
-    Ok(encoded)
-}
-
-/// Handle the `/metrics` request by returning a Prometheus compatible report.
-pub async fn report_handler(reliability: &Arc<PushReliability>) -> Result<HttpResponse> {
-    reliability.gc().await?;
-    let report = gen_report(reliability.report().await?)?;
-    Ok(HttpResponse::Ok()
-        .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
-        .body(report))
 }
 
 #[cfg(test)]
@@ -612,6 +576,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use prometheus_client::encoding::text::encode;
     use redis_test::{MockCmd, MockRedisConnection};
     use uuid::Uuid;
 
@@ -627,13 +592,31 @@ mod tests {
         report.insert(trns.clone(), 444);
         report.insert("biginvalid".to_string(), -1);
 
-        let generated = gen_report(report).unwrap();
+        let mut registry = Registry::default();
+        let family = register_report(&mut registry);
+        update_report(&family, report);
+        let mut generated = String::new();
+        encode(&mut generated, &registry).unwrap();
         // We don't really care if the `Created` or `HELP` lines are included
         assert!(generated.contains(&format!("# TYPE {METRIC_NAME}")));
         // sample the first and last values.
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{recv}\"}} 111")));
         assert!(generated.contains(&format!("{METRIC_NAME}{{state=\"{trns}\"}} 444")));
         assert!(!generated.contains(&format!("{METRIC_NAME}{{state=\"biginvalid\"}} -1")));
+    }
+
+    #[test]
+    fn update_report_drops_stale_states() {
+        let mut registry = Registry::default();
+        let family = register_report(&mut registry);
+        let recv = ReliabilityState::Received.to_string();
+        update_report(&family, HashMap::from([(recv.clone(), 5)]));
+        // e.g. Redis was unavailable
+        update_report(&family, HashMap::new());
+
+        let mut generated = String::new();
+        encode(&mut generated, &registry).unwrap();
+        assert!(!generated.contains(&format!("{METRIC_NAME}{{state=\"{recv}\"}}")));
     }
 
     #[test]

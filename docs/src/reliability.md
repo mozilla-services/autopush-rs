@@ -1,5 +1,9 @@
 # Push Reliability Tracking
 
+> For aggregate delivery latency and outcome metrics covering all traffic, see
+> [Delivery Metrics](metrics.md). This page describes the per-message tracking
+> of Mozilla-sourced messages.
+
 AutoPush does a lot to ensure that messages and subscriptions stay private. There are many reasons for this, aside from simply respecting user privacy, which include the high cost of data capture and retention. Tracking this information can easily increase costs by thousands of dollars a month.
 
 Traditionally, AutoPush has relied on "external" tracking to determine how reliably it can deliver a message. "External" in this case, means a Mozilla internal group that tracks how "successful" a Send Tab to Device is. There are some complications with this, as that group has a different qualification for "success" than AutoPush does (delivery within a very short timeframe). Autopush should be able to determine if there are any points of loss internally without incurring the sizable costs for full tracking.

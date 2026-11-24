@@ -153,6 +153,7 @@ impl From<StorableNotification> for Notification {
             data: storable.data,
             sortkey_timestamp: storable.sortkey_timestamp,
             headers: storable.headers,
+            received_ms: None,
             #[cfg(feature = "reliable_report")]
             reliability_id: storable.reliability_id,
             #[cfg(feature = "reliable_report")]

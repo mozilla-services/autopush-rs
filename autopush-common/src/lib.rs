@@ -7,6 +7,7 @@ extern crate slog_scope;
 
 #[macro_use]
 pub mod db;
+pub mod delivery_metrics;
 pub mod endpoint;
 pub mod errors;
 pub mod logging;

@@ -23,5 +23,6 @@
 
 * [HTTP Endpoints for Notifications](http.md)
 * [Error codes](errors.md)
+* [Delivery Metrics](metrics.md)
 * [Glossary](glossary.md)
 * [Why rust?](rust.md)

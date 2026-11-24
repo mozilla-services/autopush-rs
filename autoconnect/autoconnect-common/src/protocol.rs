@@ -57,6 +57,8 @@ pub enum BroadcastValue {
 
 #[derive(Debug, Default)]
 // Used for the server to flag a webpush client to deliver a Notification or Check storage
+// Nearly every value sent is a Notification, so boxing it wouldn't save memory.
+#[allow(clippy::large_enum_variant)]
 pub enum ServerNotification {
     CheckStorage,
     Notification(Notification),

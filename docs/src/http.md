@@ -349,6 +349,20 @@ example:
 
 See `errors`.
 
+### Mobile Device Check-in
+
+Since mobile devices do not connect directly to autoconnect servers, use this endpoint to notify autoendpoint that the UAID is still active. Router records expire after 60 days without check-in. Recommended check-in cadence is 1x/day.
+
+**Call:**
+
+```http
+GET /v1/{router_type}/{app_id}/registration/{uaid}
+```
+
+**Return Codes:**
+
+See `errors`.
+
 ### Token updates
 
 Update the current bridge token value. Note, this is a **\*PUT**\* call,

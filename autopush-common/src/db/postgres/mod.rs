@@ -35,6 +35,8 @@ use uuid::Uuid;
 use crate::db::client::DbClient;
 use crate::db::error::{DbError, DbResult};
 use crate::db::{DbSettings, User};
+use crate::metric_name::MetricName;
+use crate::metrics::StatsdClientExt;
 use crate::notification::Notification;
 use crate::{MAX_ROUTER_TTL_SECS, util};
 
@@ -87,7 +89,7 @@ impl TryFrom<&str> for PostgresDbSettings {
 
 #[derive(Clone)]
 pub struct PgClientImpl {
-    _metrics: Arc<StatsdClient>,
+    metrics: Arc<StatsdClient>,
     db_settings: PostgresDbSettings,
     pool: PgPool,
     /// Cached fully-qualified table names to avoid repeated format!/clone per query
@@ -99,6 +101,15 @@ pub struct PgClientImpl {
 }
 
 impl PgClientImpl {
+    /// Increment `notification.message.stored`
+    fn incr_message_stored(&self, is_topic: bool) {
+        self.metrics
+            .incr_with_tags(MetricName::NotificationMessageStored)
+            .with_tag("topic", &is_topic.to_string())
+            .with_tag("database", &self.name())
+            .send();
+    }
+
     /// Create a new Postgres Client.
     ///
     /// This uses the `settings.db_dsn`. to try and connect to the postgres database.
@@ -141,7 +152,7 @@ impl PgClientImpl {
                 db_settings.reliability_table.clone()
             };
             return Ok(Self {
-                _metrics: metrics,
+                metrics,
                 db_settings,
                 pool,
                 cached_router_table,
@@ -553,9 +564,11 @@ impl DbClient for PgClientImpl {
         {
             q = q.bind(message.reliability_id.clone());
         }
+        let is_topic = message.topic.as_ref().is_some_and(|v| !v.is_empty());
         q.execute(&self.pool)
             .await
             .map_err(|e| DbError::PgDbError(sqlx_err_to_string(&e)))?;
+        self.incr_message_stored(is_topic);
         Ok(())
     }
 
@@ -696,6 +709,9 @@ impl DbClient for PgClientImpl {
             .execute(&self.pool)
             .await
             .map_err(|e| DbError::PgDbError(sqlx_err_to_string(&e)))?;
+        for mp in &msg_params {
+            self.incr_message_stored(mp.topic.is_some());
+        }
         Ok(())
     }
 
