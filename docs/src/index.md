@@ -47,6 +47,7 @@ or to deploy autopush to a production environment for Firefox.
   * [Push Characteristics](architecture.md#push-characteristics)
   * [Push Reliability Tracking](reliability.md)
   * [Legacy table rotation](table_rotation.md)
+  * [Post-quantum cryptography concerns](post_quantum.md)
 * [Running Autopush](running.md)
   * [Overview](running.md#overview)
   * [Setup](running.md#setup)
